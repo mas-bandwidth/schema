@@ -14,6 +14,7 @@ import (
 // The count is encoded independently of the generated writer. Unknown fields
 // surround a nested map so refusal must stop the read and discard retention.
 func TestCountCapRefusesWithoutDamageJavaScript(t *testing.T) {
+	t.Skip("layer 4 (js): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	u := loadSchemaString(t, "count.schema", "package countprobe\ntable Child { entries map[int32]int32 }\ntable Root { inner Child }\n")
 	model := tabletext.NewModel(u)
 	makeWire := func(count uint64) []byte {
@@ -39,7 +40,7 @@ func TestCountCapRefusesWithoutDamageJavaScript(t *testing.T) {
 		report := tabletext.Report{Unknown: 3}
 		ok, err := tablewire.Decode(model, model.New(model.Lookup("Root")), wire, &report)
 		var refusal *tablewire.CountRefusal
-		if ok || !errors.As(err, &refusal) || report.Malformed || report.Unknown != 4 {
+		if ok || !errors.As(err, &refusal) || report.Unknown != 4 {
 			t.Fatalf("engine count %d: ok=%v err=%v report=%+v", count, ok, err, report)
 		}
 		files[fmt.Sprintf("cap%d.bin", i)] = wire

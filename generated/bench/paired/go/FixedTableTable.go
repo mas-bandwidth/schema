@@ -108,7 +108,7 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -116,38 +116,36 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 13 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "FixedTable.value")
+				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
-			BenchMixedLoadBody(&sub, &value.Value)
+			if !BenchMixedLoadBody(&sub, &value.Value) {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
-				r.Report.Malformed = true
-				BenchMixedReset(&value.Value)
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -156,96 +154,12 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 
 // FixedTable also carries the FIXED form (form 3): FixedTableFixedLoad reads that one and
 // names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1, whether or not the table was DECLARED fixed
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
-// FixedTableLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts, with the report's counters counted onto the one
-// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
-// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
-// a form it does not carry. FixedTableLoad is the strict read; call this one by name.
-func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		FixedTableReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	report.Malformed = false
-	if !FixedTableLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			FixedTableReset(value)
-			report.Malformed = report.Malformed || before.Malformed
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			FixedTableReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		if report.Malformed {
-			FixedTableReset(value)
-		}
-		report.Malformed = report.Malformed || before.Malformed
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		FixedTableReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	if report.Malformed {
-		FixedTableReset(value)
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	report.Malformed = before.Malformed
-	return true
-}
-
-// FixedTableLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever FixedTableReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. FixedTableLoadTolerant also reads past an evolution event.
+// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// FixedTableLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -253,24 +167,21 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
-	ok := FixedTableLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !FixedTableLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		FixedTableReset(value)
 		return false
 	}
 	return true
 }
 
-// FixedTableReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// FixedTableReadStrict is FixedTableLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func FixedTableReadStrict(wire []byte) (*FixedTable, error) {
 	value := &FixedTable{}
 	var report TableReport
-	ok := FixedTableLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !FixedTableLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -774,259 +685,162 @@ func FixedTableFixedWriteBody(b []byte, value *FixedTable) {
 	BenchMixedFixedWriteBody(b[0:], &value.Value)
 }
 
-// MixedEntity's read-side bounds.
-func MixedEntityFixedClampBody(value *MixedEntity, clamped *int32) {
-	_, _ = value, clamped
+// MixedEntity's read-side bounds: each value outside them counts one in over.
+func MixedEntityFixedBoundsBody(value *MixedEntity, over *int32) {
+	_, _ = value, over
 	if value.EntityID > 4095 {
-		value.EntityID = 4095
-		(*clamped)++
+		(*over)++
 	}
-	if value.PosX < -16383 {
-		value.PosX = -16383
-		(*clamped)++
-	} else if value.PosX > 16383 {
-		value.PosX = 16383
-		(*clamped)++
+	if value.PosX < -16383 || value.PosX > 16383 {
+		(*over)++
 	}
-	if value.PosY < -16383 {
-		value.PosY = -16383
-		(*clamped)++
-	} else if value.PosY > 16383 {
-		value.PosY = 16383
-		(*clamped)++
+	if value.PosY < -16383 || value.PosY > 16383 {
+		(*over)++
 	}
-	if value.PosZ < -16383 {
-		value.PosZ = -16383
-		(*clamped)++
-	} else if value.PosZ > 16383 {
-		value.PosZ = 16383
-		(*clamped)++
+	if value.PosZ < -16383 || value.PosZ > 16383 {
+		(*over)++
 	}
 	if value.Yaw > 511 {
-		value.Yaw = 511
-		(*clamped)++
+		(*over)++
 	}
 	if value.Pitch > 511 {
-		value.Pitch = 511
-		(*clamped)++
+		(*over)++
 	}
-	if value.VelX < -2048 {
-		value.VelX = -2048
-		(*clamped)++
-	} else if value.VelX > 2047 {
-		value.VelX = 2047
-		(*clamped)++
+	if value.VelX < -2048 || value.VelX > 2047 {
+		(*over)++
 	}
-	if value.VelY < -2048 {
-		value.VelY = -2048
-		(*clamped)++
-	} else if value.VelY > 2047 {
-		value.VelY = 2047
-		(*clamped)++
+	if value.VelY < -2048 || value.VelY > 2047 {
+		(*over)++
 	}
-	if value.VelZ < -2048 {
-		value.VelZ = -2048
-		(*clamped)++
-	} else if value.VelZ > 2047 {
-		value.VelZ = 2047
-		(*clamped)++
+	if value.VelZ < -2048 || value.VelZ > 2047 {
+		(*over)++
 	}
-	if value.Health < 0 {
-		value.Health = 0
-		(*clamped)++
-	} else if value.Health > 1000 {
-		value.Health = 1000
-		(*clamped)++
+	if value.Health < 0 || value.Health > 1000 {
+		(*over)++
 	}
 	if uint64(value.Weapon) > 15 {
-		value.Weapon = MixedWeaponNone
-		(*clamped)++
+		(*over)++
 	}
 }
 
-// MixedStat's read-side bounds.
-func MixedStatFixedClampBody(value *MixedStat, clamped *int32) {
-	_, _ = value, clamped
+// MixedStat's read-side bounds: each value outside them counts one in over.
+func MixedStatFixedBoundsBody(value *MixedStat, over *int32) {
+	_, _ = value, over
 	if value.StatID > 255 {
-		value.StatID = 255
-		(*clamped)++
+		(*over)++
 	}
-	if value.Delta < -512 {
-		value.Delta = -512
-		(*clamped)++
-	} else if value.Delta > 511 {
-		value.Delta = 511
-		(*clamped)++
+	if value.Delta < -512 || value.Delta > 511 {
+		(*over)++
 	}
 }
 
-// MixedHitEvent's read-side bounds.
-func MixedHitEventFixedClampBody(value *MixedHitEvent, clamped *int32) {
-	_, _ = value, clamped
+// MixedHitEvent's read-side bounds: each value outside them counts one in over.
+func MixedHitEventFixedBoundsBody(value *MixedHitEvent, over *int32) {
+	_, _ = value, over
 	if value.TargetID > 4095 {
-		value.TargetID = 4095
-		(*clamped)++
+		(*over)++
 	}
-	if value.Damage < 0 {
-		value.Damage = 0
-		(*clamped)++
-	} else if value.Damage > 4095 {
-		value.Damage = 4095
-		(*clamped)++
+	if value.Damage < 0 || value.Damage > 4095 {
+		(*over)++
 	}
-	if value.HitKind < 0 {
-		value.HitKind = 0
-		(*clamped)++
-	} else if value.HitKind > 7 {
-		value.HitKind = 7
-		(*clamped)++
+	if value.HitKind < 0 || value.HitKind > 7 {
+		(*over)++
 	}
 }
 
-// MixedChatEvent's read-side bounds.
-func MixedChatEventFixedClampBody(value *MixedChatEvent, clamped *int32) {
-	_, _ = value, clamped
-	if value.Channel < 0 {
-		value.Channel = 0
-		(*clamped)++
-	} else if value.Channel > 3 {
-		value.Channel = 3
-		(*clamped)++
+// MixedChatEvent's read-side bounds: each value outside them counts one in over.
+func MixedChatEventFixedBoundsBody(value *MixedChatEvent, over *int32) {
+	_, _ = value, over
+	if value.Channel < 0 || value.Channel > 3 {
+		(*over)++
 	}
 	if value.Speaker > 4095 {
-		value.Speaker = 4095
-		(*clamped)++
+		(*over)++
 	}
 }
 
-// MixedPickupEvent's read-side bounds.
-func MixedPickupEventFixedClampBody(value *MixedPickupEvent, clamped *int32) {
-	_, _ = value, clamped
+// MixedPickupEvent's read-side bounds: each value outside them counts one in over.
+func MixedPickupEventFixedBoundsBody(value *MixedPickupEvent, over *int32) {
+	_, _ = value, over
 	if value.ItemID > 1023 {
-		value.ItemID = 1023
-		(*clamped)++
+		(*over)++
 	}
-	if value.Amount < 0 {
-		value.Amount = 0
-		(*clamped)++
-	} else if value.Amount > 255 {
-		value.Amount = 255
-		(*clamped)++
+	if value.Amount < 0 || value.Amount > 255 {
+		(*over)++
 	}
 }
 
-// BenchMixed's read-side bounds.
-func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
-	_, _ = value, clamped
+// BenchMixed's read-side bounds: each value outside them counts one in over.
+func BenchMixedFixedBoundsBody(value *BenchMixed, over *int32) {
+	_, _ = value, over
 	if value.Sequence > 65535 {
-		value.Sequence = 65535
-		(*clamped)++
+		(*over)++
 	}
-	if value.AckSequence < 0 {
-		value.AckSequence = 0
-		(*clamped)++
-	} else if value.AckSequence > 65535 {
-		value.AckSequence = 65535
-		(*clamped)++
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		(*over)++
 	}
-	if value.WorldTime < -1000000000000 {
-		value.WorldTime = -1000000000000
-		(*clamped)++
-	} else if value.WorldTime > 1000000000000 {
-		value.WorldTime = 1000000000000
-		(*clamped)++
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		(*over)++
 	}
 	if value.FrameTick > 281474976710655 {
-		value.FrameTick = 281474976710655
-		(*clamped)++
+		(*over)++
 	}
-	if value.ServerTime < 0 {
-		value.ServerTime = 0
-		(*clamped)++
-	} else if value.ServerTime > 16776960 {
-		value.ServerTime = 16776960
-		(*clamped)++
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		(*over)++
 	}
 	for i := range int64(value.EntitiesCount) {
-		MixedEntityFixedClampBody(&value.Entities[i], clamped)
+		MixedEntityFixedBoundsBody(&value.Entities[i], over)
 	}
 	for i := range int64(value.StatsCount) {
-		MixedStatFixedClampBody(&value.Stats[i], clamped)
+		MixedStatFixedBoundsBody(&value.Stats[i], over)
 	}
 	if uint32(value.GameEvent.Type) > 3 {
-		value.GameEvent.Type = MixedEventTypeNone
-		(*clamped)++
+		(*over)++
 	}
 	switch value.GameEvent.Type {
 	case MixedEventTypeHit:
-		MixedHitEventFixedClampBody(&value.GameEvent.Hit, clamped)
+		MixedHitEventFixedBoundsBody(&value.GameEvent.Hit, over)
 	case MixedEventTypeChat:
-		MixedChatEventFixedClampBody(&value.GameEvent.Chat, clamped)
+		MixedChatEventFixedBoundsBody(&value.GameEvent.Chat, over)
 	case MixedEventTypePickup:
-		MixedPickupEventFixedClampBody(&value.GameEvent.Pickup, clamped)
+		MixedPickupEventFixedBoundsBody(&value.GameEvent.Pickup, over)
 	}
-	if value.AimX < -1.0 {
-		value.AimX = -1.0
-		(*clamped)++
-	} else if value.AimX > 1.0 {
-		value.AimX = 1.0
-		(*clamped)++
+	if value.AimX < -1.0 || value.AimX > 1.0 {
+		(*over)++
 	} else if value.AimX == 0 {
 		value.AimX = 0
 	}
-	if value.AimY < -1.0 {
-		value.AimY = -1.0
-		(*clamped)++
-	} else if value.AimY > 1.0 {
-		value.AimY = 1.0
-		(*clamped)++
+	if value.AimY < -1.0 || value.AimY > 1.0 {
+		(*over)++
 	} else if value.AimY == 0 {
 		value.AimY = 0
 	}
-	if value.AimZ < -1.0 {
-		value.AimZ = -1.0
-		(*clamped)++
-	} else if value.AimZ > 1.0 {
-		value.AimZ = 1.0
-		(*clamped)++
+	if value.AimZ < -1.0 || value.AimZ > 1.0 {
+		(*over)++
 	} else if value.AimZ == 0 {
 		value.AimZ = 0
 	}
-	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 {
-		value.Flux = (serialize.Int128{Lo: 0, Hi: 18446744004990074880})
-		(*clamped)++
-	} else if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
-		value.Flux = (serialize.Int128{Lo: 0, Hi: 68719476736})
-		(*clamped)++
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		(*over)++
 	}
 	if value.Ping > 64000 {
-		value.Ping = 64000
-		(*clamped)++
+		(*over)++
 	}
 	if value.CrcHint > 16777215 {
-		value.CrcHint = 16777215
-		(*clamped)++
+		(*over)++
 	}
-	if value.Extra < 0 {
-		value.Extra = 0
-		(*clamped)++
-	} else if value.Extra > 255 {
-		value.Extra = 255
-		(*clamped)++
+	if value.Extra < 0 || value.Extra > 255 {
+		(*over)++
 	}
-	if value.IdleTicks < 0 {
-		value.IdleTicks = 0
-		(*clamped)++
-	} else if value.IdleTicks > 15 {
-		value.IdleTicks = 15
-		(*clamped)++
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		(*over)++
 	}
 }
 
-// FixedTable's read-side bounds.
-func FixedTableFixedClampBody(value *FixedTable, clamped *int32) {
-	_, _ = value, clamped
-	BenchMixedFixedClampBody(&value.Value, clamped)
+// FixedTable's read-side bounds: each value outside them counts one in over.
+func FixedTableFixedBoundsBody(value *FixedTable, over *int32) {
+	_, _ = value, over
+	BenchMixedFixedBoundsBody(&value.Value, over)
 }
 
 // BenchMixedFixedFiniteBody is BenchMixed's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
@@ -1362,18 +1176,18 @@ func FixedTableFixedCheckBody(value *FixedTable) bool {
 	return true
 }
 
-// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): a ranged scalar's
-// declared min and max, and an ORDINAL's set — a union tag past the arm
-// count, an enum ordinal past the enum's top value. Straight-line, after
-// the copy, over STORAGE, so the identity plan and a plan compiled from a
-// stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS. The pass walks LIVE elements only: a counted array's live
-// count, not its slack; an optional's payload only when present; a union's
-// set arm, not the others.
-func FixedTableFixedClamp(value *FixedTable, report *TableReport) {
-	clamped := int32(0)
-	FixedTableFixedClampBody(value, &clamped)
-	report.Clamped += clamped
+// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §4.6): a ranged scalar's declared min and max, and an ORDINAL's set — a
+// union tag past the arm count, an enum ordinal past the enum's top value.
+// Straight-line, after the copy, over STORAGE, so the identity plan and a
+// lineage plan are held by the same pass. A value outside them refuses the
+// load out_of_range; nothing is clamped. The pass walks LIVE elements only:
+// a counted array's live count, not its slack; an optional's payload only
+// when present; a union's set arm, not the others (tla/FixedLive.tla).
+func FixedTableFixedBounds(value *FixedTable) bool {
+	over := int32(0)
+	FixedTableFixedBoundsBody(value, &over)
+	return over == 0
 }
 
 // ---- FixedTable, the fixed form ----
@@ -1719,39 +1533,17 @@ func FixedTableFixedSaveReason(values []FixedTable, buffer []byte) (int64, error
 	return -1, TableRefuseInvalidValue
 }
 
-// FixedTableFixedLoad is the plain fixed-form read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): -1 for
-// every refusal of FixedTableFixedLoadTolerant and for a read whose report.Err() is not nil, with
-// every value it had written reset. A supplied report receives THIS read's report.
+// FixedTableFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
+// or -1 with every value it had written reset. A supplied report receives this read's report,
+// and report.Err() is the reason (tla/FixedLive.tla).
 func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	read := report
-	if read == nil {
-		read = &TableReport{}
-	} else {
-		*read = TableReport{}
-	}
-	n := FixedTableFixedLoadTolerant(values, data, plan, read)
-	if n < 0 {
-		return -1
-	}
-	if read.Err() != nil {
-		for k := range n {
-			FixedTableReset(&values[k])
-		}
-		return -1
-	}
-	return n
-}
-
-// FixedTableFixedLoadTolerant is the TOLERANT fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	if report == nil {
 		var local TableReport
 		report = &local
 	}
 	*report = TableReport{}
 	if len(data) < 1 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
@@ -1765,13 +1557,13 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
-			report.Malformed = true
+			report.Refuse(TableRefuseWireDamaged, "")
 			report.Reason = TableRefuseReservedNotZero.Error()
 			return -1
 		}
@@ -1804,7 +1596,7 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := FixedTableFixedHoles
 	recordBytes := known.Record
-	censusUnknown, censusKind := int32(0), int32(0)
+	censusUnknown := int32(0)
 	if hash != FixedTableFixedHash {
 		lane := &FixedTableFixedLineagePlans[pick]
 		if lane.Why != "" {
@@ -1812,9 +1604,9 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = FixedTableFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
-		// lands only on a read that returns: REFUSE moves no counter.
-		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
+		// THE UNKNOWN CENSUS IS ONCE PER ENDPOINT and lands only on a read that
+		// returns (§5.4); an unlawful entry has no plan and refused above.
+		censusUnknown = lane.Unknown
 	}
 	if int64(entryCount) > int64(len(plan)) {
 		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
@@ -1822,7 +1614,7 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
@@ -1852,18 +1644,21 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 			for j := range k + 1 {
 				FixedTableReset(&values[j])
 			}
-			*report = TableReport{NonFiniteFloat: why}
-			tableNonFiniteRefused(report)
+			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
+			report.Field = why
 			return -1
 		}
-		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-		// storage it just wrote: the same pass for either plan (§3.4).
-		FixedTableFixedClamp(&values[k], report)
+		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
+		if !FixedTableFixedBounds(&values[k]) {
+			for j := range k + 1 {
+				FixedTableReset(&values[j])
+			}
+			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+		}
 		at = at[recordBytes:]
 	}
 	report.Unknown += censusUnknown
-	report.KindMismatch += censusKind
 	return n
 }
 

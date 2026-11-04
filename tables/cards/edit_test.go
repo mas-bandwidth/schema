@@ -448,7 +448,7 @@ func TestFieldEditRefusesUnknownOrLossyInput(t *testing.T) {
 	pregion := alignedRegion(pn)
 	var pref cardsfuture.TableReport
 	proot := cardsfuture.CardLoad(pregion, pw, &pref)
-	if proot == nil || pref.Malformed {
+	if proot == nil || pref.Refused() {
 		t.Fatal("unknown values lost after refused edit")
 	}
 	if got := rowStr(proot.FutureNote[:], proot.FutureNoteLength); got != "future-value" {

@@ -71,7 +71,7 @@ func TestReaderRefusesIllFormedUTF8(t *testing.T) {
 		if RootFromJSON(&dst, text, &rep) {
 			t.Fatalf("reader %s: RootFromJSON accepted ill-formed UTF-8", tc.name)
 		}
-		if !rep.Malformed || !strings.HasPrefix(rep.Reason, "string_not_utf8") {
+		if !(rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") || !strings.HasPrefix(rep.Reason, "string_not_utf8") {
 			t.Fatalf("reader %s: report = %+v, want Malformed with string_not_utf8", tc.name, rep)
 		}
 	}
@@ -79,7 +79,7 @@ func TestReaderRefusesIllFormedUTF8(t *testing.T) {
 	// Well-formed E2 82 AC (U+20AC) reads cleanly.
 	var dst Root
 	var rep TableReport
-	if !RootFromJSON(&dst, []byte("{\"s\":\"\xe2\x82\xac\"}"), &rep) || rep.Malformed {
+	if !RootFromJSON(&dst, []byte("{\"s\":\"\xe2\x82\xac\"}"), &rep) || (rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") {
 		t.Fatalf("reader E2_82_AC: RootFromJSON refused well-formed UTF-8: %+v", rep)
 	}
 	if got := dst.S[:dst.SLength]; !bytes.Equal(got, []byte{0xe2, 0x82, 0xac}) {

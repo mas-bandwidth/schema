@@ -68,9 +68,6 @@ func (c *Compiler) Cook(u *ir.Unit, root string, wire []byte, opts CookOptions) 
 	if _, err := tablewire.Decode(m, inst, wire, &wr); err != nil {
 		return nil, rep, publicReport(wr), err
 	}
-	if wr.Malformed {
-		return nil, rep, publicReport(wr), fmt.Errorf("the wire is malformed: a region loaded from it would carry a hole, and a cook cannot (docs/SPEC-TABLES.md §7)")
-	}
 	out, err := tablecook.Cook(m, inst, tablecook.Options{Big: opts.Big, NoAttribution: opts.NoAttribution})
 	if err != nil {
 		return nil, rep, publicReport(wr), err

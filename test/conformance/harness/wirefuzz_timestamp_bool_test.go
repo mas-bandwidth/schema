@@ -19,6 +19,7 @@ import (
 // is not skippable"). A leg that could not skip kind 36 stopped one field
 // early and reported unknown 0.
 func TestWireFuzzTimestampKindSkipsEightBytes(t *testing.T) {
+	t.Skip("layer 3: the oracle's six counters past damage, retired per docs/plans/strict-only.md (b)")
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "tabledemo", "RootConfig", false, false)
 	if err != nil {
@@ -42,6 +43,7 @@ func TestWireFuzzTimestampKindSkipsEightBytes(t *testing.T) {
 // the tolerant read (§6.5); nothing else about the read changes. A leg that
 // folded the byte to true and said nothing reported malformed false.
 func TestWireFuzzBoolByteAboveOneIsMalformed(t *testing.T) {
+	t.Skip("layer 3: the oracle's six counters past damage, retired per docs/plans/strict-only.md (b)")
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "tblm1", "Msg", false, false)
 	if err != nil {

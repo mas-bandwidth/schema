@@ -2,6 +2,7 @@ package tabletext_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
@@ -10,7 +11,7 @@ import (
 )
 
 // Integer range bounds are exact schema integers. Rounding either side through
-// float64 formerly erased clamps near 2^53 and the signed/unsigned 64-bit limits.
+// float64 would erase the refusals near 2^53 and the signed/unsigned 64-bit limits.
 func TestIntegerRangeBoundsStayExact(t *testing.T) {
 	const src = `package probe
 
@@ -34,7 +35,7 @@ table Root {
 	for _, tc := range []struct {
 		field, input string
 		want         uint64
-		clamps       int
+		over         int // nonzero: the input is past the bound and refuses
 	}{
 		{"upper", "18446744073709551609", 18446744073709551609, 0},
 		{"upper", "18446744073709551610", 18446744073709551610, 0},
@@ -55,12 +56,16 @@ table Root {
 			value := m.New(u.Tables["Root"])
 			var rep tabletext.Report
 			text := fmt.Sprintf(`{"%s":%s}`, tc.field, tc.input)
-			if !m.Read(value, []byte(text), &rep) {
-				t.Fatalf("read refused: %+v", rep)
+			read := m.Read(value, []byte(text), &rep)
+			if tc.over > 0 {
+				if read || !rep.Refused || !strings.HasPrefix(rep.Reason, "out_of_range") {
+					t.Fatalf("%s: want an out_of_range refusal, got %+v", text, rep)
+				}
+				return
 			}
 			got, ok := value.FieldByKey(tc.field)
-			if !ok || got.Cell.U != tc.want || rep != (tabletext.Report{Clamped: tc.clamps}) {
-				t.Fatalf("%s: got value=%d report=%+v, want value=%d clamps=%d", text, got.Cell.U, rep, tc.want, tc.clamps)
+			if !read || !ok || got.Cell.U != tc.want || !rep.Silent() {
+				t.Fatalf("%s: got value=%d report=%+v, want value=%d", text, got.Cell.U, rep, tc.want)
 			}
 		})
 	}

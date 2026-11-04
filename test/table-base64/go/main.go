@@ -25,8 +25,7 @@ func main() {
 		}
 		var v b.Blob
 		var r b.TableReport
-		b.BlobFromJSONTolerant(&v, text, &r)
-		if r.Malformed {
+		if !b.BlobFromJSON(&v, text, &r) {
 			fmt.Println("1 0 0 - -")
 			continue
 		}
@@ -34,7 +33,7 @@ func main() {
 		if b.BlobToJSON(&v, out) != int64(len(out)) {
 			panic("writer size")
 		}
-		fmt.Printf("0 %d %d %s %s\n", r.Clamped, r.KindMismatch, packed(v.Payload[:v.PayloadLength]), packed(out))
+		fmt.Printf("0 0 0 %s %s\n", packed(v.Payload[:v.PayloadLength]), packed(out))
 	}
 	if err := s.Err(); err != nil {
 		panic(err)

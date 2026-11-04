@@ -142,7 +142,7 @@ func quantizedFloat32Body(announce, mutant []byte, rep tabletext.Report, wantX f
   }
   check(same, 'saved bytes of body one differ from the oracle');
 `, dartBytes(announce), dartBytes(mutant),
-		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate,
+		rep.Unknown, 0, rep.Widened, 0, 0,
 		fixedFloatLit(wantX), fixedFloatLit(wantX),
 		len(saved), len(saved), dartBytes(saved))
 }

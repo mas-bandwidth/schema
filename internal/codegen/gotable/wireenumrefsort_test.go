@@ -187,8 +187,8 @@ func TestGoWireEnumVariantRefSort(t *testing.T) {
 			if LoadoutConfigLoad(new(LoadoutConfig), over, &overReport) {
 				t.Fatalf("reference past the table opened: %%+v", overReport)
 			}
-			if overValue, err := LoadoutConfigReadStrict(over); overValue != nil || !errors.Is(err, TableRefuseMalformed) {
-				t.Fatalf("reference past the table: value %%v err %%v, want malformed", overValue, err)
+			if overValue, err := LoadoutConfigReadStrict(over); overValue != nil || !errors.Is(err, TableRefuseWireDamaged) {
+				t.Fatalf("reference past the table: value %%v err %%v, want wire_damaged", overValue, err)
 			}
 		})
 	}

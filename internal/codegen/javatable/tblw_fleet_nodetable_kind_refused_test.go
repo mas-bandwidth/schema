@@ -116,7 +116,7 @@ func TestJavaFixTblwFleetNodeTableKindRefused(t *testing.T) {
 			}
 			oracle := model.New(u.Tables[tc.root])
 			oreport := new(tabletext.Report)
-			if _, err := tablewire.DecodeRegion(model, oracle, wire, oreport); err != nil || !oreport.Malformed {
+			if _, err := tablewire.DecodeRegion(model, oracle, wire, oreport); !tablewire.ReadRefusal(err) {
 				t.Fatalf("oracle does not read the mutant as damaged: %v %+v", err, oreport)
 			}
 			counts := strings.TrimPrefix(strings.SplitN(line, "|", 2)[0], "null ")

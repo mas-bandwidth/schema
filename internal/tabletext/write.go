@@ -23,10 +23,6 @@ import (
 
 type writer struct {
 	b strings.Builder
-	// bad is the first text the writer met that is not text — ill-formed
-	// UTF-8 in a narrow string, an unpaired surrogate in a wide one — which
-	// refuses the whole write (docs/SPEC-TABLES.md §16.14, W0, W8)
-	bad error
 	// graph is the pointered write's identity (docs/SPEC-TABLES.md §16.7): how
 	// many slots name each node, learned in a first pass over the same walk,
 	// and the `&node` label each shared node took at its first write.
@@ -59,6 +55,11 @@ func (w *writer) line(depth int) {
 // the depth cap, and where the graph carries a cycle, which the wire refuses
 // too (§3.1).
 func (m *Model) Write(inst *Instance) ([]byte, error) {
+	// THE WRITER REFUSES A VALUE OUTSIDE ITS DECLARATION (§16.3): what it
+	// writes is what its reader accepts (CheckValue).
+	if err := m.CheckValue(inst); err != nil {
+		return nil, err
+	}
 	w := &writer{}
 	// PASS ONE (§16.7): one visit per node, every slot that names it counted,
 	// so the write knows at a node's first occurrence whether it will be named
@@ -72,9 +73,6 @@ func (m *Model) Write(inst *Instance) ([]byte, error) {
 	w.graph = graph
 	if err := m.writeValue(w, inst, 0); err != nil {
 		return nil, err
-	}
-	if w.bad != nil {
-		return nil, w.bad
 	}
 	return []byte(w.b.String()), nil
 }
@@ -620,51 +618,10 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 	}
 }
 
-// utf8Sequence is the length of ONE well-formed UTF-8 sequence at s, or the
-// negated length of the maximal subpart (Unicode Table 3-7, docs/SPEC-TABLES.md
-// §16.3, §17.3) when the bytes there are ill-formed.
-func utf8Sequence(s []byte) int {
-	lead := s[0]
-	var want int
-	var lo, hi byte = 0x80, 0xbf
-	switch {
-	case lead < 0x80:
-		return 1
-	case lead >= 0xc2 && lead <= 0xdf:
-		want = 2
-	case lead >= 0xe0 && lead <= 0xef:
-		want = 3
-		switch lead {
-		case 0xe0:
-			lo = 0xa0
-		case 0xed:
-			hi = 0x9f
-		}
-	case lead >= 0xf0 && lead <= 0xf4:
-		want = 4
-		switch lead {
-		case 0xf0:
-			lo = 0x90
-		case 0xf4:
-			hi = 0x8f
-		}
-	default:
-		return -1
-	}
-	for i := 1; i < want; i++ {
-		if len(s) <= i || s[i] < lo || s[i] > hi {
-			return -i
-		}
-		lo, hi = 0x80, 0xbf
-	}
-	return want
-}
-
-// writeString emits one JSON string. A JSON text MUST be valid UTF-8 (RFC 8259
-// §8.1), and no read puts anything else into storage, so a byte that is not
-// part of a well-formed sequence was put there by a program: the writer
-// REFUSES the whole text (`invalid_value`, docs/SPEC-TABLES.md §16.3, §16.14
-// W0) rather than replacing it.
+// writeString emits one JSON string. Every string that reaches it is text:
+// the writers ask CheckValue first and refuse ill-formed UTF-8 invalid_value
+// (docs/SPEC-TABLES.md §16.3), and a key or a name is the declaration's. So a
+// byte at or past 0x80 is written raw, and the text is valid UTF-8.
 func writeString(w *writer, s []byte) {
 	const hex = "0123456789abcdef"
 	w.put('"')
@@ -694,15 +651,7 @@ func writeString(w *writer, s []byte) {
 			case c < 0x80:
 				w.put(c)
 			default:
-				if width := utf8Sequence(s[i:]); width < 0 {
-					if w.bad == nil {
-						w.bad = fmt.Errorf("invalid_value: a string holds ill-formed UTF-8 at byte %d — the writer refuses text that is not text (docs/SPEC-TABLES.md §16.3, §16.14)", i)
-					}
-					i += -width - 1
-				} else {
-					w.raw(string(s[i : i+width]))
-					i += width - 1
-				}
+				w.put(c)
 			}
 		}
 	}
@@ -711,10 +660,9 @@ func writeString(w *writer, s []byte) {
 
 // writeWString is a WIDE field's text (docs/SPEC-TABLES.md §16.2): the code
 // units transcoded back to UTF-8. A SURROGATE PAIR is one code point; an
-// UNPAIRED SURROGATE is not a code point at all and REFUSES the whole text
-// (`invalid_value`, §16.14 W0); a ZERO UNIT is U+0000, which JSON has an escape
-// for, and writes \u0000 (§16.3). No wire can put either into storage (§3), so
-// both answer for storage a PROGRAM built.
+// unpaired surrogate never reaches here (CheckValue refuses it invalid_value,
+// §16.3); a ZERO UNIT is U+0000, which JSON has an escape for, and writes
+// \u0000, only ever for storage a program built.
 func writeWString(w *writer, units []uint16) {
 	const hex = "0123456789abcdef"
 	w.put('"')
@@ -725,12 +673,6 @@ func writeWString(w *writer, units []uint16) {
 				code = 0x10000 + (code-0xd800)<<10 + (low - 0xdc00)
 				i++
 			}
-		}
-		if code >= 0xd800 && code <= 0xdfff {
-			if w.bad == nil {
-				w.bad = fmt.Errorf("invalid_value: a wide string holds an unpaired surrogate at unit %d — the writer refuses text that is not text (docs/SPEC-TABLES.md §16.3, §16.14)", i)
-			}
-			continue
 		}
 		switch code {
 		case '"':
@@ -871,6 +813,9 @@ func (m *Model) WriteValue(fv *Field) ([]byte, error) {
 	if err := ValidateRequiredValue(fv); err != nil {
 		return nil, err
 	}
+	if err := m.checkField("", fv, &checkWalk{seen: map[*Instance]bool{}}); err != nil {
+		return nil, err
+	}
 	w := &writer{graph: &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}}}
 	if err := m.countField(w.graph, fv, map[*Instance]bool{}); err != nil {
 		return nil, err
@@ -878,24 +823,24 @@ func (m *Model) WriteValue(fv *Field) ([]byte, error) {
 	if err := m.writeField(w, fv, 0); err != nil {
 		return nil, err
 	}
-	if w.bad != nil {
-		return nil, w.bad
-	}
 	return []byte(w.b.String()), nil
 }
 
 // WriteElement renders ONE ELEMENT of an array field as the text a
 // `<Variant>.json` or a bounded array's element file carries.
 func (m *Model) WriteElement(fv *Field, slot int) ([]byte, error) {
+	bad := func(format string, a ...any) error {
+		return &InvalidValue{Field: fv.Def.Name, Detail: fmt.Sprintf(format, a...)}
+	}
+	if err := m.checkCell(fv.Def.Name, &fv.Elems[slot], fv.Def, &checkWalk{seen: map[*Instance]bool{}}, bad); err != nil {
+		return nil, err
+	}
 	w := &writer{graph: &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}}}
 	if err := m.countCell(w.graph, &fv.Elems[slot], fv.Def, map[*Instance]bool{}); err != nil {
 		return nil, err
 	}
 	if err := m.writeScalar(w, &fv.Elems[slot], fv.Def, 0); err != nil {
 		return nil, err
-	}
-	if w.bad != nil {
-		return nil, w.bad
 	}
 	return []byte(w.b.String()), nil
 }

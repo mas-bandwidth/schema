@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -16,10 +17,14 @@ import (
 
 // wireListsRules builds a Lists wire whose rules field carries exactly the given
 // elements, whatever its `[..4]` bound — an over-bound wire, for the read-side
-// clamp cases. The fresh instance's other fields stay at their declared
-// defaults (first and repos empty).
-func wireListsRules(t *testing.T, m *tabletext.Model, elements []string) []byte {
+// refusal cases. A writer refuses a value past its declaration, so the wire is
+// written by a twin declaration whose rules are wider ([..8]string(16)): a
+// bound is not an id, and the twin's bytes are the bytes an over-bound writer
+// would send. The fresh instance's other fields stay at their declared defaults
+// (first and repos empty).
+func wireListsRules(t *testing.T, _ *tabletext.Model, elements []string) []byte {
 	t.Helper()
+	_, m := textListsUnitOf(t, strings.Replace(textListsSchema, "rules [..4]string(8)", "rules [..8]string(16)", 1))
 	inst := m.New(m.Unit.Tables["Lists"])
 	fv := &inst.Fields[0] // rules
 	fv.Count = len(elements)
@@ -67,9 +72,14 @@ const textListsGolden = "01010e060c0201610162020e0a0d0205030c017800010000c053512
 
 func textListsUnit(t *testing.T) (*compiler.Compiler, *tabletext.Model) {
 	t.Helper()
+	return textListsUnitOf(t, textListsSchema)
+}
+
+func textListsUnitOf(t *testing.T, schema string) (*compiler.Compiler, *tabletext.Model) {
+	t.Helper()
 	c := compiler.New()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "probe.schema"), []byte(textListsSchema), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "probe.schema"), []byte(schema), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	paths, err := compiler.GatherPaths([]string{dir})
@@ -168,58 +178,61 @@ func TestEngineCarriesTextListsAndArrayRoots(t *testing.T) {
 	if err == nil {
 		t.Fatal("an object at an array root packed")
 	}
-	if !report.Malformed || report.Reason != "json_root_not_array: GoalList" {
+	if !report.Refused || report.Reason != "json_root_not_array: GoalList" {
 		t.Fatalf("the refusal does not name json_root_not_array: %+v", report)
 	}
 
-	// five elements against [..4] clamp and count
-	c1 := t.TempDir()
-	if err := os.WriteFile(filepath.Join(c1, "Lists.json"), []byte(`{"rules":["a","b","c","d","e"]}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, _, report, err = tablepack.Pack(m, "Lists", c1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if report.Clamped != 1 {
-		t.Fatalf("five elements against [..4]: clamped %d, want 1", report.Clamped)
-	}
-
-	// a nine-byte element against string(8) clamps and counts
-	c2 := t.TempDir()
-	if err := os.WriteFile(filepath.Join(c2, "Lists.json"), []byte(`{"rules":["123456789"]}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, _, report, err = tablepack.Pack(m, "Lists", c2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if report.Clamped != 1 {
-		t.Fatalf("a nine-byte element: clamped %d, want 1", report.Clamped)
+	// five elements against [..4] refuse count_over_bound, and a nine-byte
+	// element against string(8) refuses length_over_bound; four elements of
+	// eight bytes each, the bounds exactly, pack
+	for _, c := range []struct{ text, reason string }{
+		{`{"rules":["a","b","c","d","e"]}`, "count_over_bound"},
+		{`{"rules":["123456789"]}`, "length_over_bound"},
+		{`{"rules":["12345678","b","c","d"]}`, ""},
+	} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "Lists.json"), []byte(c.text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, _, report, err = tablepack.Pack(m, "Lists", dir)
+		if c.reason == "" {
+			if err != nil || !report.Silent() {
+				t.Fatalf("%s: the bounds exactly: %+v %v", c.text, report, err)
+			}
+			continue
+		}
+		if err == nil || !report.Refused || !strings.HasPrefix(report.Reason, c.reason) {
+			t.Fatalf("%s: want a %s refusal, got %+v %v", c.text, c.reason, report, err)
+		}
 	}
 
-	// the read-side clamps NAME the field, as the Go leg does (§2.13): a wire
-	// carrying five rules elements against [..4] and a wire carrying a
-	// nine-byte element against string(8) each read clamped, counted, and with
-	// report.Reason `clamped: Lists.rules`
+	// the wire refuses the same two conditions: a wire carrying five rules
+	// elements against [..4] and a wire carrying a nine-byte element against
+	// string(8) each refuse the read, and nothing is written; the wire of
+	// four eight-byte elements reads
 	for _, c := range []struct {
 		name     string
 		elements []string
+		reason   string
 	}{
-		{"count", []string{"a", "b", "c", "d", "e"}},
-		{"length", []string{"123456789"}},
+		{"count", []string{"a", "b", "c", "d", "e"}, tablewire.ReasonCountOverBound},
+		{"length", []string{"123456789"}, tablewire.ReasonLengthOverBound},
+		{"exact", []string{"12345678", "b", "c", "d"}, ""},
 	} {
 		wire := wireListsRules(t, m, c.elements)
 		wout := t.TempDir()
 		wrep, err := tablepack.UnpackOneFile(m, "Lists", wire, wout)
-		if err != nil {
-			t.Fatal(err)
+		if c.reason == "" {
+			if err != nil || !wrep.Silent() {
+				t.Fatalf("%s wire: %+v %v", c.name, wrep, err)
+			}
+			continue
 		}
-		if wrep.Clamped != 1 || wrep.Malformed {
-			t.Fatalf("%s wire clamp: %+v", c.name, wrep)
+		if err == nil || !tablewire.ReadRefusal(err) || tablewire.RefusalReason(err) != c.reason {
+			t.Fatalf("%s wire: want %s, got %+v %v", c.name, c.reason, wrep, err)
 		}
-		if wrep.Reason != "clamped: Lists.rules" {
-			t.Fatalf("%s wire clamp names no field: %q", c.name, wrep.Reason)
+		if entries, _ := os.ReadDir(wout); len(entries) != 0 {
+			t.Fatalf("%s wire: a refused read wrote %d entries", c.name, len(entries))
 		}
 	}
 }

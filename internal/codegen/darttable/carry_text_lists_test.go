@@ -65,7 +65,7 @@ final wr=w.TableWireReport();final back=w.rootWireLoad(wire,wr);check(!wr.malfor
 final store=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport();final retained=w.rootWireLoadRetain(wire,store,rr);
 check(!rr.malformed&&hex(w.rootWireSaveRetain(retained,store,w.TableWireReport()))==hex(wire),'retained text list');
 check(w.rootWireMeasure(wire)>0,'text list region measure');
-`, input, r.Clamped, r.KindMismatch, i, string(text)+"\n", i, hex.EncodeToString(wire), i)
+`, input, 0, 0, i, string(text)+"\n", i, hex.EncodeToString(wire), i)
 		for _, big := range []bool{false, true} {
 			pin, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
 			if err != nil {

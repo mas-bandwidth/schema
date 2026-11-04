@@ -125,7 +125,7 @@ func TestSquirrelCarriesOptionalArrays(t *testing.T) {
 		if !model.Read(value, []byte(tc.text), &report) {
 			t.Fatalf("%s: the text form refused %s: %+v", tc.name, tc.text, report)
 		}
-		if report.Malformed || report.Refused || report.KindMismatch != 0 {
+		if !report.Silent() {
 			t.Fatalf("%s: the text form did not read cleanly: %+v", tc.name, report)
 		}
 		want, err := tablewire.Encode(model, value)

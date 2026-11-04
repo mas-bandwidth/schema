@@ -183,9 +183,8 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 		Root   string `json:"root"`
 		Wire   string `json:"wire"`
 		Want   string `json:"want"` // the Go leg's report, then its save, hex
-		// Damaged is the oracle's malformed: DAMAGE DISCARDS THE WHOLE LOAD
-		// (docs/SPEC-TABLES.md §4), so the leg owes the refusal and Want is
-		// not compared
+		// Damaged is the oracle's refusal: THE ONE READ (docs/SPEC-TABLES.md
+		// §4, §6.5), so the leg owes the refusal and Want is not compared
 		Damaged bool `json:"damaged"`
 		bytes   []byte
 	}
@@ -208,24 +207,27 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 	for _, d := range damages {
 		inst := rm.New(rm.Lookup("Tag"))
 		var rep tabletext.Report
-		if _, err := tablewire.Decode(rm, inst, d.bytes, &rep); err != nil {
-			t.Fatalf("%s: the oracle refused the forged wire: %v", d.Name, err)
+		ok, err := tablewire.Decode(rm, inst, d.bytes, &rep)
+		if err != nil && !tablewire.ReadRefusal(err) {
+			t.Fatalf("%s: the oracle failed on the forged wire: %v", d.Name, err)
 		}
-		d.Damaged = rep.Malformed
+		d.Root = "Tag"
+		d.Damaged = !ok
+		if !ok {
+			continue
+		}
 		save, err := tablewire.Encode(rm, inst)
 		if err != nil {
 			t.Fatalf("%s: the oracle did not re-encode: %v", d.Name, err)
 		}
-		d.Root = "Tag"
 		d.Want = strings.Join([]string{
-			itoa(int64(rep.Unknown)), itoa(int64(rep.KindMismatch)), itoa(int64(rep.Widened)),
-			itoa(int64(rep.Clamped)), itoa(int64(rep.Duplicate)), map[bool]string{true: "true", false: "false"}[rep.Malformed],
+			itoa(int64(rep.Unknown)), "0", itoa(int64(rep.Widened)), "0", "0", "false",
 		}, ",") + " " + hex.EncodeToString(save)
 	}
 	// every damage case moves the report: a forgery the reader takes cleanly
 	// is a forgery that tests nothing
 	for _, d := range damages {
-		if strings.HasPrefix(d.Want, "0,0,0,0,0,false ") {
+		if !d.Damaged && strings.HasPrefix(d.Want, "0,0,0,0,0,false ") {
 			t.Fatalf("%s: the forgery moved no counter in the oracle: %s", d.Name, d.Want)
 		}
 	}
@@ -447,7 +449,7 @@ for (const d of spec.damages ?? []) {
   const m = await import(pathToFileURL(d.module).href);
   const rep = new m.TableVariableReport();
   const v = m[d.root + "Load"](new Uint8Array(readFileSync(d.wire)), rep);
-  if (d.damaged) { console.log("DAMAGE " + d.name + (rep.malformed ? " OK" : " DIFF the damaged load was not refused " + JSON.stringify(rep))); continue; }
+  if (d.damaged) { console.log("DAMAGE " + d.name + (v === null ? " OK" : " DIFF the load was not refused " + JSON.stringify(rep))); continue; }
   if (v === null) { console.log("DAMAGE " + d.name + " REFUSED " + JSON.stringify(rep)); continue; }
   const s = m[d.root + "Save"](v);
   const got = [rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed].join(",") + " " + (s === null ? "null" : hexOf(s));
