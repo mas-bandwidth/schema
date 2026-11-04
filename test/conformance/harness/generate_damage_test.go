@@ -1,9 +1,12 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // A report row describes the decoder's verdict even when the wire cannot
@@ -29,15 +32,15 @@ func TestGenerateReportRowsRetainDamageVerdict(t *testing.T) {
 			t.Errorf("%s: got %s (present=%t), want %s", name, v, ok, want)
 		}
 	}
-	for _, name := range []string{"parts_index_out_of_range", "message_as_file", "parts_elem_kind"} {
+	for _, name := range []string{"parts_index_out_of_range", "message_as_file", "parts_elem_kind", "parts_count_past_bound"} {
 		if !got[name].Refused {
 			t.Errorf("%s lost its refusal", name)
 		}
 	}
 }
 
-// A missing declaration is infrastructure failure; an invalid count is a read
-// refusal and must still produce a scored report row.
+// A missing declaration and this build's storage cap are infrastructure
+// failures. Ordinary wire refusals still produce scored rows above.
 func TestGenerateReportRowsKeepFatalErrors(t *testing.T) {
 	m, _, _ := corpus(t)
 	cases := []struct {
@@ -45,7 +48,7 @@ func TestGenerateReportRowsKeepFatalErrors(t *testing.T) {
 		count                  bool
 	}{
 		{"missing_root", "streamdemo", "NotATable", "testdata/wire/tables/parts_index_out_of_range.bin", false},
-		{"count_refusal", "listdemo", "Save", "testdata/wire/tables/fuzz-vectors/list_count_cap.bin", true},
+		{"storage_cap", "listdemo", "Save", "testdata/wire/tables/fuzz-vectors/list_count_cap.bin", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -54,17 +57,9 @@ func TestGenerateReportRowsKeepFatalErrors(t *testing.T) {
 			reports := &Manifest{Units: m.Units, Reports: []ReportCase{{Name: tc.name, Unit: tc.unit, Root: tc.root, Wire: tc.wire}}}
 			err := generate(reports, filepath.Join(dir, "json"), path)
 			if tc.count {
-				if err != nil {
-					t.Fatal(err)
+				if _, ok := errors.AsType[*tablewire.CountRefusal](err); !ok {
+					t.Fatalf("storage-cap error lost its typed cause: %v", err)
 				}
-				got, err := readReports(path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !got[tc.name].Refused {
-					t.Fatal("oversized count was not refused")
-				}
-				return
 			}
 			if err == nil {
 				t.Fatal("setup error was swallowed")
