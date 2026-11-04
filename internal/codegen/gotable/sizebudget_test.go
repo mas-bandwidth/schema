@@ -48,7 +48,8 @@ const (
 	// -100: variable loads report newer_form on any form byte != 2 (SPEC-TABLES §6.5)
 	// +8: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
 	// -5027: the one read: no tolerant twins, no clamp or kind-mismatch counting, the wire-alone check shared in the runtime
-	goExamplesLineBudget = 54457
+	// +2961: a fixed table whose closure holds a union carries the fixed form in a regional unit (RootConfig, LoadoutConfig, ArchiveConfig and their closure: leaves, write bodies, checks, plans)
+	goExamplesLineBudget = 57418
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
