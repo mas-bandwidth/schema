@@ -117,7 +117,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"j_node_entry", "j_pad", "j_parse_f32", "j_parse_wide", "j_peek", "j_place_float", "j_place_integer",
 		"j_place_map_key", "j_place_wide", "j_raw", "j_read_array", "j_read_base64", "j_read_blob", "j_read_field",
 		"j_read_flags", "j_read_keyed", "j_read_map", "j_read_map_value", "j_read_pointer_cell", "j_read_scalar",
-		"j_read_table", "j_read_table_keys", "j_read_text_list", "j_read_union", "j_rfc3339_format",
+		"j_key_once", "j_refuse", "j_required", "j_read_table", "j_read_table_keys", "j_read_text_list", "j_read_union", "j_rfc3339_format",
 		"j_rfc3339_parse", "j_round", "j_scale", "j_scan_label", "j_scan_number", "j_scan_stored", "j_scan_string",
 		"j_scan_text", "j_scan_unit", "j_scan_wstring", "j_shape", "j_skip_container", "j_skip_string",
 		"j_skip_value", "j_skipped_ampersand", "j_sorted_entries", "j_space", "j_storage_bytes", "j_strip_zeros", "j_text_total_of",
@@ -202,7 +202,7 @@ var lobsterRuntimeNames = map[string][]string{
 	"text_form.lobster": {
 		"TNode", "TextDec", "TextDoc", "TextFlags", "TextParser", "TextSpan", "i128_add", "i128_bit", "i128_cmp",
 		"i128_div_small", "i128_mul_small", "i128_neg", "i128_setbit", "t_b64_val", "t_base64", "t_dec",
-		"t_dec_value", "t_field_of", "t_fill", "t_fixed_token", "t_gap", "t_int", "t_int_store", "t_int_token",
+		"t_dec_value", "t_field_of", "t_fill", "t_fill_record", "t_pointer", "t_fixed_token", "t_gap", "t_int", "t_int_store", "t_int_token",
 		"t_key_text", "t_name_char", "t_parse_value", "t_set_fail", "t_set_flags", "t_set_keyed", "t_set_scalar",
 		"t_set_union", "t_string", "t_value_into", "text_edit", "text_flags", "text_flags_of",
 		"text_flags_registry", "text_load", "text_save",

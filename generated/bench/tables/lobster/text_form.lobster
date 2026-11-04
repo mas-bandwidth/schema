@@ -11,6 +11,7 @@
 import .load
 import .schema_save
 import .schema_tables
+import .json
 
 namespace schema_rt
 
@@ -49,6 +50,8 @@ class TextParser:
     i:int
     fail:string = ""
     spans:[TextSpan] = []
+    depth:int = 0
+    labels:[JsonLabel] = []
 
 def t_set_fail(p:TextParser, name:string):
     if p.fail == "":
@@ -57,62 +60,46 @@ def t_set_fail(p:TextParser, name:string):
 def t_gap(p:TextParser):
     while p.i < p.n:
         let c = p.s[p.i]
-        if c == 32 or c == 9 or c == 10 or c == 13:
+        if c == 32 or c == 9 or c == 10:
             p.i++
+        elif c == 13:
+            if p.i + 1 >= p.n or p.s[p.i + 1] != 10:
+                t_set_fail(p, "text_syntax")
+                return
+            p.i += 2
         elif c == 59:
-            while p.i < p.n and p.s[p.i] != 10:
+            while p.i < p.n and p.s[p.i] != 10 and p.s[p.i] != 13:
                 p.i++
         else:
             return
 
 def t_name_char(c:int) -> bool:
-    return (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95 or (c >= 48 and c <= 57) or c == 45 or c == 43 or c == 47 or c == 46
+    return (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95 or (c >= 48 and c <= 57) or c == 45 or c == 47 or c == 46
 
 def t_string(p:TextParser) -> TNode?:
     let lo = p.i
-    p.i++
-    var out = ""
-    while p.i < p.n:
-        let c = p.s[p.i]
-        if c == 34:
-            p.i++
-            return TNode { kind: "str", lo: lo, hi: p.i, text: out }
-        if c == 92:
-            p.i++
-            if p.i >= p.n:
-                t_set_fail(p, "text_unterminated")
-                return nil
-            let e = p.s[p.i]
-            if e == 110:
-                out += "\n"
-            elif e == 116:
-                out += "\t"
-            elif e == 114:
-                out += "\r"
-            elif e == 34:
-                out += "\""
-            elif e == 92:
-                out += "\\"
-            else:
-                t_set_fail(p, "text_encoding")
-                return nil
-            p.i++
-        else:
-            if c < 0x20:
-                t_set_fail(p, "text_encoding")
-                return nil
-            out += substring(p.s, p.i, 1)
-            p.i++
-    t_set_fail(p, "text_unterminated")
-    return nil
+    let r = JsonReader { text: p.s, pos: p.i, report: LoadReport {} }
+    let out, _, ok = j_scan_string(r, -1)
+    if not ok:
+        t_set_fail(p, "text_encoding")
+        return nil
+    p.i = r.pos
+    return TNode { kind: "str", lo: lo, hi: p.i, text: out }
+
 
 def t_parse_value(p:TextParser) -> TNode?:
     t_gap(p)
+    if p.fail != "":
+        return nil
     if p.i >= p.n:
         t_set_fail(p, "text_unterminated")
         return nil
     let c = p.s[p.i]
     if c == 40:
+        if p.depth > json_max_depth:
+            t_set_fail(p, "text_depth")
+            return nil
+        p.depth++
         let lo = p.i
         p.i++
         let items:[TNode] = []
@@ -123,6 +110,7 @@ def t_parse_value(p:TextParser) -> TNode?:
                 return nil
             if p.s[p.i] == 41:
                 p.i++
+                p.depth--
                 return TNode { kind: "list", lo: lo, hi: p.i, items: items }
             let v = t_parse_value(p)
             if not v:
@@ -134,6 +122,9 @@ def t_parse_value(p:TextParser) -> TNode?:
         let lo = p.i
         p.i++
         let ns = p.i
+        if p.i >= p.n or not ((p.s[p.i] >= 65 and p.s[p.i] <= 90) or (p.s[p.i] >= 97 and p.s[p.i] <= 122) or p.s[p.i] == 95):
+            t_set_fail(p, "text_syntax")
+            return nil
         while p.i < p.n and t_name_char(p.s[p.i]):
             p.i++
         if p.i == ns:
@@ -142,13 +133,18 @@ def t_parse_value(p:TextParser) -> TNode?:
         return TNode { kind: "kw", lo: lo, hi: p.i, text: substring(p.s, ns, p.i - ns) }
     if t_name_char(c) or c == 45:
         let lo = p.i
-        while p.i < p.n and t_name_char(p.s[p.i]):
+        while p.i < p.n and (t_name_char(p.s[p.i]) or p.s[p.i] == 43):
             p.i++
         let tok = substring(p.s, lo, p.i - lo)
         if tok == "true" or tok == "false":
             return TNode { kind: "bool", lo: lo, hi: p.i, text: tok }
         if tok == "null":
             return TNode { kind: "null", lo: lo, hi: p.i, text: tok }
+        let r = JsonReader { text: tok, report: LoadReport {} }
+        let _, ok = j_walk_number(r)
+        if not ok or r.pos != length(tok):
+            t_set_fail(p, "text_syntax")
+            return nil
         return TNode { kind: "num", lo: lo, hi: p.i, text: tok }
     t_set_fail(p, "text_syntax")
     return nil
@@ -215,7 +211,7 @@ def t_base64(p:TextParser, s:string) -> string:
             push(vals, (acc >> bits) & 255)
             acc = acc & ((1 << bits) - 1)
         i++
-    if bits >= 6 or (pad > 0 and bits != 2 and bits != 4):
+    if n % 4 != 0 or pad > 2 or (pad == 1 and bits != 2) or (pad == 2 and bits != 4) or (pad == 0 and bits != 0) or acc != 0:
         t_set_fail(p, "text_encoding")
         return ""
     var out = zeros(length(vals))
@@ -268,7 +264,7 @@ def i128_cmp(a:Int128, b:Int128, signed:bool) -> int:
     if signed:
         if a.hi != b.hi:
             return if a.hi < b.hi: -1 else: 1
-        return if a.lo < b.lo: -1 else: 1
+        return if ult(a.lo, b.lo): -1 else: 1
     if a.hi != b.hi:
         return if ult(a.hi, b.hi): -1 else: 1
     return if ult(a.lo, b.lo): -1 else: 1
@@ -598,53 +594,42 @@ def t_set_scalar(p:TextParser, sl:Slot, v:TNode, path:string) -> bool:
             t_set_fail(p, "text_kind_mismatch")
             return false
         sl.cell.b = v.text == "true"
-    elif s == "int":
+    elif s == "int" and not f.timestamp:
         if length(text_flags_of(f)) > 0:
             return t_set_flags(p, sl, f, v)
         if v.kind != "num":
             t_set_fail(p, "text_kind_mismatch")
             return false
-        let signed = f.signed and not f.timestamp
-        var raw = Int128 { 0, 0 }
-        if f.fbits > 0:
-            let scaled, good = t_fixed_token(v.text, f.fbits)
-            if not good:
-                t_set_fail(p, "text_kind_mismatch")
+        let kind = j_kind(f)
+        let raw, exact, saturated = j_parse_wide(v.text, if kind_signed(kind): 18 else: 19, f.fbits)
+        if not exact or saturated:
+            t_set_fail(p, if exact: "text_bound" else: "text_kind_mismatch")
+            return false
+        if not kind_wide(kind):
+            let number = j_interpret_exact(v.text)
+            let _, moved = j_in_domain(number, kind_signed(kind), j_storage_bytes(f))
+            if number.saturated or moved:
+                t_set_fail(p, "text_bound")
                 return false
-            raw = scaled
-        else:
-            let parsed, integral = t_int_token(v.text)
-            if not integral:
-                t_set_fail(p, "text_kind_mismatch")
-                return false
-            raw = parsed
-        if not t_int_store(p, sl, f, raw, signed):
+        if not t_int_store(p, sl, f, raw, kind_signed(kind)):
             return false
     elif s == "float":
         if v.kind != "num":
             t_set_fail(p, "text_kind_mismatch")
             return false
-        // the token is already the grammar's number, so the one failure
-        // left is a magnitude past the storage, an infinity once parsed at
-        // the field's width: a float is finite (docs/SPEC-TABLES.md §3.3)
-        // and the text form refuses it as text_bound, as Go's resolver does
-        let x = parse_float64(v.text)
-        if (f.f32 and not finite_f32(x)) or not finite_f64(x):
+        let r = JsonReader { text: v.text, report: LoadReport {} }
+        j_place_float(r, sl.cell, f, v.text, f.f32)
+        if r.bad:
             t_set_fail(p, "text_bound")
             return false
-        if f.franged and (x < f.flo or x > f.fhi):
-            t_set_fail(p, "text_bound")
-            return false
-        sl.cell.f = x
-    elif s == "str" or s == "text":
+    elif s == "str" or s == "text" or s == "sblob" or s == "bblob" or (s == "int" and f.timestamp):
         if v.kind != "str":
             t_set_fail(p, "text_kind_mismatch")
             return false
-        if f.bound > 0 and length(v.text) > f.bound:
+        let r = JsonReader { text: substring(p.s, v.lo, v.hi - v.lo), report: LoadReport {} }
+        if not j_read_field(r, sl, 0):
             t_set_fail(p, "text_bound")
             return false
-        sl.cell.s = v.text
-        sl.count = length(v.text)
     elif s == "bytes":
         if v.kind != "str":
             t_set_fail(p, "text_kind_mismatch")
@@ -661,7 +646,9 @@ def t_set_scalar(p:TextParser, sl:Slot, v:TNode, path:string) -> bool:
         if v.kind != "kw" and v.kind != "str":
             t_set_fail(p, "text_kind_mismatch")
             return false
-        var found = false
+        var found = v.text == "None"
+        if found:
+            sl.cell.i = 0
         for(f.vs) ev, i:
             if ev.name == v.text:
                 sl.cell.i = i + 1
@@ -678,6 +665,14 @@ def t_set_scalar(p:TextParser, sl:Slot, v:TNode, path:string) -> bool:
 // t_value_into places one value at the shape its descriptor names: a nested
 // by-value body, an array, a map, a union or a scalar (§16.9.2).
 def t_value_into(p:TextParser, sl:Slot, f:FieldDescriptor, v:TNode, path:string) -> bool:
+    if f.present != "":
+        sl.present = v.kind != "null"
+        if not sl.present:
+            return true
+    if v.kind == "null" and (f.s == "ptr" or f.s == "sblob" or f.s == "bblob"):
+        return true
+    if f.s == "ptr":
+        return t_pointer(p, sl, v, path)
     if f.s == "tab":
         let inner = t_fill(p, v, table_of(f.t), path)
         if not inner:
@@ -690,17 +685,28 @@ def t_value_into(p:TextParser, sl:Slot, f:FieldDescriptor, v:TNode, path:string)
         if v.kind != "list":
             t_set_fail(p, "text_kind_mismatch")
             return false
+        if (f.array == "fixed" and length(v.items) != f.bound) or (f.array == "counted" and length(v.items) > f.bound):
+            t_set_fail(p, "text_bound")
+            return false
         let e = elem_of(f)
         sl.elems = []
         if e.s == "tab" and f.ek == 12:
             let ed = table_of(e.t)
+            let total = j_text_total_of(f)
+            var spent = 0
             for(v.items) it:
                 let rec = new_record(ed)
                 let tmp = Slot { fd: ed.fields[0], present: false, count: 0, cell: Value {}, elems: [], entries: [] }
-                if not t_set_scalar(p, tmp, it, path):
+                if not t_value_into(p, tmp, tmp.fd, it, path):
                     return false
                 rec.fields[0].cell = tmp.cell
                 rec.fields[0].count = tmp.count
+                rec.fields[0].present = tmp.present
+                if total:
+                    if length(tmp.cell.s) > total.total - spent:
+                        t_set_fail(p, "text_total")
+                        return false
+                    spent += length(tmp.cell.s)
                 push(sl.elems, Value { tab: rec })
         else:
             for(v.items) it:
@@ -731,47 +737,103 @@ def t_value_into(p:TextParser, sl:Slot, f:FieldDescriptor, v:TNode, path:string)
             let entry = new_record(ed)
             if not t_value_into(p, entry.fields[0], entry.fields[0].fd, pair.items[0], path):
                 return false
+            for(sl.entries) prior:
+                let other = prior.tab
+                if other and map_key_order(ed.fields[0], entry.fields[0].cell, other.fields[0].cell) == 0:
+                    t_set_fail(p, "text_duplicate_key")
+                    return false
+            push(sl.entries, Value { tab: entry })
             if not t_value_into(p, entry.fields[1], entry.fields[1].fd, pair.items[1], path):
                 return false
-            push(sl.entries, Value { tab: entry })
+        sl.entries = j_sorted_entries(ed.fields[0], sl.entries)
         return true
     return t_set_scalar(p, sl, v, path)
+
+def t_pointer(p:TextParser, sl:Slot, n:TNode, path:string) -> bool:
+    if n.kind != "list":
+        t_set_fail(p, "text_kind_mismatch")
+        return false
+    if length(n.items) == 0 or n.items[0].text != "&node":
+        let inner = t_fill(p, n, table_of(sl.fd.t), path)
+        if not inner:
+            return false
+        sl.cell.tab = inner
+        return true
+    if length(n.items) < 2 or n.items[0].kind != "str" or n.items[1].kind != "num":
+        t_set_fail(p, "text_reference")
+        return false
+    let token = n.items[1].text
+    let r = JsonReader { text: token, report: LoadReport {} }
+    let label, ok = j_scan_label(r)
+    if not ok or r.pos != length(token):
+        t_set_fail(p, "text_reference")
+        return false
+    var prior:JsonLabel? = nil
+    for(p.labels) x:
+        if x.label == label:
+            prior = x
+    if length(n.items) == 2:
+        if not prior or prior.open or prior.st != sl.fd.t:
+            t_set_fail(p, "text_reference")
+            return false
+        sl.cell.tab = prior.node
+        return true
+    if prior:
+        t_set_fail(p, "text_reference")
+        return false
+    let rec = new_record(table_of(sl.fd.t))
+    sl.cell.tab = rec
+    let definition = JsonLabel { label: label, node: rec, st: sl.fd.t, open: true }
+    push(p.labels, definition)
+    if not t_fill_record(p, n, rec, path, 2):
+        return false
+    definition.open = false
+    return true
+
+def t_fill_record(p:TextParser, n:TNode, rec:Record, path:string, start:int) -> bool:
+    let seen:[bool] = []
+    for(rec.fields):
+        push(seen, false)
+    var k = start
+    while k < length(n.items):
+        if k + 1 >= length(n.items):
+            t_set_fail(p, "text_syntax")
+            return false
+        let key = t_key_text(n.items[k])
+        if n.items[k].kind != "kw" and n.items[k].kind != "str":
+            t_set_fail(p, "text_syntax")
+            return false
+        let f = t_field_of(rec.d, key)
+        if not f:
+            t_set_fail(p, "text_unknown_key")
+            return false
+        if seen[f.o]:
+            t_set_fail(p, "text_duplicate_key")
+            return false
+        seen[f.o] = true
+        let sl = rec.fields[f.o]
+        let v = n.items[k + 1]
+        let child = if path == "": key else: path + "." + key
+        if not t_value_into(p, sl, f, v, child):
+            return false
+        k += 2
+    for(rec.fields) sl, i:
+        if sl.fd.required and not seen[i]:
+            t_set_fail(p, "text_missing_required")
+            return false
+        if seen[i] and not json_guard_holds(rec, sl):
+            t_set_fail(p, "text_inactive_field")
+            return false
+    return true
 
 def t_fill(p:TextParser, n:TNode, d:TableDescriptor, path:string) -> Record?:
     if n.kind != "list":
         t_set_fail(p, "text_kind_mismatch")
         return nil
     let rec = new_record(d)
-    var k = 0
-    while k < length(n.items):
-        if k + 1 >= length(n.items):
-            t_set_fail(p, "text_syntax")
-            return nil
-        let key = t_key_text(n.items[k])
-        if n.items[k].kind != "kw" and n.items[k].kind != "str":
-            t_set_fail(p, "text_syntax")
-            return nil
-        let f = t_field_of(d, key)
-        if not f:
-            t_set_fail(p, "text_unknown_key")
-            return nil
-        let sl = rec.fields[f.o]
-        if f.present != "":
-            sl.present = true
-        let v = n.items[k + 1]
-        let child = if path == "": key else: path + "." + key
-        if not t_value_into(p, sl, f, v, child):
-            return nil
-        k += 2
-    for(d.fields) f:
-        if f.required:
-            var seen = false
-            for(n.items) it, j:
-                if j % 2 == 0 and it.text == f.json:
-                    seen = true
-            if not seen:
-                t_set_fail(p, "text_missing_required")
-                return nil
+    if not t_fill_record(p, n, rec, path, 0):
+        release(rec)
+        return nil
     return rec
 
 // text_load reads one hand-editable document (§16.9.1-§16.9.2): the document
@@ -780,12 +842,18 @@ def text_load(root:string, text:string) -> TextDoc?:
     let d = lookup_table(root)
     if not d:
         return nil
+    var at = 0
+    while at < length(text):
+        let width = j_utf8_sequence(text, at)
+        if width <= 0:
+            return nil
+        at += width
     let p = TextParser { s: text, n: length(text), i: 0 }
     let node = t_parse_value(p)
     if not node or p.fail != "":
         return nil
     t_gap(p)
-    if p.i != p.n:
+    if p.i != p.n or p.fail != "":
         return nil
     let rec = t_fill(p, node, d, "")
     if not rec or p.fail != "":

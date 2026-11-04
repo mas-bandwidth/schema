@@ -43,7 +43,7 @@ let json_array_registry:[string] = []
 let json_text_list_registry:[FieldDescriptor] = []
 
 // A TEXT LIST's `| total = N` on the JSON read (docs/SPEC-TABLES.md §2.13):
-// the total and the `Table.field` its clamp names, registered by the unit for
+// the total and the `Table.field` its refusal names, registered by the unit for
 // each text list that declares one.
 class JsonTextTotal:
     fd:FieldDescriptor
@@ -930,6 +930,26 @@ class JsonReader:
     zero:bool = false
     utf8:bool = false
 
+def j_refuse(r:JsonReader, reason:string) -> bool:
+    r.bad = true
+    r.report.refused = true
+    if r.report.reason == "":
+        r.report.reason = reason
+    return false
+
+def j_key_once(r:JsonReader, keys:[string], key:string) -> bool:
+    for(keys) prior:
+        if prior == key:
+            return j_refuse(r, "duplicate_key")
+    push(keys, key)
+    return true
+
+def j_required(r:JsonReader, rec:Record, seen:[bool]) -> bool:
+    for(rec.fields) sl, i:
+        if sl.fd.required and not seen[i]:
+            return j_refuse(r, "missing_required: " + rec.d.name + "." + sl.fd.name)
+    return true
+
 def j_space(r:JsonReader):
     let t = r.text
     let n = length(t)
@@ -1059,7 +1079,8 @@ def j_scan_unit(r:JsonReader) -> string, bool, bool:
                 else:
                     r.pos = mark
             if code >= 0xD800 and code <= 0xDFFF:
-                code = 0xFFFD
+                j_refuse(r, "string_lone_surrogate")
+                return "", false, false
             return j_utf8(code), false, true
         r.bad = true
         return "", false, false
@@ -1087,54 +1108,33 @@ def j_scan_unit(r:JsonReader) -> string, bool, bool:
         return "", false, false
     return substring(t, at, got), false, true
 
-// j_scan_text reads one JSON string a code point at a time, clamping AT A
-// CODE POINT BOUNDARY as a prefix (Go's scanText); capacity < 0 is
-// unbounded, store refuses a zero bound for text storage (§16.3). It answers
-// the text, whether anything was dropped, and whether it is JSON.
+// Read a whole decoded string or refuse at its bound. Capacity < 0 is
+// unbounded; stored strings also forbid zero. The middle result is retained
+// for scanner call compatibility and is always false: no prefix is published.
 def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
     if j_peek(r) != '\"':
-        r.bad = true
+        j_refuse(r, "kind_mismatch")
         return "", false, false
     r.pos++
-    let t = r.text
-    let n = length(t)
     let parts:[string] = []
     var size = 0
-    var clamped = false
     while true:
-        // a run of plain ASCII, placed whole
-        let start = r.pos
-        while r.pos < n:
-            let c = t[r.pos]
-            if c < 0x20 or c >= 0x80 or c == '\"' or c == '\\':
-                break
-            r.pos++
-        let run = r.pos - start
-        if run > 0 and not clamped:
-            var take = run
-            if capacity >= 0 and size + run > capacity:
-                take = capacity - size
-                clamped = true
-            if take > 0:
-                push(parts, substring(t, start, take))
-                size += take
-        elif run > 0:
-            clamped = true
         let unit, done, ok = j_scan_unit(r)
         if not ok:
             return "", false, false
         if done:
-            break
+            return concat_string(parts, ""), false, true
         if store and length(unit) == 1 and unit[0] == 0:
             r.zero = true
-            r.bad = true
+            j_refuse(r, "text_holds_zero")
             return "", false, false
-        if clamped or (capacity >= 0 and size + length(unit) > capacity):
-            clamped = true
-            continue
+        if capacity >= 0 and length(unit) > capacity - size:
+            j_refuse(r, "length_over_bound")
+            return "", false, false
         push(parts, unit)
         size += length(unit)
-    return concat_string(parts, ""), clamped, true
+    return "", false, false
+
 
 def j_scan_string(r:JsonReader, capacity:int) -> string, bool, bool:
     return j_scan_text(r, capacity, false)
@@ -1153,25 +1153,23 @@ def j_decode_utf8(u:string) -> int:
         return ((c & 0x0F) << 12) | ((u[1] & 0x3F) << 6) | (u[2] & 0x3F)
     return ((c & 0x07) << 18) | ((u[1] & 0x3F) << 12) | ((u[2] & 0x3F) << 6) | (u[3] & 0x3F)
 
-// j_scan_wstring reads one JSON string into UTF-16 code units, a pair never
-// split by the clamp (Go's scanWString).
+// A decoded UTF-16 pair must fit whole; a read never truncates a string.
 def j_scan_wstring(r:JsonReader, capacity:int) -> [int], bool, bool:
     let out:[int] = []
     if j_peek(r) != '\"':
-        r.bad = true
+        j_refuse(r, "kind_mismatch")
         return out, false, false
     r.pos++
-    var clamped = false
     while true:
         let unit, done, ok = j_scan_unit(r)
         if not ok:
             return [], false, false
         if done:
-            break
+            return out, false, true
         let code = j_decode_utf8(unit)
         if code == 0:
             r.zero = true
-            r.bad = true
+            j_refuse(r, "text_holds_zero")
             return [], false, false
         let units:[int] = []
         if code < 0x10000:
@@ -1180,12 +1178,13 @@ def j_scan_wstring(r:JsonReader, capacity:int) -> [int], bool, bool:
             let rest = code - 0x10000
             push(units, 0xD800 + (rest >> 10))
             push(units, 0xDC00 + (rest & 0x3FF))
-        if clamped or (capacity >= 0 and length(out) + length(units) > capacity):
-            clamped = true
-            continue
+        if capacity >= 0 and length(units) > capacity - length(out):
+            j_refuse(r, "length_over_bound")
+            return [], false, false
         for(units) u:
             push(out, u)
-    return out, clamped, true
+    return [], false, false
+
 
 def j_is_digit(c:int) -> bool:
     return c >= '0' and c <= '9'
@@ -1237,8 +1236,17 @@ def j_scan_number(r:JsonReader) -> string, bool, bool:
 
 // j_skip_string steps over one string the walk does not keep.
 def j_skip_string(r:JsonReader) -> bool:
-    let skipped, clamped, ok = j_scan_string(r, 0)
-    return ok and (clamped or length(skipped) == 0)
+    if j_peek(r) != '\"':
+        return j_refuse(r, "malformed")
+    r.pos++
+    while true:
+        let _, done, ok = j_scan_unit(r)
+        if not ok:
+            return false
+        if done:
+            return true
+    return false
+
 
 def j_skip_value(r:JsonReader, depth:int) -> bool:
     let c = j_peek(r)
@@ -1268,18 +1276,24 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
         return false
     r.pos++
     var first = true
+    let keys:[string] = []
+    var definition:JsonLabel? = nil
     while true:
         var c = j_peek(r)
         if c == close:
             r.pos++
+            if definition:
+                definition.open = false
             return true
         if c == 0:
             r.bad = true
             return false
         var keyed = false
         if close == '}':
-            let key, _, ok = j_scan_string(r, json_max_key)
+            let key, _, ok = j_scan_string(r, -1)
             if not ok:
+                return false
+            if not j_key_once(r, keys, key):
                 return false
             if j_peek(r) != ':':
                 r.bad = true
@@ -1293,6 +1307,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                 keyed = true
                 c = j_peek(r)
                 if c == ',':
+                    definition = r.labels[length(r.labels) - 1]
                     r.pos++
                     continue
                 if c == close:
@@ -1310,6 +1325,8 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                 continue
             if c == close:
                 r.pos++
+                if definition:
+                    definition.open = false
                 return true
             r.bad = true
             return false
@@ -1330,8 +1347,14 @@ def j_skipped_ampersand(r:JsonReader, key:string) -> bool:
     let label, ok = j_scan_label(r)
     if not ok:
         return false
-    if not j_find_label(r, label):
-        push(r.labels, JsonLabel { label: label, node: nil, st: "", open: false })
+    let prior = j_find_label(r, label)
+    if j_peek(r) == '}':
+        if prior and not prior.open:
+            return true
+        return j_refuse(r, "invalid_reference")
+    if prior:
+        return j_refuse(r, "invalid_reference")
+    push(r.labels, JsonLabel { label: label, node: nil, st: "", open: true })
     return true
 
 // j_scan_label reads `&node`'s value: a positive integer, no sign, fraction,
@@ -1392,6 +1415,7 @@ def j_read_table(r:JsonReader, rec:Record, depth:int) -> bool:
 // a pointer's reader hands in the first key it scanned (Go's readTableKeys).
 def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has_first:bool) -> bool:
     let seen:[bool] = []
+    let keys:[string] = []
     for(rec.fields):
         push(seen, false)
     var pending = has_first
@@ -1404,30 +1428,26 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
             let c = j_peek(r)
             if c == '}':
                 r.pos++
-                return true
+                return j_required(r, rec, seen)
             if c == 0:
-                r.bad = true
-                return false
-            let k, _, ok = j_scan_string(r, json_max_key)
+                return j_refuse(r, "malformed")
+            let k, _, ok = j_scan_string(r, -1)
             if not ok:
                 return false
             if j_peek(r) != ':':
-                r.bad = true
-                return false
+                return j_refuse(r, "malformed")
             r.pos++
             key = k
-        if length(key) > 0 and key[0] == '&':
-            // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (§16.7)
-            r.bad = true
+        if not j_key_once(r, keys, key):
             return false
+        if length(key) > 0 and key[0] == '&':
+            return j_refuse(r, "malformed")
         let index = j_field_index(rec, key)
         if index < 0:
             r.report.unknown++
             if not j_skip_value(r, depth + 1):
                 return false
         else:
-            if seen[index]:
-                r.report.duplicate++
             seen[index] = true
             let sl = rec.fields[index]
             let shape = j_value_shape(r)
@@ -1437,10 +1457,8 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
                 reset_slot(sl)
             else:
                 if shape != j_shape(sl.fd):
-                    r.report.kind_mismatch++
-                    if not j_skip_value(r, depth + 1):
-                        return false
-                elif not j_read_field(r, sl, depth):
+                    return j_refuse(r, "kind_mismatch")
+                if not j_read_field(r, sl, depth):
                     j_name_zero(r, rec.d.name, sl)
                     return false
                 if sl.fd.present != "":
@@ -1451,12 +1469,14 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
             continue
         if c == '}':
             r.pos++
-            return true
-        r.bad = true
-        return false
+            return j_required(r, rec, seen)
+        return j_refuse(r, "malformed")
     return false
 
+
 def j_read_field(r:JsonReader, sl:Slot, depth:int) -> bool:
+    if depth > json_max_depth:
+        return j_refuse(r, "depth_over_bound")
     let f = sl.fd
     let s = f.s
     if s == "sblob" or s == "bblob":
@@ -1468,7 +1488,7 @@ def j_read_field(r:JsonReader, sl:Slot, depth:int) -> bool:
         if not ok:
             return false
         if clamped:
-            r.report.clamped++
+            return j_refuse(r, "length_over_bound")
         sl.cell.s = out
         sl.count = length(out)
         return true
@@ -1477,7 +1497,7 @@ def j_read_field(r:JsonReader, sl:Slot, depth:int) -> bool:
         if not ok:
             return false
         if clamped:
-            r.report.clamped++
+            return j_refuse(r, "length_over_bound")
         sl.cell.units = units
         sl.count = length(units)
         return true
@@ -1503,19 +1523,16 @@ def j_read_blob(r:JsonReader, sl:Slot) -> bool:
             return false
         sl.cell.blob = out
         return true
-    let before = r.report.kind_mismatch
     if not j_read_base64(r, sl, -1):
         return false
     let data = sl.cell.s
     sl.cell.s = ""
     sl.count = 0
-    if r.report.kind_mismatch != before:
-        return true
     sl.cell.blob = data
     return true
 
 // j_read_base64 decodes a bytes body with §16.2's padding grammar; a body
-// outside it is the wrong shape, counted, the field left at its default.
+// outside it refuses the whole read.
 def j_read_base64(r:JsonReader, sl:Slot, bound:int) -> bool:
     let raw, _, ok = j_scan_string(r, -1)
     if not ok:
@@ -1542,13 +1559,11 @@ def j_read_base64(r:JsonReader, sl:Slot, bound:int) -> bool:
         elif symbols % 4 == 1:
             malformed = true
     if malformed:
-        r.report.kind_mismatch++
-        return true
+        return j_refuse(r, "kind_mismatch")
     let total = symbols * 6 / 8
-    var keep = total
+    let keep = total
     if bound >= 0 and keep > bound:
-        keep = bound
-        r.report.clamped++
+        return j_refuse(r, "length_over_bound")
     var out = zeros(keep)
     var acc = 0
     var held = 0
@@ -1591,22 +1606,17 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == 0:
             r.bad = true
             return false
+        if placed >= bound:
+            return j_refuse(r, "count_over_bound")
         if list and placed == length(sl.elems):
             push(sl.elems, element_zero(f))
-        if placed >= bound:
-            r.report.clamped++
-            if not j_skip_value(r, depth + 1):
-                return false
-        elif e.s == "ptr" and j_value_shape(r) == 'z':
+        if e.s == "ptr" and j_value_shape(r) == 'z':
             if not j_literal(r, "null"):
                 return false
             sl.elems[placed] = Value {}
             placed++
         elif j_value_shape(r) != shape:
-            r.report.kind_mismatch++
-            if not j_skip_value(r, depth + 1):
-                return false
-            placed++
+            return j_refuse(r, "kind_mismatch")
         else:
             if not j_read_scalar(r, sl.elems[placed], e, depth + 1, true):
                 return false
@@ -1623,25 +1633,17 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
     sl.count = placed
     return true
 
-// j_read_text_list places a TEXT LIST's plain array of strings (§2.13), as
-// Go's tabletext readTextList does: an element past N drops and counts
-// clamped, a bounded element clamps at M, an unbounded one (§2.13.1) never
-// clamps for its length, a non-string element is kind_mismatch, and a list's
-// `| total` keeps the longest prefix within it, counting the element that
-// crossed it and any element past N after it.
+// Text-list count, element width and total budget all bound the whole read.
 def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
     let f = sl.fd
     if j_peek(r) != '[':
-        r.bad = true
-        return false
+        return j_refuse(r, "kind_mismatch")
     r.pos++
     for(length(sl.elems)) i:
         sl.elems[i] = element_zero(f)
     sl.count = 0
     var placed = 0
     var spent = 0
-    var full = false
-    var seen = 0
     var bound = f.bound
     let list = f.array == "list"
     if list:
@@ -1657,62 +1659,31 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
             r.pos++
             break
         if c == 0:
-            r.bad = true
-            return false
-        if not full and list and placed == length(sl.elems):
+            return j_refuse(r, "malformed")
+        if placed >= bound:
+            return j_refuse(r, "count_over_bound")
+        if list and placed == length(sl.elems):
             push(sl.elems, element_zero(f))
-        let before = placed
-        seen++
-        if full:
-            if seen > bound:
-                r.report.clamped++
-            if not j_skip_value(r, depth + 1):
-                return false
-        elif placed >= bound:
-            r.report.clamped++
-            if not j_skip_value(r, depth + 1):
-                return false
-        elif optional and j_value_shape(r) == 'z':
+        if optional and j_value_shape(r) == 'z':
             if not j_literal(r, "null"):
                 return false
-            placed++
-        elif j_value_shape(r) != 's':
-            r.report.kind_mismatch++
-            if not j_skip_value(r, depth + 1):
-                return false
-            placed++
         else:
-            let out, clamped, ok = j_scan_stored(r, bound_m)
+            if j_value_shape(r) != 's':
+                return j_refuse(r, "kind_mismatch")
+            let out, _, ok = j_scan_stored(r, bound_m)
             if not ok:
                 return false
-            if clamped:
-                r.report.clamped++
+            if tot and tot.total > 0:
+                if length(out) > tot.total - spent:
+                    return j_refuse(r, "length_over_bound: " + tot.of)
+                spent += length(out)
             let t = sl.elems[placed].tab
             if t:
                 t.fields[0].cell.s = out
                 t.fields[0].count = length(out)
                 if optional:
                     t.fields[0].present = true
-            placed++
-        if placed > before:
-            if tot and tot.total > 0:
-                var n = 0
-                let rec = sl.elems[placed - 1].tab
-                if rec:
-                    let v = rec.fields[0]
-                    if v.fd.present == "" or v.present:
-                        n = length(v.cell.s)
-                if n <= tot.total - spent:
-                    spent += n
-                else:
-                    r.report.clamped++
-                    if r.report.reason == "":
-                        r.report.reason = "clamped: " + tot.of
-                    sl.elems[placed - 1] = element_zero(f)
-                    placed--
-                    full = true
-                    if list:
-                        truncate(sl.elems, placed)
+        placed++
         c = j_peek(r)
         if c == ',':
             r.pos++
@@ -1720,13 +1691,11 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == ']':
             r.pos++
             break
-        r.bad = true
-        return false
+        return j_refuse(r, "malformed")
     sl.count = placed
     return true
 
-// j_read_keyed places an enum-keyed array: an OBJECT keyed by variant name
-// (§2.4, §16.2).
+
 def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
     let f = sl.fd
     let e = elem_of(f)
@@ -1738,9 +1707,7 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
         sl.elems[i] = element_zero(f)
     let shape = j_element_shape(e)
     let keys = keyed_variants(f)
-    let seen:[bool] = []
-    for(f.bound):
-        push(seen, false)
+    let seen:[string] = []
     while true:
         var c = j_peek(r)
         if c == '}':
@@ -1749,8 +1716,10 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == 0:
             r.bad = true
             return false
-        let key, _, ok = j_scan_string(r, json_max_key)
+        let key, _, ok = j_scan_string(r, -1)
         if not ok:
+            return false
+        if not j_key_once(r, seen, key):
             return false
         if j_peek(r) != ':':
             r.bad = true
@@ -1758,18 +1727,12 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
         r.pos++
         let v = j_enum_value(keys, key)
         let slot = if v < 1 or v > f.bound: -1 else: v - 1
-        if slot >= 0:
-            if seen[slot]:
-                r.report.duplicate++
-            seen[slot] = true
         if slot < 0:
             r.report.unknown++
             if not j_skip_value(r, depth + 1):
                 return false
         elif j_value_shape(r) != shape:
-            r.report.kind_mismatch++
-            if not j_skip_value(r, depth + 1):
-                return false
+            return j_refuse(r, "kind_mismatch")
         elif not j_read_scalar(r, sl.elems[slot], e, depth + 1, true):
             return false
         c = j_peek(r)
@@ -1811,7 +1774,7 @@ def j_read_scalar(r:JsonReader, cell:Value, f:FieldDescriptor, depth:int, elem:b
         cell.tab = rec
         return j_read_table(r, rec, depth + 1)
     if s == "enum":
-        let name, _, ok = j_scan_string(r, json_max_key)
+        let name, _, ok = j_scan_string(r, -1)
         if not ok:
             return false
         let v = j_enum_value(f.vs, name)
@@ -1844,44 +1807,33 @@ def j_read_scalar(r:JsonReader, cell:Value, f:FieldDescriptor, depth:int, elem:b
     let kind = j_kind(f)
     if kind == 10 or kind == 11:
         j_place_float(r, cell, f, token, kind == 10)
-        return true
+        return not r.bad
     if kind_wide(kind):
         j_place_wide(r, cell, f, token, kind)
-        return true
+        return not r.bad
     if kind >= 2 and kind <= 9:
         j_place_integer(r, cell, f, token, integral, kind)
-        return true
+        return not r.bad
     r.bad = true
     return false
 
 def j_place_float(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, single:bool):
-    var v = 0.0
-    if single:
-        v = j_parse_f32(token)
-    else:
-        v = parse_float64(token)
+    var v = if single: j_parse_f32(token) else: parse_float64(token)
     if j_is_inf(v) or v != v:
-        r.report.kind_mismatch++
+        j_refuse(r, "non_finite_float")
         return
-    if f.franged:
-        if v < f.flo:
-            v = f.flo
-            r.report.clamped++
-        elif v > f.fhi:
-            v = f.fhi
-            r.report.clamped++
-        elif v == 0.0:
-            v = 0.0
+    if f.franged and (v < f.flo or v > f.fhi):
+        j_refuse(r, "out_of_range")
+        return
     if single:
         let narrow = fround(v)
         if j_is_inf(narrow):
-            r.report.kind_mismatch++
+            j_refuse(r, "non_finite_float")
             return
         v = narrow
     cell.f = v
 
-// JsonInt is ONE CHECKED NUMERIC INTERPRETATION (Go's jsonInteger): a sign,
-// a magnitude (a uint64 bit pattern) and a status.
+
 class JsonInt:
     mag:int = 0
     neg:bool = false
@@ -2027,55 +1979,44 @@ def j_place_integer(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, i
     let signed = kind >= 2 and kind <= 5
     let number = j_interpret_integer(token, integral)
     if not number.finite or number.fractional:
-        r.report.kind_mismatch++
+        j_refuse(r, "kind_mismatch")
         return
     if number.saturated:
-        r.report.clamped++
-    var bounded = number
-    var implied = false
-    var lo = 0.0
-    var hi = 0.0
-    if f.bits > 0 and not f.ranged and f.bits < 64:
-        implied = true
-        hi = j_u64_float(shl(1, f.bits) - 1)
-    if f.ranged:
-        implied = true
-        lo = j_i128_float(f.lo)
-        hi = j_i128_float(f.hi)
-    if implied:
-        let sc = j_scale(number)
-        if sc < lo:
-            bounded = j_integer_of(lo)
-            r.report.clamped++
-        elif sc > hi:
-            bounded = j_integer_of(hi)
-            r.report.clamped++
-    let value, moved = j_in_domain(bounded, signed, j_storage_bytes(f))
+        j_refuse(r, "out_of_range")
+        return
+    let value, moved = j_in_domain(number, signed, j_storage_bytes(f))
     if moved:
-        r.report.clamped++
+        j_refuse(r, "out_of_range")
+        return
+    if f.bits > 0 and not f.ranged and f.bits < 64 and ult(shl(1, f.bits) - 1, value):
+        j_refuse(r, "out_of_range")
+        return
+    if f.ranged:
+        let raw = Int128 { lo: value, hi: if signed and value < 0: -1 else: 0 }
+        if i128_lt(raw, f.lo, signed) or i128_lt(f.hi, raw, signed):
+            j_refuse(r, "out_of_range")
+            return
     cell.i = value
 
+
 def j_place_wide(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, kind:int):
-    let parsed, exact, saturated = j_parse_wide(token, kind, f.fbits)
-    var raw = parsed
+    let raw, exact, saturated = j_parse_wide(token, kind, f.fbits)
     if not exact:
-        r.report.kind_mismatch++
+        j_refuse(r, "kind_mismatch")
         return
     if saturated:
-        r.report.clamped++
+        j_refuse(r, "out_of_range")
+        return
     if f.ranged:
         let signed = kind_signed(kind)
         let lo = i128_shl(f.lo, f.fbits)
         let hi = i128_shl(f.hi, f.fbits)
-        if i128_lt(raw, lo, signed):
-            raw = lo
-            r.report.clamped++
-        elif i128_lt(hi, raw, signed):
-            raw = hi
-            r.report.clamped++
+        if i128_lt(raw, lo, signed) or i128_lt(hi, raw, signed):
+            j_refuse(r, "out_of_range")
+            return
     cell.w = raw
 
-// j_read_union is an object with ONE key, the arm's name; {} is None (§2.6).
+
 def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> bool:
     if j_peek(r) != '{':
         r.bad = true
@@ -2087,7 +2028,7 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
     if j_peek(r) == '}':
         r.pos++
         return true
-    let key, _, ok = j_scan_string(r, json_max_key)
+    let key, _, ok = j_scan_string(r, -1)
     if not ok:
         return false
     if j_peek(r) != ':':
@@ -2106,20 +2047,17 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
         let a = un.arms[tag - 1]
         if a.s == "void":
             if j_value_shape(r) != 'z':
-                r.report.kind_mismatch++
-                if not j_skip_value(r, depth + 1):
-                    return false
+                return j_refuse(r, "kind_mismatch")
             else:
                 if not j_literal(r, "null"):
                     return false
                 cell.i = tag
         elif a.s == "tab":
             if j_value_shape(r) != 'o':
-                r.report.kind_mismatch++
-                if not j_skip_value(r, depth + 1):
-                    return false
+                return j_refuse(r, "kind_mismatch")
             else:
                 let payload = new_record(table_of(a.t))
+                cell.tab = payload
                 if not j_read_table(r, payload, depth + 1):
                     return false
                 cell.i = tag
@@ -2133,9 +2071,7 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
                 cell.i = tag
                 cell.arm = fv
             elif shape != j_shape(a):
-                r.report.kind_mismatch++
-                if not j_skip_value(r, depth + 1):
-                    return false
+                return j_refuse(r, "kind_mismatch")
             else:
                 if not j_read_field(r, fv, depth + 1):
                     return false
@@ -2166,11 +2102,9 @@ def j_read_flags(r:JsonReader, cell:Value, names:[string], depth:int) -> bool:
             r.bad = true
             return false
         if c != '\"':
-            r.report.kind_mismatch++
-            if not j_skip_value(r, depth + 1):
-                return false
+            return j_refuse(r, "kind_mismatch")
         else:
-            let name, _, ok = j_scan_string(r, json_max_key)
+            let name, _, ok = j_scan_string(r, -1)
             if not ok:
                 return false
             var found = false
@@ -2215,7 +2149,7 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
     if c == 0:
         r.bad = true
         return false
-    let key, _, ok = j_scan_string(r, json_max_key)
+    let key, _, ok = j_scan_string(r, -1)
     if not ok:
         return false
     if j_peek(r) != ':':
@@ -2250,8 +2184,7 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
         if entry.st == "":
             return true
         if entry.st != tname:
-            r.report.kind_mismatch++
-            return true
+            return j_refuse(r, "kind_mismatch")
         cell.node = entry.node
         return true
     let node = new_record(d)
@@ -2265,75 +2198,44 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
     opened.open = false
     return true
 
-// THE MAP (§2.8, §16): a JSON object keyed by the KEY; keys never clamp, a
-// repeat is duplicate and last-wins whole, and the entries land ascending.
+// Map keys preserve their whole decoded value. A repeat refuses; accepted
+// entries are ordered canonically before publication (§2.8, §16).
 def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
     if j_peek(r) != '{':
-        r.bad = true
-        return false
+        return j_refuse(r, "kind_mismatch")
     r.pos++
     sl.entries = []
     let ed = table_of(sl.fd.t)
     let kf = ed.fields[0]
     let string_key = key_is_string(kf)
+    let keys:[string] = []
     while true:
         var c = j_peek(r)
         if c == '}':
             r.pos++
             break
         if c == 0:
-            r.bad = true
-            return false
-        // Schema string keys carry their declared extent; field-name limits
-        // do not bound map data. Unbounded text uses the scanner's -1 mode.
+            return j_refuse(r, "malformed")
         let key_limit = if kf.s == "text": -1 else: if string_key: kf.bound else: json_max_key
-        let key, over, ok = j_scan_stored(r, key_limit)
+        let key, _, ok = j_scan_stored(r, key_limit)
         if not ok:
             return false
-        if j_peek(r) != ':':
-            r.bad = true
+        if not j_key_once(r, keys, key):
             return false
+        if j_peek(r) != ':':
+            return j_refuse(r, "malformed")
         r.pos++
         let entry = new_record(ed)
-        var placed = 0
-        if not over:
-            placed = j_place_map_key(entry, kf, key)
-        if placed == 2:
-            r.report.malformed = true
-            r.bad = true
+        let placed = j_place_map_key(entry, kf, key)
+        if placed != 0:
+            return j_refuse(r, "kind_mismatch")
+        for(sl.entries) v:
+            let prior = v.tab
+            if prior and map_key_order(kf, prior.fields[0].cell, entry.fields[0].cell) == 0:
+                return j_refuse(r, "duplicate_key")
+        push(sl.entries, Value { tab: entry })
+        if not j_read_map_value(r, entry.fields[1], depth):
             return false
-        var fits = true
-        if string_key and kf.s != "text" and placed == 0 and not over:
-            fits = length(entry.fields[0].cell.s) <= kf.bound
-        if over and string_key:
-            r.report.clamped++
-            if not j_skip_value(r, depth):
-                return false
-        elif over:
-            r.report.kind_mismatch++
-            if not j_skip_value(r, depth):
-                return false
-        elif placed == 1:
-            r.report.kind_mismatch++
-            if not j_skip_value(r, depth):
-                return false
-        elif not fits:
-            r.report.clamped++
-            if not j_skip_value(r, depth):
-                return false
-        elif not j_read_map_value(r, entry.fields[1], depth):
-            return false
-        else:
-            var at = -1
-            for(sl.entries) v, i:
-                let t = v.tab
-                if at < 0 and t and map_key_order(kf, t.fields[0].cell, entry.fields[0].cell) == 0:
-                    at = i
-            if at >= 0:
-                r.report.duplicate++
-                sl.entries[at] = Value { tab: entry }
-            else:
-                push(sl.entries, Value { tab: entry })
         c = j_peek(r)
         if c == ',':
             r.pos++
@@ -2341,12 +2243,11 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == '}':
             r.pos++
             break
-        r.bad = true
-        return false
+        return j_refuse(r, "malformed")
     sl.entries = j_sorted_entries(kf, sl.entries)
     return true
 
-// j_sorted_entries is a stable ascending sort by key (Go's sort.SliceStable).
+
 def j_sorted_entries(kf:FieldDescriptor, entries:[Value]) -> [Value]:
     let out:[Value] = []
     for(entries) v:
@@ -2369,6 +2270,8 @@ def j_read_map_value(r:JsonReader, sl:Slot, depth:int) -> bool:
             return false
         reset_slot(sl)
         return true
+    if j_value_shape(r) != j_shape(sl.fd):
+        return j_refuse(r, "kind_mismatch")
     if not j_read_field(r, sl, depth):
         return false
     if sl.fd.present != "":
@@ -2401,24 +2304,29 @@ def j_place_map_key(entry:Record, kf:FieldDescriptor, key:string) -> int:
     return 0
 
 // json_read_into fills rec from one JSON text (docs/SPEC-TABLES.md §16.1):
-// false when the text is not JSON or a value could not be placed, with
-// report.malformed set; rec keeps what was placed before the stop.
+// the whole value on success; a failed read releases its candidate and leaves
+// the caller's existing record untouched.
 def json_read_into(rec:Record, text:string, report:LoadReport) -> bool:
+    let candidate = new_record(rec.d)
     let r = JsonReader { text: text, report: report, graph: rec.d.variable }
     if length(text) >= 3 and text[0] == 0xEF and text[1] == 0xBB and text[2] == 0xBF:
         r.pos = 3
-    let ok = j_read_table(r, rec, 0)
+    let ok = j_read_table(r, candidate, 0)
     if ok:
         j_space(r)
         if r.pos != length(text):
-            r.bad = true
+            j_refuse(r, "malformed")
     if r.bad or not ok:
+        j_refuse(r, "malformed")
         report.malformed = true
+        release(candidate)
         return false
+    release(rec)
+    rec.fields = candidate.fields
+    candidate.fields = []
     return true
 
-// json_read reads one JSON text at the root table named root (FromJson):
-// the record, or nil with report.malformed set.
+
 def json_read(root:string, text:string, report:LoadReport) -> Record?:
     let rec = new_record(table_of(root))
     if json_read_into(rec, text, report):
