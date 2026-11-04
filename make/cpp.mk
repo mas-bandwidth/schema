@@ -415,3 +415,41 @@ tables-cpp-format-negative-control: bin/schema tools/sabotage/cpp_clean.go make/
 	@grep -q 'clang-format drift in .*/format/sabotaged/Types\.h' $(CPP_CLEAN_CONTROL)/format/red.out || \
 		{ echo "NEGATIVE CONTROL FAILED: the format gate went red, but not on Types.h"; cat $(CPP_CLEAN_CONTROL)/format/red.out; exit 1; }
 	@echo "negative control: one K&R struct brace in the emitted C++ turns the format gate (clang-format) RED naming the file"
+
+# THE PACKET WRITER'S FINITE RULE, C++ side (SPEC §4.3, §5.1): a NaN or an
+# infinity in a plain float32 or float64 is refused by the generated Write's
+# serialize_assert, debug-only, because serialize.h's write_float and
+# write_double send whatever bits they are handed. test/packet-finite/native's
+# checker, compiled as C++, writes each non-finite pattern in a forked child and
+# requires the abort, and writes the finite edges bit exact.
+build/packet-finite/cpp/.stamp: bin/schema test/packet-finite/Finite.schema
+	@rm -rf build/packet-finite/cpp && mkdir -p build/packet-finite/cpp
+	./bin/schema generate --lang cpp --out build/packet-finite/cpp/generated test/packet-finite/Finite.schema
+	@touch $@
+
+build/packet-finite/cpp/checker: build/packet-finite/cpp/.stamp test/packet-finite/native/main.c
+	$(CXX) $(CXXFLAGS) -x c++ -Ibuild/packet-finite/cpp/generated test/packet-finite/native/main.c -o $@
+
+.PHONY: packet-finite-cpp packet-finite-write-negative-control-cpp
+packet-finite-cpp: build/packet-finite/cpp/checker
+	./build/packet-finite/cpp/checker
+
+# The control deletes the generated finite assert (one line, ending in the
+# comment the sed anchors on) from a COPY of the generated header and requires
+# the checker to fail exactly the non-finite write vectors write.expected names,
+# the finite edges staying green. Nothing tracked is written to.
+packet-finite-write-negative-control-cpp: packet-finite-cpp
+	@rm -rf build/packet-finite/cpp-negative && mkdir -p build/packet-finite/cpp-negative
+	@cp -R build/packet-finite/cpp/generated build/packet-finite/cpp-negative/generated
+	@grep -q 'a NaN or an infinity is refused (SPEC' build/packet-finite/cpp-negative/generated/FiniteWire.h || \
+		{ echo 'NEGATIVE CONTROL FAILED: no finite assert to remove in the generated header'; exit 1; }
+	@sed '/a NaN or an infinity is refused (SPEC/d' build/packet-finite/cpp/generated/FiniteWire.h > build/packet-finite/cpp-negative/generated/FiniteWire.h
+	$(CXX) $(CXXFLAGS) -x c++ -Ibuild/packet-finite/cpp-negative/generated test/packet-finite/native/main.c -o build/packet-finite/cpp-negative/checker
+	@if ./build/packet-finite/cpp-negative/checker > build/packet-finite/cpp-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the C++ finite assert was removed and the checker stayed green'; exit 1; fi
+	@sed -n 's|^FAILED: \([^:]*\):.*|\1|p' build/packet-finite/cpp-negative/log | LC_ALL=C sort > build/packet-finite/cpp-negative/failed
+	@diff -u test/packet-finite/native/write.expected build/packet-finite/cpp-negative/failed || \
+		{ echo 'NEGATIVE CONTROL FAILED: the removed C++ finite assert did not fail exactly the write vectors'; cat build/packet-finite/cpp-negative/log; exit 1; }
+	@echo "packet finite C++ negative control: the removed write assert fails exactly $$(wc -l < build/packet-finite/cpp-negative/failed | tr -d ' ') vectors"
+
+test: packet-finite-cpp packet-finite-write-negative-control-cpp

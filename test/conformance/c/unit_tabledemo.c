@@ -42,6 +42,7 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
         const int32_t weapons = (int32_t) ( sizeof( v->weapons ) / sizeof( v->weapons[0] ) );
         const int32_t note = (int32_t) sizeof( v->version_note ) - 1;
         int32_t i;
+        if ( strcmp( path, "version_note" ) == 0 ) { return conformance_write_refusal_text( v->version_note, note, &v->version_note_length, kind, text ); }
         if ( v->weapons_count < 1 ) { return 0; } /* every weapons[0] path needs element 0 */
         if ( strcmp( path, "weapons[0].penetration" ) == 0 && strcmp( kind, "int" ) == 0 ) { w0->penetration = (int32_t) n; return 1; }
         if ( strcmp( path, "weapons[0].channel" ) == 0 && strcmp( kind, "int" ) == 0 ) { w0->channel = (uint32_t) n; return 1; }
@@ -68,12 +69,6 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
             v->weapons_count = (int32_t) n;
             return 1;
         }
-        if ( strcmp( path, "version_note" ) == 0 && strcmp( kind, "length" ) == 0 )
-        {
-            for ( i = 0; i < (int32_t) n && i < note; i++ ) { v->version_note[i] = 'a'; }
-            v->version_note_length = (int32_t) n;
-            return 1;
-        }
         return 0;
     }
     if ( strcmp( root, "LoadoutConfig" ) == 0 )
@@ -81,6 +76,18 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
         tabledemo_loadout_config_t * v = (tabledemo_loadout_config_t *) value;
         if ( strcmp( path, "grade" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { v->grade = (tabledemo_grade_t) n; return 1; }
     }
+    return 0;
+}
+
+/* The fixed form's FixedSave, a batch of one, for the roots the rows name;
+   tabledemo rides no message row. */
+int conformance_write_refusal_write_tabledemo( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                               int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote )
+{
+    (void) announcement; (void) announcement_bytes;
+    if ( surface != CONFORMANCE_WRITE_FIXED ) { return 0; }
+    if ( strcmp( root, "RootConfig" ) == 0 ) { *wrote = tabledemo_root_config_fixed_save( (const tabledemo_root_config_t *) value, 1, buffer, capacity ); return 1; }
+    if ( strcmp( root, "LoadoutConfig" ) == 0 ) { *wrote = tabledemo_loadout_config_fixed_save( (const tabledemo_loadout_config_t *) value, 1, buffer, capacity ); return 1; }
     return 0;
 }
 

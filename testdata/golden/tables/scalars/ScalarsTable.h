@@ -1081,6 +1081,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -7105,16 +7122,19 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.tilt != 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
+        schema_assert( ( value.tilt ) <= 112 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.tilt ) - 18446744073709551488ull, 8 );
     }
     if ( value.angle != 0 )
     {
         w.put( 5, kTableMessageRefBitsHere );
+        schema_assert( ( value.angle ) >= -11796480 && ( value.angle ) <= 11796480 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.angle ) - 18446744073697755136ull, 25 );
     }
     if ( value.position != 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
+        schema_assert( ( value.position ) >= -1966080000ll && ( value.position ) <= 1966080000ll ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.position ) - 18446744071743471616ull, 32 );
     }
     if ( value.reach != 0 )
@@ -7125,21 +7145,25 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.ticks != 0 )
     {
         w.put( 8, kTableMessageRefBitsHere );
+        schema_assert( ( value.ticks ) >= 0 && ( value.ticks ) <= 1000000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.ticks ), 20 );
     }
     if ( value.ratio != 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
+        schema_assert( ( value.ratio ) <= 240 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.ratio ), 8 );
     }
     if ( value.speed != 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        schema_assert( ( value.speed ) <= 65536000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.speed ), 26 );
     }
     if ( value.span != 0 )
     {
         w.put( 11, kTableMessageRefBitsHere );
+        schema_assert( ( value.span ) <= 18446744073709486080ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.span ), 64 );
     }
     if ( value.mass != 0 )
@@ -7170,6 +7194,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.scale != 65536 )
     {
         w.put( 17, kTableMessageRefBitsHere );
+        schema_assert( ( value.scale ) >= -524288 && ( value.scale ) <= 524288 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.scale ) - 18446744073709027328ull, 21 );
     }
     {
@@ -7180,6 +7205,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
             w.put( 18, kTableMessageRefBitsHere );
             for ( int32_t i = 0; i < 3; i++ )
             {
+                schema_assert( ( value.samples[i] ) >= -524288 && ( value.samples[i] ) <= 524288 ); // a message write keeps the declared bounds (SPEC.md §5.1)
                 w.put( (uint64_t) ( value.samples[i] ) - 18446744073709027328ull, 21 );
             }
         }
@@ -7191,6 +7217,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
         w.put( (uint64_t) ( value.weights_count ) - 0, 3 );
         for ( int32_t i = 0; i < value.weights_count; i++ )
         {
+            schema_assert( ( value.weights[i] ) <= 25600 ); // a message write keeps the declared bounds (SPEC.md §5.1)
             w.put( (uint64_t) ( value.weights[i] ), 15 );
         }
     }
@@ -7216,6 +7243,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
                 uint64_t key_slot = 0;
                 if ( !TableEnumSlot( (Axis) ( i + 1 ), key_slot ) ) { return false; }
                 w.put( key_slot, kTableMessageRefBitsHere ); // the slot's VARIANT reference, not its position
+                schema_assert( ( value.axes.slots[i] ) >= -429496729600ll && ( value.axes.slots[i] ) <= 429496729600ll ); // a message write keeps the declared bounds (SPEC.md §5.1)
                 w.put( (uint64_t) ( value.axes.slots[i] ) - 18446743644212822016ull, 40 );
             }
         }
@@ -8329,16 +8357,19 @@ inline bool PoseSaveMessageBody( TableBitWriter & w, const Pose & value )
     if ( value.x != 32768ll )
     {
         w.put( 1, kTableMessageRefBitsHere );
+        schema_assert( ( value.x ) >= -1966080000ll && ( value.x ) <= 1966080000ll ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.x ) - 18446744071743471616ull, 32 );
     }
     if ( value.y != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
+        schema_assert( ( value.y ) >= -1966080000ll && ( value.y ) <= 1966080000ll ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.y ) - 18446744071743471616ull, 32 );
     }
     if ( value.heading != 0 )
     {
         w.put( 3, kTableMessageRefBitsHere );
+        schema_assert( ( value.heading ) <= 23592960 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.heading ), 25 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -8739,6 +8770,58 @@ inline void SimStateFixedClampBody( SimState & value, int32_t & TABLE_CLAMP_REST
     }
 }
 
+// Pose's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool PoseFixedWriteCheck( const Pose & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.x < -1966080000ll ) | (int) ( value.x > 1966080000ll );
+    bad |= (int) ( value.y < -1966080000ll ) | (int) ( value.y > 1966080000ll );
+    bad |= (int) ( value.heading > 23592960 );
+    return bad == 0;
+}
+
+// SimState's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool SimStateFixedWriteCheck( const SimState & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.tilt > 112 );
+    bad |= (int) ( value.angle < -11796480 ) | (int) ( value.angle > 11796480 );
+    bad |= (int) ( value.position < -1966080000ll ) | (int) ( value.position > 1966080000ll );
+    bad |= (int) ( value.reach < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) ) | (int) ( value.reach > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) );
+    bad |= (int) ( value.ticks < 0 ) | (int) ( value.ticks > 1000000 );
+    bad |= (int) ( value.ratio > 240 );
+    bad |= (int) ( value.speed > 65536000 );
+    bad |= (int) ( value.span > 18446744073709486080ull );
+    bad |= (int) ( value.mass > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) );
+    bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    bad |= (int) ( value.energy < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) | (int) ( value.energy > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) );
+    bad |= (int) ( value.scale < -524288 ) | (int) ( value.scale > 524288 );
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
+    {
+        bad |= (int) ( value.samples[i] < -524288 ) | (int) ( value.samples[i] > 524288 );
+    }
+    if ( value.weights_count < 0 || value.weights_count > 4 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.weights_count; ++i )
+    {
+        bad |= (int) ( value.weights[i] > 25600 );
+    }
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
+    {
+        bad |= (int) ( value.axes.slots[i] < -429496729600ll ) | (int) ( value.axes.slots[i] > 429496729600ll );
+    }
+    if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return false; } // the declared count is the bound (§3.4)
+    if ( !PoseFixedWriteCheck( value.pose ) ) { return false; }
+    if ( value.spawn_present )
+    {
+        if ( !PoseFixedWriteCheck( value.spawn ) ) { return false; }
+    }
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9056,6 +9139,7 @@ inline int64_t SimStateFixedSave( const SimState * values, int64_t count, uint8_
 {
     const int64_t need = SimStateFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( SimStateFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, SimStateFixedHash );

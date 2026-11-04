@@ -1113,6 +1113,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -9471,6 +9488,7 @@ inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     if ( value.payload_length < 0 || value.payload_length > 70000 ) { return -1; } // storage invariant
     if ( value.payload_length > 0 )
@@ -9501,6 +9519,7 @@ inline int64_t WideBlobMeasure( const WideBlob & value )
 TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, const WideBlob & value )
 {
     if ( value.label_length < 0 || value.label_length > 70000 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 35, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -9927,6 +9946,7 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
     if ( value.label_length > 0 )
     {
         w.put( 107, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.label_length, 17 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.label, value.label_length );
@@ -10213,6 +10233,7 @@ inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob &
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     if ( value.payload_length < 0 || value.payload_length > 70000 ) { return -1; } // storage invariant
     if ( value.payload_length > 0 )
@@ -10236,6 +10257,7 @@ inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob &
 TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const WideBlob & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.label_length < 0 || value.label_length > 70000 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 35, 0x39f7fcec8fcb623dull ), 12 ); // label

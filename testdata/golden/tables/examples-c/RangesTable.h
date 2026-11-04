@@ -612,6 +612,21 @@ static SCHEMA_UNUSED int tabledemo_table_wire_utf8( const uint8_t * p, uint64_t 
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int tabledemo_table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !tabledemo_table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t tabledemo_table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -6112,18 +6127,21 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  { /* i8_low */
  if(!(value->i8_low == 0)) {
   tabledemo_table_bit_put(w,52,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i8_low <= 126 );
   tabledemo_table_bit_put(w,(uint64_t)(value->i8_low)-UINT64_C(18446744073709551488),8);
  }
  }
  { /* i8_high */
  if(!(value->i8_high == 0)) {
   tabledemo_table_bit_put(w,53,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i8_high >= -127 );
   tabledemo_table_bit_put(w,(uint64_t)(value->i8_high)-UINT64_C(18446744073709551489),8);
  }
  }
  { /* i8_inside */
  if(!(value->i8_inside == 0)) {
   tabledemo_table_bit_put(w,54,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i8_inside >= -127 && value->i8_inside <= 126 );
   tabledemo_table_bit_put(w,(uint64_t)(value->i8_inside)-UINT64_C(18446744073709551489),8);
  }
  }
@@ -6136,18 +6154,21 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  { /* i16_low */
  if(!(value->i16_low == 0)) {
   tabledemo_table_bit_put(w,56,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i16_low <= 32766 );
   tabledemo_table_bit_put(w,(uint64_t)(value->i16_low)-UINT64_C(18446744073709518848),16);
  }
  }
  { /* i16_high */
  if(!(value->i16_high == 0)) {
   tabledemo_table_bit_put(w,57,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i16_high >= -32767 );
   tabledemo_table_bit_put(w,(uint64_t)(value->i16_high)-UINT64_C(18446744073709518849),16);
  }
  }
  { /* i16_inside */
  if(!(value->i16_inside == 0)) {
   tabledemo_table_bit_put(w,58,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i16_inside >= -32767 && value->i16_inside <= 32766 );
   tabledemo_table_bit_put(w,(uint64_t)(value->i16_inside)-UINT64_C(18446744073709518849),16);
  }
  }
@@ -6160,18 +6181,21 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  { /* i32_low */
  if(!(value->i32_low == 0)) {
   tabledemo_table_bit_put(w,60,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i32_low <= 2147483646 );
   tabledemo_table_bit_put(w,(uint64_t)(value->i32_low)-UINT64_C(18446744071562067968),32);
  }
  }
  { /* i32_high */
  if(!(value->i32_high == 0)) {
   tabledemo_table_bit_put(w,61,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i32_high >= -2147483647 );
   tabledemo_table_bit_put(w,(uint64_t)(value->i32_high)-UINT64_C(18446744071562067969),32);
  }
  }
  { /* i32_inside */
  if(!(value->i32_inside == 0)) {
   tabledemo_table_bit_put(w,62,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i32_inside >= -2147483647 && value->i32_inside <= 2147483646 );
   tabledemo_table_bit_put(w,(uint64_t)(value->i32_inside)-UINT64_C(18446744071562067969),32);
  }
  }
@@ -6184,18 +6208,21 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  { /* i64_low */
  if(!(value->i64_low == 0)) {
   tabledemo_table_bit_put(w,64,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i64_low <= 9223372036854775806ll );
   tabledemo_table_bit_put(w,(uint64_t)(value->i64_low)-UINT64_C(9223372036854775808),64);
  }
  }
  { /* i64_high */
  if(!(value->i64_high == 0)) {
   tabledemo_table_bit_put(w,65,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i64_high >= -9223372036854775807ll );
   tabledemo_table_bit_put(w,(uint64_t)(value->i64_high)-UINT64_C(9223372036854775809),64);
  }
  }
  { /* i64_inside */
  if(!(value->i64_inside == 0)) {
   tabledemo_table_bit_put(w,66,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->i64_inside >= -9223372036854775807ll && value->i64_inside <= 9223372036854775806ll );
   tabledemo_table_bit_put(w,(uint64_t)(value->i64_inside)-UINT64_C(9223372036854775809),64);
  }
  }
@@ -7668,18 +7695,21 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  { /* u8_low */
  if(!(value->u8_low == 0)) {
   tabledemo_table_bit_put(w,69,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u8_low <= 254 );
   tabledemo_table_bit_put(w,(uint64_t)(value->u8_low)-UINT64_C(0),8);
  }
  }
  { /* u8_high */
  if(!(value->u8_high == 1)) {
   tabledemo_table_bit_put(w,70,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u8_high >= 1 );
   tabledemo_table_bit_put(w,(uint64_t)(value->u8_high)-UINT64_C(1),8);
  }
  }
  { /* u8_inside */
  if(!(value->u8_inside == 1)) {
   tabledemo_table_bit_put(w,71,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u8_inside >= 1 && value->u8_inside <= 254 );
   tabledemo_table_bit_put(w,(uint64_t)(value->u8_inside)-UINT64_C(1),8);
  }
  }
@@ -7692,18 +7722,21 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  { /* u16_low */
  if(!(value->u16_low == 0)) {
   tabledemo_table_bit_put(w,73,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u16_low <= 65534 );
   tabledemo_table_bit_put(w,(uint64_t)(value->u16_low)-UINT64_C(0),16);
  }
  }
  { /* u16_high */
  if(!(value->u16_high == 1)) {
   tabledemo_table_bit_put(w,74,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u16_high >= 1 );
   tabledemo_table_bit_put(w,(uint64_t)(value->u16_high)-UINT64_C(1),16);
  }
  }
  { /* u16_inside */
  if(!(value->u16_inside == 1)) {
   tabledemo_table_bit_put(w,75,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u16_inside >= 1 && value->u16_inside <= 65534 );
   tabledemo_table_bit_put(w,(uint64_t)(value->u16_inside)-UINT64_C(1),16);
  }
  }
@@ -7716,18 +7749,21 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  { /* u32_low */
  if(!(value->u32_low == 0)) {
   tabledemo_table_bit_put(w,77,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u32_low <= 4294967294 );
   tabledemo_table_bit_put(w,(uint64_t)(value->u32_low)-UINT64_C(0),32);
  }
  }
  { /* u32_high */
  if(!(value->u32_high == 1)) {
   tabledemo_table_bit_put(w,78,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u32_high >= 1 );
   tabledemo_table_bit_put(w,(uint64_t)(value->u32_high)-UINT64_C(1),32);
  }
  }
  { /* u32_inside */
  if(!(value->u32_inside == 1)) {
   tabledemo_table_bit_put(w,79,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u32_inside >= 1 && value->u32_inside <= 4294967294 );
   tabledemo_table_bit_put(w,(uint64_t)(value->u32_inside)-UINT64_C(1),32);
  }
  }
@@ -7740,18 +7776,21 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  { /* u64_low */
  if(!(value->u64_low == 0)) {
   tabledemo_table_bit_put(w,81,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u64_low <= 18446744073709551614ull );
   tabledemo_table_bit_put(w,(uint64_t)(value->u64_low)-UINT64_C(0),64);
  }
  }
  { /* u64_high */
  if(!(value->u64_high == 1ull)) {
   tabledemo_table_bit_put(w,82,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u64_high >= 1ull );
   tabledemo_table_bit_put(w,(uint64_t)(value->u64_high)-UINT64_C(1),64);
  }
  }
  { /* u64_inside */
  if(!(value->u64_inside == 1ull)) {
   tabledemo_table_bit_put(w,83,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->u64_inside >= 1ull && value->u64_inside <= 18446744073709551614ull );
   tabledemo_table_bit_put(w,(uint64_t)(value->u64_inside)-UINT64_C(1),64);
  }
  }
@@ -8652,12 +8691,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_widths_save_message_body(tabledemo_tab
  { /* b12 */
  if(!(value->b12 == 0)) {
   tabledemo_table_bit_put(w,89,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( (uint64_t)( value->b12 ) <= 0xfffull );
   tabledemo_table_bit_put(w,(uint64_t)(value->b12)-UINT64_C(0),12);
  }
  }
  { /* b48 */
  if(!(value->b48 == 0)) {
   tabledemo_table_bit_put(w,90,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( (uint64_t)( value->b48 ) <= 0xffffffffffffull );
   tabledemo_table_bit_put(w,(uint64_t)(value->b48)-UINT64_C(0),48);
  }
  }
@@ -9096,6 +9137,76 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
     value->b48 = ( value->b48 > 281474976710655ull ) ? 281474976710655ull : value->b48;
 }
 
+/* RangedSigned's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_ranged_signed_fixed_write_check_( const tabledemo_ranged_signed_t * value )
+{
+    (void) value;
+    if ( value->i8_low > 126 ) { return 0; }
+    if ( value->i8_high < -127 ) { return 0; }
+    if ( ( value->i8_inside < -127 ) || ( value->i8_inside > 126 ) ) { return 0; }
+    if ( value->i16_low > 32766 ) { return 0; }
+    if ( value->i16_high < -32767 ) { return 0; }
+    if ( ( value->i16_inside < -32767 ) || ( value->i16_inside > 32766 ) ) { return 0; }
+    if ( value->i32_low > 2147483646 ) { return 0; }
+    if ( value->i32_high < -2147483647 ) { return 0; }
+    if ( ( value->i32_inside < -2147483647 ) || ( value->i32_inside > 2147483646 ) ) { return 0; }
+    if ( value->i64_low > 9223372036854775806ll ) { return 0; }
+    if ( value->i64_high < -9223372036854775807ll ) { return 0; }
+    if ( ( value->i64_inside < -9223372036854775807ll ) || ( value->i64_inside > 9223372036854775806ll ) ) { return 0; }
+    if ( value->edges_count < 0 || value->edges_count > 4 ) { return 0; } /* the declared count is the bound (§3.4) */
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->edges_count; ++i )
+        {
+        }
+    }
+    return 1;
+}
+
+/* RangedUnsigned's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_ranged_unsigned_fixed_write_check_( const tabledemo_ranged_unsigned_t * value )
+{
+    (void) value;
+    if ( value->u8_low > 254 ) { return 0; }
+    if ( value->u8_high < 1 ) { return 0; }
+    if ( ( value->u8_inside < 1 ) || ( value->u8_inside > 254 ) ) { return 0; }
+    if ( value->u16_low > 65534 ) { return 0; }
+    if ( value->u16_high < 1 ) { return 0; }
+    if ( ( value->u16_inside < 1 ) || ( value->u16_inside > 65534 ) ) { return 0; }
+    if ( value->u32_low > 4294967294 ) { return 0; }
+    if ( value->u32_high < 1 ) { return 0; }
+    if ( ( value->u32_inside < 1 ) || ( value->u32_inside > 4294967294 ) ) { return 0; }
+    if ( value->u64_low > 18446744073709551614ull ) { return 0; }
+    if ( value->u64_high < 1ull ) { return 0; }
+    if ( ( value->u64_inside < 1ull ) || ( value->u64_inside > 18446744073709551614ull ) ) { return 0; }
+    if ( value->counts_count < 0 || value->counts_count > 4 ) { return 0; } /* the declared count is the bound (§3.4) */
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->counts_count; ++i )
+        {
+        }
+    }
+    return 1;
+}
+
+/* RangedWidths's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_ranged_widths_fixed_write_check_( const tabledemo_ranged_widths_t * value )
+{
+    (void) value;
+    /* bits(8) width clamp */
+    if ( value->b8 > 255ull ) { return 0; }
+    /* bits(16) width clamp */
+    if ( value->b16 > 65535ull ) { return 0; }
+    /* bits(12) width clamp */
+    if ( value->b12 > 4095ull ) { return 0; }
+    /* bits(48) width clamp */
+    if ( value->b48 > 281474976710655ull ) { return 0; }
+    return 1;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9241,6 +9352,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_fixed_save( const tabledemo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_tabledemo_ranged_signed_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_ranged_signed_fixed_hash );
@@ -9550,6 +9662,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_fixed_save( const tablede
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_tabledemo_ranged_unsigned_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_ranged_unsigned_fixed_hash );
@@ -9834,6 +9947,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_fixed_save( const tabledemo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_tabledemo_ranged_widths_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_ranged_widths_fixed_hash );

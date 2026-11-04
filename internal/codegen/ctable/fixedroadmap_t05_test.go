@@ -405,8 +405,9 @@ int main(void)
        is total (§5.8), so the length clamp must not move a counter. */
     texty_reset(&value);
     value.s_length = 5;
-    memcpy(value.s, "a\xFF" "cde", 5);
+    memcpy(value.s, "abcde", 5);
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
+    buf[off + 4 + 1] = 0xFF; /* "a\xFFcde": the writer refuses it (docs/SPEC.md §5.1), so the wire carries it by hand */
     table_fixed_put32(buf + off, 100u); /* the length word, past the 8-byte bound */
     memset(&r, 0, sizeof(r));
     n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
@@ -434,9 +435,10 @@ int main(void)
     wide_reset(&value);
     value.w_length = 2;
     value.w[0] = 0x0048; /* 'H' */
-    value.w[1] = 0xD800; /* a lone high surrogate */
+    value.w[1] = 0x0049; /* 'I' */
     n = wide_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     CHECK(n > 0);
+    buf[off + 4 + 2] = 0x00; buf[off + 4 + 3] = 0xD8; /* a lone high surrogate: the writer refuses it (docs/SPEC.md §5.1), so the wire carries it by hand */
     memset(&r, 0, sizeof(r));
     n = wide_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);

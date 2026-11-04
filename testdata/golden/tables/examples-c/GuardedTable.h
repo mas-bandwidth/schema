@@ -612,6 +612,21 @@ static SCHEMA_UNUSED int tabledemo_table_wire_utf8( const uint8_t * p, uint64_t 
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int tabledemo_table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !tabledemo_table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t tabledemo_table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -5024,6 +5039,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_patrol_wire_storage_(const tablede
 static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_note_( tabledemo_table_writer_t * w, const tabledemo_patrol_t * value )
 {
     if ( value->note_length < 0 || value->note_length > 8 ) { return 0; }
+    schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->note, (uint64_t) value->note_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     tabledemo_table_writer_raw( w, value->note, value->note_length );
     return !w->overflow;
 }
@@ -5279,6 +5295,8 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_note__retain( tabledemo_ta
 
     if ( value->note_length < 0 || value->note_length > 8 ) { return 0;
     }
+    schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->note, (uint64_t) value->note_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     tabledemo_table_writer_raw( w, value->note, value->note_length );
     return !w->overflow;
 }

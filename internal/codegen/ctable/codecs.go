@@ -485,6 +485,13 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 // caller gives it none. An end that sits on the storage width's own limit is
 // one no value can pass, and is left out as the read's clamp leaves it out.
 func (g *tableGen) emitRangeAssert(f *ir.Field, expr, ind string, width int) {
+	g.emitRangeAssertAs(f, expr, ind, width, "a write")
+}
+
+// emitRangeAssertAs is emitRangeAssert with the writer named in the line's
+// comment ("a write", "a message write"), which is what lets a negative control
+// remove one writer's checks.
+func (g *tableGen) emitRangeAssertAs(f *ir.Field, expr, ind string, width int, writer string) {
 	var conds []string
 	if lo, hi, ok := ir.TableRawRange(f); ok {
 		clampMin, clampMax := tableClampEnds(f, width)
@@ -501,8 +508,37 @@ func (g *tableGen) emitRangeAssert(f *ir.Field, expr, ind string, width int) {
 	if len(conds) == 0 {
 		return
 	}
+	g.writerAssert(ind, strings.Join(conds, " && "), writer+" keeps the declared bounds (SPEC.md §5.1)")
+}
+
+// writerAssert emits one write-contract assert and the comment that names it,
+// on ONE line, which is what a negative control's sed deletes. The compact
+// message and retention functions break a line after every `;`
+// (formatCompactCFunctions), so there the comment LEADS the statement.
+func (g *tableGen) writerAssert(ind, cond, note string) {
 	g.wroteAssert = true
-	g.pf("%sschema_assert( %s ); /* a write keeps the declared bounds (SPEC.md §5.1) */\n", ind, strings.Join(conds, " && "))
+	if strings.HasPrefix(note, "a message write") {
+		g.pf("%s/* %s */ schema_assert( %s );\n", ind, note, cond)
+		return
+	}
+	g.pf("%sschema_assert( %s ); /* %s */\n", ind, cond, note)
+}
+
+// emitTextAssert is the WRITE CONTRACT's debug-only refusal of ill-formed text
+// (docs/SPEC.md §5.1): a string's used bytes that are not well-formed UTF-8, or
+// a wstring's used units holding an unpaired surrogate. A zero byte or unit is
+// a whole code point and not this check's to refuse. It follows the storage
+// invariant, so it reads only the used storage; schema_assert, so NDEBUG
+// removes it and a release write pays nothing. `writer` names the writer in the
+// line's comment ("a write", "a message write"), which is what lets a negative
+// control remove one writer's checks.
+func (g *tableGen) emitTextAssert(f *ir.Field, value, length, ind, writer string) {
+	switch f.Type.Kind {
+	case ir.TString:
+		g.writerAssert(ind, fmt.Sprintf("table_wire_utf8_well_formed( (const uint8_t *) %s, (uint64_t) %s )", value, length), writer+" keeps well-formed text (SPEC.md §5.1)")
+	case ir.TWString:
+		g.writerAssert(ind, fmt.Sprintf("table_wire_utf16_paired( %s, (int64_t) %s )", value, length), writer+" keeps well-formed text (SPEC.md §5.1)")
+	}
 }
 
 // emitTableReadScalarFrom decodes one fixed-width scalar from the named

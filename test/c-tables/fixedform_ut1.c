@@ -11,6 +11,13 @@
    terminating two bytes at a time. This translation unit is the ONLY one that
    names tblut1's types; see fixedform.h for why there is more than one. */
 
+/* A CASE MAY WRITE A VALUE ITS DECLARATION DOES NOT ADMIT, for the reader to
+   clamp (docs/SPEC.md §5.1), and a debug fixed save refuses such a record at
+   its assert. These cases write those records on purpose, so this file routes
+   the generated writers' schema_assert, the hook a caller defines before the
+   headers (docs/USAGE.md), to nothing. */
+#define schema_assert( condition ) ( (void) 0 )
+
 #include <string.h>
 
 #include "UT1Table.h"

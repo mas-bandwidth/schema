@@ -82,7 +82,9 @@ namespace example {
 
 SCHEMA_WRITE_INLINE bool WriteVec2( serialize::WriteStream & stream, const Vec2 & value )
 {
+    serialize_assert( value.x - value.x == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.x );
+    serialize_assert( value.y - value.y == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.y );
     return true;
 }
@@ -98,6 +100,7 @@ SCHEMA_WRITE_INLINE bool WriteSpanF64( serialize::WriteStream & stream, const Sp
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
+        serialize_assert( value.values[i] - value.values[i] == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
         write_double( stream, value.values[i] );
     }
     return true;
@@ -196,6 +199,7 @@ SCHEMA_WRITE_INLINE bool WriteSpanTail( serialize::WriteStream & stream, const S
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
+        serialize_assert( value.values[i] - value.values[i] == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
         write_double( stream, value.values[i] );
     }
     write_bits( stream, value.tail, 32 );
@@ -216,10 +220,12 @@ SCHEMA_WRITE_INLINE bool WriteSpanTwice( serialize::WriteStream & stream, const 
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
+        serialize_assert( value.a[i] - value.a[i] == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
         write_double( stream, value.a[i] );
     }
     for ( int32_t i = 0; i < 2; i++ )
     {
+        serialize_assert( value.b[i] - value.b[i] == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
         write_double( stream, value.b[i] );
     }
     return true;
