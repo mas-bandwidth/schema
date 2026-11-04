@@ -902,6 +902,8 @@
         "cards-rust-conformance-hash-negative-control",
         "conformance-negative-control-rust-walk",
         "conformance-negative-control-rust-write-refusal",
+        "conformance-negative-control-rust-write-refusal-fixed",
+        "conformance-negative-control-rust-write-refusal-message",
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
