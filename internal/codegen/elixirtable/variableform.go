@@ -4411,11 +4411,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # a flags mask (docs/SPEC-TABLES.md §3, §16.2) is the list of its set names;
-  # a name the flags do not have counts unknown.
+  # a name the flags do not have counts unknown, and an element that is not a
+  # name at all is the wrong shape.
   defp json_read_field(%{t: :int, flags: names}, raw, report) when is_list(raw) do
     Enum.reduce(raw, {0, report}, fn n, {mask, report} ->
       case Enum.find_index(names, &(&1 == n)) do
-        nil -> {mask, %{report | unknown: report.unknown + 1}}
+        nil when is_binary(n) -> {mask, %{report | unknown: report.unknown + 1}}
+        nil -> {mask, %{report | kind_mismatch: report.kind_mismatch + 1}}
         i -> {mask ||| 1 <<< i, report}
       end
     end)
@@ -4602,6 +4604,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_read_field(%{t: :list, text_list: true} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
+    # every element past [..N] counts clamped, the total's drop included
+    # (docs/SPEC-TABLES.md §2.13, §16.2)
+    past = if bound > 0, do: max(length(raw) - bound, 0), else: 0
 
     {elements, _count, _f, report} =
       Enum.reduce_while(raw, {[], 0, f, report}, fn raw, {acc, count, f, report} ->
@@ -4610,14 +4615,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             {:halt, {acc, count, f, report}}
 
           bound > 0 and count >= bound ->
-            {:halt, {acc, count, f, %{report | clamped: report.clamped + 1}}}
+            {:halt, {acc, count, f, %{report | clamped: report.clamped + past}}}
 
           true ->
             {value, report} = json_read_list_elem(f, raw, report)
 
             case text_list_keep(f, value, report) do
-              {:keep, f, report} -> {:cont, {[value | acc], count + 1, f, report}}
-              {:drop, report} -> {:halt, {acc, count, f, report}}
+              {:keep, f, report} ->
+                {:cont, {[value | acc], count + 1, f, report}}
+
+              {:drop, report} ->
+                {:halt, {acc, count, f, %{report | clamped: report.clamped + past}}}
             end
         end
       end)

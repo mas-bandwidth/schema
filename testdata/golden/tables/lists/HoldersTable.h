@@ -10934,7 +10934,7 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Sample> fill = TableListFillBegin( nodes, value.items, count );
                         if ( fill.refused )
                         {
@@ -11225,7 +11225,7 @@ inline bool SheetLoadBody( TableReader & r, const TableNodeMap & nodes, Sheet & 
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Row> fill = TableListFillBegin( nodes, value.rows, count );
                         if ( fill.refused )
                         {
@@ -12325,7 +12325,7 @@ inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & va
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Squad> fill = TableListFillBegin( nodes, value.squads, count );
                         if ( fill.refused )
                         {
@@ -15304,9 +15304,11 @@ inline bool RowLoadBuilderTolerant( RowBuilder & builder, const uint8_t * wire_f
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the whole-load outcome of damage, the root reset below, named
-    // count_over_extent_cap and not damage, so malformed is not set
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
-    if ( nodes.refused && !out->malformed )
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
     {
         out->refused = true;
         out->reason = count_over_extent_cap;
@@ -15379,7 +15381,10 @@ inline const Row * RowReadStrict( const uint8_t * wire_file, int64_t wire_file_b
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = RowLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -15402,6 +15407,11 @@ inline const Row * RowReadStrict( const uint8_t * wire_file, int64_t wire_file_b
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -16303,9 +16313,11 @@ inline bool SheetLoadBuilderTolerant( SheetBuilder & builder, const uint8_t * wi
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the whole-load outcome of damage, the root reset below, named
-    // count_over_extent_cap and not damage, so malformed is not set
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
-    if ( nodes.refused && !out->malformed )
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
     {
         out->refused = true;
         out->reason = count_over_extent_cap;
@@ -16378,7 +16390,10 @@ inline const Sheet * SheetReadStrict( const uint8_t * wire_file, int64_t wire_fi
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = SheetLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -16401,6 +16416,11 @@ inline const Sheet * SheetReadStrict( const uint8_t * wire_file, int64_t wire_fi
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -17273,9 +17293,11 @@ inline bool SquadLoadBuilderTolerant( SquadBuilder & builder, const uint8_t * wi
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the whole-load outcome of damage, the root reset below, named
-    // count_over_extent_cap and not damage, so malformed is not set
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
-    if ( nodes.refused && !out->malformed )
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
     {
         out->refused = true;
         out->reason = count_over_extent_cap;
@@ -17348,7 +17370,10 @@ inline const Squad * SquadReadStrict( const uint8_t * wire_file, int64_t wire_fi
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = SquadLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -17371,6 +17396,11 @@ inline const Squad * SquadReadStrict( const uint8_t * wire_file, int64_t wire_fi
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -18243,9 +18273,11 @@ inline bool ArmyLoadBuilderTolerant( ArmyBuilder & builder, const uint8_t * wire
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the whole-load outcome of damage, the root reset below, named
-    // count_over_extent_cap and not damage, so malformed is not set
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
-    if ( nodes.refused && !out->malformed )
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
     {
         out->refused = true;
         out->reason = count_over_extent_cap;
@@ -18318,7 +18350,10 @@ inline const Army * ArmyReadStrict( const uint8_t * wire_file, int64_t wire_file
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = ArmyLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -18341,6 +18376,11 @@ inline const Army * ArmyReadStrict( const uint8_t * wire_file, int64_t wire_file
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -19213,9 +19253,11 @@ inline bool DeckLoadBuilderTolerant( DeckBuilder & builder, const uint8_t * wire
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the whole-load outcome of damage, the root reset below, named
-    // count_over_extent_cap and not damage, so malformed is not set
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
-    if ( nodes.refused && !out->malformed )
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
     {
         out->refused = true;
         out->reason = count_over_extent_cap;
@@ -19288,7 +19330,10 @@ inline const Deck * DeckReadStrict( const uint8_t * wire_file, int64_t wire_file
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = DeckLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -19311,6 +19356,11 @@ inline const Deck * DeckReadStrict( const uint8_t * wire_file, int64_t wire_file
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -19606,7 +19656,7 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                         // records under this field go with the value it is about to lose.
                         TableRetainDiscardField( retain, path, 0 );
@@ -19902,7 +19952,7 @@ inline bool SheetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sh
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                         // records under this field go with the value it is about to lose.
                         TableRetainDiscardField( retain, path, 0 );
@@ -20735,7 +20785,7 @@ inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Arm
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                         // records under this field go with the value it is about to lose.
                         TableRetainDiscardField( retain, path, 0 );

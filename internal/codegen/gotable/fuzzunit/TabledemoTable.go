@@ -3012,7 +3012,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		if !loaded && p != nil {
 			root.Reset(p)
 		}
-		if !loaded && report.Verdict == TableOpenOk && !report.Malformed && worker.refused == TableRefuseCountOverExtentCap {
+		if !loaded && report.Verdict == TableOpenOk && !report.Malformed && worker.refused == TableRefuseCountOverExtentCap && !tableNonFiniteRefused(report) {
 			report.Reason = TableRefuseCountOverExtentCap.Error()
 		}
 		report.Malformed = report.Malformed || pre

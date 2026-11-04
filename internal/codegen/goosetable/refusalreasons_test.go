@@ -9,7 +9,8 @@ package goosetable_test
 //	    generated reader holds (gotable's TestLoadRefusalReasonPins): the
 //	    strict read's one reason (load_error, Go's <T>ReadStrict) and the
 //	    form refusal the report names (report.reason, Go's
-//	    TableReport.Reason)
+//	    TableReport.Reason); a count-cap row also moves no counter and
+//	    leaves malformed unset
 //	TestGooseLoadRefusalReasonsNegativeControl  breaks the verdict's damage,
 //	    the form refusal's mapping and the count cap's refusal, each of which
 //	    must turn exactly its own rows red
@@ -43,6 +44,7 @@ type reasonRow struct{ name, schema, wire, strict, form string }
 var reasonSchemas = map[string]string{
 	"measure": "package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n",
 	"fixed":   "package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n",
+	"float":   "package probe\n table Root { f float32\n values []int32 }\n",
 }
 
 func reasonRows(t *testing.T) []reasonRow {
@@ -72,8 +74,9 @@ fn probe(name: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var report = schema_rt::LoadReport { .. };
     let root = schema_rt::load_table(conformance_unit(), "Root", data, vals, nodes, report);
+    let counters = report.unknown + report.kind_mismatch + report.widened + report.clamped + report.duplicate;
     write_stdout(str(name, " ", schema_rt::load_refusal_name(schema_rt::load_error(report, root)), "_ ",
-        schema_rt::load_refusal_name(report.reason), "_\n"));
+        schema_rt::load_refusal_name(report.reason), "_ ", counters, " ", report.malformed, "\n"));
 }
 
 fn main() {
@@ -85,7 +88,7 @@ func loadReasons(t *testing.T, override map[string][]byte) []string {
 	t.Helper()
 	rows := reasonRows(t)
 	var bad []string
-	for _, schema := range []string{"measure", "fixed"} {
+	for _, schema := range []string{"measure", "fixed", "float"} {
 		files := probeFiles(t, probeUnit(t, reasonSchemas[schema]), override)
 		var main strings.Builder
 		main.WriteString(probePrelude)
@@ -104,7 +107,7 @@ func loadReasons(t *testing.T, override map[string][]byte) []string {
 		got := probeLines(gooserun.Run(t, t.TempDir(), "main.goose", files))
 		for _, r := range mine {
 			g := got[r.name]
-			if len(g) != 2 {
+			if len(g) != 4 {
 				t.Fatalf("%s: the probe printed %q", r.name, g)
 			}
 			strict, form := strings.TrimSuffix(g[0], "_"), strings.TrimSuffix(g[1], "_")
@@ -116,6 +119,13 @@ func loadReasons(t *testing.T, override map[string][]byte) []string {
 			}
 			if strict != r.strict || form != r.form {
 				bad = append(bad, fmt.Sprintf("%s: strict %s, form %s; the reference %s, %s", r.name, strict, form, r.strict, r.form))
+			} else if r.strict == "count_over_extent_cap" && (g[2] != "0" || g[3] != "false") {
+				// the count-cap refusal moves no counter and is not damage (§2.9)
+				bad = append(bad, fmt.Sprintf("%s: counters %s, malformed %s; the refusal moves none and is not damage", r.name, g[2], g[3]))
+			} else if r.schema == "float" && r.strict == "non_finite_float" && strings.TrimSuffix(g[1], "_") != r.strict {
+				// two refusals in one read: the first in read order names the
+				// load's report too (§2.9)
+				bad = append(bad, fmt.Sprintf("%s: the report names %s; the first refusal is %s", r.name, g[1], r.strict))
 			}
 		}
 	}
@@ -147,8 +157,11 @@ func TestGooseLoadRefusalReasons(t *testing.T) {
 //   - a form byte this reader does not carry no longer answers unknown_form:
 //     the form rows go red, and only they;
 //   - a count past the int32 storage cap no longer answers
-//     count_over_extent_cap: the four cap rows fall to the strict read's
-//     wire_damaged and go red, and only they.
+//     count_over_extent_cap: the six cap rows go red, and only they (the
+//     five fall to the strict read's wire_damaged, and over_cap_then_nan to
+//     the NaN after the count);
+//   - a widened element kind counts before the builder's count-cap refusal:
+//     the widened cap row moves a counter and goes red, and only it.
 func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
 	t.Parallel()
 	for _, ctl := range []struct {
@@ -160,7 +173,9 @@ func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
 		{"form-reason", "        LoadRefuseUnknownForm => \"unknown_form\",\n", "",
 			[]string{"form0", "form255", "form255_alone", "form2", "form2_alone", "form3", "form9"}},
 		{"count-cap", "    if report.count_refused { return LoadRefuseCountOverExtentCap; }\n", "",
-			[]string{"entries_cap31", "entries_cap32", "values_cap31", "values_cap32"}},
+			[]string{"entries_cap31", "entries_cap32", "over_cap_then_nan", "values_cap31", "values_cap32", "values_widened_over_cap"}},
+		{"widened-at-cap", "                if widened && !c.cap { c.report.widened += 1; }\n", "                if widened { c.report.widened += 1; }\n",
+			[]string{"values_widened_over_cap"}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()

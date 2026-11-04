@@ -1752,6 +1752,8 @@ readField = function(T, c, fd, r, v, depth) {
 // an array of pointers is a null slot
 readArray = function(T, c, fd, r, v, depth) {
   if (peek(r) != '[') { r.bad = true; return false; }
+  // the array is one level below its holder, and its elements one below that
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   r.p++;
   local e = fd.elem;
   local fixed = !fd.list && !fd.counted;
@@ -1773,14 +1775,14 @@ readArray = function(T, c, fd, r, v, depth) {
     local vs = valueShape(r);
     if (placed >= bound) {
       r.report.clamped++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (vs == 'z' && (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob")) {
       if (!literal(r, "null")) return false;
       out[placed] = null;
       placed++;
     } else if (vs != shape) {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
       placed++;
     } else if (text) {
       if (e.shape == "bblob") {
@@ -1813,6 +1815,8 @@ readArray = function(T, c, fd, r, v, depth) {
 // the generated element records; null is an absent `?string` element.
 readTextArray = function(T, c, fd, r, v, depth) {
   if (peek(r) != '[') { r.bad = true; return false; }
+  // the text list is one level below its holder, and its elements one below that
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   r.p++;
   local e = fd.elem;
   local ed = tableDesc(T, e.table);
@@ -1820,22 +1824,32 @@ readTextArray = function(T, c, fd, r, v, depth) {
   local bound = fd.list ? 0x7fffffff : fd.bound;
   local vf = ed.fields[0];
   local capacity = (!vf.unbounded && vf.bound > 0) ? vf.bound : -1;
+  // A TEXT LIST'S TOTAL (§2.13): the longest prefix whose bytes fit is kept;
+  // the element that would cross it and every later one are dropped, clamped
+  // counted once, and an element past [..N] is counted as well.
+  local total = ("total" in fd) ? fd.total : -1;
+  local spent = 0, full = false, seen = 0;
   for (;;) {
     local ch = peek(r);
     if (ch == ']') { r.p++; break; }
     if (ch == 0) { r.bad = true; return false; }
     local rec = ed.make();
     local vs = valueShape(r);
-    if (out.len() >= bound) {
-      r.report.clamped++;
+    local before = out.len();
+    seen++;
+    if (full) {
+      if (seen > bound) r.report.clamped++;
       if (!skipValue(r, depth + 1)) return false;
+    } else if (out.len() >= bound) {
+      r.report.clamped++;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (fd.textlist == 2 && vs == 'z') {
       if (!literal(r, "null")) return false;
       rec.ValuePresent = false;
       out.append(rec);
     } else if (vs != 's') {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
       out.append(rec);
     } else {
       local s = scanBytes(r, capacity);
@@ -1845,6 +1859,17 @@ readTextArray = function(T, c, fd, r, v, depth) {
       rec.Value = bytesToString(s[0]);
       if (fd.textlist == 2) rec.ValuePresent = true;
       out.append(rec);
+    }
+    if (total >= 0 && out.len() > before) {
+      local last = out[out.len() - 1];
+      local n = (fd.textlist == 2 && !last.ValuePresent) ? 0 : last.Value.len();
+      if (n <= total - spent) {
+        spent += n;
+      } else {
+        out.pop();
+        r.report.clamped++;
+        full = true;
+      }
     }
     ch = peek(r);
     if (ch == ',') { r.p++; continue; }
@@ -1862,6 +1887,8 @@ readTextArray = function(T, c, fd, r, v, depth) {
 // repeated slot is a duplicate, counted before the shape check.
 readKeyed = function(T, c, fd, r, v, depth) {
   if (peek(r) != '{') { r.bad = true; return false; }
+  // the keyed object is one level below its holder, and its elements one below that
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   r.p++;
   local e = fd.elem;
   local out = array(fd.bound);
@@ -1889,10 +1916,10 @@ readKeyed = function(T, c, fd, r, v, depth) {
     }
     if (slot < 0) {
       r.report.unknown++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (valueShape(r) != shape) {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (!readScalar(T, e, r, out, slot, depth + 1, c.name + "." + fd.name)) {
       return false;
     }
@@ -1915,6 +1942,8 @@ readKeyed = function(T, c, fd, r, v, depth) {
 // order the wire and the writer hold (§2.8).
 readMap = function(T, c, fd, r, v, depth) {
   if (peek(r) != '{') { r.bad = true; return false; }
+  // the map's object is one level below its holder, and its values one below that
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   r.p++;
   local kd = fd.mapkey, vd = fd.mapvalue;
   local ed = tableDesc(T, fd.entry);
@@ -1956,7 +1985,7 @@ readMap = function(T, c, fd, r, v, depth) {
     }
     local valueOk = false;
     if (!placed) {
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else {
       local shape = valueShape(r);
       if (shape == 'z' && takesNull(vd)) {
@@ -1967,9 +1996,13 @@ readMap = function(T, c, fd, r, v, depth) {
         if (vd.optional) ent[vd.member + "Present"] = false;
         valueOk = true;
       } else if (shape != shapeOf(T, vd)) {
+        // a value of the wrong shape is skipped and counted, and its entry
+        // stays at the value's default (§16.2), as the Go reference keeps it
         r.report.kindMismatch++;
-        if (!skipValue(r, depth + 1)) return false;
-      } else if (!readField(T, ed, vd, r, ent, depth)) {
+        if (!skipValue(r, depth + 2)) return false;
+        if (vd.optional) ent[vd.member + "Present"] = true;
+        valueOk = true;
+      } else if (!readField(T, ed, vd, r, ent, depth + 1)) {
         return false;
       } else {
         if (vd.optional) ent[vd.member + "Present"] = true;
@@ -2180,6 +2213,8 @@ local placeWide = function(d, tok, report) {
 
 local readFlags = function(d, r, depth) {
   if (peek(r) != '[') { r.bad = true; return null; }
+  // the flags array is one level below its holder, and its elements one below that
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return null; }
   r.p++;
   local names = has(d, "flagNames") ? d.flagNames : [];
   local bits = 0;
@@ -2189,7 +2224,7 @@ local readFlags = function(d, r, depth) {
     if (ch == 0) { r.bad = true; return null; }
     if (ch != '"') {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return null;
+      if (!skipValue(r, depth + 2)) return null;
     } else {
       local name = scanKey(r);
       if (name == null) return null;
@@ -2297,6 +2332,8 @@ readScalar = function(T, d, r, holder, key, depth, where) {
 // a value of the wrong shape is a kind mismatch and the union reads None.
 readUnion = function(T, u, r, holder, key, depth) {
   if (peek(r) != '{') { r.bad = true; return false; }
+  // the union's object is one level below its holder, and its arm's value one below that
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   r.p++;
   local inst = u.make();
   holder[key] = inst;
@@ -2309,12 +2346,12 @@ readUnion = function(T, u, r, holder, key, depth) {
   foreach (a in u.arms) if (a.name == name) { arm = a; break; }
   if (arm == null) {
     r.report.unknown++;
-    if (!skipValue(r, depth + 1)) return false;
+    if (!skipValue(r, depth + 2)) return false;
   } else if (arm.payload == null) {
     // A PAYLOAD-FREE ARM'S VALUE IS null: the name selects it
     if (valueShape(r) != 'z') {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else {
       if (!literal(r, "null")) return false;
       inst.Type = arm.tag;
@@ -2323,11 +2360,11 @@ readUnion = function(T, u, r, holder, key, depth) {
     local p = arm.payload;
     if (valueShape(r) != 'o') {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else {
       local pc = tableDesc(T, p.table);
       local payload = pc.make();
-      if (!readTable(T, pc, r, payload, depth + 1)) return false;
+      if (!readTable(T, pc, r, payload, depth + 2)) return false;
       inst.Type = arm.tag;
       inst[p.member] = payload;
     }
@@ -2343,7 +2380,7 @@ readUnion = function(T, u, r, holder, key, depth) {
       inst[p.member] = fresh[p.member];
     } else if (shape != shapeOf(T, p)) {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else {
       if (!readField(T, u, p, r, fresh, depth + 1)) return false;
       inst.Type = arm.tag;

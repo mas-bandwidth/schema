@@ -1177,8 +1177,25 @@ local function read_base64(inp: Input, bound: number, report: any): (string | fa
   return table.concat(out)
 end
 
+-- the bytes one text-list element of the walk holds toward its list's total
+-- (docs/SPEC-TABLES.md §2.13): a plain element's string, an optional element's
+-- value when present, zero when absent
+local function walk_text_bytes(T: any, e: any, x: any): number
+  if type(x) == "string" then return #x end
+  if type(x) == "table" and e.shape == "table" then
+    local vf = T.Tables[e.target].fields[1]
+    if vf == nil then return 0 end
+    if vf.optional and not x[vf.name .. "_present"] then return 0 end
+    local v = x[vf.name]
+    if type(v) == "string" then return #v end
+  end
+  return 0
+end
+
 read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '[' then inp.bad = true; return false end
+  -- the array is one level below its holder, and its elements one below that
+  if depth + 1 > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
   if fd.fixed then
@@ -1187,21 +1204,31 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
   local bound = fd.list and 0x7fffffff or fd.bound
   local placed = 0
   local eshape = shape_of(T, fd.elem)
+  -- A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the read keeps the longest
+  -- prefix whose bytes fit, drops the element that would cross it and every
+  -- later one, counted clamped once; an element past [..N] is counted as well
+  local total = fd.raw ~= nil and fd.raw.total or nil
+  local spent, full, seen = 0, false, 0
   while true do
     local c = peek(inp)
     local vs = value_shape(inp)
     if c == ']' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
-    if placed >= bound then
-      report.clamped = report.clamped + 1
+    seen = seen + 1
+    local before = placed
+    if full then
+      if seen > bound then report.clamped = report.clamped + 1 end
       if not skip_value(inp, depth + 1, graph) then return false end
+    elseif placed >= bound then
+      report.clamped = report.clamped + 1
+      if not skip_value(inp, depth + 2, graph) then return false end
     elseif fd.elem.shape == "pointer" and vs == 'z' then
       literal(inp, "null")
       placed = placed + 1
       out[placed] = false
     elseif vs ~= eshape then
       report.kindMismatch = report.kindMismatch + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
       placed = placed + 1
       out[placed] = zero_elem(T, fd.elem)
     else
@@ -1209,6 +1236,17 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
       if out[placed] == nil then out[placed] = zero_elem(T, fd.elem) end
       if not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true) then
         return false
+      end
+    end
+    if total ~= nil and placed > before then
+      local n = walk_text_bytes(T, fd.elem, out[placed])
+      if n <= total - spent then
+        spent = spent + n
+      else
+        report.clamped = report.clamped + 1
+        out[placed] = if fd.fixed then zero_elem(T, fd.elem) else nil
+        placed = placed - 1
+        full = true
       end
     end
     c = peek(inp)
@@ -1228,6 +1266,8 @@ end
 
 local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '{' then inp.bad = true; return false end
+  -- the map's object is one level below its holder, and its values one below that
+  if depth + 1 > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out, seen = {}, {}
   local kf = fd.key_field
@@ -1274,12 +1314,16 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     -- reference map reader keeps it.
     local vf = fd.value_field
     local null_ref = false
+    local keep_default = false
     if not skip and value_shape(inp) == 'z' and (vf.shape == "pointer"
         or vf.shape == "string_blob" or vf.shape == "bytes_blob") then
       null_ref = true
     elseif not skip and value_shape(inp) ~= shape_of(T, vf) then
+      -- a value of the wrong shape is skipped and counted, and its entry stays
+      -- at the value's default (§16.2), as the Go reference keeps it
       report.kindMismatch = report.kindMismatch + 1
       skip = true
+      keep_default = true
     end
     if null_ref then
       literal(inp, "null")
@@ -1287,7 +1331,12 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
       seen[kval] = true
       out[kval] = false
     elseif skip then
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
+      if keep_default then
+        if seen[kval] then report.duplicate = report.duplicate + 1 end
+        seen[kval] = true
+        out[kval] = zero_elem(T, vf)
+      end
     else
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
@@ -1314,6 +1363,8 @@ end
 
 local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '{' then inp.bad = true; return false end
+  -- the keyed object is one level below its holder, and its elements one below that
+  if depth + 1 > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
   for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
@@ -1333,13 +1384,13 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
     for i, v in ipairs(fd.keyed) do if v[1] == name then slot = i; break end end
     if slot == nil then
       report.unknown = report.unknown + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
     else
       if seen[slot] then report.duplicate = report.duplicate + 1 end
       seen[slot] = true
       if value_shape(inp) ~= eshape then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 2, graph) then return false end
       else
         if not read_value(T, fd.elem, inp, out, slot, depth + 1, graph, report, true) then
           return false
@@ -1363,6 +1414,8 @@ end
 
 local function read_union(T: any, u: any, inp: Input, depth: number, graph: any, report: any): any
   if peek(inp) ~= '{' then inp.bad = true; return nil end
+  -- the union's object is one level below its holder, and its arm's value one below that
+  if depth + 1 > MAX_DEPTH then inp.bad = true; return nil end
   inp.p = inp.p + 1
   if peek(inp) == '}' then inp.p = inp.p + 1; return { tag = 0 } end
   local start = inp.p
@@ -1376,11 +1429,11 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
   local out = { tag = 0 }
   if tag == 0 then
     report.unknown = report.unknown + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 2, graph) then return nil end
   elseif arm.field == nil then
     if value_shape(inp) ~= 'z' then
       report.kindMismatch = report.kindMismatch + 1
-      if not skip_value(inp, depth + 1, graph) then return nil end
+      if not skip_value(inp, depth + 2, graph) then return nil end
     else
       literal(inp, "null")
       out.tag = tag
@@ -1393,7 +1446,7 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
     out.tag = tag
   elseif value_shape(inp) ~= shape_of(T, arm.field) then
     report.kindMismatch = report.kindMismatch + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 2, graph) then return nil end
   else
     out.tag = tag
     if not read_value(T, arm.field, inp, out, arm.slot, depth + 1, graph, report, false) then
@@ -1555,6 +1608,8 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     return true
   elseif s == "flags" then
     if peek(inp) ~= '[' then inp.bad = true; return false end
+    -- the flags array is one level below its holder, and its elements one below that
+    if depth + 1 > MAX_DEPTH then inp.bad = true; return false end
     inp.p = inp.p + 1
     local bits = 0
     while true do
@@ -1563,7 +1618,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
       if c == nil then inp.bad = true; return false end
       if c ~= '"' then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 2, graph) then return false end
       else
         local st = inp.p
         local _, _, ok = scan_string(inp, MAX_KEY)

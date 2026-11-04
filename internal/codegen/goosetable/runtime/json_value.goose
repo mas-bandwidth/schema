@@ -1756,6 +1756,8 @@ recursive fn jr_pointer(c: JvIn&, s: i64, ref: const u8[:], depth: i64) -> bool 
 recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
     let e = d.elem;
     guard e else { return json_fail(c.jr); }
+    // the array is one level below its holder, and its elements one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '[') { return false; }
     let bound = if d.array == ArrayList { 0x7FFFFFFF } else { d.bound };
     let shape = jr_shape(c, e, owner, ord, true);
@@ -1775,14 +1777,14 @@ recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         let got = json_shape(c.jr);
         if placed >= bound {
             c.jr.rep.clamped += 1;
-            if !jr_skip(c, depth + 1) { ok = false; break; }
+            if !jr_skip(c, depth + 2) { ok = false; break; }
         } else if e.shape == ShapePtr && got == 'z' {
             if !json_literal(c.jr, "null") { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else if got != shape {
             c.jr.rep.kind_mismatch += 1;
-            if !jr_skip(c, depth + 1) { ok = false; break; }
+            if !jr_skip(c, depth + 2) { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else {
@@ -1813,12 +1815,15 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
     let et = jv_table(c.unit, e.ref);
     if et < 0 { return json_fail(c.jr); }
     let fd = c.unit.tables[et].fields[0];
+    // the text list is one level below its holder, and its elements one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '[') { return false; }
     let bound = if d.array == ArrayList { 0x7FFFFFFF } else { d.bound };
     let mark = c.scratch.len;
     var placed: i64 = 0;
     var spent: i64 = 0;
     var full = false;
+    var seen: i64 = 0; // the elements spelled once the total is reached
     var ok = true;
     loop {
         let ch = json_peek(c.jr);
@@ -1832,17 +1837,21 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
         }
         let got = json_shape(c.jr);
         if full {
-            if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
+            // the total dropped this element; one past [..N] is counted as
+            // well, as the wire counts its count clamp (§2.13)
+            seen += 1;
+            if seen > bound { c.jr.rep.clamped += 1; }
+            if !json_skip_value(c.jr, depth + 2) { ok = false; break; }
         } else if placed >= bound {
             c.jr.rep.clamped += 1;
-            if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
+            if !json_skip_value(c.jr, depth + 2) { ok = false; break; }
         } else if fd.optional && got == 'z' {
             if !json_literal(c.jr, "null") { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else if got != 's' {
             c.jr.rep.kind_mismatch += 1;
-            if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
+            if !json_skip_value(c.jr, depth + 2) { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else {
@@ -1857,6 +1866,7 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
                 c.jr.rep.clamped += 1;
                 json_clamped(c.jr.rep, owner, d.name);
                 full = true;
+                seen = placed + 1;
             } else {
                 spent += n;
                 c.scratch.push(t);
@@ -1878,6 +1888,8 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
 recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
     let e = d.elem;
     guard e else { return json_fail(c.jr); }
+    // the keyed object is one level below its holder, and its elements one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
     let keys = jv_keys(c.unit, owner, d);
     let shape = jr_shape(c, e, owner, ord, true);
@@ -1907,10 +1919,10 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         }
         if slot < 0 {
             c.jr.rep.unknown += 1;
-            if !jr_skip(c, depth + 1) { return false; }
+            if !jr_skip(c, depth + 2) { return false; }
         } else if json_shape(c.jr) != shape {
             c.jr.rep.kind_mismatch += 1;
-            if !jr_skip(c, depth + 1) { return false; }
+            if !jr_skip(c, depth + 2) { return false; }
         } else if !jr_value(c, c.vals[s].first + slot, e, owner, ord, true, depth + 1) {
             return false;
         }
@@ -1980,6 +1992,8 @@ fn jr_key_cmp(c: JvIn&, kd: FieldDesc, a: i64, b: i64) -> i64 {
 recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) -> bool {
     let et = jv_entry(c.unit, owner, d.slot);
     if et < 0 { return json_fail(c.jr); }
+    // the map's object is one level below its holder, and its values one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
     let kd = c.unit.tables[et].fields[0];
     let vd = c.unit.tables[et].fields[1];
@@ -2022,7 +2036,7 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
             }
         }
         if drop {
-            if !jr_skip(c, depth) { ok = false; break; }
+            if !jr_skip(c, depth + 2) { ok = false; break; }
         } else {
             // the VALUE: null is an absent `?T` and a null pointer; any
             // other value of an optional is present (§2.3, §2.8)
@@ -2033,10 +2047,10 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
                 jr_reset(c, vs, vd);
             } else if got != jr_shape(c, vd, ename, 1, false) {
                 c.jr.rep.kind_mismatch += 1;
-                if !jr_skip(c, depth + 1) { ok = false; break; }
+                if !jr_skip(c, depth + 2) { ok = false; break; }
                 if vd.optional { jr_present(c, vs, vd); }
             } else {
-                if !jr_field(c, vs, vd, ename, 1, depth) { ok = false; break; }
+                if !jr_field(c, vs, vd, ename, 1, depth + 1) { ok = false; break; }
                 if vd.optional { jr_present(c, vs, vd); }
             }
             var dup: i64 = -1;
@@ -2176,6 +2190,8 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
 // name; `{}` is None, an unknown arm counted unknown, an arm value of the
 // wrong shape kind_mismatch with the union None, and two keys malformed.
 recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
+    // the union's object is one level below its holder, and its arm's value one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
     let u = jv_union(c.unit, name);
     if u < 0 { return json_fail(c.jr); }
@@ -2198,13 +2214,13 @@ recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
     let got = json_shape(c.jr);
     if tag == 0 {
         c.jr.rep.unknown += 1;
-        if !jr_skip(c, depth + 1) { return false; }
+        if !jr_skip(c, depth + 2) { return false; }
     } else {
         let arm = arms[tag - 1];
         if arm.shape == ShapeVoid {
             if got != 'z' {
                 c.jr.rep.kind_mismatch += 1;
-                if !jr_skip(c, depth + 1) { return false; }
+                if !jr_skip(c, depth + 2) { return false; }
             } else {
                 if !json_literal(c.jr, "null") { return false; }
                 jr_arm(c, s, tag, -1);
@@ -2215,10 +2231,10 @@ recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
             let want: u8 = if c.unit.tables[at].json_array { 'a' } else { 'o' };
             if got != want {
                 c.jr.rep.kind_mismatch += 1;
-                if !jr_skip(c, depth + 1) { return false; }
+                if !jr_skip(c, depth + 2) { return false; }
             } else {
                 let p = jr_new_record(c, at);
-                if !jr_table(c, at, p, depth + 1) { return false; }
+                if !jr_table(c, at, p, depth + 2) { return false; }
                 jr_arm(c, s, tag, p);
             }
         } else {
@@ -2230,7 +2246,7 @@ recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
                 jr_arm(c, s, tag, p);
             } else if got != jr_shape(c, arm, uname, tag as! i32, false) {
                 c.jr.rep.kind_mismatch += 1;
-                if !jr_skip(c, depth + 1) { return false; }
+                if !jr_skip(c, depth + 2) { return false; }
             } else {
                 if !jr_field(c, p, arm, uname, tag as! i32, depth + 1) { return false; }
                 jr_arm(c, s, tag, p);

@@ -105,6 +105,8 @@ const tableMapJsonSource = `
     static bool ReadMap(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int depth)
     {
         if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+        // the map's object is one level below its holder, and its values one below that
+        if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
         input.Pos++; f.ResetField(owner);
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
@@ -145,7 +147,7 @@ const tableMapJsonSource = `
                 { input.Bad = true; return false; }
                 if (probe.Report.Clamped != 0 || probe.Report.KindMismatch != 0) { input.Report.KindMismatch++; drop = true; }
             }
-            if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
+            if (drop) { if (!SkipValue(text, ref input, depth + 2)) { return false; } }
             else
             {
                 char shape = ValueShape(text, ref input);
@@ -163,9 +165,9 @@ const tableMapJsonSource = `
                     if (shape != Shape(field))
                     {
                         input.Report.KindMismatch++;
-                        if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                        if (!SkipValue(text, ref input, depth + 2)) { return false; }
                     }
-                    else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
+                    else if (!ReadField(text, ref input, entry, field, depth + 1)) { return false; }
                 }
                 int at = 0;
                 while (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) < 0) { at++; }

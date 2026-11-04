@@ -30,10 +30,11 @@ local run = function(unit, mod, root, key) {
 `
 
 // TestSquirrelWireCountRefusalNamesCountRefusal pins the hostile-corpus row
-// wire-count-refusal (schema-squirrel-runs-hostile-corpus-t-r): the form-1
-// probe body whose map count is past the int32 storage cap must refuse the
-// whole value with the reason count_refusal — the Go engine's answer is
-// *tablewire.CountRefusal on the very same bytes — never read as malformed.
+// wire-count-refusal: the form-1 probe body whose map count is past the int32
+// storage cap must refuse the whole value with the reason
+// count_over_extent_cap (docs/SPEC-TABLES.md §2.9; the corpus spells it
+// count_refusal) — the Go engine's answer is *tablewire.CountRefusal on the
+// very same bytes — never read as malformed.
 func TestSquirrelWireCountRefusalNamesCountRefusal(t *testing.T) {
 	t.Parallel()
 	unit := loadSource(t, "package probe\n\ntable Root\n{\n    entries map[int32]int32\n}\n")
@@ -57,7 +58,7 @@ func TestSquirrelWireCountRefusalNamesCountRefusal(t *testing.T) {
 	fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", "probe", mod, "Root", "case")
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 	got := reportLine(t, sqrun.Run(t, dir, "main.nut", map[string][]byte{"case": raw}))
-	if got != "count_refusal" {
-		t.Errorf("wire-count-refusal: Squirrel reports reason %q, want count_refusal", got)
+	if got != "count_over_extent_cap" {
+		t.Errorf("wire-count-refusal: Squirrel reports reason %q, want count_over_extent_cap", got)
 	}
 }

@@ -61,6 +61,16 @@ func strictProgram(g *loadUnit, roots []string) string {
 	return b.String()
 }
 
+// strictAgrees reports whether Lobster's strict reason is the engine's. The
+// engine names damage malformed whichever kind it is, while the strict read
+// names the verdict's damage (a framing that does not open) wire_damaged, as
+// the Go generated reader and Goose do; the pin table
+// (internal/codegen/goosetable/testdata/load_refusal_reasons.tsv,
+// TestLobsterLoadRefusalPins) holds which rows are which.
+func strictAgrees(lobster, engine string) bool {
+	return lobster == engine || lobster == "wire_damaged" && engine == "malformed"
+}
+
 // goStrictReason is the Go reference's strict answer for one wire, in the
 // order TableReport.Err() applies (§6.5): a non-finite float first, a form
 // refusal as unknown_form, then missing_required, malformed, blob_shared,
@@ -192,7 +202,7 @@ func TestLobsterStrictRead(t *testing.T) {
 			want := goStrictReason(g, row.root, wire)
 			counts[want]++
 			rowsRun++
-			if res.reason[i] != want {
+			if !strictAgrees(res.reason[i], want) {
 				t.Errorf("%s %s: strict read = %s, want %s (docs/SPEC-TABLES.md §6.5)", row.kind, row.name, res.reason[i], want)
 			}
 			wantLine, wantDump := goLoad(g.u, row.root, wire)
@@ -261,7 +271,7 @@ func TestLobsterStrictRead(t *testing.T) {
 	for i, row := range probes {
 		want := goStrictReason(g, row.root, row.data)
 		counts[want]++
-		if pres.reason[i] != want {
+		if !strictAgrees(pres.reason[i], want) {
 			t.Errorf("%s %s: strict read = %s, want %s", row.kind, row.name, pres.reason[i], want)
 		}
 	}

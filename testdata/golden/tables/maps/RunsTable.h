@@ -12079,9 +12079,11 @@ inline bool RunsLoadBuilderTolerant( RunsBuilder & builder, const uint8_t * wire
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the whole-load outcome of damage, the root reset below, named
-    // count_over_extent_cap and not damage, so malformed is not set
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
-    if ( nodes.refused && !out->malformed )
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
     {
         out->refused = true;
         out->reason = count_over_extent_cap;
@@ -12154,7 +12156,10 @@ inline const Runs * RunsReadStrict( const uint8_t * wire_file, int64_t wire_file
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = RunsLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -12177,6 +12182,11 @@ inline const Runs * RunsReadStrict( const uint8_t * wire_file, int64_t wire_file
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
