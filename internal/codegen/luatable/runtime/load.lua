@@ -745,6 +745,7 @@ local function queue(ctx, holder, key, index, d, null)
     pending[n] = p
   end
   p.holder, p.key, p.index, p.d, p.null = holder, key, index, d, null
+  p.from = ctx.from
 end
 
 -- a repeat of a FIXED array that builds a fresh array from the one an
@@ -1837,14 +1838,17 @@ local function resolve(ctx, root, rootdesc)
   local good = ctx.good
   local seen_blob = nil
   local pending = ctx.pending
+  local ef, et, sink, ne = ctx.ef, ctx.et, ctx.sink, 0
   for i = 1, ctx.np do
     local p = pending[i]
     local d = p.d
     local value = nil
+    local edge = nil
     if good and p.index ~= 0 then
       if p.index == 1 then
         if d.shape == "pointer" and d.target == rootdesc.name then
           value = root
+          edge = 1
         else
           report.kindMismatch = report.kindMismatch + 1
         end
@@ -1883,6 +1887,7 @@ local function resolve(ctx, root, rootdesc)
             end
           elseif node.kind == "t" and node.codec.name == d.target then
             value = node.value
+            edge = p.index
           else
             report.kindMismatch = report.kindMismatch + 1
           end
@@ -1898,11 +1903,81 @@ local function resolve(ctx, root, rootdesc)
     -- not resolve is WRITTEN null rather than left alone, because an earlier
     -- occurrence of the same slot may already have resolved into it.
     if value == nil then value = p.null end
+    -- a stored pointer to a table node is an edge of the loaded graph (the
+    -- cycle check below); a slot of a discarded body is pointed at the sink
+    -- and stores nothing
+    if edge ~= nil and p.holder ~= sink then
+      ne = ne + 1
+      ef[ne], et[ne] = p.from, edge
+    end
     p.holder[p.key] = value
     -- the queue keeps its entries for the next load, and no value it named
     p.holder, p.d = nil, nil
   end
   ctx.np = 0
+  ctx.ne = ne
+end
+
+-- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; tablewire
+-- decodeState.cyclic). The vertices are the root (1) and every node record
+-- (k + 1); the edges are the pointers resolve stored, each from the node whose
+-- closure holds the slot. Each vertex is entered once: an edge to an OPEN
+-- vertex is a cycle, an edge to a CLOSED one a share that is not re-entered, so
+-- the check is linear. The adjacency, the marks and the explicit stack are
+-- arrays the loader state keeps and reuses (docs/PORTING.md M1): a load of a
+-- size the state has run before allocates nothing here.
+local function cyclic(ctx, nv)
+  local ne = ctx.ne
+  if ne == 0 then return false end
+  local start, adj, mark, sv, si = ctx.cy_start, ctx.cy_adj, ctx.cy_mark, ctx.cy_sv, ctx.cy_si
+  local ef, et = ctx.ef, ctx.et
+  for v = 1, nv + 1 do
+    start[v] = 0
+  end
+  for k = 1, ne do
+    local f = ef[k]
+    start[f] = start[f] + 1
+  end
+  local at = 1
+  for v = 1, nv + 1 do
+    local c = start[v]
+    start[v] = at
+    at = at + c
+  end
+  for v = 1, nv do
+    mark[v] = start[v]
+  end
+  for k = 1, ne do
+    local f = ef[k]
+    adj[mark[f]] = et[k]
+    mark[f] = mark[f] + 1
+  end
+  for v = 1, nv do
+    mark[v] = 0
+  end
+  for s = 1, nv do
+    if mark[s] == 0 then
+      local top = 1
+      sv[1], si[1], mark[s] = s, start[s], 1
+      while top > 0 do
+        local v, i = sv[top], si[top]
+        if i >= start[v + 1] then
+          mark[v] = 2
+          top = top - 1
+        else
+          si[top] = i + 1
+          local w = adj[i]
+          if mark[w] == 1 then return true end
+          if mark[w] == 0 then
+            mark[w] = 1
+            top = top + 1
+            sv[top], si[top] = w, start[w]
+          end
+        end
+      end
+    end
+  end
+  return false
 end
 
 -- THE LOADER STATE (docs/PORTING.md M1: the read path allocates nothing, and the
@@ -1929,6 +2004,15 @@ function L.NewState()
       report = nil,
       pending = {},
       np = 0,
+      from = 1,
+      ne = 0,
+      ef = {},
+      et = {},
+      cy_start = {},
+      cy_adj = {},
+      cy_mark = {},
+      cy_sv = {},
+      cy_si = {},
       nodes = NO_NODES,
       good = false,
       owner = nil,
@@ -2058,8 +2142,11 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
       end
     end
     local rd = state.rd
-    for _, node in ipairs(ctx.nodes) do
-      if node.kind == "t" then read_body(T, ctx, node.codec, point(rd, bytes, node.at, node.lim), node.value, true) end
+    for i, node in ipairs(ctx.nodes) do
+      if node.kind == "t" then
+        ctx.from = i + 1
+        read_body(T, ctx, node.codec, point(rd, bytes, node.at, node.lim), node.value, true)
+      end
     end
   end
   local root
@@ -2068,6 +2155,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   else
     root = fresh(T, desc)
   end
+  ctx.from = 1
   local missingBefore = report.missingRequired or 0
   read_body(T, ctx, desc, point(state.rd, bytes, 1, o.lim), root, false)
   -- A COUNT PAST THE INT32 STORAGE CAP refuses the load (§2.9): the report
@@ -2103,13 +2191,8 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   end
   resolve(ctx, root, desc)
   -- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph the load
-  -- stored is walked once every index has resolved, by the save's numbering,
-  -- which answers nil for a reference to a node whose descent is still open.
-  -- A wire with no node table placed no node and holds no pointer edge, so it
-  -- has no cycle and the walk (which allocates) is not run.
-  if not report.malformed and ctx.nodes ~= NO_NODES and D.number_nodes(T, desc, root, false) == nil then
-    report.malformed = true
-  end
+  -- stored is checked once every index has resolved (cyclic, above).
+  if not report.malformed and cyclic(ctx, #ctx.nodes + 1) then report.malformed = true end
   release(ctx)
   if report.malformed then return nil end
   return root
