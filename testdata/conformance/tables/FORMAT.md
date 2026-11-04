@@ -38,7 +38,7 @@ the end of the line.
 
 ```
 unit         <key> <schema path>...
-instance     <name> <unit> <root> <wire file> [no-text]
+instance     <name> <unit> <root> <wire file> [no-text] [wire-refused]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
 retain       <case> <unit> <root> <wire> <capacity> <ids> <save or ->
@@ -55,7 +55,10 @@ refusal      <forgery> <reason>
 - **`unit`** names a compilation unit by the key every other line uses.
 - **`instance`** is one table instance in TWO forms that must agree: the wire
   bytes at `<wire file>` and the text at `json/<name>.json`. The same instance,
-  both ways.
+  both ways. `wire-refused` instead requires semantic refusal from every port;
+  it does not name a reason. Legacy `go-refusal=<reason>` and
+  `refused-by=<ports>` markers remain parser compatibility metadata, with no
+  per-language or diagnostic comparison.
 
   **`no-text` says the corpus carries this one on the WIRE alone**, by the text
   form's own rules: a pointer chain nests in the text as deep as it is long
@@ -156,14 +159,17 @@ what fits and zeroes the rest.
 ## Derived driver manifest
 
 The harness removes expected verdicts and golden paths before calling a driver.
-Construction input remains data the driver needs. These two derived lines are:
+Construction input remains data the driver needs. These derived lines are:
 
 ```
 retain <case> <unit> <root> <wire> <capacity> <ids>
+framing <case> <unit> <root> <wire>
 cook-write <instance> <JSON input or -> <source field or -> <alias field or ->
 ```
 
-`retain` has seven fields including its keyword. `cook-write` has five: `-`
+`retain` has seven fields including its keyword. `framing` always has five,
+with no verdict or value-omission marker: every accepted read owes its complete
+value. `cook-write` has five: `-`
 input selects the `no-text` instance's wire; otherwise the input is JSON.
 Source and alias are both `-` unless the cook recipe requests shared blob
 identity. Expected cook output files never travel to the driver.
