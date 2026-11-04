@@ -347,6 +347,7 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 // emitUnionDescriptor writes <Name>Descriptor for a union: its arms, each a
 // field line under the arm's id (docs/SPEC-TABLES.md §2.6, §3).
 func emitUnionDescriptor(g *lobster.Gen, un *ir.Union) {
+	_, _, _, armOffset := ir.UnionLayout(g.Unit, un)
 	g.Pf("// %sDescriptor — union %s as data: one entry per arm, tag order (§2.6)\n", un.Name, un.Name)
 	g.Pf("let %sDescriptor = %s.union_of(%s.UnionDescriptor {\n", un.Name, rt, rt)
 	g.Pf("    name: %s,\n", lobster.StringLit([]byte(un.Name)))
@@ -363,7 +364,8 @@ func emitUnionDescriptor(g *lobster.Gen, un *ir.Union) {
 		f := *v.F
 		f.Name = v.Name
 		f.Doc, f.Tags = v.Doc, v.Tags
-		g.Pf("        %s%s\n", fieldDesc(g, &f, i, i+1), sep)
+		desc := strings.TrimSuffix(fieldDesc(g, &f, i, i+1), " }") + fmt.Sprintf(", arm_offset: %d }", armOffset)
+		g.Pf("        %s%s\n", desc, sep)
 	}
 	g.Pf("    ]::%s.FieldDescriptor\n", rt)
 	g.Pf("})\n\n")

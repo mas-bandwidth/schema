@@ -185,7 +185,15 @@ func emitVocabulary(g *lobster.Gen, name, base, kind, doc string, tags []string,
 			lobster.StringLit([]byte(v)), idLit(id), mark, lobster.StringLit([]byte(d)), tagList(t))
 	}
 	max, bits := vocabularyShape(g.Unit, name, kind)
-	g.Pf("]::%s.ViewVariant, %s, %d, %d)\n", rt, lobster.StringLit([]byte(kind)), max, bits)
+	var payloadOffset int64
+	if kind == "union" {
+		un := g.Unit.Unions[name]
+		if un == nil {
+			un = g.Unit.TableUnions[name]
+		}
+		_, _, _, payloadOffset = ir.UnionLayout(g.Unit, un)
+	}
+	g.Pf("]::%s.ViewVariant, %s, %d, %d, %d)\n", rt, lobster.StringLit([]byte(kind)), max, bits, payloadOffset)
 	for i, v := range variants {
 		if i < len(dep) && dep[i] {
 			g.Pf("schema_rt.deprecated_variant(%s, %s)\n", lobster.StringLit([]byte(name)), lobster.StringLit([]byte(v)))
