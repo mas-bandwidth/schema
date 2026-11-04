@@ -161,6 +161,14 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
 /// MeasureMessages (§3.3): the byte count SaveMessages writes for this batch,
 /// or -1. "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME".
 pub fn fixed_table_measure_messages(values: &[FixedTableRow], report: &mut TableReport) -> i64 {
+    // THE WRITE CONTRACT (docs/SPEC.md §5.1), debug builds only: the whole
+    // batch before the first byte, so a refusal writes nothing.
+    if cfg!(debug_assertions) {
+        for value in values {
+            let why = fixed_table_check_row(value);
+            debug_assert!(why.is_empty(), "{why}: a value its declaration does not admit, refused on write (docs/SPEC.md section 5.1)");
+        }
+    }
     if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
         report.refuse(TableReason::BatchTooLarge);
         return -1;
@@ -182,6 +190,14 @@ pub fn fixed_table_measure_messages(values: &[FixedTableRow], report: &mut Table
 /// bit stream padded to a byte once at its end. The byte count, or -1 for a
 /// refusal or a buffer too short.
 pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], report: &mut TableReport) -> i64 {
+    // THE WRITE CONTRACT (docs/SPEC.md §5.1), debug builds only: the whole
+    // batch before the first byte, so a refusal writes nothing.
+    if cfg!(debug_assertions) {
+        for value in values {
+            let why = fixed_table_check_row(value);
+            debug_assert!(why.is_empty(), "{why}: a value its declaration does not admit, refused on write (docs/SPEC.md section 5.1)");
+        }
+    }
     if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
         report.refuse(TableReason::BatchTooLarge);
         return -1;

@@ -71,6 +71,17 @@ pub fn fixed_table_fixed_finite_body(value: &FixedTableRow) -> &'static str {
     ""
 }
 
+/// FixedTable's write contract (docs/SPEC.md §5.1): the first value its declaration
+/// does not admit, named <Owner>.<field>, or "" when every value is admitted.
+#[allow(clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn fixed_table_check_row(value: &FixedTableRow) -> &'static str {
+    let why = bench_mixed_check_row(&value.value);
+    if !why.is_empty() {
+        return why;
+    }
+    ""
+}
+
 // ---- FixedTable, the fixed form ----
 
 /// The body is the SAME SIZE for every value the type can hold, so a measure
@@ -309,6 +320,14 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
     let need = fixed_table_fixed_measure(values.len());
     if buffer.len() < need {
         return None;
+    }
+    // THE WRITE CONTRACT (docs/SPEC.md §5.1), debug builds only: the whole
+    // batch before the first byte, so a refusal writes nothing.
+    if cfg!(debug_assertions) {
+        for value in values {
+            let why = fixed_table_check_row(value);
+            debug_assert!(why.is_empty(), "{why}: a value its declaration does not admit, refused on write (docs/SPEC.md section 5.1)");
+        }
     }
     // THE WRITER'S FINITE RULE (§3.3): a refusal writes no byte.
     if values.iter().any(|value| !fixed_table_fixed_finite_body(value).is_empty()) {

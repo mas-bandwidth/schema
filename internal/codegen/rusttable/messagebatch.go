@@ -670,10 +670,13 @@ func (m *msgGen) emitBatch(st *ir.Struct) {
 		saveEnd = "let end = 2 + (w.bits / 8) as usize;\n    let sum = table_integrity_checksum(&buffer[..end]);\n    buffer[end..end + 4].copy_from_slice(&sum.to_le_bytes());\n    (end + 4) as i64"
 		loadPrefix = fmt.Sprintf("    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(body) = table_integrity_body(data, 6) else {\n            report.malformed = true; report.reason = TableReason::IntegrityMismatch;\n            for value in values.iter_mut() { *value = %s_message_default(); }\n            return (0, false);\n        };\n        body\n    } else { data };\n", snake)
 	}
+	// the write contract over the batch, before any byte (rowcheck.go)
+	var check strings.Builder
+	writeRowCheckBatch(func(format string, args ...any) { fmt.Fprintf(&check, format, args...) }, st, "    ")
 	m.pf(`/// MeasureMessages (§3.3): the byte count SaveMessages writes for this batch,
 /// or -1. "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME".
 pub fn %[1]s_measure_messages(values: &[%[2]s], report: &mut TableReport) -> i64 {
-    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
+%[7]s    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
         report.refuse(TableReason::BatchTooLarge);
         return -1;
     }
@@ -694,7 +697,7 @@ pub fn %[1]s_measure_messages(values: &[%[2]s], report: &mut TableReport) -> i64
 /// bit stream padded to a byte once at its end. The byte count, or -1 for a
 /// refusal or a buffer too short.
 pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut TableReport) -> i64 {
-%[4]s    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
+%[7]s%[4]s    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
         report.refuse(TableReason::BatchTooLarge);
         return -1;
     }
@@ -761,7 +764,7 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
     (count, true)
 }
 
-`, snake, row, measureExtra, savePrefix, saveEnd, loadPrefix)
+`, snake, row, measureExtra, savePrefix, saveEnd, loadPrefix, check.String())
 }
 
 // messageBatchRuntime is the batch's shared Rust runtime (§3.3): the bit
