@@ -713,8 +713,12 @@ writeBatch = function(T, root, values, out, measuring, report) {
   local d=T.Descriptors[root];
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
   // A REFUSED BATCH WRITES NOTHING: the save walks the batch measuring first,
-  // so a value outside its set refuses before the first byte is stored
-  if(!measuring){local m=writeBatch(T,root,values,null,true,report);if(m<0)return m;}
+  // so a value outside its set, and a batch the caller's buffer cannot hold,
+  // refuse before the first byte is stored
+  if(!measuring){
+    local m=writeBatch(T,root,values,null,true,report);if(m<0)return m;
+    if(typeof out!="blob"||m>out.len()){if(report!=null)report.refused<-true;return -1;}
+  }
   local w=newWriter(out,measuring);put(w,2,8);put(w,values.len()-1,8);
 
   foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null){report.malformed<-true;report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}}
