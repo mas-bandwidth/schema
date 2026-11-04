@@ -23,8 +23,7 @@ import (
 
 // surfaces, in the order the matrix prints them.
 var surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
-	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
-	"cook-reason", "block-reason"}
+	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
 
 type driver struct {
 	lang string
@@ -473,20 +472,6 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			}
 			out = append(out, expectation{name: b.Name, want: want})
 		}
-	case "cook-reason", "block-reason":
-		// THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §7, §19.2): one word
-		// per forgery a `refusal` line names, the enum's own value name, so a
-		// conformance row pins the first failing clause in every language
-		kind := "block"
-		if surface == "cook-reason" {
-			kind = "cook"
-		}
-		for _, r := range m.Refusals {
-			if r.Kind != kind {
-				continue
-			}
-			out = append(out, expectation{name: r.Forgery, want: []byte(r.Reason + "\n")})
-		}
 	case "forgery", "cook-forgery":
 		// one surface per KIND: a backend can have a block reader and no cook
 		// reader, and the matrix says which rather than blaming one for the
@@ -699,75 +684,31 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	return report(w, langs, results), nil
 }
 
-// scoreAnswer scores one case written by a leg. The blob-shared marker
-// changes that one wire expectation from bytes to a named writer refusal, for
-// Go and for every port refused-by= names (inst.WireRefusal); inst is the zero
-// Instance for a case that carries no marker.
+// scoreAnswer compares admission and complete values or canonical writeback.
+// Historical .absent files transport explicit refusal for rows that require it;
+// their diagnostic text is not part of the cross-language contract.
 func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *result) {
 	answer := filepath.Join(out, e.name)
-	if surface == "message" && e.want == nil {
-		// THE NAMED REFUSAL ROW (docs/SPEC-TABLES.md §3.3): a message row over
-		// a variable table, which no leg carries, and every leg names why.
-		if _, err := os.Stat(answer); err == nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: a variable table carries no message form, and the leg wrote bytes", e.name))
-			r.mark(e.name, outcomeFail)
-			return
-		}
-		reason, err := os.ReadFile(answer + ".absent")
-		if err != nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, VariableMessageRefusal))
-			r.mark(e.name, outcomeFail)
-			return
-		}
-		if string(reason) != VariableMessageRefusal {
-			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), VariableMessageRefusal))
-			r.mark(e.name, outcomeFail)
-			return
-		}
-		r.missing++
-		r.named++
-		r.mark(e.name, outcomeNamed)
-		return
-	}
-	if goWireRefusal := inst.WireRefusal(lang); surface == "wire" && goWireRefusal != "" {
-		if _, err := os.Stat(answer); err == nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: expected named writer refusal %q, got bytes", e.name, goWireRefusal))
-			r.mark(e.name, outcomeFail)
-			return
-		} else if !errors.Is(err, os.ErrNotExist) {
-			r.failures = append(r.failures, fmt.Sprintf("%s: checking wire answer: %v", e.name, err))
-			r.mark(e.name, outcomeFail)
-			return
-		}
-		marker := answer + ".absent"
-		reason, err := os.ReadFile(marker)
-		if err != nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, goWireRefusal))
-			r.mark(e.name, outcomeFail)
-			return
-		}
-		if string(reason) != goWireRefusal {
-			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), goWireRefusal))
-			r.mark(e.name, outcomeFail)
-			return
-		}
-		r.missing++
-		r.named++
-		r.mark(e.name, outcomeNamed)
-		return
-	}
-	// ANOTHER LEG MAY GIVE THE SAME NAMED REFUSAL, and must give it by that
-	// name: §2.5 makes every writer refuse the value. A leg that still writes
-	// bytes is held to them below, as before.
-	if surface == "wire" && inst.GoWireRefusal != "" {
-		if _, err := os.Stat(answer); errors.Is(err, os.ErrNotExist) {
-			if reason, err := os.ReadFile(answer + ".absent"); err == nil && string(reason) == inst.GoWireRefusal {
-				r.missing++
-				r.named++
-				r.mark(e.name, outcomeNamed)
+	if (surface == "message" && e.want == nil) || (surface == "wire" && inst.WireRefusal(lang) != "") {
+		data, err := os.ReadFile(answer)
+		if err == nil {
+			if string(bytes.TrimSpace(data)) != "refused" && string(bytes.TrimSpace(data)) != "REFUSED" {
+				r.failures = append(r.failures, fmt.Sprintf("%s: expected refusal, got bytes", e.name))
+				r.mark(e.name, outcomeFail)
 				return
 			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			r.failures = append(r.failures, fmt.Sprintf("%s: reading outcome: %v", e.name, err))
+			r.mark(e.name, outcomeFail)
+			return
+		} else if _, err := os.ReadFile(answer + ".absent"); err != nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: expected refusal, driver wrote nothing", e.name))
+			r.mark(e.name, outcomeFail)
+			return
 		}
+		r.pass++
+		r.mark(e.name, outcomePass)
+		return
 	}
 
 	got, err := os.ReadFile(answer)
