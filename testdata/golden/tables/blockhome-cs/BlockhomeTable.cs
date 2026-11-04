@@ -1378,7 +1378,8 @@ namespace Blockhome
                 }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
+                    // ill-formed text is refused; a zero byte is spelled \u0000 (docs/SPEC-TABLES.md §16.3)
+                    if (!TableWire.TextWellFormed(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
@@ -4619,6 +4620,15 @@ namespace Blockhome
                     int count = Count(value, f);
                     return count >= 0 && count <= f.ArrayBound && TextValid(f.GetBuffer(value).AsSpan(0, count));
                 }
+                if (!f.IsArray && f.Kind == 33)
+                {
+                    // a wide text holding an unpaired surrogate is caller error on the
+                    // write side: checked in a debug build, gone in release
+                    int count = Count(value, f);
+                    if (count < 0 || count > f.ArrayBound) { return false; }
+                    System.Diagnostics.Debug.Assert(UnitsWellFormed(f.GetChars(value).AsSpan(0, count)), "write refused: a wide text holding an unpaired surrogate");
+                    return true;
+                }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
                 // a ranged integer or a bits(N) value outside its field is caller
@@ -5281,6 +5291,42 @@ namespace Blockhome
             }
             internal static void TextClamp(TableReport report, TableFieldInfo field)
             { if (field.TextList && report.ClampedField == null) { report.ClampedField = field.TextField; } }
+            // TextWellFormed is whether text is well-formed UTF-8: TextValid without
+            // the zero-byte rule, the write contract's own text test (docs/SPEC.md §5.1).
+            internal static bool TextWellFormed(ReadOnlySpan<byte> text)
+            {
+                for (int i = 0; i < text.Length;)
+                {
+                    byte c = text[i++];
+                    if (c < 128) { continue; }
+                    int n; uint v, min;
+                    if (c >= 0xc2 && c <= 0xdf) { n = 1; v = (uint)(c & 31); min = 0x80; }
+                    else if (c >= 0xe0 && c <= 0xef) { n = 2; v = (uint)(c & 15); min = 0x800; }
+                    else if (c >= 0xf0 && c <= 0xf4) { n = 3; v = (uint)(c & 7); min = 0x10000; }
+                    else { return false; }
+                    if (n > text.Length - i) { return false; }
+                    for (int j = 0; j < n; j++)
+                    { byte b = text[i++]; if ((b & 0xc0) != 0x80) { return false; } v = (v << 6) | (uint)(b & 63); }
+                    if (v < min || v > 0x10ffff || (v >= 0xd800 && v <= 0xdfff)) { return false; }
+                }
+                return true;
+            }
+            // UnitsWellFormed is whether UTF-16 units hold no unpaired surrogate: every
+            // high surrogate is followed by a low one, and no low one stands alone.
+            internal static bool UnitsWellFormed(ReadOnlySpan<char> units)
+            {
+                for (int i = 0; i < units.Length; i++)
+                {
+                    char c = units[i];
+                    if (char.IsHighSurrogate(c))
+                    {
+                        if (i + 1 >= units.Length || !char.IsLowSurrogate(units[i + 1])) { return false; }
+                        i++;
+                    }
+                    else if (char.IsLowSurrogate(c)) { return false; }
+                }
+                return true;
+            }
             internal static bool TextValid(ReadOnlySpan<byte> text)
             {
                 for (int i = 0; i < text.Length;)

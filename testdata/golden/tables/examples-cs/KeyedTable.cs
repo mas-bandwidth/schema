@@ -1302,6 +1302,48 @@ namespace Tabledemo
             return null;
         }
 
+        // TeamConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool TeamConfigFixedCheckBody(TeamConfig value)
+        {
+            if (value == null) return true;
+            if (value.SpawnCount < 0 || value.SpawnCount > 64) return false;
+            if (value.BannerLength < 0 || value.BannerLength > 16) return false;
+            if (value.Banner != null && !TableWire.TextWellFormed(value.Banner.AsSpan(0, value.BannerLength))) return false;
+            return true;
+        }
+
+        // ScoreBoard's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool ScoreBoardFixedCheckBody(ScoreBoard value)
+        {
+            if (value == null) return true;
+            if (value.PerTeam != null)
+            {
+                for (int i = 0; i < 3 && i < value.PerTeam.Length; ++i)
+                {
+                    if (value.PerTeam[i] < 0 || value.PerTeam[i] > 100000) return false;
+                }
+            }
+            return true;
+        }
+
+        // KeyedConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool KeyedConfigFixedCheckBody(KeyedConfig value)
+        {
+            if (value == null) return true;
+            if (value.Teams.Slots != null)
+            {
+                for (int i = 0; i < 3 && i < value.Teams.Slots.Length; ++i)
+                {
+                    if (!TeamConfigFixedCheckBody(value.Teams.Slots[i])) return false;
+                }
+            }
+            if (!ScoreBoardFixedCheckBody(value.Scores)) return false;
+            return true;
+        }
+
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
         // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
         // past the enum's top value. Straight-line, after the run, over STORAGE,
@@ -1639,6 +1681,9 @@ namespace Tabledemo
         {
             long need = TeamConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(TeamConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TeamConfigFixedHash);
@@ -4275,6 +4320,9 @@ namespace Tabledemo
             long need = KeyedConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (KeyedConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(KeyedConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), KeyedConfigFixedHash);

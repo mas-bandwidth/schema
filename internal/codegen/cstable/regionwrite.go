@@ -44,6 +44,13 @@ const tableRegionWriteSource = `
             int count = value.Count(f);
             return count >= 0 && count <= f.ArrayBound && TextValid(value.Buffer(f).Slice(0,count));
         }
+        if (!f.IsArray && f.Kind == 33)
+        {
+            int count = value.Count(f);
+            if (count < 0 || count > f.ArrayBound) { return false; }
+            System.Diagnostics.Debug.Assert(UnitsWellFormed(value.Chars(f).Slice(0,count)), "write refused: a wide text holding an unpaired surrogate");
+            return true;
+        }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(value.Raw(f, i))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(value.Wide(f, i))) { return false; }
         System.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(value.Raw(f, i)), "write refused: an integer outside its declared range");
