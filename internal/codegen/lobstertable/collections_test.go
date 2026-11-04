@@ -380,3 +380,51 @@ func TestLobsterCollectionsNegativeControl(t *testing.T) {
 	}
 	t.Logf("the map comparison went red under the patch: map_key_widen got %s, reference %s", got[0], goLine[0])
 }
+
+// TestLobsterMapRepeatedKeyWiden verifies that a repeated widened map key
+// occurrence replaces an earlier incompatible key kind in the same entry
+// (docs/SPEC-TABLES.md §2.8, §3), keeping the entry and decoding its body,
+// with a negative control that removes the kind_bad reset.
+func TestLobsterMapRepeatedKeyWiden(t *testing.T) {
+	t.Parallel()
+	units, _ := readManifest(t)
+	paths, err := compiler.GatherPaths(prefix(units["mapdemo"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := generateLoadUnit(t, paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := loadRow{
+		name: "map_repeated_key_widen",
+		kind: "report",
+		unit: "mapdemo",
+		root: "Pairs",
+		wire: "testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin",
+	}
+	lob, goLine, goDump := runCollectionsLoad(t, g, []loadRow{row})
+	if lob[0] != goLine[0] {
+		t.Fatalf("report mismatch: got %s, want %s", lob[0], goLine[0])
+	}
+	if lob[1] != goDump[0] {
+		t.Fatalf("value mismatch at byte %s", divergence(lob[1], goDump[0]))
+	}
+	path := filepath.Join(g.dir, "load.lobster")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const anchor = "            if kind != want and widens(kind, want):\n                widened = true\n                kind_bad = false\n"
+	if n := strings.Count(string(src), anchor); n != 1 {
+		t.Fatalf("the map_key widen anchor is in the emitted runtime %d times, want 1", n)
+	}
+	patched := strings.Replace(string(src), anchor, "            if kind != want and widens(kind, want):\n                widened = true\n", 1)
+	if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ := runCollectionsLoad(t, g, []loadRow{row})
+	if got[0] == goLine[0] {
+		t.Fatalf("the patched runtime still matches the reference: %s", got[0])
+	}
+}
