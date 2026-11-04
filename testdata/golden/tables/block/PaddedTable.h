@@ -6111,8 +6111,13 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowSaveBody( TableWriter & w, TableIds & ids, 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t PaddedRowSave( const PaddedRow & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = PaddedRowMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -7149,10 +7154,14 @@ inline int64_t PaddedRowMeasureMessages( const PaddedRow * values, int64_t count
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t PaddedRowSaveMessages( const PaddedRow * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = PaddedRowMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -7289,8 +7298,13 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t PaddedFrameSave( const PaddedFrame & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = PaddedFrameMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -7890,10 +7904,14 @@ inline int64_t PaddedFrameMeasureMessages( const PaddedFrame * values, int64_t c
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t PaddedFrameSaveMessages( const PaddedFrame * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = PaddedFrameMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -8076,6 +8094,29 @@ TABLE_FIXED_INLINE bool PaddedFrameFixedFiniteBody( const PaddedFrame & value )
     return true;
 }
 
+// PaddedRow's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool PaddedRowFixedFits( const PaddedRow & value )
+{
+    (void) value;
+    if ( value.label_length < 0 || value.label_length > 15 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// PaddedFrame's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool PaddedFrameFixedFits( const PaddedFrame & value )
+{
+    (void) value;
+    if ( value.rows_count < 0 || value.rows_count > 64 ) { return false; } // the count indexes the storage (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.rows_count; ++i )
+    {
+        if ( !PaddedRowFixedFits( value.rows[i] ) ) { return false; }
+    }
+    if ( value.blob_length < 0 || value.blob_length > 12 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
 // PaddedRow's write contract (docs/SPEC.md §5.1): false when the record holds a
 // value its declaration does not admit, which FixedSave refuses debug-only.
 TABLE_FIXED_INLINE bool PaddedRowFixedWriteCheck( const PaddedRow & value )
@@ -8083,7 +8124,7 @@ TABLE_FIXED_INLINE bool PaddedRowFixedWriteCheck( const PaddedRow & value )
     (void) value;
     int bad = 0;
     if ( value.label_length < 0 || value.label_length > 15 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length );
     return bad == 0;
 }
 
@@ -8308,6 +8349,7 @@ inline int64_t PaddedRowFixedSave( const PaddedRow * values, int64_t count, uint
 {
     const int64_t need = PaddedRowFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !PaddedRowFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { if ( !PaddedRowFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( PaddedRowFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
@@ -9479,6 +9521,7 @@ inline int64_t PaddedFrameFixedSave( const PaddedFrame * values, int64_t count, 
 {
     const int64_t need = PaddedFrameFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !PaddedFrameFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { if ( !PaddedFrameFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( PaddedFrameFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header

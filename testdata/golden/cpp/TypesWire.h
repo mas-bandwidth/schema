@@ -298,6 +298,7 @@ SCHEMA_WRITE_INLINE bool WriteInputPacket( serialize::WriteStream & stream, cons
     write_bits( stream, value.synchronize_sequence, 16 );
     write_bits( stream, value.current_frame, 64 );
     write_bits( stream, value.start_frame, 64 );
+    if ( value.inputs_count < 0 || value.inputs_count > MaxInputsPerPacket ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.inputs_count ) >= int32_t( 0 ) && int32_t( value.inputs_count ) <= int32_t( MaxInputsPerPacket ) );
     write_bits( stream, uint32_t( value.inputs_count ), 5 );
     for ( int32_t i = 0; i < value.inputs_count; i++ )

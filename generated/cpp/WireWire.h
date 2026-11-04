@@ -274,6 +274,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeSample( serialize::WriteStream & stream, cons
     {
         write_bits( stream, value.idle_ticks, 32 );
     }
+    if ( value.samples_count < 0 || value.samples_count > 8 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.samples_count ) >= int32_t( 1 ) && int32_t( value.samples_count ) <= int32_t( 8 ) );
     write_bits( stream, uint32_t( value.samples_count ) - uint32_t( 1 ), 3 );
     for ( int32_t i = 0; i < value.samples_count; i++ )
@@ -421,6 +422,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeCollider( serialize::WriteStream & stream, co
     write_bits( stream, value.armor, 8 );
     schema_write_object( stream, WriteProbeShape, value.shape );
     schema_write_object( stream, WriteProbeShape, value.backup );
+    if ( value.extras_count < 0 || value.extras_count > 2 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.extras_count ) >= int32_t( 0 ) && int32_t( value.extras_count ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value.extras_count ), 2 );
     for ( int32_t i = 0; i < value.extras_count; i++ )
@@ -543,6 +545,7 @@ SCHEMA_READ_INLINE bool ReadTest( serialize::ReadStream & stream, Test & value )
 
 SCHEMA_WRITE_INLINE bool WriteBlock( serialize::WriteStream & stream, const Block & value )
 {
+    if ( value.data_length < 0 || value.data_length > MaxBlockSize ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.data_length ) >= int32_t( 0 ) && int32_t( value.data_length ) <= int32_t( MaxBlockSize ) );
     write_bits( stream, uint32_t( value.data_length ), 11 );
     write_bytes( stream, value.data, value.data_length );
@@ -558,6 +561,7 @@ SCHEMA_READ_INLINE bool ReadBlock( serialize::ReadStream & stream, Block & value
 
 SCHEMA_WRITE_INLINE bool WriteChat( serialize::WriteStream & stream, const Chat & value )
 {
+    if ( value.text_length < 0 || value.text_length > MaxChatLength ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
         serialize_assert( value.text[i] != 0 );
@@ -613,6 +617,7 @@ SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const T
     write_bits( stream, value.e, 8 );
     write_bits( stream, value.f, 8 );
     write_bool( stream, value.g );
+    if ( value.items_count < 0 || value.items_count > 16 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 16 ) );
     write_bits( stream, uint32_t( value.items_count ), 5 );
     for ( int32_t i = 0; i < value.items_count; i++ )
@@ -639,6 +644,7 @@ SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const T
     write_bits( stream, uint64_t( value.int64_range ) - uint64_t( -1000000000000 ), 41 );
     write_align( stream );
     write_bytes( stream, value.fixed_bytes, 17 ); // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+    if ( value.text_length < 0 || value.text_length > 255 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
         serialize_assert( value.text[i] != 0 );

@@ -194,6 +194,7 @@ SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t len
 
 SCHEMA_WRITE_INLINE bool WriteW13( serialize::WriteStream & stream, const W13 & value )
 {
+    if ( value.items_count < 0 || value.items_count > 12 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 12 ) );
     write_bits( stream, uint32_t( value.items_count ), 4 );
     for ( int32_t i = 0; i < value.items_count; i++ )
@@ -220,6 +221,7 @@ SCHEMA_READ_INLINE bool ReadW13( serialize::ReadStream & stream, W13 & value )
 
 SCHEMA_WRITE_INLINE bool WriteW17( serialize::WriteStream & stream, const W17 & value )
 {
+    if ( value.items_count < 0 || value.items_count > 9 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 9 ) );
     write_bits( stream, uint32_t( value.items_count ), 4 );
     for ( int32_t i = 0; i < value.items_count; i++ )
@@ -242,6 +244,7 @@ SCHEMA_READ_INLINE bool ReadW17( serialize::ReadStream & stream, W17 & value )
 
 SCHEMA_WRITE_INLINE bool WriteW26( serialize::WriteStream & stream, const W26 & value )
 {
+    if ( value.items_count < 0 || value.items_count > 6 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 6 ) );
     write_bits( stream, uint32_t( value.items_count ), 3 );
     for ( int32_t i = 0; i < value.items_count; i++ )
@@ -264,6 +267,7 @@ SCHEMA_READ_INLINE bool ReadW26( serialize::ReadStream & stream, W26 & value )
 
 SCHEMA_WRITE_INLINE bool WriteW1( serialize::WriteStream & stream, const W1 & value )
 {
+    if ( value.items_count < 0 || value.items_count > 20 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 20 ) );
     write_bits( stream, uint32_t( value.items_count ), 5 );
     for ( int32_t i = 0; i < value.items_count; i++ )
@@ -290,6 +294,7 @@ SCHEMA_READ_INLINE bool ReadW1( serialize::ReadStream & stream, W1 & value )
 
 SCHEMA_WRITE_INLINE bool WriteW52( serialize::WriteStream & stream, const W52 & value )
 {
+    if ( value.items_count < 0 || value.items_count > 3 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
@@ -312,6 +317,7 @@ SCHEMA_READ_INLINE bool ReadW52( serialize::ReadStream & stream, W52 & value )
 
 SCHEMA_WRITE_INLINE bool WriteW50( serialize::WriteStream & stream, const W50 & value )
 {
+    if ( value.items_count < 0 || value.items_count > 3 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
@@ -371,6 +377,7 @@ SCHEMA_READ_INLINE bool ReadTri3( serialize::ReadStream & stream, Tri3 & value )
 
 SCHEMA_WRITE_INLINE bool WriteArrTri3( serialize::WriteStream & stream, const ArrTri3 & value )
 {
+    if ( value.items_count < 0 || value.items_count > 10 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 10 ) );
     write_bits( stream, uint32_t( value.items_count ), 4 );
     for ( int32_t i = 0; i < value.items_count; i++ )
@@ -508,6 +515,7 @@ SCHEMA_READ_INLINE bool ReadHoldsEmptyUnion( serialize::ReadStream & stream, Hol
 SCHEMA_WRITE_INLINE bool WriteStrs( serialize::WriteStream & stream, const Strs & value )
 {
     write_bits( stream, value.lead, 5 );
+    if ( value.s_length < 0 || value.s_length > 8 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     for ( int32_t i = 0; i < value.s_length; i++ )
     {
         serialize_assert( value.s[i] != 0 );
@@ -515,6 +523,7 @@ SCHEMA_WRITE_INLINE bool WriteStrs( serialize::WriteStream & stream, const Strs 
     serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 8 ) );
     write_bits( stream, uint32_t( value.s_length ), 4 );
     write_bytes( stream, value.s, value.s_length );
+    if ( value.b_length < 0 || value.b_length > 8 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.b_length ) >= int32_t( 0 ) && int32_t( value.b_length ) <= int32_t( 8 ) );
     write_bits( stream, uint32_t( value.b_length ), 4 );
     write_bytes( stream, value.b, value.b_length );
@@ -545,6 +554,7 @@ SCHEMA_READ_INLINE bool ReadStrs( serialize::ReadStream & stream, Strs & value )
 SCHEMA_WRITE_INLINE bool WriteArrNested( serialize::WriteStream & stream, const ArrNested & value )
 {
     write_bits( stream, value.lead, 5 );
+    if ( value.items_count < 0 || value.items_count > 4 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 4 ) );
     write_bits( stream, uint32_t( value.items_count ), 3 );
     for ( int32_t i = 0; i < value.items_count; i++ )
