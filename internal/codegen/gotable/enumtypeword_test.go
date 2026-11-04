@@ -66,7 +66,7 @@ func TestEnumWords(t *testing.T) {
 			t.Fatalf("save %s", tc.word)
 		}
 		var r TableReport
-		if !RootLoadTolerant(&got, b, &r) || r != (TableReport{}) || got.Kind != tc.kind {
+		if !RootLoad(&got, b, &r) || r != (TableReport{}) || got.Kind != tc.kind {
 			t.Fatalf("wire round trip %s: %+v %+v", tc.word, got, r)
 		}
 		a := make([]byte, 128)

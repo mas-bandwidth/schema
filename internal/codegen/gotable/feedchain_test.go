@@ -41,8 +41,8 @@ func TestFeedChain(t *testing.T){
  n:=FeedLoadMeasure(wire)
  if n<0{return}
  raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)]
- var r TableReport;FeedLoadTolerant(region,wire,&r)
- if !r.Malformed{t.Fatalf("the Go load did not refuse the damaged wire: %%+v",r)}
+ var r TableReport;FeedLoad(region,wire,&r)
+ if !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed"){t.Fatalf("the Go load did not refuse the damaged wire: %%+v",r)}
 }
 `, wire)
 	runGenerated(t, string(source), test)

@@ -47,11 +47,11 @@ func t03GoTable(t *testing.T, u *ir.Unit, name string) *ir.Struct {
 	return st
 }
 
-// t03GoLoad is the emitted body of one `<T>FixedLoadTolerant(` up to its column-zero
+// t03GoLoad is the emitted body of one `<T>FixedLoad(` up to its column-zero
 // closing brace.
 func t03GoLoad(t *testing.T, src, name string) string {
 	t.Helper()
-	body := funcSource(src, "func "+name+"FixedLoadTolerant(")
+	body := funcSource(src, "func "+name+"FixedLoad(")
 	if body == "" {
 		t.Fatalf("the emitted module has no %sFixedLoad", name)
 	}
@@ -512,9 +512,9 @@ fixed table Lineage
     a fixed(4, 4) | min = -4, max = 3
     b bits(12)
 }
-`)), "func LineageFixedClampBody(")
+`)), "func LineageFixedBoundsBody(")
 	if clamp == "" {
-		t.Fatal("C8: LineageFixedClampBody is not emitted")
+		t.Fatal("C8: LineageFixedBoundsBody is not emitted")
 	}
 	t03GoHas(t, clamp, "value.A < -64", "C8 the fixed-point floor shifted by F")
 	t03GoHas(t, clamp, "value.A > 48", "C8 the fixed-point ceiling shifted by F")

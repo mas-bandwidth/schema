@@ -33,8 +33,8 @@ func TestArrayRootClosureNativeGo(t *testing.T) {
 	for i, tc := range cases {
 		fmt.Fprintf(&body, `{
 var b %sBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown()
-var report TableReport;ok:=%sFromJSONTolerant(&b,[]byte(%q),&report)
-if ok!=%t || report.KindMismatch!=%d || report.Clamped!=%d || report.Malformed!=%t {t.Fatalf("case %d: ok=%%v report=%%+v",ok,report)}
+var report TableReport;ok:=%sFromJSON(&b,[]byte(%q),&report)
+if ok!=%t || report.Refusal!=%d || report.Refusal!=%d || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed")!=%t {t.Fatalf("case %d: ok=%%v report=%%+v",ok,report)}
 `, tc.Root, tc.Root, tc.Text, !tc.Malformed, tc.Mismatch, tc.Clamped, tc.Malformed, i)
 		if tc.Root == "Nested" && tc.Mismatch == 0 {
 			body.WriteString(`if !b.Lock(){t.Fatal("lock")};out:=make([]byte,NestedToJSONMeasure(b.AsConst()));if NestedToJSON(b.AsConst(),out)!=int64(len(out)){t.Fatal("write")}

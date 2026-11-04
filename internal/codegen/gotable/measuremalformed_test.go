@@ -64,7 +64,7 @@ var measureMalformedSeed2Probe = `package probe
   if n > 1<<30 { huge++; return false, rep, []byte("huge") }
   raw := make([]byte, n+64)
   off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-  v := RootLoadTolerant(raw[off:off+uintptr(n)], w, &rep)
+  v := RootLoad(raw[off:off+uintptr(n)], w, &rep)
   if v == nil { return false, rep, nil }
   tn := RootToJSONMeasure(v)
   if tn < 0 { return true, rep, []byte(fmt.Sprintf("unwritable %d", tn)) }
@@ -117,20 +117,20 @@ var measureMalformedSeed2Probe = `package probe
    if m, merr := RootLoadMeasureReason(wire); merr != nil || m != RootLoadMeasure(wire) {
     t.Fatalf("value %d: the clean wire measures %d %v, the load needs %d: %x", i, m, merr, RootLoadMeasure(wire), wire)
    }
-   if ok, crep, _ := tolerant(wire); !ok || crep.Malformed { t.Fatalf("value %d: the clean wire does not load: %+v", i, crep) }
+   if ok, crep, _ := tolerant(wire); !ok || (crep.Refusal.Error() == "wire_damaged" || crep.Refusal.Error() == "malformed") { t.Fatalf("value %d: the clean wire does not load: %+v", i, crep) }
    for _, d := range damages(wire) {
     ok, drep, text := tolerant(d)
-    fmt.Fprintf(sum, "%v %v %q|", ok, drep.Malformed, text)
+    fmt.Fprintf(sum, "%v %v %q|", ok, (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed"), text)
     m, merr := RootLoadMeasureReason(d)
-    bad := drep.Malformed || !ok && drep.NonFiniteFloat == "" // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
+    bad := (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed") || !ok && !drep.Refused() // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
     refused := m < 0
-    if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
+    if refused && (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed") && !errors.Is(merr, TableRefuseWireDamaged) {
      otherReason++; hits++
      if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v: a wire the load calls malformed is refused with a reason other than wire_damaged\n  damaged %x\n  clean   %x", i, m, merr, d, wire)) }
     }
     if bad != refused || (!refused && (merr != nil || m != RootLoadMeasure(d))) || (refused && (m != -1 || merr == nil)) {
      hits++
-     if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v; load ok=%v malformed=%v unknown=%d mismatch=%d\n  damaged %x\n  clean   %x", i, m, merr, ok, drep.Malformed, drep.Unknown, drep.KindMismatch, d, wire)) }
+     if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v; load ok=%v malformed=%v unknown=%d mismatch=%d\n  damaged %x\n  clean   %x", i, m, merr, ok, (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed"), drep.Unknown, drep.Refusal, d, wire)) }
     }
    }
   }
@@ -205,7 +205,7 @@ var measureMalformedSeed4Probe = `package probe
   if n > 1<<30 { huge++; return false, rep, []byte("huge") }
   raw := make([]byte, n+64)
   off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-  v := RootLoadTolerant(raw[off:off+uintptr(n)], w, &rep)
+  v := RootLoad(raw[off:off+uintptr(n)], w, &rep)
   if v == nil { return false, rep, nil }
   tn := RootToJSONMeasure(v)
   if tn < 0 { return true, rep, []byte(fmt.Sprintf("unwritable %d", tn)) }
@@ -258,20 +258,20 @@ var measureMalformedSeed4Probe = `package probe
    if m, merr := RootLoadMeasureReason(wire); merr != nil || m != RootLoadMeasure(wire) {
     t.Fatalf("value %d: the clean wire measures %d %v, the load needs %d: %x", i, m, merr, RootLoadMeasure(wire), wire)
    }
-   if ok, crep, _ := tolerant(wire); !ok || crep.Malformed { t.Fatalf("value %d: the clean wire does not load: %+v", i, crep) }
+   if ok, crep, _ := tolerant(wire); !ok || (crep.Refusal.Error() == "wire_damaged" || crep.Refusal.Error() == "malformed") { t.Fatalf("value %d: the clean wire does not load: %+v", i, crep) }
    for _, d := range damages(wire) {
     ok, drep, text := tolerant(d)
-    fmt.Fprintf(sum, "%v %v %q|", ok, drep.Malformed, text)
+    fmt.Fprintf(sum, "%v %v %q|", ok, (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed"), text)
     m, merr := RootLoadMeasureReason(d)
-    bad := drep.Malformed || !ok && drep.NonFiniteFloat == "" // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
+    bad := (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed") || !ok && !drep.Refused() // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
     refused := m < 0
-    if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
+    if refused && (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed") && !errors.Is(merr, TableRefuseWireDamaged) {
      otherReason++; hits++
      if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v: a wire the load calls malformed is refused with a reason other than wire_damaged\n  damaged %x\n  clean   %x", i, m, merr, d, wire)) }
     }
     if bad != refused || (!refused && (merr != nil || m != RootLoadMeasure(d))) || (refused && (m != -1 || merr == nil)) {
      hits++
-     if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v; load ok=%v malformed=%v unknown=%d mismatch=%d\n  damaged %x\n  clean   %x", i, m, merr, ok, drep.Malformed, drep.Unknown, drep.KindMismatch, d, wire)) }
+     if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v; load ok=%v malformed=%v unknown=%d mismatch=%d\n  damaged %x\n  clean   %x", i, m, merr, ok, (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed"), drep.Unknown, drep.Refusal, d, wire)) }
     }
    }
   }
@@ -368,7 +368,7 @@ var measureMalformedSeed1Probe = `package probe
   if n > 1<<30 { huge++; return false, rep, []byte("huge") }
   raw := make([]byte, n+64)
   off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-  v := RootLoadTolerant(raw[off:off+uintptr(n)], w, &rep)
+  v := RootLoad(raw[off:off+uintptr(n)], w, &rep)
   if v == nil { return false, rep, nil }
   tn := RootToJSONMeasure(v)
   if tn < 0 { return true, rep, []byte(fmt.Sprintf("unwritable %d", tn)) }
@@ -421,20 +421,20 @@ var measureMalformedSeed1Probe = `package probe
    if m, merr := RootLoadMeasureReason(wire); merr != nil || m != RootLoadMeasure(wire) {
     t.Fatalf("value %d: the clean wire measures %d %v, the load needs %d: %x", i, m, merr, RootLoadMeasure(wire), wire)
    }
-   if ok, crep, _ := tolerant(wire); !ok || crep.Malformed { t.Fatalf("value %d: the clean wire does not load: %+v", i, crep) }
+   if ok, crep, _ := tolerant(wire); !ok || (crep.Refusal.Error() == "wire_damaged" || crep.Refusal.Error() == "malformed") { t.Fatalf("value %d: the clean wire does not load: %+v", i, crep) }
    for _, d := range damages(wire) {
     ok, drep, text := tolerant(d)
-    fmt.Fprintf(sum, "%v %v %q|", ok, drep.Malformed, text)
+    fmt.Fprintf(sum, "%v %v %q|", ok, (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed"), text)
     m, merr := RootLoadMeasureReason(d)
-    bad := drep.Malformed || !ok && drep.NonFiniteFloat == "" // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
+    bad := (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed") || !ok && !drep.Refused() // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
     refused := m < 0
-    if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
+    if refused && (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed") && !errors.Is(merr, TableRefuseWireDamaged) {
      otherReason++; hits++
      if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v: a wire the load calls malformed is refused with a reason other than wire_damaged\n  damaged %x\n  clean   %x", i, m, merr, d, wire)) }
     }
     if bad != refused || (!refused && (merr != nil || m != RootLoadMeasure(d))) || (refused && (m != -1 || merr == nil)) {
      hits++
-     if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v; load ok=%v malformed=%v unknown=%d mismatch=%d\n  damaged %x\n  clean   %x", i, m, merr, ok, drep.Malformed, drep.Unknown, drep.KindMismatch, d, wire)) }
+     if len(first) < 16 { first = append(first, fmt.Sprintf("value %d: measure %d %v; load ok=%v malformed=%v unknown=%d mismatch=%d\n  damaged %x\n  clean   %x", i, m, merr, ok, (drep.Refusal.Error() == "wire_damaged" || drep.Refusal.Error() == "malformed"), drep.Unknown, drep.Refusal, d, wire)) }
     }
    }
   }

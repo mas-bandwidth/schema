@@ -146,7 +146,7 @@ func landed(t *testing.T, form string, c fsCase, got, want fsBits) {
 // clean: a finite special value is an ordinary value to every counter.
 func clean(t *testing.T, form string, c fsCase, r *TableReport) {
 	t.Helper()
-	if r.Clamped != 0 || r.KindMismatch != 0 || r.Unknown != 0 || r.Widened != 0 || r.Duplicate != 0 || r.Malformed || r.Reason != "" || r.NonFiniteFloat != "" || r.Err() != nil {
+	if r.Refused() || r.Unknown != 0 || r.Widened != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Reason != "" || r.Err() != nil {
 		t.Errorf("%s %s: counted %+v, want a clean read", form, c.name, *r)
 	}
 }
@@ -155,7 +155,7 @@ func clean(t *testing.T, form string, c fsCase, r *TableReport) {
 // its typed reason is non_finite_float.
 func refused(t *testing.T, form string, ok bool, r *TableReport, field string) {
 	t.Helper()
-	if ok || r.NonFiniteFloat != field || r.Reason != "non_finite_float: "+field || !errors.Is(r.Err(), TableRefuseNonFiniteFloat) {
+	if ok || r.Field != field || r.Reason != "non_finite_float: "+field || !errors.Is(r.Err(), TableRefuseNonFiniteFloat) {
 		t.Errorf("%s: ok %v report %+v Err %v, want the refusal non_finite_float: %s", form, ok, *r, r.Err(), field)
 	}
 }
@@ -275,7 +275,7 @@ func TestRoot(t *testing.T) {
 		}
 		var got Root
 		var rep TableReport
-		if !RootLoadTolerant(&got, wire, &rep) {
+		if !RootLoad(&got, wire, &rep) {
 			t.Fatalf("root %s: load %+v", c.name, rep)
 		}
 		landed(t, "root wire", c, rootBits(&got), want)
@@ -312,12 +312,12 @@ func TestRoot(t *testing.T) {
 		// THE MESSAGE FORM elides by the same bit compare and carries the pattern.
 		var wrep TableReport
 		buf := make([]byte, RootMeasureMessages(values, nil))
-		if RootSaveMessages(values, buf, &wrep) != int64(len(buf)) || wrep.Clamped != 0 {
+		if RootSaveMessages(values, buf, &wrep) != int64(len(buf)) || wrep.Refused() {
 			t.Fatalf("message %s: save %+v", c.name, wrep)
 		}
 		msgs := make([]Root, 1)
 		var mrep TableReport
-		if k, ok := RootLoadMessagesTolerant(msgs, vocabulary(t), buf, &mrep); k != 1 || !ok {
+		if k, ok := RootLoadMessages(msgs, vocabulary(t), buf, &mrep); k != 1 || !ok {
 			t.Fatalf("message %s: load %d %v %+v", c.name, k, ok, mrep)
 		}
 		landed(t, "message", c, rootBits(&msgs[0]), want)
@@ -354,7 +354,7 @@ func TestVar(t *testing.T) {
 			t.Fatal("builder")
 		}
 		var rep TableReport
-		if !VarLoadBuilderTolerant(&b, wire, &rep) {
+		if !VarLoadBuilder(&b, wire, &rep) {
 			t.Fatalf("var %s: load %+v", c.name, rep)
 		}
 		landed(t, "var wire", c, varBits(b.GetRoot()), want)
@@ -423,13 +423,13 @@ func TestFlippedPayload(t *testing.T) {
 			vwire = flipped(t, vwire, from, to)
 			var got Root
 			var rep TableReport
-			ok := RootLoadTolerant(&got, wire, &rep)
+			ok := RootLoad(&got, wire, &rep)
 			_, strictErr := RootReadStrict(wire)
 			vstrict, vErr := VarReadStrict(vwire)
 			var b VarBuilder
 			b.Init()
 			var brep TableReport
-			bok := VarLoadBuilderTolerant(&b, vwire, &brep)
+			bok := VarLoadBuilder(&b, vwire, &brep)
 			b.Shutdown()
 			if c.finite {
 				want := uint64(c.b64)
@@ -462,7 +462,7 @@ func TestFlippedPayload(t *testing.T) {
 	RootSave(&r, wire)
 	var got Root
 	var rep TableReport
-	ok := RootLoadTolerant(&got, flipped(t, wire, half64, le64(0x7FF8000000000000)), &rep)
+	ok := RootLoad(&got, flipped(t, wire, half64, le64(0x7FF8000000000000)), &rep)
 	refused(t, "union arm", ok, &rep, "Shape.r")
 }
 
@@ -481,7 +481,7 @@ func TestMessageFlipped(t *testing.T) {
 		bad := flippedBits(t, buf, f64(0.5), bits, 64)
 		msgs := make([]Root, 1)
 		var mrep TableReport
-		k, ok := RootLoadMessagesTolerant(msgs, vocabulary(t), bad, &mrep)
+		k, ok := RootLoadMessages(msgs, vocabulary(t), bad, &mrep)
 		if k != 0 {
 			t.Errorf("message %#x: delivered %d bodies", bits, k)
 		}
@@ -645,11 +645,11 @@ func TestFixed(t *testing.T) {
 				var rep TableReport
 				var k int64
 				if tolerant {
-					k = FlatFixedLoadTolerant(got, buf, plan[:], &rep)
+					k = FlatFixedLoad(got, buf, plan[:], &rep)
 				} else {
 					k = FlatFixedLoad(got, buf, plan[:], &rep)
 				}
-				if k != -1 || rep.NonFiniteFloat != "Flat."+site.field || rep.Reason != "non_finite_float: Flat."+site.field || !errors.Is(rep.Err(), TableRefuseNonFiniteFloat) {
+				if k != -1 || rep.Field != "Flat."+site.field || rep.Reason != "non_finite_float: Flat."+site.field || !errors.Is(rep.Err(), TableRefuseNonFiniteFloat) {
 					t.Errorf("fixed %s %s tolerant=%v: %d %+v", site.field, c.name, tolerant, k, rep)
 				}
 				var reset Flat
@@ -720,7 +720,7 @@ func TestKeyed(t *testing.T) {
 			}
 			var got Keyed
 			var rep TableReport
-			if KeyedLoadTolerant(&got, wire, &rep) || rep.Reason != "non_finite_float: Keyed.ks" || math.Float64bits(got.Ks[1]) != 0 {
+			if KeyedLoad(&got, wire, &rep) || rep.Reason != "non_finite_float: Keyed.ks" || math.Float64bits(got.Ks[1]) != 0 {
 				t.Errorf("keyed %s: tolerant %+v landed %#x", c.name, rep, math.Float64bits(got.Ks[1]))
 			}
 			if _, err := KeyedReadStrict(wire); !errors.Is(err, TableRefuseNonFiniteFloat) {
@@ -735,7 +735,7 @@ func TestKeyed(t *testing.T) {
 		}
 		var got Keyed
 		var rep TableReport
-		if !KeyedLoadTolerant(&got, wire, &rep) || math.Float64bits(got.Ks[1]) != c.b64 || math.Float64bits(got.Ks[0]) != 0 {
+		if !KeyedLoad(&got, wire, &rep) || math.Float64bits(got.Ks[1]) != c.b64 || math.Float64bits(got.Ks[0]) != 0 {
 			t.Errorf("keyed %s: landed %#x %#x %+v", c.name, math.Float64bits(got.Ks[0]), math.Float64bits(got.Ks[1]), rep)
 		}
 		if _, err := KeyedReadStrict(wire); err != nil {

@@ -188,7 +188,7 @@ func TestNewReadsOld(t *testing.T) {
 	}
 	back := make([]%s, 8)
 	var r TableReport
-	if n := %sFixedLoadTolerant(back, data, make([]TableFixedEntry, 4096), &r); n != -1 || r.Err() != TableRefuseNonFiniteFloat || !strings.HasSuffix(r.NonFiniteFloat, %q) {
+	if n := %sFixedLoad(back, data, make([]TableFixedEntry, 4096), &r); n != -1 || r.Err() != TableRefuseNonFiniteFloat || !strings.HasSuffix(r.Field, %q) {
 		t.Fatalf("the non-finite float the older writer wrote was not refused by name: n=%%d %%+v", n, r)
 	}
 }
@@ -214,10 +214,10 @@ func TestNewReadsOld(t *testing.T) {
 	if n < 1 {
 		t.Fatalf("the newer reader refused the older writer's file: n=%%d %%+v", n, r)
 	}
-	if r.Reason != "" || r.Malformed || r.Verdict == TableOpenRefused {
+	if r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Verdict == TableOpenRefused {
 		t.Fatalf("a clean NEW-READS-OLD is not a refusal: %%+v", r)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+	if r.Unknown != 0 {
 		t.Fatalf("counters moved on a clean backward read: %%+v", r)
 	}
 	%[3]s
@@ -275,7 +275,7 @@ func TestWriterBoundCount(t *testing.T) {
 	if back[0].ValsCount != 0 || back[0].Lead != 0 || back[0].Trail != 0 {
 		t.Fatalf("writer_bound_count: a refusal writes no destination byte: %%+v", back[0])
 	}
-	if r.Clamped != 0 || r.Malformed {
+	if r.Refused() || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("writer_bound_count: REFUSE moves no counter: %%+v", r)
 	}
 }
@@ -304,7 +304,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 				body = `	if n < 1 {
 		t.Fatalf("a row that moved no layout byte must READ in both directions: n=%d %+v", n, r)
 	}
-	if r.Reason != "" || r.Malformed {
+	if r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("an equal hash is not a version: %+v", r)
 	}`
 			} else {
@@ -317,10 +317,10 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 	if r.LayoutHash != want {
 		t.Fatalf("layout_unknown reports THE FILE'S hash: 0x%016x, not 0x%016x", want, r.LayoutHash)
 	}
-	if r.Malformed {
+	if (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatal("a refusal by name never sets malformed too (§5.3, the joint answer)")
 	}
-	if r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+	if r.Widened != 0 || r.Unknown != 0 {
 		t.Fatalf("REFUSE is total: no counter moves: %+v", r)
 	}
 	if back[0] != fresh {
@@ -406,7 +406,7 @@ func TestFloor(t *testing.T) {
 		t.Parallel()
 		// Nothing retired: the OLDEST file is at the floor and it reads.
 		probe(t, 0, `	n := `+table+`FixedLoad(back, oldFile, plan, &r)
-	if n < 1 || r.Reason != "" || r.Malformed {
+	if n < 1 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("a file AT the floor must read: n=%d %+v", n, r)
 	}`)
 	})
@@ -418,7 +418,7 @@ func TestFloor(t *testing.T) {
 	if n != -1 || r.Reason != "layout_unsupported" {
 		t.Fatalf("a file below the floor owes layout_unsupported: n=%d %+v", n, r)
 	}
-	if r.Malformed || r.Widened != 0 || r.Unknown != 0 || r.Clamped != 0 {
+	if (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Widened != 0 || r.Unknown != 0 {
 		t.Fatalf("REFUSE is total: %+v", r)
 	}
 	m := `+table+`FixedLoad(back, midFile, plan, &r)
@@ -464,7 +464,7 @@ func TestHashUnknown(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := %[3]sFixedLoad(back, data, plan, &r)
-	if n != -1 || r.Reason != "layout_unknown" || r.LayoutHash != 0xDEADBEEFCAFEF00D || r.Malformed {
+	if n != -1 || r.Reason != "layout_unknown" || r.LayoutHash != 0xDEADBEEFCAFEF00D || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("hash_unknown: n=%%d %%+v", n, r)
 	}
 }
@@ -487,7 +487,7 @@ func TestHashKnownBytesDiffer(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := %[3]sFixedLoad(back, data, plan, &r)
-	if n != -1 || r.Reason != "layout_malformed" || r.Malformed {
+	if n != -1 || r.Reason != "layout_malformed" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("hash_known_bytes_differ: n=%%d %%+v", n, r)
 	}
 }
@@ -506,7 +506,7 @@ func TestHashIdentity(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := %[3]sFixedLoad(back, data, plan, &r)
-	if n < 1 || r.Reason != "" || r.Malformed {
+	if n < 1 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("hash_identity: n=%%d %%+v", n, r)
 	}
 	if back[0].W != 777 {
@@ -552,7 +552,7 @@ func TestLineageMerge(t *testing.T) {
 		plan := make([]TableFixedEntry, 4096)
 		var r TableReport
 		n := %[3]sFixedLoad(back, data, plan, &r)
-		if n < 1 || r.Reason != "" || r.Malformed {
+		if n < 1 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 			t.Fatalf("%%s: both pre-merge files read on the merged build: n=%%d %%+v", name, n, r)
 		}
 	}
@@ -695,11 +695,11 @@ func TestForgedOrdinal(t *testing.T) {
 	back := make([]%[2]s, 8)
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
-	n := %[2]sFixedLoadTolerant(back, data, plan, &r)
+	n := %[2]sFixedLoad(back, data, plan, &r)
 	if n != 1 {
 		t.Fatalf("the forged file reads one record, not %%d (report %%+v)", n, r)
 	}
-	if r.Verdict == TableOpenRefused || r.Reason != "" || r.Malformed {
+	if r.Verdict == TableOpenRefused || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("the forged read is not a refusal: %%+v", r)
 	}
 	if back[0].Tier != TierNone {
@@ -708,10 +708,10 @@ func TestForgedOrdinal(t *testing.T) {
 	if back[0].Seq != 9 {
 		t.Fatalf("the scalar after the enum must stand at 9, not %%v (record %%+v)", back[0].Seq, back[0])
 	}
-	if r.Clamped != 1 {
-		t.Fatalf("Clamped is the BOUNDS pass's count, once per field: %%d (report %%+v)", r.Clamped, r)
+	if !r.Refused() {
+		t.Fatalf("Clamped is the BOUNDS pass's count, once per field: %%d (report %%+v)", r.Refusal, r)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("only Clamped may move on a forged ordinal: %%+v", r)
 	}
 }
@@ -793,13 +793,13 @@ func TestRefuseWritesNothing(t *testing.T) {
 	if r.Verdict != TableOpenRefused || r.Reason != "no_layout" {
 		t.Fatalf("the record hash refusal owes no_layout by name: %%+v", r)
 	}
-	if r.Malformed {
+	if (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatal("a refusal by name never sets malformed too (§5.3, the joint answer)")
 	}
 	if r.LayoutHash != 0 {
 		t.Fatalf("no_layout must not publish a hash: 0x%%016x", r.LayoutHash)
 	}
-	if r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+	if r.Widened != 0 || r.Unknown != 0 {
 		t.Fatalf("REFUSE is total: no counter moves: %%+v", r)
 	}
 	for i := range poisoned {

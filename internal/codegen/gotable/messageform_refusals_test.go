@@ -86,7 +86,7 @@ func TestSecondAnnouncement(t *testing.T) {
 	}
 	before := v.Count
 	var second TableReport
-	if AnnounceRead(v, ann, &second) || second.Verdict != TableOpenRefused || second.Reason != "second_announcement" || second.Malformed {
+	if AnnounceRead(v, ann, &second) || second.Verdict != TableOpenRefused || second.Reason != "second_announcement" || (second.Refusal.Error() == "wire_damaged" || second.Refusal.Error() == "malformed") {
 		t.Fatalf("a second announcement was not refused by name: %+v", second)
 	}
 	if v.Count != before {
@@ -134,7 +134,7 @@ func TestVocabularyTooLarge(t *testing.T) {
 	entries := new(TableVocabulary)
 	entries.Init(make([]TableMessageEntry, 1))
 	var report TableReport
-	if AnnounceRead(entries, ann, &report) || report.Verdict != TableOpenRefused || report.Reason != "vocabulary_too_large" || report.Malformed || entries.Announced {
+	if AnnounceRead(entries, ann, &report) || report.Verdict != TableOpenRefused || report.Reason != "vocabulary_too_large" || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || entries.Announced {
 		t.Fatalf("entry count bound: %+v", report)
 	}
 	// the vocabulary bytes past MaxBytes
@@ -142,7 +142,7 @@ func TestVocabularyTooLarge(t *testing.T) {
 	bytes.Init(make([]TableMessageEntry, TableMessageEntriesHere))
 	bytes.MaxBytes = 4
 	var byteReport TableReport
-	if AnnounceRead(bytes, ann, &byteReport) || byteReport.Verdict != TableOpenRefused || byteReport.Reason != "vocabulary_too_large" || byteReport.Malformed || bytes.Announced {
+	if AnnounceRead(bytes, ann, &byteReport) || byteReport.Verdict != TableOpenRefused || byteReport.Reason != "vocabulary_too_large" || (byteReport.Refusal.Error() == "wire_damaged" || byteReport.Refusal.Error() == "malformed") || bytes.Announced {
 		t.Fatalf("vocabulary byte bound: %+v", byteReport)
 	}
 }
@@ -269,7 +269,7 @@ func TestAnnouncementStrictChecks(t *testing.T) {
 		v := new(TableVocabulary)
 		v.Init(make([]TableMessageEntry, TableMessageEntriesHere))
 		var report TableReport
-		if AnnounceRead(v, tc.data, &report) || !report.Malformed || report.Verdict == TableOpenRefused || v.Announced {
+		if AnnounceRead(v, tc.data, &report) || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict == TableOpenRefused || v.Announced {
 			t.Fatalf("%s: want malformed and not a refusal, got %+v", tc.name, report)
 		}
 	}
@@ -277,7 +277,7 @@ func TestAnnouncementStrictChecks(t *testing.T) {
 	v := new(TableVocabulary)
 	v.Init(make([]TableMessageEntry, TableMessageEntriesHere))
 	var report TableReport
-	if AnnounceRead(v, announcement(append(versionField(version), 2, 13)), &report) || !report.Malformed || v.BuildVersion != version || v.Announced {
+	if AnnounceRead(v, announcement(append(versionField(version), 2, 13)), &report) || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || v.BuildVersion != version || v.Announced {
 		t.Fatalf("the refused announcement did not keep the build version: %+v version=%#x", report, v.BuildVersion)
 	}
 }
@@ -322,7 +322,7 @@ func TestBatchTooLarge(t *testing.T) {
 	storage := make([]Root, 1)
 	var report TableReport
 	count, ok := RootLoadMessages(storage, vocab, buf, &report)
-	if ok || count != 2 || report.Verdict != TableOpenRefused || report.Reason != "batch_too_large" || report.Malformed {
+	if ok || count != 2 || report.Verdict != TableOpenRefused || report.Reason != "batch_too_large" || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 		t.Fatalf("read over capacity: count=%d ok=%v %+v", count, ok, report)
 	}
 	if storage[0] != (Root{}) {

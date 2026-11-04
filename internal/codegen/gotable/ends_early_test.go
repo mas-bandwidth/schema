@@ -58,7 +58,7 @@ func checkEarly(t *testing.T, name string, wire []byte) {
 	r, open := tableOpen(wire, &ignored)
 	var value Root
 	var report TableReport
-	ok := RootLoadTolerant(&value, wire, &report)
+	ok := RootLoad(&value, wire, &report)
 	if open != TableOpenOk {
 		if report.Verdict != open {
 			t.Fatalf("%s: open %d load %d", name, open, report.Verdict)
@@ -69,12 +69,12 @@ func checkEarly(t *testing.T, name string, wire []byte) {
 	probe.Offset = 0
 	early := probe.EndsEarly()
 	if (report.Verdict == TableOpenDamaged) != early {
-		t.Fatalf("%s: framing early=%v load verdict=%v malformed=%v", name, early, report.Verdict, report.Malformed)
+		t.Fatalf("%s: framing early=%v load verdict=%v malformed=%v", name, early, report.Verdict, (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed"))
 	}
 	if !early {
 		return
 	}
-	if ok || !report.Malformed || value.A != 5 || report.Unknown != 0 || report.KindMismatch != 0 || report.Widened != 0 || report.Clamped != 0 || report.Duplicate != 0 {
+	if ok || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || value.A != 5 || report.Unknown != 0 || report.Widened != 0 {
 		t.Fatalf("%s: damaged path kept work: ok=%v a=%d report=%+v", name, ok, value.A, report)
 	}
 }
@@ -123,12 +123,12 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		checkEarly(t, "mismatch-then-end", got)
 		var value Root
 		var report TableReport
-		ok := RootLoadTolerant(&value, got, &report)
+		ok := RootLoad(&value, got, &report)
 		if trailing == 0 {
-			if !ok || report.Verdict != TableOpenOk || value.A != 1 || report.KindMismatch != 1 || report.Malformed {
+			if !ok || report.Verdict != TableOpenOk || value.A != 1 || !report.Refused() || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 				t.Fatalf("two fields no trailing: ok=%v a=%d report=%+v", ok, value.A, report)
 			}
-		} else if ok || report.Verdict != TableOpenDamaged || value.A != 5 || report.KindMismatch != 0 || !report.Malformed {
+		} else if ok || report.Verdict != TableOpenDamaged || value.A != 5 || report.Refused() || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 			t.Fatalf("two fields trailing %d: ok=%v a=%d report=%+v", trailing, ok, value.A, report)
 		}
 	}
@@ -147,7 +147,7 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		clean := finish(&w, 0)
 		var value Root
 		var report TableReport
-		if !RootLoadTolerant(&value, clean, &report) || report.Unknown != 1 || value.A != 11 || report.Malformed {
+		if !RootLoad(&value, clean, &report) || report.Unknown != 1 || value.A != 11 || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 			t.Fatalf("unknown kept: a=%d report=%+v", value.A, report)
 		}
 		var ids2 TableIds
@@ -164,7 +164,7 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		checkEarly(t, "unknown-then-early-end", early)
 		var after Root
 		var damaged TableReport
-		if RootLoadTolerant(&after, early, &damaged) || damaged.Verdict != TableOpenDamaged || damaged.Unknown != 0 || after.A != 5 {
+		if RootLoad(&after, early, &damaged) || damaged.Verdict != TableOpenDamaged || damaged.Unknown != 0 || after.A != 5 {
 			t.Fatalf("unknown then early: a=%d report=%+v", after.A, damaged)
 		}
 		// The C++ analogue of this walk increments unknown before the
@@ -173,7 +173,7 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		// leave MaxInt32, default a, and Damaged.
 		var seededVal Root
 		seeded := TableReport{Unknown: math.MaxInt32}
-		if RootLoadTolerant(&seededVal, early, &seeded) || seeded.Verdict != TableOpenDamaged || seeded.Unknown != math.MaxInt32 || seededVal.A != 5 {
+		if RootLoad(&seededVal, early, &seeded) || seeded.Verdict != TableOpenDamaged || seeded.Unknown != math.MaxInt32 || seededVal.A != 5 {
 			t.Fatalf("seeded unknown then early: a=%d report=%+v", seededVal.A, seeded)
 		}
 	}
@@ -193,12 +193,12 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		checkEarly(t, "reserved-id-before-early-end", got)
 		var value Root
 		var report TableReport
-		ok := RootLoadTolerant(&value, got, &report)
+		ok := RootLoad(&value, got, &report)
 		if trailing == 0 {
-			if ok || report.Verdict != TableOpenBodyStopped || !report.Malformed || value.A != 5 { // damage discards the whole load (docs/SPEC-TABLES.md §4): the value is at its defaults
+			if ok || report.Verdict != TableOpenBodyStopped || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || value.A != 5 { // damage discards the whole load (docs/SPEC-TABLES.md §4): the value is at its defaults
 				t.Fatalf("reserved trailing 0: ok=%v a=%d report=%+v", ok, value.A, report)
 			}
-		} else if ok || report.Verdict != TableOpenDamaged || !report.Malformed || value.A != 5 || report.Unknown != 0 || report.KindMismatch != 0 {
+		} else if ok || report.Verdict != TableOpenDamaged || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || value.A != 5 || report.Unknown != 0 {
 			t.Fatalf("reserved trailing %d: ok=%v a=%d report=%+v", trailing, ok, value.A, report)
 		}
 	}

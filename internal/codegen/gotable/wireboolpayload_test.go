@@ -98,10 +98,10 @@ func TestGoWireBoolPayloadNot0Or1(t *testing.T) {
 		var report TableReport
 		// a bool payload other than 0 or 1 is damage, and damage discards the
 		// whole load (docs/SPEC-TABLES.md §4): the tolerant read hands back nothing
-		if got := PatrolLoadTolerant(buf, bad, &report); got != nil {
+		if got := PatrolLoad(buf, bad, &report); got != nil {
 			t.Fatalf("tolerant read of malformed %s handed back a value: %+v", field, report)
 		}
-		if !report.Malformed {
+		if !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 			t.Fatalf("%s did not set malformed", field)
 		}
 		if report.Reason != "malformed: "+field {
@@ -122,7 +122,7 @@ func TestGoWireBoolPayloadNot0Or1(t *testing.T) {
 		t.Fatal("clean wire has no load region")
 	}
 	var report TableReport
-	got := PatrolLoadTolerant(buf, clean, &report)
+	got := PatrolLoad(buf, clean, &report)
 	if got == nil || report != (TableReport{}) {
 		t.Fatalf("0x01 wire did not read clean: value=%+v report=%+v", got, report)
 	}
@@ -182,7 +182,7 @@ func TestGoWireBoolPayloadNot0Or1(t *testing.T) {
 				t.Fatalf("valid writer wire has no load region: %x", wire)
 			}
 			report := TableReport{}
-			loaded := PatrolLoadTolerant(buf, wire, &report)
+			loaded := PatrolLoad(buf, wire, &report)
 			if loaded == nil || report != (TableReport{}) {
 				t.Fatalf("writer wire reads malformed: active=%t has_target=%t value=%+v report=%+v", active, hasTarget, loaded, report)
 			}

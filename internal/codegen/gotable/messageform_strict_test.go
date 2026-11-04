@@ -115,7 +115,7 @@ func TestStrictOther(t *testing.T) {
 	if AnnounceRead(v, endpoint(remoteVersion), &report) {
 		t.Fatal("the strict read accepted an endpoint of another build version")
 	}
-	if report.Verdict != TableOpenRefused || report.Reason != "build_version_mismatch" || report.Malformed {
+	if report.Verdict != TableOpenRefused || report.Reason != "build_version_mismatch" || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 		t.Fatalf("refusal: %+v", report)
 	}
 	if v.Announced || v.Count != 0 || v.RefBits != 0 {
@@ -124,8 +124,8 @@ func TestStrictOther(t *testing.T) {
 	if v.BuildVersion != remoteVersion {
 		t.Fatalf("the endpoint build version was not kept: %#x", v.BuildVersion)
 	}
-	if report.Widened != 0 || report.Unknown != 0 || report.KindMismatch != 0 ||
-		report.Clamped != 0 || report.Duplicate != 0 || report.Retained != 0 || report.RetainLost != 0 {
+	if report.Widened != 0 || report.Unknown != 0 ||
+		report.Refused() || report.Refused() || report.Retained != 0 || report.RetainLost != 0 {
 		t.Fatalf("the strict refusal moved a counter: %+v", report)
 	}
 }

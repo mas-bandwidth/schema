@@ -62,17 +62,17 @@ func aligned(n int)[]byte{raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&
 func TestOpenNode(t *testing.T){
  cyclic:=%#v;shared:=%#v
  var r TableReport
- if GraphLoadTolerant(aligned(1<<12),cyclic,&r)!=nil||!r.Malformed{t.Fatalf("cycle: the region load handed back a cyclic graph %%+v",r)}
+ if GraphLoad(aligned(1<<12),cyclic,&r)!=nil||!(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed"){t.Fatalf("cycle: the region load handed back a cyclic graph %%+v",r)}
  r=TableReport{};retain:=TableRetain{Bytes:make([]byte,1024),Ids:make([]TableRetainID,64)}
- if GraphLoadRetain(aligned(1<<12),cyclic,&retain,&r)!=nil||!r.Malformed{t.Fatalf("cycle: the retaining load handed back a cyclic graph %%+v",r)}
+ if GraphLoadRetain(aligned(1<<12),cyclic,&retain,&r)!=nil||!(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed"){t.Fatalf("cycle: the retaining load handed back a cyclic graph %%+v",r)}
  r=TableReport{};var b GraphBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown()
- if GraphLoadBuilderTolerant(&b,cyclic,&r)||!r.Malformed{t.Fatalf("cycle: the builder load did not refuse %%+v",r)}
- r=TableReport{};v:=GraphLoadTolerant(aligned(1<<12),shared,&r)
- if v==nil||r.Malformed{t.Fatalf("share: the region load refused a shared closed node %%+v",r)}
+ if GraphLoadBuilder(&b,cyclic,&r)||!(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed"){t.Fatalf("cycle: the builder load did not refuse %%+v",r)}
+ r=TableReport{};v:=GraphLoad(aligned(1<<12),shared,&r)
+ if v==nil||(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed"){t.Fatalf("share: the region load refused a shared closed node %%+v",r)}
  if GraphMeasure(v)!=int64(len(shared)){t.Fatalf("share: the region load did not keep the share")}
- r=TableReport{};if GraphLoadRetain(aligned(1<<12),shared,&retain,&r)==nil||r.Malformed{t.Fatalf("share: the retaining load refused a shared closed node %%+v",r)}
+ r=TableReport{};if GraphLoadRetain(aligned(1<<12),shared,&retain,&r)==nil||(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed"){t.Fatalf("share: the retaining load refused a shared closed node %%+v",r)}
  r=TableReport{};var c GraphBuilder;if !c.Init(){t.Fatal("init")};defer c.Shutdown()
- if !GraphLoadBuilderTolerant(&c,shared,&r)||r.Malformed{t.Fatalf("share: the builder load refused a shared closed node %%+v",r)}
+ if !GraphLoadBuilder(&c,shared,&r)||(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed"){t.Fatalf("share: the builder load refused a shared closed node %%+v",r)}
 }
 `, cyclic, shared)
 	runGenerated(t, openNodeUnit, test)
@@ -220,22 +220,22 @@ func TestStoredGraph(t *testing.T){
  for _,tc:=range []struct{name string;wire []byte;good bool}{%s}{
   size:=GraphLoadMeasure(tc.wire);if size<0{t.Fatalf("%%s measure",tc.name)}
   region:=aligned(int(size));var r TableReport
-  v:=GraphLoadTolerant(region,tc.wire,&r)
-  if (v!=nil)!=tc.good||r.Malformed==tc.good{t.Fatalf("%%s region: %%+v",tc.name,r)}
+  v:=GraphLoad(region,tc.wire,&r)
+  if (v!=nil)!=tc.good||(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")==tc.good{t.Fatalf("%%s region: %%+v",tc.name,r)}
   if !tc.good&&!bytes.Equal(region,make([]byte,len(region))){t.Fatalf("%%s region not discarded",tc.name)}
   if tc.good {
-   rr:=TableReport{};if n:=testing.AllocsPerRun(10,func(){rr=TableReport{};if GraphLoadTolerant(region,tc.wire,&rr)==nil{panic("load")}});n!=0{t.Fatalf("%%s region allocated %%v",tc.name,n)}
+   rr:=TableReport{};if n:=testing.AllocsPerRun(10,func(){rr=TableReport{};if GraphLoad(region,tc.wire,&rr)==nil{panic("load")}});n!=0{t.Fatalf("%%s region allocated %%v",tc.name,n)}
    if tc.name=="direct legal"||tc.name=="list legal"||tc.name=="map legal"||tc.name=="array legal" {
     out:=make([]byte,len(tc.wire));if GraphSave(v,out)!=int64(len(out))||!bytes.Equal(out,tc.wire){t.Fatalf("%%s resolved references changed wire",tc.name)}
    }
   }
   retain:=TableRetain{Bytes:make([]byte,4096),Ids:make([]TableRetainID,1024)}
   r=TableReport{};v=GraphLoadRetain(region,tc.wire,&retain,&r)
-  if (v!=nil)!=tc.good||r.Malformed==tc.good{t.Fatalf("%%s retain: %%+v",tc.name,r)}
+  if (v!=nil)!=tc.good||(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")==tc.good{t.Fatalf("%%s retain: %%+v",tc.name,r)}
   if !tc.good&&(retain.Used!=0||retain.Count!=0){t.Fatalf("%%s retain not discarded",tc.name)}
   var b GraphBuilder;if !b.Init(){t.Fatal("init")}
-  r=TableReport{};ok:=GraphLoadBuilderTolerant(&b,tc.wire,&r)
-  if ok!=tc.good||r.Malformed==tc.good{t.Fatalf("%%s builder: %%+v",tc.name,r)}
+  r=TableReport{};ok:=GraphLoadBuilder(&b,tc.wire,&r)
+  if ok!=tc.good||(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")==tc.good{t.Fatalf("%%s builder: %%+v",tc.name,r)}
   b.Shutdown()
  }
 }
@@ -243,13 +243,13 @@ func TestStoredGraph(t *testing.T){
 func TestRefusedGraphDoesNotExposeIndices(t *testing.T){
  wire:=%#v;size:=GraphLoadMeasure(wire);if size<0{t.Fatal("measure")}
  region:=aligned(int(size));var r TableReport
- if GraphLoadTolerant(region,wire,&r)!=nil||r.NonFiniteFloat==""{t.Fatalf("non-finite region: %%+v",r)}
+ if GraphLoad(region,wire,&r)!=nil||!r.Refused(){t.Fatalf("non-finite region: %%+v",r)}
  if !bytes.Equal(region,make([]byte,len(region))){t.Fatal("non-finite region kept indices")}
  retain:=TableRetain{Bytes:make([]byte,4096),Ids:make([]TableRetainID,1024)}
- r=TableReport{};if GraphLoadRetain(region,wire,&retain,&r)!=nil||r.NonFiniteFloat==""||retain.Used!=0||retain.Count!=0{t.Fatalf("non-finite retain: %%+v",r)}
+ r=TableReport{};if GraphLoadRetain(region,wire,&retain,&r)!=nil||!r.Refused()||retain.Used!=0||retain.Count!=0{t.Fatalf("non-finite retain: %%+v",r)}
  var b GraphBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown()
  b.GetRoot().A=99;r=TableReport{}
- if GraphLoadBuilderTolerant(&b,wire,&r)||r.NonFiniteFloat==""{t.Fatalf("non-finite builder: %%+v",r)}
+ if GraphLoadBuilder(&b,wire,&r)||!r.Refused(){t.Fatalf("non-finite builder: %%+v",r)}
  if b.GetRoot().Next!=0||b.GetRoot().A!=0{t.Fatal("non-finite builder kept indices")}
 }
 `, cases.String(), finite)

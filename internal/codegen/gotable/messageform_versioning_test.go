@@ -154,9 +154,9 @@ func writeFiles(t *testing.T, dir string, files map[string][]byte) {
 // It is computed from the public surface alone and adds no library verb.
 const detectRecipe = `	detect := func() bool {
 		return vocab.BuildVersion != new.BuildVersion ||
-			report.Unknown != 0 || report.KindMismatch != 0 ||
-			report.Widened != 0 || report.Clamped != 0 ||
-			report.Duplicate != 0 || report.Malformed
+			report.Unknown != 0 ||
+			report.Widened != 0 || report.Refused() ||
+			report.Refused() || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed")
 	}`
 
 const sameSchema = `package endpoint
@@ -350,7 +350,7 @@ func TestOwnBuildVersion(t *testing.T) {
 	if report.Unknown != 1 {
 		t.Fatalf("the newer field is not counted once as unknown: %+v", report)
 	}
-	if report.KindMismatch != 0 || report.Widened != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Malformed {
+	if report.Refused() || report.Widened != 0 || report.Refused() || report.Refused() || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 		t.Fatalf("a skipped known kind moved another counter: %+v", report)
 	}
 	if decoded[0].A != 11 || decoded[0].B != -5 {
@@ -372,7 +372,7 @@ func TestOwnBuildVersion(t *testing.T) {
 	if !ok {
 		t.Fatalf("an older writer's batch was refused: %+v", report)
 	}
-	if report.Unknown != 0 || report.KindMismatch != 0 || report.Widened != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Malformed {
+	if report.Unknown != 0 || report.Widened != 0 || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 		t.Fatalf("an absent field is silent in §4's counters: %+v", report)
 	}
 	if decoded[0].Later != 7 {
@@ -401,7 +401,7 @@ func TestOwnBuildVersion(t *testing.T) {
 		t.Fatalf("the plain read took a kind-mismatched batch: %+v", report)
 	}
 	report = new.TableReport{}
-	count, ok = new.RootLoadMessagesTolerant(decoded, &vocab, out, &report)
+	count, ok = new.RootLoadMessages(decoded, &vocab, out, &report)
 	if !ok {
 		t.Fatalf("a widening writer's batch was refused: %+v", report)
 	}
@@ -411,13 +411,13 @@ func TestOwnBuildVersion(t *testing.T) {
 	if decoded[0].B != -5 {
 		t.Fatalf("the widened value is not exact: %+v", decoded[0])
 	}
-	if report.KindMismatch != 1 {
+	if !report.Refused() {
 		t.Fatalf("the int32-to-float32 change did not count as kind_mismatch: %+v", report)
 	}
 	if decoded[0].C != 0 {
 		t.Fatalf("a kind-mismatched field was misdecoded rather than defaulted: %+v", decoded[0])
 	}
-	if report.Unknown != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Malformed {
+	if report.Unknown != 0 || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 		t.Fatalf("a widening and a mismatch moved another counter: %+v", report)
 	}
 `+detectRecipe+`
@@ -437,7 +437,7 @@ func TestOwnBuildVersion(t *testing.T) {
 	if !ok {
 		t.Fatalf("a same-schema endpoint was refused: %+v", report)
 	}
-	if report.Unknown != 0 || report.KindMismatch != 0 || report.Widened != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Malformed {
+	if report.Unknown != 0 || report.Widened != 0 || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 		t.Fatalf("a same-schema read is silent: %+v", report)
 	}
 	if decoded[0].A != 11 || decoded[0].B != -5 {

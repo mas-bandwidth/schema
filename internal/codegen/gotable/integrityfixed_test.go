@@ -133,7 +133,7 @@ func TestGoWireIntegrityFixedForm(t *testing.T) {
 		src := strings.Join(sortedSources(generate(t, integrityFixedSchema)), "")
 		// the trailer check lives in the tolerant read the strict plain
 		// ReadingFixedLoad reads through (docs/SPEC-TABLES.md §6.5)
-		load := funcSource(src, "func ReadingFixedLoadTolerant(")
+		load := funcSource(src, "func ReadingFixedLoad(")
 		if !strings.Contains(load, "tableIntegrityHolds(data)") || !strings.Contains(load, `"integrity_mismatch"`) {
 			t.Errorf("ReadingFixedLoadTolerant does not check the trailer:\n%s", load)
 		}
@@ -144,7 +144,7 @@ func TestGoWireIntegrityFixedForm(t *testing.T) {
 		if !strings.Contains(funcSource(src, "func ReadingFixedSave("), "tableIntegritySeal") {
 			t.Error("ReadingFixedSave does not seal the trailer")
 		}
-		plain := funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func PlainReadingFixedLoadTolerant(") + funcSource(src, "func PlainReadingFixedSave(") + funcSource(src, "func PlainReadingFixedMeasure(")
+		plain := funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func PlainReadingFixedSave(") + funcSource(src, "func PlainReadingFixedMeasure(")
 		if strings.Contains(plain, "tableIntegrity") {
 			t.Error("a keyless fixed table's surface carries the trailer")
 		}
@@ -234,7 +234,7 @@ func TestIntegrityFixedVariableForm(t *testing.T) {
 				t.Fatalf("byte %d ^ 0x%02x did not reset out: %+v", i, x, out)
 			}
 			if i == 0 {
-				if rr.Verdict != TableOpenRefused || rr.Malformed || rr.Reason == "integrity_mismatch" {
+				if rr.Verdict != TableOpenRefused || (rr.Refusal.Error() == "wire_damaged" || rr.Refusal.Error() == "malformed") || rr.Reason == "integrity_mismatch" {
 					t.Fatalf("form byte ^ 0x%02x: got %+v", x, rr)
 				}
 				continue
@@ -253,7 +253,7 @@ func TestIntegrityFixedVariableForm(t *testing.T) {
 	}
 	var pr TableReport
 	var pout PlainFixedRow
-	if PlainFixedRowLoad(&pout, kw, &pr) || !pr.Malformed {
+	if PlainFixedRowLoad(&pout, kw, &pr) || !(pr.Refusal.Error() == "wire_damaged" || pr.Refusal.Error() == "malformed") {
 		t.Fatalf("trailered form-1 wire under keyless PlainFixedRowLoad: %+v", pr)
 	}
 	var kr TableReport

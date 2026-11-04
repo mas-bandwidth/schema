@@ -282,7 +282,7 @@ func TestOracleAndHostile(t *testing.T) {
 	// naming the field, and there is no value to write back.
 	const nonFinite = NONFINITE
 	if nonFinite != "" {
-		if n := ROOTFixedLoad(back, file, plan, &r); n != -1 || r.Err() != TableRefuseNonFiniteFloat || !strings.HasSuffix(r.NonFiniteFloat, "."+nonFinite) {
+		if n := ROOTFixedLoad(back, file, plan, &r); n != -1 || r.Err() != TableRefuseNonFiniteFloat || !strings.HasSuffix(r.Field, "."+nonFinite) {
 			t.Fatalf("oracle: the reference file carries a non-finite %s and was not refused by name: n=%d %+v", nonFinite, n, r)
 		}
 	} else {

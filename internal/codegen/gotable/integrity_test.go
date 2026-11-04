@@ -91,7 +91,7 @@ func flipAll[T any](t *testing.T, name string, wire []byte,
 			if n, err := measureReason(bad); n >= 0 || !errors.Is(err, want) { t.Errorf("%s: byte %d ^ 0x%02x LoadMeasureReason = %d, %v, want -1, %v", name, i, x, n, err, want) }
 			if i == 0 { continue }
 			r = TableReport{}
-			if got := load(region, bad, &r); got != nil || !r.Malformed || r.Reason != "integrity_mismatch" || r.Verdict != TableOpenDamaged {
+			if got := load(region, bad, &r); got != nil || !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Reason != "integrity_mismatch" || r.Verdict != TableOpenDamaged {
 				t.Errorf("%s: byte %d ^ 0x%02x tolerant Load = %v, report %+v; want nil, malformed, integrity_mismatch", name, i, x, got != nil, r)
 			}
 			if !errors.Is(r.Err(), TableRefuseIntegrityMismatch) { t.Errorf("%s: byte %d ^ 0x%02x report.Err() = %v", name, i, x, r.Err()) }

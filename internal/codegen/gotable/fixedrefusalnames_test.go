@@ -8,7 +8,7 @@ import (
 // naming rule: every refusal of the emitted <T>FixedLoad has a name, the
 // framing-damage returns included. Each case returns -1 with a non-empty
 // Reason EQUAL to one of the exported TableRefuse* members; the four
-// framing-damage returns keep report.Malformed set beside the name. One case
+// framing-damage returns keep (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") set beside the name. One case
 // per existing name, all over a small fixed table.
 func TestFixedLoadNamesEveryRefusal(t *testing.T) {
 	t.Parallel()

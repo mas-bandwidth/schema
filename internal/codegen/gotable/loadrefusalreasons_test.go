@@ -43,17 +43,17 @@ func TestLoadRefusalReasonPins(t *testing.T) {
  `
 	for _, leg := range []struct{ schema, name, read string }{
 		{"package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n", "measure",
-			"var b RootBuilder;if !b.Init(){t.Fatal(\"init\")};var rep TableReport;RootLoadBuilderTolerant(&b,w,&rep);b.Shutdown();_,mr:=RootLoadMeasureReason(w);measure:=member(mr);" +
+			"var b RootBuilder;if !b.Init(){t.Fatal(\"init\")};var rep TableReport;RootLoadBuilder(&b,w,&rep);b.Shutdown();_,mr:=RootLoadMeasureReason(w);measure:=member(mr);" +
 				// the builder's count-cap refusal moves no counter and is not damage (§2.9)
-				"if p.strict==\"count_over_extent_cap\"&&(rep.Widened!=0||rep.Clamped!=0||rep.KindMismatch!=0||rep.Unknown!=0||rep.Duplicate!=0||rep.Malformed){t.Errorf(\"%s: the count-cap refusal left %+v\",p.name,rep)}"},
+				"if p.strict==\"count_over_extent_cap\"&&(rep.Widened!=0||rep.Unknown!=0||(rep.Refusal.Error() == \"wire_damaged\" || rep.Refusal.Error() == \"malformed\")){t.Errorf(\"%s: the count-cap refusal left %+v\",p.name,rep)}"},
 		{"package probe\n table Root { f float32\n values []int32 }\n", "float",
-			"var b RootBuilder;if !b.Init(){t.Fatal(\"init\")};var rep TableReport;RootLoadBuilderTolerant(&b,w,&rep);b.Shutdown();_,mr:=RootLoadMeasureReason(w);measure:=member(mr);" +
+			"var b RootBuilder;if !b.Init(){t.Fatal(\"init\")};var rep TableReport;RootLoadBuilder(&b,w,&rep);b.Shutdown();_,mr:=RootLoadMeasureReason(w);measure:=member(mr);" +
 				// two refusals in one read: the first in read order names the
 				// builder load too (§2.9), and the count-cap refusal moves no counter
 				"first:=\"ok\";if strings.HasPrefix(rep.Reason,\"non_finite_float\"){first=\"non_finite_float\"}else if rep.Reason==\"count_over_extent_cap\"{first=rep.Reason};if first!=p.strict{t.Errorf(\"%s: the builder load names %s (%+v), the pin %s\",p.name,first,rep,p.strict)};" +
-				"if p.strict==\"count_over_extent_cap\"&&(rep.Widened!=0||rep.Clamped!=0||rep.KindMismatch!=0||rep.Unknown!=0||rep.Duplicate!=0||rep.Malformed){t.Errorf(\"%s: the count-cap refusal left %+v\",p.name,rep)}"},
+				"if p.strict==\"count_over_extent_cap\"&&(rep.Widened!=0||rep.Unknown!=0||(rep.Refusal.Error() == \"wire_damaged\" || rep.Refusal.Error() == \"malformed\")){t.Errorf(\"%s: the count-cap refusal left %+v\",p.name,rep)}"},
 		{"package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n", "fixed",
-			"var v Root;var rep TableReport;RootLoadTolerant(&v,w,&rep);measure:=\"-\""},
+			"var v Root;var rep TableReport;RootLoad(&v,w,&rep);measure:=\"-\""},
 	} {
 		t.Run(leg.name, func(t *testing.T) {
 			if rows[leg.name].Len() == 0 {

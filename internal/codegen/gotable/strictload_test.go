@@ -19,7 +19,7 @@ if RootTableFields[0].Kind!=4{t.Fatal("kind")}
 var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();b.GetRoot().N=3;n:=RootMeasure(b.GetRoot(),&b.Arena);clean:=make([]byte,n);if RootSave(b.GetRoot(),clean,&b.Arena)!=n{t.Fatal("save")}
 agree(t,clean,nil)
 if got,err:=RootReadStrict(clean);err!=nil||got==nil||got.N!=3{t.Fatalf("clean value %v %+v",err,got)}
-agree(t,putFile(4,[]byte{100,0,0,0},false),TableRefuseClamped)
+agree(t,putFile(4,[]byte{100,0,0,0},false),TableRefuseOutOfRange)
 agree(t,putFile(9,[]byte{1,0,0,0,0,0,0,0},false),TableRefuseKindMismatch)
 agree(t,[]byte{1},TableRefuseWireDamaged)
 agree(t,[]byte{2},TableRefuseUnknownForm)

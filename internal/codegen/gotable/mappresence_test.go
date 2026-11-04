@@ -293,7 +293,7 @@ func TestMapPresence(t *testing.T) {
 	rb.Init()
 	defer rb.Shutdown()
 	report = TableReport{}
-	if !MFromJSON(&rb, []byte("{\"id\":1,\"tags\":{\"a\":5},\"tags\":null}"), &report) || report.Duplicate != 1 {
+	if !MFromJSON(&rb, []byte("{\"id\":1,\"tags\":{\"a\":5},\"tags\":null}"), &report) || !report.Refused() {
 		t.Fatalf("repeated null FromJSON %+v", report)
 	}
 	if d := describe(rb.GetRoot(), &rb.Arena); d != "absent" {

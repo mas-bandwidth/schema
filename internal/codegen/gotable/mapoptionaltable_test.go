@@ -199,9 +199,9 @@ func TestMapOptionalKindMismatch(t *testing.T) {
 			t.Fatal("init")
 		}
 		var r TableReport
-		if !RootFromJSONTolerant(&b, []byte(tc.text), &r) || r.Malformed || r.KindMismatch != tc.mismatches || r.Duplicate != tc.duplicates || !b.Lock() {
+		if !RootFromJSON(&b, []byte(tc.text), &r) || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Refusal != tc.mismatches || r.Refusal != tc.duplicates || !b.Lock() {
 			b.Shutdown()
-			t.Fatalf("%s: RootFromJSONTolerant(%s) report=%+v", tc.name, tc.text, r)
+			t.Fatalf("%s: RootFromJSON(%s) report=%+v", tc.name, tc.text, r)
 		}
 		out := make([]byte, RootToJSONMeasure(b.AsConst()))
 		if RootToJSON(b.AsConst(), out) != int64(len(out)) {

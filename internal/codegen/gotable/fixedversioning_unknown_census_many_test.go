@@ -33,10 +33,10 @@ func TestUnknownCensusMany(t *testing.T) {
 	if n != 3 {
 		t.Fatalf("the newer reader did not read the older writer's three records: n=%%d %%+v", n, r)
 	}
-	if r.Reason != "" || r.Malformed || r.Verdict == TableOpenRefused {
+	if r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Verdict == TableOpenRefused {
 		t.Fatalf("a clean NEW-READS-OLD is not a refusal: %%+v", r)
 	}
-	if r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+	if r.Refused() || r.Widened != 0 || r.Refused() || r.Refused() {
 		t.Fatalf("counters that must not move did: %%+v", r)
 	}
 	if r.Unknown != 1 {
@@ -57,7 +57,7 @@ func TestUnknownCensusMany(t *testing.T) {
 	plan2 := make([]TableFixedEntry, 4096)
 	var r2 TableReport
 	n2 := %[2]sFixedLoad(back2, data, plan2, &r2)
-	if n2 != 3 || r2.Unknown != 1 || r2.Malformed || r2.Verdict == TableOpenRefused {
+	if n2 != 3 || r2.Unknown != 1 || (r2.Refusal.Error() == "wire_damaged" || r2.Refusal.Error() == "malformed") || r2.Verdict == TableOpenRefused {
 		t.Fatalf("the second read owes the same census: n=%%d %%+v", n2, r2)
 	}
 }

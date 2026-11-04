@@ -158,7 +158,7 @@ func sample() []Pos {
 }
 
 func outcome(n int64, r TableReport) string {
-	return fmt.Sprintf("n=%d reason=%q malformed=%v clamped=%d", n, r.Reason, r.Malformed, r.Clamped)
+	return fmt.Sprintf("n=%d reason=%q malformed=%v clamped=%d", n, r.Reason, (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed"), r.Refusal)
 }
 
 func TestMixedFixed(t *testing.T) {

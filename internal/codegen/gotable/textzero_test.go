@@ -147,8 +147,8 @@ func TestTextZero(t *testing.T) {
 			if RootFromJSON(&b, []byte(text), &report) {
 				t.Fatalf("%s: FromJSON accepted a zero in text (%+v)", what, report)
 			}
-			if !report.Malformed || report.Reason != reason(f.name) ||
-				report.Clamped != 0 || report.KindMismatch != 0 || report.Unknown != 0 {
+			if !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Reason != reason(f.name) ||
+				report.Refused() || report.Unknown != 0 {
 				t.Fatalf("%s: report %+v", what, report)
 			}
 			carry(t, what, &b)
@@ -186,8 +186,8 @@ func TestTextZero(t *testing.T) {
 		if RootFromJSON(&b, []byte(k.text), &report) {
 			t.Fatalf("%s: FromJSON accepted a zero in a dropped key (%+v)", k.text, report)
 		}
-		if !report.Malformed || report.Reason != "text_holds_zero: "+k.field ||
-			report.Clamped != 0 || report.KindMismatch != 0 {
+		if !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Reason != "text_holds_zero: "+k.field ||
+			report.Refused() || report.Refused() {
 			t.Fatalf("%s: report %+v", k.text, report)
 		}
 		carry(t, k.text, &b)
@@ -200,7 +200,7 @@ func TestTextZero(t *testing.T) {
 			t.Fatal("init")
 		}
 		var report TableReport
-		if !RootFromJSON(&b, []byte(text), &report) || report.Malformed || report.Unknown != 1 {
+		if !RootFromJSON(&b, []byte(text), &report) || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Unknown != 1 {
 			t.Fatalf("%s: a skipped zero %+v", text, report)
 		}
 		carry(t, text, &b)

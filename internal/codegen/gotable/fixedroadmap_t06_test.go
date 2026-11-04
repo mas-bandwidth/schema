@@ -10,7 +10,7 @@ package gotable
 // NOTHING HERE SHELLS OUT, so every subtest RUNS under a bare
 // `go test ./internal/codegen/gotable/ -run TestFixedRoadmapGoT06Bounds` and
 // under the leg gates: the read-side bounds are read off the emitted Go this
-// leg lays down (TFixedClampBody), and the runtime ops a compiled plan runs
+// leg lays down (TFixedBoundsBody), and the runtime ops a compiled plan runs
 // (tableFixedCount, tableFixedBool, tableFixedTagAt, tableFixedOrdinal) are
 // read off the emitted runtime's own case bodies.
 
@@ -50,9 +50,9 @@ func TestFixedRoadmapGoT06Bounds(t *testing.T) {
 // straight-line Go §3.4 and §5.4 lay down after the copy.
 func t06ClampBody(t *testing.T, src string) string {
 	t.Helper()
-	body := funcSource(src, "func TFixedClampBody(")
+	body := funcSource(src, "func TFixedBoundsBody(")
 	if body == "" {
-		t.Fatal("the leg emitted no TFixedClampBody; the read-side bounds pass is absent")
+		t.Fatal("the leg emitted no TFixedBoundsBody; the read-side bounds pass is absent")
 	}
 	return body
 }

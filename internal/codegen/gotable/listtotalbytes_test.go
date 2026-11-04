@@ -21,7 +21,7 @@ import (
 //     total (Wide), past the total on each list in turn, reads with the
 //     longest prefix within the total kept, the rest dropped, clamped counted
 //     once and named in ClampedField, the kept elements' sum within N; ReadStrict
-//     refuses it with TableRefuseClamped naming the field; base64, the
+//     refuses it with TableRefuseOutOfRange naming the field; base64, the
 //     retaining load and a nested table read it the same way; a JSON text
 //     past the total reads with the same prefix kept, clamped counted once and
 //     named, and report.Err() refuses it naming the field.
@@ -338,27 +338,27 @@ func TestTextListTotal(t *testing.T) {
 		name := "L." + c.field
 		check := func(t *testing.T, how string, got *L, report TableReport) {
 			t.Helper()
-			if got == nil || report.Clamped != 1 || report.Malformed || report.ClampedField != name {
+			if got == nil || !report.Refused() || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Field != name {
 				t.Fatalf("%s %s: %+v", c.field, how, report)
 			}
 			s, count := sum(t, got, c.field)
 			if count != c.count || s > total {
 				t.Fatalf("%s %s: kept %d elements summing %d, want %d within %d", c.field, how, count, s, c.count, total)
 			}
-			if err := report.Err(); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), name) {
+			if err := report.Err(); !errors.Is(err, TableRefuseOutOfRange) || !strings.Contains(err.Error(), name) {
 				t.Fatalf("%s %s: report.Err %v", c.field, how, err)
 			}
 		}
 		report = TableReport{}
-		check(t, "wire", LLoadTolerant(make([]byte, 1<<14), over, &report), report)
-		if _, err := LReadStrict(over); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), name) {
+		check(t, "wire", LLoad(make([]byte, 1<<14), over, &report), report)
+		if _, err := LReadStrict(over); !errors.Is(err, TableRefuseOutOfRange) || !strings.Contains(err.Error(), name) {
 			t.Fatalf("%s: ReadStrict %v", c.field, err)
 		}
 		var retain TableRetain
 		report = TableReport{}
 		check(t, "retain", LLoadRetain(make([]byte, 1<<14), over, &retain, &report), report)
 		// base64 is the binary wire
-		if _, err := LLoadText(base64.StdEncoding.EncodeToString(over), nil); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), name) {
+		if _, err := LLoadText(base64.StdEncoding.EncodeToString(over), nil); !errors.Is(err, TableRefuseOutOfRange) || !strings.Contains(err.Error(), name) {
 			t.Fatalf("%s: LoadText %v", c.field, err)
 		}
 	}
@@ -374,11 +374,11 @@ func TestTextListTotal(t *testing.T) {
 	nested := make([]byte, HolderWideMeasure(nx, &nw.Arena))
 	HolderWideSave(nx, nested, &nw.Arena)
 	report = TableReport{}
-	hgot := HolderLoadTolerant(make([]byte, 1<<14), nested, &report)
-	if hgot == nil || report.Clamped != 1 || report.ClampedField != "L.names" || hgot.Inner.NamesCount != 3 {
+	hgot := HolderLoad(make([]byte, 1<<14), nested, &report)
+	if hgot == nil || !report.Refused() || report.Field != "L.names" || hgot.Inner.NamesCount != 3 {
 		t.Fatalf("nested read %+v", report)
 	}
-	if _, err := HolderReadStrict(nested); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), "L.names") {
+	if _, err := HolderReadStrict(nested); !errors.Is(err, TableRefuseOutOfRange) || !strings.Contains(err.Error(), "L.names") {
 		t.Fatalf("nested ReadStrict %v", err)
 	}
 
@@ -395,10 +395,10 @@ func TestTextListTotal(t *testing.T) {
 		var jb LBuilder
 		jb.Init()
 		report = TableReport{}
-		if !LFromJSONTolerant(&jb, []byte(c.text), &report) || report.Clamped != 1 || report.Malformed || report.ClampedField != "L."+c.field {
+		if !LFromJSON(&jb, []byte(c.text), &report) || !report.Refused() || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Field != "L."+c.field {
 			t.Fatalf("%s FromJSON %+v", c.field, report)
 		}
-		if err := report.Err(); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), "L."+c.field) {
+		if err := report.Err(); !errors.Is(err, TableRefuseOutOfRange) || !strings.Contains(err.Error(), "L."+c.field) {
 			t.Fatalf("%s JSON report.Err %v", c.field, err)
 		}
 		jv := jb.GetRoot()

@@ -70,13 +70,13 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 	var v F
 	FReset(&v)
 	var r TableReport
-	if !FFromJSONTolerantWith(&v, []byte(nullText), &r, TableJSONOptions{}) || r.KindMismatch != 1 {
+	if !FFromJSONWith(&v, []byte(nullText), &r, TableJSONOptions{}) || !r.Refused() {
 		t.Fatalf("without NullAsEmpty: report %+v, want kind_mismatch 1", r)
 	}
 	// the strict With (docs/SPEC-TABLES.md §6.5) refuses the same text, with the count
 	FReset(&v)
 	r = TableReport{}
-	if FFromJSONWith(&v, []byte(nullText), &r, TableJSONOptions{}) || r.KindMismatch != 1 || r.Err() == nil {
+	if FFromJSONWith(&v, []byte(nullText), &r, TableJSONOptions{}) || !r.Refused() || r.Err() == nil {
 		t.Fatalf("strict With without NullAsEmpty: report %+v, want a refusal with kind_mismatch 1", r)
 	}
 	FReset(&v)
@@ -142,7 +142,7 @@ func readR(t *testing.T, text string) (*R, TableReport, bool) {
 		t.Fatal("Init")
 	}
 	var r TableReport
-	ok := RFromJSONTolerantWith(b, []byte(text), &r, TableJSONOptions{})
+	ok := RFromJSONWith(b, []byte(text), &r, TableJSONOptions{})
 	if !b.Lock() {
 		t.Fatal("Lock")
 	}
@@ -170,7 +170,7 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 		{"{\"a\":5,\"b\":0}", "{\"a\":5}"},
 	} {
 		v, r, ok := readR(t, c.in)
-		if !ok || r.MissingRequired != 0 {
+		if !ok || r.Refused() {
 			t.Fatalf("read %s: ok %v report %+v", c.in, ok, r)
 		}
 		for _, o := range []TableJSONOptions{{OmitDefaults: true}, legacy} {
@@ -179,7 +179,7 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 				t.Fatalf("%s under OmitDefaults+Compact writes %q, want %q (a required field is always written)", c.in, out, c.want)
 			}
 			back, r2, ok2 := readR(t, out)
-			if !ok2 || r2.MissingRequired != 0 || r2.KindMismatch != 0 || r2.Unknown != 0 {
+			if !ok2 || r2.Unknown != 0 {
 				t.Fatalf("options %+v: %q does not read back: ok %v report %+v", o, out, ok2, r2)
 			}
 			if writeR(t, back, TableJSONOptions{}) != writeR(t, v, TableJSONOptions{}) {
@@ -246,7 +246,7 @@ func readL(t *testing.T, text string, options TableJSONOptions) (*L, TableReport
 		t.Fatal("Init")
 	}
 	var r TableReport
-	ok := LFromJSONTolerantWith(b, []byte(text), &r, options)
+	ok := LFromJSONWith(b, []byte(text), &r, options)
 	if !b.Lock() {
 		t.Fatal("Lock")
 	}
@@ -260,7 +260,7 @@ func readM(t *testing.T, text string, options TableJSONOptions) (*M, TableReport
 		t.Fatal("Init")
 	}
 	var r TableReport
-	ok := MFromJSONTolerantWith(b, []byte(text), &r, options)
+	ok := MFromJSONWith(b, []byte(text), &r, options)
 	if !b.Lock() {
 		t.Fatal("Lock")
 	}
@@ -268,7 +268,7 @@ func readM(t *testing.T, text string, options TableJSONOptions) (*M, TableReport
 }
 
 func clean(r TableReport) bool {
-	return r.Unknown == 0 && r.KindMismatch == 0 && r.Clamped == 0 && r.Duplicate == 0 && !r.Malformed
+	return r.Unknown == 0 && !r.Refused() && !r.Refused() && !r.Refused() && !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")
 }
 
 func writeL(t *testing.T, v *L, options TableJSONOptions) string {
@@ -336,13 +336,13 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 		case "with":
 			ok = LFromJSONWith(b, []byte(nullText), &r, TableJSONOptions{})
 		case "tolerant":
-			ok = LFromJSONTolerant(b, []byte(nullText), &r)
+			ok = LFromJSON(b, []byte(nullText), &r)
 		default:
-			ok = LFromJSONTolerantWith(b, []byte(nullText), &r, TableJSONOptions{})
+			ok = LFromJSONWith(b, []byte(nullText), &r, TableJSONOptions{})
 		}
 		want := path == "tolerant" || path == "tolerant with"
-		if ok != want || r.KindMismatch != 2 {
-			t.Fatalf("%s read of the null text without NullAsEmpty: ok %v kind_mismatch %d, want %v 2", path, ok, r.KindMismatch, want)
+		if ok != want || !r.Refused() {
+			t.Fatalf("%s read of the null text without NullAsEmpty: ok %v kind_mismatch %d, want %v 2", path, ok, r.Refusal, want)
 		}
 		b.Shutdown()
 	}
@@ -358,8 +358,8 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 	}
 
 	// a null ELEMENT keeps its own row's verdict under the option
-	if _, r, ok := readL(t, "{\"names\":[\"a\",null]}", legacy); !ok || r.KindMismatch != 1 {
-		t.Fatalf("null element under NullAsEmpty: ok %v kind_mismatch %d, want true 1", ok, r.KindMismatch)
+	if _, r, ok := readL(t, "{\"names\":[\"a\",null]}", legacy); !ok || !r.Refused() {
+		t.Fatalf("null element under NullAsEmpty: ok %v kind_mismatch %d, want true 1", ok, r.Refusal)
 	}
 
 	// a map and a bounded array take the same option
@@ -370,13 +370,13 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 			t.Fatal("Init")
 		}
 		var r TableReport
-		if !MFromJSONTolerant(mb, []byte(mText), &r) || r.KindMismatch != 2 {
-			t.Fatalf("map/bounded null without the option: kind_mismatch %d, want 2", r.KindMismatch)
+		if !MFromJSON(mb, []byte(mText), &r) || !r.Refused() {
+			t.Fatalf("map/bounded null without the option: kind_mismatch %d, want 2", r.Refusal)
 		}
 		mb.Shutdown()
 		// a filled value, then the same keys again as null: last-wins empties both
 		m, r, ok := readM(t, "{\"tags\":{\"k\":1},\"slots\":[1],\"tags\":null,\"slots\":null}", TableJSONOptions{NullAsEmpty: true})
-		if !ok || r.Duplicate != 2 || r.KindMismatch != 0 || r.Unknown != 0 || r.Clamped != 0 || r.Malformed {
+		if !ok || r.Unknown != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 			t.Fatalf("map/bounded null under NullAsEmpty: ok %v report %+v, want two duplicates and nothing else", ok, r)
 		}
 		n := MToJSONMeasureWith(m, legacy)

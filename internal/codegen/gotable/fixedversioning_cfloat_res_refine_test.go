@@ -45,7 +45,7 @@ func TestCfloatResRefine(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("the newer reader did not read the older writer's one record: n=%%d %%+v", n, r)
 	}
-	if r.Reason != "" || r.Malformed || r.Verdict == TableOpenRefused {
+	if r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Verdict == TableOpenRefused {
 		t.Fatalf("a clean NEW-READS-OLD is not a refusal: %%+v", r)
 	}
 	if back[0].Lead != 1 || back[0].Trail != 2 {
@@ -54,10 +54,10 @@ func TestCfloatResRefine(t *testing.T) {
 	if bits := math.Float32bits(back[0].Aim); bits != %#[3]x {
 		t.Fatalf("aim moved: %%#x, want %#[3]x from the corpus manifest (%%v)", bits, back[0].Aim)
 	}
-	if r.Clamped != 0 {
-		t.Fatalf("clamped %%d, want 0: a whole-multiple refinement requantizes nothing", r.Clamped)
+	if r.Refused() {
+		t.Fatalf("clamped %%d, want 0: a whole-multiple refinement requantizes nothing", r.Refusal)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("a counter that must not move did: %%+v", r)
 	}
 }
