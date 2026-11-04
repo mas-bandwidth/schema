@@ -290,8 +290,21 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	g.pf("inline void %sFixedWriteBody( uint8_t * b, const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    (void) b; (void) value;\n")
 	off := int64(0)
+	// A DEPRECATED FIELD'S SLOT CARRIES ITS DEFAULT IMAGE whatever the value
+	// holds (docs/SPEC-TABLES.md §3.4, §22.6), for every shape: the field is
+	// written from the type's own reset value
 	for _, f := range st.Fields {
-		g.emitFixedWriteField(f, off, "b", "value", 0, 4)
+		if f.Deprecated {
+			g.pf("    static const %s kDefaults = [] { %s d; %sReset( d ); return d; }();\n", st.Name, st.Name, st.Name)
+			break
+		}
+	}
+	for _, f := range st.Fields {
+		if f.Deprecated {
+			g.emitFixedWriteField(f, off, "b", "kDefaults", 0, 4)
+		} else {
+			g.emitFixedWriteField(f, off, "b", "value", 0, 4)
+		}
 		off += ir.TableFixedFieldBytes(f)
 	}
 	g.pf("}\n\n")
@@ -437,6 +450,25 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, val stri
 	}
 	f := v.F
 	ind := strings.Repeat(" ", indent)
+	if f.Deprecated {
+		// A DEPRECATED ARM CARRIES ITS DEFAULT IMAGE (docs/SPEC-TABLES.md
+		// §3.4, §22.6). An arm takes no specified default and zero-establishes,
+		// so a by-value table or type is its type's reset value, and every
+		// other shape is the template's zeros
+		if r, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
+			g.pf("%sstatic const %s kArm = [] { %s d; %sReset( d ); return d; }();\n", ind, r.Name, r.Name, r.Name)
+			count := int64(1)
+			if f.Array == ir.ArrayFixed {
+				count = f.ArrayBound
+			}
+			if f.Array == ir.ArrayNone || f.Array == ir.ArrayFixed {
+				for i := range count {
+					g.pf("%s%sFixedWriteBody( %s + %d, kArm );\n", ind, r.Name, buf, off+i*ir.TableFixedElementBytes(f))
+				}
+			}
+		}
+		return
+	}
 	switch {
 	case f.Type.Kind == ir.TString:
 		g.emitFixedWriteTextArm(v, off, buf, val, ind, 1)
