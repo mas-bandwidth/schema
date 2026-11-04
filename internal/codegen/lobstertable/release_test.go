@@ -149,8 +149,8 @@ func runMemoryCycle(t *testing.T, orphan, cleanup bool) string {
 		fmt.Fprintf(&b, "import .%s\n", m)
 	}
 	b.WriteString(`import .load
-def link(from:schema_rt.Record, target:schema_rt.Record):
-    for(from.fields) sl:
+def link(source:schema_rt.Record, target:schema_rt.Record):
+    for(source.fields) sl:
         if sl.fd.name == "next":
             sl.cell.node = target
             return
