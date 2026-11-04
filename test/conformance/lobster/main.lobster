@@ -102,11 +102,8 @@ def surface_wire(text:string):
             say(f[1], "refused\n")
             continue
         let out, why = schema_rt.save_reasoned(rec)
-        if why == "blob_shared":
-            print(f[1] + " absent blob_shared")
-        else:
-            assert why == ""
-            say(f[1], out)
+        assert why == ""
+        say(f[1], out)
 
 // REPORT and FRAMING return one verdict and the complete canonical value
 // after acceptance. A refusal has no value payload; diagnostics stay local.
