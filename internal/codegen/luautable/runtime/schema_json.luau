@@ -1825,18 +1825,22 @@ end
 -- the write walk (§16.1, §16.3, §16.7)
 ----------------------------------------------------------------------------
 
-local function W(): any return { parts = {} } end
+-- w.invalid is storage that is not text (ill-formed UTF-8 in a narrow string,
+-- an unpaired surrogate in a wide one), which refuses the whole write,
+-- invalid_value (docs/SPEC-TABLES.md §16.3, §16.14 W0)
+local function W(): any return { parts = {}, invalid = false } end
 local function raw(w: any, s: string) w.parts[#w.parts + 1] = s end
 local function put(w: any, c: string) w.parts[#w.parts + 1] = c end
 local function line(w: any, depth: number)
   w.parts[#w.parts + 1] = "\n" .. string.rep("  ", depth)
 end
 
--- §16.3's write-side rule for a narrow text: the strict reader refuses
--- ill-formed UTF-8, a U+0000 (which no wire carries) and a value past its
--- bound, so the writer refuses the value rather than emitting a text that
--- reads back differently (§2.13, §4.2). The refusal is named by Go's name
--- for the same value (§16.3, the write refuses what the strict read refuses).
+-- §16.3's write-side rule for a narrow text: the strict reader refuses a
+-- U+0000 (which no wire carries) and a value past its bound, so the writer
+-- refuses the value rather than emitting a text that reads back differently
+-- (§2.13, §4.2), named by Go's name for the same value. Ill-formed UTF-8 is
+-- not text at all, and the writer refuses it as invalid_value (§16.3,
+-- §16.14 W0), replacing nothing.
 local refuse_reason: string = ""
 local function narrow_text_ok(s: string, bound: number): boolean
   if bound >= 0 and #s > bound then refuse_reason = "clamped"; return false end
@@ -1848,15 +1852,16 @@ local function narrow_text_ok(s: string, bound: number): boolean
       i = i + 1
     else
       local width = utf8_seq(s, i)
-      if width < 0 then refuse_reason = "string_not_utf8"; return false end
+      if width < 0 then refuse_reason = "invalid_value"; return false end
       i = i + width
     end
   end
   return true
 end
 
--- §16.3's write-side rule for a wide text: no zero unit and no lone surrogate
--- (the units the wire's kind 33 and the strict reader refuse).
+-- §16.3's write-side rule for a wide text: no zero unit (the unit the wire's
+-- kind 33 and the strict reader refuse) and no lone surrogate, which is not
+-- text and refuses as invalid_value (§16.14 W0).
 local function wide_text_ok(units: { number }, bound: number): boolean
   if bound >= 0 and #units > bound then refuse_reason = "clamped"; return false end
   local i = 1
@@ -1865,10 +1870,10 @@ local function wide_text_ok(units: { number }, bound: number): boolean
     if u == 0 then refuse_reason = "text_holds_zero"; return false end
     if u >= 0xd800 and u <= 0xdbff then
       local low = units[i + 1]
-      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "string_not_utf8"; return false end
+      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "invalid_value"; return false end
       i = i + 2
     elseif u >= 0xdc00 and u <= 0xdfff then
-      refuse_reason = "string_not_utf8"; return false
+      refuse_reason = "invalid_value"; return false
     else
       i = i + 1
     end
@@ -1976,7 +1981,7 @@ local function write_string(w: any, s: string)
       i = i + 1
     else
       local width = utf8_seq(s, i)
-      if width < 0 then raw(w, utf8_encode(0xfffd)); i = i + 1
+      if width < 0 then w.invalid = true; i = i + 1 -- not text: the write refuses (§16.14 W0)
       else raw(w, s:sub(i, i + width - 1)); i = i + width end
     end
   end
@@ -1996,8 +2001,9 @@ local function write_wstring(w: any, units: { number })
         i = i + 1
       end
     end
-    if code >= 0xd800 and code <= 0xdfff then code = 0xfffd end
-    if code == 34 then raw(w, '\\"')
+    -- an unpaired surrogate is not text: the write refuses (§16.14 W0)
+    if code >= 0xd800 and code <= 0xdfff then w.invalid = true
+    elseif code == 34 then raw(w, '\\"')
     elseif code == 92 then raw(w, '\\\\')
     elseif code == 8 then raw(w, '\\b')
     elseif code == 12 then raw(w, '\\f')
@@ -2588,6 +2594,7 @@ local function core_to(T: any, name: string, v: any): string?
   if g == nil then return nil end
   local w = W()
   if not write_table(T, desc, v, 0, g, w) then return nil end
+  if w.invalid then refuse_reason = "invalid_value"; return nil end
   if not desc.jsonArray then w.parts[#w.parts + 1] = "\n" end
   return table.concat(w.parts)
 end

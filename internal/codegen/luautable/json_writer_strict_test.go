@@ -9,7 +9,9 @@ package luautable_test
 // test from schema-go's own text engine (internal/tabletext), never typed by
 // hand: the offending text is read by the engine and its report must name a
 // refusal, or (for a value no JSON text can spell, a non-finite float) the
-// engine's writer must refuse the instance.
+// engine's writer must refuse the instance. Storage that is not text at all
+// (ill-formed UTF-8 in a narrow string, an unpaired surrogate in a wide one)
+// is the engine writer's refusal too, invalid_value (§16.14 W0).
 //
 // Every clean value still writes the engine's bytes.
 
@@ -117,6 +119,8 @@ func strictGoToken(name string) string {
 		return "string_not_utf8"
 	case strings.Contains(name, "text_holds_zero"):
 		return "text_holds_zero"
+	case strings.Contains(name, "invalid_value"):
+		return "invalid_value"
 	case strings.Contains(name, "no JSON spelling"):
 		return "non_finite_float"
 	}
@@ -264,7 +268,13 @@ func TestLuauJsonWriterIsStrict(t *testing.T) {
 				"string-ill-formed-utf8",
 				"{\"s\": \"\xff\"}",
 				"v.S = buffer.fromstring(string.char(0xff)); v.SLength = 1",
-				nil,
+				func(inst *tabletext.Instance) { strictFindField(inst, "s").Cell.Str = []byte{0xff} },
+			},
+			{
+				"wstring-unpaired-surrogate",
+				`{"w": "a"}`,
+				"v.W = buffer.fromstring(string.char(0, 0xd8)); v.WLength = 1",
+				func(inst *tabletext.Instance) { strictFindField(inst, "w").Cell.Units = []uint16{0xd800} },
 			},
 			{
 				"string-holds-zero",

@@ -1268,8 +1268,11 @@ local function put(w: Out, s: string)
 	table.insert(w.parts, s)
 end
 
--- writeString: one JSON string, the seven short escapes, every other control
--- byte as \u00xx, and an ill-formed sequence as U+FFFD per maximal subpart
+-- writeString: one JSON string, the seven short escapes and every other control
+-- byte as \u00xx. A JSON text MUST be valid UTF-8 (RFC 8259 §8.1) and no read
+-- puts anything else into storage, so an ill-formed sequence was put there by
+-- a program: it refuses the whole write, invalid_value (docs/SPEC-TABLES.md
+-- §16.3, §16.14 W0), and nothing is replaced
 local function writeString(w: Out, s: string)
 	put(w, "\"")
 	local n = #s
@@ -1295,7 +1298,9 @@ local function writeString(w: Out, s: string)
 		else
 			local width = utf8Sequence(s, at)
 			if width < 0 then
-				put(w, "\u{FFFD}")
+				if w.err == nil then
+					w.err = "invalid_value: a string holds ill-formed UTF-8 (docs/SPEC-TABLES.md §16.3, §16.14 W0)"
+				end
 				i = at - width
 			else
 				put(w, string.sub(s, at, at + width - 1))
@@ -1307,7 +1312,8 @@ local function writeString(w: Out, s: string)
 end
 
 -- writeWString: a wide field's UTF-16 code units back to UTF-8; a pair is one
--- code point, an unpaired surrogate one U+FFFD, a zero unit \u0000
+-- code point, a zero unit \u0000, and an unpaired surrogate, which is not
+-- text, refuses the whole write, invalid_value (§16.14 W0)
 local function writeWString(w: Out, b: buffer, units: number)
 	put(w, "\"")
 	local i = 0
@@ -1320,11 +1326,12 @@ local function writeWString(w: Out, b: buffer, units: number)
 				i += 1
 			end
 		end
-		if code >= 0xD800 and code <= 0xDFFF then
-			code = 0xFFFD
-		end
 		local short = SHORT_ESCAPE[code]
-		if short ~= nil then
+		if code >= 0xD800 and code <= 0xDFFF then
+			if w.err == nil then
+				w.err = "invalid_value: a wide string holds an unpaired surrogate (docs/SPEC-TABLES.md §16.3, §16.14 W0)"
+			end
+		elseif short ~= nil then
 			put(w, short)
 		elseif code < 0x20 then
 			put(w, controlEscape(code))
@@ -3847,6 +3854,9 @@ function J.toJson(d: any, rec: any): (string?, string?)
 		return nil, w.err
 	end
 	if not writeValue(w, d, rec, 0) then
+		return nil, w.err
+	end
+	if w.err ~= nil then
 		return nil, w.err
 	end
 	emit(w, "\n")
