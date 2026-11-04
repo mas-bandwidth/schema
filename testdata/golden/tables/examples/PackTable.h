@@ -9452,7 +9452,7 @@ struct GlobalSettings
 struct PackConfig
 {
     uint32_t version = 1;
-    GlobalSettings global;
+    GlobalSettings settings;
     TableKeyed<ShipEntry, ShipType> ships; // [ShipType]: one slot per named variant, keyed by the value
     TableKeyed<int32_t, Difficulty> thresholds = {}; // [Difficulty]: one slot per named variant, keyed by the value
     ShipEntry reserves[3]; // used count beside it; count in [0, 3]
@@ -9646,7 +9646,7 @@ inline void GlobalSettingsReset( GlobalSettings & value )
 inline void PackConfigReset( PackConfig & value )
 {
     value.version = 1;
-    GlobalSettingsReset( value.global );
+    GlobalSettingsReset( value.settings );
     for ( int32_t i = 0; i < 3; i++ )
     {
         ShipEntryReset( value.ships.slots[i] );
@@ -11851,12 +11851,12 @@ inline int64_t PackConfigMeasureBody( TableIds & ids, const PackConfig & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 107, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
-        const int32_t mark_global = ids.count;
-        const uint64_t ref_global = ids.ref_at( 68, 0x7fb43557b54149ceull );
-        const int64_t body_global = GlobalSettingsMeasureBody( ids, value.global );
-        if ( body_global < 0 ) { return -1; }
-        if ( body_global > 1 ) { bytes += TableLebBytes( ref_global ) + 1 + TableLebBytes( (uint64_t) ( body_global ) ) + ( body_global ); } // global
-        else { ids.truncate( mark_global ); } // an all-default nested table elides, and costs no entry
+        const int32_t mark_settings = ids.count;
+        const uint64_t ref_settings = ids.ref_at( 68, 0x7fb43557b54149ceull );
+        const int64_t body_settings = GlobalSettingsMeasureBody( ids, value.settings );
+        if ( body_settings < 0 ) { return -1; }
+        if ( body_settings > 1 ) { bytes += TableLebBytes( ref_settings ) + 1 + TableLebBytes( (uint64_t) ( body_settings ) ) + ( body_settings ); } // settings
+        else { ids.truncate( mark_settings ); } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_ships = ids.count;
@@ -11930,17 +11930,17 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
         w.put32( uint32_t( value.version ) );
     }
     {
-        const int32_t mark_global = ids.count;
-        const uint64_t ref_global = ids.ref_at( 68, 0x7fb43557b54149ceull );
-        const int64_t body_global = GlobalSettingsMeasureBody( ids, value.global );
-        if ( body_global < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_global > 1 ) // all-default nested elides
+        const int32_t mark_settings = ids.count;
+        const uint64_t ref_settings = ids.ref_at( 68, 0x7fb43557b54149ceull );
+        const int64_t body_settings = GlobalSettingsMeasureBody( ids, value.settings );
+        if ( body_settings < 0 ) return false; // storage invariant, refused as measure refuses it
+        if ( body_settings > 1 ) // all-default nested elides
         {
-            w.header( ref_global, 13 );
-            w.putleb( (uint64_t) body_global ); // global
-            if ( !GlobalSettingsSaveBody( w, ids, value.global ) ) return false;
+            w.header( ref_settings, 13 );
+            w.putleb( (uint64_t) body_settings ); // settings
+            if ( !GlobalSettingsSaveBody( w, ids, value.settings ) ) return false;
         }
-        else { ids.truncate( mark_global ); }
+        else { ids.truncate( mark_settings ); }
     }
     {
         const int32_t mark_ships = ids.count;
@@ -12140,7 +12140,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                 value.version = decoded_v;
                 break;
             }
-            case 0x7fb43557b54149ceull: // global
+            case 0x7fb43557b54149ceull: // settings
             {
                 if ( kind != 13 )
                 {
@@ -12162,11 +12162,11 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                 }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    GlobalSettingsLoadBody( sub, value.global );
+                    GlobalSettingsLoadBody( sub, value.settings );
                     if ( sub.offset != sub.size )
                     {
                         r.report->malformed = true;
-                        GlobalSettingsReset( value.global );
+                        GlobalSettingsReset( value.settings );
                     }
                 }
                 r.offset += (int64_t) body_len;
@@ -12543,12 +12543,12 @@ inline int64_t PackConfigMeasureMessageBody( int64_t at, const PackConfig & valu
         bits += 32;
     }
     {
-        const int64_t body_global = GlobalSettingsMeasureMessageBody( at + bits, value.global );
-        if ( body_global < 0 ) { return -1; }
-        if ( body_global > kTableMessageRefBitsHere ) // an all-default nested table elides
+        const int64_t body_settings = GlobalSettingsMeasureMessageBody( at + bits, value.settings );
+        if ( body_settings < 0 ) { return -1; }
+        if ( body_settings > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
             bits += kTableMessageRefBitsHere;
-            bits += GlobalSettingsMeasureMessageBody( at + bits, value.global );
+            bits += GlobalSettingsMeasureMessageBody( at + bits, value.settings );
         }
     }
     {
@@ -12631,12 +12631,12 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
         w.put( (uint64_t) ( value.version ), 32 );
     }
     {
-        const int64_t body_global = GlobalSettingsMeasureMessageBody( 0, value.global );
-        if ( body_global < 0 ) { return false; }
-        if ( body_global > kTableMessageRefBitsHere ) // an all-default nested table elides
+        const int64_t body_settings = GlobalSettingsMeasureMessageBody( 0, value.settings );
+        if ( body_settings < 0 ) { return false; }
+        if ( body_settings > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
             w.put( 28, kTableMessageRefBitsHere );
-            if ( !GlobalSettingsSaveMessageBody( w, value.global ) ) { return false; }
+            if ( !GlobalSettingsSaveMessageBody( w, value.settings ) ) { return false; }
         }
     }
     {
@@ -12768,7 +12768,7 @@ inline bool PackConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0x7fb43557b54149ceull: // global
+            case 0x7fb43557b54149ceull: // settings
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -12779,7 +12779,7 @@ inline bool PackConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
                 }
-                if ( !GlobalSettingsLoadMessageBody( r, vocabulary, report, index_bits, value.global ) ) { return false; }
+                if ( !GlobalSettingsLoadMessageBody( r, vocabulary, report, index_bits, value.settings ) ) { return false; }
                 break;
             }
             case 0x294a5c4913e1ad44ull: // ships
@@ -13012,7 +13012,7 @@ static_assert( (uint32_t) __builtin_offsetof( GlobalSettings, build_note_length 
 static_assert( (uint32_t) __builtin_offsetof( GlobalSettings, spawn_delays ) == 60, "GlobalSettings.spawn_delays: the fixed form's plan lands here" );
 static_assert( sizeof( PackConfig ) == 740, "PackConfig: the fixed form's plan is laid out for this size" );
 static_assert( (uint32_t) __builtin_offsetof( PackConfig, version ) == 0, "PackConfig.version: the fixed form's plan lands here" );
-static_assert( (uint32_t) __builtin_offsetof( PackConfig, global ) == 4, "PackConfig.global: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( PackConfig, settings ) == 4, "PackConfig.settings: the fixed form's plan lands here" );
 static_assert( (uint32_t) __builtin_offsetof( PackConfig, ships.slots ) == 76, "PackConfig.ships: the fixed form's plan lands here" );
 static_assert( (uint32_t) __builtin_offsetof( PackConfig, thresholds.slots ) == 400, "PackConfig.thresholds: the fixed form's plan lands here" );
 static_assert( (uint32_t) __builtin_offsetof( PackConfig, reserves ) == 412, "PackConfig.reserves: the fixed form's plan lands here" );
@@ -13075,7 +13075,7 @@ inline void PackConfigFixedWriteBody( uint8_t * b, const PackConfig & value )
 {
     (void) b; (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.version );
-    GlobalSettingsFixedWriteBody( b + 4, value.global );
+    GlobalSettingsFixedWriteBody( b + 4, value.settings );
     for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         ShipEntryFixedWriteBody( b + 73 + i * 98 + 0, value.ships.slots[i] );
@@ -13180,7 +13180,7 @@ TABLE_FIXED_INLINE bool PackConfigFixedInRange( const PackConfig & value )
 {
     (void) value;
     int bad = 0;
-    bad |= (int) !GlobalSettingsFixedInRange( value.global );
+    bad |= (int) !GlobalSettingsFixedInRange( value.settings );
     for ( int64_t i = 0; i < 3; ++i )
     {
         bad |= (int) !ShipEntryFixedInRange( value.ships.slots[i] );
@@ -13200,7 +13200,7 @@ TABLE_FIXED_INLINE bool PackConfigFixedInRange( const PackConfig & value )
 inline void PackConfigFixedClampBody( PackConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
-    GlobalSettingsFixedClampBody( value.global, clamped, damaged );
+    GlobalSettingsFixedClampBody( value.settings, clamped, damaged );
     for ( int64_t i = 0; i < 3; ++i )
     {
         ShipEntryFixedClampBody( value.ships.slots[i], clamped, damaged );
@@ -13252,7 +13252,7 @@ TABLE_FIXED_INLINE bool GlobalSettingsFixedFiniteBody( const GlobalSettings & va
 // holds is a NaN or an infinity, which no read lands and no writer writes.
 TABLE_FIXED_INLINE bool PackConfigFixedFiniteBody( const PackConfig & value )
 {
-    if ( !GlobalSettingsFixedFiniteBody( value.global ) ) { return false; }
+    if ( !GlobalSettingsFixedFiniteBody( value.settings ) ) { return false; }
     for ( int64_t i = 0; i < 3; ++i )
     {
         if ( !ShipEntryFixedFiniteBody( value.ships.slots[i] ) ) { return false; }
@@ -14529,7 +14529,7 @@ constexpr TableFixedDst PackConfigFixedDst[] = {
     }, // version
     {
         4, 0, 0, 0, 0
-    }, // global
+    }, // settings
     {
         0, 0, 0, 0, 0
     }, // tick_rate
@@ -15938,12 +15938,12 @@ inline int64_t PackConfigMeasureBodyRetain( TableRetainIds & ids, const PackConf
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 107, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
-        const int32_t mark_global = ids.count;
-        const uint64_t ref_global = ids.ref_at( 68, 0x7fb43557b54149ceull );
-        const int64_t body_global = GlobalSettingsMeasureBodyRetain( ids, value.global, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
-        if ( body_global < 0 ) { return -1; }
-        if ( body_global > 1 ) { bytes += TableLebBytes( ref_global ) + 1 + TableLebBytes( (uint64_t) ( body_global ) ) + ( body_global ); } // global
-        else { ids.truncate( mark_global ); } // an all-default nested table elides, and costs no entry
+        const int32_t mark_settings = ids.count;
+        const uint64_t ref_settings = ids.ref_at( 68, 0x7fb43557b54149ceull );
+        const int64_t body_settings = GlobalSettingsMeasureBodyRetain( ids, value.settings, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
+        if ( body_settings < 0 ) { return -1; }
+        if ( body_settings > 1 ) { bytes += TableLebBytes( ref_settings ) + 1 + TableLebBytes( (uint64_t) ( body_settings ) ) + ( body_settings ); } // settings
+        else { ids.truncate( mark_settings ); } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_ships = ids.count;
@@ -16010,17 +16010,17 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBodyRetain( TableWriter & w, TableReta
         w.put32( uint32_t( value.version ) );
     }
     {
-        const int32_t mark_global = ids.count;
-        const uint64_t ref_global = ids.ref_at( 68, 0x7fb43557b54149ceull );
-        const int64_t body_global = GlobalSettingsMeasureBodyRetain( ids, value.global, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
-        if ( body_global < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_global > 1 ) // all-default nested elides
+        const int32_t mark_settings = ids.count;
+        const uint64_t ref_settings = ids.ref_at( 68, 0x7fb43557b54149ceull );
+        const int64_t body_settings = GlobalSettingsMeasureBodyRetain( ids, value.settings, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
+        if ( body_settings < 0 ) return false; // storage invariant, refused as measure refuses it
+        if ( body_settings > 1 ) // all-default nested elides
         {
-            w.header( ref_global, 13 );
-            w.putleb( (uint64_t) body_global ); // global
-            if ( !GlobalSettingsSaveBodyRetain( w, ids, value.global, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
+            w.header( ref_settings, 13 );
+            w.putleb( (uint64_t) body_settings ); // settings
+            if ( !GlobalSettingsSaveBodyRetain( w, ids, value.settings, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
-        else { ids.truncate( mark_global ); }
+        else { ids.truncate( mark_settings ); }
     }
     {
         const int32_t mark_ships = ids.count;
@@ -16210,7 +16210,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                 value.version = decoded_v;
                 break;
             }
-            case 0x7fb43557b54149ceull: // global
+            case 0x7fb43557b54149ceull: // settings
             {
                 if ( kind != 13 )
                 {
@@ -16233,11 +16233,11 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                 }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    GlobalSettingsLoadBodyRetain( sub, value.global, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
+                    GlobalSettingsLoadBodyRetain( sub, value.settings, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
                     if ( sub.offset != sub.size )
                     {
                         r.report->malformed = true;
-                        GlobalSettingsReset( value.global );
+                        GlobalSettingsReset( value.settings );
                     }
                 }
                 r.offset += (int64_t) body_len;
@@ -16848,7 +16848,7 @@ inline bool GlobalSettingsCookBody( uint8_t * at, const GlobalSettings & value, 
 inline bool PackConfigCookBody( uint8_t * at, const PackConfig & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.version, 4, order );
-    if ( !GlobalSettingsCookBody( at + 4, value.global, order ) ) { return false; }
+    if ( !GlobalSettingsCookBody( at + 4, value.settings, order ) ) { return false; }
     // [ShipType]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)
     for ( int32_t i = 0; i < 3; i++ )
     {
@@ -17127,7 +17127,7 @@ static_assert( offsetof( GlobalSettings, spawn_delays ) == 60, "GlobalSettings's
 static_assert( sizeof( PackConfig ) == 740, "PackConfig's sizeof moved: the build version was taken over 740, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( PackConfig ) == 4, "PackConfig's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PackConfig, version ) == 0, "PackConfig's field version moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PackConfig, global ) == 4, "PackConfig's field global moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PackConfig, settings ) == 4, "PackConfig's field settings moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PackConfig, ships ) == 76, "PackConfig's field ships moved: the build version was taken over offset 76 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PackConfig, thresholds ) == 400, "PackConfig's field thresholds moved: the build version was taken over offset 400 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PackConfig, reserves ) == 412, "PackConfig's field reserves moved: the build version was taken over offset 412 (docs/SPEC-TABLES.md §20.3)" );
@@ -17178,7 +17178,7 @@ inline const TableTypeInfo * GlobalSettingsTableType() { return &GlobalSettingsT
 
 inline const TableFieldInfo PackConfigTableFields[] = {
     { "version", "version", "uint32", 0xbb62c62c9808ea37ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( PackConfig, version ), (uint32_t) sizeof( PackConfig::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "global", "global", "GlobalSettings", 0x7fb43557b54149ceull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( PackConfig, global ), (uint32_t) sizeof( PackConfig::global ), 0xffffffffu, 0xffffffffu, &GlobalSettingsTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "settings", "settings", "GlobalSettings", 0x7fb43557b54149ceull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( PackConfig, settings ), (uint32_t) sizeof( PackConfig::settings ), 0xffffffffu, 0xffffffffu, &GlobalSettingsTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     { "ships", "ships", "ShipEntry", 0x294a5c4913e1ad44ull, 13, true, false, NULL, NULL, false, false, (int32_t) ShipType::Max, (uint32_t) offsetof( PackConfig, ships ), (uint32_t) sizeof( PackConfig::ships.slots[0] ), 0xffffffffu, 0xffffffffu, &ShipEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "ShipType", +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     { "thresholds", "thresholds", "int32", 0x9cda940a344e1571ull, 4, true, false, NULL, NULL, false, false, (int32_t) Difficulty::Max, (uint32_t) offsetof( PackConfig, thresholds ), (uint32_t) sizeof( PackConfig::thresholds.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, "Difficulty", +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     { "reserves", "reserves", "ShipEntry", 0x77707fccd201c228ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( PackConfig, reserves ), (uint32_t) sizeof( PackConfig::reserves[0] ), (uint32_t) offsetof( PackConfig, reserves_count ), 0xffffffffu, &ShipEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },

@@ -21,11 +21,11 @@ var generatedMembers = wordSet(`read write load save descriptor`)
 // CheckNames holds every name the generated package spells to
 // docs/PORT-PYTHON.md, IDENTIFIERS, and refuses the first that breaks a rule,
 // by name. The reserved words every target refuses are the checker's
-// (internal/check, Python's row); the keywords are held here again, because
-// the row leaves out None, which the checker's own rule for the implicit
-// variant owns. The rest are the rules only the Python target has: the
-// package, the module names, dunder and helper prefixes, builtins at module
-// level, and the generated members.
+// (internal/check, Python's row); the keywords are held here too, so a unit
+// built in memory rather than by the checker is refused the same way. The
+// rest are the rules only the Python target has: the package, the module
+// names, dunder and helper prefixes, builtins at module level, and the
+// generated members.
 func CheckNames(u *ir.Unit) error {
 	if err := checkPackage(u.Package); err != nil {
 		return err

@@ -15,6 +15,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/scanner"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // isSchemaKeyword reports whether the schema grammar itself reserves w, so a
@@ -111,6 +112,12 @@ func TestEveryReservedWordAsEveryNameKindIsRefused(t *testing.T) {
 				langs := table[w]
 				if k.escaped {
 					langs = slices.DeleteFunc(slices.Clone(langs), func(l string) bool { return l == "Go" })
+				}
+				// None and Max are every enum's and union's own names: the
+				// variant rule refuses them first and alone (SPEC §4.2, §4.8;
+				// TestReservedEnumVariantDrawsOneDiagnostic)
+				if (k.name == "enum variant" || k.name == "union arm") && reservedEnumVariant(ir.GoExportName(w)) {
+					continue
 				}
 				errs, parsed := reservedProbeErrors(t, k.mk(w))
 				if !parsed {

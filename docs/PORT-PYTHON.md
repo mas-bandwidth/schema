@@ -300,20 +300,13 @@ keywords (`keyword.kwlist`). The soft keywords (`match`, `case`, `type`,
 name, so they are not in the row.
 
 The row refuses those names in every unit, whatever the target, as the other
-rows do. That changes which schema names are legal: a unit with a field named
-`pass`, `lambda` or `def` that checked before the row is refused now. Two
-keywords are not in the row, and the Python target refuses them by name
-instead:
-
-- `None`, because every enum and union already owns that spelling by its own
-  rule (SPEC §4.2, §4.8), and the checker reports it once;
-- `global`, because the shared corpus names a field `global`
-  (`tables/examples/Pack.schema`, `PackConfig`), so the row would refuse a
-  unit every leg generates today. Python cannot spell `v.global`. Either the
-  corpus renames the field, or Python carries the word through an escape as Go
-  does (`global_`, the JSON key and the wire id unchanged). **That is Glenn's
-  ruling to make**; until it is made, the Python target refuses `global` by
-  name, and the Python leg cannot generate `tables/examples`.
+rows do, and nothing is escaped. That changes which schema names are legal: a
+unit with a field named `pass`, `lambda` or `def` is refused. The shared
+corpus had one such name, `PackConfig.global` in `tables/examples/Pack.schema`;
+it is `settings`, declared `| was = "global"`, so its wire id is unchanged and
+its JSON key is `settings`. An enum or union variant spelled `None` draws only
+the implicit-variant rule's refusal (SPEC §4.2, §4.8), not a second one from
+the row.
 
 Then, by rule, in the Python target:
 

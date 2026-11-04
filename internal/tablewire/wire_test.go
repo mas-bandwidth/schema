@@ -142,7 +142,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 	m := model(t)
 	inst := place(t, m, "PackConfig", `{
 		"version": 9,
-		"global": { "tick_rate": 30, "difficulty": "Easy", "spawn_delays": [1.0, 2.0, 3.0] },
+		"settings": { "tick_rate": 30, "difficulty": "Easy", "spawn_delays": [1.0, 2.0, 3.0] },
 		"ships": { "Bomber": { "name": "B", "health": 3.5, "gunner": {} } },
 		"thresholds": { "Hard": 900 },
 		"reserves": [ { "name": "R" } ]

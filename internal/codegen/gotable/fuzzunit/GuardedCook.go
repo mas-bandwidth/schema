@@ -185,7 +185,7 @@ func init() {
 	tableCookLayoutSize("PackConfigRow", unsafe.Sizeof(PackConfigRow{}), 740)
 	tableCookLayoutSize("PackConfigRow alignment", unsafe.Alignof(PackConfigRow{}), 4)
 	tableCookLayoutOffset("PackConfigRow.Version", unsafe.Offsetof(PackConfigRow{}.Version), 0)
-	tableCookLayoutOffset("PackConfigRow.Global", unsafe.Offsetof(PackConfigRow{}.Global), 4)
+	tableCookLayoutOffset("PackConfigRow.Settings", unsafe.Offsetof(PackConfigRow{}.Settings), 4)
 	tableCookLayoutOffset("PackConfigRow.Ships", unsafe.Offsetof(PackConfigRow{}.Ships), 76)
 	tableCookLayoutOffset("PackConfigRow.Thresholds", unsafe.Offsetof(PackConfigRow{}.Thresholds), 400)
 	tableCookLayoutOffset("PackConfigRow.Reserves", unsafe.Offsetof(PackConfigRow{}.Reserves), 412)
@@ -414,7 +414,7 @@ func init() {
 		Name: "PackConfig", Size: 740, Align: 4, NumFields: 5,
 		Fields: []TableCookFieldInfo{
 			{Name: "version", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
-			{Name: "global", Offset: 4, Size: 72, ElemSize: 72, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "settings", Offset: 4, Size: 72, ElemSize: 72, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 			{Name: "ships", Offset: 76, Size: 324, ElemSize: 108, IsArray: true, ArrayBound: 3, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 			{Name: "thresholds", Offset: 400, Size: 12, ElemSize: 4, IsArray: true, ArrayBound: 3, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 			{Name: "reserves", Offset: 412, Size: 328, ElemSize: 108, IsArray: true, ArrayBound: 3, IsPointer: false, CountOffset: 736, PresentOffset: -1, Storage: TableCookStorageRecord},

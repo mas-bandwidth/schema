@@ -477,7 +477,7 @@ type LoadoutConfigRow struct {
 // §11), so no declaration in the unit can take it.
 type PackConfigRow struct {
 	Version       uint32
-	Global        GlobalSettingsRow
+	Settings      GlobalSettingsRow
 	Ships         [3]ShipEntryRow
 	Thresholds    [3]int32
 	Reserves      [3]ShipEntryRow

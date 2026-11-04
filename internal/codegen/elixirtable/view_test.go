@@ -251,7 +251,7 @@ table LoadoutConfig field backups json=backups type=WeaponConfig id=de28f0f5118a
 table LoadoutConfig field attachments json=attachments type=Attachment id=f901aa0340249a41 optional=false tags=[] doc=
 table PackConfig file=Pack.schema fields=5 tags=[] doc=
 table PackConfig field version json=version type=uint32 id=bb62c62c9808ea37 optional=false tags=[] doc=
-table PackConfig field global json=global type=GlobalSettings id=7fb43557b54149ce optional=false tags=[] doc=
+table PackConfig field settings json=settings type=GlobalSettings id=7fb43557b54149ce optional=false tags=[] doc=
 table PackConfig field ships json=ships type=ShipEntry id=294a5c4913e1ad44 optional=false tags=[] doc=
 table PackConfig field thresholds json=thresholds type=int32 id=9cda940a344e1571 optional=false tags=[] doc=
 table PackConfig field reserves json=reserves type=ShipEntry id=77707fccd201c228 optional=false tags=[] doc=
