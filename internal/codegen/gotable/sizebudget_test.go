@@ -33,7 +33,8 @@ const (
 	// -4: variable region and retain loads report newer_form on any form byte != 2 (SPEC-TABLES §6.5)
 	// +5: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
 	// +10: the message writer refuses a ranged integer, a bits(N) value and ill-formed text instead of masking them, naming invalid_value through (*TableMessageWriter).Refuse (SPEC.md §5.1, SPEC-TABLES §22.6)
-	goOneTableLineBudget = 9585
+	// -7: a refused message batch leaves the buffer untouched: SaveMessages measures first, and the measure carries the batch-size refusal (SPEC.md §5.1); the text writer refuses a count past its storage instead of clamping it
+	goOneTableLineBudget = 9578
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -48,7 +49,8 @@ const (
 	// -100: variable loads report newer_form on any form byte != 2 (SPEC-TABLES §6.5)
 	// +8: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
 	// +268: the message writer refuses a ranged integer, a bits(N) value and ill-formed text instead of masking them, naming invalid_value through (*TableMessageWriter).Refuse (SPEC.md §5.1, SPEC-TABLES §22.6)
-	goExamplesLineBudget = 59751
+	// -109: a refused message batch leaves the buffer untouched: SaveMessages measures first, and the measure carries the batch-size refusal (SPEC.md §5.1); the text writer refuses a count past its storage instead of clamping it
+	goExamplesLineBudget = 59642
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

@@ -76,7 +76,7 @@ func TestGoTextWriterRefusesStorageOverrun(t *testing.T) {
 func TestGoTextWriterStorageNegativeControl(t *testing.T) {
 	t.Parallel()
 	out, err := runGeneratedEdited(t, jsonCountSchema, jsonCountProbe, func(files map[string][]byte) {
-		patch(t, files, "if f.Counted && !tableJSONCountHolds(base, f) {", "if false && f.Counted && !tableJSONCountHolds(base, f) { /* SABOTAGED */")
+		patch(t, files, "n < 0 || !f.UnboundedContainer && n > f.ArrayBound {", "false && (n < 0 || !f.UnboundedContainer && n > f.ArrayBound) { /* SABOTAGED */")
 	})
 	if err == nil {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the text writer's storage bound is gone and the probe stayed GREEN\n%s", out)
