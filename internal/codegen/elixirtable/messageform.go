@@ -25,6 +25,8 @@ package elixirtable
 
 import (
 	"fmt"
+	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -66,6 +68,7 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(ir.TableAnnouncement(u))))
 	fmt.Fprintf(&b, "  @entries_here %d\n\n", len(ir.TableVocabulary(u)))
 	b.WriteString(messageIntegrity(u, messageRuntimeBody+messageBatchRuntimeBody))
+	b.WriteString(messageDeclaredChecks(u))
 	b.WriteString("end\n")
 	return []byte(b.String())
 }
@@ -97,6 +100,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
+      check_bodies(vocab, values)
+
       case encode_bodies(vocab, values, {0, 0}) do
         {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
@@ -105,6 +110,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
   catch
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
     :non_finite_float -> {:error, :non_finite_float}
+    # and a value its declaration cannot hold (docs/SPEC.md §5.1)
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -118,6 +125,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
+      check_bodies(vocab, values)
+
       case encode_bodies(vocab, values, {0, 0}) do
         {:ok, bits} -> {:ok, frame_batch(n, bits)}
         :error -> {:error, :malformed}
@@ -125,6 +134,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   catch
     :non_finite_float -> {:error, :non_finite_float}
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -177,6 +187,76 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp frame_batch(n, {acc, nbits}) do
     <<2, n - 1, int_to_bytes(acc, div(nbits + 7, 8))::binary>>
   end
+
+  # ---------------------------------------------------------------------------
+  # THE WRITE CONTRACT (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §3.3)
+  #
+  # Every value of the batch is checked before a bit is written, and one its
+  # declaration cannot hold refuses the whole batch as invalid_value: a ranged
+  # integer or a bits(N) off this build's declared bounds, an integer past its
+  # storage, a count or a length past the bound its entry announces, an enum
+  # value that names none of its enum's variants, and a string that is not
+  # well-formed UTF-8. Nothing is masked, wrapped or clamped into the width,
+  # with the one exception this form makes on purpose: a flags mask rides at
+  # its declared width, and bits a newer build appended are dropped by width.
+  # ---------------------------------------------------------------------------
+
+  defp check_bodies(vocab, values), do: Enum.each(values, &check_body(vocab, &1))
+
+  defp check_body(vocab, body) when is_list(body), do: Enum.each(body, &check_field(vocab, &1))
+  defp check_body(_vocab, _body), do: :ok
+
+  # a reference that names no entry is the encoder's to answer as malformed
+  defp check_field(vocab, {ref, value}) do
+    case entry_at(vocab, ref) do
+      {:ok, e} -> check_value(vocab, e.id, e.kind, e.shape, Map.get(e, :element), value)
+      :error -> :ok
+    end
+  end
+
+  defp check_field(_vocab, _field), do: :ok
+
+  defp check_value(_vocab, id, kind, %{packing: 1} = shape, _elem, value)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9],
+       do: bounded(id, kind, shape.base, shape.bits, value)
+
+  defp check_value(_vocab, _id, kind, %{packing: 0}, _elem, value) when kind in [2, 3, 4, 5] do
+    half = 1 <<< (kind_bits(kind) - 1)
+    if not is_integer(value) or value < -half or value >= half, do: throw(:invalid_value)
+  end
+
+  defp check_value(_vocab, _id, kind, %{packing: 0}, _elem, value) when kind in [6, 7, 8, 9] do
+    if not is_integer(value) or value < 0 or value >= 1 <<< kind_bits(kind),
+      do: throw(:invalid_value)
+  end
+
+  defp check_value(_vocab, _id, 12, shape, _elem, value) do
+    if not is_binary(value) or not String.valid?(value) or
+         (shape.max > 0 and byte_size(value) > shape.max),
+       do: throw(:invalid_value)
+  end
+
+  defp check_value(vocab, id, 14, shape, elem, value) when is_list(value) do
+    n = length(value)
+    if n < shape.min or (shape.max > 0 and n > shape.max), do: throw(:invalid_value)
+    Enum.each(value, &check_value(vocab, id, elem.kind, elem.shape, Map.get(elem, :element), &1))
+  end
+
+  defp check_value(vocab, _id, 13, _shape, _elem, value), do: check_body(vocab, value)
+  defp check_value(vocab, _id, 15, _shape, _elem, arm), do: check_field(vocab, arm)
+
+  # an enum value is the zero reference (None) or the reference of one of its
+  # enum's variant names
+  defp check_value(_vocab, _id, 30, _shape, _elem, 0), do: :ok
+
+  defp check_value(vocab, id, 30, _shape, _elem, ref) do
+    case entry_at(vocab, ref) do
+      {:ok, %{kind: 0, id: name}} when name < 0xFFFFFFFFFFFFFFFD -> variant_of(id, name)
+      _ -> throw(:invalid_value)
+    end
+  end
+
+  defp check_value(_vocab, _id, _kind, _shape, _elem, _value), do: :ok
 
   # ---------------------------------------------------------------------------
   # THE WRITER: one bit stream, low bit first (docs/SPEC-TABLES.md §3.3)
@@ -648,6 +728,176 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float), else: v
   end
 `
+
+// messageBound is one entry's declared bounds: the key is the entry a ranged
+// integer or a bits(N) rides under (its id, its value kind, its base and its
+// width), and the bounds are the declaration's.
+type messageBound struct {
+	id         uint64
+	kind       int
+	base, bits string
+	lo, hi     *big.Int
+	flags      bool
+}
+
+// messageDeclaredChecks is the half of the write contract the announced shape
+// cannot carry (docs/SPEC.md §5.1): a ranged integer's max, which the shape
+// holds only as a width, and the variants an enum entry may name. The clauses
+// are keyed by the entry, so a value written against this build's own
+// vocabulary is held to this build's declaration. Two declarations behind one
+// entry share its key: their bounds widen to cover both, and a flags mask
+// behind it leaves it unchecked, because a mask is dropped by width and never
+// refused (docs/SPEC-TABLES.md §3.3).
+func messageDeclaredChecks(u *ir.Unit) string {
+	bounds := map[string]*messageBound{}
+	variants := map[uint64]map[uint64]bool{}
+	visit := func(id uint64, f *ir.Field) {
+		kind := ir.TableWireFieldKind(f)
+		shape := ir.TableFieldShape(f)
+		switch {
+		case f.IsMap() || f.KeyEnum != "" || f.Type.Kind == ir.TBytes:
+			return
+		case f.Array != ir.ArrayNone:
+			kind = int(shape.Elem)
+			if shape.Inner == nil {
+				return
+			}
+			shape = *shape.Inner
+		}
+		if en, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
+			if variants[id] == nil {
+				variants[id] = map[uint64]bool{}
+			}
+			for i := range en.Variants {
+				variants[id][ir.TableWireId(en.VariantWireName(i))] = true
+			}
+			return
+		}
+		if shape.Packing != ir.TableMessageRanged || shape.Base == nil || kind < ir.TableKindI8 || kind > ir.TableKindU64 {
+			return
+		}
+		var lo, hi *big.Int
+		flags := false
+		switch {
+		case f.Type.Kind == ir.TInt && f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
+			lo, hi = f.IntMin, f.IntMax
+		case f.Type.Kind == ir.TBits:
+			lo = big.NewInt(0)
+			hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		default:
+			_, flags = f.Type.Ref.(*ir.Flags)
+			if !flags {
+				return
+			}
+		}
+		key := fmt.Sprintf("%d/%d/%s/%d", id, kind, shape.Base.String(), shape.Bits)
+		b := bounds[key]
+		if b == nil {
+			b = &messageBound{id: id, kind: kind, base: shape.Base.String(), bits: fmt.Sprint(shape.Bits)}
+			bounds[key] = b
+		}
+		if flags {
+			b.flags = true
+			return
+		}
+		if b.lo == nil || lo.Cmp(b.lo) < 0 {
+			b.lo = lo
+		}
+		if b.hi == nil || hi.Cmp(b.hi) > 0 {
+			b.hi = hi
+		}
+	}
+	var structs []*ir.Struct
+	for _, st := range u.Tables {
+		structs = append(structs, st)
+	}
+	for _, st := range u.Structs {
+		structs = append(structs, st)
+	}
+	for _, st := range structs {
+		for _, f := range st.Fields {
+			visit(ir.TableFieldWireId(f), f)
+			if f.IsMap() {
+				for _, sub := range f.MapEntry.Fields {
+					visit(ir.TableFieldWireId(sub), sub)
+				}
+			}
+		}
+	}
+	var unions []*ir.Union
+	for _, un := range u.Unions {
+		unions = append(unions, un)
+	}
+	for _, un := range u.TableUnions {
+		unions = append(unions, un)
+	}
+	for _, un := range unions {
+		for _, v := range un.Variants {
+			if !v.Void() && !v.Body() {
+				visit(ir.TableWireId(v.WireName()), v.F)
+			}
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString("\n  # THIS BUILD'S DECLARED BOUNDS, by the entry a ranged integer or a bits(N)\n")
+	b.WriteString("  # rides under: the announced shape carries the width and not the max.\n")
+	var keys []string
+	for k, v := range bounds {
+		if !v.flags {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	var clauses []string
+	for _, k := range keys {
+		v := bounds[k]
+		head := fmt.Sprintf("defp bounded(%s, %d, %s, %s, v)", exNumber(fmt.Sprint(v.id)), v.kind, exNumber(v.base), exNumber(v.bits))
+		clauses = append(clauses, exDefDo("  ", head, fmt.Sprintf("within(v, %s, %s)", exNumber(v.lo.String()), exNumber(v.hi.String()))))
+	}
+	clauses = append(clauses, "  defp bounded(_id, _kind, _base, _bits, _v), do: :ok\n")
+	b.WriteString(exClauses(clauses))
+	if len(keys) > 0 {
+		b.WriteString("\n  defp within(v, lo, hi) when is_integer(v) and v >= lo and v <= hi, do: :ok\n")
+		b.WriteString("  defp within(_v, _lo, _hi), do: throw(:invalid_value)\n")
+	}
+	b.WriteString("\n  # THE VARIANTS AN ENUM ENTRY MAY NAME, by the entry's id and each variant\n")
+	b.WriteString("  # name's id.\n")
+	var ids []uint64
+	for id := range variants {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	clauses = nil
+	for _, id := range ids {
+		var names []uint64
+		for n := range variants[id] {
+			names = append(names, n)
+		}
+		sort.Slice(names, func(i, j int) bool { return names[i] < names[j] })
+		for _, n := range names {
+			clauses = append(clauses, exDefDo("  ", fmt.Sprintf("defp variant_of(%s, %s)", exNumber(fmt.Sprint(id)), exNumber(fmt.Sprint(n))), ":ok"))
+		}
+		clauses = append(clauses, exDefDo("  ", fmt.Sprintf("defp variant_of(%s, _name)", exNumber(fmt.Sprint(id))), "throw(:invalid_value)"))
+	}
+	clauses = append(clauses, "  defp variant_of(_id, _name), do: :ok\n")
+	b.WriteString(exClauses(clauses))
+	return b.String()
+}
+
+// exClauses joins one function's clauses the way the formatter lays them out:
+// one-line clauses back to back, and a blank line on each side of a clause
+// that wraps.
+func exClauses(clauses []string) string {
+	var b strings.Builder
+	for i, c := range clauses {
+		if i > 0 && (strings.Count(c, "\n") > 1 || strings.Count(clauses[i-1], "\n") > 1) {
+			b.WriteString("\n")
+		}
+		b.WriteString(c)
+	}
+	return b.String()
+}
 
 // elixirBytes spells a byte run as the segments of an Elixir binary literal,
 // low byte first.

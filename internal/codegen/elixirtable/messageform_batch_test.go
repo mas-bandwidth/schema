@@ -705,16 +705,19 @@ const boundsElixirHelpers = `
     end
   end
 
+  # A count below the announced minimum is refused by the writer
+  # (docs/SPEC.md §5.1), so the hostile batch is spelled by hand: the
+  # reference bit, no count bits (min equals max), no element, and the
+  # terminator.
   defp refuse_wide(vocab) do
     case M.save_messages(vocab, [[{1, []}]]) do
-      {:ok, batch} ->
-        case M.load_messages(vocab, batch) do
-          {:malformed, 0, []} -> :ok
-          other -> check(false, "wide count #{inspect_small(other)}")
-        end
+      {:error, :invalid_value} -> :ok
+      other -> check(false, "save wide #{inspect(other)}")
+    end
 
-      other ->
-        check(false, "save wide #{inspect(other)}")
+    case M.load_messages(vocab, <<2, 0, 1>>) do
+      {:malformed, 0, []} -> :ok
+      other -> check(false, "wide count #{inspect_small(other)}")
     end
   end
 
@@ -836,6 +839,17 @@ const boundsValueFns = boundsElixirHelpers + `
     vocab = read!(words)
 
     case M.save_messages(vocab, [[{1, "hi"}], [{2, []}]]) do
+      {:error, :invalid_value} -> :ok
+      other -> check(false, "save of a count below its minimum #{inspect(other)}")
+    end
+
+    # the writer refuses the second body against this vocabulary, so the batch
+    # is written against its lawful twin, whose entry 2 is a fixed array of
+    # zero: the same references and the same zero count bits
+    lawful =
+      read!(entry(0x1000, <<12>> <> leb(15)) <> entry(0x2000, <<14>> <> leb(0) <> leb(0) <> <<0>>))
+
+    case M.save_messages(lawful, [[{1, "hi"}], [{2, []}]]) do
       {:ok, batch} ->
         case M.load_messages(vocab, batch) do
           {:malformed, 0, []} -> :ok
@@ -970,15 +984,10 @@ const boundsCountFn = boundsElixirHelpers + `
     vocab = read!(words)
 
     try do
-      case M.save_messages(vocab, [[{1, []}]]) do
-        {:ok, batch} ->
-          case M.load_messages(vocab, batch) do
-            other ->
-              IO.puts(:stderr, "control did not restore the count-driven loop: #{inspect_small(other)}")
-          end
-
+      # the batch refuse_wide spells by hand: the writer refuses this count
+      case M.load_messages(vocab, <<2, 0, 1>>) do
         other ->
-          IO.puts(:stderr, "control did not restore the count-driven loop: #{inspect(other)}")
+          IO.puts(:stderr, "control did not restore the count-driven loop: #{inspect_small(other)}")
       end
     rescue
       e ->
