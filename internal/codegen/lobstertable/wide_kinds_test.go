@@ -219,7 +219,7 @@ func wideUnitConstructs(u *ir.Unit) []string {
 	return out
 }
 
-// TestLobsterWideKinds carries the wide kinds across the variable table wire
+// TestLobsterWideKinds carries the wide kinds across each declared table wire
 // (docs/SPEC-TABLES.md §2.11, §3, §4; SPEC.md §4.13; docs/PORT-LOBSTER.md,
 // THE LOAD): a timestamp, both one-sided ranges, an enum, an escape and
 // wstring(N) on every manifest unit that uses them, plus the card's own
@@ -245,7 +245,7 @@ func TestLobsterWideKinds(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unit %s: %v", key, err)
 		}
-		g, err := generateVariableFixtureUnit(t, paths)
+		g, err := generateLoadUnit(t, paths)
 		if err != nil {
 			t.Fatalf("unit %s: %v", key, err)
 		}

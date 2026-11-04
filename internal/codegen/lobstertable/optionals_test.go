@@ -419,7 +419,7 @@ func TestLobsterOptionals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unit %s: %v", unit, err)
 		}
-		g, err := generateVariableFixtureUnit(t, paths)
+		g, err := generateLoadUnit(t, paths)
 		if err != nil {
 			t.Fatalf("unit %s: %v", unit, err)
 		}
