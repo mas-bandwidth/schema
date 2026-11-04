@@ -2322,12 +2322,12 @@ def j_place_map_key(entry:Record, kf:FieldDescriptor, key:string) -> int:
         ks.cell.s = key
         ks.count = length(key)
         return 0
-    let probe = JsonReader { text: key, report: LoadReport {} }
-    j_space(probe)
-    if probe.pos != 0:
+    let key_reader = JsonReader { text: key, report: LoadReport {} }
+    j_space(key_reader)
+    if key_reader.pos != 0:
         return 2
-    let _, ok = j_walk_number(probe)
-    if not ok or probe.pos != length(key):
+    let _, ok = j_walk_number(key_reader)
+    if not ok or key_reader.pos != length(key):
         return 2
     let number = j_interpret_exact(key)
     if number.fractional or number.saturated:

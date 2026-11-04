@@ -30,9 +30,9 @@ name (the toolchain gate, issue #599). The fleet installs the same pin.
 
 ## THE TYPE MAPPING
 
-One module per schema file, `<Base>.lobster`, and `<Base>Table.lobster` for a
-file with tables (or with a packet type a table reaches). Every module of a
-unit declares the same `namespace <package>`, so a consumer spells a
+One packet module per schema file, `<Base>.lobster`, and a separate
+`<Base>Table.lobster` carrying its reflection declarations and any table codecs.
+Every module of a unit declares the same `namespace <package>`, so a consumer spells a
 declaration `<package>.<Name>` and one module names another's declarations
 bare. A value is a Lobster `class` (a mutable object, copied by reference)
 with EVERY field present from construction (the storage principle, SPEC
@@ -115,6 +115,41 @@ a small per-table accessor the form's card emits — one function per table
 that hands the walk each slot in descriptor order, joined through
 `lobstertable.Register` — never through per-field codec logic. That accessor
 is the only per-table code a form emits; the walk itself is one runtime file.
+
+## THE UNIT REGISTRY
+
+Import `<package>View.lobster` and call `<package>.UnitView()` to enumerate
+all six declaration sets. The entry point imports every file's reflection
+module, including constant-only files and packet types no table reaches.
+Table-free units keep all metadata in the view entry point and emit only its
+descriptor dependencies (`descriptors` and `schema_tables`), with no `*Table`
+module or load runtime. Deprecated-enum read hooks live in `descriptors_load`
+and are imported only by table units. Packet modules keep their packet
+imports; a consumer opts into reflection by importing the view module.
+
+The extra output is part of generation, so runtime module file names are
+reserved only when the unit emits those modules. A schema basename that
+collides with `<package>View.lobster` is refused before output is written.
+Generated `UnitView`, `<Name>Descriptor`, and enum-keyed `Slot`/`At`/`Each`
+accessor names are also claimed before emission; conflicting declarations
+or fields must be renamed. Flattened enum and flags member names participate
+in the same collision check. Package names matching a binding in an emitted
+packet or descriptor/table runtime are refused conservatively: Lobster can interpret a
+local's member access as a package-qualified name. The binding scan includes
+parameters, locals and callback variables, and ignores comments, literal
+contents and plain class fields. `TestLobsterUnitViewRuntimePackages` checks
+named refusals and a renamed package under the native compiler.
+`TestLobsterUnitViewIncludesUnreachedFiles` checks table-free and mixed units,
+all six sets, and missing constant metadata as its negative control.
+
+`make tables-lobster-view` runs `TestLobsterUnitViewListing`: the native view
+printer byte-compares every `VIEW_CORPUS` and table-manifest unit with the
+shared IR listing (§8.7), including field type spellings, source filenames,
+closure-only wire identity, vocabulary widths, union payloads, docs and tags.
+Descriptor-ID and arm-offset mutations must change the listing. The union
+arm and payload offsets describe the shared region/cook projection, not VM
+addresses; the printer compares those independently emitted columns.
+The package-wide `test-lobster` gate includes this test as well.
 
 ## THE NUMBER MODEL
 
@@ -459,7 +494,7 @@ reason, and `compiler/porting_test.go` holds it to the tree:
   `constant_descriptor` and `accessor_descriptor` planted bugs turn it red),
   M16 and M20 (the variable-wire load and save, every manifest instance byte
   for byte and report for report against the Go engine), I4 (per-case absent,
-  in the driver's line grammar), I10 (`TestLobsterTableFreeUnitAddsNothing`)
+  in the driver's line grammar), I10 (`TestLobsterTableFreePacketIdentity`)
   and J4 (`tables-lobster-clean`, the strict gate below).
 - **— the platform cannot:** M2 (an `int` is an unboxed 64-bit word), M3 (a
   `float` is an unboxed 64-bit slot), M4 (no inlining directive or aliasing
