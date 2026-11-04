@@ -720,8 +720,9 @@ end
 -- refuses a batch before any byte of it is stored. A NaN or an infinity is
 -- non_finite_float; an integer off its width, its declared range or its
 -- bits(N), an enum ordinal no variant names, a union tag no arm names, a
--- count or length past its bound or its storage, and ill-formed text are
--- invalid_value; each names <Owner>.<field>. A flags value is stored whole.
+-- count or length past its bound or its storage, and text its reader refuses
+-- (utf8IllFormed, wideIllFormed: ill-formed, or holding a zero byte or unit)
+-- are invalid_value; each names <Owner>.<field>. A flags value is stored whole.
 local function invalid(f: any): Refusal
 	return { name = "invalid_value", malformed = false, field = _owner .. "." .. (f.name or _field) }
 end
@@ -757,7 +758,10 @@ local function checkOne(f: any, n: Node, value: any): Refusal?
 			return invalid(f)
 		end
 		if length > 0 and (typeof(own) ~= "buffer" or length * unit > buffer.len(own)) then return invalid(f) end
-		if f.s == "str" and length > 0 and not S.text_ok(own, length * unit, f.wide) then return invalid(f) end
+		if f.s == "str" and length > 0 then
+			local bad = if f.wide then wideIllFormed(own, 0, length) else utf8IllFormed(own, 0, length)
+			if bad then return invalid(f) end
+		end
 	elseif f.s == "tab" then
 		return checkStruct(S.lookup(f.t), n, own)
 	elseif f.s == "union" then
