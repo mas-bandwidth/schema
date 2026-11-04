@@ -91,7 +91,7 @@ func TestRequiredPins(t *testing.T) {
   }
   var b RootBuilder;if !b.Init(){t.Fatal("builder init")};var r TableReport
   ok:=RootLoadBuilderRead(&b,pin,&r);b.Shutdown()
-  if ok!=(tc.reason=="") || r.Reason!=tc.reason || r.Refused!=!ok {t.Fatalf("independent read %%s: %%v %%+v",tc.name,ok,r)}
+  if ok!=(tc.reason=="") || r.Reason!=tc.reason || r.Refused()!=!ok {t.Fatalf("independent read %%s: %%v %%+v",tc.name,ok,r)}
  }
 }
 `, corpus))

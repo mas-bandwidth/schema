@@ -91,10 +91,14 @@ func lobsterPinFaults(t *testing.T, schema string, pins []lobsterPin, sabotage b
 		}
 		const from = "            read_refuse(report, \"wire_damaged\")\n        return nil\n    return rec"
 		const to = "            read_refuse(report, \"wire_damaged\")\n        return new_record(table_of(root))\n    return rec"
-		if strings.Count(string(src), from) != 1 {
+		const fixedFrom = "        return fixed_record_codec(root).read_fixed(data, report)"
+		const fixedTo = "        let rec = fixed_record_codec(root).read_fixed(data, report)\n        if not rec:\n            return new_record(table_of(root))\n        return rec"
+		if strings.Count(string(src), from) != 1 || strings.Count(string(src), fixedFrom) != 1 {
 			t.Fatal("single read refusal boundary missing")
 		}
-		if err := os.WriteFile(path, []byte(strings.Replace(string(src), from, to, 1)), 0o644); err != nil {
+		mutant := strings.Replace(string(src), from, to, 1)
+		mutant = strings.Replace(mutant, fixedFrom, fixedTo, 1)
+		if err := os.WriteFile(path, []byte(mutant), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
