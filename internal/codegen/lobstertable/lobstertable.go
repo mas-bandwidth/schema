@@ -281,6 +281,9 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 	g.Pf("    table: %v,\n", t.IsTable)
 	g.Pf("    fixed: %v,\n", t.FixedDeclared)
 	g.Pf("    variable: %v,\n", ir.VariableTables(g.Unit)[t.Name])
+	if t.Integrity == "crc32c" {
+		g.Pf("    integrity: true,\n")
+	}
 	var placeable []string
 	for _, r := range ir.PointerReachable(t) {
 		placeable = append(placeable, lobster.StringLit([]byte(r.Name)))
