@@ -48,16 +48,16 @@ func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V,
 			return nil, rep, false
 		}
 		if count < 1 || count > 256 {
-			return nil, rep, false
+			return nil, rep, true
 		}
 		var ignored R
 		n := measure(pointers[:count], &ignored)
 		if n < 0 {
-			return nil, rep, false
+			return nil, rep, true
 		}
 		out := make([]byte, n)
 		if save(pointers[:count], out, &ignored) != n {
-			return nil, rep, false
+			return nil, rep, true
 		}
 		return out, rep, ok
 	}}
@@ -108,7 +108,7 @@ func surfaceMessage(lines []line, out string) error {
 			return err
 		}
 		answer, report, ok := codec.run(announcement, wire, false)
-		if !ok {
+		if !ok || answer == nil {
 			return fmt.Errorf("%s: message load/save %+v", f[1], report)
 		}
 		if err := spill(out, f[1], answer); err != nil {

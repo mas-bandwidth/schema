@@ -59,7 +59,8 @@ func TestReadAnswersCarryOnlyAcceptedValues(t *testing.T) {
 }
 
 func TestMessageFuzzWritesTheCompleteAcceptedBatch(t *testing.T) {
-	for _, accepted := range []bool{true, false} {
+	for _, tc := range []struct{ accepted, writes bool }{{true, true}, {false, true}, {true, false}} {
+		accepted := tc.accepted
 		c := messageRow[byte, report, byte]("probe", "Root", func(v *byte) { *v = 0 }, func() *byte { return new(byte) },
 			func() int64 { return 1 }, func(b []byte) int64 { b[0] = 1; return 1 }, func(*byte, []byte, *report) bool { return true },
 			func(v []byte, _ *byte, _ []byte, _ *report) (int64, bool) { v[0], v[1] = 11, 22; return 2, accepted },
@@ -69,6 +70,9 @@ func TestMessageFuzzWritesTheCompleteAcceptedBatch(t *testing.T) {
 				}
 				return int64(len(v))
 			}, func(v []*byte, dst []byte, _ *report) int64 {
+				if !tc.writes {
+					return -1
+				}
 				for i, p := range v {
 					dst[i] = *p
 				}
@@ -78,8 +82,8 @@ func TestMessageFuzzWritesTheCompleteAcceptedBatch(t *testing.T) {
 		if ok != accepted {
 			t.Fatalf("read %v, want %v", ok, accepted)
 		}
-		if accepted && !bytes.Equal(got, []byte{11, 22}) || !accepted && len(got) != 0 {
-			t.Fatalf("accepted=%v: batch %v", accepted, got)
+		if accepted && tc.writes && !bytes.Equal(got, []byte{11, 22}) || (!accepted || !tc.writes) && len(got) != 0 {
+			t.Fatalf("accepted=%v writes=%v: batch %v", accepted, tc.writes, got)
 		}
 	}
 }

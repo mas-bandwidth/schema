@@ -239,19 +239,19 @@ def cook_input(f:[string], recipe:[string]) -> schema_rt.Record?:
     let path = recipe[2]
     let rec = schema_rt.json_read(f[3], fixture(path), rep)
     if rec and (recipe[3] != "-" or recipe[4] != "-"):
-        var from:schema_rt.Slot? = nil
-        var to:schema_rt.Slot? = nil
+        var source_slot:schema_rt.Slot? = nil
+        var alias_slot:schema_rt.Slot? = nil
         for(rec.fields) sl:
             if sl.fd.s == "bblob" and sl.fd.present == "":
-                if sl.fd.name == recipe[3]: from = sl
-                if sl.fd.name == recipe[4]: to = sl
-        assert from and to and from != to
-        let blob = from.cell.blob
+                if sl.fd.name == recipe[3]: source_slot = sl
+                if sl.fd.name == recipe[4]: alias_slot = sl
+        assert source_slot and alias_slot and source_slot != alias_slot
+        let blob = source_slot.cell.blob
         assert blob
         let node = schema_rt.Node { kind: 3, rec: nil, blob: blob }
-        from.cell.blob_node = node
-        to.cell.blob = blob
-        to.cell.blob_node = node
+        source_slot.cell.blob_node = node
+        alias_slot.cell.blob = blob
+        alias_slot.cell.blob_node = node
     return rec
 
 // COOK-WRITE compares both byte orders to the existing independent goldens.
