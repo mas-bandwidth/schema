@@ -7,7 +7,10 @@ def vp_yes(vp_value:bool) -> string:
     return if vp_value: "yes" else: "no"
 
 def vp_hex(vp_value:int) -> string:
-    return number_to_string(vp_value, 16, 16)
+    var vp_hex_text = ""
+    for(16) vp_digit:
+        vp_hex_text += substring("0123456789abcdef", schema_rt.shr(vp_value, (15 - vp_digit) * 4) & 15, 1)
+    return vp_hex_text
 
 def vp_ann(vp_doc:string, vp_tags:[string]) -> string:
     var vp_flat = ""
