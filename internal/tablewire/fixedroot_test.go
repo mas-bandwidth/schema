@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // A FIXED ROOT IS FORM 3 IN THE ENGINE, BOTH WAYS (docs/SPEC-TABLES.md "The
@@ -156,5 +158,48 @@ table Root
 	wire, err := Encode(m, inst)
 	if err != nil || len(wire) == 0 || wire[0] != 1 {
 		t.Fatalf("a variable root wrote %x, %v; want form 1", wire, err)
+	}
+}
+
+// The declaration still expects form 3 when the body exceeds the emitter's
+// bound. The writer must refuse that layout, never silently choose form 1.
+func TestFixedRootBeyondEmissionBoundRefusesForm1(t *testing.T) {
+	m := covModel(t, `package oversized
+fixed table Huge { payload bytes(65536) }
+`)
+	st := m.Lookup("Huge")
+	if ir.TableFixedEmitted(m.Unit, st) {
+		t.Fatal("fixture still fits the fixed form")
+	}
+	inst := m.New(st)
+	// A complete empty form-1 file: form, root terminator, zero ID count.
+	wire := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	var report tabletext.Report
+	ok, err := Decode(m, inst, wire, &report)
+	var refusal *FixedRefusal
+	if ok || !errors.As(err, &refusal) || refusal.Reason != FixedReasonPreviousForm {
+		t.Fatalf("oversized fixed root accepted form 1: ok=%v err=%v report=%+v", ok, err, report)
+	}
+	if out, err := Encode(m, inst); err == nil || len(out) != 0 {
+		t.Fatalf("unsupported fixed layout wrote %x, %v", out, err)
+	}
+	if ok, err := Decode(m, inst, []byte{3}, &report); ok || err == nil {
+		t.Fatalf("unsupported fixed layout read form 3: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestFixedRootAtEmissionBoundStillWritesForm3(t *testing.T) {
+	m := covModel(t, fmt.Sprintf("package boundary\nfixed table Huge { payload bytes(%d) }\n", ir.TableFixedRecordMaxBytes-4))
+	st := m.Lookup("Huge")
+	if !ir.TableFixedEmitted(m.Unit, st) {
+		t.Fatal("boundary fixture is not emitted")
+	}
+	wire, err := Encode(m, m.New(st))
+	if err != nil || len(wire) == 0 || wire[0] != 3 {
+		t.Fatalf("boundary write: %x, %v", wire, err)
+	}
+	var report tabletext.Report
+	if ok, err := Decode(m, m.New(st), wire, &report); !ok || err != nil {
+		t.Fatalf("boundary read: %v, %v", ok, err)
 	}
 }
