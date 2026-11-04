@@ -717,6 +717,40 @@ json-hostile nesting-past-depth-cap       tabledemo RootConfig  testdata/conform
 # the skip walk every reader has; the at-limit read counts the one unknown key.
 json-hostile nesting-at-depth-cap         tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-at-depth-cap         1,0,0,0,0,false,read
 json-hostile nesting-one-past-depth-cap   tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap   refused
+#
+# Every container is one level, whatever declared it: a map's object and a
+# union's object each count, as a table's object and an array do. The pairs
+# below reach the limit through mapdemo's Depth root, `one.roster` (a table,
+# then a map, then the map's Item value) and `arm.squad` (a union, then its
+# Squad payload), each ending in an unknown key's arrays. A reader that does
+# not count the map or the union object reads the one-past text.
+json-hostile nesting-at-depth-cap-through-map         mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-map         1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-map   mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-map   refused
+json-hostile nesting-at-depth-cap-through-union       mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-union       1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-union mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-union refused
+# The same through a fixed table's declared path, tabledemo's RootConfig:
+# `weapons` (an array), a WeaponConfig, its `effect` union, then the Buff arm.
+json-hostile nesting-at-depth-cap-through-fixed-union       tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-fixed-union       1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-fixed-union tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-fixed-union refused
+# A SKIPPED value is a container like any other: a declared array's element
+# of the wrong shape, a keyed object's key no enum names, a text list's
+# element that is not a string and a flags array's element that is not a
+# name each sit one level below their array or object, which sits one below
+# its holder. A reader that labels the skipped value at its container's own
+# level reads the one-past text.
+json-hostile nesting-at-depth-cap-through-skipped-array       tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-array 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-array tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-array refused
+json-hostile nesting-at-depth-cap-through-skipped-keyed       tabledemo PackConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-keyed 1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-keyed tabledemo PackConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-keyed refused
+json-hostile nesting-at-depth-cap-through-skipped-text-list   featurewitnesses Root testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-text-list 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-text-list featurewitnesses Root testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-text-list refused
+json-hostile nesting-at-depth-cap-through-skipped-flags       tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-flags 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-flags tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-flags refused
+# and a map's value of the wrong shape and a union's arm no variant names.
+json-hostile nesting-at-depth-cap-through-skipped-map-value   mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-map-value 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-map-value mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-map-value refused
+json-hostile nesting-at-depth-cap-through-skipped-union-arm   mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-union-arm 1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-union-arm mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-union-arm refused
 json-hostile null-optional                tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-optional                0,0,0,0,0,false,read
 json-hostile null-scalar                  tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-scalar                  0,1,0,0,0,false,read
 json-hostile num-bare-minus               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-bare-minus               refused
@@ -847,6 +881,12 @@ json-hostile timestamp-domain-min-by-offset      featurewitnesses Root testdata/
 json-hostile timestamp-domain-max-by-offset      featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-max-by-offset      0,0,0,0,0,false,read
 json-hostile timestamp-domain-past-min-by-offset featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-past-min-by-offset refused
 json-hostile timestamp-domain-past-max-by-offset featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-past-max-by-offset refused
+# A COUNT PAST [..N] AND THE TOTAL, BOTH COUNTED (§2.13): five labels on the
+# [..4] list, where "abc" carries the sum to 9 and the total drops it and the
+# tail. The fifth element is past the count bound as well, and that clamp is
+# counted beside the total's, so the text and the wire (report
+# text_total_and_count, the same five labels) both answer two clamps.
+json-hostile text-total-and-count         featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-and-count         0,0,0,2,0,false,read
 
 # THE SHARING CONSTRUCT'S OWN EDGES (docs/SPEC-TABLES.md §16.7), over the
 # pointered root: `&node` is a LABEL — with fields after it, it defines a node
@@ -1173,6 +1213,12 @@ instance list_nested listdemo Sheet testdata/wire/tables/list_nested.bin
 instance list_of_maps listdemo Army testdata/wire/tables/list_of_maps.bin
 instance list_migrates listdemo Unbounded testdata/wire/tables/list_migrates.bin
 report list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin
+
+# THE SAME FIVE LABELS ON THE WIRE (§2.13), written by a build whose labels are
+# [..5]string(8) with no total: the reader clamps the count at 4 and the total
+# drops "abc" and what follows, two clamps, as json-hostile
+# text-total-and-count reads the same value from the text.
+report text_total_and_count featurewitnesses Root testdata/wire/tables/text_total_and_count.bin
 
 # Map storage and ordering pins shared by the reference and every port.
 unit mapdemo tables/maps

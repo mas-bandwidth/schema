@@ -11502,7 +11502,7 @@ inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & va
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Placement> fill = TableListFillBegin( nodes, value.placements, count );
                         if ( fill.refused )
                         {
@@ -11589,7 +11589,7 @@ inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & va
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<LogEntry *> fill = TableListFillBegin( nodes, value.log, count );
                         if ( fill.refused )
                         {
@@ -11680,16 +11680,16 @@ inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & va
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.scores, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -11734,7 +11734,7 @@ inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & va
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.scores, count );
                         if ( fill.refused )
                         {
@@ -12654,7 +12654,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Grade> fill = TableListFillBegin( nodes, value.grades, count );
                         if ( fill.refused )
                         {
@@ -12749,16 +12749,16 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Perm> fill = TableListFillBegin( nodes, value.perms, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -12803,7 +12803,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Perm> fill = TableListFillBegin( nodes, value.perms, count );
                         if ( fill.refused )
                         {
@@ -12889,7 +12889,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Hit> fill = TableListFillBegin( nodes, value.hits, count );
                         if ( fill.refused )
                         {
@@ -13039,16 +13039,16 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.bounds, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -13095,7 +13095,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.bounds, count );
                         if ( fill.refused )
                         {
@@ -16007,9 +16007,11 @@ inline bool SaveLoadBuilderTolerant( SaveBuilder & builder, const uint8_t * wire
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the whole-load outcome of damage, the root reset below, named
-    // count_over_extent_cap and not damage, so malformed is not set
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
-    if ( nodes.refused && !out->malformed )
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
     {
         out->refused = true;
         out->reason = count_over_extent_cap;
@@ -16082,7 +16084,10 @@ inline const Save * SaveReadStrict( const uint8_t * wire_file, int64_t wire_file
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = SaveLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -16105,6 +16110,11 @@ inline const Save * SaveReadStrict( const uint8_t * wire_file, int64_t wire_file
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -16977,9 +16987,11 @@ inline bool MixedLoadBuilderTolerant( MixedBuilder & builder, const uint8_t * wi
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the whole-load outcome of damage, the root reset below, named
-    // count_over_extent_cap and not damage, so malformed is not set
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
-    if ( nodes.refused && !out->malformed )
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
     {
         out->refused = true;
         out->reason = count_over_extent_cap;
@@ -17052,7 +17064,10 @@ inline const Mixed * MixedReadStrict( const uint8_t * wire_file, int64_t wire_fi
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = MixedLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -17075,6 +17090,11 @@ inline const Mixed * MixedReadStrict( const uint8_t * wire_file, int64_t wire_fi
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -17640,7 +17660,7 @@ inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sav
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                         // records under this field go with the value it is about to lose.
                         TableRetainDiscardField( retain, path, 0 );
@@ -17730,7 +17750,7 @@ inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sav
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<LogEntry *> fill = TableListFillBegin( nodes, value.log, count );
                         if ( fill.refused )
                         {
@@ -17821,16 +17841,16 @@ inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sav
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.scores, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -17875,7 +17895,7 @@ inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sav
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.scores, count );
                         if ( fill.refused )
                         {
@@ -18452,7 +18472,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Grade> fill = TableListFillBegin( nodes, value.grades, count );
                         if ( fill.refused )
                         {
@@ -18547,16 +18567,16 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Perm> fill = TableListFillBegin( nodes, value.perms, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -18601,7 +18621,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Perm> fill = TableListFillBegin( nodes, value.perms, count );
                         if ( fill.refused )
                         {
@@ -18687,7 +18707,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                         // records under this field go with the value it is about to lose.
                         TableRetainDiscardField( retain, path, 2 );
@@ -18840,16 +18860,16 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.bounds, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -18896,7 +18916,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.bounds, count );
                         if ( fill.refused )
                         {

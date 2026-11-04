@@ -107,9 +107,9 @@ R.ReadStrictNames = table.freeze({
 	message_form_as_file = true, newer_form = true, previous_form = true, unknown_form = true,
 	integrity_mismatch = true, wire_damaged = true,
 	missing_required = true, malformed = true, clamped = true, kind_mismatch = true, non_finite_float = true, blob_shared = true,
-	-- the builder-path storage refusal (Go tablewire.CountRefusal, §2.9): a
-	-- collection count past the int32 cap, answered by schema_load.luau
-	count_refusal = true,
+	-- the storage cap refusal (§2.9): a `[]` or map count past the int32
+	-- storage cap, answered by schema_load.luau
+	count_over_extent_cap = true,
 	-- the storage cap (§6.5, §11): a wire whose measure passes 2^40 bytes,
 	-- answered by schema_load.luau before anything is built
 	storage_over_cap = true,

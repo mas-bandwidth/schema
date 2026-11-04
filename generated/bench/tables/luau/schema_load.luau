@@ -512,9 +512,32 @@ local _rootValue: any = nil
 local _rootDesc: any = nil
 local _report: any = nil
 local _numberingGood: boolean = true
--- the builder-path storage refusal (Go CountRefusal): a collection count past
--- the int32 cap discards the partial value and is NOT a malformed event.
+-- THE STORAGE CAP REFUSAL (docs/SPEC-TABLES.md §2.9): a `[]` or map count past
+-- the int32 storage cap refuses the whole read by the name
+-- count_over_extent_cap. It is not damage: malformed stays unset, no counter
+-- moves, and the partial value is discarded. The walk goes on to its end, so
+-- the report and the non-finite witness are taken at the first refusal and put
+-- back when the walk ends: what the walk met after it is not this read's answer.
 local _countRefused: boolean = false
+local _countReport: any = nil
+local _countNonFinite: string? = nil
+
+-- refuseCount records the first count past the storage cap (§2.9)
+local function refuseCount(report: any)
+	if _countRefused then return end
+	_countRefused = true
+	_countReport = table.clone(report)
+	_countNonFinite = _nonFinite
+end
+
+-- restoreCount puts the report back as it stood at the first count refusal
+local function restoreCount(report: any)
+	local keys = {}
+	for k in report do keys[#keys + 1] = k end
+	for _, k in keys do report[k] = nil end
+	for k, v in _countReport do report[k] = v end
+	_nonFinite = _countNonFinite
+end
 
 local read_body: any
 local read_field: any
@@ -688,14 +711,10 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		if hdr.bad then report.malformed = true; r.at = endpos; return true end
 		local sub = new_reader(r.b, hdr.at, if endpos < hdr.at then hdr.at else endpos)
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
-		-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9, §2.2; internal/tablewire
-		-- decode.go collectionCap): a REGION read reports damage and resumes,
-		-- while the strict read refuses by name; the flag is what ReadStrict
-		-- turns into count_refusal.
+		-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9, §2.2): a count past it
+		-- refuses the read as count_over_extent_cap when the walk ends.
 		if count > 0x7FFFFFFF then
-			_countRefused = true
-			report.malformed = true
-			report.reason = "count_refusal"
+			refuseCount(report)
 			r.at = endpos
 			return true
 		end
@@ -917,17 +936,16 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	end
 	if ek ~= fd.ek then
 		if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; return false end
-		report.widened = report.widened + 1
+		-- a list past the int32 storage cap refuses below and moves no
+		-- counter (§2.9), the widening included
+		if not (fd.array == "list" and count > 0x7FFFFFFF) then report.widened = report.widened + 1 end
 	end
 	local keep = count
 	if fd.array == "list" then
 		if count > 0x7FFFFFFF then
-			-- the REGION answer (docs/SPEC-TABLES.md §2.9; collectionCap):
-			-- one malformed event, the prefix kept as far as the body covers,
-			-- and the walk goes on.
-			_countRefused = true
-			report.malformed = true
-			report.reason = "count_refusal"
+			-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9): a count past it
+			-- refuses the read as count_over_extent_cap when the walk ends.
+			refuseCount(report)
 			return false
 		end
 	elseif count > fd.bound then
@@ -1472,6 +1490,8 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 	_table = o.table
 	_report = report
 	_countRefused = false
+	_countReport = nil
+	_countNonFinite = nil
 	_nonFinite = nil
 	_pending = {}
 	_nodes = {}
@@ -1539,6 +1559,9 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 	local rootReader = new_reader(bytes, 1, o.e)
 	read_body(desc, rootReader, v, false)
 	resolve(report)
+	-- a count past the storage cap answers the report as it stood at the
+	-- refusal (§2.9)
+	if _countRefused then restoreCount(report) end
 	-- A NaN OR AN INFINITY REFUSES THE READ, TOLERANT AND STRICT ALIKE
 	-- (docs/SPEC-TABLES.md §3.3): nothing of the value lands, and the report
 	-- names the field, non_finite_float: <Owner>.<field>.
@@ -1546,6 +1569,13 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 		report.nonFiniteFloat = _nonFinite
 		report.reason = "non_finite_float: " .. _nonFinite
 		report.refused = (report.refused or 0) + 1
+		return nil
+	end
+	-- THE STORAGE CAP REFUSAL (§2.9): refused by name, malformed unset, no
+	-- counter moved, the partial value discarded
+	if _countRefused then
+		report.refused = (report.refused or 0) + 1
+		report.reason = "count_over_extent_cap"
 		return nil
 	end
 	if report.malformed then return nil end
@@ -2231,10 +2261,8 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 		return nil
 	end
 	if _countRefused then
-		-- the BUILDER-path storage refusal (docs/SPEC-TABLES.md §6.5, Go
-		-- tablewire.CountRefusal): both reads discard the damaged value;
-		-- the strict read keeps the specific refusal reason
-		rep.reason = "count_refusal"
+		-- the storage cap refusal (docs/SPEC-TABLES.md §2.9, §6.5): the walk
+		-- already named it count_over_extent_cap and set refused
 		return nil
 	end
 	for _, k in REFUSING do

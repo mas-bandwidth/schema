@@ -6199,7 +6199,7 @@ int _tableDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
       case "Shielded": bits |= 32;
       case "Airborne": bits |= 64;
       case "Downed": bits |= 128;
-      default: r.unknown++;
+      default: if (item is String) { r.unknown++; } else { r.kindMismatch++; }
     }
   }
   return bits;

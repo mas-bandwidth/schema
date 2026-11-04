@@ -37,9 +37,11 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	g.pf("%ssub,ok:=r.Body();if !ok {r.Report.Malformed=true;return false};if len(sub.Buffer)>=2 {\n", ind)
 	i := ind + "\t"
 	g.pf("%sheader:=sub;header.Buffer=r.Buffer[r.Offset-int64(len(sub.Buffer)):];elemKind:=header.Get8();count,ok:=header.Leb();sub.Offset=header.Offset\n", i)
-	g.pf("%sif !ok {r.Report.Malformed=true;break};if elemKind!=%d { if !tableKindWidens(elemKind,%d) {r.Report.KindMismatch++;break};r.Report.Widened++ }\n", i, kind, kind)
+	g.pf("%sif !ok {r.Report.Malformed=true;break};if elemKind!=%d&&!tableKindWidens(elemKind,%d) {r.Report.KindMismatch++;break}\n", i, kind, kind)
 	g.retainDiscard("r")
-	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(tableSizeof[%s]()),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};r.Report.Malformed=true;break};slot.Count=0\n", i, expr, typ, align)
+	// a widened element kind counts once the count is known to land: the
+	// builder's count-cap refusal moves no counter (docs/SPEC-TABLES.md §2.9)
+	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(tableSizeof[%s]()),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};if elemKind!=%d {r.Report.Widened++};r.Report.Malformed=true;break};if elemKind!=%d {r.Report.Widened++};slot.Count=0\n", i, expr, typ, align, kind, kind)
 	if f.TextTotal > 0 {
 		g.pf("%sspent:=int64(0)\n", i)
 	}
@@ -254,7 +256,7 @@ func tableJSONWriteList(out *tableJSONOut,holder unsafe.Pointer,f *TableFieldInf
  count:=*(*int32)(unsafe.Add(holder,8));if count<0{return false};if count==0{out.text("[]");return true};ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);out.put('[');for i := range count {if i>0{out.put(',')};out.line(depth+1);if !tableJSONWriteScalar(out,unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize)),f,depth+1){return false}};out.line(depth);out.put(']');return true
 }
 func tableJSONReadList(in *tableJSONIn,holder unsafe.Pointer,f *TableFieldInfo,depth int32) bool {
- if in.peek()!='['||in.graph==nil||in.graph.listAdd==nil {in.bad=true;return false};in.pos++;clear(unsafe.Slice((*byte)(holder),16));shape:=tableJSONElementShape(f)
- for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(holder,int64(f.ElemSize));if p==nil{in.bad=true;return false};if f.Kind==13&&!f.Pointer{f.Table().Reset(p)};if in.valueShape()!=shape&&!(f.Pointer&&in.valueShape()=='z'){in.report.KindMismatch++;if !in.skipValue(depth+1){return false}}else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false}
+ if depth+1>tableJSONMaxDepth||in.peek()!='['||in.graph==nil||in.graph.listAdd==nil {in.bad=true;return false};in.pos++;clear(unsafe.Slice((*byte)(holder),16));shape:=tableJSONElementShape(f)
+ for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(holder,int64(f.ElemSize));if p==nil{in.bad=true;return false};if f.Kind==13&&!f.Pointer{f.Table().Reset(p)};if in.valueShape()!=shape&&!(f.Pointer&&in.valueShape()=='z'){in.report.KindMismatch++;if !in.skipValue(depth+2){return false}}else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false}
 }
 `

@@ -298,13 +298,13 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
 		report := tabletext.Report{Unknown: 7, Widened: 13}
 		ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &report)
 		var refusal *tablewire.CountRefusal
-		if ok || !errors.As(err, &refusal) || report.Malformed || report.Unknown != 8 || report.Widened != 14 {
+		if ok || !errors.As(err, &refusal) || report.Malformed || report.Unknown != 8 || report.Widened != 13 {
 			t.Fatalf("%s: unexpected oracle prefix: %v %v %+v", shape, ok, err, report)
 		}
 		retainingReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
 		retained := tablewire.Retain{Capacity: 4096, IdCapacity: 64}
 		ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &retained, &retainingReport)
-		if ok || !errors.As(err, &refusal) || retainingReport.Malformed || retainingReport.Unknown != 8 || retainingReport.Widened != 14 {
+		if ok || !errors.As(err, &refusal) || retainingReport.Malformed || retainingReport.Unknown != 8 || retainingReport.Widened != 13 {
 			t.Fatalf("%s: unexpected retaining oracle prefix: %v %v %+v", shape, ok, err, retainingReport)
 		}
 		lostReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}

@@ -5065,11 +5065,13 @@ defmodule Bench.Table do
   end
 
   # a flags mask (docs/SPEC-TABLES.md §3, §16.2) is the list of its set names;
-  # a name the flags do not have counts unknown.
+  # a name the flags do not have counts unknown, and an element that is not a
+  # name at all is the wrong shape.
   defp json_read_field(%{t: :int, flags: names}, raw, report) when is_list(raw) do
     Enum.reduce(raw, {0, report}, fn n, {mask, report} ->
       case Enum.find_index(names, &(&1 == n)) do
-        nil -> {mask, %{report | unknown: report.unknown + 1}}
+        nil when is_binary(n) -> {mask, %{report | unknown: report.unknown + 1}}
+        nil -> {mask, %{report | kind_mismatch: report.kind_mismatch + 1}}
         i -> {mask ||| 1 <<< i, report}
       end
     end)

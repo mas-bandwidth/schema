@@ -1802,6 +1802,10 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = mapdemo.TableTextReport();
         value = mapdemo.textToJson(mapdemo.textFromJson(text, r));
         break;
+      case 'mapdemo Depth':
+        r = mapdemo.TableTextReport();
+        value = mapdemo.depthToJson(mapdemo.depthFromJson(text, r));
+        break;
       case 'listdemo Army':
         r = listdemo.TableTextReport();
         value = listdemo.armyToJson(listdemo.armyFromJson(text, r));

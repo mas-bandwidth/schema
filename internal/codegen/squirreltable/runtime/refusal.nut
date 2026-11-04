@@ -22,7 +22,7 @@ local COUNTERS = {
   unknown = "unknown", kindMismatch = "kind_mismatch", widened = "widened",
   clamped = "clamped", duplicate = "duplicate", malformed = "malformed",
   refused = "refused",
-  countRefusal = "count_refusal",
+  countRefusal = "count_over_extent_cap",
   storageOverCap = "storage_over_cap"
 };
 
@@ -297,6 +297,16 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     report.field = report.nonFiniteFloat;
     return null;
   }
+  // a collection count past the int32 storage cap refuses the whole value by
+  // name (docs/SPEC-TABLES.md §2.9): count_over_extent_cap, the report
+  // refused and malformed unset, ahead of every other verdict but a
+  // non-finite float, as Go's TableReport.Err() orders it
+  if (store.countRefusal) {
+    report.refused = true;
+    report.reason = "count_over_extent_cap";
+    report.field = ("countRefusal" in first) ? first.countRefusal : null;
+    return null;
+  }
   // A MISSING REQUIRED FIELD IS ITS OWN NAME (docs/SPEC-TABLES.md §2.3): the
   // load sets malformed for the refusal, and this slot says why, so the strict
   // caller answers missing_required with the field rather than a bare
@@ -304,14 +314,6 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   if (store.missingRequired) {
     report.reason = "missing_required";
     report.field = ("missingRequired" in first) ? first.missingRequired : null;
-    return null;
-  }
-  // a collection count past the int32 storage cap refuses the whole value
-  // (§2.8), the builder-path refusal Go answers as *tablewire.CountRefusal on
-  // the same bytes; it stands ahead of any damage or counter it met on the way
-  if (store.countRefusal) {
-    report.reason = "count_refusal";
-    report.field = ("countRefusal" in first) ? first.countRefusal : null;
     return null;
   }
   // damage first, then the counters in Err()'s order, so one wire always
@@ -342,7 +344,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
 _M.ReadStrictNames <- {
   previous_form = true, message_form_as_file = true, newer_form = true,
   integrity_mismatch = true, wire_damaged = true, unknown_form = true, malformed = true,
-  non_finite_float = true, clamped = true, kind_mismatch = true, count_refusal = true,
+  non_finite_float = true, clamped = true, kind_mismatch = true, count_over_extent_cap = true,
   missing_required = true, storage_over_cap = true,
   // the fixed reader's own, answered through <Root>FixedLoad (§3.4)
   layout_malformed = true, layout_record_too_large = true, no_layout = true,

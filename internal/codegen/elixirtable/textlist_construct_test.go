@@ -128,11 +128,13 @@ end
 alias ProbeCheck,as: P
 alias Probe.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
-for result<-[T.load("Lists",wire),T.from_json("Lists",%q)] do
+# the text counts every element past [..N] (§16.2), two in each of a and b,
+# where the wire counts each list's count clamp once (§2.13)
+for {result,count}<-[{T.load("Lists",wire),6},{T.from_json("Lists",%q),8}] do
  {:ok,v,r}=result
  expected=%%{"a"=>["éé","a","z"],"b"=>[nil,"éé","abc"],"c"=>["éé","a","z"],"d"=>[nil,"éé","abc","x"]}
  actual=Map.new(expected,fn {key,_}->{key,Enum.map(v[key],& &1["value"])} end)
- P.ok(actual==expected and r.clamped==6 and not r.malformed,"UTF8/count clamps "<>inspect({actual,r}))
+ P.ok(actual==expected and r.clamped==count and not r.malformed,"UTF8/count clamps "<>inspect({actual,r}))
  {:ok,_}=T.save("Lists",v)
 end
 for field<-["a","b","c","d"] do

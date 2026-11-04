@@ -814,7 +814,6 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 		// every element decoded at the wire kind's width
 		g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, elemKind, ind)
 		g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->kind_mismatch++;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
-		g.pf("%s        r.report->widened++;\n", ind)
 		g.emitListFill(f, elemKind, ind, true)
 		g.pf("%s    }\n", ind)
 	} else {
@@ -834,10 +833,15 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened bool) {
 	g.pf("%s        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped\n", ind)
 	g.pf("%s        // cannot fire on it. A count above the int32 storage cap is the\n", ind)
-	g.pf("%s        // fill's refusal, and it moves no counter.\n", ind)
+	g.pf("%s        // fill's refusal, and it moves no counter, the widening included.\n", ind)
 	g.emitRetainReplaced(f, ind+"        ")
 	g.pf("%s        TableListFill<%s> fill = TableListFillBegin( nodes, value.%s, count );\n", ind, g.listTypeArg(f), f.Name)
 	g.pf("%[1]s        if ( fill.refused )\n%[1]s        {\n%[1]s            nodes.refused = true;\n%[1]s            return false;\n%[1]s        }\n", ind)
+	if widened {
+		// the widening counts once the count is known to land: the fill's
+		// refusal above moves no counter (§2.9)
+		g.pf("%s        r.report->widened++;\n", ind)
+	}
 	g.pf("%[1]s        if ( !fill.ok )\n%[1]s        {\n%[1]s            r.report->malformed = true;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        // elements are BOUNDED by the field body: a count the length cannot\n", ind)
 	g.pf("%s        // cover is damage, flags malformed, and the load is discarded\n", ind)

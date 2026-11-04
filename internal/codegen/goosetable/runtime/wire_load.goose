@@ -1014,21 +1014,27 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             return true, false;
         }
         let want = if bytes { 6 } else { d.ek };
-        if ek != want {
-            if !widens(ek, want) {
-                c.report.kind_mismatch += 1;
-                r.off = end;
-                return true, false;
-            }
-            c.report.widened += 1;
+        if ek != want && !widens(ek, want) {
+            c.report.kind_mismatch += 1;
+            r.off = end;
+            return true, false;
         }
+        // a widened element kind counts once the count is known to land: the
+        // builder's count-cap refusal moves no counter (§2.9), while the
+        // region read's damage still counts it
+        let widened = ek != want;
         var keep = count;
         if list {
-            if count > 0x7FFFFFFF { r.off = end; return collection_cap(c), false; }
+            if count > 0x7FFFFFFF {
+                r.off = end;
+                if widened && !c.cap { c.report.widened += 1; }
+                return collection_cap(c), false;
+            }
         } else if count > d.bound as! u64 {
             keep = d.bound as! u64;
             c.report.clamped += 1;
         }
+        if widened { c.report.widened += 1; }
         var sub = Rd { off: r.off, end: if end < r.off { r.off } else { end } };
         if bytes {
             let at = sub.off;

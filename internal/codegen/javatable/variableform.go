@@ -4815,6 +4815,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		if f.TextTotal > 0 {
 			b.WriteString("                    long spent = 0;\n")
 			b.WriteString("                    boolean full = false;\n")
+			b.WriteString("                    int seen = 0;\n")
 		}
 		b.WriteString("                    while (true) {\n")
 		b.WriteString("                        int ec = in.peek();\n")
@@ -4822,7 +4823,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
 		if f.TextTotal > 0 {
 			b.WriteString("                        int before = placed;\n")
+			b.WriteString("                        seen++;\n")
 			b.WriteString("                        if (full) {\n")
+			// the total dropped this element; one past [..N] is counted as
+			// well, as the wire counts its count clamp beside the total (§2.13)
+			b.WriteString("                            if (ab >= 0 && seen > ab) { in.rep.clamped++; }\n")
 			b.WriteString("                            in.skipValue();\n")
 			b.WriteString("                        } else if (ab >= 0 && placed >= ab) {\n")
 		} else {
@@ -5081,7 +5086,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                    v.%s.add(null);\n", m)
 			fmt.Fprintf(b, "                                    v.%sIdx.add(idx);\n", m)
 			fmt.Fprintf(b, "                                }\n")
-			fmt.Fprintf(b, "                            } else { report.refused = true; if (n < 0 || n > 0x7FFFFFFFL) { report.reason = \"count_over_extent_cap\"; } }\n")
+			fmt.Fprintf(b, "                            } else { if (!report.refused && (n < 0 || n > 0x7FFFFFFFL)) { report.reason = \"count_over_extent_cap\"; } report.refused = true; }\n")
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -5169,7 +5174,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            }\n")
 		} else {
-			fmt.Fprintf(b, "                            } else { report.refused = true; if (n < 0 || n > 0x7FFFFFFFL) { report.reason = \"count_over_extent_cap\"; } }\n")
+			fmt.Fprintf(b, "                            } else { if (!report.refused && (n < 0 || n > 0x7FFFFFFFL)) { report.reason = \"count_over_extent_cap\"; } report.refused = true; }\n")
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -5264,7 +5269,7 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	m := varMember(f)
 	ek := variableElemWireKind(f)
 	cond := variableCompatibleKinds(ek, "ek")
-	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; report.reason = \"count_over_extent_cap\"; } else {"
+	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { if (!report.refused) { report.reason = \"count_over_extent_cap\"; } report.refused = true; } else {"
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}

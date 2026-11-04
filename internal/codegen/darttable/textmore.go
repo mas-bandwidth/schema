@@ -652,7 +652,9 @@ func (g *wireGen) emitTextMoreDecls() {
 		for i, name := range fl.Variants {
 			g.pf("\t\t\tcase %s: bits |= %d;\n", strconv.Quote(name), uint64(1)<<i)
 		}
-		g.pf("\t\t\tdefault: r.unknown++;\n")
+		// a name no bit spells counts unknown; an element that is not a name
+		// at all is the wrong shape (docs/SPEC-TABLES.md §16.2)
+		g.pf("\t\t\tdefault: if (item is String) { r.unknown++; } else { r.kindMismatch++; }\n")
 		g.pf("\t\t}\n")
 		g.pf("\t}\n")
 		g.pf("\treturn bits;\n")

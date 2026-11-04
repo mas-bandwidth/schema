@@ -1266,6 +1266,8 @@ fn json_read_enum<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
 // json_read_flags places a flags mask from its array of names: an unknown
 // name is skipped and counted, a non-string element is kind_mismatch (§16.2).
 fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], depth: i64) -> bool {
+    // the flags array is one level below its holder, and its elements one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(jr); }
     if !json_expect(jr, '[') { return false; }
     var bits: u64 = 0;
     loop {
@@ -1277,7 +1279,7 @@ fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], dept
         if c == 0 { return json_fail(jr); }
         if c != '"' {
             jr.rep.kind_mismatch += 1;
-            if !json_skip_value(jr, depth + 1) { return false; }
+            if !json_skip_value(jr, depth + 2) { return false; }
         } else {
             var key: u8[256] = [0; 256];
             let n, ok = json_key(jr, key);
@@ -1333,6 +1335,8 @@ struct JsonSeq {
 fn json_array_next(jr: JsonIn&, s: JsonSeq&, bound: i64, shape: u8, depth: i64) -> bool {
     if !s.open {
         s.open = true;
+        // the array is one level below its holder, and its elements one below that
+        if depth + 1 > JsonMaxDepth { return json_fail(jr); }
         if !json_expect(jr, '[') { return false; }
     }
     loop {
@@ -1353,10 +1357,10 @@ fn json_array_next(jr: JsonIn&, s: JsonSeq&, bound: i64, shape: u8, depth: i64) 
         s.after = true;
         if s.placed >= bound {
             jr.rep.clamped += 1;
-            if !json_skip_value(jr, depth + 1) { return false; }
+            if !json_skip_value(jr, depth + 2) { return false; }
         } else if json_shape(jr) != shape {
             jr.rep.kind_mismatch += 1;
-            if !json_skip_value(jr, depth + 1) { return false; }
+            if !json_skip_value(jr, depth + 2) { return false; }
             s.placed += 1;
         } else {
             s.index = s.placed;
@@ -1375,6 +1379,8 @@ fn json_array_next(jr: JsonIn&, s: JsonSeq&, bound: i64, shape: u8, depth: i64) 
 fn json_keyed_next(jr: JsonIn&, s: JsonSeq&, names: const (const u8[:])[:], shape: u8, depth: i64) -> bool {
     if !s.open {
         s.open = true;
+        // the keyed object is one level below its holder, and its elements one below that
+        if depth + 1 > JsonMaxDepth { return json_fail(jr); }
         if !json_expect(jr, '{') { return false; }
     }
     loop {
@@ -1413,10 +1419,10 @@ fn json_keyed_next(jr: JsonIn&, s: JsonSeq&, names: const (const u8[:])[:], shap
         }
         if slot < 0 {
             jr.rep.unknown += 1;
-            if !json_skip_value(jr, depth + 1) { return false; }
+            if !json_skip_value(jr, depth + 2) { return false; }
         } else if json_shape(jr) != shape {
             jr.rep.kind_mismatch += 1;
-            if !json_skip_value(jr, depth + 1) { return false; }
+            if !json_skip_value(jr, depth + 2) { return false; }
         } else {
             s.index = slot;
             return true;
@@ -1439,6 +1445,9 @@ struct JsonArm {
 // None, reads arm s.tag when s.read, sets the tag to s.tag when it is not 0,
 // and ends with json_union_close.
 fn json_union_open(jr: JsonIn&, s: JsonArm&, d: const UnionDesc&, shapes: const u8[:], depth: i64) -> bool {
+    // the union's object is one level below its holder, and its arm's value
+    // one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(jr); }
     if !json_expect(jr, '{') { return false; }
     if json_peek(jr) == '}' {
         jr.pos += 1;
@@ -1460,11 +1469,11 @@ fn json_union_open(jr: JsonIn&, s: JsonArm&, d: const UnionDesc&, shapes: const 
     }
     if tag == 0 {
         jr.rep.unknown += 1;
-        return json_skip_value(jr, depth + 1);
+        return json_skip_value(jr, depth + 2);
     }
     if json_shape(jr) != shapes[a] {
         jr.rep.kind_mismatch += 1;
-        return json_skip_value(jr, depth + 1);
+        return json_skip_value(jr, depth + 2);
     }
     s.tag = tag;
     if shapes[a] == 'z' { return json_literal(jr, "null"); }
