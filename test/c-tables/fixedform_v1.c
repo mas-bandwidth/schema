@@ -3,6 +3,13 @@
    were each inserted IN THE MIDDLE. This translation unit is the only one that
    names tblv1's types. */
 
+/* A CASE MAY WRITE A VALUE ITS DECLARATION DOES NOT ADMIT, for the reader to
+   clamp (docs/SPEC.md §5.1), and a debug fixed save refuses such a record at
+   its assert. These cases write those records on purpose, so this file routes
+   the generated writers' schema_assert, the hook a caller defines before the
+   headers (docs/USAGE.md), to nothing. */
+#define schema_assert( condition ) ( (void) 0 )
+
 #include <string.h>
 
 #include "V1Table.h"
