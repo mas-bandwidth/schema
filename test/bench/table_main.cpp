@@ -2,6 +2,7 @@
 //
 //   table_main pin      rewrite the golden and the variant corpus
 //   table_main verify   rebuild both in memory and byte-compare (the default)
+//   table_main fixed-pin / fixed-verify   the same values as native form-3 files
 //
 // This is the tables leg's twin of test/bench/main.cpp: it is the ONE place
 // that names a field of bench/corpus/BenchTable.schema, so the language legs
@@ -13,6 +14,9 @@
 //
 //   testdata/wire/bench_table.bin                     record 0, the pinned instance
 //   bench/corpus/variants/bench_table.variants.bin    64 records, record 0 first
+//
+// The explicit fixed modes use bench/corpus/fixed-table/ for BOTH files.
+// Historical form-1 pins and runner defaults stay separate.
 //
 // WHAT IT REFUSES, and why each refusal exists
 //
@@ -203,31 +207,36 @@ static bool spill( const char * path, const uint8_t * data, size_t bytes )
     return ok;
 }
 
-static const char * const GoldenPath = "testdata/wire/bench_table.bin";
-static const char * const VariantPath = "bench/corpus/variants/bench_table.variants.bin";
-
 int main( int argc, char ** argv )
 {
     const char * mode = argc > 1 ? argv[1] : "verify";
-    if ( strcmp( mode, "pin" ) != 0 && strcmp( mode, "verify" ) != 0 )
+    const bool fixed = strcmp( mode, "fixed-pin" ) == 0 || strcmp( mode, "fixed-verify" ) == 0;
+    const bool pin = strcmp( mode, "pin" ) == 0 || strcmp( mode, "fixed-pin" ) == 0;
+    if ( !fixed && !pin && strcmp( mode, "verify" ) != 0 )
     {
-        fprintf( stderr, "usage: %s [pin|verify]   (run from the repository root)\n", argv[0] );
+        fprintf( stderr, "usage: %s [pin|verify|fixed-pin|fixed-verify]   (run from the repository root)\n", argv[0] );
         return 1;
     }
 
+    const char * const GoldenPath = fixed ? "bench/corpus/fixed-table/bench_table.bin" : "testdata/wire/bench_table.bin";
+    const char * const VariantPath = fixed ? "bench/corpus/fixed-table/bench_table.variants.bin" : "bench/corpus/variants/bench_table.variants.bin";
+    const char * const PinTarget = fixed ? "bench-fixed-table-corpus" : "bench-table-corpus";
     static TableMixed instance;
     std::vector<uint8_t> corpus;
     int64_t record = -1;
 
     std::vector<uint8_t> buffer( 65536 );
     std::vector<uint8_t> twin( 65536 );
+    std::vector<TableFixedEntry> plan( fixed ? TableMixedFixedPlanCount : 0 );
 
     for ( int k = 0; k < NumVariants; k++ )
     {
         fill( instance );
 
-        const int64_t measured = TableMixedMeasure( instance );
-        const int64_t saved = TableMixedSave( instance, buffer.data(), (int64_t) buffer.size() );
+        const int64_t measured = fixed ? TableMixedFixedMeasure( 1 ) : TableMixedMeasure( instance );
+        const int64_t saved = fixed
+            ? TableMixedFixedSave( &instance, 1, buffer.data(), (int64_t) buffer.size() )
+            : TableMixedSave( instance, buffer.data(), (int64_t) buffer.size() );
         if ( saved < 0 || saved != measured )
         {
             fprintf( stderr, "record %d: Save wrote %lld bytes, Measure said %lld\n",
@@ -251,7 +260,12 @@ int main( int argc, char ** argv )
         static TableMixed decoded;
         TableMixedReset( decoded );
         TableReport report;
-        if ( !TableMixedLoad( decoded, buffer.data(), saved, &report ) )
+        // Size caller scratch from the generated own-layout plan. The corpus
+        // needs no evolution cache: every variant has this build's layout.
+        const bool loaded = fixed
+            ? TableMixedFixedLoad( &decoded, 1, buffer.data(), saved, plan.data(), (int32_t) plan.size(), NULL, &report ) == 1
+            : TableMixedLoad( decoded, buffer.data(), saved, &report );
+        if ( !loaded )
         {
             fprintf( stderr, "record %d: Load refused its own Save\n", k );
             return 1;
@@ -264,11 +278,27 @@ int main( int argc, char ** argv )
                      report.duplicate, (int) report.malformed );
             return 1;
         }
-        const int64_t rewrote = TableMixedSave( decoded, twin.data(), (int64_t) twin.size() );
+        const int64_t rewrote = fixed
+            ? TableMixedFixedSave( &decoded, 1, twin.data(), (int64_t) twin.size() )
+            : TableMixedSave( decoded, twin.data(), (int64_t) twin.size() );
         if ( rewrote != saved || memcmp( twin.data(), buffer.data(), (size_t) saved ) != 0 )
         {
             fprintf( stderr, "record %d: re-save after load differs\n", k );
             return 1;
+        }
+
+        if ( fixed && k == 0 )
+        {
+            // An otherwise identical buffer with the old form byte must not
+            // enter the native fixed reader. Keep this control off the pins.
+            twin[0] = 1;
+            TableReport refused;
+            if ( TableMixedFixedLoad( &decoded, 1, twin.data(), saved,
+                                      plan.data(), (int32_t) plan.size(), NULL, &refused ) != -1 || !refused.refused )
+            {
+                fprintf( stderr, "fixed reader accepted the form-1 control\n" );
+                return 1;
+            }
         }
 
         // §2.7: 64 DISTINCT buffers, or the rotation buys nothing
@@ -284,7 +314,7 @@ int main( int argc, char ** argv )
         corpus.insert( corpus.end(), buffer.begin(), buffer.begin() + saved );
     }
 
-    if ( strcmp( mode, "pin" ) == 0 )
+    if ( pin )
     {
         if ( !spill( GoldenPath, corpus.data(), (size_t) record ) ) return 1;
         if ( !spill( VariantPath, corpus.data(), corpus.size() ) ) return 1;
@@ -297,12 +327,12 @@ int main( int argc, char ** argv )
     std::vector<uint8_t> committed;
     if ( !slurp( GoldenPath, golden ) )
     {
-        fprintf( stderr, "missing %s — run `make bench-table-corpus` from the repository root\n", GoldenPath );
+        fprintf( stderr, "missing %s — run `make %s` from the repository root\n", GoldenPath, PinTarget );
         return 1;
     }
     if ( !slurp( VariantPath, committed ) )
     {
-        fprintf( stderr, "missing %s — run `make bench-table-corpus` from the repository root\n", VariantPath );
+        fprintf( stderr, "missing %s — run `make %s` from the repository root\n", VariantPath, PinTarget );
         return 1;
     }
     if ( golden.size() != (size_t) record || memcmp( golden.data(), corpus.data(), (size_t) record ) != 0 )
@@ -317,6 +347,6 @@ int main( int argc, char ** argv )
                  VariantPath, committed.size(), corpus.size() );
         return 1;
     }
-    printf( "bench table corpus OK: %d records of %lld bytes\n", NumVariants, (long long) record );
+    printf( "bench %stable corpus OK: %d records of %lld bytes\n", fixed ? "fixed " : "", NumVariants, (long long) record );
     return 0;
 }

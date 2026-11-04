@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"math"
 	"math/big"
 	"os"
@@ -174,10 +175,9 @@ func decodeOne(t *testing.T, model *tabletext.Model, root string, v *tablewire.V
 
 // TestTheMasksWidth: a `flags` field of three variants in a message and in a
 // file, whose message payload is three bits and whose file payload is eight
-// bytes, and a file load carrying a bit above the reader's W saved into a
-// message, which must drop it. Red if a leg writes sixty-four bits on a
-// message, or keeps the appended bit through the message round trip and so
-// contradicts the row §4 states as moved.
+// bytes. A file preserves bits above the reader's W, while a checked message
+// writer refuses a value its declared bit width cannot represent. The valid
+// mask must still round-trip through the three-bit message payload.
 func TestTheMasksWidth(t *testing.T) {
 	unit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
 	model := tabletext.NewModel(unit)
@@ -217,7 +217,9 @@ func TestTheMasksWidth(t *testing.T) {
 		t.Errorf("the mask did not read back: ok=%v err=%v report=%+v perks=%d", ok, derr, report, instU64(t, back, "perks"))
 	}
 
-	// A BIT ABOVE W SURVIVES A FILE ROUND TRIP AND NOT A MESSAGE ONE
+	// A BIT ABOVE W SURVIVES A FILE ROUND TRIP. A checked message writer
+	// refuses that unrepresentable value; it must not silently remove the bit.
+	// The representable mask above is the positive message control.
 	appended := model.New(loadout)
 	setU64(t, appended, "perks", (1<<3)|1)
 	fileWire, err := tablewire.Encode(model, appended)
@@ -233,15 +235,11 @@ func TestTheMasksWidth(t *testing.T) {
 		t.Errorf("the file round trip lost the appended bit: perks=%d", instU64(t, fromFile, "perks"))
 	}
 	messageWire, err := tablewire.EncodeMessage(model, fromFile)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || len(messageWire) != 0 {
+		t.Fatalf("the message writer accepted an unrepresentable mask: wire=%x err=%v", messageWire, err)
 	}
-	fromMessage, ok, mreport, derr := decodeOne(t, model, "Masked", v, messageWire)
-	if derr != nil || !ok || mreport.Refused {
-		t.Fatalf("the message with the appended bit did not read: %v %+v", derr, mreport)
-	}
-	if instU64(t, fromMessage, "perks") != 1 {
-		t.Errorf("the message round trip kept a bit above W: perks=%d, the mask's width says 1", instU64(t, fromMessage, "perks"))
+	if instU64(t, fromFile, "perks") != (1<<3)|1 {
+		t.Errorf("message refusal changed the file value: perks=%d", instU64(t, fromFile, "perks"))
 	}
 }
 
@@ -1018,8 +1016,18 @@ fixed table Bases {
 			t.Errorf("%g quantizes to %d, the packet wire writes %d", row.value, got, row.index)
 		}
 		inst := model.New(model.Lookup("Bases"))
+		fieldOf(t, inst, "few").Count = 2 // its declared minimum count
 		fieldOf(t, inst, "q").Cell.F = float64(row.value)
 		message, err := tablewire.EncodeMessage(model, inst)
+		if row.value > 10 {
+			// A WRITER NEVER CLAMPS (docs/SPEC-TABLES.md §5): a value past the
+			// declared max refuses invalid_value rather than ride as index 1000
+			var iv *tabletext.InvalidValue
+			if !errors.As(err, &iv) {
+				t.Errorf("%g: the message writer answered %x %v, want invalid_value", row.value, message, err)
+			}
+			continue
+		}
 		if err != nil {
 			t.Fatal(err)
 		}

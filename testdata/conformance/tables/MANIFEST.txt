@@ -17,8 +17,8 @@
 #
 #   retain   <case> <unit> <root> <wire> <capacity> <ids> <save>
 #            one RETAIN-UNKNOWN round trip (§6.6): the wire, the two capacities
-#            the caller declares, the counters the LOAD owes and the one the
-#            SAVE adds, and the file the pair writes back. The byte capacity is
+#            the caller declares, and the file the pair writes back. Accepted
+#            loads owe their complete known value; counters are local. The byte capacity is
 #            a RULE where a number would not travel, a record's byte cost is
 #            the port's own, so `full` and `short` say what a leg DOES rather
 #            than how many bytes it declares, and the id list, being a COUNT,

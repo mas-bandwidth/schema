@@ -26,6 +26,12 @@ func migrateFixed(m *Manifest, manifest, jsonDir string) error {
 		if inst.NoText {
 			continue
 		}
+		out := filepath.Join(filepath.Dir(jsonDir), "wire", inst.Name+".bin")
+		// The variable WideExtent witness remains form 1 after migration.
+		// Its destination, not its form byte, tells us it has already moved.
+		if filepath.Clean(inst.Wire) == filepath.Clean(out) {
+			continue
+		}
 		unit, err := u.get(inst.Unit)
 		if err != nil {
 			return err
@@ -71,7 +77,6 @@ func migrateFixed(m *Manifest, manifest, jsonDir string) error {
 		if err != nil || !bytes.Equal(oneText(textBack), oneText(text)) {
 			return fmt.Errorf("%s: new wire changed a value: %v", inst.Name, err)
 		}
-		out := filepath.Join(filepath.Dir(jsonDir), "wire", inst.Name+".bin")
 		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 			return err
 		}

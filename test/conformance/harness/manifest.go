@@ -40,26 +40,20 @@ type Instance struct {
 	// GoWireRefusal is the legacy field name for an unconditional wire
 	// refusal. Its diagnostic spelling is never compared between ports.
 	GoWireRefusal string
-	// WireRefusedBy names the ports BESIDES Go whose wire writer has taken the
-	// same refusal (marker refused-by=<ports>, which needs go-refusal=): their
-	// wire answer is the named absence too. A port not listed is still held to
-	// the committed bytes, as the reference is (docs/SPEC-TABLES.md §2.5).
+	// WireRefusedBy preserves legacy manifest metadata for parsing only.
+	// Refusal is unconditional; this list cannot change a port's obligation.
 	WireRefusedBy []string
 }
 
-// WireRefusal answers the named wire writer refusal lang owes for this
-// instance, or "" when it owes the committed bytes.
+// WireRefusal answers the wire refusal every port owes for this instance,
+// or "" when it owes the committed bytes. The argument is legacy transport.
 func (inst Instance) WireRefusal(lang string) string {
 	return inst.GoWireRefusal
 }
 
-// Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole
-// expectation a report case carries — and the VERDICT beside it (§3).
-//
-// THE VERDICT IS DISTINCT FROM A CLEAN READ, because five zero counters and a
-// false flag are what a clean read prints too: a FORM BYTE this reader does not
-// carry is a refusal, it moves none of §4's counters, and it never reports
-// damage. Without the verdict a refusal and a clean read are the same row.
+// Counts preserves legacy report transport beside the admission verdict.
+// Diagnostic counters never select that verdict or participate in comparison;
+// accepted rows separately owe the complete value.
 type Counts struct {
 	Unknown      int
 	KindMismatch int
@@ -77,8 +71,7 @@ func (c Counts) String() string {
 	return "read"
 }
 
-// ParseCounts reads the "u,k,w,c,d,m,verdict" spelling every leg of the
-// harness uses.
+// ParseCounts reads read/refused and the legacy seven-field report spelling.
 func ParseCounts(text string) (Counts, error) {
 	var c Counts
 	switch strings.TrimSpace(text) {

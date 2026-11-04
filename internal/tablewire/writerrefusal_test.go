@@ -152,7 +152,7 @@ func TestWritersRefuseValuesNegativeControl(t *testing.T) {
 		green    []string
 	}{
 		{"the whole check", slowtest.Sabotage{File: "internal/tabletext/check.go",
-			From: "\treturn m.checkInstance(inst, map[*Instance]bool{})", To: "\treturn nil"},
+			From: "\tif inst == nil || seen.seen[inst] {", To: "\tif true {"},
 			[]string{"Encode (variable): ratio=1.5", "EncodeMessage: bi=600", "Write (text): mode=9"}, nil},
 		{"the declared range", slowtest.Sabotage{File: "internal/tabletext/check.go",
 			From: "if lo, hi, ok := ir.TableRawRange(f); ok && (", To: "if lo, hi, ok := ir.TableRawRange(f); false && ok && ("},
