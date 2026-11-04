@@ -58,6 +58,25 @@ func (d *binaryDepth) field(f *Field) int {
 	return d.value(f)
 }
 
+// structuralField reports a field whose payload is a framed container on the
+// variable form: a table by value, an array, a keyed or map body, or a union.
+func structuralField(f *Field) bool {
+	if f == nil || f.Type.Pointer && f.Array == ArrayNone {
+		return false
+	}
+	if f.IsMap() || f.Array != ArrayNone || f.KeyEnum != "" {
+		return true
+	}
+	if f.Type.Kind != TNamed {
+		return false
+	}
+	switch f.Type.Ref.(type) {
+	case *Struct, *Union:
+		return true
+	}
+	return false
+}
+
 // value is the deepest level one value of the field's type reaches below the
 // payload holding it.
 func (d *binaryDepth) value(f *Field) int {
@@ -68,9 +87,13 @@ func (d *binaryDepth) value(f *Field) int {
 	case *Struct:
 		return 1 + d.body(ref)
 	case *Union:
+		// a union is a level when the arm it holds is structural: a table, an
+		// array, a keyed or map body, or another union; a scalar arm adds none
 		deepest := 0
 		for i := range ref.Variants {
-			deepest = max(deepest, d.field(ref.Variants[i].F))
+			if arm := ref.Variants[i].F; structuralField(arm) {
+				deepest = max(deepest, 1+d.field(arm))
+			}
 		}
 		return deepest
 	}

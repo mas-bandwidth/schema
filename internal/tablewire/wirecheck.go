@@ -498,5 +498,21 @@ func (c *wireCheck) union(buf []byte, off int) (int, bool) {
 		return off, c.damage("an arm's L past the body carrying it")
 	}
 	end := after + int(n)
+	// A UNION IS A LEVEL WHEN ITS ARM IS STRUCTURAL (docs/SPEC-TABLES.md §4):
+	// an arm whose payload is a table, an array, a keyed or map body, or
+	// another union nests one level deeper; a scalar arm adds none
+	if structuralKind(kind) {
+		if c.depth >= ir.TableBinaryMaxDepth {
+			return off, c.damage("a union arm nested past the binary bound")
+		}
+		c.depth++
+		defer func() { c.depth-- }()
+	}
 	return end, c.content(buf[after:end], kind)
+}
+
+// structuralKind reports the kinds whose payload is a framed container: a
+// table body, an array, a keyed or map body, and a union.
+func structuralKind(kind int) bool {
+	return kind == ir.TableKindTable || kind == ir.TableKindArray || kind == ir.TableKindKeyed || kind == ir.TableKindUnion
 }

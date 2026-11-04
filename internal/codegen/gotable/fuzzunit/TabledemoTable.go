@@ -1706,7 +1706,23 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 	}
 	kind := r.Get8()
 	arm, ok := r.Body()
-	if !ok || !c.framed(arm, kind) {
+	if !ok {
+		return 0, c.fail(TableRefuseWireDamaged)
+	}
+	// a union is a level when its arm is structural: a table, an array, a
+	// keyed or map body, or another union; a scalar arm adds none
+	structural := kind == 13 || kind == 14 || kind == 15 || kind == 16
+	if structural {
+		if c.depth >= tableBinaryMaxDepth {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		c.depth++
+	}
+	good := c.framed(arm, kind)
+	if structural {
+		c.depth--
+	}
+	if !good {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
 	return r.Offset, true
@@ -4516,6 +4532,28 @@ func tableRetainedFloatName(owner string, id uint64) string {
 	return owner + ".0x" + string(hex[:])
 }
 
+// tableRetainFrameLevels is the levels a framed payload of a kind opens: one
+// for a table, an array or a keyed or map body, none for a scalar's frame
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §4, binary_max_depth).
+func tableRetainFrameLevels(k uint8) int {
+	if k == 13 || k == 14 || k == 16 {
+		return 1
+	}
+	return 0
+}
+
+// tableRetainArmLevels is the levels a union arm of a kind opens: the union's
+// own when the arm is structural, and the arm's container.
+func tableRetainArmLevels(k uint8) int {
+	if k == 15 {
+		return 1
+	}
+	if k == 13 || k == 14 || k == 16 {
+		return 2
+	}
+	return 0
+}
+
 type tableRetainIn struct {
 	r     TableReader
 	w     TableWriter
@@ -4632,7 +4670,7 @@ func (s *tableRetainIn) content(kind uint8, n int64, depth int) bool {
 					return false
 				}
 				length, ok := s.r.Leb()
-				if !ok || length > uint64(end-s.r.Offset) || !s.framed(k, int64(length), depth+1) {
+				if !ok || length > uint64(end-s.r.Offset) || !s.framed(k, int64(length), depth+tableRetainFrameLevels(k)) {
 					return false
 				}
 			} else if !s.payload(k, depth) {
@@ -4684,7 +4722,7 @@ func (s *tableRetainIn) payload(kind uint8, depth int) bool {
 		k := s.r.Get8()
 		s.w.Put8(k)
 		n, ok := s.r.Leb()
-		return ok && s.r.Room(n) && s.framed(k, int64(n), depth+1)
+		return ok && s.r.Room(n) && s.framed(k, int64(n), depth+tableRetainArmLevels(k))
 	case 30:
 		_, ok := s.ref(true)
 		return ok
@@ -4905,7 +4943,7 @@ func (s *tableRetainOut) content(kind uint8, n int64, depth int) bool {
 		s.leb(count)
 		for range count {
 			if kind == 16 {
-				if _, ok := s.ref(); !ok || !s.framed(k, depth+1) {
+				if _, ok := s.ref(); !ok || !s.framed(k, depth+tableRetainFrameLevels(k)) {
 					return false
 				}
 			} else if !s.payload(k, depth) {
@@ -4952,7 +4990,7 @@ func (s *tableRetainOut) payload(kind uint8, depth int) bool {
 			return false
 		}
 		k := s.r.Buffer[s.r.Offset]
-		return s.raw(1) && s.framed(k, depth+1)
+		return s.raw(1) && s.framed(k, depth+tableRetainArmLevels(k))
 	case 30:
 		_, ok := s.ref()
 		return ok

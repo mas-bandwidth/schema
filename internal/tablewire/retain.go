@@ -454,6 +454,10 @@ func (rs *resolver) walkPayload(c *cursor, kind uint8, depth int) {
 		armKind := c.buf[c.off]
 		c.off++
 		rs.u8(armKind)
+		// a union is a level when its arm is structural (docs/SPEC-TABLES.md §4)
+		if structuralKind(int(armKind)) {
+			depth++
+		}
 		rs.framed(c, armKind, depth)
 	case ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed:
 		rs.framed(c, kind, depth)
@@ -482,7 +486,12 @@ func (rs *resolver) framed(c *cursor, kind uint8, depth int) {
 	sub := &cursor{buf: c.buf[c.off : c.off+int(n)]}
 	c.off += int(n)
 	at := rs.mark()
-	rs.walkContent(sub, kind, depth+1)
+	// a framed table, array or keyed body is one level deeper; a scalar's or a
+	// union's frame adds none of its own (docs/SPEC-TABLES.md §4)
+	if kind == ir.TableKindTable || kind == ir.TableKindArray || kind == ir.TableKindKeyed {
+		depth++
+	}
+	rs.walkContent(sub, kind, depth)
 	rs.patch(at)
 }
 

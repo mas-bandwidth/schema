@@ -39,7 +39,8 @@ const (
 	// +9: the message save refuses a ranged value or a flags bit its bits would truncate (SPEC-TABLES §3.3, §5)
 	// +13: the wire check holds the binary nesting bound (SPEC-TABLES §4, binary_max_depth)
 	// +26: the JSON read refuses a repeated decoded key it cannot place (SPEC-TABLES §16.2)
-	goOneTableLineBudget = 9904
+	// +16: a union with a structural arm is a level on the wire check and the retain walk (SPEC-TABLES §4)
+	goOneTableLineBudget = 9920
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -61,7 +62,8 @@ const (
 	// +168: the message save refuses a value outside its declaration, and a ranged value or a flags bit its bits would truncate (SPEC-TABLES §3.3, §5)
 	// +13: the wire check holds the binary nesting bound (SPEC-TABLES §4, binary_max_depth)
 	// +26: the JSON read refuses a repeated decoded key it cannot place (SPEC-TABLES §16.2)
-	goExamplesLineBudget = 57925
+	// +38: a union with a structural arm is a level on the wire check and the retain walk (SPEC-TABLES §4)
+	goExamplesLineBudget = 57963
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
