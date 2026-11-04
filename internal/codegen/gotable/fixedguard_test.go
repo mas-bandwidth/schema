@@ -163,7 +163,7 @@ func TestForgedOrdinalRefusesOnBothPlans(t *testing.T) {
 	if why := tableFixedTextRefusal(plan, made, record[8:]); why != "out_of_range" {
 		t.Fatalf("compiled plan: a forged ordinal is %q, want out_of_range", why)
 	}
-	record[8] = 1 // the control: Silver
+	record[8] = 2 // the control: Silver, ordinal 2
 	if why := tableFixedTextRefusal(plan, made, record[8:]); why != "" {
 		t.Fatalf("CONTROL: a lawful ordinal is %q", why)
 	}

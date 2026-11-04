@@ -849,8 +849,8 @@ func TestGoPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 
 // TestGoFiniteFloatNegativeControl is the finite rule's reversed witness: each
 // of its three halves is sabotaged in the generated unit, one at a time, and
-// the probe above must go red on exactly that half — the raw-bits test every
-// variable and message read runs, the fixed form's finite pass, and the
+// the probe above must go red on exactly that half — the raw-bits tests every
+// variable and message read runs (the wire check's and the decoder's), the fixed form's finite pass, and the
 // writer's clause. A control that cannot go red is not a gate.
 func TestGoFiniteFloatNegativeControl(t *testing.T) {
 	t.Parallel()
@@ -862,6 +862,8 @@ func TestGoFiniteFloatNegativeControl(t *testing.T) {
 		{"read", fsSchema, fsProbe, [][2]string{
 			{"b&0x7f800000 == 0x7f800000", "false && b&0x7f800000 == 0x7f800000 /* SABOTAGED */"},
 			{"b&0x7ff0000000000000 == 0x7ff0000000000000", "false && b&0x7ff0000000000000 == 0x7ff0000000000000 /* SABOTAGED */"},
+			{"r.Get32()&0x7f800000 == 0x7f800000", "false && r.Get32()&0x7f800000 == 0x7f800000 /* SABOTAGED */"},
+			{"r.Get64()&0x7ff0000000000000 == 0x7ff0000000000000", "false && r.Get64()&0x7ff0000000000000 == 0x7ff0000000000000 /* SABOTAGED */"},
 		}, "want the refusal non_finite_float"},
 		{"fixed", fsFlatSchema, fsFlatProbe, [][2]string{
 			{`FlatFixedFiniteBody(&values[k]); why != ""`, `FlatFixedFiniteBody(&values[k]); false && why != "" /* SABOTAGED */`},
