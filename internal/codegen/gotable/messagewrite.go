@@ -140,6 +140,13 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		}
 		g.pf("%sif %s==%sNone{w.Put(0,TableMessageRefBitsHere)}else{id,named:=%s.TableEnumID();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)}\n", ind, expr, f.Type.Name, expr)
 	default:
+		// A WRITER REFUSES A VALUE OUTSIDE ITS DECLARATION (docs/SPEC-TABLES.md
+		// §5, §3.3): the bounds the variable and fixed saves refuse are the
+		// message save's too, so a value the read would refuse, or one whose
+		// offset the ranged width would truncate, refuses invalid_value
+		if cond := writeBoundViolation(f, expr); cond != "" {
+			g.pf("%sif %s {w.Over++}\n", ind, cond)
+		}
 		lo, hi := "uint64("+expr+")", "uint64(0)"
 		switch entry.Kind {
 		case 1:

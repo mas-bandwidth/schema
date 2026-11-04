@@ -1936,7 +1936,9 @@ func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 }
 
 // A quantized float outside its range is a value the writer refuses
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): over counts it, and the save answers -1.
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): over counts it, and the save answers -1. So is a
+// ranged value whose offset from its base does not fit its bits, a flags bit
+// past the declared W among them: a writer never truncates (§5).
 func TableMessageWriteScalar(w *TableBitWriter, over *int32, s TableMessageShape, lo, hi uint64) {
 	if s.Packing == 1 {
 		borrow := uint64(0)
@@ -1945,6 +1947,13 @@ func TableMessageWriteScalar(w *TableBitWriter, over *int32, s TableMessageShape
 		}
 		lo -= s.Base[0]
 		hi -= s.Base[1] + borrow
+		if s.Kind >= 18 {
+			if s.Bits < 64 && (hi != 0 || lo>>uint(s.Bits) != 0) || s.Bits >= 64 && s.Bits < 128 && hi>>uint(s.Bits-64) != 0 {
+				*over++
+			}
+		} else if s.Bits < 64 && lo>>uint(s.Bits) != 0 {
+			*over++
+		}
 	}
 	if s.Packing == 2 {
 		value := math.Float32frombits(uint32(lo))
@@ -1997,4 +2006,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xcad86d24d900e6c0
+const Version uint64 = 0x348be2ca18cac598
