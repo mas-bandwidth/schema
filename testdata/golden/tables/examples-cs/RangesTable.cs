@@ -1073,6 +1073,24 @@ namespace Tabledemo
             return true;
         }
 
+        // RangedSigned's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool RangedSignedFixedStorageBody(RangedSigned value)
+        {
+            if (value == null) return true;
+            if (value.EdgesCount < 0 || value.EdgesCount > 4) return false;
+            return true;
+        }
+
+        // RangedUnsigned's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool RangedUnsignedFixedStorageBody(RangedUnsigned value)
+        {
+            if (value == null) return true;
+            if (value.CountsCount < 0 || value.CountsCount > 4) return false;
+            return true;
+        }
+
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
         // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
         // past the enum's top value. Straight-line, after the run, over STORAGE,
@@ -1521,6 +1539,7 @@ namespace Tabledemo
         {
             long need = RangedSignedFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (!RangedSignedFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RangedSignedFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif
@@ -2172,6 +2191,7 @@ namespace Tabledemo
         {
             long need = RangedUnsignedFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (!RangedUnsignedFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RangedUnsignedFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif

@@ -940,6 +940,16 @@ namespace Blockhome
             if (value.MissileGroupsCount < 0 || value.MissileGroupsCount > 4) return false;
             return true;
         }
+
+        // GunnerSettings's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool GunnerSettingsFixedStorageBody(GunnerSettings value)
+        {
+            if (value == null) return true;
+            if (value.FiringGroupsCount < 0 || value.FiringGroupsCount > 32) return false;
+            if (value.MissileGroupsCount < 0 || value.MissileGroupsCount > 4) return false;
+            return true;
+        }
     }
 
 }

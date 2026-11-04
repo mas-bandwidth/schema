@@ -1069,7 +1069,7 @@ namespace Tabledemo
         {
             if (value == null) return true;
             if (value.CallsignLength < 0 || value.CallsignLength > 24) return false;
-            if (value.Callsign != null && !TableWire.TextWellFormed(value.Callsign.AsSpan(0, value.CallsignLength))) return false;
+            if (value.Callsign != null && (!TableWire.TextWellFormed(value.Callsign.AsSpan(0, value.CallsignLength)) || value.Callsign.AsSpan(0, value.CallsignLength).IndexOf((byte)0) >= 0)) return false;
             return true;
         }
 
@@ -1079,7 +1079,7 @@ namespace Tabledemo
         {
             if (value == null) return true;
             if (value.DisplayNameLength < 0 || value.DisplayNameLength > 32) return false;
-            if (value.DisplayName != null && !TableWire.TextWellFormed(value.DisplayName.AsSpan(0, value.DisplayNameLength))) return false;
+            if (value.DisplayName != null && (!TableWire.TextWellFormed(value.DisplayName.AsSpan(0, value.DisplayNameLength)) || value.DisplayName.AsSpan(0, value.DisplayNameLength).IndexOf((byte)0) >= 0)) return false;
             if (value.HardpointsCount < 0 || value.HardpointsCount > 4) return false;
             if (value.Hardpoints != null)
             {
@@ -1103,7 +1103,7 @@ namespace Tabledemo
             if (value.TickRate < 1 || value.TickRate > 240) return false;
             if ((ulong)value.Difficulty > 3) return false;
             if (value.BuildNoteLength < 0 || value.BuildNoteLength > 48) return false;
-            if (value.BuildNote != null && !TableWire.TextWellFormed(value.BuildNote.AsSpan(0, value.BuildNoteLength))) return false;
+            if (value.BuildNote != null && (!TableWire.TextWellFormed(value.BuildNote.AsSpan(0, value.BuildNoteLength)) || value.BuildNote.AsSpan(0, value.BuildNoteLength).IndexOf((byte)0) >= 0)) return false;
             return true;
         }
 
@@ -1133,6 +1133,62 @@ namespace Tabledemo
                 for (int i = 0; i < value.ReservesCount && i < value.Reserves.Length; ++i)
                 {
                     if (!ShipEntryFixedCheckBody(value.Reserves[i])) return false;
+                }
+            }
+            return true;
+        }
+
+        // GunnerSettings's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool GunnerSettingsFixedStorageBody(GunnerSettings value)
+        {
+            if (value == null) return true;
+            if (value.CallsignLength < 0 || value.CallsignLength > 24 || (value.Callsign != null && value.CallsignLength > value.Callsign.Length)) return false;
+            return true;
+        }
+
+        // ShipEntry's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool ShipEntryFixedStorageBody(ShipEntry value)
+        {
+            if (value == null) return true;
+            if (value.DisplayNameLength < 0 || value.DisplayNameLength > 32 || (value.DisplayName != null && value.DisplayNameLength > value.DisplayName.Length)) return false;
+            if (value.HardpointsCount < 0 || value.HardpointsCount > 4) return false;
+            if (value.GunnerPresent)
+            {
+                if (!GunnerSettingsFixedStorageBody(value.Gunner)) return false;
+            }
+            return true;
+        }
+
+        // GlobalSettings's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool GlobalSettingsFixedStorageBody(GlobalSettings value)
+        {
+            if (value == null) return true;
+            if (value.BuildNoteLength < 0 || value.BuildNoteLength > 48 || (value.BuildNote != null && value.BuildNoteLength > value.BuildNote.Length)) return false;
+            return true;
+        }
+
+        // PackConfig's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool PackConfigFixedStorageBody(PackConfig value)
+        {
+            if (value == null) return true;
+            if (!GlobalSettingsFixedStorageBody(value.Global)) return false;
+            if (value.Ships.Slots != null)
+            {
+                for (int i = 0; i < 3 && i < value.Ships.Slots.Length; ++i)
+                {
+                    if (!ShipEntryFixedStorageBody(value.Ships.Slots[i])) return false;
+                }
+            }
+            if (value.ReservesCount < 0 || value.ReservesCount > 3) return false;
+            if (value.Reserves != null)
+            {
+                for (int i = 0; i < value.ReservesCount && i < value.Reserves.Length; ++i)
+                {
+                    if (!ShipEntryFixedStorageBody(value.Reserves[i])) return false;
                 }
             }
             return true;
@@ -1484,6 +1540,7 @@ namespace Tabledemo
             long need = GunnerSettingsFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (GunnerSettingsFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!GunnerSettingsFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(GunnerSettingsFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif
@@ -2090,6 +2147,7 @@ namespace Tabledemo
             long need = ShipEntryFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (ShipEntryFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!ShipEntryFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ShipEntryFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif
@@ -2664,6 +2722,7 @@ namespace Tabledemo
             long need = GlobalSettingsFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (GlobalSettingsFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!GlobalSettingsFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(GlobalSettingsFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif
@@ -3642,6 +3701,7 @@ namespace Tabledemo
             long need = PackConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PackConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!PackConfigFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PackConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif

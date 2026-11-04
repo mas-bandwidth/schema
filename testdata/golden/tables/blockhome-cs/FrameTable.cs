@@ -489,6 +489,31 @@ namespace Blockhome
             return true;
         }
 
+        // PartRow's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool PartRowFixedStorageBody(PartRow value)
+        {
+            if (value == null) return true;
+            if (!GunnerSettingsFixedStorageBody(value.Gunner)) return false;
+            return true;
+        }
+
+        // PartFrame's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool PartFrameFixedStorageBody(PartFrame value)
+        {
+            if (value == null) return true;
+            if (value.PartsCount < 0 || value.PartsCount > 32) return false;
+            if (value.Parts != null)
+            {
+                for (int i = 0; i < value.PartsCount && i < value.Parts.Length; ++i)
+                {
+                    if (!PartRowFixedStorageBody(value.Parts[i])) return false;
+                }
+            }
+            return true;
+        }
+
         // ---- PartRow, the fixed form ----
 
         public const long PartRowFixedBodyBytes = 340;
@@ -1256,6 +1281,7 @@ namespace Blockhome
             long need = PartRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PartRowFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!PartRowFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PartRowFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif
@@ -14153,6 +14179,7 @@ namespace Blockhome
             long need = PartFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PartFrameFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!PartFrameFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PartFrameFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif

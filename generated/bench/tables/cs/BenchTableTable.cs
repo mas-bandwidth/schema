@@ -8924,12 +8924,24 @@ namespace Benchtable
                 }
             }
             if (value.PlayerNameLength < 0 || value.PlayerNameLength > 15) return false;
-            if (value.PlayerName != null && !TableWire.TextWellFormed(value.PlayerName.AsSpan(0, value.PlayerNameLength))) return false;
+            if (value.PlayerName != null && (!TableWire.TextWellFormed(value.PlayerName.AsSpan(0, value.PlayerNameLength)) || value.PlayerName.AsSpan(0, value.PlayerNameLength).IndexOf((byte)0) >= 0)) return false;
             if (value.PayloadLength < 0 || value.PayloadLength > 16) return false;
             if (value.Flux < -1000000000000000000L || value.Flux > 1000000000000000000L) return false;
             if (value.CrcHint > 16777215) return false;
             if (value.Extra < 0 || value.Extra > 255) return false;
             if (value.IdleTicks < 0 || value.IdleTicks > 15) return false;
+            return true;
+        }
+
+        // TableMixed's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool TableMixedFixedStorageBody(TableMixed value)
+        {
+            if (value == null) return true;
+            if (value.EntitiesCount < 0 || value.EntitiesCount > 8) return false;
+            if (value.StatsCount < 0 || value.StatsCount > 80) return false;
+            if (value.PlayerNameLength < 0 || value.PlayerNameLength > 15 || (value.PlayerName != null && value.PlayerNameLength > value.PlayerName.Length)) return false;
+            if (value.PayloadLength < 0 || value.PayloadLength > 16 || (value.Payload != null && value.PayloadLength > value.Payload.Length)) return false;
             return true;
         }
 
@@ -11936,6 +11948,7 @@ namespace Benchtable
             long need = TableMixedFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (TableMixedFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!TableMixedFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(TableMixedFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif
