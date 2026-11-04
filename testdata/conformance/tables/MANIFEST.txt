@@ -100,7 +100,7 @@ instance text_icon_pad_one tabledemo ProfileConfig testdata/conformance/tables/w
 instance text_icon_pad_two tabledemo ProfileConfig testdata/conformance/tables/wire/text_icon_pad_two.bin
 instance text_icon_sixteen tabledemo ProfileConfig testdata/conformance/tables/wire/text_icon_sixteen.bin
 instance loadout_full tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin
-instance wide_blob tabledemo WideBlob testdata/conformance/tables/wire/wide_blob.bin
+instance wide_blob tabledemo WideExtent testdata/conformance/tables/wire/wide_blob.bin
 instance archive tabledemo ArchiveConfig testdata/conformance/tables/wire/archive.bin
 instance keyed_config tabledemo KeyedConfig testdata/conformance/tables/wire/keyed_config.bin
 instance keyed_default tabledemo KeyedConfig testdata/conformance/tables/wire/keyed_default.bin
