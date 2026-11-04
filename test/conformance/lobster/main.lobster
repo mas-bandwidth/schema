@@ -91,23 +91,19 @@ def fixture(path:string) -> string:
     assert data
     return data
 
-// the WIRE surface: Load a form-1 wire through the TOLERANT read, as the
-// reference leg's driver reads (§6.5), and Save it (§3). An instance line is
-// `instance <name> <unit> <root> <wire> [no-text]`. A graph that names one
-// blob from two slots is refused by every writer (§2.5), so that case is a
-// named absence carrying the refusal's name, as the Go writer names it
-// (the manifest's go-refusal= and refused-by=); any other refusal fails.
+// WIRE returns the complete canonical writeback after acceptance, or a refusal
+// without a value. The harness determines which outcome each instance owes.
+// An instance line is `instance <name> <unit> <root> <wire> [no-text]`.
 def surface_wire(text:string):
     for(rows(text, "instance")) f:
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load(f[3], fixture(f[4]), rep)
-        assert rec
+        if not rec:
+            say(f[1], "refused\n")
+            continue
         let out, why = schema_rt.save_reasoned(rec)
-        if why == "blob_shared":
-            print(f[1] + " absent blob_shared")
-        else:
-            assert why == ""
-            say(f[1], out)
+        assert why == ""
+        say(f[1], out)
 
 // REPORT and FRAMING return one verdict and the complete canonical value
 // after acceptance. A refusal has no value payload; diagnostics stay local.

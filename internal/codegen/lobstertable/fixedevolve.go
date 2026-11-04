@@ -930,13 +930,13 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 			// the writer's finite rule (docs/SPEC-TABLES.md §3.3): a NaN or an
 			// infinity, at the width it is written, is invalid_value
 			g.Pf("%sif not schema_rt.finite_f32(%s):\n%s    return false\n", ind, expr, ind)
-			if pass == fixedPassRead && f.HasFloatRange {
+			if f.HasFloatRange {
 				g.Pf("%sif %s < %s or %s > %s:\n%s    return false\n", ind, expr, lobster.FormatFloat32(f.FMin), expr, lobster.FormatFloat32(f.FMax), ind)
 			}
 			return true
 		case ir.TFloat64:
 			g.Pf("%sif not schema_rt.finite_f64(%s):\n%s    return false\n", ind, expr, ind)
-			if pass == fixedPassRead && f.HasFloatRange {
+			if f.HasFloatRange {
 				g.Pf("%sif %s < %s or %s > %s:\n%s    return false\n", ind, expr, lobster.FormatFloat(f.FMin), expr, lobster.FormatFloat(f.FMax), ind)
 			}
 			return true
@@ -1089,11 +1089,21 @@ func lobsterScalarWidthBound(f *ir.Field, expr string) (lobsterScalarBound, bool
 	return lobsterScalarBound{fmt.Sprintf("schema_rt.ult(%s, %s)", lit, expr), lit}, true
 }
 
-// Lobster stores every narrow integer in a signed 64-bit int. A checked
-// writer must reject values outside the declared storage before Put narrows
-// them. uint64 already uses all 64 bits (including negative int bit patterns).
+// Lobster stores narrow integers and fixed-point raw values in a signed
+// 64-bit int. Checked writes must reject storage overflow before Put narrows
+// them. A bit field narrower than its storage has a separate width check.
+// Full-width unsigned values use all 64 bits, including negative int patterns.
 func lobsterScalarStorageBounds(f *ir.Field, expr string) []lobsterScalarBound {
-	if f.Type.Kind != ir.TInt || f.Type.Width >= 64 {
+	if f.Type.Width >= 64 {
+		return nil
+	}
+	switch f.Type.Kind {
+	case ir.TInt, ir.TFixed:
+	case ir.TBits:
+		if int64(f.Type.Width) < 8*ir.TableFixedStorageBytes(f.Type) {
+			return nil // lobsterScalarWidthBound already checks this narrower lane.
+		}
+	default:
 		return nil
 	}
 	lo, hi := tableStorageRange(f.Type.Signed, f.Type.Width)
@@ -1611,7 +1621,7 @@ func fixedFiniteNeededStruct(st *ir.Struct, seen map[string]bool) bool {
 	}
 	seen[st.Name] = true
 	for _, f := range st.Fields {
-		if fixedFiniteNeededField(f, seen) {
+		if !f.Deprecated && fixedFiniteNeededField(f, seen) {
 			return true
 		}
 	}
@@ -1648,7 +1658,9 @@ func emitFixedFiniteBodyFn(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("// first NaN or infinity, named <Owner>.<field>, or \"\".\n")
 	g.Pf("def %sFixedFiniteBody(v:%s) -> string:\n", st.Name, st.Name)
 	for _, f := range st.Fields {
-		emitFixedFiniteField(g, f, st.Name, "v", "    ")
+		if !f.Deprecated {
+			emitFixedFiniteField(g, f, st.Name, "v", "    ")
+		}
 	}
 	g.Pf("    return \"\"\n\n")
 }

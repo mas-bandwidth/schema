@@ -1324,3 +1324,6 @@ unit reportarms test/conformance/report-schemas/reportarms
 unit reportscalars test/conformance/report-schemas/reportscalars
 unit reportkeyed1 test/conformance/report-schemas/reportkeyed1
 unit reportkeyed2 test/conformance/report-schemas/reportkeyed2
+
+# Oversized fixed declarations do not fall back to the variable wire.
+report oversized_fixed_previous_form tabledemo WideBlob testdata/wire/tables/wide_blob.bin
