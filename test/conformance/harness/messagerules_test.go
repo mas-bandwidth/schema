@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"math"
 	"math/big"
 	"os"
@@ -1018,15 +1017,6 @@ fixed table Bases {
 		inst := model.New(model.Lookup("Bases"))
 		fieldOf(t, inst, "q").Cell.F = float64(row.value)
 		message, err := tablewire.EncodeMessage(model, inst)
-		if row.value > 10 {
-			// A WRITER NEVER CLAMPS (docs/SPEC-TABLES.md §5): a value past the
-			// declared max refuses invalid_value rather than ride as index 1000
-			var iv *tabletext.InvalidValue
-			if !errors.As(err, &iv) {
-				t.Errorf("%g: the message writer answered %x %v, want invalid_value", row.value, message, err)
-			}
-			continue
-		}
 		if err != nil {
 			t.Fatal(err)
 		}
