@@ -16,9 +16,8 @@ func completeCoverage(shape map[coverageKey]*coverageExpected) ([]coverageRow, m
 	fixed := map[string]string{}
 	for _, lang := range originalNine {
 		for key, want := range shape {
-			named := want.namedRequired[lang]
 			rows = append(rows, coverageRow{Lang: lang, Direction: directionReadsCpp,
-				Surface: key.surface, Class: key.class, Cases: want.cases, Answered: want.cases - named, Named: named})
+				Surface: key.surface, Class: key.class, Cases: want.cases, Answered: want.cases})
 		}
 		if lang != referenceLang {
 			fixed[lang] = "pass"
@@ -28,9 +27,9 @@ func completeCoverage(shape map[coverageKey]*coverageExpected) ([]coverageRow, m
 }
 
 func smallCoverageShape() map[coverageKey]*coverageExpected {
-	// Named wire refusal is required for Go and allowed for every writer.
+	// Both acceptance and semantic refusal are answered cases.
 	return map[coverageKey]*coverageExpected{
-		{"wire", "fixed"}:    {cases: 3, namedAllowed: 1, namedRequired: map[string]int{"go": 1}},
+		{"wire", "fixed"}:    {cases: 3},
 		{"wire", "variable"}: {cases: 2},
 		{"block", ""}:        {cases: 1},
 	}
@@ -85,40 +84,23 @@ func TestOriginalNineCoverageRejectsIncompleteRecords(t *testing.T) {
 	}
 }
 
-func TestOriginalNineCoverageNamedRefusalsAndExpansion(t *testing.T) {
+func TestOriginalNineCoverageSemanticRefusalsAreAnswers(t *testing.T) {
 	shape := smallCoverageShape()
 	rows, fixed := completeCoverage(shape)
 	rows = append(rows, coverageRow{Lang: "lua", Direction: directionReadsCpp, Surface: "wire", SurfaceAbsent: true})
 	fixed["lua"] = "none"
-	// An optional named wire refusal is valid for the reference too.
-	for i := range rows {
-		if rows[i].Lang == "cpp" && rows[i].Class == "fixed" {
-			rows[i].Answered--
-			rows[i].Named++
-		}
-	}
 	if problems := originalCoverageProblems(rows, fixed, shape); len(problems) != 0 {
-		t.Fatalf("valid refusals/optional expansion rejected: %v", problems)
+		t.Fatalf("complete answered cases failed: %v", problems)
 	}
 	for i := range rows {
 		if rows[i].Lang == "go" && rows[i].Class == "fixed" {
-			rows[i].Named = 0
-			rows[i].Answered = rows[i].Cases
-		}
-	}
-	if problems := originalCoverageProblems(rows, fixed, shape); !strings.Contains(strings.Join(problems, "\n"), "named refusals=0") {
-		t.Fatalf("lost required refusal accepted: %v", problems)
-	}
-	rows, fixed = completeCoverage(shape)
-	for i := range rows {
-		if rows[i].Surface == "block" {
-			rows[i].Named = rows[i].Cases
-			rows[i].Answered = 0
+			rows[i].Answered--
+			rows[i].Named++
 			break
 		}
 	}
-	if problems := originalCoverageProblems(rows, fixed, shape); !strings.Contains(strings.Join(problems, "\n"), "manifest permits 0..0") {
-		t.Fatalf("invented named refusal accepted: %v", problems)
+	if problems := originalCoverageProblems(rows, fixed, shape); !strings.Contains(strings.Join(problems, "\n"), "named absence=1 is not an answered case") {
+		t.Fatalf("feature absence passed as semantic refusal: %v", problems)
 	}
 }
 

@@ -13,10 +13,7 @@ var originalNine = []string{"cpp", "c", "cs", "go", "rust", "java", "js", "dart"
 
 type coverageKey struct{ surface, class string }
 
-type coverageExpected struct {
-	cases, namedAllowed int
-	namedRequired       map[string]int
-}
+type coverageExpected struct{ cases int }
 
 // requiredCoverageShape uses the same expectations and class mapping as a
 // real run. No driver, materialisation or reference reread is performed.
@@ -25,10 +22,6 @@ func requiredCoverageShape(m *Manifest, reports map[string]Counts, jsonDir strin
 	claims, err := buildClaims(m, nil)
 	if err != nil {
 		return nil, err
-	}
-	instances := map[string]Instance{}
-	for _, inst := range m.Instances {
-		instances[inst.Name] = inst
 	}
 	shape := map[coverageKey]*coverageExpected{}
 	for _, surface := range surfaces {
@@ -42,26 +35,10 @@ func requiredCoverageShape(m *Manifest, reports map[string]Counts, jsonDir strin
 		for _, e := range want {
 			key := coverageKey{surface, claims.cases[surface][e.name].class}
 			if shape[key] == nil {
-				shape[key] = &coverageExpected{namedRequired: map[string]int{}}
+				shape[key] = &coverageExpected{}
 			}
 			row := shape[key]
 			row.cases++
-			// Match scoreAnswer's named-refusal rules. Variable messages
-			// require the refusal in every language; marked wire rows allow
-			// it everywhere and require it for their named ports.
-			if surface == "message" && e.want == nil {
-				row.namedAllowed++
-				for _, lang := range originalNine {
-					row.namedRequired[lang]++
-				}
-			} else if inst := instances[e.name]; surface == "wire" && inst.GoWireRefusal != "" {
-				row.namedAllowed++
-				for _, lang := range originalNine {
-					if inst.WireRefusal(lang) != "" {
-						row.namedRequired[lang]++
-					}
-				}
-			}
 		}
 	}
 	total := 0
@@ -129,9 +106,8 @@ func originalCoverageProblems(rows []coverageRow, fixed map[string]string, shape
 			problems = append(problems, fmt.Sprintf("%s: incomplete (failed=%d, claimed-absent=%d, not-carried=%d)",
 				label, row.Failed, row.AbsentClaimed, row.NotCarried))
 		}
-		if row.Named < want.namedRequired[row.Lang] || row.Named > want.namedAllowed {
-			problems = append(problems, fmt.Sprintf("%s: named refusals=%d, manifest permits %d..%d",
-				label, row.Named, want.namedRequired[row.Lang], want.namedAllowed))
+		if row.Named != 0 {
+			problems = append(problems, fmt.Sprintf("%s: named absence=%d is not an answered case", label, row.Named))
 		}
 	}
 	for _, lang := range originalNine {

@@ -988,15 +988,21 @@ func TestTheBasesTwoEncodings(t *testing.T) {
 
 // TestTheQuantizedIndexAcrossTheForms: `float32 | min = 0, max = 10,
 // resolution = 0.01` carrying 0.005, the rounding tie, 0.123, an off-grid
-// value, and 11.0, a value past the clamp, whose indices are 1, 12 and 1000:
-// the packet wire's own, and each message read back into a float that is the
+// value, whose indices are 1 and 12. Values above the range refuse. Each
+// accepted message reads back into a float that is the
 // grid point and not the original. Beside it the decode of index 6666 under
 // `min = -100, max = 100, resolution = 0.01`, which is 0xC2055C2A and no
 // neighbor of it. Red if a leg computes in float64, rounds once where the rule
 // rounds twice, differs from the packet wire's index or float by one, or
-// reproduces 0.005, 0.123 or 11.0 out of the file it wrote.
+// reproduces an off-grid original instead of the quantized value.
 func TestTheQuantizedIndexAcrossTheForms(t *testing.T) {
-	model, v := basesUnit(t)
+	unit := tempUnit(t, `package quantizedprobe
+fixed table Bases {
+ q float32 | min=0, max=10, resolution=0.01
+ wide float32 | min=-100, max=100, resolution=0.01
+}
+`)
+	model, v := tabletext.NewModel(unit), vocabularyOf(t, unit)
 	q, qSlot := entryWhere(t, v, func(e ir.TableVocabularyEntry) bool { return e.Kind == ir.TableKindF32 && e.Shape.QMin == 0 })
 	count, delta, ok := ir.TableMessageQuantization(q.Shape)
 	if !ok || count != 1000 || delta != 10 || q.Shape.Bits != 10 {
@@ -1006,7 +1012,7 @@ func TestTheQuantizedIndexAcrossTheForms(t *testing.T) {
 		value float32
 		index uint32
 		grid  float32
-	}{{0.005, 1, 0.01}, {0.123, 12, 0.12}, {11.0, 1000, 10.0}} {
+	}{{0.005, 1, 0.01}, {0.123, 12, 0.12}} {
 		if got := ir.TableMessageQuantize(q.Shape, row.value); got != row.index {
 			t.Errorf("%g quantizes to %d, the packet wire writes %d", row.value, got, row.index)
 		}
@@ -1025,7 +1031,7 @@ func TestTheQuantizedIndexAcrossTheForms(t *testing.T) {
 			t.Errorf("%g: the message carries index %d, the packet wire's is %d", row.value, got, row.index)
 		}
 		back, ok, report, derr := decodeOne(t, model, "Bases", v, message)
-		if derr != nil || !ok || !report.Silent() {
+		if derr != nil || !ok || report.Refused {
 			t.Fatalf("%g: the message did not read: %v %+v", row.value, derr, report)
 		}
 		if got := float32(fieldOf(t, back, "q").Cell.F); got != ir.TableMessageDequantize(q.Shape, row.index) {
@@ -1034,6 +1040,15 @@ func TestTheQuantizedIndexAcrossTheForms(t *testing.T) {
 		if got := float32(fieldOf(t, back, "q").Cell.F); got == row.value {
 			t.Errorf("%g: the original came back out of the message", row.value)
 		}
+	}
+	// A quantizer's arithmetic is not permission for a writer to clamp.
+	outside := model.New(model.Lookup("Bases"))
+	fieldOf(t, outside, "q").Cell.F = 11
+	if _, err := tablewire.EncodeMessage(model, outside); err == nil {
+		t.Error("message writer accepted q above its declared range")
+	}
+	if _, err := tablewire.Encode(model, outside); err == nil {
+		t.Error("file writer accepted q above its declared range")
 	}
 	wide, _ := entryWhere(t, v, func(e ir.TableVocabularyEntry) bool { return e.Kind == ir.TableKindF32 && e.Shape.QMin == -100 })
 	if got := math.Float32bits(ir.TableMessageDequantize(wide.Shape, 6666)); got != 0xC2055C2A {
@@ -1059,7 +1074,7 @@ func TestTheQuantizedIndexAcrossTheForms(t *testing.T) {
 	last.put(1000, 10)
 	last.put(0, v.RefBits())
 	inst, ok, report, derr = decodeOne(t, model, "Bases", v, batchOf(last))
-	if !ok || derr != nil || !report.Silent() {
+	if !ok || derr != nil || report.Refused {
 		t.Errorf("index 1000, the count's own value: ok=%v err=%v report=%+v", ok, derr, report)
 	}
 	if got := float32(fieldOf(t, inst, "q").Cell.F); got != 10.0 {
