@@ -21,9 +21,6 @@ func (s stubEvoRunner) HasFixedRoot(_ *testing.T, u *ir.Unit, root string) bool 
 
 func (s stubEvoRunner) SaveCustom(_ *testing.T, u *ir.Unit, root string, scenario string) ([]byte, string) {
 	switch scenario {
-	case "batch_over_4096":
-		// A leg with no 4096-record writer limit succeeds on >4096 records.
-		return make([]byte, 64), ""
 	case "optional_absent_zeros":
 		return make([]byte, 45), ""
 	case "live_extents_base":

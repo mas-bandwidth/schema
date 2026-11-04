@@ -44,6 +44,54 @@ func TestSquirrelFixedProofEvolution(t *testing.T) {
 	fixedproof.RunEvolutionSuite(t, repo, squirrelFixedProofRunner{})
 }
 
+// TestSquirrelFixedBatch4097Roundtrip proves that 4,097 fixed records save and
+// read back without an internal 4096 cap, and refuse only when the caller
+// supplies a smaller capacity.
+func TestSquirrelFixedBatch4097Roundtrip(t *testing.T) {
+	sqrun.Require(t)
+	t.Parallel()
+	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table Point {\n    x int32 = 1\n    y int32 = 2\n}\n")
+	files, err := sqGenerateAll(u, nil)
+	if err != nil {
+		t.Fatalf("squirreltable.Generate: %v", err)
+	}
+	dir := t.TempDir()
+	sqWriteFiles(t, dir, files)
+	script := fmt.Sprintf(`local T = dofile("schema_module.nut", true).require(%q);
+local r = array(4097);
+for (local i = 0; i < 4097; i++) {
+  local p = T.Point();
+  p.X = i + 1;
+  p.Y = -(i + 1);
+  r[i] = p;
+}
+local m = T.PointFixedMeasure(4097);
+if (m <= 0) throw "FixedMeasure(4097)=" + m;
+local wire = blob(m);
+local n = T.PointFixedSave(wire, r);
+if (n != m) throw "FixedSave(4097)=" + n + " want " + m + " reason=" + T.FixedReason;
+local back = array(4097);
+for (local i = 0; i < 4097; i++) back[i] = T.Point();
+local got = T.PointFixedLoad(wire, back, null);
+if (got != 4097) throw "FixedLoad(4097)=" + got + " reason=" + T.FixedReason;
+if (back[0].X != 1 || back[0].Y != -1) throw "record 0 mismatch";
+if (back[2048].X != 2049 || back[2048].Y != -2049) throw "record 2048 mismatch";
+if (back[4096].X != 4097 || back[4096].Y != -4097) throw "record 4096 mismatch";
+local short = array(4096);
+for (local i = 0; i < 4096; i++) short[i] = T.Point();
+local refused = T.PointFixedLoad(wire, short, 4096);
+if (refused != -1) throw "expected -1 for 4097 records into cap=4096, got " + refused;
+print("OK 4097\n");
+`, squirreltable.ModuleName(u))
+	if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", nil)))
+	if out != "OK 4097" {
+		t.Fatalf("got %q, want OK 4097", out)
+	}
+}
+
 type squirrelFixedProofRunner struct{}
 
 func (squirrelFixedProofRunner) Name() string { return "squirrel" }
@@ -243,8 +291,8 @@ func (squirrelFixedProofRunner) LoadLineage(
 	}
 	mod := squirreltable.ModuleName(u)
 	capArg := "null"
-	allocN := 64
-	if cap >= 0 && cap <= 4096 {
+	allocN := max(64, len(wireBytes)/8)
+	if cap >= 0 && cap <= allocN {
 		allocN = cap
 	}
 	script := fmt.Sprintf(`%[5]slocal T = dofile("schema_module.nut", true).require(%[1]q);
@@ -273,7 +321,7 @@ dump_fields = function(prefix, obj) {
     }
   }
 };
-for (local idx = 0; idx < got; idx++) {
+for (local idx = 0; idx < got && idx < 8; idx++) {
   dump_fields("r" + idx, rows[idx]);
 }
 local m = T.%[2]sFixedMeasure(got);

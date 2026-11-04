@@ -1595,6 +1595,11 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		three := MakeFixedFile(eOwn.Wire, eOwn.Layout, body, body, body)
 		badLast := bytes.Clone(three)
 		badLast[len(badLast)-16] ^= 1 // the third record's hash
+		bodies4097 := make([][]byte, 4097)
+		for i := range bodies4097 {
+			bodies4097[i] = body
+		}
+		four097 := MakeFixedFile(eOwn.Wire, eOwn.Layout, bodies4097...)
 		for _, c := range []struct {
 			name     string
 			file     []byte
@@ -1606,6 +1611,8 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 			{"the room exactly", three, 3, 3},
 			{"no capacity", three, -1, 3},
 			{"the bad hash in the room", badLast, 3, -1},
+			{"4097 records with no capacity", four097, -1, 4097},
+			{"4097 records past 4096 capacity", four097, 4096, -1},
 		} {
 			n, reason, _, _ := runner.LoadLineage(t, u, "Point", lin, c.file, c.capacity)
 			if n != c.wantN {

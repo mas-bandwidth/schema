@@ -37,6 +37,48 @@ func TestLuaFixedProofEvolution(t *testing.T) {
 	fixedproof.RunEvolutionSuite(t, repo, luaFixedProofRunner{})
 }
 
+// TestLuaFixedBatch4097Roundtrip proves that 4,097 fixed records save and read
+// back without an internal 4096 cap, and refuse only when the caller supplies a
+// smaller capacity.
+func TestLuaFixedBatch4097Roundtrip(t *testing.T) {
+	t.Parallel()
+	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table Point {\n    x int32 = 1\n    y int32 = 2\n}\n")
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("luatable.Generate: %v", err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	script := fmt.Sprintf(`local T = require(%q)
+local r = {}
+for i = 1, 4097 do
+  local p = T.NewPoint()
+  p.x = i
+  p.y = -i
+  r[i] = p
+end
+local m = T.FixedMeasure("Point", 4097)
+assert(m > 0, "FixedMeasure(4097) returned " .. tostring(m))
+local wire = T.FixedSave("Point", r)
+assert(#wire == m, string.format("#wire=%%d want %%d", #wire, m))
+local back = T.FixedLoad("Point", wire)
+assert(#back == 4097, "#back=" .. tostring(#back))
+assert(back[1].x == 1 and back[1].y == -1, "record 1 mismatch")
+assert(back[2049].x == 2049 and back[2049].y == -2049, "record 2049 mismatch")
+assert(back[4097].x == 4097 and back[4097].y == -4097, "record 4097 mismatch")
+local ok, err = pcall(function() return T.FixedLoad("Point", wire, 4096) end)
+assert(not ok, "expected refusal for 4097 records into cap=4096, got ok")
+print("OK 4097")
+`, ModuleName(u))
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", nil)))
+	if out != "OK 4097" {
+		t.Fatalf("got %q, want OK 4097", out)
+	}
+}
+
 type luaFixedProofRunner struct{}
 
 func (luaFixedProofRunner) Name() string { return "lua" }
@@ -202,7 +244,7 @@ local function dump_fields(prefix, tbl)
   end
 end
 for idx, r in ipairs(rows) do
-  if type(r) == "table" then
+  if idx <= 8 and type(r) == "table" then
     dump_fields("r" .. tostring(idx - 1), r)
   end
 end

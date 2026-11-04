@@ -80,7 +80,7 @@ func fixedTable(m *Module, st *ir.Struct) {
 	if st.Integrity != "" {
 		trailer = 4
 	}
-	m.Printf("_M.%sFixedMeasure <- function(count = 1) { return count < 0 || count > 4096 ? -1 : %d + count * %d; };\n", st.Name, int64(20+len(layout))+trailer, rec)
+	m.Printf("_M.%sFixedMeasure <- function(count = 1) { return count < 0 ? -1 : %d + count * %d; };\n", st.Name, int64(20+len(layout))+trailer, rec)
 
 	lineage := lineageOf(m.Unit)
 	strict := lineage != nil
@@ -275,7 +275,6 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedSave <- function(out, recs) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	m.Printf("  _M.FixedField <- null;\n")
-	m.Printf("  if (recs.len() > 4096) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
 	m.Printf("  local b = out;\n")
 	m.Printf("  b.seek(0);\n")
 	m.Printf("  b.writen(%d, 'b');\n", fixedFormByte)
@@ -350,7 +349,7 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 		m.Printf("  local rest = len - 20 - L;\n")
 		m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 		m.Printf("  local count = rest / rb;\n")
-		m.Printf("  if (count > 4096 || (cap != null && count > cap)) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
+		m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
 		m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
 		m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
 		m.Printf("  for (local k = 0; k < count; k++) {\n")
@@ -381,7 +380,7 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("  local rest = len - 20 - L;\n")
 	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local count = rest / rb;\n")
-	m.Printf("  if (count > 4096 || (cap != null && count > cap)) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
+	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
 	m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
 	m.Printf("  for (local k = 0; k < count; k++) {\n")
 	m.Printf("    local at = 20 + L + k * rb;\n")
@@ -401,32 +400,6 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 func emitFixedPlainRead(m *Module, st *ir.Struct) {
 	m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
 	m.Printf("  return _M.%sFixedLoadTolerant(b, out, cap);\n", st.Name)
-	m.Printf("};\n\n")
-	m.Printf("_M.%sWriteFixed <- function(out, v) {\n", st.Name)
-	m.Printf("  _M.FixedReason <- null;\n")
-	m.Printf("  _M.FixedField <- null;\n")
-	m.Printf("  local why = _M.%sFixedDeprecated(v);\n", st.Name)
-	m.Printf("  if (why != null) { _M.FixedReason = why; return -1; }\n")
-	m.Printf("  local b = out;\n")
-	m.Printf("  b.seek(0);\n")
-	m.Printf("  local h = _M.%sFixedHash;\n", st.Name)
-	m.Printf("  b.writen(h & 0xFFFFFFFF, 'i'); b.writen((h >> 32) & 0xFFFFFFFF, 'i');\n")
-	m.Printf("  b.writeblob(blob(_M.%sFixedRecord - 8));\n", st.Name)
-	m.Printf("  why = _M.%sFixedWriteBody(b, 8, v);\n", st.Name)
-	m.Printf("  if (why != null) { _M.FixedReason = why; return -1; }\n")
-	m.Printf("  return _M.%sFixedRecord;\n", st.Name)
-	m.Printf("};\n\n")
-	m.Printf("_M.%sReadFixedTolerant <- function(b, v) {\n", st.Name)
-	m.Printf("  _M.FixedReason <- null;\n")
-	m.Printf("  _M.FixedField <- null;\n")
-	m.Printf("  if (b.len() != _M.%sFixedRecord) { _M.FixedReason = \"truncated\"; return false; }\n", st.Name)
-	m.Printf("  if (_rt_fixed.u64le(b, 0) != _M.%sFixedHash) { _M.FixedReason = \"no_layout\"; return false; }\n", st.Name)
-	m.Printf("  local why = _M.%sFixedDecodeBody(v, b, 8, _M.%sFixedRecord);\n", st.Name, st.Name)
-	m.Printf("  if (why != null) { _M.FixedReason = why; return false; }\n")
-	m.Printf("  return true;\n")
-	m.Printf("};\n\n")
-	m.Printf("_M.%sReadFixed <- function(b, v) {\n", st.Name)
-	m.Printf("  return _M.%sReadFixedTolerant(b, v);\n", st.Name)
 	m.Printf("};\n\n")
 }
 

@@ -15,7 +15,6 @@ local F = {}
 
 local formByte = 3
 local maxRecordBytes = 65536
-local maxRecords = 4096
 
 -- A FLOAT IN THE FIXED FORM IS FINITE (docs/SPEC-TABLES.md §3.3, §3.4): the
 -- record carries the bit pattern of a finite value, -0 and the subnormals
@@ -701,7 +700,6 @@ function F.read(T, name, buf, strict)
   end
   local rest = #buf - 20 - layoutLen
   if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("malformed") end
-  if rest / recSize > maxRecords then error("plan_too_large") end
   local at = 21 + layoutLen
   if string.unpack("<I8", buf, at) ~= hash then error("no_layout") end
   local value
@@ -738,7 +736,7 @@ end
 -- table `name` (docs/SPEC-TABLES.md §3.4).
 function F.measure(T, name, count)
   local f = T.Fixed[name]
-  if f == nil or count < 0 or count > maxRecords then return -1 end
+  if f == nil or count < 0 then return -1 end
   local n = 20 + #f.layout + count * (8 + f.size)
   local desc = T.Tables[name]
   if desc ~= nil and desc.integrity ~= nil then n = n + 4 end
@@ -751,7 +749,6 @@ function F.save(T, name, values)
   local f = T.Fixed[name]
   if f == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
   values = values or {}
-  if #values > maxRecords then error("batch_too_large", 0) end
   local header = string.char(formByte) .. zeros(7) .. pack_uint(f.hash, 8) .. pack_uint(#f.layout, 4) .. f.layout
   local parts = { header }
   local hPrefix = pack_uint(f.hash, 8)
@@ -819,7 +816,6 @@ function F.load(T, name, buf, strict, cap)
   local rest = #buf - 20 - layoutLen
   if recSize <= 8 or rest % recSize ~= 0 then error("truncated", 0) end
   local nRec = rest // recSize
-  if nRec > maxRecords then error("plan_too_large", 0) end
   if cap ~= nil and nRec > cap then error("batch_too_large", 0) end
   local out = {}
   for k = 1, nRec do
