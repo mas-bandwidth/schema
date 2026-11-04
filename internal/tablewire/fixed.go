@@ -349,7 +349,10 @@ func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, repo
 	return nil
 }
 
-// fixedDecoder is the identity read of one record body.
+// fixedDecoder is the identity read of one record body. Its checks over live
+// data (a count past its bound, a bool or present byte other than 0 or 1, a
+// forged ordinal or tag, a value outside the range) are tla/FixedLive.tla's,
+// and each refuses the whole read.
 type fixedDecoder struct {
 	m      *tabletext.Model
 	report *tabletext.Report
