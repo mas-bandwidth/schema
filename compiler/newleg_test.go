@@ -175,6 +175,29 @@ func TestNewLegGooseRecipe(t *testing.T) {
 	}
 }
 
+// TestNewLegPythonRecipe: python's scaffold is .py files commented with `#`
+// (docs/PORT-PYTHON.md, THE RUNTIME LAYOUT), not .python. Under the
+// schema_leg_python tag python is a live target and new-leg refuses it by
+// name; the recipe is held either way.
+func TestNewLegPythonRecipe(t *testing.T) {
+	t.Parallel()
+	ext, comment := newLegRecipe("python")
+	if ext != "py" || comment != "#" {
+		t.Fatalf("newLegRecipe(python) = %q, %q; want py, #", ext, comment)
+	}
+	files, err := NewLeg("python")
+	if err != nil {
+		if !strings.Contains(err.Error(), "python is already a live target") {
+			t.Fatal(err)
+		}
+		return
+	}
+	emitter := string(files["internal/codegen/python/python.go"])
+	if !strings.Contains(emitter, `const ext = "py"`) {
+		t.Errorf("scaffolded python.go does not emit .py files:\n%s", emitter)
+	}
+}
+
 func TestNewLegZigOmitsLuaHarness(t *testing.T) {
 	files, err := NewLeg("zig")
 	if err != nil {

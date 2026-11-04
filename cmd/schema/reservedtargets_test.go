@@ -279,7 +279,7 @@ func TestGenerateEveryTargetRefusesEveryLanguagesWords(t *testing.T) {
 		if status != 1 {
 			t.Errorf("generate --lang %s exited %d, want 1\n%s", lang, status, out)
 		}
-		if !strings.Contains(out, `"class" is a reserved word in C#, C++, Dart, Java, JavaScript, Lobster, and Squirrel`) {
+		if !strings.Contains(out, `"class" is a reserved word in C#, C++, Dart, Java, JavaScript, Lobster, Python, and Squirrel`) {
 			t.Errorf("generate --lang %s should refuse class naming every language, got %q", lang, out)
 		}
 	}

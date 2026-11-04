@@ -33,3 +33,28 @@ python-serialize-mypy: python-toolchain-check
 # per-rule sabotage controls run inside the test itself (test_controls).
 python-serialize-negative-control: python-toolchain-check
 	$(MAKE) --no-print-directory -C $(PYTHON_SERIALIZE_DIR) negative-control $(PYTHON_SERIALIZE_PINS)
+
+# VENDORING. The emitted runtime carries serialize.py as its serialize
+# subpackage (internal/codegen/python/runtime/_schema/serialize), copied from
+# the staged source and held to runtime/SERIALIZE_PIN, one sha256 per file.
+# internal/codegen/python's TestVendoredPythonSerializeIsThePin holds the copy
+# to the pin and to the staged source, so an edit to either that is not
+# re-vendored goes red. Once mas-bandwidth/serialize.py exists, the source is
+# its release tag and commit, as the other legs pin theirs.
+PYTHON_SERIALIZE_SRC    := $(PYTHON_SERIALIZE_DIR)/src/serialize
+PYTHON_SERIALIZE_VENDOR := internal/codegen/python/runtime/_schema/serialize
+PYTHON_SERIALIZE_PIN    := internal/codegen/python/runtime/SERIALIZE_PIN
+
+.PHONY: vendor-serialize-python
+vendor-serialize-python:
+	@rm -rf $(PYTHON_SERIALIZE_VENDOR) && mkdir -p $(PYTHON_SERIALIZE_VENDOR)
+	@echo "# Vendored from $(PYTHON_SERIALIZE_SRC), serialize.py staged in this tree" > $(PYTHON_SERIALIZE_PIN)
+	@echo "# until mas-bandwidth/serialize.py exists (docs/PORT-PYTHON.md, THE BIT LAYER)." >> $(PYTHON_SERIALIZE_PIN)
+	@echo "# Rewrite with: make vendor-serialize-python (make/python-serialize.mk)" >> $(PYTHON_SERIALIZE_PIN)
+	@for f in $(PYTHON_SERIALIZE_SRC)/*.py; do \
+		b=$$(basename "$$f"); \
+		h=$$({ sha256sum "$$f" 2>/dev/null || shasum -a 256 "$$f"; } | cut -d" " -f1); \
+		echo "sha256  $$h  $$b" >> $(PYTHON_SERIALIZE_PIN); \
+		cp "$$f" $(PYTHON_SERIALIZE_VENDOR)/$$b; \
+	done
+	@echo "vendor-serialize-python: wrote $(PYTHON_SERIALIZE_PIN) from $(PYTHON_SERIALIZE_SRC)"

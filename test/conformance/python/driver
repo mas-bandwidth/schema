@@ -1,0 +1,20 @@
+#!/bin/sh
+# THE PYTHON LEG's driver (test/conformance/README.md; docs/PORT-PYTHON.md,
+# THE HARNESS).
+#
+# The skeleton answers no surface: `list` names none, and every surface is
+# exit 2 (ABSENT). The conformance layer (P10) replaces this with
+# test/conformance/python/main.py under the pinned interpreter.
+#
+# The working directory is the repository root.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+case "$2" in
+list)
+	exit 0
+	;;
+*)
+	exit 2
+	;;
+esac

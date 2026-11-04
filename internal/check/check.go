@@ -3625,6 +3625,19 @@ var reservedLanguages = []struct {
 		out_of_range namespace not and or attribute if for while super constructor guard
 		abstract union member member_frame static static_frame operator elif else break
 		continue bool true false`},
+	// Python's hard keywords (keyword.kwlist, the same on both pinned
+	// interpreters; docs/PORT-PYTHON.md, IDENTIFIERS), less two, which the
+	// Python target refuses by name instead (internal/codegen/python,
+	// CheckNames): None, because every enum and union already owns that
+	// spelling by its own rule (SPEC §4.2, §4.8); and global, because the
+	// shared corpus names a field global (tables/examples/Pack.schema,
+	// PackConfig), and whether Python escapes it or the corpus renames it is
+	// an open ruling (docs/PORT-PYTHON.md, IDENTIFIERS). The soft keywords
+	// (match, case, type, lazy, _) are identifiers in every position the
+	// generated code spells a name, so they are not here.
+	{"Python", []string{"python"}, `False True and as assert async await break class continue def del elif
+		else except finally for from if import in is lambda nonlocal not or pass raise return try
+		while with yield`},
 }
 
 // targetReserved maps each reserved word of the supported languages to the

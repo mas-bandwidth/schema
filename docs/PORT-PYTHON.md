@@ -280,10 +280,11 @@ per unit, named for the unit's package:
 |---|---|
 | `compiler/target_python.go` | the target, behind the `schema_leg_python` build tag until the packet surface has claims; the shared refusal chain, then the emitters |
 | `compiler/carries_python.go` | the carried constructs, registered once from `pythonCarried`; a later layer adds `var _ = carryPython(<construct>)` in its own file |
-| `internal/codegen/python` | the type surface's emitter and, from the packet layer, its codec |
-| `internal/codegen/pythontable` | the table surface's emitter and, from the table layers, its codec |
+| `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
+| `internal/codegen/python/runtime/_schema/` | the runtime, embedded and emitted verbatim: the errors, and serialize.py vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-python`) |
 | `internal/codegen/python/pyrun` | the test helper (THE HARNESS) |
-| `internal/tablenames/python.go` | the runtime's claimed names |
+| `internal/codegen/pythontable` | the table surface's emitter and codec, from the table layers (P5) |
+| `internal/tablenames/python.go` | the table runtime's claimed names, from the table layers (P5) |
 | `make/python-toolchain.mk`, `make/python.mk`, `make/python-*.mk` | the pin, the leg, and one fragment per gate |
 | `test/conformance/python/` | the conformance driver and `ci.json` |
 
@@ -293,15 +294,27 @@ Fields keep the schema's spelling (`max_players`), and types, tables and
 unions keep theirs (`PlayerState`). Nothing is mangled: SPEC §4.6's
 target-name safety has every port refuse a reserved word, never escape it (Go's
 escape aside), so **Python joins the checker's one reserved-word table**
-(`internal/check`, `reservedLanguages`) with a row of its own: its keywords
-(`False None True and as assert async await break class continue def del elif
-else except finally for from global if import in is lambda nonlocal not or
-pass raise return try while with yield`) and its soft keywords (`match case
-type _`).
+(`internal/check`, `reservedLanguages`) with a row of its own: its hard
+keywords (`keyword.kwlist`). The soft keywords (`match`, `case`, `type`,
+`lazy`, `_`) are identifiers in every position the generated code spells a
+name, so they are not in the row.
 
 The row refuses those names in every unit, whatever the target, as the other
 rows do. That changes which schema names are legal: a unit with a field named
-`pass`, `lambda` or `def` that checks today is refused once the row lands (P3).
+`pass`, `lambda` or `def` that checked before the row is refused now. Two
+keywords are not in the row, and the Python target refuses them by name
+instead:
+
+- `None`, because every enum and union already owns that spelling by its own
+  rule (SPEC §4.2, §4.8), and the checker reports it once;
+- `global`, because the shared corpus names a field `global`
+  (`tables/examples/Pack.schema`, `PackConfig`), so the row would refuse a
+  unit every leg generates today. Python cannot spell `v.global`. Either the
+  corpus renames the field, or Python carries the word through an escape as Go
+  does (`global_`, the JSON key and the wire id unchanged). **That is Glenn's
+  ruling to make**; until it is made, the Python target refuses `global` by
+  name, and the Python leg cannot generate `tables/examples`.
+
 Then, by rule, in the Python target:
 
 - **A name starting with `__`** is refused by name: Python mangles `__x` inside
@@ -312,8 +325,9 @@ Then, by rule, in the Python target:
   module names builtins unqualified. Fields are attributes and shadow nothing,
   so a field named `list` or `range` is legal.
 - **A field named for a generated member** (`read`, `write`, `load`, `save`,
-  `descriptor`, ...) is refused by name. The members are claimed in
-  `internal/tablenames/python.go`, as every backend claims its runtime's names.
+  `descriptor`) is refused by name. The emitter holds the list
+  (`generatedMembers`); the table layers claim their runtime's names in
+  `internal/tablenames/python.go`, as every backend does.
 - **Enum variants** spelled `None` or `Max` are already refused by the checker
   (they are every enum's own names); a variant otherwise keeps its spelling.
 - **The package name** must be a Python identifier, no keyword, and no module
@@ -351,15 +365,23 @@ out as lowercase hex lines.**
 
 ## THE REGISTER
 
-The `python` column of [PORTING.md](PORTING.md) starts with every technique
-❌, each citing the `port/python` layer that carries it, or `—` with the
-platform's reason. Already known to be `—`: M3, because every CPython `float`
-is a heap object; M4, because Python has no inlining directive or aliasing
-qualifier, so M4b (the self-contained codec) is the shape the leg carries.
-M10 is the managed-backend case: the leg allocates inside CPython and says
-so, and an allocation count over `tracemalloc` (I1) is the instrument a later
-layer can pin, as the Lua leg pinned its own. A cell becomes ✅ when the layer
-that carries it lands with its proof.
+The `python` column of [PORTING.md](PORTING.md) holds every technique ❌,
+citing #381 (the language list) and the `port/python` layer that carries it,
+or `—` with the platform's reason:
+
+- **M2 and M3**: every CPython `int` and `float` is a heap object, so there is
+  no unboxed form to keep.
+- **M4**: Python has no inlining directive or aliasing qualifier; M4b, the
+  self-contained codec, is the shape (P4).
+- **M10**: CPython owns allocation, and a pure-Python codec has no allocator to
+  hook; the leg allocates inside the VM and says so. An allocation count over
+  `tracemalloc` (I1) is the instrument a later layer can pin, as the Lua leg
+  pinned its own.
+- **M21**: retired by the finite-only rule, as for Lua: the float32
+  conversion only ever sees a finite value, and `struct` converts every finite
+  float32 exactly.
+
+A cell becomes ✅ when the layer that carries it lands with its proof.
 
 ## THE LAYERS
 
