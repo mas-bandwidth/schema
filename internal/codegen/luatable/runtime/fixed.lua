@@ -231,10 +231,23 @@ end
 -- rule, and names the first value its declaration does not admit, so a refused
 -- write packs nothing. An integer off its width, its declared range or its
 -- bits(N), an enum value that names no variant, a union tag that names no arm
--- and ill-formed text are invalid_value; a NaN or an infinity is
+-- and ill-formed text are invalid_value, and so is a zero byte in a string or
+-- a zero unit in a wstring (the fixed reader refuses either as
+-- text_ill_formed); a NaN or an infinity is
 -- non_finite_float; a count past the array's bound is count_over_bound and a
 -- length past the text's is length_over_bound. A flags value is stored whole.
 local check_table
+
+-- zero_text answers whether a string holds a zero byte or a wstring a zero
+-- unit.
+local function zero_text(s, v)
+  if s == "string" then return type(v) == "string" and string.find(v, "\0", 1, true) ~= nil end
+  if type(v) ~= "table" then return false end
+  for i = 1, #v do
+    if v[i] == 0 then return true end
+  end
+  return false
+end
 
 local function check_value(T, d, v, size, elemSize, where)
   local s = d.shape
@@ -245,11 +258,11 @@ local function check_value(T, d, v, size, elemSize, where)
   elseif s == "string" or s == "bytes" then
     v = v or ""
     if #v > size - 4 or not D.len_ok(d, v) then return "length_over_bound" end
-    if not D.text_ok(d, v) then return "invalid_value: " .. where end
+    if not D.text_ok(d, v) or zero_text(s, v) then return "invalid_value: " .. where end
   elseif s == "wstring" then
     v = v or {}
     if #v > (size - 4) // 2 or not D.len_ok(d, v) then return "length_over_bound" end
-    if not D.text_ok(d, v) then return "invalid_value: " .. where end
+    if not D.text_ok(d, v) or zero_text(s, v) then return "invalid_value: " .. where end
   elseif s == "enum" then
     if not D.enum_ok(d, v) then return "invalid_value: " .. where end
   elseif s == "table" then
