@@ -69,7 +69,7 @@ func lobsterProofRun(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, wire []byt
 			}
 		}
 		if hits != 1 {
-			return nil, fmt.Errorf("%s: writer mutation anchors: %d", tc.ID, hits)
+			t.Fatalf("%s: writer mutation anchors: %d", tc.ID, hits)
 		}
 	}
 	dir := t.TempDir()

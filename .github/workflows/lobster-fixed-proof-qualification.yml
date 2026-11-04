@@ -19,6 +19,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
+      - name: Check workflow, source goldens and table emitter
+        run: go test ./internal/ci ./internal/goldens ./internal/codegen/lobstertable
       - name: Compare all 49 rows with the live C++ oracle
         env:
           SCHEMA_SLOW: '1'
