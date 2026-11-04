@@ -86,8 +86,10 @@ assert(input)
 let r:[probe.%s] = []
 for(%d): push(r, probe.New%s())
 let report = schema_rt.TableReport {}
-let count = probe.%sFixedLoad(r, input, [], report)
-if count != %d: exit(70)
+let plan:[schema_rt.TableFixedEntry] = []
+for(4096): push(plan, schema_rt.TableFixedEntry {})
+let count = probe.%sFixedLoad(r, input, plan, report)
+assert(count == %d)
 %s
 `, tc.Root, tc.Count, tc.Root, tc.Root, tc.Count, check)
 	}
@@ -505,10 +507,12 @@ assert(r[1].Tail == 77)`
 		return `r[1].A = 10
 r[1].Sub.P = 30
 r[1].Sub.Q = 40
+r[1].XsCount = 2
 r[1].Xs[0] = 50
 r[1].Xs[1] = 60`, `assert(r[1].A == 10)
 assert(r[1].Sub.P == 30)
 assert(r[1].Sub.Q == 40)
+assert(r[1].XsCount == 2)
 assert(r[1].Xs[0] == 50)
 assert(r[1].Xs[1] == 60)`
 	case "interoperability":
