@@ -776,12 +776,26 @@ public final class Ludicrous {
         return true;
     }
 
+    // fitsLudicrousState answers whether every count and length writeLudicrousStateBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsLudicrousState(LudicrousState value) {
+        if (value.keysCount < 0 || value.keysCount > 4) {
+            return false;
+        }
+        return true;
+    }
+
     // writeLudicrousStateBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteLudicrousState
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + LUDICROUS_STATE_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsLudicrousState).
     public static int writeLudicrousStateBits(LudicrousState value, byte[] data, int bitOffset) {
         assert checkWriteLudicrousState(value, data, bitOffset);
+        if (!fitsLudicrousState(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -821,8 +835,10 @@ public final class Ludicrous {
 
     // writeLudicrousState packs value into data from its start and returns the bytes written;
     // data must hold LUDICROUS_STATE_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeLudicrousState(LudicrousState value, byte[] data) {
-        return (writeLudicrousStateBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeLudicrousStateBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readLudicrousStateBits decodes value from data starting at bit bitOffset, the payload
