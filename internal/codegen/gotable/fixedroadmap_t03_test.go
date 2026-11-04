@@ -415,7 +415,7 @@ func t03GoR15(t *testing.T) {
 		t.Error("R15: an unknown field is dropped-and-counted per record on the read path")
 	}
 	t03GoHas(t, load, "report.Unknown += censusUnknown", "R15 unknown is the compile census, once per plan")
-	t03GoHas(t, load, "censusUnknown, censusKind = lane.Unknown, lane.KindMismatch", "R15 the census is the lane's, landed after the record loop")
+	t03GoHas(t, load, "censusUnknown = lane.Unknown", "R15 the census is the lane's, landed after the record loop")
 	// THE CLAMPS THAT REMAIN ARE THE WRITER'S BOUNDS, reached only over a
 	// locked entry — never a forward read of a stranger's layout.
 	runtime := tableFixedRuntime

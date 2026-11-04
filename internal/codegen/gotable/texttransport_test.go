@@ -71,7 +71,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	}
 	// A supplied report receives THIS read's report: earlier counts in it
 	// neither leak into the verdict nor survive the call.
-	stale := TableReport{Malformed: true, Unknown: 3}
+	stale := TableReport{Refusal: TableRefuseWireDamaged, Unknown: 3}
 	if v, err := RootLoadText(base64.StdEncoding.EncodeToString(file(1)), &stale); v == nil || err != nil || stale != (TableReport{}) {
 		t.Fatalf("clean read with a stale report: value %v, error %v, report %+v", v != nil, err, stale)
 	}

@@ -76,8 +76,8 @@ fixed table T
 `))
 	body := t06ClampBody(t, src)
 	t02GoHas(t, t02GoNorm(body),
-		"if value.X < -5 { value.X = -5 (*clamped)++ } else if value.X > 5 { value.X = 5 (*clamped)++ }",
-		"C7 a ranged scalar clamps at both declared ends and counts each")
+		"if value.X < -5 || value.X > 5 { (*over)++ }",
+		"C7 a ranged scalar past either declared end runs over, and the load refuses")
 }
 
 // ---- go/R30 "compressed float rides as the float" ---------------------------
@@ -127,8 +127,8 @@ fixed table T
 	}
 	body := t06ClampBody(t, src)
 	t02GoHas(t, t02GoNorm(body),
-		"if value.Q < 0.0 { value.Q = 0.0 (*clamped)++ } else if value.Q > 1.0 { value.Q = 1.0 (*clamped)++ }",
-		"R30 the compressed float clamps to the reader's min/max, the bounds following the float")
+		"if value.Q < 0.0 || value.Q > 1.0 { (*over)++ } else if value.Q == 0 { value.Q = 0 }",
+		"R30 the compressed float is held to its min/max, the bounds following the float")
 }
 
 // ---- go/C9 "union tag past arms → None" -------------------------------------
@@ -153,8 +153,8 @@ fixed table T
 `))
 	body := t06ClampBody(t, src)
 	t02GoHas(t, t02GoNorm(body),
-		"if uint32(value.P.Type) > 2 { value.P.Type = PickTypeNone (*clamped)++ }",
-		"C9 a union tag past the arm count lands None and counts")
+		"if uint32(value.P.Type) > 2 { (*over)++ }",
+		"C9 a union tag past the arm count runs over, and the load refuses")
 }
 
 // ---- go/C10 "enum ordinal past top → None" ----------------------------------
@@ -178,8 +178,8 @@ fixed table T
 `))
 	body := t06ClampBody(t, src)
 	t02GoHas(t, t02GoNorm(body),
-		"if uint64(value.Tier) > 3 { value.Tier = TierNone (*clamped)++ }",
-		"C10 an enum ordinal past the enum's top value lands None and counts")
+		"if uint64(value.Tier) > 3 { (*over)++ }",
+		"C10 an enum ordinal past the enum's top value runs over, and the load refuses")
 }
 
 // ---- go/R31 "full-width lanes" ----------------------------------------------
@@ -231,14 +231,14 @@ func t06GoR31(t *testing.T) {
 
 // ---- go/C12 "bool byte != 0" ------------------------------------------------
 
-// t06GoC12 holds C12 to the bool op in the emitted runtime: the wire says
-// nonzero is true (docs/SPEC-TABLES.md §3), and tableFixedBool normalises
-// byte != 0 to 1 rather than copying, because a Go bool is not the wire's own
-// byte. (Also held end-to-end by TestFixedFormHostileBoolByte.)
+// t06GoC12 holds C12 to the bool rule in the emitted runtime: a bool byte
+// other than 0 or 1 refuses wire_damaged before any destination byte
+// (docs/FIXED-FORM-ALGORITHM.md §4.5). (Also held end-to-end by
+// TestFixedFormHostileBoolByte.)
 func t06GoC12(t *testing.T) {
 	t02GoHas(t, t02GoNorm(tableFixedRuntime),
-		"if src[p.Src+k] != 0 { v = 1 }",
-		"C12 a bool byte is normalised byte != 0 -> 1, never copied")
+		"if src[p.Src+k] > 1 { return TableRefuseWireDamaged.Error() }",
+		"C12 a bool byte other than 0 or 1 refuses")
 }
 
 // ---- go/C13 "present flag byte != 0" ----------------------------------------
@@ -255,22 +255,21 @@ fixed table T
 }
 `))
 	t02GoHas(t, src, "Op: tableFixedBool} // v present",
-		"C13 the present flag rides the bool op, so nonzero normalises to present")
+		"C13 the present flag rides the bool op, so a byte other than 0 or 1 refuses")
 }
 
 // ---- go/R17 "normalises and counts nothing" ---------------------------------
 
-// t06GoR17 holds R17: a bool or present byte that is not 0/1 normalises and
-// counts nothing. docs/FIXED-FORM-VERSIONING-TESTS.md: the bool op is not one
-// of the six events, so its block moves no counter.
+// t06GoR17 holds R17: a bool or present byte that is not 0/1 refuses in the
+// pre-scan, and the run's bool op moves no counter.
 func t06GoR17(t *testing.T) {
-	rt := t02GoNorm(tableFixedRuntime)
-	boolCase := t02GoBlock(t, rt, "case tableFixedBool:", "case tableFixedCount:")
-	if !strings.Contains(boolCase, "if src[p.Src+k] != 0 { v = 1 }") {
-		t.Error("R17: the bool op does not normalise byte != 0 to 1")
+	scan := t02GoNorm(funcSource(tableFixedRuntime, "func tableFixedTextRefusal("))
+	if !strings.Contains(scan, "case tableFixedBool:") || !strings.Contains(scan, "return TableRefuseWireDamaged.Error()") {
+		t.Error("R17: the pre-scan does not refuse a bool byte other than 0 or 1")
 	}
-	if strings.Contains(boolCase, "report.") {
-		t.Error("R17: the bool op moves a counter; a hostile byte counts nothing")
+	run := t02GoNorm(funcSource(tableFixedRuntime, "func tableFixedRun("))
+	if strings.Contains(t02GoBlock(t, run, "case tableFixedTag, tableFixedBool:", "case tableFixedCount:"), "report.") {
+		t.Error("R17: the bool op moves a counter")
 	}
 }
 

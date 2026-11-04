@@ -252,7 +252,7 @@ func untouched(b []byte) bool {
 }
 
 func dirty() TableReport {
-	return TableReport{Widened: 1, Unknown: 2, KindMismatch: 3, Clamped: 4, Duplicate: 5, Malformed: true, Retained: 6, RetainLost: 7}
+	return TableReport{Widened: 1, Unknown: 2, Refusal: TableRefuseWireDamaged, Retained: 6, RetainLost: 7}
 }
 
 func TestOracleAndHostile(t *testing.T) {
@@ -316,7 +316,7 @@ func TestOracleAndHostile(t *testing.T) {
 		{name: "previous_form", forge: func(b []byte) []byte { b[0] = 1; return b }, want: refused("previous_form")},
 		{name: "message_form_as_file", forge: func(b []byte) []byte { b[0] = 2; return b }, want: refused("message_form_as_file")},
 		{name: "newer_form", forge: func(b []byte) []byte { b[0] = 6; return b }, want: refused("newer_form")},
-		{name: "reserved byte", forge: func(b []byte) []byte { b[4] = 1; return b }, want: TableReport{Malformed: true, Reason: "reserved_not_zero"}},
+		{name: "reserved byte", forge: func(b []byte) []byte { b[4] = 1; return b }, want: TableReport{Refusal: TableRefuseWireDamaged, Reason: "reserved_not_zero"}},
 		{name: "layout_unknown", forge: func(b []byte) []byte {
 			binary.LittleEndian.PutUint64(b[TableFixedHashAt:], hash^1)
 			return b
@@ -339,7 +339,7 @@ func TestOracleAndHostile(t *testing.T) {
 			b[recordAt(records-1)] ^= 0x01
 			return b
 		}, want: refused("no_layout")},
-		{name: "ragged tail", forge: func(b []byte) []byte { return append(b, 0) }, want: TableReport{Malformed: true, Reason: "truncated"}},
+		{name: "ragged tail", forge: func(b []byte) []byte { return append(b, 0) }, want: TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"}},
 	}
 	if ROOTFixedPlan.Count <= 1 {
 		t.Fatalf("plan_too_large: the identity plan has %d entries, so a one-entry slice fits it", ROOTFixedPlan.Count)

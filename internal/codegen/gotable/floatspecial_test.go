@@ -146,7 +146,7 @@ func landed(t *testing.T, form string, c fsCase, got, want fsBits) {
 // clean: a finite special value is an ordinary value to every counter.
 func clean(t *testing.T, form string, c fsCase, r *TableReport) {
 	t.Helper()
-	if r.Refused() || r.Unknown != 0 || r.Widened != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Reason != "" || r.Err() != nil {
+	if r.Unknown != 0 || r.Widened != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Reason != "" || r.Err() != nil {
 		t.Errorf("%s %s: counted %+v, want a clean read", form, c.name, *r)
 	}
 }

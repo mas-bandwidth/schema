@@ -32,7 +32,8 @@ const (
 	// +28: TableTextMalformed, TableMalformedField, and (TableReport).Err's malformed-field check live in tables/goruntime so units with and without unbounded text share one TableReport.
 	// -4: variable region and retain loads report newer_form on any form byte != 2 (SPEC-TABLES §6.5)
 	// +5: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
-	goOneTableLineBudget = 9575
+	// +223: the one read (SPEC-TABLES §4, §6.5): the wire-alone check over every byte, the node table and the pointer graph, run before every variable-form body read
+	goOneTableLineBudget = 9800
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)

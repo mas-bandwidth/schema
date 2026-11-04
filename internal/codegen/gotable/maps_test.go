@@ -87,7 +87,7 @@ func TestRepeatedKeyWiden(t *testing.T) {
 		off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
 		var report TableReport
 		got := RootLoad(raw[off:off+uintptr(size)], wire, &report)
-		if got == nil || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || got.Entries.Count != tc.count || report.Refusal != tc.mismatch || report.Widened != tc.widen {
+		if got == nil || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || got.Entries.Count != tc.count || report.Refused() != (tc.mismatch != 0) || report.Widened != tc.widen {
 			t.Fatalf("%s region: got=%+v report=%+v", tc.name, got, report)
 		}
 		if tc.count != 0 && got.Entries.At(0).Key != 7 {
@@ -100,7 +100,7 @@ func TestRepeatedKeyWiden(t *testing.T) {
 		}
 		defer b.Shutdown()
 		var breport TableReport
-		if !RootLoadBuilder(&b, wire, &breport) || (breport.Refusal.Error() == "wire_damaged" || breport.Refusal.Error() == "malformed") || b.GetRoot().Entries.Count != tc.count || breport.Refusal != tc.mismatch || breport.Widened != tc.widen {
+		if !RootLoadBuilder(&b, wire, &breport) || (breport.Refusal.Error() == "wire_damaged" || breport.Refusal.Error() == "malformed") || b.GetRoot().Entries.Count != tc.count || breport.Refused() != (tc.mismatch != 0) || breport.Widened != tc.widen {
 			t.Fatalf("%s builder: count=%d report=%+v", tc.name, b.GetRoot().Entries.Count, breport)
 		}
 		if tc.count != 0 && b.GetRoot().Entries.At(0, &b.Arena).Key != 7 {

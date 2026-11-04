@@ -91,7 +91,7 @@ func TestRegionCountCrossesLength(t *testing.T) {
  size:=AlbumLoadMeasure(wire);if size!=40 {t.Fatalf("measure %d",size)}
  var report TableReport
  root:=AlbumLoad(make([]byte,size),wire,&report)
- if root!=nil||report!=(TableReport{Malformed:true}) {t.Fatalf("region %v %+v",root,report)}
+ if root!=nil||report!=(TableReport{Refusal: TableRefuseWireDamaged}) {t.Fatalf("region %v %+v",root,report)}
  var builder AlbumBuilder;builder.Init();defer builder.Shutdown();report=TableReport{Unknown:3}
  if AlbumLoadBuilder(&builder,wire,&report)||(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed")||report.Unknown!=3 {t.Fatalf("builder %+v",report)}
  }

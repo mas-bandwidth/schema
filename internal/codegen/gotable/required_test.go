@@ -41,7 +41,7 @@ table T
 				t.Errorf("a required field still elides at its default: the source carries %q", m)
 			}
 		}
-		for _, m := range []string{"MissingRequired++", `"missing_required: "`, `missingReq += "b"`, `missingReq += "c"`} {
+		for _, m := range []string{"TableRefuseMissingRequired", `"missing_required: "`, `missingReq += "b"`, `missingReq += "c"`} {
 			if !strings.Contains(s, m) {
 				t.Errorf("the reader does not refuse a missing required field: the source lacks %q", m)
 			}

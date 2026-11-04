@@ -357,7 +357,7 @@ func TestDamageInsideBody(t *testing.T) {
 	if ok || count != 0 {
 		t.Fatalf("damage in body 2: count=%d ok=%v %+v", count, ok, report)
 	}
-	if report != (TableReport{Malformed: true}) {
+	if report != (TableReport{Refusal: TableRefuseWireDamaged}) {
 		t.Fatalf("one malformed must count: %+v", report)
 	}
 }
@@ -389,7 +389,7 @@ func TestBytesAfterPad(t *testing.T) {
 	storage := make([]Root, 1)
 	var report TableReport
 	count, ok := RootLoadMessages(storage, vocab, padded, &report)
-	if ok || count != 0 || report != (TableReport{Malformed: true}) { // damage discards the whole batch (docs/SPEC-TABLES.md §4)
+	if ok || count != 0 || report != (TableReport{Refusal: TableRefuseWireDamaged}) { // damage discards the whole batch (docs/SPEC-TABLES.md §4)
 		t.Fatalf("bytes after the pad: count=%d ok=%v %+v", count, ok, report)
 	}
 }

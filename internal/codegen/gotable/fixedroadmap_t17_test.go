@@ -190,7 +190,9 @@ func TestGoT17P1(t *testing.T) {
 	rc = TableReport{}
 	record := buf[len(buf)-RootFixedRecordBytes:]
 	tableFixedRun(cplan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&co), unsafe.Sizeof(co)), &rc)
-	RootFixedBounds(&co, &rc)
+	if !RootFixedBounds(&co) {
+		t.Fatalf("P1: the compiled record is out of bounds: %+v", co)
+	}
 	if co != id[0] {
 		t.Fatalf("P1: identity and compiled landed different fields:\n identity %+v\n compiled %+v", id[0], co)
 	}

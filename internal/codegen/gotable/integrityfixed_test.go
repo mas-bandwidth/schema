@@ -104,7 +104,7 @@ func TestIntegrityFixed(t *testing.T) {
 				if r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: want}) { t.Errorf("form byte ^ 0x%02x: %+v, want %s", x, r, want) }
 				continue
 			}
-			if r != (TableReport{Verdict: TableOpenDamaged, Malformed: true, Reason: "integrity_mismatch"}) { t.Errorf("byte %d ^ 0x%02x: report %+v, want integrity_mismatch", i, x, r) }
+			if r != (TableReport{Verdict: TableOpenDamaged, Refusal: TableRefuseWireDamaged, Reason: "integrity_mismatch"}) { t.Errorf("byte %d ^ 0x%02x: report %+v, want integrity_mismatch", i, x, r) }
 			if !errors.Is(r.Err(), TableRefuseIntegrityMismatch) { t.Errorf("byte %d ^ 0x%02x: Err() = %v", i, x, r.Err()) }
 		}
 	}
@@ -114,13 +114,13 @@ func TestIntegrityFixed(t *testing.T) {
 	for k := 1; k < 5; k++ {
 		if _, n, r := load(kw[:k]); n != -1 || r.Reason != "integrity_mismatch" { t.Errorf("%d-byte file: n=%d %+v", k, n, r) }
 	}
-	if _, n, r := load(nil); n != -1 || r != (TableReport{Malformed: true, Reason: "truncated"}) { t.Errorf("empty file: n=%d %+v", n, r) }
+	if _, n, r := load(nil); n != -1 || r != (TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"}) { t.Errorf("empty file: n=%d %+v", n, r) }
 	// THE TWO MISMATCHED READERS (§2.14): neither reads as data. A keyless
 	// reader given a trailered file has four bytes past its last record.
 	sealed := append(append([]byte(nil), pw...), 0, 0, 0, 0)
 	binary.LittleEndian.PutUint32(sealed[len(pw):], crc32.Checksum(pw, crc32.MakeTable(crc32.Castagnoli)))
 	var pr TableReport
-	if n := PlainReadingFixedLoad(make([]PlainReading, 4), sealed, make([]TableFixedEntry, PlainReadingFixedPlanMax), &pr); n != -1 || pr != (TableReport{Malformed: true, Reason: "truncated"}) { t.Errorf("trailered file under the keyless reader: n=%d %+v", n, pr) }
+	if n := PlainReadingFixedLoad(make([]PlainReading, 4), sealed, make([]TableFixedEntry, PlainReadingFixedPlanMax), &pr); n != -1 || pr != (TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"}) { t.Errorf("trailered file under the keyless reader: n=%d %+v", n, pr) }
 	// and a keyed reader given the file without its trailer refuses it
 	if _, n, r := load(body); n != -1 || r.Reason != "integrity_mismatch" { t.Errorf("trailerless file under the keyed reader: n=%d %+v", n, r) }
 }
@@ -239,7 +239,7 @@ func TestIntegrityFixedVariableForm(t *testing.T) {
 				}
 				continue
 			}
-			if rr != (TableReport{Verdict: TableOpenDamaged, Malformed: true, Reason: "integrity_mismatch"}) {
+			if rr != (TableReport{Verdict: TableOpenDamaged, Refusal: TableRefuseWireDamaged, Reason: "integrity_mismatch"}) {
 				t.Fatalf("byte %d ^ 0x%02x: report %+v, want integrity_mismatch", i, x, rr)
 			}
 			if _, err := FixedRowReadStrict(bad); !errors.Is(err, TableRefuseIntegrityMismatch) {

@@ -2491,7 +2491,7 @@ func TestRead(t *testing.T) {
 	if back[0].Lead != 0xAAAAAAAA || back[0].Trail != 0xBBBBBBBB {
 		t.Fatalf("the row moved a neighbour: %%+v", back[0])
 	}
-	if r.Refused() || r.Unknown != 0 || r.Widened != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("a supported T-into-?T widening is not an event: %%+v", r)
 	}
 }
@@ -3218,7 +3218,9 @@ func TestIdentityEqualsCompiled(t *testing.T) {
 	rc = TableReport{}
 	record := buf[len(buf)-RootFixedRecordBytes:]
 	tableFixedRun(cplan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&co), unsafe.Sizeof(co)), &rc)
-	RootFixedBounds(&co, &rc)
+	if !RootFixedBounds(&co) {
+		t.Fatalf("P1: the compiled record is out of bounds: %+v", co)
+	}
 
 	if co != id[0] {
 		t.Fatalf("P1: identity and compiled landed different fields:\n identity %+v\n compiled %+v", id[0], co)

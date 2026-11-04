@@ -157,8 +157,8 @@ func TestTagPastArmSet(t *testing.T) {
 	plan := make([]TableFixedEntry, 256)
 	var r TableReport
 	n := RootFixedLoad(back, buf, plan, &r)
-	if n != 1 || back[0].Pick.Type != PickTypeNone || !r.Refused() {
-		t.Fatalf("past tag: n=%d type=%v clamped=%d r=%+v", n, back[0].Pick.Type, r.Refusal, r)
+	if n != -1 || back[0].Pick.Type != PickTypeNone || r.Reason != "out_of_range" {
+		t.Fatalf("past tag: n=%d type=%v r=%+v, want out_of_range", n, back[0].Pick.Type, r)
 	}
 }
 `, true)
