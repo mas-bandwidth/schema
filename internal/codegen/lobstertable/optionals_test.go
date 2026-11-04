@@ -582,10 +582,23 @@ func TestLobsterOptionalsNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := os.ReadFile(filepath.Join(root, row.wire))
+	// The manifest's fixed instance now uses form 3. This control targets
+	// variable enum-key registration, so construct the same complete value
+	// under the variable fixture declaration instead of loading fixed bytes.
+	text, err := os.ReadFile(filepath.Join(root, "testdata/conformance/tables/json", row.name+".json"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	model := tabletext.NewModel(g.u)
+	value := model.New(model.Lookup(row.root))
+	if !model.Read(value, text, &tabletext.Report{}) {
+		t.Fatal("the canonical keyed value refused")
+	}
+	wire, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row.data = wire
 	want, err := goSave(g, row.root, wire)
 	if err != nil {
 		t.Fatal(err)
