@@ -681,8 +681,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 }
 
 // scoreAnswer compares admission and complete values or canonical writeback.
-// Historical .absent files transport explicit refusal for rows that require it;
-// their diagnostic text is not part of the cross-language contract.
+// Nonempty historical .absent files transport explicit refusal for rows that
+// require it; their diagnostic text is not compared. Empty markers always mean
+// a missing feature, even when the expected semantic outcome is refusal.
 func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *result) {
 	answer := filepath.Join(out, e.name)
 	if (surface == "message" && e.want == nil) || (surface == "wire" && inst.WireRefusal(lang) != "") {
@@ -697,10 +698,18 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.failures = append(r.failures, fmt.Sprintf("%s: reading outcome: %v", e.name, err))
 			r.mark(e.name, outcomeFail)
 			return
-		} else if _, err := os.ReadFile(answer + ".absent"); err != nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: expected refusal, driver wrote nothing", e.name))
-			r.mark(e.name, outcomeFail)
-			return
+		} else {
+			diagnostic, err := os.ReadFile(answer + ".absent")
+			if err != nil {
+				r.failures = append(r.failures, fmt.Sprintf("%s: expected refusal, driver wrote nothing", e.name))
+				r.mark(e.name, outcomeFail)
+				return
+			}
+			if len(bytes.TrimSpace(diagnostic)) == 0 {
+				r.missing++
+				r.mark(e.name, outcomeAbsent)
+				return
+			}
 		}
 		r.pass++
 		r.mark(e.name, outcomePass)

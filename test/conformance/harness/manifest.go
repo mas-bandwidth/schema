@@ -610,7 +610,7 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 		case "framing":
 			// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the verdict is
 			// `refused` or the §4 report, and the value is a §16 text file or
-			// `-` for a row that owes the report alone.
+			// `-` after refusal. Every accepted row requires a complete value.
 			if len(f) != 7 {
 				return nil, fmt.Errorf("%s: framing takes case, unit, root, wire, verdict, value file or -", where)
 			}
@@ -632,11 +632,14 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				}
 				fc.Counts = c
 			}
+			refused := fc.Refused || fc.Damaged || fc.Counts.Refused
 			if f[6] != "-" {
-				if fc.Refused || fc.Damaged {
+				if refused {
 					return nil, fmt.Errorf("%s: a refused or damaged read has no value to owe", where)
 				}
 				fc.Value = f[6]
+			} else if !refused {
+				return nil, fmt.Errorf("%s: an accepted framing read requires a complete value file", where)
 			}
 			m.Framings = append(m.Framings, fc)
 		case "json-hostile":
