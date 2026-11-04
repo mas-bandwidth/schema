@@ -24,7 +24,7 @@ func TestPackRequiredRefusalPublishesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	wire, _, report, err := c.Pack(u, "Root", tree)
-	if err == nil || !strings.Contains(err.Error(), "missing_required: value") || len(wire) != 0 || report.Silent() || report.Malformed || report.MissingRequired != 1 || report.Reason != "missing_required: value" {
+	if err == nil || !strings.Contains(err.Error(), "missing_required: value") || len(wire) != 0 || report.Silent() || report.Refused || report.MissingRequired != 1 || report.Reason != "missing_required: value" {
 		t.Fatalf("pack: wire=%x report=%+v err=%v", wire, report, err)
 	}
 	if err := os.WriteFile(filepath.Join(tree, "Root.json"), []byte(`{"value":0}`), 0600); err != nil {

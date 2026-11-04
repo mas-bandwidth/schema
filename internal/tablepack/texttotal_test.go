@@ -29,7 +29,7 @@ func TestTextTotalDirectoryInputClampsPrefix(t *testing.T) {
 		}
 	}
 	wire, _, r, err := tablepack.Pack(tabletext.NewModel(u), "Root", dir)
-	if err != nil || len(wire) == 0 || r.Clamped != 1 || r.Reason != "clamped: Root.names" || r.Malformed {
+	if err != nil || len(wire) == 0 || r.Clamped != 1 || r.Reason != "clamped: Root.names" || r.Refused {
 		t.Fatalf("pack: %x %+v %v", wire, r, err)
 	}
 	out := t.TempDir()

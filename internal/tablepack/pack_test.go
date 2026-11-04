@@ -292,7 +292,7 @@ func TestHostileValueCorpus(t *testing.T) {
 			// the VERDICT rides beside the counters (docs/SPEC-TABLES.md §3),
 			// and a text read never refuses: only a form byte does
 			got := fmt.Sprintf("%d,%d,%d,%d,%d,%v,read",
-				report.Unknown, report.KindMismatch, report.Widened, report.Clamped, report.Duplicate, report.Malformed)
+				report.Unknown, report.KindMismatch, report.Widened, report.Clamped, report.Duplicate, report.Refused)
 			if got != verdict {
 				t.Fatalf("report %s, the manifest says %s", got, verdict)
 			}

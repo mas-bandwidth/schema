@@ -126,7 +126,7 @@ func TestUncoveredPaths(t *testing.T) {
 			"2.5": { "count": 5 },
 			"18446744073709551616": { "count": 6 }
 		} }`
-		if !m.Read(edge, []byte(edgeText), &er) || er.Malformed {
+		if !m.Read(edge, []byte(edgeText), &er) || er.Refused {
 			t.Fatalf("uint64 keys refused: %+v", er)
 		}
 		ids := field(t, edge, "ids")
@@ -168,7 +168,7 @@ func TestUncoveredPaths(t *testing.T) {
 			"loadouts": { "x": { "1": { "count": 4 } } },
 			"tiers": { "-3": { "count": 5 }, "2": { "count": 6 } }
 		}`
-		if !m.Read(inst, []byte(text), &r) || r.Malformed {
+		if !m.Read(inst, []byte(text), &r) || r.Refused {
 			t.Fatalf("nested map text refused: %+v", r)
 		}
 		tiers := field(t, inst, "tiers")
@@ -195,7 +195,7 @@ func TestUncoveredPaths(t *testing.T) {
 			"pose": { "x": 1.5, "y": 2.5, "heading": 3.5 },
 			"spawn": { "x": 1.0, "y": 1.0, "heading": 1.0 }
 		}`
-		if !m.Read(inst, []byte(text), &r) || r.Malformed {
+		if !m.Read(inst, []byte(text), &r) || r.Refused {
 			t.Fatalf("wide text refused: %+v", r)
 		}
 		if got := tabletext.WideValue(&field(t, inst, "flux").Cell); got.String() != "9007199254740993" {
@@ -302,7 +302,7 @@ func TestUncoveredPaths(t *testing.T) {
 			"arm": { "plain": 42 },
 			"past": 9
 		}`
-		if !m.Read(inst, []byte(text), &r) || r.Malformed {
+		if !m.Read(inst, []byte(text), &r) || r.Refused {
 			t.Fatalf("union arm text refused: %+v", r)
 		}
 		arm := field(t, inst, "arm")
@@ -454,7 +454,7 @@ table Words
 		var r tabletext.Report
 		// A ZERO UNIT IS REFUSED BY NAME ON READ (§16.2): the escaped form has
 		// no storage value, so the text is named rather than quietly kept.
-		if m.Read(back, out, &r) || !r.Malformed || r.Reason != "text_holds_zero: Words.w" {
+		if m.Read(back, out, &r) || !r.Refused || r.Reason != "text_holds_zero: Words.w" {
 			t.Fatalf("a zero unit must refuse by name: %+v\n%s", r, out)
 		}
 		// without it the same text round-trips, pair and replacement intact.
@@ -499,7 +499,7 @@ table Holder
 		inst := m.New(st)
 		var r tabletext.Report
 		text := `{ "m": { "1": null, "2": { "n": 7 } } }`
-		if !m.Read(inst, []byte(text), &r) || r.Malformed {
+		if !m.Read(inst, []byte(text), &r) || r.Refused {
 			t.Fatalf("optional map value refused: %+v", r)
 		}
 		entries := field(t, inst, "m").Entries

@@ -29,7 +29,7 @@ func TestTextBase64BodyDecodesEscapesFirst(t *testing.T) {
 	}
 
 	_, inst, r = read(t, "ProfileConfig", `{ "icon": "\n" }`)
-	if r.Malformed || r.KindMismatch != 1 {
+	if r.Refused || r.KindMismatch != 1 {
 		t.Fatalf("escaped newline: expected 1 kind_mismatch, got %+v", r)
 	}
 	if got := field(t, inst, "icon").Cell.Str; len(got) != 0 {

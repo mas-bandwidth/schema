@@ -45,11 +45,11 @@ func TestTextFffdPerMaximalSubpart(t *testing.T) {
 			if ok {
 				t.Fatalf("reader %s: Read accepted ill-formed UTF-8", tc.name)
 			}
-			if !rep.Malformed || !strings.HasPrefix(rep.Reason, "string_not_utf8") {
+			if !rep.Refused || !strings.HasPrefix(rep.Reason, "string_not_utf8") {
 				t.Fatalf("reader %s: report = %+v, want Malformed with string_not_utf8", tc.name, rep)
 			}
 		} else {
-			if !ok || rep.Malformed {
+			if !ok || rep.Refused {
 				t.Fatalf("reader %s: Read refused well-formed UTF-8: %+v", tc.name, rep)
 			}
 			fv, _ := inst.FieldByKey("s")

@@ -168,7 +168,7 @@ func TestEngineCarriesTextListsAndArrayRoots(t *testing.T) {
 	if err == nil {
 		t.Fatal("an object at an array root packed")
 	}
-	if !report.Malformed || report.Reason != "json_root_not_array: GoalList" {
+	if !report.Refused || report.Reason != "json_root_not_array: GoalList" {
 		t.Fatalf("the refusal does not name json_root_not_array: %+v", report)
 	}
 
@@ -215,7 +215,7 @@ func TestEngineCarriesTextListsAndArrayRoots(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if wrep.Clamped != 1 || wrep.Malformed {
+		if wrep.Clamped != 1 || wrep.Refused {
 			t.Fatalf("%s wire clamp: %+v", c.name, wrep)
 		}
 		if wrep.Reason != "clamped: Lists.rules" {

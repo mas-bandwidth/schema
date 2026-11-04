@@ -1,5 +1,5 @@
 // THE MESSAGE FORM's READER (docs/SPEC-TABLES.md §3.3): the batch, the
-// bitpacked body, and the tolerant path over both.
+// bitpacked body, and the one read over both.
 //
 // A body carries NO KIND BYTE and no length. What a reader needs to skip an
 // entry it cannot name, and to decode one whose declaration has MOVED, is the
@@ -9,12 +9,13 @@
 //
 // DAMAGE IS TERMINAL FOR THE BATCH. A byte-framed body has a place to resume
 // and a bit stream does not, so a reader that has lost its position has lost
-// it for the rest of the buffer: the whole batch is discarded,
-// `malformed` is reported, and nothing after it is read.
+// it for the rest of the buffer: the whole batch is refused and no body is
+// delivered.
 package tablewire
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -70,33 +71,25 @@ func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte
 			return 0, false, err
 		}
 	}
-	// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
-	// §3.3): no body of it is delivered, so the count is zero.
-	prior := report.NonFiniteFloat
-	report.NonFiniteFloat = ""
-	priorMalformed := report.Malformed
-	report.Malformed = false
-	n, ok, err := decodeMessagesWalk(m, insts, data, v, report)
-	if refusal := refusedNonFinite(report); refusal != nil {
-		// A refused later body also discards every earlier body in the batch.
-		for _, inst := range insts {
-			m.Clear(inst)
-		}
-		report.Malformed = report.Malformed || priorMalformed
-		return 0, false, refusal
-	}
-	report.NonFiniteFloat = prior
-	if report.Malformed {
-		// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4, §3.3): no
-		// body is delivered, so the count is zero and every body the walk
+	n, err := decodeMessagesWalk(m, insts, data, v, report)
+	if err != nil {
+		// THE BATCH IS ACCEPTED WHOLE OR REFUSED (docs/SPEC-TABLES.md §6.5):
+		// no body is delivered, so the count is zero and every body the walk
 		// touched returns to its declared defaults.
 		for _, inst := range insts {
 			m.Clear(inst)
 		}
+		refuseReport(report, err)
+		var batch *MessageRefusal
+		if errors.As(err, &batch) && batch.Reason == ReasonBatchTooLarge {
+			// the count the caller was short by, so it can call again
+			return n, false, err
+		}
 		return 0, false, err
 	}
-	report.Malformed = priorMalformed
-	return n, ok, err
+	report.Refused = false
+	report.Reason = ""
+	return n, true, nil
 }
 
 // messageRoot refuses a root the message form does not carry: the message
@@ -109,62 +102,54 @@ func messageRoot(m *tabletext.Model, root *ir.Struct) error {
 	return nil
 }
 
-func decodeMessagesWalk(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report) (int, bool, error) {
-	// THE FORM BYTE IS READ FIRST, before the count and before any body, so a
-	// wire that is both a form this reader does not carry and damaged is a
-	// refusal and never damage (§3).
+func decodeMessagesWalk(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report) (int, error) {
+	damage := func(detail string) error { return &Refusal{Reason: ReasonWireDamaged, Detail: detail} }
+	// THE FORM BYTE IS READ FIRST, before the count and before any body (§3).
 	if len(data) < 1 {
-		report.Malformed = true
-		return 0, false, nil
+		return 0, damage("no form byte")
 	}
 	if data[0] != ir.TableWireMessageForm {
-		report.Refused = true
-		return 0, false, &MessageRefusal{Reason: ReasonNewerForm}
+		return 0, &MessageRefusal{Reason: ReasonNewerForm}
 	}
 	if len(insts) > 0 {
 		var valid bool
 		data, valid = messageIntegrityBody(insts[0].Def, data)
 		if !valid {
-			report.Malformed = true
-			report.Reason = "integrity_mismatch"
-			return 0, false, nil
+			return 0, &Refusal{Reason: ReasonIntegrityMismatch}
 		}
 	}
-	// A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
-	// decoded, no counter moves and `malformed` does not fire.
+	// A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME.
 	if v == nil || !v.announced {
-		report.Refused = true
-		return 0, false, &MessageRefusal{Reason: ReasonNoVocabulary}
+		return 0, &MessageRefusal{Reason: ReasonNoVocabulary}
 	}
 	r := newBitReader(data[1:])
 	raw, ok := r.get(8)
 	if !ok {
-		report.Malformed = true
-		return 0, false, nil
+		return 0, damage("no body count")
 	}
 	count := int(raw) + 1
 	if count > len(insts) {
-		report.Refused = true
-		return count, false, &MessageRefusal{Reason: ReasonBatchTooLarge, BuildVersion: v.buildVersion}
+		return count, &MessageRefusal{Reason: ReasonBatchTooLarge, BuildVersion: v.buildVersion}
 	}
+	fail := &readFail{}
 	for i := range count {
 		// Omitted fields take declared defaults, including when storage is reused.
 		m.Clear(insts[i])
-		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits()}
-		if !d.body(insts[i]) {
-			return i, false, nil
+		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), fail: fail}
+		ok := d.body(insts[i])
+		if fail.err != nil {
+			return 0, fail.err
+		}
+		if !ok {
+			return 0, damage("a body that cannot be read")
 		}
 	}
 	// THE TRAILING PAD IS VERIFIED ZERO, which is the packet wire's rule for
-	// the same reason (SPEC.md §4.3), and BYTES AFTER THE PAD ARE MALFORMED:
-	// the batch ends at the pad and a buffer with bytes left over describes no
-	// batch this reader can name. Both are damage, and damage after the last
-	// body discards the batch like damage inside one (§4).
+	// the same reason (SPEC.md §4.3), and BYTES AFTER THE PAD ARE DAMAGE (§4).
 	if !r.align() || r.off != r.n {
-		report.Malformed = true
-		return count, false, nil
+		return 0, damage("a nonzero pad or bytes after the batch")
 	}
-	return count, true, nil
+	return count, nil
 }
 
 // DecodeMessage is the BATCH OF ONE.
@@ -185,11 +170,28 @@ type bitDecoder struct {
 	// REFERENCE the read meets, which is what the wire fuzzer's reference
 	// pass mutates (§3.3, §4.2)
 	spots *[]BitSpot
+	// fail is the batch's first refusal, shared by every body's decoder
+	fail *readFail
 	// steps, when set, counts the elements the skip path WALKS one at a time
 	// and stops the walk at its limit. It is a test's instrument and nil on
 	// every real read: the skip's work is pinned by a count, never a clock.
 	steps *skipSteps
 }
+
+// set records the batch's refusal, the first one met. The walk may run on to
+// the end of the body; nothing it decodes after a refusal is delivered.
+func (d *bitDecoder) set(err error) {
+	if d.fail == nil {
+		d.fail = &readFail{}
+	}
+	if d.fail.err == nil {
+		d.fail.err = err
+	}
+}
+
+func (d *bitDecoder) damage() { d.set(&Refusal{Reason: ReasonWireDamaged}) }
+
+func (d *bitDecoder) refuse(reason string) { d.set(&Refusal{Reason: reason}) }
 
 // skipSteps is the skip walk's element count and the count it stops at.
 type skipSteps struct{ n, limit uint64 }
@@ -237,7 +239,7 @@ func reserved(id uint64) bool {
 func (d *bitDecoder) name(ref uint64) (ir.TableVocabularyEntry, bool) {
 	entry, named := d.entry(ref)
 	if !named || reserved(entry.Id) || entry.Kind != 0 {
-		d.report.Malformed = true
+		d.damage()
 		return ir.TableVocabularyEntry{}, false
 	}
 	return entry, true
@@ -250,7 +252,7 @@ func (d *bitDecoder) name(ref uint64) (ir.TableVocabularyEntry, bool) {
 func (d *bitDecoder) arm(ref uint64) (ir.TableVocabularyEntry, bool) {
 	entry, named := d.entry(ref)
 	if !named || reserved(entry.Id) || entry.Kind == 0 {
-		d.report.Malformed = true
+		d.damage()
 		return ir.TableVocabularyEntry{}, false
 	}
 	return entry, true
@@ -281,7 +283,7 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 	for {
 		ref, ok := d.reference()
 		if !ok {
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		if ref == 0 {
@@ -289,21 +291,21 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		}
 		entry, named := d.entry(ref)
 		if !named {
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		switch entry.Id {
 		case ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, ir.TableNodeWireId:
 			// A RESERVED ID IN A BODY IS MALFORMED (§3.1, §3.3): a fixed root
 			// numbers no node, and the other two are the announcement's.
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		i, known := index[entry.Id]
 		if !known {
 			d.report.Unknown++
 			if !d.skip(entry) {
-				d.report.Malformed = true
+				d.damage()
 				return false
 			}
 			continue
@@ -330,9 +332,9 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 			// A RANGE that moved is NOT one: the shapes differ and the entry
 			// carries the sender's, which is exactly what makes a body from
 			// another build the ordinary case this wire exists for.
-			d.report.KindMismatch++
+			d.refuse(ReasonKindMismatch)
 			if !d.skip(entry) {
-				d.report.Malformed = true
+				d.damage()
 				return false
 			}
 			continue
@@ -387,7 +389,7 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 	}
 	n, ok := d.r.get(width)
 	if !ok || !d.r.align() || !d.r.has(int(n)*8) {
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	raw, _ := d.r.bytes(int(n))
@@ -395,7 +397,7 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): a bit
 		// stream has no defined position to continue from, which is the only
 		// thing that differs from §3's recovery
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	keep := len(raw)
@@ -406,7 +408,7 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 			// code point that fits within the bound
 			keep = textBoundary(raw, bound)
 		}
-		d.report.Clamped++
+		d.refuse(ReasonLengthOverBound)
 	}
 	cell.Str = raw[:keep]
 	*count = keep
@@ -421,14 +423,14 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 func (d *bitDecoder) wideText(cell *tabletext.Cell, count *int, f *ir.Field, entry ir.TableVocabularyEntry) bool {
 	n, ok := d.r.get(ir.TableMessageBitsRequired(0, entry.Shape.Max))
 	if !ok || !d.r.has(int(n)*16) {
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	units := make([]uint16, n)
 	for i := range units {
 		u, got := d.r.get(16)
 		if !got {
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		units[i] = uint16(u)
@@ -437,13 +439,13 @@ func (d *bitDecoder) wideText(cell *tabletext.Cell, count *int, f *ir.Field, ent
 		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): a bit
 		// stream has no defined position to continue from, which is the only
 		// thing that differs from §3's recovery
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	keep := len(units)
 	if bound := int(f.Type.Size); keep > bound {
 		keep = wideBoundary(units, bound)
-		d.report.Clamped++
+		d.refuse(ReasonLengthOverBound)
 	}
 	cell.Units = units[:keep]
 	*count = keep
@@ -502,13 +504,13 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	if bits := ir.TableMessageCountBits(shape); bits > 0 {
 		raw, ok := d.r.get(bits)
 		if !ok {
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		n = raw + uint64(shape.Min)
 	}
 	if ir.TableMessageAligns(entry.Kind, shape) && !d.r.align() {
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	bound := uint64(f.ArrayBound)
@@ -520,7 +522,7 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	run := elementRunBits(entry.Kind, shape.Elem, inner)
 	if kept > bound {
 		kept = bound
-		d.report.Clamped++
+		d.refuse(ReasonCountOverBound)
 	}
 	// THE SURPLUS OF A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3). The walk
 	// exists to find the bit the array ENDS at, and where the element's width
@@ -542,7 +544,7 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		}
 	}
 	if walk < n && !skipRun(d.r, n-walk, run) {
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	if f.CountedOnWire() {
@@ -582,13 +584,13 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	shape := entry.Shape
 	n, ok := d.r.get(ir.TableMessageBitsRequired(0, shape.Max))
 	if !ok {
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	for range n {
 		ref, ok := d.reference()
 		if !ok {
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		// a reference of `0` where an entry is REQUIRED is damage (§3.2), and
@@ -604,7 +606,7 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		case value < 0:
 			d.report.Unknown++
 		case value > int64(tabletext.KeyedSlotCount(f)):
-			d.report.Clamped++
+			d.refuse(ReasonOutOfRange)
 		default:
 			cell = &fv.Elems[value-1]
 		}
@@ -624,7 +626,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 	un := tabletext.UnionOf(f)
 	ref, ok := d.reference()
 	if !ok {
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	if ref == 0 {
@@ -655,7 +657,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 	if entry.Kind != mine.Kind || entry.Shape.Elem != mine.Shape.Elem {
 		if !messageWidens(entry, mine) {
 			cell.U = 0
-			d.report.KindMismatch++
+			d.refuse(ReasonKindMismatch)
 			return d.skip(entry)
 		}
 		// WIDENED AT AN ARM (§3.3, §4): the arm is SELECTED and its payload
@@ -697,7 +699,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) bool {
 	ref, ok := d.reference()
 	if !ok {
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	if ref == 0 {
@@ -738,7 +740,7 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 	case ir.TableKindBool:
 		v, ok := d.r.get(1)
 		if !ok {
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		cell.B = v != 0
@@ -746,12 +748,12 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 	case ir.TableKindF64:
 		raw, ok := d.r.get(64)
 		if !ok {
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		if !tabletext.FiniteF64(raw) {
 			// refused on its raw bits (docs/SPEC-TABLES.md §3.3), as a file read does
-			d.report.RefuseNonFinite(FloatOwner(d.m, f))
+			d.set(&NonFiniteRefusal{Field: FloatOwner(d.m, f)})
 			return true
 		}
 		cell.F = math.Float64frombits(raw)
@@ -772,14 +774,14 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 		if shape.Packing == ir.TableMessageRanged {
 			offset, ok := d.r.getBig(width)
 			if !ok {
-				d.report.Malformed = true
+				d.damage()
 				return false
 			}
 			value = new(big.Int).Add(offset, base)
 		} else {
 			raw, ok := d.r.bytes(16)
 			if !ok {
-				d.report.Malformed = true
+				d.damage()
 				return false
 			}
 			value = tabletext.WideFromBytes(raw, int(kind))
@@ -787,13 +789,13 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 		clamped := false
 		cell.Wide, clamped = tabletext.WideClamp(value, f)
 		if clamped {
-			d.report.Clamped++
+			d.refuse(ReasonOutOfRange)
 		}
 		return true
 	}
 	raw, ok := d.r.get(width)
 	if !ok {
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	signed := f.Type.Kind == ir.TInt && f.Type.Signed
@@ -823,7 +825,7 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 		clamped := false
 		cell.Wide, clamped = tabletext.WideClamp(tabletext.WideFromBytes(wide[:], ir.TableScalarKind(f)), f)
 		if clamped {
-			d.report.Clamped++
+			d.refuse(ReasonOutOfRange)
 		}
 		return true
 	}
@@ -832,20 +834,20 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 		if signed {
 			if value < lo {
 				value = lo
-				d.report.Clamped++
+				d.refuse(ReasonOutOfRange)
 			} else if value > hi {
 				value = hi
-				d.report.Clamped++
+				d.refuse(ReasonOutOfRange)
 			}
 		} else {
 			// the bounds are read whole: an unsigned range reaches 2^64 - 1
 			u, ulo, uhi := uint64(value), f.IntMin.Uint64(), f.IntMax.Uint64()
 			if u < ulo {
 				u = ulo
-				d.report.Clamped++
+				d.refuse(ReasonOutOfRange)
 			} else if u > uhi {
 				u = uhi
-				d.report.Clamped++
+				d.refuse(ReasonOutOfRange)
 			}
 			value = int64(u)
 		}
@@ -854,7 +856,7 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 		max := uint64(1)<<uint(f.Type.Width) - 1
 		if uint64(value) > max {
 			value = int64(max)
-			d.report.Clamped++
+			d.refuse(ReasonOutOfRange)
 		}
 	}
 	cell.I = value
@@ -872,7 +874,7 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 	if shape.Packing == ir.TableMessageQuantized {
 		index, ok := d.r.get(int(shape.Bits))
 		if !ok {
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		// AN INDEX ABOVE `count` IS REJECTED, as the packet wire rejects it,
@@ -882,7 +884,7 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 		// ranged offset's reconstruct-and-clamp rule does not reach here.
 		count, _, derived := ir.TableMessageQuantization(shape)
 		if !derived || index > uint64(count) {
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the float an
@@ -893,7 +895,7 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 			// reader refuses it (SPEC.md §4.3): every announced fact can be
 			// finite and the top steps still round past the largest float32,
 			// and a clamp would invent a value the sender never named
-			d.report.RefuseNonFinite(FloatOwner(d.m, f))
+			d.set(&NonFiniteRefusal{Field: FloatOwner(d.m, f)})
 			return true
 		}
 		v := float64(dequantized)
@@ -901,19 +903,19 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 			cell.F = v // widened into f64 (§4): exact, and no clamp fires
 			return true
 		}
-		cell.F = float64(float32(d.clampFloat(v, f)))
+		cell.F = float64(float32(d.rangedFloat(v, f)))
 		return true
 	}
 	raw, ok := d.r.get(32)
 	if !ok {
-		d.report.Malformed = true
+		d.damage()
 		return false
 	}
 	bits := uint32(raw)
 	if !tabletext.FiniteF32(bits) {
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
 		// §3.3), before the bits become a value, as a file read refuses it
-		d.report.RefuseNonFinite(FloatOwner(d.m, f))
+		d.set(&NonFiniteRefusal{Field: FloatOwner(d.m, f)})
 		return true
 	}
 	v := float64(math.Float32frombits(bits))
@@ -924,23 +926,23 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 		cell.F = v
 		return true
 	}
-	cell.F = float64(float32(d.clampFloat(v, f)))
+	cell.F = float64(float32(d.rangedFloat(v, f)))
 	return true
 }
 
-func (d *bitDecoder) clampFloat(v float64, f *ir.Field) float64 {
+func (d *bitDecoder) rangedFloat(v float64, f *ir.Field) float64 {
 	if !f.HasFloatRange {
 		return v
 	}
 	// THE ONE RULE (§3.3, the special values): a value is finite here, because
 	// the read refused a NaN or an infinity on its bits first; one past an end
-	// clamps and counts, and a -0 lands as +0, uncounted.
+	// refuses out_of_range, and a -0 lands as +0.
 	if v < f.FMin {
-		d.report.Clamped++
+		d.refuse(ReasonOutOfRange)
 		return f.FMin
 	}
 	if v > f.FMax {
-		d.report.Clamped++
+		d.refuse(ReasonOutOfRange)
 		return f.FMax
 	}
 	if v == 0 {
@@ -965,7 +967,7 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 		// this reader was going to keep the value.
 		ref, ok := d.reference()
 		if !ok {
-			d.report.Malformed = true
+			d.damage()
 			return false
 		}
 		if ref == 0 {
@@ -1074,7 +1076,7 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 			// batch's bits whatever the count says.
 			if d.r.off == at {
 				if n-i-1 > uint64(d.r.left()) {
-					d.report.Malformed = true
+					d.damage()
 					return false
 				}
 				return true

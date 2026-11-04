@@ -45,11 +45,11 @@ func TestMapValueWrongShapeUsesDefault(t *testing.T) {
 			value := m.New(m.Lookup("Maps"))
 			var report tabletext.Report
 			ok := m.Read(value, []byte(tc.Input), &report)
-			want := tabletext.Report{KindMismatch: tc.Mismatch, Duplicate: tc.Duplicate, Malformed: tc.Malformed}
-			if ok == tc.Malformed || report != want {
-				t.Fatalf("read ok=%t report=%+v, want ok=%t report=%+v", ok, report, !tc.Malformed, want)
+			want := tabletext.Report{KindMismatch: tc.Mismatch, Duplicate: tc.Duplicate, Malformed: tc.Refused}
+			if ok == tc.Refused || report != want {
+				t.Fatalf("read ok=%t report=%+v, want ok=%t report=%+v", ok, report, !tc.Refused, want)
 			}
-			if tc.Malformed {
+			if tc.Refused {
 				return
 			}
 			expected := m.New(m.Lookup("Maps"))

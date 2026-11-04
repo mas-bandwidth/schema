@@ -42,9 +42,9 @@ func TestArrayRootClosureShapes(t *testing.T) {
 		value := m.New(u.Tables[tc.Root])
 		var report tabletext.Report
 		ok := m.Read(value, []byte(tc.Text), &report)
-		want := tabletext.Report{KindMismatch: tc.Mismatch, Clamped: tc.Clamped, Malformed: tc.Malformed, Reason: tc.Reason}
-		if ok == tc.Malformed || report != want {
-			t.Errorf("%s %s: ok=%t report=%+v want ok=%t report=%+v", tc.Root, tc.Text, ok, report, !tc.Malformed, want)
+		want := tabletext.Report{KindMismatch: tc.Mismatch, Clamped: tc.Clamped, Malformed: tc.Refused, Reason: tc.Reason}
+		if ok == tc.Refused || report != want {
+			t.Errorf("%s %s: ok=%t report=%+v want ok=%t report=%+v", tc.Root, tc.Text, ok, report, !tc.Refused, want)
 			continue
 		}
 		if tc.Root == "Nested" && tc.Mismatch == 0 {

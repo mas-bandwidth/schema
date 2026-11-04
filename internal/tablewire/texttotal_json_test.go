@@ -1,12 +1,10 @@
 package tablewire_test
 
 import (
-	"encoding/json"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -21,49 +19,22 @@ func TestTextTotalJSONCorpusAndWriterRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected, err := os.ReadFile(filepath.Join(corpus, "expected.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	m := listModel(t, string(schema))
 	v := m.New(m.Lookup("Totals"))
+	// THE CORPUS INPUT CARRIES LISTS PAST THEIR TOTAL AND THEIR BOUND, so both
+	// the JSON read and the wire read refuse it (§2.13, §4); nothing is cut
 	var r tabletext.Report
-	if !m.Read(v, input, &r) || r.Clamped != 10 || r.Reason != "clamped: Totals.a" || r.Malformed {
+	if m.Read(m.New(m.Lookup("Totals")), input, &r) || !r.Refused {
 		t.Fatalf("JSON report: %+v", r)
-	}
-	got, err := m.Write(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var a, b any
-	if err := json.Unmarshal(got, &a); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(expected, &b); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(a, b) {
-		t.Fatalf("JSON=%s want %s", got, expected)
 	}
 	writer := listModel(t, strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(string(schema), " | total=5", ""), "string(5)", "string(16)"), "[..3]", "[..8]"))
 	raw, err := tablewire.Encode(writer, place(t, writer, "Totals", string(input)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	back := m.New(m.Lookup("Totals"))
 	r = tabletext.Report{}
-	if ok, err := tablewire.Decode(m, back, raw, &r); !ok || err != nil || r.Clamped != 10 || r.Malformed {
-		t.Fatalf("wire count-before-total: %v %v %+v", ok, err, r)
-	}
-	got, err = m.Write(back)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(got, &a); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(a, b) {
-		t.Fatalf("wire JSON=%s want %s", got, expected)
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Totals")), raw, &r); ok || !tablewire.ReadRefusal(err) || !r.Refused {
+		t.Fatalf("wire past the total and the bound: %v %v %+v", ok, err, r)
 	}
 	for i := range v.Fields {
 		t.Run(v.Fields[i].Def.Name, func(t *testing.T) {

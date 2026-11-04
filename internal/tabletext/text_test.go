@@ -53,7 +53,7 @@ func field(t testing.TB, inst *tabletext.Instance, key string) *tabletext.Field 
 // §16.2: unknown keys are skipped and counted; nothing else moves.
 func TestUnknownKeyIsCounted(t *testing.T) {
 	_, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 90, "mystery": [1,2,3] }`)
-	if r.Unknown != 1 || r.Malformed {
+	if r.Unknown != 1 || r.Refused {
 		t.Fatalf("expected one unknown, got %+v", r)
 	}
 	if field(t, inst, "tick_rate").Cell.U != 90 {
@@ -75,7 +75,7 @@ func TestDuplicateKeyIsLastWins(t *testing.T) {
 // §16.2: a key present with the wrong JSON type is skipped, NEVER coerced.
 func TestWrongTypeIsSkippedNotCoerced(t *testing.T) {
 	_, inst, r := read(t, "GlobalSettings", `{ "tick_rate": "120" }`)
-	if r.KindMismatch != 1 || r.Malformed {
+	if r.KindMismatch != 1 || r.Refused {
 		t.Fatalf("expected one kind_mismatch, got %+v", r)
 	}
 	if got := field(t, inst, "tick_rate").Cell.U; got != 60 {
@@ -257,7 +257,7 @@ func TestTrailingCommasAndComments(t *testing.T) {
 	}
 	for _, text := range refused {
 		_, _, r := read(t, "GlobalSettings", text)
-		if !r.Malformed {
+		if !r.Refused {
 			t.Fatalf("an unclosed or lone delimiter should be malformed in %q, got %+v", text, r)
 		}
 	}
@@ -278,7 +278,7 @@ func TestUnionShape(t *testing.T) {
 		t.Fatalf("{} is None: %+v", r)
 	}
 	_, _, r = read(t, "WeaponConfig", `{ "effect": { "buff": {}, "debuff": {} } }`)
-	if !r.Malformed {
+	if !r.Refused {
 		t.Fatal("a union with two keys should be malformed")
 	}
 }
@@ -415,7 +415,7 @@ func FuzzReadText(f *testing.F) {
 		inst := m.New(st)
 		var r tabletext.Report
 		if !m.Read(inst, data, &r) {
-			if !r.Malformed {
+			if !r.Refused {
 				t.Fatal("a refused text left malformed unset")
 			}
 			return
@@ -515,16 +515,16 @@ func TestNumberGrammarAndSemantics(t *testing.T) {
 			m, inst, r := read(t, "ProfileConfig", `{ "`+tc.field+`": `+tc.token+` }`)
 			switch tc.want {
 			case "malformed":
-				if !r.Malformed {
+				if !r.Refused {
 					t.Fatalf("%q is not a JSON number and must be malformed, got %+v", tc.token, r)
 				}
 				return
 			case "kind_mismatch":
-				if r.KindMismatch != 1 || r.Malformed {
+				if r.KindMismatch != 1 || r.Refused {
 					t.Fatalf("expected one kind_mismatch, got %+v", r)
 				}
 			case "clamped":
-				if r.Clamped == 0 || r.Malformed {
+				if r.Clamped == 0 || r.Refused {
 					t.Fatalf("expected a clamp, got %+v", r)
 				}
 			default:
@@ -591,7 +591,7 @@ func TestWriterEmitsValidUTF8(t *testing.T) {
 	// a raw ill-formed byte is REFUSED BY NAME ON READ (§16.3) — a silent
 	// U+FFFD would make two different texts one value — never replaced
 	_, _, r = read(t, "GunnerSettings", "{ \"callsign\": \"a\xffb\" }")
-	if !r.Malformed || !strings.HasPrefix(r.Reason, "string_not_utf8") {
+	if !r.Refused || !strings.HasPrefix(r.Reason, "string_not_utf8") {
 		t.Fatalf("a raw ill-formed byte must refuse the read: %+v", r)
 	}
 }
@@ -619,7 +619,7 @@ func TestBitsImpliedBound(t *testing.T) {
 // `string_not_utf8`, rather than being silently replaced with U+FFFD.
 func TestIllFormedByteIsReplacedOnRead(t *testing.T) {
 	_, _, r := read(t, "GlobalSettings", "{ \"build_note\": \"a\xffb\" }")
-	if !r.Malformed || !strings.HasPrefix(r.Reason, "string_not_utf8") {
+	if !r.Refused || !strings.HasPrefix(r.Reason, "string_not_utf8") {
 		t.Fatalf("a raw ill-formed byte must refuse the read: %+v", r)
 	}
 }
@@ -682,7 +682,7 @@ func TestRejectedRepeatKeepsTheFirstValue(t *testing.T) {
 // them is a change to all four readers at once.
 func TestAnIntegerFieldReadsItsTokenThroughTheFloat(t *testing.T) {
 	_, inst, r := read(t, "ProfileConfig", `{ "badge": 1e309 }`)
-	if r.KindMismatch != 1 || r.Clamped != 0 || r.Malformed {
+	if r.KindMismatch != 1 || r.Clamped != 0 || r.Refused {
 		t.Fatalf("a magnitude no float64 holds is kind_mismatch for an integer field: %+v", r)
 	}
 	if got := field(t, inst, "badge").Cell.U; got != 0 {
@@ -889,17 +889,17 @@ func TestSharingConstructRefusals(t *testing.T) {
 		`{ "mystery": { "value": 1, "&node": 1 } }`,                                   // the prefix out of place in a skipped value
 	} {
 		_, r := readScene(t, m, text)
-		if !r.Malformed {
+		if !r.Refused {
 			t.Errorf("%s: read as a text; it is malformed", text)
 		}
 	}
 	// and a FIXED reader refuses the prefix among the keys it places — the
 	// construct is one it cannot honor, never a field it lacks — while a value
 	// it skips is skipped whole, which is §4's tolerance
-	if _, _, r := read(t, "RootConfig", `{ "version_note": "x", "&node": 1 }`); !r.Malformed {
+	if _, _, r := read(t, "RootConfig", `{ "version_note": "x", "&node": 1 }`); !r.Refused {
 		t.Errorf("a fixed reader did not refuse the prefix: %+v", r)
 	}
-	if _, _, r := read(t, "RootConfig", `{ "mystery": { "&node": 1 } }`); r.Malformed || r.Unknown != 1 {
+	if _, _, r := read(t, "RootConfig", `{ "mystery": { "&node": 1 } }`); r.Refused || r.Unknown != 1 {
 		t.Errorf("a fixed reader did not skip a prefixed key inside an unknown value: %+v", r)
 	}
 }
@@ -910,15 +910,15 @@ func TestSharingConstructRefusals(t *testing.T) {
 func TestReferenceResolution(t *testing.T) {
 	m := pointered(t)
 	inst, r := readScene(t, m, `{ "settings": { "&node": 1, "quality": 1 }, "head": { "&node": 1 } }`)
-	if r.KindMismatch != 1 || r.Malformed || field(t, inst, "head").Cell.Node != nil {
+	if r.KindMismatch != 1 || r.Refused || field(t, inst, "head").Cell.Node != nil {
 		t.Fatalf("a reference to a node of another table is a kind mismatch with the pointer null: %+v", r)
 	}
 	inst, r = readScene(t, m, `{ "layers": [ {}, {}, {}, {}, { "head": { "&node": 1, "value": 1 } } ], "alias": { "&node": 1 } }`)
-	if r.Clamped != 1 || r.Malformed || r.Unknown != 0 || field(t, inst, "alias").Cell.Node != nil {
+	if r.Clamped != 1 || r.Refused || r.Unknown != 0 || field(t, inst, "alias").Cell.Node != nil {
 		t.Fatalf("a definition past the bound is dropped and counted once, and its reference reads null: %+v", r)
 	}
 	inst, r = readScene(t, m, `{ "mystery": { "&node": 9, "value": 1 }, "head": { "&node": 9 } }`)
-	if r.Unknown != 1 || r.Malformed || field(t, inst, "head").Cell.Node != nil {
+	if r.Unknown != 1 || r.Refused || field(t, inst, "head").Cell.Node != nil {
 		t.Fatalf("a definition under an unknown key is dropped and counted once: %+v", r)
 	}
 	// a label is defined when its object CLOSES: a reference to it from inside
@@ -928,7 +928,7 @@ func TestReferenceResolution(t *testing.T) {
 		`{ "head": { "&node": 1, "value": 1, "next": { "&node": 1 } } }`,
 		`{ "head": { "&node": 1, "value": 1, "next": { "value": 2, "next": { "&node": 1 } } } }`,
 	} {
-		if _, r := readScene(t, m, text); !r.Malformed {
+		if _, r := readScene(t, m, text); !r.Refused {
 			t.Errorf("%s: a self-reference read as sharing; it is a cycle: %+v", text, r)
 		}
 	}
@@ -992,7 +992,7 @@ func TestSharedNodeWithNothingToWriteIsRefused(t *testing.T) {
 // larger than any this field can hold.
 func TestUnsignedHighHalfClampsAtTheCeiling(t *testing.T) {
 	_, inst, r := read(t, "ProfileConfig", `{ "badge": 18446744073709551615, "experience": 18446744073709551615 }`)
-	if r.Clamped != 2 || r.KindMismatch != 0 || r.Malformed {
+	if r.Clamped != 2 || r.KindMismatch != 0 || r.Refused {
 		t.Fatalf("two clamps and nothing else, got %+v", r)
 	}
 	if got := field(t, inst, "badge").Cell.U; got != 255 {
@@ -1010,7 +1010,7 @@ func TestUnsignedHighHalfClampsAtTheCeiling(t *testing.T) {
 // fraction and not a negative.
 func TestNegativeExponentInAnUnsignedFieldClampsToZero(t *testing.T) {
 	_, inst, r := read(t, "ProfileConfig", `{ "experience": -1e30 }`)
-	if r.KindMismatch != 0 || r.Clamped == 0 || r.Malformed {
+	if r.KindMismatch != 0 || r.Clamped == 0 || r.Refused {
 		t.Fatalf("a negative in an unsigned field is a clamp, not a mismatch: %+v", r)
 	}
 	if got := field(t, inst, "experience").Cell.U; got != 0 {

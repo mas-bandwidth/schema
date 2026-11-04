@@ -41,15 +41,15 @@ const (
 	tableFixedHashAt      = 8
 )
 
-// FixedRefusal is a read of a fixed root that decoded nothing, by its §6.5
-// name: previous_form for a form-1 file, layout_unknown for a hash this build
-// does not hold, and the other names the fixed reader owes
-// (docs/SPEC-TABLES.md §3.4, §21.3). Like [FormRefusal] it moves none of the
-// report's counters and is returned rather than folded into the report.
+// FixedRefusal is every refusal of a fixed root's read, by its §6.5 name:
+// previous_form for a form-1 file, layout_unknown for a hash this build does
+// not hold, wire_damaged for a bool or present byte other than 0 or 1,
+// out_of_range for a forged ordinal or tag, and the other names the fixed
+// reader owes (docs/SPEC-TABLES.md §3.4, §21.3).
 type FixedRefusal struct{ Reason string }
 
 func (e *FixedRefusal) Error() string {
-	return fmt.Sprintf("the fixed-table read was refused: %s (docs/SPEC-TABLES.md §3.4)", e.Reason)
+	return fmt.Sprintf("%s: the fixed-table read was refused (docs/SPEC-TABLES.md §3.4)", e.Reason)
 }
 
 // The fixed reader's refusal names this engine answers, spelled as §6.5's
@@ -278,18 +278,12 @@ func getFixedUint(b []byte, width int64) uint64 {
 // of another form is refused by name before anything about its length is
 // asked (docs/FIXED-FORM-ALGORITHM.md §5.3): form 1 is previous_form, form 2 is
 // message_form_as_file, and any other byte is newer_form.
-func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
+func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) error {
 	st := inst.Def
-	refuse := func(reason string) (bool, error) {
-		report.Refused = true
-		report.Reason = reason
-		return false, &FixedRefusal{Reason: reason}
+	refuse := func(reason string) error {
+		return &FixedRefusal{Reason: reason}
 	}
-	damage := func(reason string) (bool, error) {
-		report.Malformed = true
-		report.Reason = reason
-		return false, nil
-	}
+	damage := refuse
 	if len(data) < 1 {
 		return damage(FixedReasonTruncated)
 	}
@@ -298,11 +292,9 @@ func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, repo
 	case ir.TableWireForm:
 		return refuse(FixedReasonPreviousForm)
 	case ir.TableWireMessageForm:
-		report.Refused = true
-		return false, &MessageRefusal{Reason: ReasonMessageFormAsFile}
+		return &MessageRefusal{Reason: ReasonMessageFormAsFile}
 	default:
-		report.Refused = true
-		return false, &FormRefusal{Form: data[0]}
+		return &FormRefusal{Form: data[0]}
 	}
 	data, valid := integrityBody(st, data, 5)
 	if !valid {
@@ -325,15 +317,10 @@ func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, repo
 	if got := binary.LittleEndian.Uint64(data[tableFixedHashAt:]); got != hash {
 		// ANOTHER LAYOUT IS READ THROUGH THE LOCK OR NOT AT ALL (§21): an
 		// older writer the unit's lineage holds, under the lock's layout bytes
-		reason, damaged := decodeFixedLineage(m, inst, got, layout, data[tableFixedHeaderBytes+4+layoutBytes:], report)
-		if damaged {
-			return damage(reason)
-		}
-		if reason != "" {
-			m.Clear(inst)
+		if reason := decodeFixedLineage(m, inst, got, layout, data[tableFixedHeaderBytes+4+layoutBytes:], report); reason != "" {
 			return refuse(reason)
 		}
-		return true, nil
+		return nil
 	}
 	if !bytes.Equal(layout, mine) {
 		return refuse(FixedReasonLayoutMalformed)
@@ -357,10 +344,9 @@ func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, repo
 	}
 	d := &fixedDecoder{m: m, report: report}
 	if reason := d.body(rest[8:], inst); reason != "" {
-		m.Clear(inst)
 		return refuse(reason)
 	}
-	return true, nil
+	return nil
 }
 
 // fixedDecoder is the identity read of one record body.
@@ -392,6 +378,9 @@ func (d *fixedDecoder) body(b []byte, inst *tabletext.Instance) string {
 
 func (d *fixedDecoder) field(b []byte, fv *tabletext.Field) string {
 	if fv.Def.Type.Optional {
+		if b[0] > 1 {
+			return ReasonWireDamaged // a present byte other than 0 or 1 (§3.4)
+		}
 		fv.Present = b[0] != 0
 		if !fv.Present {
 			return ""
@@ -470,10 +459,9 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 			return ""
 		}
 		if tag > uint64(len(un.Variants)) {
-			// A UNION TAG NAMING NO ARM LANDS AS None AND COUNTS UNKNOWN, which
-			// is what form 1 does with an arm id it does not know (§4)
-			d.report.Unknown++
-			return ""
+			// A FORGED TAG: outside the writer's set, which on the identity
+			// read is this reader's own (docs/FIXED-FORM-ALGORITHM.md §5.4)
+			return FixedReasonOutOfRange
 		}
 		arm := un.Variants[tag-1]
 		cell.U = tag
@@ -493,10 +481,8 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 		raw := getFixedUint(b, int64(en.StorageBits/8))
 		switch {
 		case raw > uint64(len(en.Variants)):
-			// A FORGED ORDINAL LANDS None AND COUNTS CLAMPED, as the storage
-			// clamp counts it (docs/FIXED-FORM-ALGORITHM.md §5.4)
-			cell.U = 0
-			d.report.Clamped++
+			// A FORGED ORDINAL refuses (docs/FIXED-FORM-ALGORITHM.md §5.4)
+			return FixedReasonOutOfRange
 		case raw != 0 && tabletext.VariantDeprecated(en, int64(raw)):
 			if isElement {
 				*cell = tabletext.Cell{}
@@ -513,7 +499,9 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 		return ""
 	}
 	if f.Type.Kind == ir.TBool {
-		// the wire says nonzero is true (§3): a forged 2 is true, never damage
+		if b[0] > 1 {
+			return ReasonWireDamaged // a bool byte other than 0 or 1 (§3.4)
+		}
 		cell.B = b[0] != 0
 		return ""
 	}
@@ -526,7 +514,9 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 			kind = ir.TableKindU64
 		}
 	}
-	r := &wireReader{buf: b, report: d.report, m: d.m}
-	r.scalarAt(cell, f, kind)
+	r := &wireReader{buf: b, report: d.report, m: d.m, fail: &readFail{}}
+	if !r.scalarAt(cell, f, kind) {
+		return RefusalReason(r.err())
+	}
 	return ""
 }

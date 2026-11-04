@@ -150,7 +150,7 @@ func TestEngineTimestampIsRFC3339Text(t *testing.T) {
 			if m.Read(inst, []byte(`{"at": `+tc.text+`}`), &report) {
 				t.Fatalf("%s was accepted", tc.text)
 			}
-			if !report.Malformed {
+			if !report.Refused {
 				t.Fatalf("%s did not set Malformed: %+v", tc.text, report)
 			}
 			if want := "timestamp_not_rfc3339: at"; report.Reason != want {
@@ -167,7 +167,7 @@ func TestEngineTimestampIsRFC3339Text(t *testing.T) {
 		if !m.Read(inst, []byte(`{"at": 0}`), &report) {
 			t.Fatalf("the object itself should read: %+v", report)
 		}
-		if report.Malformed || report.KindMismatch != 1 {
+		if report.Refused || report.KindMismatch != 1 {
 			t.Fatalf("a NUMBER token should be one kind_mismatch, got %+v", report)
 		}
 		if got := inst.Fields[0].Cell.I; got != 0 {

@@ -88,8 +88,8 @@ func TestFixedRootRefusesForm1AsPreviousForm(t *testing.T) {
 	if !Refused(err) || !report.Refused || report.Reason != "previous_form" {
 		t.Errorf("the refusal is not the report's verdict: %+v", report)
 	}
-	if report.Malformed || !report.Silent() {
-		t.Errorf("a refusal moves no counter and reports no damage: %+v", report)
+	if report.Unknown != 0 || report.Widened != 0 {
+		t.Errorf("a refusal moves no counter: %+v", report)
 	}
 	if inst.Fields[0].Cell.I != 0 {
 		t.Errorf("a refused read decoded a value: a=%d", inst.Fields[0].Cell.I)
@@ -126,7 +126,7 @@ func TestFixedRootRefusalNames(t *testing.T) {
 			continue
 		}
 		if r.malformed {
-			if !report.Malformed || report.Reason != r.reason {
+			if !report.Refused || report.Reason != r.reason {
 				t.Errorf("%s: report %+v, want malformed %s", r.name, report, r.reason)
 			}
 			continue

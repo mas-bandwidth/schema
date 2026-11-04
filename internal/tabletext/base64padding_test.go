@@ -77,7 +77,7 @@ func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 			data: append([]byte(nil), fv.Cell.Str...),
 			km:   report.KindMismatch,
 			cl:   report.Clamped,
-			mal:  report.Malformed,
+			mal:  report.Refused,
 		})
 	}
 
@@ -104,9 +104,9 @@ func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 		var r TableReport
 		ok := BlobFromJSONTolerant(&v, []byte(c.text), &r)
 		got := append([]byte(nil), v.Data[:v.DataLength]...)
-		if ok != c.ok || !bytes.Equal(got, c.data) || r.KindMismatch != c.km || r.Clamped != c.cl || r.Malformed != c.mal {
+		if ok != c.ok || !bytes.Equal(got, c.data) || r.KindMismatch != c.km || r.Clamped != c.cl || r.Refused != c.mal {
 			t.Fatalf("%q: walk ok=%t data=%x km=%d cl=%d mal=%t; text ok=%t data=%x km=%d cl=%d mal=%t",
-				c.body, ok, got, r.KindMismatch, r.Clamped, r.Malformed, c.ok, c.data, c.km, c.cl, c.mal)
+				c.body, ok, got, r.KindMismatch, r.Clamped, r.Refused, c.ok, c.data, c.km, c.cl, c.mal)
 		}
 	}
 }

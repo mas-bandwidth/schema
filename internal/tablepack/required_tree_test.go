@@ -57,7 +57,7 @@ func TestRequiredTreePresence(t *testing.T) {
 				if err != nil || len(wire) == 0 || !r.Silent() {
 					t.Fatalf("accepted: wire=%x r=%+v err=%v", wire, r, err)
 				}
-			} else if err == nil || !strings.Contains(err.Error(), tc.reason) || len(wire) != 0 || r.MissingRequired != 1 || r.Malformed {
+			} else if err == nil || !strings.Contains(err.Error(), tc.reason) || len(wire) != 0 || r.MissingRequired != 1 || r.Refused {
 				t.Fatalf("refused: wire=%x r=%+v err=%v", wire, r, err)
 			}
 		})

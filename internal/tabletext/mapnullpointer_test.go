@@ -193,7 +193,7 @@ table Root {
 	if !m.ReadValue(fv, []byte(`"bad"`), &r) {
 		t.Fatalf("ReadValue failed: %+v", r)
 	}
-	if r.Malformed || r.KindMismatch != 1 || !fv.Present || fv.Cell.I != 0 {
+	if r.Refused || r.KindMismatch != 1 || !fv.Present || fv.Cell.I != 0 {
 		t.Fatalf("ReadValue = (%+v, %+v), want KindMismatch=1 Present=true I=0", r, fv)
 	}
 }
