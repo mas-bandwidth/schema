@@ -3771,6 +3771,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_measure( const benchtable_t
 static SCHEMA_UNUSED int64_t benchtable_table_entity_save( const benchtable_table_entity_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = benchtable_table_entity_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( buffer, capacity, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_entity_save_body( &w, value ) ) { return -1; }
@@ -4634,6 +4635,9 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_save_messages(const benchta
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=benchtable_table_entity_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5037,6 +5041,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_measure( const benchtable_tab
 static SCHEMA_UNUSED int64_t benchtable_table_stat_save( const benchtable_table_stat_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = benchtable_table_stat_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( buffer, capacity, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_stat_save_body( &w, value ) ) { return -1; }
@@ -5218,6 +5223,9 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_save_messages(const benchtabl
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=benchtable_table_stat_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5734,6 +5742,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_measure( const benchtable_ta
 static SCHEMA_UNUSED int64_t benchtable_table_mixed_save( const benchtable_table_mixed_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = benchtable_table_mixed_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( buffer, capacity, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_mixed_save_body( &w, value ) ) { return -1; }
@@ -7191,6 +7200,9 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_save_messages(const benchtab
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=benchtable_table_mixed_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -7907,6 +7919,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_hit_event_measure( const benchtabl
 static SCHEMA_UNUSED int64_t benchtable_table_hit_event_save( const benchtable_table_hit_event_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = benchtable_table_hit_event_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( buffer, capacity, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_hit_event_save_body( &w, value ) ) { return -1; }
@@ -8201,6 +8214,9 @@ static SCHEMA_UNUSED int64_t benchtable_table_hit_event_save_messages(const benc
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=benchtable_table_hit_event_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -8398,6 +8414,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_chat_event_measure( const benchtab
 static SCHEMA_UNUSED int64_t benchtable_table_chat_event_save( const benchtable_table_chat_event_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = benchtable_table_chat_event_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( buffer, capacity, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_chat_event_save_body( &w, value ) ) { return -1; }
@@ -8608,6 +8625,9 @@ static SCHEMA_UNUSED int64_t benchtable_table_chat_event_save_messages(const ben
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=benchtable_table_chat_event_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -8773,6 +8793,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_pickup_event_measure( const bencht
 static SCHEMA_UNUSED int64_t benchtable_table_pickup_event_save( const benchtable_table_pickup_event_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = benchtable_table_pickup_event_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( buffer, capacity, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_pickup_event_save_body( &w, value ) ) { return -1; }
@@ -8983,6 +9004,9 @@ static SCHEMA_UNUSED int64_t benchtable_table_pickup_event_save_messages(const b
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=benchtable_table_pickup_event_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -9486,6 +9510,18 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     value->idle_ticks = ( value->idle_ticks < 0 ) ? 0 : ( ( value->idle_ticks > 15 ) ? 15 : value->idle_ticks );
 }
 
+/* TableMixed's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_benchtable_table_mixed_fixed_fits_( const benchtable_table_mixed_t * value )
+{
+    (void) value;
+    if ( value->entities_count < 0 || value->entities_count > 8 ) { return 0; } /* the count indexes the storage (§3.4) */
+    if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; } /* the count indexes the storage (§3.4) */
+    if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; } /* the length indexes the storage (§3.4) */
+    if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; } /* the length indexes the storage (§3.4) */
+    return 1;
+}
+
 /* TableEntity's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
    its declaration does not admit, which the fixed save refuses debug-only. */
 static SCHEMA_UNUSED int schema_benchtable_table_entity_fixed_write_check_( const benchtable_table_entity_t * value )
@@ -9602,7 +9638,7 @@ static SCHEMA_UNUSED int schema_benchtable_table_mixed_fixed_write_check_( const
         default: break;
     }
     if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; } /* the declared length is the bound (§3.4) */
-    if ( !benchtable_table_wire_utf8_well_formed( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) ) { return 0; }
+    if ( !benchtable_table_wire_utf8( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) ) { return 0; }
     if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; } /* the declared length is the bound (§3.4) */
     if ( ( value->flux < -1000000000000000000ll ) || ( value->flux > 1000000000000000000ll ) ) { return 0; }
     /* bits(24) width clamp */
@@ -10537,6 +10573,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_save( const benchtable
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_benchtable_table_mixed_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_benchtable_table_mixed_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */

@@ -5119,6 +5119,7 @@ static SCHEMA_UNUSED int64_t tabledemo_wide_blob_measure( const tabledemo_wide_b
 static SCHEMA_UNUSED int64_t tabledemo_wide_blob_save( const tabledemo_wide_blob_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_wide_blob_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_wide_blob_save_body( &w, value ) ) { return -1; }
@@ -5374,6 +5375,9 @@ static SCHEMA_UNUSED int64_t tabledemo_wide_blob_save_messages(const tabledemo_w
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_wide_blob_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);

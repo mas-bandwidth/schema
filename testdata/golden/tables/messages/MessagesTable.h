@@ -6073,8 +6073,13 @@ MESSAGEDEMO_TABLE_INLINE bool UserSaveBody( TableWriter & w, TableIds & ids, con
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t UserSave( const User & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = UserMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -6383,10 +6388,14 @@ inline int64_t UserMeasureMessages( const User * values, int64_t count, TableRep
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t UserSaveMessages( const User * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = UserMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -6468,8 +6477,13 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptSaveBody( TableWriter & w, TableIds & ids, c
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ScriptSave( const Script & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ScriptMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -6864,10 +6878,14 @@ inline int64_t ScriptMeasureMessages( const Script * values, int64_t count, Tabl
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ScriptSaveMessages( const Script * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ScriptMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -6974,8 +6992,13 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBody( TableWriter & w, TableIds & ids
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t SelectionSave( const Selection & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = SelectionMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -7337,10 +7360,14 @@ inline int64_t SelectionMeasureMessages( const Selection * values, int64_t count
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t SelectionSaveMessages( const Selection * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = SelectionMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -7764,8 +7791,13 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t InsertTextSave( const InsertText & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = InsertTextMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -8493,6 +8525,7 @@ inline int64_t InsertTextMeasureMessageBody( int64_t at, const InsertText & valu
     if ( value.modes_present ) // ?Mode
     {
         bits += kTableMessageRefBitsHere;
+        if ( value.modes_count < 0 || value.modes_count > 2 ) { return -1; } // storage invariant
         bits += 2;
         for ( int32_t i = 0; i < value.modes_count; i++ )
         {
@@ -8617,6 +8650,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
     if ( value.modes_present ) // ?Mode
     {
         w.put( 9, kTableMessageRefBitsHere );
+        if ( value.modes_count < 0 || value.modes_count > 2 ) { return false; } // storage invariant
         w.put( (uint64_t) ( value.modes_count ) - 0, 2 );
         for ( int32_t i = 0; i < value.modes_count; i++ )
         {
@@ -9020,10 +9054,14 @@ inline int64_t InsertTextMeasureMessages( const InsertText * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t InsertTextSaveMessages( const InsertText * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = InsertTextMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -9109,8 +9147,13 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextSaveBody( TableWriter & w, TableIds & id
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t RemoveTextSave( const RemoveText & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = RemoveTextMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -9408,10 +9451,14 @@ inline int64_t RemoveTextMeasureMessages( const RemoveText * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t RemoveTextSaveMessages( const RemoveText * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = RemoveTextMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -9643,8 +9690,13 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t EditSave( const Edit & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = EditMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -10504,10 +10556,14 @@ inline int64_t EditMeasureMessages( const Edit * values, int64_t count, TableRep
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t EditSaveMessages( const Edit * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = EditMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -10620,8 +10676,13 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t OpenDocumentSave( const OpenDocument & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = OpenDocumentMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11058,10 +11119,14 @@ inline int64_t OpenDocumentMeasureMessages( const OpenDocument * values, int64_t
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t OpenDocumentSaveMessages( const OpenDocument * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = OpenDocumentMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11143,8 +11208,13 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t SaveDocumentSave( const SaveDocument & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = SaveDocumentMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11499,10 +11569,14 @@ inline int64_t SaveDocumentMeasureMessages( const SaveDocument * values, int64_t
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t SaveDocumentSaveMessages( const SaveDocument * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = SaveDocumentMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11956,8 +12030,13 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t TransactionSave( const Transaction & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = TransactionMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -13277,10 +13356,14 @@ inline int64_t TransactionMeasureMessages( const Transaction * values, int64_t c
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t TransactionSaveMessages( const Transaction * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = TransactionMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -14288,8 +14371,13 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ToolMessageSave( const ToolMessage & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ToolMessageMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -15555,6 +15643,7 @@ inline int64_t ToolMessageMeasureMessageBody( int64_t at, const ToolMessage & va
     if ( value.trace_present ) // ?Script
     {
         bits += kTableMessageRefBitsHere;
+        if ( value.trace_count < 0 || value.trace_count > 3 ) { return -1; } // storage invariant
         bits += 2;
         for ( int32_t i = 0; i < value.trace_count; i++ )
         {
@@ -15796,6 +15885,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
     if ( value.trace_present ) // ?Script
     {
         w.put( 20, kTableMessageRefBitsHere );
+        if ( value.trace_count < 0 || value.trace_count > 3 ) { return false; } // storage invariant
         w.put( (uint64_t) ( value.trace_count ) - 0, 2 );
         for ( int32_t i = 0; i < value.trace_count; i++ )
         {
@@ -16588,10 +16678,14 @@ inline int64_t ToolMessageMeasureMessages( const ToolMessage * values, int64_t c
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ToolMessageSaveMessages( const ToolMessage * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ToolMessageMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -16668,8 +16762,13 @@ MESSAGEDEMO_TABLE_INLINE bool CursorSaveBody( TableWriter & w, TableIds & ids, c
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t CursorSave( const Cursor & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = CursorMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -17075,10 +17174,14 @@ inline int64_t CursorMeasureMessages( const Cursor * values, int64_t count, Tabl
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t CursorSaveMessages( const Cursor * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = CursorMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -17149,8 +17252,13 @@ MESSAGEDEMO_TABLE_INLINE bool PingSaveBody( TableWriter & w, TableIds & ids, con
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t PingSave( const Ping & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = PingMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -17470,10 +17578,14 @@ inline int64_t PingMeasureMessages( const Ping * values, int64_t count, TableRep
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t PingSaveMessages( const Ping * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = PingMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -18669,6 +18781,264 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
     }
 }
 
+// User's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool UserFixedFits( const User & value )
+{
+    (void) value;
+    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// Script's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool ScriptFixedFits( const Script & value )
+{
+    (void) value;
+    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// InsertText's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool InsertTextFixedFits( const InsertText & value )
+{
+    (void) value;
+    if ( value.text_length < 0 || value.text_length > 32 ) { return false; } // the length indexes the storage (§3.4)
+    switch ( value.origin.type )
+    {
+        case OriginType::User:
+        {
+            if ( !UserFixedFits( value.origin.user ) ) { return false; }
+            break;
+        }
+        case OriginType::Script:
+        {
+            if ( !ScriptFixedFits( value.origin.script ) ) { return false; }
+            break;
+        }
+        case OriginType::Note:
+        {
+            if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // the length indexes the storage (§3.4)
+            break;
+        }
+        default: break;
+    }
+    if ( value.origins_count < 0 || value.origins_count > 2 ) { return false; } // the count indexes the storage (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.origins_count; ++i )
+    {
+        switch ( value.origins[i].type )
+        {
+            case OriginType::User:
+            {
+                if ( !UserFixedFits( value.origins[i].user ) ) { return false; }
+                break;
+            }
+            case OriginType::Script:
+            {
+                if ( !ScriptFixedFits( value.origins[i].script ) ) { return false; }
+                break;
+            }
+            case OriginType::Note:
+            {
+                if ( value.origins[i].note.value_length < 0 || value.origins[i].note.value_length > 24 ) { return false; } // the length indexes the storage (§3.4)
+                break;
+            }
+            default: break;
+        }
+    }
+    if ( value.modes_present )
+    {
+        if ( value.modes_count < 0 || value.modes_count > 2 ) { return false; } // the count indexes the storage (§3.4)
+    }
+    return true;
+}
+
+// Edit's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool EditFixedFits( const Edit & value )
+{
+    (void) value;
+    switch ( value.body.type )
+    {
+        case EditBodyType::Insert:
+        {
+            if ( !InsertTextFixedFits( value.body.insert ) ) { return false; }
+            break;
+        }
+        case EditBodyType::Marks:
+        {
+            if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return false; } // the count indexes the storage (§3.4)
+            break;
+        }
+        case EditBodyType::Blob:
+        {
+            if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return false; } // the length indexes the storage (§3.4)
+            break;
+        }
+        default: break;
+    }
+    return true;
+}
+
+// OpenDocument's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool OpenDocumentFixedFits( const OpenDocument & value )
+{
+    (void) value;
+    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// SaveDocument's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool SaveDocumentFixedFits( const SaveDocument & value )
+{
+    (void) value;
+    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// Transaction's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool TransactionFixedFits( const Transaction & value )
+{
+    (void) value;
+    if ( value.reason_length < 0 || value.reason_length > 16 ) { return false; } // the length indexes the storage (§3.4)
+    if ( value.edits_count < 0 || value.edits_count > 3 ) { return false; } // the count indexes the storage (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.edits_count; ++i )
+    {
+        if ( !EditFixedFits( value.edits[i] ) ) { return false; }
+    }
+    for ( int64_t i = 0; i < (int64_t) 2; ++i )
+    {
+        switch ( value.pending[i].type )
+        {
+            case EditBodyType::Insert:
+            {
+                if ( !InsertTextFixedFits( value.pending[i].insert ) ) { return false; }
+                break;
+            }
+            case EditBodyType::Marks:
+            {
+                if ( value.pending[i].marks.value_count < 0 || value.pending[i].marks.value_count > 3 ) { return false; } // the count indexes the storage (§3.4)
+                break;
+            }
+            case EditBodyType::Blob:
+            {
+                if ( value.pending[i].blob.value_length < 0 || value.pending[i].blob.value_length > 4 ) { return false; } // the length indexes the storage (§3.4)
+                break;
+            }
+            default: break;
+        }
+    }
+    return true;
+}
+
+// ToolMessage's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool ToolMessageFixedFits( const ToolMessage & value )
+{
+    (void) value;
+    switch ( value.body.type )
+    {
+        case ToolBodyType::Open:
+        {
+            if ( !OpenDocumentFixedFits( value.body.open ) ) { return false; }
+            break;
+        }
+        case ToolBodyType::Save:
+        {
+            if ( !SaveDocumentFixedFits( value.body.save ) ) { return false; }
+            break;
+        }
+        case ToolBodyType::Transact:
+        {
+            if ( !TransactionFixedFits( value.body.transact ) ) { return false; }
+            break;
+        }
+        case ToolBodyType::Origin:
+        {
+            switch ( value.body.origin.type )
+            {
+                case OriginType::User:
+                {
+                    if ( !UserFixedFits( value.body.origin.user ) ) { return false; }
+                    break;
+                }
+                case OriginType::Script:
+                {
+                    if ( !ScriptFixedFits( value.body.origin.script ) ) { return false; }
+                    break;
+                }
+                case OriginType::Note:
+                {
+                    if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // the length indexes the storage (§3.4)
+                    break;
+                }
+                default: break;
+            }
+            break;
+        }
+        default: break;
+    }
+    if ( value.history_count < 0 || value.history_count > 2 ) { return false; } // the count indexes the storage (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.history_count; ++i )
+    {
+        switch ( value.history[i].type )
+        {
+            case ToolBodyType::Open:
+            {
+                if ( !OpenDocumentFixedFits( value.history[i].open ) ) { return false; }
+                break;
+            }
+            case ToolBodyType::Save:
+            {
+                if ( !SaveDocumentFixedFits( value.history[i].save ) ) { return false; }
+                break;
+            }
+            case ToolBodyType::Transact:
+            {
+                if ( !TransactionFixedFits( value.history[i].transact ) ) { return false; }
+                break;
+            }
+            case ToolBodyType::Origin:
+            {
+                switch ( value.history[i].origin.type )
+                {
+                    case OriginType::User:
+                    {
+                        if ( !UserFixedFits( value.history[i].origin.user ) ) { return false; }
+                        break;
+                    }
+                    case OriginType::Script:
+                    {
+                        if ( !ScriptFixedFits( value.history[i].origin.script ) ) { return false; }
+                        break;
+                    }
+                    case OriginType::Note:
+                    {
+                        if ( value.history[i].origin.note.value_length < 0 || value.history[i].origin.note.value_length > 24 ) { return false; } // the length indexes the storage (§3.4)
+                        break;
+                    }
+                    default: break;
+                }
+                break;
+            }
+            default: break;
+        }
+    }
+    if ( value.trace_present )
+    {
+        if ( value.trace_count < 0 || value.trace_count > 3 ) { return false; } // the count indexes the storage (§3.4)
+        for ( int64_t i = 0; i < (int64_t) value.trace_count; ++i )
+        {
+            if ( !ScriptFixedFits( value.trace[i] ) ) { return false; }
+        }
+    }
+    return true;
+}
+
 // User's write contract (docs/SPEC.md §5.1): false when the record holds a
 // value its declaration does not admit, which FixedSave refuses debug-only.
 TABLE_FIXED_INLINE bool UserFixedWriteCheck( const User & value )
@@ -18676,7 +19046,7 @@ TABLE_FIXED_INLINE bool UserFixedWriteCheck( const User & value )
     (void) value;
     int bad = 0;
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length );
     return bad == 0;
 }
 
@@ -18687,7 +19057,7 @@ TABLE_FIXED_INLINE bool ScriptFixedWriteCheck( const Script & value )
     (void) value;
     int bad = 0;
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length );
     return bad == 0;
 }
 
@@ -18698,7 +19068,7 @@ TABLE_FIXED_INLINE bool InsertTextFixedWriteCheck( const InsertText & value )
     (void) value;
     int bad = 0;
     if ( value.text_length < 0 || value.text_length > 32 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.text, (uint64_t) value.text_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length );
     if ( (uint64_t) value.origin.type > 4u ) { return false; } // a union tag outside its arms
     switch ( value.origin.type )
     {
@@ -18720,7 +19090,7 @@ TABLE_FIXED_INLINE bool InsertTextFixedWriteCheck( const InsertText & value )
         case OriginType::Note:
         {
             if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // the declared length is the bound (§3.4)
-            bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length );
+            bad |= (int) !TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length );
             break;
         }
         default: break;
@@ -18749,7 +19119,7 @@ TABLE_FIXED_INLINE bool InsertTextFixedWriteCheck( const InsertText & value )
             case OriginType::Note:
             {
                 if ( value.origins[i].note.value_length < 0 || value.origins[i].note.value_length > 24 ) { return false; } // the declared length is the bound (§3.4)
-                bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.origins[i].note.value, (uint64_t) value.origins[i].note.value_length );
+                bad |= (int) !TableUtf8Valid( (const uint8_t *) value.origins[i].note.value, (uint64_t) value.origins[i].note.value_length );
                 break;
             }
             default: break;
@@ -18812,7 +19182,7 @@ TABLE_FIXED_INLINE bool OpenDocumentFixedWriteCheck( const OpenDocument & value 
     (void) value;
     int bad = 0;
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length );
     bad |= (int) ( (uint64_t) value.mode > 2u );
     return bad == 0;
 }
@@ -18824,7 +19194,7 @@ TABLE_FIXED_INLINE bool SaveDocumentFixedWriteCheck( const SaveDocument & value 
     (void) value;
     int bad = 0;
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length );
     return bad == 0;
 }
 
@@ -18835,7 +19205,7 @@ TABLE_FIXED_INLINE bool TransactionFixedWriteCheck( const Transaction & value )
     (void) value;
     int bad = 0;
     if ( value.reason_length < 0 || value.reason_length > 16 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.reason, (uint64_t) value.reason_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length );
     if ( value.edits_count < 0 || value.edits_count > 3 ) { return false; } // the declared count is the bound (§3.4)
     for ( int64_t i = 0; i < (int64_t) value.edits_count; ++i )
     {
@@ -18924,7 +19294,7 @@ TABLE_FIXED_INLINE bool ToolMessageFixedWriteCheck( const ToolMessage & value )
                 case OriginType::Note:
                 {
                     if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // the declared length is the bound (§3.4)
-                    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length );
+                    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length );
                     break;
                 }
                 default: break;
@@ -18977,7 +19347,7 @@ TABLE_FIXED_INLINE bool ToolMessageFixedWriteCheck( const ToolMessage & value )
                     case OriginType::Note:
                     {
                         if ( value.history[i].origin.note.value_length < 0 || value.history[i].origin.note.value_length > 24 ) { return false; } // the declared length is the bound (§3.4)
-                        bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.history[i].origin.note.value, (uint64_t) value.history[i].origin.note.value_length );
+                        bad |= (int) !TableUtf8Valid( (const uint8_t *) value.history[i].origin.note.value, (uint64_t) value.history[i].origin.note.value_length );
                         break;
                     }
                     default: break;
@@ -19126,6 +19496,7 @@ inline int64_t UserFixedSave( const User * values, int64_t count, uint8_t * buff
 {
     const int64_t need = UserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !UserFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( UserFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
@@ -19481,6 +19852,7 @@ inline int64_t ScriptFixedSave( const Script * values, int64_t count, uint8_t * 
 {
     const int64_t need = ScriptFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !ScriptFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( ScriptFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
@@ -20341,6 +20713,7 @@ inline int64_t InsertTextFixedSave( const InsertText * values, int64_t count, ui
 {
     const int64_t need = InsertTextFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !InsertTextFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( InsertTextFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
@@ -21331,6 +21704,7 @@ inline int64_t EditFixedSave( const Edit * values, int64_t count, uint8_t * buff
 {
     const int64_t need = EditFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !EditFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( EditFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
@@ -21713,6 +22087,7 @@ inline int64_t OpenDocumentFixedSave( const OpenDocument * values, int64_t count
 {
     const int64_t need = OpenDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !OpenDocumentFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( OpenDocumentFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
@@ -22068,6 +22443,7 @@ inline int64_t SaveDocumentFixedSave( const SaveDocument * values, int64_t count
 {
     const int64_t need = SaveDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !SaveDocumentFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( SaveDocumentFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
@@ -23309,6 +23685,7 @@ inline int64_t TransactionFixedSave( const Transaction * values, int64_t count, 
 {
     const int64_t need = TransactionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !TransactionFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( TransactionFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
@@ -26523,6 +26900,7 @@ inline int64_t ToolMessageFixedSave( const ToolMessage * values, int64_t count, 
 {
     const int64_t need = ToolMessageFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !ToolMessageFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( ToolMessageFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;

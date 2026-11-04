@@ -5184,8 +5184,13 @@ BLOCKHOME_TABLE_INLINE bool ArmorPlateSaveBody( TableWriter & w, TableIds & ids,
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ArmorPlateSave( const ArmorPlate & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ArmorPlateMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -5651,10 +5656,14 @@ inline int64_t ArmorPlateMeasureMessages( const ArmorPlate * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ArmorPlateSaveMessages( const ArmorPlate * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ArmorPlateMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -5775,8 +5784,13 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigSaveBody( TableWriter & w, TableIds & ids
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ArmorConfigSave( const ArmorConfig & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ArmorConfigMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -6266,10 +6280,14 @@ inline int64_t ArmorConfigMeasureMessages( const ArmorConfig * values, int64_t c
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ArmorConfigSaveMessages( const ArmorConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ArmorConfigMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -6348,8 +6366,13 @@ BLOCKHOME_TABLE_INLINE bool FiringGroupSaveBody( TableWriter & w, TableIds & ids
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t FiringGroupSave( const FiringGroup & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = FiringGroupMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -6741,10 +6764,14 @@ inline int64_t FiringGroupMeasureMessages( const FiringGroup * values, int64_t c
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t FiringGroupSaveMessages( const FiringGroup * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = FiringGroupMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -6913,8 +6940,13 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GunnerSettingsSave( const GunnerSettings & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = GunnerSettingsMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -7552,10 +7584,14 @@ inline int64_t GunnerSettingsMeasureMessages( const GunnerSettings * values, int
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GunnerSettingsSaveMessages( const GunnerSettings * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = GunnerSettingsMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -7722,6 +7758,16 @@ TABLE_FIXED_INLINE bool GunnerSettingsFixedFiniteBody( const GunnerSettings & va
         if ( !FiringGroupFixedFiniteBody( value.missile_groups[i] ) ) { return false; }
     }
     if ( !TableFloatFinite( value.reload_seconds ) ) { return false; }
+    return true;
+}
+
+// GunnerSettings's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool GunnerSettingsFixedFits( const GunnerSettings & value )
+{
+    (void) value;
+    if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return false; } // the count indexes the storage (§3.4)
+    if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return false; } // the count indexes the storage (§3.4)
     return true;
 }
 

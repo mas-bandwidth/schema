@@ -261,6 +261,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_sample( seria
             return 0;
         }
     }
+    if ( value->samples_count < 0 || value->samples_count > 8 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->samples_count >= 1 && value->samples_count <= 8 );
     if ( !serialize_write_int( stream, value->samples_count, 1, 8 ) )
     {
@@ -521,6 +522,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_collider( ser
     {
         return 0;
     }
+    if ( value->extras_count < 0 || value->extras_count > 2 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->extras_count >= 0 && value->extras_count <= 2 );
     if ( !serialize_write_int( stream, value->extras_count, 0, 2 ) )
     {
@@ -764,6 +766,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_test( serialize_read_
 /* Writes Block. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_block( serialize_write_stream_t * stream, const example_block_t * value )
 {
+    if ( value->data_length < 0 || value->data_length > EXAMPLE_MAX_BLOCK_SIZE ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     if ( !serialize_write_int( stream, value->data_length, 0, EXAMPLE_MAX_BLOCK_SIZE ) )
     {
         return 0;
@@ -792,6 +795,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_block( serialize_read
 /* Writes Chat. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_chat( serialize_write_stream_t * stream, const example_chat_t * value )
 {
+    if ( value->text_length < 0 || value->text_length > EXAMPLE_MAX_CHAT_LENGTH ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     {
         int32_t i;
         for ( i = 0; i < value->text_length; i++ )
@@ -908,6 +912,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_test_data( serializ
     {
         return 0;
     }
+    if ( value->items_count < 0 || value->items_count > 16 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 16 );
     if ( !serialize_write_int( stream, value->items_count, 0, 16 ) )
     {
@@ -984,6 +989,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_test_data( serializ
     {
         return 0;
     }
+    if ( value->text_length < 0 || value->text_length > 255 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     {
         int32_t i;
         for ( i = 0; i < value->text_length; i++ )

@@ -1200,6 +1200,18 @@ inline bool TableUtf16Paired( const char16_t * units, int64_t count )
     return true;
 }
 
+// A FIXED WRITE KEEPS THE FIXED READER'S WIDE TEXT (docs/SPEC.md §5.1): the
+// fixed reader refuses a zero unit as text_ill_formed, so the fixed writer's
+// contract holds the storage to the pairing rule above AND to no zero unit.
+inline bool TableUtf16FixedText( const char16_t * units, int64_t count )
+{
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( units[i] == 0 ) { return false; }
+    }
+    return TableUtf16Paired( units, count );
+}
+
 // A CLAMP CUTS AT A CODE UNIT BOUNDARY AND NEVER SPLITS A PAIR (§3, §16.2):
 // the first bound units of a payload the check above already accepted, and
 // where the last kept unit is a HIGH SURROGATE whose low half did not fit,

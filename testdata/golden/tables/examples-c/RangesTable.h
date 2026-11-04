@@ -5283,6 +5283,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_measure( const tabledemo_ra
 static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_save( const tabledemo_ranged_signed_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_ranged_signed_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_ranged_signed_save_body( &w, value ) ) { return -1; }
@@ -6251,6 +6252,9 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_save_messages(const tablede
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_ranged_signed_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -6833,6 +6837,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_measure( const tabledemo_
 static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_save( const tabledemo_ranged_unsigned_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_ranged_unsigned_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_ranged_unsigned_save_body( &w, value ) ) { return -1; }
@@ -7807,6 +7812,9 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_save_messages(const table
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_ranged_unsigned_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -8300,6 +8308,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_measure( const tabledemo_ra
 static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_save( const tabledemo_ranged_widths_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_ranged_widths_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_ranged_widths_save_body( &w, value ) ) { return -1; }
@@ -8701,6 +8710,9 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_save_messages(const tablede
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_ranged_widths_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -9107,6 +9119,24 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
     value->b48 = ( value->b48 > 281474976710655ull ) ? 281474976710655ull : value->b48;
 }
 
+/* RangedSigned's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_ranged_signed_fixed_fits_( const tabledemo_ranged_signed_t * value )
+{
+    (void) value;
+    if ( value->edges_count < 0 || value->edges_count > 4 ) { return 0; } /* the count indexes the storage (§3.4) */
+    return 1;
+}
+
+/* RangedUnsigned's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_ranged_unsigned_fixed_fits_( const tabledemo_ranged_unsigned_t * value )
+{
+    (void) value;
+    if ( value->counts_count < 0 || value->counts_count > 4 ) { return 0; } /* the count indexes the storage (§3.4) */
+    return 1;
+}
+
 /* RangedSigned's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
    its declaration does not admit, which the fixed save refuses debug-only. */
 static SCHEMA_UNUSED int schema_tabledemo_ranged_signed_fixed_write_check_( const tabledemo_ranged_signed_t * value )
@@ -9322,6 +9352,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_fixed_save( const tabledemo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_ranged_signed_fixed_fits_( values + k ) ) return -1;
     /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_tabledemo_ranged_signed_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
@@ -9632,6 +9663,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_fixed_save( const tablede
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_ranged_unsigned_fixed_fits_( values + k ) ) return -1;
     /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_tabledemo_ranged_unsigned_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;

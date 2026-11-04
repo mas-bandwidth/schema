@@ -117,6 +117,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_render_block( seria
     {
         return 0;
     }
+    if ( value->sprites_count < 0 || value->sprites_count > EXAMPLE_RENDER_BLOCK_MAX_SPRITES ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->sprites_count >= 0 && value->sprites_count <= EXAMPLE_RENDER_BLOCK_MAX_SPRITES );
     if ( !serialize_write_int( stream, value->sprites_count, 0, EXAMPLE_RENDER_BLOCK_MAX_SPRITES ) )
     {

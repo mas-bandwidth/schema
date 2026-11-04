@@ -5073,6 +5073,7 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_measure( const graphdemo_stamp_t * 
 static SCHEMA_UNUSED int64_t graphdemo_stamp_save( const graphdemo_stamp_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = graphdemo_stamp_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     graphdemo_table_write_ids_t vocabulary; graphdemo_table_writer_t w = graphdemo_table_writer_make( buffer, capacity, &vocabulary );
     graphdemo_table_writer_put8( &w, 1 );
     if ( !graphdemo_stamp_save_body( &w, value ) ) { return -1; }
@@ -5273,6 +5274,9 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_save_messages(const graphdemo_stamp
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=graphdemo_stamp_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=graphdemo_table_bit_writer(buffer,capacity);
  graphdemo_table_bit_put(&w,2,8);
  graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5458,6 +5462,7 @@ static SCHEMA_UNUSED int64_t graphdemo_colour_measure( const graphdemo_colour_t 
 static SCHEMA_UNUSED int64_t graphdemo_colour_save( const graphdemo_colour_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = graphdemo_colour_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     graphdemo_table_write_ids_t vocabulary; graphdemo_table_writer_t w = graphdemo_table_writer_make( buffer, capacity, &vocabulary );
     graphdemo_table_writer_put8( &w, 1 );
     if ( !graphdemo_colour_save_body( &w, value ) ) { return -1; }
@@ -5615,13 +5620,22 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_f
     value->seq = ( value->seq < 0 ) ? 0 : ( ( value->seq > 1000 ) ? 1000 : value->seq );
 }
 
+/* Stamp's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_graphdemo_stamp_fixed_fits_( const graphdemo_stamp_t * value )
+{
+    (void) value;
+    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; } /* the length indexes the storage (§3.4) */
+    return 1;
+}
+
 /* Stamp's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
    its declaration does not admit, which the fixed save refuses debug-only. */
 static SCHEMA_UNUSED int schema_graphdemo_stamp_fixed_write_check_( const graphdemo_stamp_t * value )
 {
     (void) value;
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; } /* the declared length is the bound (§3.4) */
-    if ( !graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ) { return 0; }
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ) { return 0; }
     if ( ( value->seq < 0 ) || ( value->seq > 1000 ) ) { return 0; }
     return 1;
 }
@@ -5736,6 +5750,7 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_save( const graphdemo_stamp_t
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_graphdemo_stamp_fixed_fits_( values + k ) ) return -1;
     /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_graphdemo_stamp_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = GRAPHDEMO_K_TABLE_FIXED_FORM;

@@ -861,6 +861,11 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			} else {
 				g.pf("    if ( buffer == NULL || capacity < 0 ) { return -1; }\n")
 			}
+			/* A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): the measure
+			   walks the same body through the same writer with no buffer, so it
+			   makes every refusal the save makes, and a value that does not fit
+			   is refused there too; the caller's buffer is untouched on -1. */
+			g.pf("    { int64_t need = %s( value ); if ( need < 0 || need > capacity ) { return -1; } }\n", g.api(st.Name, "measure"))
 		}
 		g.pf("    TableWriteIds vocabulary; TableWriter w = table_writer_make( %s, %s, &vocabulary );\n    table_writer_put8( &w, 1 );\n", buffer, cap)
 		g.pf("    if ( !%s( &w, value ) ) { return -1; }\n    table_writer_finish( &w );\n", g.api(st.Name, "save_body"))

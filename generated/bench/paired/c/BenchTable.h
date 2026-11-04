@@ -3758,6 +3758,7 @@ static SCHEMA_UNUSED int64_t bench_mixed_entity_measure( const bench_mixed_entit
 static SCHEMA_UNUSED int64_t bench_mixed_entity_save( const bench_mixed_entity_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = bench_mixed_entity_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     bench_table_write_ids_t vocabulary; bench_table_writer_t w = bench_table_writer_make( buffer, capacity, &vocabulary );
     bench_table_writer_put8( &w, 1 );
     if ( !bench_mixed_entity_save_body( &w, value ) ) { return -1; }
@@ -4621,6 +4622,9 @@ static SCHEMA_UNUSED int64_t bench_mixed_entity_save_messages(const bench_mixed_
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=bench_mixed_entity_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=bench_table_bit_writer(buffer,capacity);
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5024,6 +5028,7 @@ static SCHEMA_UNUSED int64_t bench_mixed_stat_measure( const bench_mixed_stat_t 
 static SCHEMA_UNUSED int64_t bench_mixed_stat_save( const bench_mixed_stat_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = bench_mixed_stat_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     bench_table_write_ids_t vocabulary; bench_table_writer_t w = bench_table_writer_make( buffer, capacity, &vocabulary );
     bench_table_writer_put8( &w, 1 );
     if ( !bench_mixed_stat_save_body( &w, value ) ) { return -1; }
@@ -5205,6 +5210,9 @@ static SCHEMA_UNUSED int64_t bench_mixed_stat_save_messages(const bench_mixed_st
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=bench_mixed_stat_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=bench_table_bit_writer(buffer,capacity);
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5394,6 +5402,7 @@ static SCHEMA_UNUSED int64_t bench_mixed_hit_event_measure( const bench_mixed_hi
 static SCHEMA_UNUSED int64_t bench_mixed_hit_event_save( const bench_mixed_hit_event_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = bench_mixed_hit_event_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     bench_table_write_ids_t vocabulary; bench_table_writer_t w = bench_table_writer_make( buffer, capacity, &vocabulary );
     bench_table_writer_put8( &w, 1 );
     if ( !bench_mixed_hit_event_save_body( &w, value ) ) { return -1; }
@@ -5688,6 +5697,9 @@ static SCHEMA_UNUSED int64_t bench_mixed_hit_event_save_messages(const bench_mix
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=bench_mixed_hit_event_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=bench_table_bit_writer(buffer,capacity);
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5885,6 +5897,7 @@ static SCHEMA_UNUSED int64_t bench_mixed_chat_event_measure( const bench_mixed_c
 static SCHEMA_UNUSED int64_t bench_mixed_chat_event_save( const bench_mixed_chat_event_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = bench_mixed_chat_event_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     bench_table_write_ids_t vocabulary; bench_table_writer_t w = bench_table_writer_make( buffer, capacity, &vocabulary );
     bench_table_writer_put8( &w, 1 );
     if ( !bench_mixed_chat_event_save_body( &w, value ) ) { return -1; }
@@ -6095,6 +6108,9 @@ static SCHEMA_UNUSED int64_t bench_mixed_chat_event_save_messages(const bench_mi
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=bench_mixed_chat_event_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=bench_table_bit_writer(buffer,capacity);
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -6260,6 +6276,7 @@ static SCHEMA_UNUSED int64_t bench_mixed_pickup_event_measure( const bench_mixed
 static SCHEMA_UNUSED int64_t bench_mixed_pickup_event_save( const bench_mixed_pickup_event_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = bench_mixed_pickup_event_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     bench_table_write_ids_t vocabulary; bench_table_writer_t w = bench_table_writer_make( buffer, capacity, &vocabulary );
     bench_table_writer_put8( &w, 1 );
     if ( !bench_mixed_pickup_event_save_body( &w, value ) ) { return -1; }
@@ -6470,6 +6487,9 @@ static SCHEMA_UNUSED int64_t bench_mixed_pickup_event_save_messages(const bench_
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=bench_mixed_pickup_event_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=bench_table_bit_writer(buffer,capacity);
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -7004,6 +7024,7 @@ static SCHEMA_UNUSED int64_t bench_bench_mixed_measure( const bench_bench_mixed_
 static SCHEMA_UNUSED int64_t bench_bench_mixed_save( const bench_bench_mixed_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = bench_bench_mixed_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     bench_table_write_ids_t vocabulary; bench_table_writer_t w = bench_table_writer_make( buffer, capacity, &vocabulary );
     bench_table_writer_put8( &w, 1 );
     if ( !bench_bench_mixed_save_body( &w, value ) ) { return -1; }
@@ -8539,6 +8560,9 @@ static SCHEMA_UNUSED int64_t bench_bench_mixed_save_messages(const bench_bench_m
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=bench_bench_mixed_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=bench_table_bit_writer(buffer,capacity);
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -9527,6 +9551,18 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     value->idle_ticks = ( value->idle_ticks < 0 ) ? 0 : ( ( value->idle_ticks > 15 ) ? 15 : value->idle_ticks );
 }
 
+/* BenchMixed's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_bench_bench_mixed_fixed_fits_( const bench_bench_mixed_t * value )
+{
+    (void) value;
+    if ( value->entities_count < 0 || value->entities_count > 8 ) { return 0; } /* the count indexes the storage (§3.4) */
+    if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; } /* the count indexes the storage (§3.4) */
+    if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; } /* the length indexes the storage (§3.4) */
+    if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; } /* the length indexes the storage (§3.4) */
+    return 1;
+}
+
 /* MixedEntity's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
    its declaration does not admit, which the fixed save refuses debug-only. */
 static SCHEMA_UNUSED int schema_bench_mixed_entity_fixed_write_check_( const bench_mixed_entity_t * value )
@@ -9643,7 +9679,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_fixed_write_check_( const benc
         default: break;
     }
     if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; } /* the declared length is the bound (§3.4) */
-    if ( !bench_table_wire_utf8_well_formed( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) ) { return 0; }
+    if ( !bench_table_wire_utf8( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) ) { return 0; }
     if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; } /* the declared length is the bound (§3.4) */
     if ( ( bench_table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) || ( bench_table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 ) ) { return 0; }
     if ( value->ping > 64000 ) { return 0; }

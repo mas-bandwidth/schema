@@ -5401,6 +5401,7 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_measure( const tabledemo_we
 static SCHEMA_UNUSED int64_t tabledemo_weapon_config_save( const tabledemo_weapon_config_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_weapon_config_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_weapon_config_save_body( &w, value ) ) { return -1; }
@@ -5693,6 +5694,9 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_save_messages(const tablede
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_weapon_config_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -6146,6 +6150,7 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_measure( const tabledemo_l
 static SCHEMA_UNUSED int64_t tabledemo_loadout_config_save( const tabledemo_loadout_config_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_loadout_config_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_loadout_config_save_body( &w, value ) ) { return -1; }
@@ -6637,6 +6642,9 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_save_messages(const tabled
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_loadout_config_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -7066,6 +7074,7 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_measure( const tabledemo_p
 static SCHEMA_UNUSED int64_t tabledemo_profile_config_save( const tabledemo_profile_config_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_profile_config_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_profile_config_save_body( &w, value ) ) { return -1; }
@@ -7722,6 +7731,9 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_save_messages(const tabled
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_profile_config_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -8213,6 +8225,7 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_measure( const tabledemo_root
 static SCHEMA_UNUSED int64_t tabledemo_root_config_save( const tabledemo_root_config_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_root_config_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_root_config_save_body( &w, value ) ) { return -1; }
@@ -8458,6 +8471,9 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_save_messages(const tabledemo
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_root_config_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -8654,6 +8670,7 @@ static SCHEMA_UNUSED int64_t tabledemo_attachment_measure( const tabledemo_attac
 static SCHEMA_UNUSED int64_t tabledemo_attachment_save( const tabledemo_attachment_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_attachment_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_attachment_save_body( &w, value ) ) { return -1; }
@@ -8842,6 +8859,9 @@ static SCHEMA_UNUSED int64_t tabledemo_attachment_save_messages(const tabledemo_
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_attachment_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -9003,6 +9023,7 @@ static SCHEMA_UNUSED int64_t tabledemo_buff_measure( const tabledemo_buff_t * va
 static SCHEMA_UNUSED int64_t tabledemo_buff_save( const tabledemo_buff_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_buff_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_buff_save_body( &w, value ) ) { return -1; }
@@ -9129,6 +9150,9 @@ static SCHEMA_UNUSED int64_t tabledemo_buff_save_messages(const tabledemo_buff_t
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_buff_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -9268,6 +9292,7 @@ static SCHEMA_UNUSED int64_t tabledemo_debuff_measure( const tabledemo_debuff_t 
 static SCHEMA_UNUSED int64_t tabledemo_debuff_save( const tabledemo_debuff_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_debuff_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_debuff_save_body( &w, value ) ) { return -1; }
@@ -9432,6 +9457,9 @@ static SCHEMA_UNUSED int64_t tabledemo_debuff_save_messages(const tabledemo_debu
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_debuff_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -9948,6 +9976,45 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_root_co
     }
 }
 
+/* LoadoutConfig's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_loadout_config_fixed_fits_( const tabledemo_loadout_config_t * value )
+{
+    (void) value;
+    if ( value->grades_count < 0 || value->grades_count > 4 ) { return 0; } /* the count indexes the storage (§3.4) */
+    if ( value->attachments_count < 0 || value->attachments_count > 8 ) { return 0; } /* the count indexes the storage (§3.4) */
+    return 1;
+}
+
+/* ProfileConfig's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_profile_config_fixed_fits_( const tabledemo_profile_config_t * value )
+{
+    (void) value;
+    if ( value->name_length < 0 || value->name_length > 32 ) { return 0; } /* the length indexes the storage (§3.4) */
+    if ( value->icon_length < 0 || value->icon_length > 16 ) { return 0; } /* the length indexes the storage (§3.4) */
+    if ( !schema_tabledemo_loadout_config_fixed_fits_( &value->loadout ) ) { return 0; }
+    return 1;
+}
+
+/* RootConfig's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_root_config_fixed_fits_( const tabledemo_root_config_t * value )
+{
+    (void) value;
+    if ( value->version_note_length < 0 || value->version_note_length > 16 ) { return 0; } /* the length indexes the storage (§3.4) */
+    if ( value->weapons_count < 0 || value->weapons_count > 8 ) { return 0; } /* the count indexes the storage (§3.4) */
+    if ( value->profiles_count < 0 || value->profiles_count > 4 ) { return 0; } /* the count indexes the storage (§3.4) */
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->profiles_count; ++i )
+        {
+            if ( !schema_tabledemo_profile_config_fixed_fits_( &value->profiles[i] ) ) { return 0; }
+        }
+    }
+    return 1;
+}
+
 /* Debuff's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
    its declaration does not admit, which the fixed save refuses debug-only. */
 static SCHEMA_UNUSED int schema_tabledemo_debuff_fixed_write_check_( const tabledemo_debuff_t * value )
@@ -10033,7 +10100,7 @@ static SCHEMA_UNUSED int schema_tabledemo_profile_config_fixed_write_check_( con
 {
     (void) value;
     if ( value->name_length < 0 || value->name_length > 32 ) { return 0; } /* the declared length is the bound (§3.4) */
-    if ( !tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0; }
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0; }
     if ( value->icon_length < 0 || value->icon_length > 16 ) { return 0; } /* the declared length is the bound (§3.4) */
     if ( !schema_tabledemo_loadout_config_fixed_write_check_( &value->loadout ) ) { return 0; }
     return 1;
@@ -10045,7 +10112,7 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_fixed_write_check_( const 
 {
     (void) value;
     if ( value->version_note_length < 0 || value->version_note_length > 16 ) { return 0; } /* the declared length is the bound (§3.4) */
-    if ( !tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->version_note, (uint64_t) value->version_note_length ) ) { return 0; }
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->version_note, (uint64_t) value->version_note_length ) ) { return 0; }
     if ( value->weapons_count < 0 || value->weapons_count > 8 ) { return 0; } /* the declared count is the bound (§3.4) */
     {
         int64_t i;
@@ -10603,6 +10670,7 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_fixed_save( const tabledem
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_loadout_config_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_loadout_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -11055,6 +11123,7 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_fixed_save( const tabledem
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_profile_config_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_profile_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -11762,6 +11831,7 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_fixed_save( const tabledemo_r
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_root_config_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_root_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */

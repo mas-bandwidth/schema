@@ -9879,8 +9879,13 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBody( TableWriter & w, TableIds & ids,
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t TeamConfigSave( const TeamConfig & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = TeamConfigMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -10292,10 +10297,14 @@ inline int64_t TeamConfigMeasureMessages( const TeamConfig * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t TeamConfigSaveMessages( const TeamConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = TeamConfigMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -10374,8 +10383,13 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigSaveBody( TableWriter & w, TableIds & id
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GunnerConfigSave( const GunnerConfig & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = GunnerConfigMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -10727,10 +10741,14 @@ inline int64_t GunnerConfigMeasureMessages( const GunnerConfig * values, int64_t
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GunnerConfigSaveMessages( const GunnerConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = GunnerConfigMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -10827,8 +10845,13 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigSaveBody( TableWriter & w, TableIds & id
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t TurretConfigSave( const TurretConfig & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = TurretConfigMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11268,10 +11291,14 @@ inline int64_t TurretConfigMeasureMessages( const TurretConfig * values, int64_t
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t TurretConfigSaveMessages( const TurretConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = TurretConfigMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11413,8 +11440,13 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBody( TableWriter & w, TableIds & ids,
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t HullConfigSave( const HullConfig & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = HullConfigMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11944,10 +11976,14 @@ inline int64_t HullConfigMeasureMessages( const HullConfig * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t HullConfigSaveMessages( const HullConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = HullConfigMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -12155,8 +12191,13 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t KeyedConfigSave( const KeyedConfig & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = KeyedConfigMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -12758,10 +12799,14 @@ inline int64_t KeyedConfigMeasureMessages( const KeyedConfig * values, int64_t c
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t KeyedConfigSaveMessages( const KeyedConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = KeyedConfigMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -12878,8 +12923,13 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids,
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ScoreBoardSave( const ScoreBoard & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ScoreBoardMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -13333,10 +13383,14 @@ inline int64_t ScoreBoardMeasureMessages( const ScoreBoard * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ScoreBoardSaveMessages( const ScoreBoard * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ScoreBoardMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -13607,6 +13661,27 @@ TABLE_FIXED_INLINE bool KeyedConfigFixedFiniteBody( const KeyedConfig & value )
     return true;
 }
 
+// TeamConfig's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool TeamConfigFixedFits( const TeamConfig & value )
+{
+    (void) value;
+    if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// KeyedConfig's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool KeyedConfigFixedFits( const KeyedConfig & value )
+{
+    (void) value;
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
+    {
+        if ( !TeamConfigFixedFits( value.teams.slots[i] ) ) { return false; }
+    }
+    return true;
+}
+
 // TeamConfig's write contract (docs/SPEC.md §5.1): false when the record holds a
 // value its declaration does not admit, which FixedSave refuses debug-only.
 TABLE_FIXED_INLINE bool TeamConfigFixedWriteCheck( const TeamConfig & value )
@@ -13615,7 +13690,7 @@ TABLE_FIXED_INLINE bool TeamConfigFixedWriteCheck( const TeamConfig & value )
     int bad = 0;
     bad |= (int) ( value.spawn_count < 0 ) | (int) ( value.spawn_count > 64 );
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.banner, (uint64_t) value.banner_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length );
     return bad == 0;
 }
 
@@ -13773,6 +13848,7 @@ inline int64_t TeamConfigFixedSave( const TeamConfig * values, int64_t count, ui
 {
     const int64_t need = TeamConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !TeamConfigFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( TeamConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
@@ -15454,6 +15530,7 @@ inline int64_t KeyedConfigFixedSave( const KeyedConfig * values, int64_t count, 
 {
     const int64_t need = KeyedConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !KeyedConfigFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { if ( !KeyedConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( KeyedConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header

@@ -38,6 +38,17 @@ static SCHEMA_UNUSED int table_wire_utf16_paired( const uint16_t * units, int64_
     }
     return 1;
 }
+/* A FIXED WRITE KEEPS THE FIXED READER'S WIDE TEXT (docs/SPEC.md §5.1): the
+   fixed reader refuses a zero unit as text_ill_formed, so the fixed writer's
+   contract holds the storage to the pairing rule above AND to no zero unit. */
+static SCHEMA_UNUSED int table_wire_utf16_fixed_text( const uint16_t * units, int64_t count )
+{
+    int64_t i;
+    for ( i = 0; i < count; i++ ) {
+        if ( units[i] == 0 ) { return 0; }
+    }
+    return table_wire_utf16_paired( units, count );
+}
 static SCHEMA_UNUSED int64_t table_wire_utf16_clamp( const uint8_t * bytes, int64_t units, int64_t bound )
 {
     if ( units <= bound ) { return units; }

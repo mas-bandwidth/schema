@@ -5166,6 +5166,7 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_measure( const tabledemo_
 static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_save( const tabledemo_gunner_settings_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_gunner_settings_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_gunner_settings_save_body( &w, value ) ) { return -1; }
@@ -5344,6 +5345,9 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_save_messages(const table
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_gunner_settings_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5598,6 +5602,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_measure( const tabledemo_ship_
 static SCHEMA_UNUSED int64_t tabledemo_ship_entry_save( const tabledemo_ship_entry_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_ship_entry_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_ship_entry_save_body( &w, value ) ) { return -1; }
@@ -5896,6 +5901,9 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_save_messages(const tabledemo_
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_ship_entry_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -6190,6 +6198,7 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_measure( const tabledemo_
 static SCHEMA_UNUSED int64_t tabledemo_global_settings_save( const tabledemo_global_settings_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_global_settings_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_global_settings_save_body( &w, value ) ) { return -1; }
@@ -6499,6 +6508,9 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_save_messages(const table
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_global_settings_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -6917,6 +6929,7 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_measure( const tabledemo_pack
 static SCHEMA_UNUSED int64_t tabledemo_pack_config_save( const tabledemo_pack_config_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_pack_config_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_pack_config_save_body( &w, value ) ) { return -1; }
@@ -7337,6 +7350,9 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_save_messages(const tabledemo
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_pack_config_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -7810,13 +7826,69 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_pack_co
     }
 }
 
+/* GunnerSettings's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_fixed_fits_( const tabledemo_gunner_settings_t * value )
+{
+    (void) value;
+    if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; } /* the length indexes the storage (§3.4) */
+    return 1;
+}
+
+/* ShipEntry's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_ship_entry_fixed_fits_( const tabledemo_ship_entry_t * value )
+{
+    (void) value;
+    if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0; } /* the length indexes the storage (§3.4) */
+    if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0; } /* the count indexes the storage (§3.4) */
+    if ( value->gunner_present )
+    {
+        if ( !schema_tabledemo_gunner_settings_fixed_fits_( &value->gunner ) ) { return 0; }
+    }
+    return 1;
+}
+
+/* GlobalSettings's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_global_settings_fixed_fits_( const tabledemo_global_settings_t * value )
+{
+    (void) value;
+    if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0; } /* the length indexes the storage (§3.4) */
+    return 1;
+}
+
+/* PackConfig's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_pack_config_fixed_fits_( const tabledemo_pack_config_t * value )
+{
+    (void) value;
+    if ( !schema_tabledemo_global_settings_fixed_fits_( &value->global ) ) { return 0; }
+    {
+        int64_t i;
+        for ( i = 0; i < 3; ++i )
+        {
+            if ( !schema_tabledemo_ship_entry_fixed_fits_( &value->ships[i] ) ) { return 0; }
+        }
+    }
+    if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0; } /* the count indexes the storage (§3.4) */
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->reserves_count; ++i )
+        {
+            if ( !schema_tabledemo_ship_entry_fixed_fits_( &value->reserves[i] ) ) { return 0; }
+        }
+    }
+    return 1;
+}
+
 /* GunnerSettings's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
    its declaration does not admit, which the fixed save refuses debug-only. */
 static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_fixed_write_check_( const tabledemo_gunner_settings_t * value )
 {
     (void) value;
     if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; } /* the declared length is the bound (§3.4) */
-    if ( !tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) ) { return 0; }
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) ) { return 0; }
     return 1;
 }
 
@@ -7826,7 +7898,7 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_fixed_write_check_( const t
 {
     (void) value;
     if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0; } /* the declared length is the bound (§3.4) */
-    if ( !tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) ) { return 0; }
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) ) { return 0; }
     if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0; } /* the declared count is the bound (§3.4) */
     {
         int64_t i;
@@ -7850,7 +7922,7 @@ static SCHEMA_UNUSED int schema_tabledemo_global_settings_fixed_write_check_( co
     if ( ( value->tick_rate < 1 ) || ( value->tick_rate > 240 ) ) { return 0; }
     if ( (uint64_t) value->difficulty > 3u ) { return 0; } /* an enum ordinal outside its set */
     if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0; } /* the declared length is the bound (§3.4) */
-    if ( !tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) ) { return 0; }
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) ) { return 0; }
     return 1;
 }
 
@@ -7998,6 +8070,7 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_save( const tablede
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_gunner_settings_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_gunner_settings_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -8315,6 +8388,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_save( const tabledemo_sh
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_ship_entry_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_ship_entry_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -8622,6 +8696,7 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_save( const tablede
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_global_settings_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_global_settings_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -9072,6 +9147,7 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_save( const tabledemo_p
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_pack_config_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_pack_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */

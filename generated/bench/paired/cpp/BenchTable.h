@@ -6118,8 +6118,13 @@ BENCH_TABLE_INLINE bool MixedEntitySaveBody( TableWriter & w, TableIds & ids, co
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedEntitySave( const MixedEntity & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = MixedEntityMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -7587,10 +7592,14 @@ inline int64_t MixedEntityMeasureMessages( const MixedEntity * values, int64_t c
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedEntitySaveMessages( const MixedEntity * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = MixedEntityMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -7667,8 +7676,13 @@ BENCH_TABLE_INLINE bool MixedStatSaveBody( TableWriter & w, TableIds & ids, cons
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedStatSave( const MixedStat & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = MixedStatMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -8061,10 +8075,14 @@ inline int64_t MixedStatMeasureMessages( const MixedStat * values, int64_t count
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedStatSaveMessages( const MixedStat * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = MixedStatMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -8153,8 +8171,13 @@ BENCH_TABLE_INLINE bool MixedHitEventSaveBody( TableWriter & w, TableIds & ids, 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedHitEventSave( const MixedHitEvent & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = MixedHitEventMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -8731,10 +8754,14 @@ inline int64_t MixedHitEventMeasureMessages( const MixedHitEvent * values, int64
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedHitEventSaveMessages( const MixedHitEvent * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = MixedHitEventMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -8811,8 +8838,13 @@ BENCH_TABLE_INLINE bool MixedChatEventSaveBody( TableWriter & w, TableIds & ids,
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedChatEventSave( const MixedChatEvent & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = MixedChatEventMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -9240,10 +9272,14 @@ inline int64_t MixedChatEventMeasureMessages( const MixedChatEvent * values, int
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedChatEventSaveMessages( const MixedChatEvent * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = MixedChatEventMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -9320,8 +9356,13 @@ BENCH_TABLE_INLINE bool MixedPickupEventSaveBody( TableWriter & w, TableIds & id
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedPickupEventSave( const MixedPickupEvent & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = MixedPickupEventMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -9749,10 +9790,14 @@ inline int64_t MixedPickupEventMeasureMessages( const MixedPickupEvent * values,
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedPickupEventSaveMessages( const MixedPickupEvent * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = MixedPickupEventMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -10198,8 +10243,13 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t BenchMixedSave( const BenchMixed & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = BenchMixedMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -12970,10 +13020,14 @@ inline int64_t BenchMixedMeasureMessages( const BenchMixed * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t BenchMixedSaveMessages( const BenchMixed * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = BenchMixedMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -13507,6 +13561,18 @@ TABLE_FIXED_INLINE bool BenchMixedFixedFiniteBody( const BenchMixed & value )
     return true;
 }
 
+// BenchMixed's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool BenchMixedFixedFits( const BenchMixed & value )
+{
+    (void) value;
+    if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // the count indexes the storage (§3.4)
+    if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; } // the count indexes the storage (§3.4)
+    if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // the length indexes the storage (§3.4)
+    if ( value.payload_length < 0 || value.payload_length > 16 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
 // MixedEntity's write contract (docs/SPEC.md §5.1): false when the record holds a
 // value its declaration does not admit, which FixedSave refuses debug-only.
 TABLE_FIXED_INLINE bool MixedEntityFixedWriteCheck( const MixedEntity & value )
@@ -13623,7 +13689,7 @@ TABLE_FIXED_INLINE bool BenchMixedFixedWriteCheck( const BenchMixed & value )
         default: break;
     }
     if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length );
     if ( value.payload_length < 0 || value.payload_length > 16 ) { return false; } // the declared length is the bound (§3.4)
     bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
     bad |= (int) ( value.ping > 64000 );

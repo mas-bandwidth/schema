@@ -176,6 +176,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedClampBodyFn(st)
 	}
+	/* THE STORAGE BOUND, in the same order (docs/SPEC.md §5.1): the save asks
+	   it of every record before anything else, in every build. */
+	for _, st := range own {
+		g.emitFixedFitsFn(st)
+	}
 	/* THE WRITER'S CONTRACT, in the same order (docs/SPEC.md §5.1): the save
 	   asks it of every record before the first byte, debug-only. */
 	for _, st := range own {
@@ -352,10 +357,12 @@ func (g *tableGen) emitFixedWriteText(f *ir.Field, base int64, buf, val, ind str
 }
 
 /*
-fixedWriteBound is the WRITE-SIDE CHECK, DEBUG-ONLY BY RULE: NDEBUG removes
+fixedWriteBound is the STORE'S OWN ASSERT on a count or a length, for a
 
-	schema_assert exactly as it removes assert. The read side checks the same
-	number in every build and counts the clamp.
+	caller that reaches the write body directly: NDEBUG removes it. The fixed
+	save never relies on it — <t>_fixed_fits refuses the same number in every
+	build before the first byte — and the read side checks the same number in
+	every build and counts the clamp.
 */
 func (g *tableGen) fixedWriteBound(expr string, bound int64, what, ind string) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); /* the declared %s is the bound (§3.4) */\n", ind, expr, expr, bound, what)
@@ -683,6 +690,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    const int64_t need = %s( count );\n", g.api(st.Name, "fixed_measure"))
 	g.pf("    uint8_t * at;\n    int64_t k;\n")
 	g.pf("    if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }\n")
+	if ir.TableFixedStorageBoundNeeded(st) {
+		// A COUNT OR A LENGTH PAST ITS STORAGE IS REFUSED IN EVERY BUILD
+		// (docs/SPEC.md §5.1), FIRST: every later question and the store walk
+		// the counts and lengths this one bounds. ONE LINE, the comment
+		// leading, for formatCompactCFunctions as below.
+		g.pf("    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !%s( values + k ) ) return -1;\n", g.sym(st.Name, "fixed_fits"))
+	}
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
 		// §3.3): the whole batch is checked before one byte is written
@@ -1243,8 +1257,10 @@ THE WRITER'S CONTRACT, the C twin of the reference's <T>FixedWriteCheck
 	(docs/SPEC.md §5.1): 0 when a record holds a value its declaration does not
 	admit — a ranged integer off its min or max, a bits(N) value past N, an
 	enum ordinal or a union tag outside its set, a string that is not
-	well-formed UTF-8 or a wstring with an unpaired surrogate, or a count or a
-	used length past its declared bound. It walks what the store walks and
+	well-formed UTF-8 or holds a zero byte, a wstring with an unpaired
+	surrogate or a zero unit (the fixed reader refuses both as text_ill_formed),
+	or a count or a used length past its declared bound (which
+	<t>_fixed_fits has already refused in every build). It walks what the store walks and
 	asks each count and length BEFORE the loop or the text it bounds, so it
 	never reads past the storage it checks. The scalar bounds are the read
 	side's own conditions (emitFixedClampElement under fixedCheck). A ranged
@@ -1300,9 +1316,11 @@ func (g *tableGen) emitFixedWriteCheckPayload(f *ir.Field, val string, indent in
 		g.pf("%sif ( %s < 0 || %s > %d ) { return 0; } /* the declared length is the bound (§3.4) */\n", ind, length, length, f.Type.Size)
 		switch f.Type.Kind {
 		case ir.TString:
-			g.pf("%sif ( !table_wire_utf8_well_formed( (const uint8_t *) %s%s, (uint64_t) %s ) ) { return 0; }\n", ind, val, f.Name, length)
+			/* well-formed and no zero byte: the fixed reader's own rule (§3.4) */
+			g.pf("%sif ( !table_wire_utf8( (const uint8_t *) %s%s, (uint64_t) %s ) ) { return 0; }\n", ind, val, f.Name, length)
 		case ir.TWString:
-			g.pf("%sif ( !table_wire_utf16_paired( %s%s, (int64_t) %s ) ) { return 0; }\n", ind, val, f.Name, length)
+			/* paired and no zero unit: the fixed reader's own rule (§3.4) */
+			g.pf("%sif ( !table_wire_utf16_fixed_text( %s%s, (int64_t) %s ) ) { return 0; }\n", ind, val, f.Name, length)
 		}
 	default:
 		g.emitFixedWriteCheckElement(f, val+f.Name, indent)

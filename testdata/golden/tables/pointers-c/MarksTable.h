@@ -5163,6 +5163,7 @@ static SCHEMA_UNUSED int64_t graphdemo_tally_measure( const graphdemo_tally_t * 
 static SCHEMA_UNUSED int64_t graphdemo_tally_save( const graphdemo_tally_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = graphdemo_tally_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     graphdemo_table_write_ids_t vocabulary; graphdemo_table_writer_t w = graphdemo_table_writer_make( buffer, capacity, &vocabulary );
     graphdemo_table_writer_put8( &w, 1 );
     if ( !graphdemo_tally_save_body( &w, value ) ) { return -1; }
@@ -5327,6 +5328,9 @@ static SCHEMA_UNUSED int64_t graphdemo_tally_save_messages(const graphdemo_tally
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=graphdemo_tally_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=graphdemo_table_bit_writer(buffer,capacity);
  graphdemo_table_bit_put(&w,2,8);
  graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);

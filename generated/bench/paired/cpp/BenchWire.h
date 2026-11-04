@@ -478,12 +478,14 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
         int32_t fixed_value = value.server_time;
         write_fixed( stream, fixed_value, 24, 8, 0, 65535 );
     }
+    if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.entities_count ) >= int32_t( 1 ) && int32_t( value.entities_count ) <= int32_t( 8 ) );
     write_bits( stream, uint32_t( value.entities_count ) - uint32_t( 1 ), 3 );
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
         schema_write_object( stream, WriteMixedEntity, value.entities[i] );
     }
+    if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.stats_count ) >= int32_t( 0 ) && int32_t( value.stats_count ) <= int32_t( 80 ) );
     write_bits( stream, uint32_t( value.stats_count ), 7 );
     for ( int32_t i = 0; i < value.stats_count; i++ )
@@ -495,6 +497,7 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
     {
         write_bits( stream, value.loadout[i], 8 );
     }
+    if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     for ( int32_t i = 0; i < value.player_name_length; i++ )
     {
         serialize_assert( value.player_name[i] != 0 );
@@ -502,6 +505,7 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
     serialize_assert( int32_t( value.player_name_length ) >= int32_t( 0 ) && int32_t( value.player_name_length ) <= int32_t( 15 ) );
     write_bits( stream, uint32_t( value.player_name_length ), 4 );
     write_bytes( stream, value.player_name, value.player_name_length );
+    if ( value.payload_length < 0 || value.payload_length > 16 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.payload_length ) >= int32_t( 0 ) && int32_t( value.payload_length ) <= int32_t( 16 ) );
     write_bits( stream, uint32_t( value.payload_length ), 5 );
     write_bytes( stream, value.payload, value.payload_length );

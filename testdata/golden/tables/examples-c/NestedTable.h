@@ -5049,6 +5049,7 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_measure( const tabledemo_a
 static SCHEMA_UNUSED int64_t tabledemo_archive_config_save( const tabledemo_archive_config_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_archive_config_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_archive_config_save_body( &w, value ) ) { return -1; }
@@ -5239,6 +5240,9 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_save_messages(const tabled
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_archive_config_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5387,6 +5391,15 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_archive
     schema_tabledemo_root_config_fixed_clamp_body_( &value->root, clamped, damaged );
     (*clamped) += (int) ( value->count < 0 ) | (int) ( value->count > 100 );
     value->count = ( value->count < 0 ) ? 0 : ( ( value->count > 100 ) ? 100 : value->count );
+}
+
+/* ArchiveConfig's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_archive_config_fixed_fits_( const tabledemo_archive_config_t * value )
+{
+    (void) value;
+    if ( !schema_tabledemo_root_config_fixed_fits_( &value->root ) ) { return 0; }
+    return 1;
 }
 
 /* ArchiveConfig's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
@@ -5928,6 +5941,7 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_fixed_save( const tabledem
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_archive_config_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_archive_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */

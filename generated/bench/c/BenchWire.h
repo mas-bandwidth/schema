@@ -1059,6 +1059,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serializ
             return 0;
         }
     }
+    if ( value->entities_count < 0 || value->entities_count > 8 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->entities_count >= 1 && value->entities_count <= 8 );
     if ( !serialize_write_int( stream, value->entities_count, 1, 8 ) )
     {
@@ -1074,6 +1075,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serializ
             }
         }
     }
+    if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->stats_count >= 0 && value->stats_count <= 80 );
     if ( !serialize_write_int( stream, value->stats_count, 0, 80 ) )
     {
@@ -1103,6 +1105,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serializ
             }
         }
     }
+    if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     {
         int32_t i;
         for ( i = 0; i < value->player_name_length; i++ )
@@ -1118,6 +1121,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serializ
     {
         return 0;
     }
+    if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     if ( !serialize_write_int( stream, value->payload_length, 0, 16 ) )
     {
         return 0;

@@ -26,6 +26,7 @@ extern "C" {
 /* Writes W13. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w13( serialize_write_stream_t * stream, const EXAMPLE_W13 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 12 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 12 );
     if ( !serialize_write_int( stream, value->items_count, 0, 12 ) )
     {
@@ -74,6 +75,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w13( serialize_read_s
 /* Writes W17. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w17( serialize_write_stream_t * stream, const EXAMPLE_W17 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 9 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 9 );
     if ( !serialize_write_int( stream, value->items_count, 0, 9 ) )
     {
@@ -122,6 +124,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w17( serialize_read_s
 /* Writes W26. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w26( serialize_write_stream_t * stream, const EXAMPLE_W26 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 6 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 6 );
     if ( !serialize_write_int( stream, value->items_count, 0, 6 ) )
     {
@@ -170,6 +173,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w26( serialize_read_s
 /* Writes W1. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w1( serialize_write_stream_t * stream, const EXAMPLE_W1 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 20 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 20 );
     if ( !serialize_write_int( stream, value->items_count, 0, 20 ) )
     {
@@ -218,6 +222,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w1( serialize_read_st
 /* Writes W52. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w52( serialize_write_stream_t * stream, const EXAMPLE_W52 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 3 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 3 );
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
@@ -278,6 +283,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w52( serialize_read_s
 /* Writes W50. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w50( serialize_write_stream_t * stream, const EXAMPLE_W50 * value )
 {
+    if ( value->items_count < 0 || value->items_count > 3 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 3 );
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
@@ -425,6 +431,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_tri3( serialize_read_
 /* Writes ArrTri3. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_tri3( serialize_write_stream_t * stream, const example_arr_tri3_t * value )
 {
+    if ( value->items_count < 0 || value->items_count > 10 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 10 );
     if ( !serialize_write_int( stream, value->items_count, 0, 10 ) )
     {
@@ -673,6 +680,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_strs( serialize_wri
     {
         return 0;
     }
+    if ( value->s_length < 0 || value->s_length > 8 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     {
         int32_t i;
         for ( i = 0; i < value->s_length; i++ )
@@ -688,6 +696,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_strs( serialize_wri
     {
         return 0;
     }
+    if ( value->b_length < 0 || value->b_length > 8 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     if ( !serialize_write_int( stream, value->b_length, 0, 8 ) )
     {
         return 0;
@@ -757,6 +766,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_nested( seriali
     {
         return 0;
     }
+    if ( value->items_count < 0 || value->items_count > 4 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 4 );
     if ( !serialize_write_int( stream, value->items_count, 0, 4 ) )
     {
