@@ -477,6 +477,7 @@ namespace Realworld
                     return false;
                 }
             }
+            Debug.Assert(double.IsFinite(value.F002F64), "write refused: a NaN or an infinity in a double");
             if (!stream.SerializeDouble(ref value.F002F64))
             {
                 return false;
@@ -508,6 +509,7 @@ namespace Realworld
                     return false;
                 }
             }
+            Debug.Assert(float.IsFinite(value.F007F32), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.F007F32))
             {
                 return false;
@@ -524,6 +526,7 @@ namespace Realworld
                     return false;
                 }
             }
+            Debug.Assert(float.IsFinite(value.F010F32), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.F010F32))
             {
                 return false;
@@ -540,6 +543,7 @@ namespace Realworld
             }
             if (value.F012Bool)
             {
+                Debug.Assert(float.IsFinite(value.F013F32), "write refused: a NaN or an infinity in a float");
                 if (!stream.SerializeFloat(ref value.F013F32))
                 {
                     return false;
@@ -577,10 +581,12 @@ namespace Realworld
                     return false;
                 }
             }
+            Debug.Assert(double.IsFinite(value.F019F64), "write refused: a NaN or an infinity in a double");
             if (!stream.SerializeDouble(ref value.F019F64))
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.F020F32), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.F020F32))
             {
                 return false;
@@ -589,6 +595,7 @@ namespace Realworld
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.F022F32), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.F022F32))
             {
                 return false;
@@ -597,6 +604,7 @@ namespace Realworld
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.F024F32), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.F024F32))
             {
                 return false;
@@ -627,6 +635,7 @@ namespace Realworld
                     return false;
                 }
             }
+            Debug.Assert(float.IsFinite(value.F030F32), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.F030F32))
             {
                 return false;
@@ -675,6 +684,7 @@ namespace Realworld
             }
             if (value.F043Bool)
             {
+                Debug.Assert(float.IsFinite(value.F044F32), "write refused: a NaN or an infinity in a float");
                 if (!stream.SerializeFloat(ref value.F044F32))
                 {
                     return false;
@@ -693,6 +703,7 @@ namespace Realworld
                     }
                 }
             }
+            Debug.Assert(double.IsFinite(value.F048F64), "write refused: a NaN or an infinity in a double");
             if (!stream.SerializeDouble(ref value.F048F64))
             {
                 return false;
@@ -718,6 +729,7 @@ namespace Realworld
                         return false;
                     }
                 }
+                Debug.Assert(float.IsFinite(value.F053F32), "write refused: a NaN or an infinity in a float");
                 if (!stream.SerializeFloat(ref value.F053F32))
                 {
                     return false;
@@ -744,10 +756,12 @@ namespace Realworld
                     return false;
                 }
             }
+            Debug.Assert(float.IsFinite(value.F058F32), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.F058F32))
             {
                 return false;
             }
+            Debug.Assert(double.IsFinite(value.F059F64), "write refused: a NaN or an infinity in a double");
             if (!stream.SerializeDouble(ref value.F059F64))
             {
                 return false;
@@ -897,6 +911,7 @@ namespace Realworld
                     return false;
                 }
             }
+            Debug.Assert(double.IsFinite(value.F087F64), "write refused: a NaN or an infinity in a double");
             if (!stream.SerializeDouble(ref value.F087F64))
             {
                 return false;

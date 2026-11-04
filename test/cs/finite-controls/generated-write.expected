@@ -1,0 +1,10 @@
+FAILED: finite: a float32 write of quiet NaN is refused by the generated writer's assert
+FAILED: finite: a float32 write of signalling NaN is refused by the generated writer's assert
+FAILED: finite: a float32 write of negative NaN with a payload is refused by the generated writer's assert
+FAILED: finite: a float32 write of +inf is refused by the generated writer's assert
+FAILED: finite: a float32 write of -inf is refused by the generated writer's assert
+FAILED: finite: a float64 write of quiet NaN is refused by the generated writer's assert
+FAILED: finite: a float64 write of signalling NaN is refused by the generated writer's assert
+FAILED: finite: a float64 write of negative NaN with a payload is refused by the generated writer's assert
+FAILED: finite: a float64 write of +inf is refused by the generated writer's assert
+FAILED: finite: a float64 write of -inf is refused by the generated writer's assert

@@ -1574,6 +1574,7 @@ namespace Example
                     }
                 }
             }
+            Debug.Assert(float.IsFinite(value.FloatValue), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.FloatValue))
             {
                 return false;
@@ -1585,6 +1586,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(double.IsFinite(value.DoubleValue), "write refused: a NaN or an infinity in a double");
             if (!stream.SerializeDouble(ref value.DoubleValue))
             {
                 return false;
