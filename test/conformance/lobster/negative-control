@@ -20,7 +20,8 @@
 #           dropping the 4096 bound (docs/LAYERS/1-framing.md F6): exactly
 #           `lobster / framing` red, on its frame_entries_4097 row; `wire`,
 #           `report` and `retain` green.
-#   cycle   load.lobster's cycle check is taken out: a cyclic wire loads
+#   cycle   load.lobster's framing and decoded-graph cycle checks are taken
+#           out: a cyclic wire loads
 #           instead of being refused as malformed (docs/SPEC-TABLES.md §3.1,
 #           §4), so exactly `lobster / framing` goes red, on its node_cycle_*
 #           rows; `wire`, `report` and `retain` green.
@@ -36,7 +37,9 @@ mkdir -p "$out"
 case "$mode" in
 report)
     source=internal/codegen/lobstertable/runtime/load.lobster
-    sed '/^        if not found:$/ { n; s/^            rep\.unknown++$/            return read_refuse(rep, "negative_control_unknown")/; }' "$source" > "$out/runtime.lobster"
+    # Keep the return inside a conditional block: Lobster refuses a direct
+    # return followed by the original skip/capture statements in one block.
+    sed '/^        if not found:$/ { n; s/^            rep\.unknown++$/            if not found: return read_refuse(rep, "negative_control_unknown")/; }' "$source" > "$out/runtime.lobster"
     ;;
 framing)
     source=internal/codegen/lobstertable/runtime/load.lobster
@@ -44,7 +47,8 @@ framing)
     ;;
 cycle)
     source=internal/codegen/lobstertable/runtime/load.lobster
-    sed 's/^        if not st\.report\.malformed and load_cyclic(st, root):$/        if false and load_cyclic(st, root):/' "$source" > "$out/runtime.lobster"
+    sed -e 's/^        if not st\.report\.malformed and load_cyclic(st, root):$/        if false and load_cyclic(st, root):/' \
+        -e 's/^        if marks\[target\] == 1:$/        if false and marks[target] == 1:/' "$source" > "$out/runtime.lobster"
     ;;
 walk)
     source=internal/codegen/lobstertable/runtime/json.lobster
