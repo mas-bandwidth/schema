@@ -1,0 +1,38 @@
+// Framing.schema: the variable-table reader for the form-1 framing corpus.
+// Its vocabulary matches R1 so the wire pins stay unchanged. R1 remains
+// fixed: routing form-1 framing through it would refuse before walking bytes.
+package tblframe
+
+enum Grade { Bronze, Silver, Gold }
+
+type Buff
+{
+    multiplier float32 = 1.0
+}
+
+type Boost
+{
+    power int32 = 0
+}
+
+type Ward
+{
+    charge float32 = 0.0
+}
+
+union Effect
+{
+    boost Boost
+    ward  Ward
+    ping
+    amount int32
+}
+
+table Cfg
+{
+    grade  Grade
+    effect Effect
+    buff   Buff
+    grades [..4]Grade
+    tally  [Grade]int32
+}

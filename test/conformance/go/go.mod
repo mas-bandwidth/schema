@@ -142,3 +142,7 @@ replace widelistdemo => ../../../build/tables-generated-go/widelist
 require featurewitnesses v0.0.0
 
 replace featurewitnesses => ../../../build/tables-generated-go/featurewitnesses
+
+require tblframe v0.0.0
+
+replace tblframe => ../../../build/tables-generated-go/framing

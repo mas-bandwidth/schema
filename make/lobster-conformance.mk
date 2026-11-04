@@ -10,12 +10,12 @@
 # test/conformance/lobster/negative-control holds all three and says what each
 # one requires.
 #
-# conformance-negative-control-lobster       the load report's unknown counter
-#                                            (report, framing and retain red,
-#                                            wire green)
+# conformance-negative-control-lobster       refusal of a valid unknown field
+#                                            (report, framing, retain and
+#                                            retain-save red; wire green)
 # conformance-negative-control-lobster-walk  the text walk's field-key match
-#                                            (I11: json-read and json-hostile
-#                                            red, json-write and wire green)
+#                                            (I11: json-read, json-hostile and
+#                                            cook-write red; json-write and wire green)
 # conformance-negative-control-lobster-framing the id table's 4096 entry bound
 #                                            (docs/LAYERS/1-framing.md F6:
 #                                            framing red alone)

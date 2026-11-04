@@ -28,6 +28,7 @@ import (
 
 	"tbla1"
 	"tbla2"
+	"tblframe"
 	"tblk1"
 	"tblk2"
 	"tblm1"
@@ -765,6 +766,21 @@ var codecTable = []codec{
 	row("listdemo", "Bounded", listdemo.BoundedReset, listdemo.BoundedLoad, listdemo.BoundedMeasure, listdemo.BoundedSave, listdemo.BoundedFromJSON, listdemo.BoundedToJSONMeasure, listdemo.BoundedToJSON, listdemo.BoundedCookMeasure, listdemo.BoundedCookFrom, func(r *listdemo.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
+	regionRow("tblframe", "Cfg", tblframe.CfgLoadMeasure, tblframe.CfgLoad, tblframe.CfgMeasure, tblframe.CfgSave,
+		func(text []byte, r *tblframe.TableReport) (*tblframe.Cfg, []byte, bool) {
+			var b tblframe.CfgBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := tblframe.CfgFromJSON(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, tblframe.CfgToJSONMeasure, tblframe.CfgToJSON, tblframe.CfgCookMeasure, tblframe.CfgCookFrom, func(r *tblframe.TableReport) report {
+			return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+		}),
 	row("tblr1", "Cfg", tblr1.CfgReset, tblr1.CfgLoad, tblr1.CfgMeasure, tblr1.CfgSave, tblr1.CfgFromJSON, tblr1.CfgToJSONMeasure, tblr1.CfgToJSON, tblr1.CfgCookMeasure, tblr1.CfgCookFrom, func(r *tblr1.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),

@@ -8,17 +8,14 @@
 # required red on the named surfaces with their neighbours green. No tracked
 # file is written, so an interrupt leaves no sabotaged tree.
 #
-#   report  load.lobster counts every unknown field twice: the surfaces that
-#           print the load's report red (`lobster / report`,
-#           `lobster / framing`, whose answer opens with the same line, and
-#           `lobster / retain`, whose answer carries the same counters) and
-#           nothing else; `wire`, `json-read` and `retain-save` green (the
-#           sabotage moves no byte).
+#   report  load.lobster refuses an otherwise valid unknown field. The
+#           acceptance/value surfaces report, framing, retain and retain-save
+#           turn red; wire and JSON reads stay green. Local counters are not
+#           an oracle and changing them alone is deliberately harmless.
 #   walk    json.lobster's field-key match never matches the first declared
-#           field: the text READER's two surfaces red (`lobster / json-read`,
-#           and `lobster / json-hostile`, which reads through the same match)
-#           and nothing else; `json-write`, `wire` and `cook-write` green, so
-#           the break is the text walk's and the matrix localizes it (I11).
+#           field: json-read, json-hostile and cook-write (whose input recipes
+#           use JSON) turn red. Json-write and wire stay green, locating the
+#           break in the text reader (I11).
 #   framing load.lobster's id table takes any entry count the buffer holds,
 #           dropping the 4096 bound (docs/LAYERS/1-framing.md F6): exactly
 #           `lobster / framing` red, on its frame_entries_4097 row; `wire`,
@@ -39,7 +36,7 @@ mkdir -p "$out"
 case "$mode" in
 report)
     source=internal/codegen/lobstertable/runtime/load.lobster
-    sed 's/^\( *\)rep\.unknown++$/\1rep.unknown += 2/' "$source" > "$out/runtime.lobster"
+    sed '/^        if not found:$/ { n; s/^            rep\.unknown++$/            return read_refuse(rep, "negative_control_unknown")/; }' "$source" > "$out/runtime.lobster"
     ;;
 framing)
     source=internal/codegen/lobstertable/runtime/load.lobster
@@ -86,10 +83,10 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *lobster / [a-z-]+' "$out/log" | sed 's/^ *lobster \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="framing report retain " ; green="wire json-read retain-save" ;;
+report) want="framing report retain retain-save " ; green="wire json-read cook-write" ;;
 framing) want="framing " ; green="wire report retain" ;;
 cycle)  want="framing " ; green="wire report retain" ;;
-walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the lobster $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2
