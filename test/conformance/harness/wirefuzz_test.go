@@ -11,10 +11,8 @@ import (
 	"time"
 )
 
-// The C++ CatalogLoadMeasure returns 400 bytes (112 attribution) for this
-// mutant. Four blob records command 72 data bytes: retaining only their type
-// identities in the oracle used to omit all four and incorrectly demand 328.
-func TestFileFuzzMeasureIncludesBlobLengths(t *testing.T) {
+// A mutation that changes a node identity cannot leave a partial blob graph.
+func TestFileFuzzUnknownNodeCannotLeavePartialGraph(t *testing.T) {
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "blobdemo", "Catalog", false, false)
 	if err != nil {
@@ -28,7 +26,7 @@ func TestFileFuzzMeasureIncludesBlobLengths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !answer.exact || answer.bytes != 400 || answer.report != (Counts{Unknown: 1}) {
+	if answer.accepted || len(answer.encoded) != 0 {
 		t.Fatalf("file framing: %+v", answer)
 	}
 }
@@ -47,7 +45,7 @@ func TestFileFuzzCountCapIsFramingRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !answer.measureRefused || answer.bytes != -1 || answer.report.Malformed {
+	if answer.accepted || len(answer.encoded) != 0 {
 		t.Fatalf("count cap: %+v", answer)
 	}
 	if verdict := wireVerdict(root, legReply{measure: -1}, answer, len(wire)); verdict != "" {
@@ -58,10 +56,8 @@ func TestFileFuzzCountCapIsFramingRefusal(t *testing.T) {
 	}
 }
 
-// A mutable reader has no region preflight. Its int32 count-cap refusal
-// discards the partial value without the region's recovery event.
+// Builder and region readers refuse the same oversized or truncated count.
 func TestBuilderFuzzChecksCountRefusalWithoutRegionPreflight(t *testing.T) {
-	t.Skip("layer 3: the pipe answer's malformed flag and the builder-over-region count-cap precedence, retired per docs/plans/strict-only.md (b)")
 	_, _, units := corpus(t)
 	for _, tc := range []struct{ name, table string }{
 		{"list_count_cap", "Save"}, {"list_count_cross_length", "Album"},
@@ -80,16 +76,17 @@ func TestBuilderFuzzChecksCountRefusalWithoutRegionPreflight(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if answer.measureRefused || answer.report.Malformed || !answer.encFail || !answer.builderStopped {
+			if answer.accepted || len(answer.encoded) != 0 {
 				t.Fatalf("builder count cap: %+v", answer)
 			}
 			reply := legReply{loaded: false, measure: -1, report: answer.report, saveFail: true}
 			if verdict := wireVerdict(root, reply, answer, len(wire)); verdict != "" {
 				t.Fatal(verdict)
 			}
-			reply.report.Malformed = true
+			reply.loaded = true
+			reply.report = Counts{}
 			if verdict := wireVerdict(root, reply, answer, len(wire)); verdict == "" {
-				t.Fatal("builder gate ignored an invented region recovery event")
+				t.Fatal("builder gate accepted an oversized or truncated count")
 			}
 		})
 	}
@@ -174,7 +171,7 @@ func TestWireFuzzDriverStall(t *testing.T) {
 // lands the pattern is a divergence.
 func TestWireVerdictNonFiniteIsARefusal(t *testing.T) {
 	root := &wireRoot{unit: "probe", root: "Root"}
-	answer := oracleAnswer{nonFinite: true}
+	answer := oracleAnswer{}
 	if verdict := wireVerdict(root, legReply{loaded: true, report: Counts{Refused: true}, saveFail: true}, answer, 16); verdict != "" {
 		t.Fatalf("a leg that refused the non-finite float diverged: %s", verdict)
 	}
@@ -183,27 +180,18 @@ func TestWireVerdictNonFiniteIsARefusal(t *testing.T) {
 	}
 }
 
-// A REFUSAL THE ORACLE DID NOT REACH IS A DIVERGENCE (docs/SPEC-TABLES.md
-// §4): damage ends the body it is met in, so a leg that refuses a wire the
-// oracle reads as malformed has reached a float the rule does not reach, or
-// stopped short of one it does.
-func TestWireVerdictMalformedIsNotARefusal(t *testing.T) {
-	t.Skip("layer 3: the pipe's malformed flag as a verdict apart from refused, retired per docs/plans/strict-only.md (b)")
-	root := &wireRoot{unit: "probe", root: "Root"}
+// Refusal diagnostics and detection order do not change the one verdict.
+func TestWireVerdictRefusalDiagnosticsDoNotMatter(t *testing.T) {
 	answer := oracleAnswer{report: Counts{Malformed: true}}
-	if verdict := wireVerdict(root, legReply{report: Counts{Malformed: true}, saveFail: true}, answer, 16); verdict != "" {
-		t.Fatalf("a leg that answered malformed diverged: %s", verdict)
-	}
-	if verdict := wireVerdict(root, legReply{report: Counts{Malformed: true, Refused: true}, saveFail: true}, answer, 16); verdict == "" {
-		t.Fatal("a leg that refused a wire the oracle reads as malformed did not diverge")
+	for _, report := range []Counts{{Malformed: true}, {Refused: true}, {Malformed: true, Refused: true}} {
+		if verdict := wireVerdict(nil, legReply{loaded: true, report: report}, answer, 16); verdict != "" {
+			t.Fatalf("refusal diagnostics changed the verdict: %s", verdict)
+		}
 	}
 }
 
-// Permanent seed2 map_pairs differential: the repeated widened key retains
-// its entry; the unknown node-table ID and the earlier incompatible key value
-// still report their own events. SPEC-TABLES 2.8 uses the final key occurrence.
-func TestFileFuzzRepeatedKeyWidenKeepsMap(t *testing.T) {
-	t.Skip("layer 3: last-wins on a repeated map key and the oracle's counters, retired per docs/plans/strict-only.md (b)")
+// The pinned repeated-key mutant must refuse the whole map.
+func TestFileFuzzRepeatedKeyWidenRefuses(t *testing.T) {
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "mapdemo", "Pairs", false, false)
 	if err != nil {
@@ -217,7 +205,13 @@ func TestFileFuzzRepeatedKeyWidenKeepsMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer.report != (Counts{Unknown: 2, KindMismatch: 1, Widened: 1}) || answer.bytes != 88 {
+	if answer.accepted || len(answer.encoded) != 0 {
 		t.Fatalf("final widened key: %+v", answer)
+	}
+}
+
+func TestWireFuzzFiniteExemptionIsRetired(t *testing.T) {
+	if err := wireFuzz(nil, wireFuzzOptions{finiteOwed: "legacy"}); err == nil || !strings.Contains(err.Error(), "every mutant must be compared") {
+		t.Fatalf("non-finite comparison exemption survived: %v", err)
 	}
 }
