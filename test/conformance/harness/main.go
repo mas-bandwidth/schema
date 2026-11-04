@@ -9,7 +9,7 @@
 //	harness generate              rewrite the generated half of the data
 //	harness run                   run every registered driver, print the matrix
 //	harness matrix                print the CI matrix the registry implies
-//	harness wire-fuzz             fuzz one language's tolerant wire read against the engine
+//	harness wire-fuzz             compare one language's read admission and writeback against the engine
 //	harness cross-read            the C++ reference reads what one leg wrote (the nightly)
 //	harness coverage              the nightly's coverage table, from its rows
 //
@@ -46,6 +46,10 @@ func usage() {
              evolution case. Both come from the compiler's own engine, which
              is a third implementation of the two forms.
 
+  migrate-fixed
+             explicitly migrate legacy fixed positive wire pins from their
+             complete JSON, preserving old wires as refusal vectors.
+
   pin        rewrite the goldens a driver writes rather than the engine: the
              cook's canonical node dump, and the block forgery battery
              resolved to byte offsets. Both come from the FIRST driver in the
@@ -79,8 +83,8 @@ func usage() {
 
   wire-fuzz  mutate every pinned wire in the corpus, feed each mutant to one
              language's leg on a pipe (--driver) and to the compiler's own
-             engine, and require the same report, the same decoded value and
-             a LoadMeasure inside the framing's bound, for every mutant
+             engine, and require the same admission verdict and complete canonical writeback
+             for every accepted mutant
              (docs/SPEC-TABLES.md §4.2). --seed and --n size the random pass;
              the enumerated passes run whatever N is.
   cook-differential
@@ -151,7 +155,7 @@ func main() {
 	mixedBuilder := fs.Bool("mixed-builder", false, "full roster: mutable oracle for variable file roots, existing fixed/message oracles (wire-fuzz only)")
 	retain := fs.Bool("retain", false, "run the RETENTION ARM: both engines' retaining paths over the variable-class file roots (docs/SPEC-TABLES.md §6.6; wire-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
-	finiteOwed := fs.String("finite-owed", "", "the docs/roadmap.sexp card that owes this leg the finite float rule (docs/SPEC-TABLES.md §3.3): a mutant the oracle refuses as non_finite_float is counted and not compared (wire-fuzz only)")
+	finiteOwed := fs.String("finite-owed", "", "retired option; any nonempty value is rejected (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
 	corpus := fs.String("corpus", "tables/cards/conformance", "the card conformance corpus directory (cards only)")
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
@@ -236,6 +240,10 @@ func main() {
 	switch command {
 	case "implementation":
 		if err := implementationReport(os.Stdout, m, *lang); err != nil {
+			fatalf("%v", err)
+		}
+	case "migrate-fixed":
+		if err := migrateFixed(m, *manifest, *jsonDir); err != nil {
 			fatalf("%v", err)
 		}
 	case "generate":
