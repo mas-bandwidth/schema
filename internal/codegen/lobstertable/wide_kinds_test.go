@@ -117,13 +117,16 @@ func wideRowWire(t *testing.T, row loadRow) []byte {
 func compareWideRows(t *testing.T, g *loadUnit, rows []loadRow, constructs []string, counts map[string]int, refusals map[string]int) {
 	t.Helper()
 	label := strings.Join(constructs, ", ")
+	all := compareReadOutcomes(t, g, rows)
 	var kept []loadRow
 	var want [][]byte
-	for _, row := range rows {
+	for i, row := range rows {
 		wire := wideRowWire(t, row)
 		saved, err := goSave(g, row.root, wire)
 		if err != nil {
-			t.Logf("%s %s: the Go writer refuses it and it is not compared: %v", label, row.name, err)
+			if all.goLine[i] == "read" {
+				t.Fatalf("%s: accepted value cannot save: %v", row.name, err)
+			}
 			for _, construct := range constructs {
 				refusals[construct]++
 			}
@@ -242,10 +245,9 @@ func TestLobsterWideKinds(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unit %s: %v", key, err)
 		}
-		g, err := generateLoadUnit(t, paths)
+		g, err := generateVariableFixtureUnit(t, paths)
 		if err != nil {
-			t.Logf("unit %s is refused, so its rows are not compared: %v", key, err)
-			continue
+			t.Fatalf("unit %s: %v", key, err)
 		}
 		constructs := wideUnitConstructs(g.u)
 		if len(constructs) == 0 {
@@ -258,7 +260,7 @@ func TestLobsterWideKinds(t *testing.T) {
 	if err := os.WriteFile(src, []byte(wideKindsSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, []string{src})
+	g, err := generateVariableFixtureUnit(t, []string{src})
 	if err != nil {
 		t.Fatalf("the surface refuses the wide-kind sample: %v", err)
 	}
@@ -320,7 +322,7 @@ func TestLobsterWideKindsNegativeControl(t *testing.T) {
 	if err := os.WriteFile(src, []byte(wideKindsSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, []string{src})
+	g, err := generateVariableFixtureUnit(t, []string{src})
 	if err != nil {
 		t.Fatalf("the surface refuses the wide-kind sample: %v", err)
 	}
