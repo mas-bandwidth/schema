@@ -43,6 +43,7 @@ const strictMessageSchema = `package probe
 fixed table Root { n int32
  text string(3)
  nums [..2]int32
+ fixed_nums [3]int32
 }
 fixed table Other { alien int32
  bad float32
@@ -58,7 +59,8 @@ unknown-valid:accepted
 unknown-nan:refused
 unknown-utf8:refused
 text-bound:refused
-array-bound:refused`
+array-bound:refused
+fixed-growth:accepted`
 
 const strictMessageProbe = `import .ProbeTable
 
@@ -144,4 +146,18 @@ for(3): schema_rt.mw_put(long_array, 0, 32)
 schema_rt.mw_put(long_array, 0, vocab.ref_bits)
 result("array-bound", finish(long_array), vocab)
 array_entry.shape.max = old_count
+let fixed_entry = schema_rt.message_entry(vocab, slots[3])
+assert fixed_entry
+fixed_entry.shape.min = 2
+fixed_entry.shape.max = 2
+let smaller = schema_rt.MessageWriter { ref_bits: vocab.ref_bits }
+schema_rt.mw_put(smaller, slots[3], vocab.ref_bits)
+schema_rt.mw_put(smaller, 23, 32)
+schema_rt.mw_put(smaller, 47, 32)
+schema_rt.mw_put(smaller, 0, vocab.ref_bits)
+let grown, grown_count, grown_ok = schema_rt.load_messages("Root", vocab, finish(smaller), schema_rt.LoadReport {}, 2)
+assert grown_ok and grown_count == 1
+assert grown[0].fields[3].elems[0].i == 23 and grown[0].fields[3].elems[1].i == 47
+assert grown[0].fields[3].elems[2].i == 0
+print("fixed-growth:accepted")
 `

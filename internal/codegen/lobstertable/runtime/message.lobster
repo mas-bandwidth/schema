@@ -923,7 +923,7 @@ def message_cell(m:MessageRead, cell:Value, fd:FieldDescriptor, declared:int, s:
     return false
 
 // message_array reads every positional element after checking the count against
-// the declaration. A shortened fixed array or excess counted array refuses.
+// the declaration. A shorter writer leaves added fixed-array slots at default.
 def message_array(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
     let rep = m.rep
     let f = sl.fd
@@ -936,7 +936,7 @@ def message_array(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
         return false
     let ed = elem_of(f)
     let keep = n
-    if ult(f.bound, n) or (f.array == "fixed" and n != f.bound):
+    if ult(f.bound, n):
         return message_refuse(rep, "count_over_bound")
     var walk = n
     if e.element.bits >= 0:
