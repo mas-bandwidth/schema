@@ -79,7 +79,9 @@ struct LoadReport {
 // answers the strict read's one reason for any load.
 let LoadRefuseOk: i64 = 0;
 let LoadRefuseUnknownForm: i64 = 9;
+let LoadRefuseCountOverLength: i64 = 10;
 let LoadRefuseCountOverExtentCap: i64 = 11;
+let LoadRefuseBlobOverSizeCap: i64 = 12;
 let LoadRefuseWireDamaged: i64 = 16;
 let LoadRefuseMalformed: i64 = 17;
 let LoadRefuseClamped: i64 = 18;
@@ -89,12 +91,15 @@ let LoadRefuseNonFiniteFloat: i64 = 23;
 let LoadRefuseBlobShared: i64 = 24;
 let LoadRefuseNewerForm: i64 = 26;
 let LoadRefuseMessageFormAsFile: i64 = 27;
+let LoadRefuseStorageOverCap: i64 = 45;
 
 // load_refusal_name is a refusal's name, the string the engine's error gives.
 fn load_refusal_name(code: i64) -> const u8[:] {
     return match code {
         LoadRefuseUnknownForm => "unknown_form",
+        LoadRefuseCountOverLength => "count_over_length",
         LoadRefuseCountOverExtentCap => "count_over_extent_cap",
+        LoadRefuseBlobOverSizeCap => "blob_over_size_cap",
         LoadRefuseWireDamaged => "wire_damaged",
         LoadRefuseMalformed => "malformed",
         LoadRefuseClamped => "clamped",
@@ -104,6 +109,7 @@ fn load_refusal_name(code: i64) -> const u8[:] {
         LoadRefuseBlobShared => "blob_shared",
         LoadRefuseNewerForm => "newer_form",
         LoadRefuseMessageFormAsFile => "message_form_as_file",
+        LoadRefuseStorageOverCap => "storage_over_cap",
         _ => "",
     };
 }
@@ -112,7 +118,8 @@ fn load_refusal_name(code: i64) -> const u8[:] {
 // `report` and whose answer was `root` (docs/SPEC-TABLES.md §6.5; gotable's
 // TableReport.Err and <T>ReadStrict, in their order): a non-finite float,
 // then a form byte this reader does not carry (unknown_form, whose report
-// names which), a failed integrity trailer, damage the verdict names
+// names which), a failed integrity trailer, a wire past the storage cap
+// (storage_over_cap, §11), damage the verdict names
 // (wire_damaged) apart from a malformed body (malformed), then a builder's
 // count past the int32 storage cap (count_over_extent_cap, §2.9), then
 // blob_shared, clamped and kind_mismatch. A load that read nothing whole (no
@@ -124,6 +131,7 @@ fn load_error(report: const LoadReport&, root: i64) -> i64 {
     if report.non_finite { return LoadRefuseNonFiniteFloat; }
     if report.reason == LoadRefuseNewerForm || report.reason == LoadRefuseMessageFormAsFile { return LoadRefuseUnknownForm; }
     if report.reason == LoadRefuseIntegrityMismatch { return LoadRefuseIntegrityMismatch; }
+    if report.reason == LoadRefuseStorageOverCap { return LoadRefuseStorageOverCap; }
     if report.damaged { return LoadRefuseWireDamaged; }
     if report.malformed { return LoadRefuseMalformed; }
     if report.count_refused { return LoadRefuseCountOverExtentCap; }
@@ -1908,6 +1916,247 @@ fn ids_distinct(file: const u8[:], first: i64, n: i64) -> bool {
     return true;
 }
 
+// ---- THE STORAGE MEASURE (docs/SPEC-TABLES.md §6.5, §11) ----
+//
+// The region bytes a load of this wire commands, the measure of Go's
+// LoadMeasure and the Lua leg's (internal/tablewire FileRegionMeasure): the
+// root's record and each node record's, each rounded to the region alignment
+// with the list and map extents its body names, a blob record's header and
+// bytes, and 16 bytes of attribution per record and for the root. Past the
+// 2^40-byte storage cap a wire is refused storage_over_cap: each extent term
+// (a count times an element size) is checked against the cap before it is
+// multiplied out, and the running total after the root and after every node
+// record, so no sum overflows. The load runs it before it builds anything.
+
+let StorageCap: i64 = 1099511627776; // 2^40, ir.MaxSizeBytes
+
+fn round_up(n: i64, a: i64) -> i64 { return (n + a - 1) / a * a; }
+
+// MeasureScan is one record's running extent: the bytes past its own
+// storage that its lists and maps command.
+struct MeasureScan { at: i64 }
+
+// framed_at reads a framed payload's L and steps r past it; ok false for a
+// payload that runs past its parent, which ends the parent's walk.
+fn framed_at(c: LoadCtx&, r: Rd&) -> Rd, bool {
+    let n, ok = leb(c, r);
+    if !ok || !fits(r, n) {
+        r.off = r.end;
+        return Rd { off: 0, end: 0 }, false;
+    }
+    let sub = Rd { off: r.off, end: r.off + (n as! i64) };
+    r.off = sub.end;
+    return sub, true;
+}
+
+fn shape_is_pointer(shape: u8) -> bool { shape == ShapePtr || shape == ShapeSBlob || shape == ShapeBBlob }
+
+// arm_is_pointer: an arm whose payload lives in a node record, which the
+// node scan measures, not the arm.
+fn arm_is_pointer(a: const FieldDesc&) -> bool {
+    if shape_is_pointer(a.shape) { return true; }
+    if a.shape == ShapeArr {
+        let e = a.elem;
+        guard e else { return false; }
+        return shape_is_pointer(e.shape);
+    }
+    return false;
+}
+
+// measure_record walks one body's fields, adding the extents they name to
+// `at`; it answers 0, or the refusal (LoadRefuse*).
+recursive fn measure_record(c: LoadCtx&, at: MeasureScan&, t: i64, body: Rd) -> i64 {
+    var r = body;
+    loop {
+        let ref, ok = leb(c, r);
+        if !ok || ref == 0 { return 0; }
+        let id, named = idof(c, ref);
+        if !named || !has(r, 1) { return 0; }
+        let kind = rd_u8(c, r);
+        var f: i64 = -1;
+        for d, i in c.unit.tables[t].fields { if d.id == id { f = i; break; } }
+        if f < 0 {
+            if !skip(c, r, kind) { return 0; }
+            continue;
+        }
+        let d = c.unit.tables[t].fields[f];
+        if kind == KindUnion && d.shape == ShapeUnion {
+            let why = measure_union(c, at, union_index(c, d.ref), r);
+            if why != 0 { return why; }
+        } else if kind != KindTable && kind != KindArray && kind != KindKeyed {
+            if !skip(c, r, kind) { return 0; }
+        } else {
+            let sub, framed = framed_at(c, r);
+            if !framed { return 0; }
+            if kind == d.kind {
+                let why = measure_field(c, at, d, sub);
+                if why != 0 { return why; }
+            }
+        }
+    }
+}
+
+recursive fn measure_field(c: LoadCtx&, at: MeasureScan&, d: const FieldDesc&, body: Rd) -> i64 {
+    if shape_is_pointer(d.shape) { return 0; }
+    if d.shape == ShapeTab {
+        let t = table_index(c, d.ref);
+        if t < 0 { return 0; }
+        return measure_record(c, at, t, body);
+    }
+    if d.shape != ShapeMap && d.shape != ShapeArr { return 0; }
+    var r = body;
+    if !has(r, 2) { return 0; }
+    let kind = rd_u8(c, r);
+    let expected = if d.shape == ShapeMap { KindTable } else { d.ek };
+    if kind != expected && !widens(kind, expected) { return 0; }
+    let count, ok = leb(c, r);
+    if !ok { return 0; }
+    if d.shape == ShapeMap || d.array == ArrayList {
+        if count > 0x7FFFFFFF { return LoadRefuseCountOverExtentCap; }
+        var floor = kind_width(kind);
+        if kind == KindPointer { floor = 1; }
+        if kind == KindTable { floor = 2; }
+        if floor < 1 { floor = 1; }
+        let n = count as! i64;
+        if n > (r.end - r.off) / floor { return LoadRefuseCountOverLength; }
+        at.at = round_up(at.at, if d.ea < 1 { 1 } else { d.ea });
+        // the extent term is checked before it is multiplied out (§11)
+        if n > 0 && d.es > 0 && n > (StorageCap - at.at) / d.es { return LoadRefuseStorageOverCap; }
+        at.at += n * d.es;
+    }
+    if kind != KindTable && kind != KindUnion { return 0; }
+    let keyed = d.shape == ShapeArr && d.array == ArrayKeyed;
+    var element: i64 = -1;
+    var union_at: i64 = -1;
+    if d.shape == ShapeMap {
+        element = table_index(c, d.ref);
+    } else {
+        let e = d.elem;
+        guard e else { return 0; }
+        if e.shape == ShapeTab { element = table_index(c, e.ref); }
+        if e.shape == ShapeUnion { union_at = union_index(c, e.ref); }
+    }
+    var i: u64 = 0;
+    while i < count && r.off < r.end {
+        i += 1;
+        if keyed {
+            let k, kok = leb(c, r);
+            if !kok { return 0; }
+        }
+        if kind == KindUnion {
+            if union_at < 0 { return 0; }
+            let why = measure_union(c, at, union_at, r);
+            if why != 0 { return why; }
+        } else {
+            let sub, framed = framed_at(c, r);
+            if !framed { return 0; }
+            if element >= 0 {
+                let why = measure_record(c, at, element, sub);
+                if why != 0 { return why; }
+            }
+        }
+    }
+    return 0;
+}
+
+recursive fn measure_union(c: LoadCtx&, at: MeasureScan&, u: i64, r: Rd&) -> i64 {
+    let ref, ok = leb(c, r);
+    if !ok { r.off = r.end; return 0; }
+    if ref == 0 { return 0; }
+    let id, named = idof(c, ref);
+    if !named || !has(r, 1) { r.off = r.end; return 0; }
+    r.off += 1; // the arm's kind
+    let sub, framed = framed_at(c, r);
+    if !framed || u < 0 { return 0; }
+    for a in c.unit.unions[u].arms {
+        if a.id == id && !arm_is_pointer(a) {
+            if a.shape == ShapeUnion {
+                var arm = sub;
+                return measure_union(c, at, union_index(c, a.ref), arm);
+            }
+            return measure_field(c, at, a, sub);
+        }
+    }
+    return 0;
+}
+
+// measure_size is one record's storage: its own, rounded, with the extents
+// its body names, rounded again; -1 and the refusal when the walk refuses.
+fn measure_size(c: LoadCtx&, t: i64, body: Rd, align: i64) -> i64, i64 {
+    var scan = MeasureScan { at: 0 };
+    let why = measure_record(c, scan, t, body);
+    if why != 0 { return -1, why; }
+    return round_up(round_up(c.unit.tables[t].size, align) + scan.at, align), 0;
+}
+
+// measure_wire is the storage measure of the root body `body` of table t
+// over c's id table: the size, or -1 and the refusal.
+fn measure_wire(c: LoadCtx&, t: i64, body: Rd) -> i64, i64 {
+    let align = if c.unit.tables[t].ralign < 1 { 8 } else { c.unit.tables[t].ralign };
+    let root_size, why = measure_size(c, t, body, align);
+    if root_size < 0 { return -1, why; }
+    var total = root_size;
+    if total > StorageCap { return -1, LoadRefuseStorageOverCap; }
+    // the node table (§3.1): found in the root body, then its records
+    var r = body;
+    var payload = Rd { off: 0, end: 0 };
+    var present = false;
+    loop {
+        let ref, ok = leb(c, r);
+        if !ok || ref == 0 { break; }
+        let id, named = idof(c, ref);
+        if !named || !has(r, 1) { break; }
+        let kind = rd_u8(c, r);
+        if id == NodeWireId {
+            if kind != KindString { return -1, LoadRefuseWireDamaged; }
+            let sub, framed = framed_at(c, r);
+            if !framed { return -1, LoadRefuseWireDamaged; }
+            payload = sub;
+            present = true;
+            continue;
+        }
+        if !skip(c, r, kind) { break; }
+    }
+    var records: i64 = 0;
+    if present {
+        var p = payload;
+        let declared, dok = leb(c, p);
+        if !dok { return -1, LoadRefuseWireDamaged; }
+        while p.off < p.end {
+            let tref, tok = leb(c, p);
+            if !tok || tref == 0 || tref > c.ids_n as! u64 { return -1, LoadRefuseWireDamaged; }
+            let rec, framed = framed_at(c, p);
+            if !framed { return -1, LoadRefuseWireDamaged; }
+            records += 1;
+            let type_id, tnamed = idof(c, tref);
+            var n: i64 = 0;
+            if (type_id == StringTypeId && c.unit.tables[t].place_str) || (type_id == BytesTypeId && c.unit.tables[t].place_bytes) {
+                let blen = rec.end - rec.off;
+                if blen > 0xFFFFFFFF { return -1, LoadRefuseBlobOverSizeCap; }
+                n = 8 + blen;
+                if type_id == StringTypeId { n += 1; }
+                n = round_up(n, align);
+            } else {
+                var k: i64 = -1;
+                for d, i in c.unit.tables {
+                    if d.id == type_id && place_named(c, t, d.name) { k = i; break; }
+                }
+                if k >= 0 {
+                    let size, swhy = measure_size(c, k, rec, align);
+                    if size < 0 { return -1, swhy; }
+                    n = size;
+                }
+            }
+            total += n;
+            if total > StorageCap { return -1, LoadRefuseStorageOverCap; }
+        }
+        if declared != records as! u64 { return -1, LoadRefuseWireDamaged; }
+    }
+    total += (records + 1) * 16;
+    if total > StorageCap { return -1, LoadRefuseStorageOverCap; }
+    return total, 0;
+}
+
 // load_with is the one load both entry points share: load_table, and
 // load_table_retain (wire_retain.goose) with retention on.
 fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
@@ -1951,6 +2200,14 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     let body = Rd { off: 1, end: first };
     let end, terminated = body_extent(c, body);
     if terminated && end != first { report.malformed = true; report.damaged = true; return -1; }
+    // THE STORAGE CAP (§6.5, §11): a wire whose measure passes it is refused
+    // by name before anything is built
+    let measured, why = measure_wire(c, t, body);
+    if why == LoadRefuseStorageOverCap {
+        report.refused = true;
+        report.reason = LoadRefuseStorageOverCap;
+        return -1;
+    }
     c.root_tab = t;
     c.root_val = fresh_record(c, t);
     c.vals[c.root_val].state = ValPresent;
@@ -1970,6 +2227,47 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     // §4: damage in any body invalidates the whole plain or retaining load.
     if report.malformed { return -1; }
     return c.root_val;
+}
+
+// load_measure is THE STORAGE MEASURE of `data` read as a `root`
+// (docs/SPEC-TABLES.md §6.5, §11): the region bytes the load commands, or -1
+// and the refusal (LoadRefuse*): unknown_form for a form byte other than 1,
+// integrity_mismatch, wire_damaged for a file whose id table or node table
+// does not frame, count_over_extent_cap and count_over_length for a list or
+// map count, and storage_over_cap. It builds nothing.
+fn load_measure(unit: LoadUnit, root: const u8[:], data: const u8[:]) -> i64, i64 {
+    var vals: LoadVal[>..] = [];
+    var nodes: LoadNode[>..] = [];
+    var report = LoadReport { .. };
+    var bytes: u8[>..<] = [];
+    var recs: RetainRec[>..<] = [];
+    var ids: u64[>..<] = [];
+    var none = RetainStore { capacity: 0, id_capacity: 0, used: 0, bytes: bytes, recs: recs, ids: ids };
+    return measure_with(unit, root, data, vals, nodes, report, none);
+}
+
+fn measure_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&) -> i64, i64 {
+    var c = LoadCtx { data: data, unit: unit, vals: vals, nodes: nodes, report: report, ids_at: 0, ids_n: 0, numbered: false, good: false, root_tab: -1, root_val: -1, cap: false, node_n: 0, retain: store, retaining: false };
+    if data.len < 1 { return -1, LoadRefuseWireDamaged; }
+    if data[0] != 1 { return -1, LoadRefuseUnknownForm; }
+    let t = table_index(c, root);
+    if t < 0 { return -1, LoadRefuseUnknownForm; }
+    var file = data;
+    if unit.tables[t].integrity {
+        if !integrity_holds(data, 1) { return -1, LoadRefuseIntegrityMismatch; }
+        file = data[0..data.len - 4];
+        c.data = file;
+    }
+    if file.len < 9 { return -1, LoadRefuseWireDamaged; }
+    let count = le_at(file, file.len - 8, 8);
+    if count > (file.len / 8) as! u64 || count > IdTableBound as! u64 { return -1, LoadRefuseWireDamaged; }
+    let span = (count as! i64) * 8 + 8;
+    if span + 1 > file.len { return -1, LoadRefuseWireDamaged; }
+    let first = file.len - span;
+    if !ids_distinct(file, first, count as! i64) { return -1, LoadRefuseWireDamaged; }
+    c.ids_at = first;
+    c.ids_n = count as! i64;
+    return measure_wire(c, t, Rd { off: 1, end: first });
 }
 
 // load_table is THE LOAD: it reads `data` as a `root` (docs/SPEC-TABLES.md

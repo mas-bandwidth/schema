@@ -44,6 +44,11 @@ func emitDescriptor(g *Gen, t *ir.Struct) {
 	}
 	g.Pf("\tfixed = %v,\n", t.FixedDeclared)
 	g.Pf("\tvariable = %v,\n", ir.VariableTables(g.Unit)[t.Name])
+	// the record's storage (ir.RecordLayout) and the unit's region alignment
+	// (ir.TableRegionAlign): what table_load.moo's LoadMeasure sums against
+	// the storage cap (docs/SPEC-TABLES.md §6.5, §11)
+	layout := ir.RecordLayout(g.Unit, t)
+	g.Pf("\tsize = %d, align = %d, ralign = %d,\n", layout.Size, layout.Align, ir.TableRegionAlign(g.Unit))
 	if t.JsonArray {
 		g.Pf("\tjsonArray = true,\n")
 	}
@@ -192,7 +197,8 @@ func fieldDesc(g *Gen, owner string, f *ir.Field, ordinal int, guard string) str
 	switch {
 	case f.IsMap():
 		requireHome(g, f.MapEntry.Name)
-		fmt.Fprintf(&b, "s = \"map\", t = %q, ek = %d, bound = 0, unbounded = true }", f.MapEntry.Name, ir.TableWireElemKind(f))
+		entry := ir.RecordLayout(g.Unit, f.MapEntry)
+		fmt.Fprintf(&b, "s = \"map\", t = %q, ek = %d, bound = 0, unbounded = true, es = %d, ea = %d }", f.MapEntry.Name, ir.TableWireElemKind(f), entry.Size, entry.Align)
 	case f.Array != ir.ArrayNone:
 		array := map[ir.ArrayKind]string{ir.ArrayFixed: "fixed", ir.ArrayCounted: "counted", ir.ArrayList: "list"}[f.Array]
 		if f.KeyEnum != "" {
@@ -200,7 +206,10 @@ func fieldDesc(g *Gen, owner string, f *ir.Field, ordinal int, guard string) str
 		}
 		unbounded := ""
 		if f.Array == ir.ArrayList {
-			unbounded = ", unbounded = true"
+			// a list's element storage (ir.ListElementLayout), the extent
+			// term LoadMeasure sums (docs/SPEC-TABLES.md §6.5, §11)
+			size, align := ir.ListElementLayout(g.Unit, f)
+			unbounded = fmt.Sprintf(", unbounded = true, es = %d, ea = %d", size, align)
 		}
 		keyvs := ""
 		if f.KeyEnumRef != nil {

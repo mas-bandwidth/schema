@@ -37,6 +37,11 @@ export type FieldDescriptor = {
 	-- beside it; false or absent on every other field. It is not the §2.13.1
 	-- unbounded TEXT fact.
 	unbounded: boolean?,
+	-- es, ea: a list's element or a map's entry storage and alignment
+	-- (ir.ListElementLayout, ir.RecordLayout), the extent term the storage
+	-- measure sums (docs/SPEC-TABLES.md §6.5, §11)
+	es: number?,
+	ea: number?,
 	min: number?,
 	wide: boolean?,
 	f32: boolean?,
@@ -68,6 +73,12 @@ export type TableDescriptor = {
 	table: boolean,
 	fixed: boolean,
 	variable: boolean,
+	-- the record's storage and alignment (ir.RecordLayout) and the unit's
+	-- region alignment (ir.TableRegionAlign), the storage measure's facts
+	-- (docs/SPEC-TABLES.md §6.5, §11)
+	size: number?,
+	align: number?,
+	ralign: number?,
 	jsonArray: boolean?, -- docs/SPEC-TABLES.md §16.10
 	integrity: string?,
 	place: { tables: { string }, str: boolean, bytes: boolean },

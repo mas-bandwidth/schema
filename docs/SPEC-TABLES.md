@@ -13553,10 +13553,10 @@ in build version (§20.5).
   exact. A port whose read builds values rather than a region measures
   before it builds, so a wire past the cap is refused without materializing
   any of it; the Go oracle (`internal/tablewire`) refuses it the same way.
-  C++, C, C#, Go, Rust, Java, Dart, JavaScript, Elixir, Lua and Squirrel
-  hold it on the shared vectors in `testdata/wire/tables/storage-cap`, each
-  through its measure and its strict read; Goose, MOO, Luau and Lobster are
-  owed it. Each of those legs stores a type's size, its field offsets and its
+  C++, C, C#, Go, Rust, Java, Dart, JavaScript, Elixir, Lua, Squirrel, Goose,
+  MOO and Luau hold it on the shared vectors in
+  `testdata/wire/tables/storage-cap`, each through its measure and its strict
+  read; Lobster is owed it. Each of those legs stores a type's size, its field offsets and its
   element, entry and cook element sizes at 64 bits, so a record past 4 GiB
   (`testdata/wire/tables/storage-cap/wide`) generates and compiles with
   its sizes exact, except in C#. Two platform limits stand below the cap. C#
