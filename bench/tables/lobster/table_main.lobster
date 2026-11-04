@@ -3,7 +3,7 @@
 //
 // Measures ONE thing: the representative fixed table written and read on the
 // TOLERANT WIRE (docs/SPEC-TABLES.md §3) through the port's form-1 codec — the
-// one runtime walk over the generated descriptors (load_tolerant, save) — over
+// one runtime walk over the generated descriptors (load, save) — over
 // the committed 64-record variant corpus. It is a port of
 // bench/tables/cpp/table_main.cpp's bench_table driver and keeps its contract:
 // the golden gate runs before the clock, 1 warmup + 7 measured runs (one under
@@ -51,11 +51,10 @@ let opts = bench_options(command_line_arguments())
 // the root the walk loads at: the generated type, named once (shape-blind)
 let root = "TableMixed"
 
-// load_one is the codec's tolerant load, accepted when it answered a record
-// and reported no malformation (the C++ leg's LoadTolerant && !malformed)
+// load_one returns the complete loaded value, or nil on refusal.
 def load_one(data:string) -> schema_rt.Record?:
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load_tolerant(root, data, rep)
+    let rec = schema_rt.load(root, data, rep)
     if rep.malformed or rep.refused:
         return nil
     return rec

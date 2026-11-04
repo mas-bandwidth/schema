@@ -100,7 +100,7 @@ def fixture(path:string) -> string:
 def surface_wire(text:string):
     for(rows(text, "instance")) f:
         let rep = schema_rt.LoadReport {}
-        let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
+        let rec = schema_rt.load(f[3], fixture(f[4]), rep)
         assert rec
         let out, why = schema_rt.save_reasoned(rec)
         if why == "blob_shared":
@@ -115,7 +115,7 @@ def surface_wire(text:string):
 def surface_report(text:string):
     for(rows(text, "report")) f:
         let rep = schema_rt.LoadReport {}
-        let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
+        let rec = schema_rt.load(f[3], fixture(f[4]), rep)
         // A damaged read discards the record; only its verdict is usable.
         assert rec or rep.refused or rep.malformed
         let verdict = if rep.refused: "refused" else: "read"
@@ -134,7 +134,7 @@ def surface_report(text:string):
 def surface_framing(text:string):
     for(rows(text, "framing")) f:
         let rep = schema_rt.LoadReport {}
-        let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
+        let rec = schema_rt.load(f[3], fixture(f[4]), rep)
         let malformed = rep.malformed or (not rec and not rep.refused)
         let verdict = if rep.refused: "refused" else: "read"
         var out = "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{malformed},{verdict}\n"
@@ -207,7 +207,7 @@ def surface_message(text:string):
                     let v = schema_rt.new_vocabulary(schema_rt.message_entries_here())
                     let rep = schema_rt.LoadReport {}
                     assert schema_rt.announce_read(v, fixture(announcement), rep)
-                    let recs, count, ok = schema_rt.load_messages_tolerant(f[3], v, fixture(f[5]), rep, schema_rt.message_batch_max)
+                    let recs, count, ok = schema_rt.load_messages(f[3], v, fixture(f[5]), rep, schema_rt.message_batch_max)
                     assert ok and count == length(recs)
                     let out, n = schema_rt.save_messages(recs, schema_rt.LoadReport {})
                     assert n == length(out)
@@ -249,7 +249,7 @@ def surface_cook_write(text:string):
         for(insts) f:
             if f[1] == cw[1] and f[2] == unit_key:
                 let rep = schema_rt.LoadReport {}
-                let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
+                let rec = schema_rt.load(f[3], fixture(f[4]), rep)
                 assert rec and not rep.malformed and not rep.refused
                 let ct = schema_rt.cook_table_of(f[3])
                 assert ct
@@ -364,7 +364,7 @@ def surface_json_write(text:string):
     for(rows(text, "instance")) f:
         if has_text(f):
             let rep = schema_rt.LoadReport {}
-            let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
+            let rec = schema_rt.load(f[3], fixture(f[4]), rep)
             assert rec
             let out, why = schema_rt.json_write(rec)
             assert why == ""

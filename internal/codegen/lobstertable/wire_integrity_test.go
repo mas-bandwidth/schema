@@ -122,8 +122,8 @@ assert not missing and missing_reason == "integrity_mismatch"
 let unexpected = schema_rt.LoadReport {}
 let extra, extra_reason = schema_rt.load_strict("Plain", good, unexpected)
 assert not extra and extra_reason != ""
-let extra_size, extra_whole, extra_refused = schema_rt.load_measure("Plain", good)
-assert extra_size == 0 and not extra_whole and not extra_refused
+let _, extra_whole, extra_refused = schema_rt.load_measure("Plain", good)
+assert not extra_whole and extra_refused
 let empty_report = schema_rt.LoadReport {}
 let empty, empty_reason = schema_rt.load_strict("Checked", "", empty_report)
 assert not empty and empty_reason == "wire_damaged"
