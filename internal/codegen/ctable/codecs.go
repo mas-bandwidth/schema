@@ -508,8 +508,20 @@ func (g *tableGen) emitRangeAssertAs(f *ir.Field, expr, ind string, width int, w
 	if len(conds) == 0 {
 		return
 	}
+	g.writerAssert(ind, strings.Join(conds, " && "), writer+" keeps the declared bounds (SPEC.md §5.1)")
+}
+
+// writerAssert emits one write-contract assert and the comment that names it,
+// on ONE line, which is what a negative control's sed deletes. The compact
+// message and retention functions break a line after every `;`
+// (formatCompactCFunctions), so there the comment LEADS the statement.
+func (g *tableGen) writerAssert(ind, cond, note string) {
 	g.wroteAssert = true
-	g.pf("%sschema_assert( %s ); /* %s keeps the declared bounds (SPEC.md §5.1) */\n", ind, strings.Join(conds, " && "), writer)
+	if strings.HasPrefix(note, "a message write") {
+		g.pf("%s/* %s */ schema_assert( %s );\n", ind, note, cond)
+		return
+	}
+	g.pf("%sschema_assert( %s ); /* %s */\n", ind, cond, note)
 }
 
 // emitTextAssert is the WRITE CONTRACT's debug-only refusal of ill-formed text
@@ -523,11 +535,9 @@ func (g *tableGen) emitRangeAssertAs(f *ir.Field, expr, ind string, width int, w
 func (g *tableGen) emitTextAssert(f *ir.Field, value, length, ind, writer string) {
 	switch f.Type.Kind {
 	case ir.TString:
-		g.wroteAssert = true
-		g.pf("%sschema_assert( table_wire_utf8_well_formed( (const uint8_t *) %s, (uint64_t) %s ) ); /* %s keeps well-formed text (SPEC.md §5.1) */\n", ind, value, length, writer)
+		g.writerAssert(ind, fmt.Sprintf("table_wire_utf8_well_formed( (const uint8_t *) %s, (uint64_t) %s )", value, length), writer+" keeps well-formed text (SPEC.md §5.1)")
 	case ir.TWString:
-		g.wroteAssert = true
-		g.pf("%sschema_assert( table_wire_utf16_paired( %s, (int64_t) %s ) ); /* %s keeps well-formed text (SPEC.md §5.1) */\n", ind, value, length, writer)
+		g.writerAssert(ind, fmt.Sprintf("table_wire_utf16_paired( %s, (int64_t) %s )", value, length), writer+" keeps well-formed text (SPEC.md §5.1)")
 	}
 }
 

@@ -112,8 +112,7 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 		if e.Shape.Min > 0 && ir.TableMessageCountBits(e.Shape) > 0 {
 			// THE COUNT IS A RANGED INTEGER over [min, max] (§3.3): the line
 			// above holds the top, and this the bottom
-			g.wroteAssert = true
-			g.pf("%sschema_assert( %s >= %d ); /* a message write keeps the declared bounds (SPEC.md §5.1) */\n", ind, count, e.Shape.Min)
+			g.writerAssert(ind, fmt.Sprintf("%s >= %d", count, e.Shape.Min), "a message write keeps the declared bounds (SPEC.md §5.1)")
 		}
 		g.pf("%stable_bit_put(w,(uint64_t)%s-%d,%d);\n", ind, count, e.Shape.Min, ir.TableMessageCountBits(e.Shape))
 		if ir.TableMessageAligns(e.Kind, e.Shape) {

@@ -670,9 +670,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	if ir.TableFixedWriteCheckNeeded(st) {
 		// THE WRITER'S CONTRACT (docs/SPEC.md §5.1), debug-only: NDEBUG
-		// removes schema_assert, and the loop's work with it
+		// removes schema_assert, and the loop's work with it. ONE LINE, the
+		// comment leading, because a root whose name holds "message" is
+		// laid out by formatCompactCFunctions, which breaks after every `;`
 		g.wroteAssert = true
-		g.pf("    for ( k = 0; k < count; ++k ) { schema_assert( %s( values + k ) ); } /* a fixed write keeps the declared contract (SPEC.md §5.1) */\n", g.sym(st.Name, "fixed_write_check"))
+		g.pf("    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( %s( values + k ) );\n", g.sym(st.Name, "fixed_write_check"))
 	}
 	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); /* the seven reserved bytes, and the rest of the header */\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
