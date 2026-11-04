@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/hex"
 	"io"
 	"os"
@@ -9,10 +10,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// A mutation that changes a node identity cannot leave a partial blob graph.
-func TestFileFuzzUnknownNodeCannotLeavePartialGraph(t *testing.T) {
+// The root name moves to an unknown field; its default replaces only that
+// field, while every pointer and blob payload remains part of the value.
+func TestFileFuzzUnknownFieldPreservesBlobGraph(t *testing.T) {
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "blobdemo", "Catalog", false, false)
 	if err != nil {
@@ -26,8 +31,27 @@ func TestFileFuzzUnknownNodeCannotLeavePartialGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer.accepted || len(answer.encoded) != 0 {
-		t.Fatalf("file framing: %+v", answer)
+	pin := wireBytes(t, "testdata/wire/tables/blob_small.bin")
+	mutated := bytes.Clone(pin)
+	mutated[1] = 12 // original first field reference 1 names Catalog.name
+	if !bytes.Equal(mutated, wire) {
+		t.Fatal("fixture changed beyond the root field identity")
+	}
+	want := root.model.New(root.def)
+	if ok, err := tablewire.Decode(root.model, want, pin, &tabletext.Report{}); err != nil || !ok {
+		t.Fatalf("pinned graph: %v", err)
+	}
+	name, ok := want.FieldByKey("name")
+	if !ok {
+		t.Fatal("Catalog.name missing")
+	}
+	name.Cell, name.Count = root.model.FieldDefaultCell(name.Def), 0
+	encoded, err := tablewire.Encode(root.model, want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !answer.accepted || !bytes.Equal(answer.encoded, encoded) {
+		t.Fatalf("unknown field changed the surviving blob graph: accepted=%t got=%x want=%x", answer.accepted, answer.encoded, encoded)
 	}
 }
 
