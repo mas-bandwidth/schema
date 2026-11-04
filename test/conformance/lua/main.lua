@@ -36,7 +36,8 @@ local SURFACE_ORDER = {
   "wire", "message", "report", "framing", "retain", "retain-save", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
   "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
-  "block-reason", "write-refusal",
+  "block-reason", "write-refusal", "write-refusal-fixed", "write-refusal-message",
+  "write-refusal-json",
 }
 local SURFACES = {}
 for _, s in ipairs(SURFACE_ORDER) do SURFACES[s] = true end
@@ -275,6 +276,8 @@ end
 --            record, any other arm nil, its zero); an unlawful one is the tag
 --            alone
 --   float    nan is 0/0, inf and -inf are +-math.huge
+--   bytes    a narrow text's exact bytes, from hex
+--   units    a wide text's exact UTF-16 units, four hex digits each
 local function deepCopy(x)
   if type(x) ~= "table" then return x end
   local out = {}
@@ -342,6 +345,12 @@ local function writeRefusalSet(u, root, v, path, what, value)
       x[arm.slot] = u.descriptor.fresh(T, T.Tables[arm.field.target])
     end
     holder[key] = x
+  elseif what == "bytes" then
+    holder[key] = (value:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end))
+  elseif what == "units" then
+    local t = {}
+    for h in value:gmatch("%x%x%x%x") do t[#t + 1] = tonumber(h, 16) end
+    holder[key] = t
   elseif what == "float" then
     if value == "nan" then
       holder[key] = 0 / 0
@@ -357,24 +366,59 @@ local function writeRefusalSet(u, root, v, path, what, value)
   end
 end
 
-local function surfaceWriteRefusal(all, outdir)
-  for _, f in ipairs(kind(all, "write-refusal")) do
-    local u = unit(f[3])
+-- each write-refusal line kind saves through its own writer: the row's unit
+-- loaded and the field set as above, then `save(u, root, v)` answers the
+-- written bytes or text, or nil and the named reason (it is handed the line). A nameless nil is a
+-- driver failure. `wrote` is the written result `accept` holds (the JSON rows:
+-- the zero byte or unit spelled \u0000).
+local function writeRefusalRows(all, outdir, lineKind, unitOf, save, accept)
+  for _, f in ipairs(kind(all, lineKind)) do
+    local u = unit(unitOf(f[3]))
     if not u then
       absent(outdir, f[2], NOT_GENERATED)
     else
       local v = u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), newReport())
       if v == nil then fail(f[2] .. ": load refused " .. f[5]) end
       writeRefusalSet(u, f[4], v, f[6], f[7], f[8])
-      local saved, why = u.save.Save(u.T, f[4], v)
+      local saved, why = save(u, f[4], v, f)
       if saved == nil then
-        if why == nil then fail(f[2] .. ": Save refused without a name") end
+        if why == nil then fail(f[2] .. ": " .. lineKind .. " refused without a name") end
         writeBytes(outdir .. "/" .. f[2], "refused\n")
-      else
+      elseif accept == nil or accept(saved) then
         writeBytes(outdir .. "/" .. f[2], "wrote\n")
+      else
+        fail(f[2] .. ": the writer wrote a text that does not spell the zero as \\u0000")
       end
     end
   end
+end
+
+local function sameUnit(key)
+  return key
+end
+
+local function surfaceWriteRefusal(all, outdir)
+  writeRefusalRows(all, outdir, "write-refusal", sameUnit, function(u, root, v)
+    return u.save.Save(u.T, root, v)
+  end)
+end
+
+-- write-refusal-fixed: the one value through WriteFixed, the fixed form's
+-- writer of one record (docs/SPEC-TABLES.md §3.4)
+local function surfaceWriteRefusalFixed(all, outdir)
+  writeRefusalRows(all, outdir, "write-refusal-fixed", sameUnit, function(u, root, v)
+    return u.T.WriteFixed(root, v)
+  end)
+end
+
+-- write-refusal-json: the one value through ToJson (§16.3: a zero byte or unit
+-- is written \u0000)
+local function surfaceWriteRefusalJson(all, outdir)
+  writeRefusalRows(all, outdir, "write-refusal-json", sameUnit, function(u, root, v)
+    return u.json.ToJson(u.T, root, v)
+  end, function(text)
+    return text:find("\\u0000", 1, true) ~= nil
+  end)
 end
 
 -- json-read: the TOLERANT text read of the instance's committed text, then
@@ -485,6 +529,17 @@ local function surfaceMessage(all, outdir)
       writeBytes(outdir .. "/" .. f[2], saved)
     end
   end
+end
+
+-- write-refusal-message: the <unit> column is a connection key; the one value
+-- goes through SaveMessages as a batch of one, against the vocabulary the
+-- connection's announcement gives (§3.3)
+local function surfaceWriteRefusalMessage(all, outdir)
+  writeRefusalRows(all, outdir, "write-refusal-message", function(key)
+    return connectionNamed(all, key)[3]
+  end, function(u, root, v, f)
+    return u.T.SaveMessages(root, vocabulary(u, connectionNamed(all, f[3]), f[2]), { v })
+  end)
 end
 
 ---------------------------------------------------------------------------
@@ -959,5 +1014,8 @@ elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook", false)
 elseif surface == "cook-reason" then surfaceForgery(all, outdir, "cook", true)
 elseif surface == "block-reason" then surfaceForgery(all, outdir, "block", true)
 elseif surface == "write-refusal" then surfaceWriteRefusal(all, outdir)
+elseif surface == "write-refusal-fixed" then surfaceWriteRefusalFixed(all, outdir)
+elseif surface == "write-refusal-message" then surfaceWriteRefusalMessage(all, outdir)
+elseif surface == "write-refusal-json" then surfaceWriteRefusalJson(all, outdir)
 end
 os.exit(0)
