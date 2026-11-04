@@ -50,6 +50,30 @@ func field(t testing.TB, inst *tabletext.Instance, key string) *tabletext.Field 
 	return fv
 }
 
+// refuses asserts the read refused the whole load (docs/SPEC-TABLES.md §6.5),
+// with a diagnostic that starts with prefix.
+func refuses(t testing.TB, r tabletext.Report, prefix string) {
+	t.Helper()
+	if !r.Refused || !strings.HasPrefix(r.Reason, prefix) {
+		t.Fatalf("expected a refusal %q, got %+v", prefix, r)
+	}
+	if r.Unknown != 0 || r.Widened != 0 {
+		t.Fatalf("a refusal carries no counter, got %+v", r)
+	}
+}
+
+// accepts asserts the read returned the value with nothing counted, and that
+// the value writes back out.
+func accepts(t testing.TB, m *tabletext.Model, inst *tabletext.Instance, r tabletext.Report) {
+	t.Helper()
+	if !r.Silent() {
+		t.Fatalf("expected an accepted read with nothing counted, got %+v", r)
+	}
+	if _, err := m.Write(inst); err != nil {
+		t.Fatalf("an accepted value does not write: %v", err)
+	}
+}
+
 // §16.2: unknown keys are skipped and counted; nothing else moves.
 func TestUnknownKeyIsCounted(t *testing.T) {
 	_, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 90, "mystery": [1,2,3] }`)
@@ -61,87 +85,74 @@ func TestUnknownKeyIsCounted(t *testing.T) {
 	}
 }
 
-// §16.2: a duplicate key is last-wins, counted.
-func TestDuplicateKeyIsLastWins(t *testing.T) {
+// §16.2, §6.5: a repeated key is input no writer produces, and refuses the
+// whole read. The negative control names the key once.
+func TestDuplicateKeyRefuses(t *testing.T) {
 	_, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 90, "tick_rate": 120 }`)
-	if r.Duplicate != 1 {
-		t.Fatalf("expected one duplicate, got %+v", r)
+	refuses(t, r, "malformed")
+	if field(t, inst, "tick_rate").Cell.U != 60 {
+		t.Fatal("a refused read left a value placed")
 	}
+	m, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 120 }`)
+	accepts(t, m, inst, r)
 	if field(t, inst, "tick_rate").Cell.U != 120 {
-		t.Fatal("the last occurrence did not win")
+		t.Fatal("the control did not place its value")
 	}
 }
 
-// §16.2: a key present with the wrong JSON type is skipped, NEVER coerced.
-func TestWrongTypeIsSkippedNotCoerced(t *testing.T) {
+// §16.2: a key present with the wrong JSON type refuses, NEVER coerced.
+func TestWrongTypeRefuses(t *testing.T) {
 	_, inst, r := read(t, "GlobalSettings", `{ "tick_rate": "120" }`)
-	if r.KindMismatch != 1 || r.Refused {
-		t.Fatalf("expected one kind_mismatch, got %+v", r)
-	}
+	refuses(t, r, "kind_mismatch")
 	if got := field(t, inst, "tick_rate").Cell.U; got != 60 {
-		t.Fatalf("the field should hold its declared default, got %d", got)
+		t.Fatalf("the refused instance should hold its declared defaults, got %d", got)
 	}
+	m, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 120 }`)
+	accepts(t, m, inst, r)
 }
 
 // §16.2: an integer field given a fraction is the wrong SHAPE for the kind,
-// counted, never rounded into place.
+// refused, never rounded into place; the integral spelling of it reads.
 func TestFractionWhereIntegerDeclared(t *testing.T) {
-	_, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 90.5 }`)
-	if r.KindMismatch != 1 {
-		t.Fatalf("expected one kind_mismatch, got %+v", r)
-	}
-	if field(t, inst, "tick_rate").Cell.U != 60 {
-		t.Fatal("a fraction was rounded into an integer field")
+	_, _, r := read(t, "GlobalSettings", `{ "tick_rate": 90.5 }`)
+	refuses(t, r, "kind_mismatch")
+	m, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 90.0 }`)
+	accepts(t, m, inst, r)
+	if field(t, inst, "tick_rate").Cell.U != 90 {
+		t.Fatal("an integral spelling did not place")
 	}
 }
 
-// §16.2: a number outside the declared range is CLAMPED and counted, never
-// refused — the wire's rule, so a text and a wire land the same instance.
-func TestOutOfRangeIsClamped(t *testing.T) {
-	_, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 100000 }`)
-	if r.Clamped == 0 {
-		t.Fatalf("expected a clamp, got %+v", r)
-	}
+// §16.2: a number outside the declared range refuses; the declared maximum
+// itself reads.
+func TestOutOfRangeRefuses(t *testing.T) {
+	_, _, r := read(t, "GlobalSettings", `{ "tick_rate": 100000 }`)
+	refuses(t, r, "out_of_range")
+	m, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 240 }`)
+	accepts(t, m, inst, r)
 	if got := field(t, inst, "tick_rate").Cell.U; got != 240 {
 		t.Fatalf("expected the declared max, got %d", got)
 	}
 }
 
-// §16.2: a string longer than the field is clamped AT A CODE POINT BOUNDARY,
-// counted — never cut through a multi-byte character.
-func TestStringClampsAtCodePointBoundary(t *testing.T) {
-	// callsign is string(24); twelve three-byte code points is 36 bytes, so the
-	// clamp lands after the eighth, at byte 24
-	long := strings.Repeat("é", 20) // two bytes each: 40 bytes
-	_, inst, r := read(t, "GunnerSettings", `{ "callsign": "`+long+`" }`)
-	if r.Clamped != 1 {
-		t.Fatalf("expected one clamp, got %+v", r)
+// §16.2: a string longer than the field refuses, whatever code point crosses
+// the bound; a string that fills the field exactly reads.
+func TestStringPastItsBoundRefuses(t *testing.T) {
+	// callsign is string(24)
+	for _, long := range []string{
+		strings.Repeat("é", 13),         // two bytes each: 26 bytes
+		strings.Repeat("a", 20) + "✓✓X", // the second three-byte code point crosses
+		strings.Repeat("a", 25),         // one byte past
+	} {
+		_, _, r := read(t, "GunnerSettings", `{ "callsign": "`+long+`" }`)
+		refuses(t, r, "length_over_bound")
 	}
-	got := field(t, inst, "callsign").Cell.Str
-	if len(got) != 24 {
-		t.Fatalf("expected 24 bytes kept, got %d", len(got))
-	}
-	if !bytes.Equal(got, []byte(strings.Repeat("é", 12))) {
-		t.Fatal("the clamp cut through a code point")
-	}
-}
-
-// §16.2: A CLAMP IS A PREFIX. Once one code point does not fit, the scan stops
-// placing. A later SHORTER code point must not slip into the room the long one
-// left, because that stores a string the input never spelled and the `clamped`
-// count cannot tell the two apart.
-func TestClampIsAPrefix(t *testing.T) {
-	// callsign is string(24): twenty ASCII bytes, then a three-byte code point
-	// that fits at 23, then one that does not, then a byte that would
-	text := strings.Repeat("a", 20) + "✓✓X"
-	_, inst, r := read(t, "GunnerSettings", `{ "callsign": "`+text+`" }`)
-	if r.Clamped != 1 {
-		t.Fatalf("expected one clamp, got %+v", r)
-	}
-	got := field(t, inst, "callsign").Cell.Str
-	want := []byte(strings.Repeat("a", 20) + "✓")
-	if !bytes.Equal(got, want) {
-		t.Fatalf("the clamp is not a prefix: got %q, want %q", got, want)
+	for _, exact := range []string{strings.Repeat("é", 12), strings.Repeat("a", 20) + "✓"} {
+		m, inst, r := read(t, "GunnerSettings", `{ "callsign": "`+exact+`" }`)
+		accepts(t, m, inst, r)
+		if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte(exact)) {
+			t.Fatalf("got %q, want %q", got, exact)
+		}
 	}
 }
 
@@ -295,19 +306,16 @@ func TestFlagsByName(t *testing.T) {
 	}
 }
 
-// §16.2: `bytes(N)` rides as base64, clamped past the bound and counted; a
-// body that is not base64 is the wrong shape for the kind.
+// §16.2: `bytes(N)` rides as base64; a body that is not base64 refuses.
 func TestBytesBase64(t *testing.T) {
-	_, inst, r := read(t, "ProfileConfig", `{ "icon": "AQIDBA==" }`)
-	if !r.Silent() {
-		t.Fatalf("expected silence, got %+v", r)
-	}
+	m, inst, r := read(t, "ProfileConfig", `{ "icon": "AQIDBA==" }`)
+	accepts(t, m, inst, r)
 	if !bytes.Equal(field(t, inst, "icon").Cell.Str, []byte{1, 2, 3, 4}) {
 		t.Fatal("base64 did not decode")
 	}
 	_, _, r = read(t, "ProfileConfig", `{ "icon": "not base64!" }`)
-	if r.KindMismatch != 1 {
-		t.Fatalf("a body that is not base64 is the wrong shape: %+v", r)
+	if !r.Refused {
+		t.Fatalf("a body that is not base64 refuses: %+v", r)
 	}
 }
 
@@ -334,15 +342,14 @@ func TestGuardsInferNothing(t *testing.T) {
 	}
 }
 
-// §16.2: an array past the reader's bound keeps the bounded prefix and counts;
-// a fixed array's tail keeps its defaults.
+// §16.2: an array past the reader's bound refuses; one at the bound reads.
 func TestArrayBounds(t *testing.T) {
-	_, inst, r := read(t, "ShipEntry", `{ "hardpoints": [1,2,3,4,5,6] }`)
-	if r.Clamped != 2 {
-		t.Fatalf("expected two dropped elements, got %+v", r)
-	}
+	_, _, r := read(t, "ShipEntry", `{ "hardpoints": [1,2,3,4,5,6] }`)
+	refuses(t, r, "count_over_bound")
+	m, inst, r := read(t, "ShipEntry", `{ "hardpoints": [1,2,3,4] }`)
+	accepts(t, m, inst, r)
 	if got := field(t, inst, "hardpoints").Count; got != 4 {
-		t.Fatalf("expected the bounded prefix, got %d", got)
+		t.Fatalf("expected four elements, got %d", got)
 	}
 }
 
@@ -376,17 +383,9 @@ func TestWriteReadWriteIsStable(t *testing.T) {
 }
 
 // The tokenizer never panics and never leaves a half-placed instance behind:
-// whatever the bytes, either the text is refused with malformed set, or it
-// reads into an instance the writer can spell — and the text form reaches a
-// FIXED POINT after one lap.
-//
-// One lap, not zero, and the reason is §16.3's: the read path is
-// byte-transparent, so a raw ill-formed byte rides into storage as itself,
-// and the writer replaces it with U+FFFD — three bytes where one stood. A
-// string(N) can therefore come back one lap shorter, clamped at its own bound.
-// That is the stated cost of emitting a text any conforming parser can read,
-// and it is a property to pin rather than a bug to chase: after the first
-// write every string is well-formed, so the second and third texts agree.
+// whatever the bytes, either the text is refused, or it reads into an instance
+// the writer can spell, and the text form reaches a FIXED POINT after one lap
+// (the first write normalizes spelling: whitespace, number forms, key order).
 func FuzzReadText(f *testing.F) {
 	seeds := []string{
 		`{}`,
@@ -456,12 +455,13 @@ func lap(t *testing.T, m *tabletext.Model, st *ir.Struct, text []byte) []byte {
 // field takes any token whose VALUE is integral however it was spelled, a
 // genuinely fractional value is the wrong shape for it, a magnitude a float
 // field cannot hold is the wrong shape too — so no path stores an infinity —
-// and a token that is not a JSON number at all is a DIAGNOSTIC, never a
-// quietly clamped value.
+// and a token that is not a JSON number at all refuses as malformed. Every
+// row that is not a value refuses the whole read (§6.5); the reason is
+// diagnostic and checked here only as this engine's spelling.
 var numberCases = []struct {
 	token string
 	field string // "experience" uint32, "precision" float64, "timestamp" int64
-	want  string // "value=N" | "kind_mismatch" | "clamped" | "malformed"
+	want  string // "value=N" | "kind_mismatch" | "out_of_range" | "malformed"
 }{
 	// integral in VALUE, however it is spelled
 	{"1e3", "experience", "value=1000"},
@@ -497,14 +497,14 @@ var numberCases = []struct {
 	{"5+", "experience", "malformed"},
 	{"-", "experience", "malformed"},
 	{"", "experience", "malformed"},
-	// out of what the field can hold: clamped, and counted
-	{"-1", "experience", "clamped"},
-	{"99999999999999999999999999", "experience", "clamped"},
-	// a magnitude no float of that width holds: the wrong shape, never an infinity
-	{"1e400", "precision", "kind_mismatch"},
-	{"1e1000000", "precision", "kind_mismatch"},
-	{"9e99999", "precision", "kind_mismatch"},
-	{"-1e400", "precision", "kind_mismatch"},
+	// out of what the field can hold
+	{"-1", "experience", "out_of_range"},
+	{"99999999999999999999999999", "experience", "out_of_range"},
+	// a magnitude no float of that width holds: refused, never an infinity
+	{"1e400", "precision", "out_of_range"},
+	{"1e1000000", "precision", "out_of_range"},
+	{"9e99999", "precision", "out_of_range"},
+	{"-1e400", "precision", "out_of_range"},
 	{"1e308", "precision", "value=1e+308"},
 	{"-9223372036854775808", "timestamp", "value=-9223372036854775808"},
 }
@@ -519,14 +519,8 @@ func TestNumberGrammarAndSemantics(t *testing.T) {
 					t.Fatalf("%q is not a JSON number and must be malformed, got %+v", tc.token, r)
 				}
 				return
-			case "kind_mismatch":
-				if r.KindMismatch != 1 || r.Refused {
-					t.Fatalf("expected one kind_mismatch, got %+v", r)
-				}
-			case "clamped":
-				if r.Clamped == 0 || r.Refused {
-					t.Fatalf("expected a clamp, got %+v", r)
-				}
+			case "kind_mismatch", "out_of_range":
+				refuses(t, r, tc.want)
 			default:
 				if !r.Silent() {
 					t.Fatalf("expected silence, got %+v", r)
@@ -549,123 +543,85 @@ func TestNumberGrammarAndSemantics(t *testing.T) {
 	}
 }
 
-// §16.2: `null` is kind_mismatch for every kind except the two where absence is
-// a value — a `?T` reads it as ABSENT, and a pointer reads it as null.
+// §16.2: `null` refuses as a kind mismatch for every kind except the two where
+// absence is a value — a `?T` reads it as ABSENT, and a pointer reads it as
+// null.
 func TestNullPerKind(t *testing.T) {
-	_, inst, r := read(t, "ShipEntry", `{ "name": "X", "gunner": null }`)
-	if !r.Silent() {
-		t.Fatalf("null on a ?T is the absence, not a mismatch: %+v", r)
-	}
+	m, inst, r := read(t, "ShipEntry", `{ "name": "X", "gunner": null }`)
+	accepts(t, m, inst, r)
 	if field(t, inst, "gunner").Present {
 		t.Fatal("null on a ?T left the field present")
 	}
-	// and it beats an earlier occurrence, because last wins as a whole value
-	_, inst, r = read(t, "ShipEntry", `{ "gunner": { "tracking": true }, "gunner": null }`)
-	if r.Duplicate != 1 || field(t, inst, "gunner").Present {
-		t.Fatalf("a repeated key ending in null must leave the field absent: %+v", r)
-	}
+	// a repeated key refuses whatever the repeat holds
+	_, _, r = read(t, "ShipEntry", `{ "gunner": { "tracking": true }, "gunner": null }`)
+	refuses(t, r, "malformed")
 	for _, key := range []string{"name", "health", "hardpoints"} {
 		_, _, r := read(t, "ShipEntry", `{ "`+key+`": null }`)
-		if r.KindMismatch != 1 {
-			t.Fatalf("null on %s should be a kind mismatch, got %+v", key, r)
-		}
+		refuses(t, r, "kind_mismatch")
 	}
 }
 
-// §16.3: the writer always emits valid UTF-8. A stored byte sequence that is
-// not well-formed — which the storage permits and a lone surrogate escape can
-// introduce — is written as U+FFFD, one per maximal subpart, never raw.
-func TestWriterEmitsValidUTF8(t *testing.T) {
-	// a lone surrogate escape READS as U+FFFD rather than manufacturing CESU-8
-	_, inst, r := read(t, "GunnerSettings", `{ "callsign": "\uD800x" }`)
-	if !r.Silent() {
-		t.Fatalf("expected silence, got %+v", r)
+// §16.2, §16.3: a lone or out-of-order surrogate escape refuses as malformed
+// rather than manufacturing CESU-8 or a U+FFFD the text never spelled, and a
+// raw ill-formed byte refuses by name. A surrogate PAIR reads.
+func TestIllFormedTextRefusesOnRead(t *testing.T) {
+	for _, text := range []string{`"\uD800x"`, `"\uDC00x"`, `"\uDC00\uD800"`} {
+		_, _, r := read(t, "GunnerSettings", `{ "callsign": `+text+` }`)
+		refuses(t, r, "malformed: string_lone_surrogate")
 	}
-	if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte("�x")) {
-		t.Fatalf("a lone lead surrogate must read as U+FFFD, got % x", got)
+	m, inst, r := read(t, "GunnerSettings", `{ "callsign": "😀x" }`)
+	accepts(t, m, inst, r)
+	if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte("\U0001F600x")) {
+		t.Fatalf("a surrogate pair must read as its code point, got % x", got)
 	}
-	_, inst, _ = read(t, "GunnerSettings", `{ "callsign": "\uDC00x" }`)
-	if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte("�x")) {
-		t.Fatalf("a lone trail surrogate must read as U+FFFD, got % x", got)
-	}
-	// a raw ill-formed byte is REFUSED BY NAME ON READ (§16.3) — a silent
-	// U+FFFD would make two different texts one value — never replaced
 	_, _, r = read(t, "GunnerSettings", "{ \"callsign\": \"a\xffb\" }")
-	if !r.Refused || !strings.HasPrefix(r.Reason, "string_not_utf8") {
-		t.Fatalf("a raw ill-formed byte must refuse the read: %+v", r)
-	}
+	refuses(t, r, "string_not_utf8")
 }
 
-// §16.2: a `bits(N)` value over its implied [0, 2^N - 1] clamps and counts —
-// the bound the declaration implies rather than one it states, and the one the
-// generated backend clamps against on the way back in.
+// §16.2: a `bits(N)` value over its implied [0, 2^N - 1] refuses — the bound
+// the declaration implies rather than one it states.
 func TestBitsImpliedBound(t *testing.T) {
-	_, inst, r := read(t, "WeaponConfig", `{ "channel": 63 }`)
-	if !r.Silent() || field(t, inst, "channel").Cell.U != 63 {
+	m, inst, r := read(t, "WeaponConfig", `{ "channel": 63 }`)
+	accepts(t, m, inst, r)
+	if field(t, inst, "channel").Cell.U != 63 {
 		t.Fatalf("63 fits in bits(6): %+v", r)
 	}
-	_, inst, r = read(t, "WeaponConfig", `{ "channel": 64 }`)
-	if r.Clamped != 1 {
-		t.Fatalf("expected one clamp, got %+v", r)
-	}
-	if got := field(t, inst, "channel").Cell.U; got != 63 {
-		t.Fatalf("expected the implied max, got %d", got)
-	}
+	_, _, r = read(t, "WeaponConfig", `{ "channel": 64 }`)
+	refuses(t, r, "out_of_range")
 }
 
 // A RAW ILL-FORMED BYTE IS REFUSED BY NAME ON READ (§16.3): RFC 8259
 // requires a JSON text to be valid UTF-8, so a byte in a string body that is
 // not part of a well-formed sequence refuses the read with Reason
 // `string_not_utf8`, rather than being silently replaced with U+FFFD.
-func TestIllFormedByteIsReplacedOnRead(t *testing.T) {
+func TestIllFormedByteRefusesOnRead(t *testing.T) {
 	_, _, r := read(t, "GlobalSettings", "{ \"build_note\": \"a\xffb\" }")
 	if !r.Refused || !strings.HasPrefix(r.Reason, "string_not_utf8") {
 		t.Fatalf("a raw ill-formed byte must refuse the read: %+v", r)
 	}
 }
 
-// §16.2: RE-ESTABLISHMENT HAPPENS ON PLACEMENT. A repeated key whose repeat the
-// walk refuses at the VALUE level — a fraction in an integer field, a magnitude
-// no float of that width holds, a token that is not JSON at all — leaves the
-// first occurrence's value standing. Only a value actually placed replaces one.
-func TestRejectedRepeatKeepsTheFirstValue(t *testing.T) {
-	cases := []struct {
-		table, text, key string
-		want             uint64
-	}{
-		{"ProfileConfig", `{ "tilt": 100, "tilt": 5e-324 }`, "tilt", 100},
-		{"ProfileConfig", `{ "experience": 5, "experience": 2.5 }`, "experience", 5},
-		{"ProfileConfig", `{ "badge": 9, "badge": 1e309 }`, "badge", 9},
-		{"WeaponConfig", `{ "penetration": 3, "penetration": 1.5 }`, "penetration", 3},
-	}
-	for _, tc := range cases {
-		t.Run(tc.text, func(t *testing.T) {
-			_, inst, r := read(t, tc.table, tc.text)
-			if r.KindMismatch != 1 || r.Duplicate != 1 {
-				t.Fatalf("expected one kind_mismatch and one duplicate, got %+v", r)
+// §16.2, §6.5: A REPEATED KEY REFUSES WHATEVER THE REPEAT HOLDS — a value the
+// walk would place, or one it would refuse on its own — on a field and on a
+// keyed slot alike. The controls name each key once.
+func TestRepeatedKeyRefusesWhateverItHolds(t *testing.T) {
+	for _, tc := range []struct{ table, repeat, control string }{
+		{"ProfileConfig", `{ "tilt": 100, "tilt": 5e-324 }`, `{ "tilt": 100 }`},
+		{"ProfileConfig", `{ "experience": 5, "experience": 2.5 }`, `{ "experience": 5 }`},
+		{"ProfileConfig", `{ "badge": 9, "badge": 1e309 }`, `{ "badge": 9 }`},
+		{"WeaponConfig", `{ "penetration": 3, "penetration": 1.5 }`, `{ "penetration": 3 }`},
+		{"ProfileConfig", `{ "tilt": 100, "tilt": 7 }`, `{ "tilt": 7 }`},
+		{"PackConfig", `{ "thresholds": { "Hard": 64, "Hard": 0.1 } }`, `{ "thresholds": { "Hard": 64 } }`},
+		{"PackConfig", `{ "thresholds": { "Hard": 64, "Hard": 2 } }`, `{ "thresholds": { "Hard": 2 } }`},
+	} {
+		t.Run(tc.repeat, func(t *testing.T) {
+			_, _, r := read(t, tc.table, tc.repeat)
+			if !r.Refused {
+				t.Fatalf("a repeated key read: %+v", r)
 			}
-			if got := field(t, inst, tc.key).Cell.U; got != tc.want {
-				t.Fatalf("the refused repeat wiped the first value: got %d, want %d", got, tc.want)
-			}
+			m, inst, r := read(t, tc.table, tc.control)
+			accepts(t, m, inst, r)
 		})
-	}
-	// a keyed SLOT is the same rule one level down
-	_, inst, r := read(t, "PackConfig", `{ "thresholds": { "Hard": 64, "Hard": 0.1 } }`)
-	if r.KindMismatch != 1 || r.Duplicate != 1 {
-		t.Fatalf("expected one kind_mismatch and one duplicate, got %+v", r)
-	}
-	fv := field(t, inst, "thresholds")
-	hard := KeyedSlot(t, fv, "Hard")
-	if fv.Elems[hard].U != 64 {
-		t.Fatalf("the refused repeat wiped the slot: got %d", fv.Elems[hard].U)
-	}
-	// and a repeat that IS placeable replaces, as last-wins requires
-	_, inst, r = read(t, "ProfileConfig", `{ "tilt": 100, "tilt": 7 }`)
-	if r.Duplicate != 1 || r.KindMismatch != 0 {
-		t.Fatalf("expected one duplicate and no mismatch, got %+v", r)
-	}
-	if got := field(t, inst, "tilt").Cell.U; got != 7 {
-		t.Fatalf("last-wins did not: got %d", got)
 	}
 }
 
@@ -675,45 +631,32 @@ func TestRejectedRepeatKeepsTheFirstValue(t *testing.T) {
 // because a key is an identity that two spellings must not share, while a
 // field's value is a quantity read the same way by every port that reads these
 // texts. So the field path keeps the interpretation the C, Go and Rust readers
-// have: a magnitude past what a float64 holds is kind_mismatch and nothing is
-// stored, and a token at 2^53 lands the value the mantissa carries.
-//
-// The two verdicts below are the ones the ports produce, and moving either of
-// them is a change to all four readers at once.
+// have: a magnitude past what a float64 holds refuses, and a token at 2^53
+// lands the value the mantissa carries.
 func TestAnIntegerFieldReadsItsTokenThroughTheFloat(t *testing.T) {
-	_, inst, r := read(t, "ProfileConfig", `{ "badge": 1e309 }`)
-	if r.KindMismatch != 1 || r.Clamped != 0 || r.Refused {
-		t.Fatalf("a magnitude no float64 holds is kind_mismatch for an integer field: %+v", r)
+	_, _, r := read(t, "ProfileConfig", `{ "badge": 1e309 }`)
+	if !r.Refused {
+		t.Fatalf("a magnitude no float64 holds refuses for an integer field: %+v", r)
 	}
-	if got := field(t, inst, "badge").Cell.U; got != 0 {
-		t.Fatalf("nothing is stored on a mismatch: got %d, want 0", got)
-	}
-	// the same spelling in a FLOAT field, which has always answered this way
-	_, inst, r = read(t, "ProfileConfig", `{ "precision": 1e400 }`)
-	if r.KindMismatch != 1 || r.Clamped != 0 {
-		t.Fatalf("a float64 that cannot hold the value mismatches: %+v", r)
-	}
-	if got := field(t, inst, "precision").Cell.F; got != 0 {
-		t.Fatalf("nothing is stored on a mismatch: got %v", got)
-	}
+	// the same spelling in a FLOAT field
+	_, _, r = read(t, "ProfileConfig", `{ "precision": 1e400 }`)
+	refuses(t, r, "out_of_range")
 	// and at 2^53 the field lands what the mantissa carries, where the KEY path
 	// lands the digits the token spells
-	_, inst, r = read(t, "ProfileConfig", `{ "epoch": 9007199254740993.0 }`)
-	if r.KindMismatch != 0 || r.Clamped != 0 {
-		t.Fatalf("an integral value is placed: %+v", r)
-	}
+	m, inst, r := read(t, "ProfileConfig", `{ "epoch": 9007199254740993.0 }`)
+	accepts(t, m, inst, r)
 	if got := field(t, inst, "epoch").Cell.U; got != 9007199254740992 {
 		t.Fatalf("the field path rounds at the mantissa: got %d, want 9007199254740992", got)
 	}
-	// and the decimal spelling of UINT64_MAX rounds UP through the float64, so
-	// the field saturates and COUNTS the clamp, where the key path reads the
-	// digits and counts nothing
-	_, inst, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709551615.0 }`)
-	if r.KindMismatch != 0 || r.Clamped != 1 {
-		t.Fatalf("a magnitude at the top of the domain saturates and counts: %+v", r)
-	}
-	if got := field(t, inst, "epoch").Cell.U; got != math.MaxUint64 {
-		t.Fatalf("the field holds the edge: got %d, want %d", got, uint64(math.MaxUint64))
+	// and the decimal spelling of UINT64_MAX rounds UP through the float64,
+	// past the domain, so the field refuses where the key path reads the digits
+	_, _, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709551615.0 }`)
+	refuses(t, r, "out_of_range")
+	// the largest float64 below 2^64 is in the domain and reads
+	m, inst, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709549568 }`)
+	accepts(t, m, inst, r)
+	if got := field(t, inst, "epoch").Cell.U; got != 18446744073709549568 {
+		t.Fatalf("got %d", got)
 	}
 }
 
@@ -727,39 +670,36 @@ func KeyedSlot(t *testing.T, fv *tabletext.Field, name string) int {
 	return slot
 }
 
-// §16.2 with #282: a KEYED OBJECT'S KEYS ARE KEYS. A variant named twice is a
-// duplicate, counted on the RESOLVED slot and before the shape check — so a
-// repeat the walk then refuses is still a repeat. A key that names NO slot (an
-// unknown variant, or `"None"`) is `unknown` each time and never a duplicate.
-func TestKeyedObjectDuplicateRule(t *testing.T) {
+// §16.2 with #282: a KEYED OBJECT'S KEYS ARE KEYS. A variant named twice
+// refuses the read. A key that names NO slot (an unknown variant, or `"None"`)
+// is evolution, `unknown` each time, and a repeat of it refuses as any
+// repeated key does.
+func TestKeyedObjectRepeatRule(t *testing.T) {
 	_, _, r := read(t, "PackConfig", `{ "thresholds": { "Hard": 1, "Hard": 2 } }`)
-	if r.Duplicate != 1 || r.Unknown != 0 {
-		t.Fatalf("a repeated slot is one duplicate, got %+v", r)
+	refuses(t, r, "malformed")
+	m, inst, r := read(t, "PackConfig", `{ "ships": { "Frigate": {}, "None": {} } }`)
+	if r.Unknown != 2 || r.Refused {
+		t.Fatalf("a key naming no slot is unknown, got %+v", r)
 	}
-	_, _, r = read(t, "PackConfig", `{ "ships": { "Frigate": {}, "Frigate": {} } }`)
-	if r.Unknown != 2 || r.Duplicate != 0 {
-		t.Fatalf("a repeated key naming no slot is unknown each time, got %+v", r)
+	if _, err := m.Write(inst); err != nil {
+		t.Fatal(err)
 	}
-	_, _, r = read(t, "PackConfig", `{ "ships": { "None": {}, "None": {} } }`)
-	if r.Unknown != 2 || r.Duplicate != 0 {
-		t.Fatalf("None names no slot, so it is unknown each time, got %+v", r)
-	}
-	_, _, r = read(t, "PackConfig", `{ "ships": { "Scout": {}, "Frigate": {}, "Scout": {}, "Frigate": {} } }`)
-	if r.Unknown != 2 || r.Duplicate != 1 {
-		t.Fatalf("mixed: two unknown, one duplicate, got %+v", r)
-	}
+	_, _, r = read(t, "PackConfig", `{ "ships": { "Scout": {}, "Frigate": {}, "Scout": {} } }`)
+	refuses(t, r, "malformed")
+	m, inst, r = read(t, "PackConfig", `{ "ships": { "Scout": {} } }`)
+	accepts(t, m, inst, r)
 }
 
-// §16.2: PRESENCE OF THE KEY IS THE PRESENCE — a `?T` given a value the walk
-// will not place is still PRESENT, because it is the key that says so. Only
-// `null` is the absence.
-func TestOptionalPresentWhateverTheValue(t *testing.T) {
-	_, inst, r := read(t, "ShipEntry", `{ "gunner": 5 }`)
-	if r.KindMismatch != 1 {
-		t.Fatalf("expected one kind_mismatch, got %+v", r)
-	}
+// §16.2: PRESENCE OF THE KEY IS THE PRESENCE, but a `?T` given a value of the
+// wrong shape refuses the read; `null` is the absence and `{}` is a present
+// value at its defaults.
+func TestOptionalWrongShapeRefuses(t *testing.T) {
+	_, _, r := read(t, "ShipEntry", `{ "gunner": 5 }`)
+	refuses(t, r, "kind_mismatch")
+	m, inst, r := read(t, "ShipEntry", `{ "gunner": {} }`)
+	accepts(t, m, inst, r)
 	if !field(t, inst, "gunner").Present {
-		t.Fatal("the key was there, so the field is present whatever its value")
+		t.Fatal("the key was there, so the field is present")
 	}
 }
 
@@ -768,25 +708,24 @@ func TestOptionalPresentWhateverTheValue(t *testing.T) {
 // company at both ends of the range.
 func TestFloat32SingleRounding(t *testing.T) {
 	cases := []struct {
-		token string
-		want  float32
-		mis   int
+		token   string
+		want    float32
+		refused bool
 	}{
-		{"340282356779733661637539395458142568447", math.MaxFloat32, 0},
-		{"-340282356779733661637539395458142568440", -math.MaxFloat32, 0},
-		{"340282356779733661637539395458142568448", 0, 1}, // the midpoint: no float32 holds it
-		{"7.0064923216240853547e-46", math.SmallestNonzeroFloat32, 0},
-		{"-7.0064923216240853547e-46", -math.SmallestNonzeroFloat32, 0},
+		{"340282356779733661637539395458142568447", math.MaxFloat32, false},
+		{"-340282356779733661637539395458142568440", -math.MaxFloat32, false},
+		{"340282356779733661637539395458142568448", 0, true}, // the midpoint: no float32 holds it
+		{"7.0064923216240853547e-46", math.SmallestNonzeroFloat32, false},
+		{"-7.0064923216240853547e-46", -math.SmallestNonzeroFloat32, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.token, func(t *testing.T) {
-			_, inst, r := read(t, "ProfileConfig", `{ "ratings": [ `+tc.token+`, 0.0, 0.0, 0.0 ] }`)
-			if r.KindMismatch != tc.mis {
-				t.Fatalf("expected %d kind_mismatch, got %+v", tc.mis, r)
-			}
-			if tc.mis > 0 {
+			m, inst, r := read(t, "ProfileConfig", `{ "ratings": [ `+tc.token+`, 0.0, 0.0, 0.0 ] }`)
+			if tc.refused {
+				refuses(t, r, "out_of_range")
 				return
 			}
+			accepts(t, m, inst, r)
 			if got := float32(field(t, inst, "ratings").Elems[0].F); got != tc.want {
 				t.Fatalf("got %v, want %v", got, tc.want)
 			}
@@ -905,17 +844,17 @@ func TestSharingConstructRefusals(t *testing.T) {
 }
 
 // A reference resolves against the definition's TABLE, and a definition the
-// walk dropped keeps its label: both mirror the wire's node rules (§3.1), where a
-// node of another type is a kind mismatch and an unnameable node reads null.
+// walk skipped keeps its label: both mirror the wire's node rules (§3.1), where
+// a node of another type refuses and an unnameable node reads null.
 func TestReferenceResolution(t *testing.T) {
 	m := pointered(t)
-	inst, r := readScene(t, m, `{ "settings": { "&node": 1, "quality": 1 }, "head": { "&node": 1 } }`)
-	if r.KindMismatch != 1 || r.Refused || field(t, inst, "head").Cell.Node != nil {
-		t.Fatalf("a reference to a node of another table is a kind mismatch with the pointer null: %+v", r)
-	}
-	inst, r = readScene(t, m, `{ "layers": [ {}, {}, {}, {}, { "head": { "&node": 1, "value": 1 } } ], "alias": { "&node": 1 } }`)
-	if r.Clamped != 1 || r.Refused || r.Unknown != 0 || field(t, inst, "alias").Cell.Node != nil {
-		t.Fatalf("a definition past the bound is dropped and counted once, and its reference reads null: %+v", r)
+	_, r := readScene(t, m, `{ "settings": { "&node": 1, "quality": 1 }, "head": { "&node": 1 } }`)
+	refuses(t, r, "kind_mismatch")
+	_, r = readScene(t, m, `{ "layers": [ {}, {}, {}, {}, { "head": { "&node": 1, "value": 1 } } ], "alias": { "&node": 1 } }`)
+	refuses(t, r, "count_over_bound")
+	inst, r := readScene(t, m, `{ "layers": [ { "head": { "&node": 1, "value": 1 } } ], "alias": { "&node": 1 } }`)
+	if !r.Silent() || field(t, inst, "alias").Cell.Node == nil {
+		t.Fatalf("a definition inside the bound is named by its reference: %+v", r)
 	}
 	inst, r = readScene(t, m, `{ "mystery": { "&node": 9, "value": 1 }, "head": { "&node": 9 } }`)
 	if r.Unknown != 1 || r.Refused || field(t, inst, "head").Cell.Node != nil {
@@ -986,34 +925,26 @@ func TestSharedNodeWithNothingToWriteIsRefused(t *testing.T) {
 }
 
 // §16.2: A MAGNITUDE IN THE HIGH HALF IS A MAGNITUDE, not a negative. It is the
-// field's own DOMAIN that bounds it, established before the value reaches
-// storage, so a narrower unsigned field clamps at its CEILING. Reading the
-// interpreter's own signed lane instead lands zero, the floor, for a value
-// larger than any this field can hold.
-func TestUnsignedHighHalfClampsAtTheCeiling(t *testing.T) {
-	_, inst, r := read(t, "ProfileConfig", `{ "badge": 18446744073709551615, "experience": 18446744073709551615 }`)
-	if r.Clamped != 2 || r.KindMismatch != 0 || r.Refused {
-		t.Fatalf("two clamps and nothing else, got %+v", r)
+// field's own DOMAIN that bounds it, so a narrower unsigned field refuses it as
+// out of range; the field's own ceiling reads.
+func TestUnsignedHighHalfIsOutOfRange(t *testing.T) {
+	for _, key := range []string{"badge", "experience"} {
+		_, _, r := read(t, "ProfileConfig", `{ "`+key+`": 18446744073709551615 }`)
+		refuses(t, r, "out_of_range")
 	}
-	if got := field(t, inst, "badge").Cell.U; got != 255 {
-		t.Errorf("badge is uint8: expected its ceiling 255, got %d", got)
-	}
-	if got := field(t, inst, "experience").Cell.U; got != 4294967295 {
-		t.Errorf("experience is uint32: expected its ceiling 4294967295, got %d", got)
+	m, inst, r := read(t, "ProfileConfig", `{ "badge": 255, "experience": 4294967295 }`)
+	accepts(t, m, inst, r)
+	if field(t, inst, "badge").Cell.U != 255 || field(t, inst, "experience").Cell.U != 4294967295 {
+		t.Fatal("the ceilings did not place")
 	}
 }
 
-// §16.2: A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO whatever its
-// spelling. -1e30 is a magnitude past every width and a sign, and both halves
-// are known before anything is cast. Reading it through a signed lane makes it
-// the wrong SHAPE for the kind instead, which is the answer the page gives a
-// fraction and not a negative.
-func TestNegativeExponentInAnUnsignedFieldClampsToZero(t *testing.T) {
-	_, inst, r := read(t, "ProfileConfig", `{ "experience": -1e30 }`)
-	if r.KindMismatch != 0 || r.Clamped == 0 || r.Refused {
-		t.Fatalf("a negative in an unsigned field is a clamp, not a mismatch: %+v", r)
-	}
-	if got := field(t, inst, "experience").Cell.U; got != 0 {
-		t.Errorf("expected zero, got %d", got)
-	}
+// §16.2: A NEGATIVE TOKEN IN AN UNSIGNED FIELD IS OUT OF RANGE whatever its
+// spelling, never the wrong SHAPE: -1e30 is a magnitude past every width and a
+// sign, and both halves are known before anything is cast.
+func TestNegativeExponentInAnUnsignedFieldIsOutOfRange(t *testing.T) {
+	_, _, r := read(t, "ProfileConfig", `{ "experience": -1e30 }`)
+	refuses(t, r, "out_of_range")
+	m, inst, r := read(t, "ProfileConfig", `{ "experience": -0e30 }`)
+	accepts(t, m, inst, r)
 }

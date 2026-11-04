@@ -159,19 +159,17 @@ func TestEngineTimestampIsRFC3339Text(t *testing.T) {
 		})
 	}
 
-	// §16.1, §16.2: a NUMBER token is the dialect's wrong-JSON-type rule —
-	// skipped, counted as a kind mismatch, never coerced to a count.
+	// §16.1, §16.2: a NUMBER token is the wrong JSON type, refused as a kind
+	// mismatch, never coerced to a count.
 	t.Run("number token", func(t *testing.T) {
 		inst := m.New(st)
 		var report tabletext.Report
-		if !m.Read(inst, []byte(`{"at": 0}`), &report) {
-			t.Fatalf("the object itself should read: %+v", report)
+		if m.Read(inst, []byte(`{"at": 0}`), &report) || !report.Refused || !strings.HasPrefix(report.Reason, "kind_mismatch") {
+			t.Fatalf("a NUMBER token should refuse as kind_mismatch, got %+v", report)
 		}
-		if report.Refused || report.KindMismatch != 1 {
-			t.Fatalf("a NUMBER token should be one kind_mismatch, got %+v", report)
-		}
-		if got := inst.Fields[0].Cell.I; got != 0 {
-			t.Fatalf("the number was coerced into the field: %d", got)
+		report = tabletext.Report{}
+		if !m.Read(inst, []byte(`{"at": "1970-01-01T00:00:00Z"}`), &report) || !report.Silent() {
+			t.Fatalf("the epoch spelled as a timestamp should read: %+v", report)
 		}
 	})
 }

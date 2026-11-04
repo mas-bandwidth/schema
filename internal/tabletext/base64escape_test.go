@@ -8,7 +8,7 @@ import (
 // TestTextBase64BodyDecodesEscapesFirst pins docs/SPEC-TABLES.md §16.2: a
 // bytes field is a JSON string whose decoded value is base64, so JSON escapes
 // inside the string are undone before base64 decoding, and an escape that
-// decodes to a character outside the base64 alphabet stays kind_mismatch.
+// decodes to a character outside the base64 alphabet refuses the read.
 func TestTextBase64BodyDecodesEscapesFirst(t *testing.T) {
 	t.Parallel()
 
@@ -28,11 +28,8 @@ func TestTextBase64BodyDecodesEscapesFirst(t *testing.T) {
 		t.Fatalf("unicode escape: got %x, want 01", got)
 	}
 
-	_, inst, r = read(t, "ProfileConfig", `{ "icon": "\n" }`)
-	if r.Refused || r.KindMismatch != 1 {
-		t.Fatalf("escaped newline: expected 1 kind_mismatch, got %+v", r)
-	}
-	if got := field(t, inst, "icon").Cell.Str; len(got) != 0 {
-		t.Fatalf("escaped newline: expected default empty bytes, got %x", got)
+	_, _, r = read(t, "ProfileConfig", `{ "icon": "\n" }`)
+	if !r.Refused {
+		t.Fatalf("escaped newline: expected a refusal, got %+v", r)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -16,7 +17,7 @@ import (
 // TestUncoveredPaths drives the text engine over the corpora the package's
 // other tests leave partly unread (docs/SPEC-TABLES.md §2.8, §16.2) and pins
 // the rules whose functions no existing case reached: map key order and its
-// integer spelling, the wide kinds' clamp and raw value, both packer entry
+// integer spelling, the wide kinds' range refusal and raw value, both packer entry
 // points, and a union arm that names no declaration.
 func TestUncoveredPaths(t *testing.T) {
 	t.Parallel()
@@ -27,12 +28,11 @@ func TestUncoveredPaths(t *testing.T) {
 			fn   func(*testing.T)
 		}{
 			{"unknown key", TestUnknownKeyIsCounted},
-			{"duplicate key", TestDuplicateKeyIsLastWins},
-			{"wrong type", TestWrongTypeIsSkippedNotCoerced},
+			{"duplicate key", TestDuplicateKeyRefuses},
+			{"wrong type", TestWrongTypeRefuses},
 			{"fraction", TestFractionWhereIntegerDeclared},
-			{"out of range", TestOutOfRangeIsClamped},
-			{"string clamp", TestStringClampsAtCodePointBoundary},
-			{"clamp prefix", TestClampIsAPrefix},
+			{"out of range", TestOutOfRangeRefuses},
+			{"string bound", TestStringPastItsBoundRefuses},
 			{"escapes", TestEscapesAndSurrogates},
 			{"enum", TestEnumByNameAndUnknownVariant},
 			{"optional", TestOptionalPresenceIsTheKey},
@@ -47,21 +47,21 @@ func TestUncoveredPaths(t *testing.T) {
 			{"round trip", TestWriteReadWriteIsStable},
 			{"numbers", TestNumberGrammarAndSemantics},
 			{"null", TestNullPerKind},
-			{"utf8 writer", TestWriterEmitsValidUTF8},
+			{"ill formed text", TestIllFormedTextRefusesOnRead},
 			{"bits", TestBitsImpliedBound},
-			{"ill formed", TestIllFormedByteIsReplacedOnRead},
-			{"repeat", TestRejectedRepeatKeepsTheFirstValue},
+			{"ill formed", TestIllFormedByteRefusesOnRead},
+			{"repeat", TestRepeatedKeyRefusesWhateverItHolds},
 			{"integer token", TestAnIntegerFieldReadsItsTokenThroughTheFloat},
-			{"keyed duplicate", TestKeyedObjectDuplicateRule},
-			{"optional present", TestOptionalPresentWhateverTheValue},
+			{"keyed repeat", TestKeyedObjectRepeatRule},
+			{"optional shape", TestOptionalWrongShapeRefuses},
 			{"float32", TestFloat32SingleRounding},
 			{"shared node", TestSharedNodeIsOneNode},
 			{"sharing refusal", TestSharingConstructRefusals},
 			{"reference", TestReferenceResolution},
 			{"chain", TestChainNestsAsDeepAsItIsLong},
 			{"empty shared", TestSharedNodeWithNothingToWriteIsRefused},
-			{"unsigned ceiling", TestUnsignedHighHalfClampsAtTheCeiling},
-			{"negative exponent", TestNegativeExponentInAnUnsignedFieldClampsToZero},
+			{"unsigned ceiling", TestUnsignedHighHalfIsOutOfRange},
+			{"negative exponent", TestNegativeExponentInAnUnsignedFieldIsOutOfRange},
 			{"timestamp", TestEngineTimestampIsRFC3339Text},
 			{"string utf8", TestEngineStringRefusesInvalidUTF8},
 			{"bom entry", TestJSONByteOrderMarkAtTheEntry},
@@ -81,14 +81,24 @@ func TestUncoveredPaths(t *testing.T) {
 		}
 		inst := m.New(st)
 		var r tabletext.Report
+		// a key outside the key kind's domain, or fractional, refuses the read
+		for _, bad := range []string{
+			`{ "blobs": { "9007199254740993": "AA==" } }`,
+			`{ "blobs": { "2.5": "BA==" } }`,
+			`{ "blobs": { "999999999999999999999999999999": "BQ==" } }`,
+		} {
+			var br tabletext.Report
+			if m.Read(m.New(st), []byte(bad), &br) || !br.Refused {
+				t.Fatalf("%s: a key outside the domain read: %+v", bad, br)
+			}
+		}
 		text := `{
 			"names": { "zz": "last", "a": "first", "ab": "middle" },
 			"wide": { "10": "ten", "2": "two" },
-			"blobs": { "9007199254740993": "AA==", "1e3": "AQ==", "2.0": "Ag==",
-			           "-0": "Aw==", "2.5": "BA==", "999999999999999999999999999999": "BQ==" },
+			"blobs": { "1e3": "AQ==", "2.0": "Ag==", "-0": "Aw==" },
 			"past": 7
 		}`
-		if !m.Read(inst, []byte(text), &r) {
+		if !m.Read(inst, []byte(text), &r) || !r.Silent() {
 			t.Fatalf("map text refused: %+v", r)
 		}
 		names := field(t, inst, "names")
@@ -103,7 +113,7 @@ func TestUncoveredPaths(t *testing.T) {
 		}
 		blobs := field(t, inst, "blobs")
 		if len(blobs.Entries) != 3 {
-			t.Fatalf("blobs holds %d entries, want 3 (fractional and saturated keys drop)", len(blobs.Entries))
+			t.Fatalf("blobs holds %d entries, want 3", len(blobs.Entries))
 		}
 		want := []int64{0, 2, 1000} // -0, 2.0 and 1e3, sorted
 		for i, w := range want {
@@ -116,15 +126,22 @@ func TestUncoveredPaths(t *testing.T) {
 			t.Fatalf("write: %v", err)
 		}
 
+		for _, bad := range []string{
+			`{ "ids": { "-1": { "count": 4 } } }`,
+			`{ "ids": { "2.5": { "count": 5 } } }`,
+			`{ "ids": { "18446744073709551616": { "count": 6 } } }`,
+		} {
+			var br tabletext.Report
+			if m.Read(m.New(m.Lookup("EdgeRow")), []byte(bad), &br) || !br.Refused {
+				t.Fatalf("%s: a key outside the uint64 domain read: %+v", bad, br)
+			}
+		}
 		edge := m.New(m.Lookup("EdgeRow"))
 		var er tabletext.Report
 		edgeText := `{ "ids": {
 			"9007199254740993": { "count": 1 },
 			"18446744073709551615": { "count": 2 },
-			"1e3": { "count": 3 },
-			"-1": { "count": 4 },
-			"2.5": { "count": 5 },
-			"18446744073709551616": { "count": 6 }
+			"1e3": { "count": 3 }
 		} }`
 		if !m.Read(edge, []byte(edgeText), &er) || er.Refused {
 			t.Fatalf("uint64 keys refused: %+v", er)
@@ -212,19 +229,22 @@ func TestUncoveredPaths(t *testing.T) {
 			t.Fatalf("the wide value did not write exactly:\n%s", out)
 		}
 
-		// the declared range clamps, and a finer fraction is a kind mismatch.
-		clampInst := m.New(st)
-		var cr tabletext.Report
-		if !m.Read(clampInst, []byte(`{ "angle": 1e9, "position": 1e9 }`), &cr) {
-			t.Fatalf("clamping text refused: %+v", cr)
+		// a value past the declared range refuses as out_of_range, and a finer
+		// fraction refuses as a kind mismatch; the range's edge reads.
+		for text, reason := range map[string]string{
+			`{ "angle": 1e9 }`:    "out_of_range",
+			`{ "position": 1e9 }`: "out_of_range",
+			`{ "angle": 1e-9 }`:   "kind_mismatch",
+		} {
+			var rr tabletext.Report
+			if m.Read(m.New(st), []byte(text), &rr) || !rr.Refused || !strings.HasPrefix(rr.Reason, reason) {
+				t.Fatalf("%s: want a %s refusal, got %+v", text, reason, rr)
+			}
 		}
-		if cr.Clamped == 0 {
-			t.Fatalf("expected the wide range to clamp, got %+v", cr)
-		}
-		fine := m.New(st)
-		var fr tabletext.Report
-		if !m.Read(fine, []byte(`{ "angle": 1e-9 }`), &fr) || fr.KindMismatch == 0 {
-			t.Fatalf("a finer fraction must be a kind mismatch: %+v", fr)
+		edge := m.New(st)
+		var er tabletext.Report
+		if !m.Read(edge, []byte(`{ "angle": 180 }`), &er) || !er.Silent() {
+			t.Fatalf("the range's edge must read: %+v", er)
 		}
 
 		angle := field(t, inst, "angle").Def
