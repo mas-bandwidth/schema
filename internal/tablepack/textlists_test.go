@@ -17,10 +17,14 @@ import (
 
 // wireListsRules builds a Lists wire whose rules field carries exactly the given
 // elements, whatever its `[..4]` bound — an over-bound wire, for the read-side
-// refusal cases. The fresh instance's other fields stay at their declared
-// defaults (first and repos empty).
-func wireListsRules(t *testing.T, m *tabletext.Model, elements []string) []byte {
+// refusal cases. A writer refuses a value past its declaration, so the wire is
+// written by a twin declaration whose rules are wider ([..8]string(16)): a
+// bound is not an id, and the twin's bytes are the bytes an over-bound writer
+// would send. The fresh instance's other fields stay at their declared defaults
+// (first and repos empty).
+func wireListsRules(t *testing.T, _ *tabletext.Model, elements []string) []byte {
 	t.Helper()
+	_, m := textListsUnitOf(t, strings.Replace(textListsSchema, "rules [..4]string(8)", "rules [..8]string(16)", 1))
 	inst := m.New(m.Unit.Tables["Lists"])
 	fv := &inst.Fields[0] // rules
 	fv.Count = len(elements)
@@ -68,9 +72,14 @@ const textListsGolden = "01010e060c0201610162020e0a0d0205030c017800010000c053512
 
 func textListsUnit(t *testing.T) (*compiler.Compiler, *tabletext.Model) {
 	t.Helper()
+	return textListsUnitOf(t, textListsSchema)
+}
+
+func textListsUnitOf(t *testing.T, schema string) (*compiler.Compiler, *tabletext.Model) {
+	t.Helper()
 	c := compiler.New()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "probe.schema"), []byte(textListsSchema), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "probe.schema"), []byte(schema), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	paths, err := compiler.GatherPaths([]string{dir})

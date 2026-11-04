@@ -1,6 +1,8 @@
 package tablewire_test
 
 import (
+	"bytes"
+	"encoding/binary"
 	"math"
 	"testing"
 
@@ -77,14 +79,27 @@ func TestOracleCompressedFloatSpecialValuesVariable(t *testing.T) {
 	} {
 		inst := m.New(m.Lookup("Reading"))
 		v := float64(math.Float32frombits(c.in))
+		if c.refused {
+			// A WRITER REFUSES A VALUE PAST AN END (§5), so the row's wire is
+			// an in-range one whose float bits are then replaced: a value past
+			// an end is the READ's to refuse out_of_range (§4)
+			v = 0.75
+		}
 		oracleField(t, inst, "a").Cell.F = v
 		oracleField(t, inst, "b").Cell.F = v
 		oracleField(t, inst, "plain").Cell.F = v
-		// the encoder writes the field whole; a value past an end is the
-		// READ's to refuse out_of_range (§4), which is what this row exercises
 		wire, err := tablewire.Encode(m, inst)
 		if err != nil {
 			t.Fatalf("%s: encode: %v", c.name, err)
+		}
+		if c.refused {
+			var from, to [4]byte
+			binary.LittleEndian.PutUint32(from[:], math.Float32bits(0.75))
+			binary.LittleEndian.PutUint32(to[:], c.in)
+			if bytes.Count(wire, from[:]) != 3 {
+				t.Fatalf("%s: the three floats are not where this row patches them", c.name)
+			}
+			wire = bytes.ReplaceAll(wire, from[:], to[:])
 		}
 		back := m.New(m.Lookup("Reading"))
 		var report tabletext.Report
