@@ -452,10 +452,10 @@ func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool
 	}
 }
 
-// emitWriteCount writes a counted array's count. The count is a §5 writer
-// contract like any other scalar range, held by an assert and compiled out
-// under NDEBUG: what is written is the caller's responsibility in release, and
-// it is the assert's duty to catch a bad count in debug (SPEC §4.6, §5).
+// emitWriteCount writes a counted array's count. Its declared range is a §5
+// writer contract like any other scalar range, held by an assert and compiled
+// out under NDEBUG (SPEC §4.6, §5); the STORAGE bound ahead of it is not, and
+// emitWriteStorageBound refuses a count past the array in every build.
 //
 // bits is always at least 1 here. §4.6 refuses [Min..N]T with Min at or above
 // N, so a count range is never degenerate and the zero-bit path a scalar range
@@ -487,6 +487,15 @@ func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool
 	}
 }
 
+// emitWriteStorageBound refuses a count or a used length past the storage it
+// indexes, in EVERY build (SPEC §5.1): the write reads that many elements or
+// units out of the value, so one past the array reads memory the value does
+// not own. It is one compare, ahead of the field's first bit, and the refusal
+// is the write's own `false`.
+func (g *gen) emitWriteStorageBound(expr, bound, ind string) {
+	g.pf("%sif ( %s < 0 || %s > %s ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)\n", ind, expr, expr, bound)
+}
+
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	name := "value." + f.Name
 	if f.Array != ir.ArrayNone {
@@ -499,6 +508,7 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			return
 		}
 		if f.Array == ir.ArrayCounted {
+			g.emitWriteStorageBound(name+"_count", bound, ind)
 			g.emitWriteCount(name+"_count", fmt.Sprintf("%d", f.ArrayMin), bound,
 				bitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), f.ArrayMin == 0, ind)
 			g.pf("%sfor ( int32_t i = 0; i < %s_count; i++ )\n%s{\n", ind, name, ind)
@@ -634,6 +644,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7)
+		g.emitWriteStorageBound(name+"_length", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ind)
 		if f.Type.Kind == ir.TString {
 			// interior nulls are writer misuse: debug-assert per §5 (the read
 			// side rejects them as validation — §4.7)
@@ -654,6 +665,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// rule in code-unit terms. Surrogate pairing is NOT checked here — it
 		// is a writer obligation the READER enforces, and the reader refuses
 		// an unpaired surrogate under §4.12's rules.
+		g.emitWriteStorageBound(name+"_length", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ind)
 		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 		g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
 		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),

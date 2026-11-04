@@ -3354,6 +3354,7 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_measure( const bench_fixed_table_
 static SCHEMA_UNUSED int64_t bench_fixed_table_save( const bench_fixed_table_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = bench_fixed_table_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     bench_table_write_ids_t vocabulary; bench_table_writer_t w = bench_table_writer_make( buffer, capacity, &vocabulary );
     bench_table_writer_put8( &w, 1 );
     if ( !bench_fixed_table_save_body( &w, value ) ) { return -1; }
@@ -3478,6 +3479,9 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_save_messages(const bench_fixed_t
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=bench_fixed_table_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=bench_table_bit_writer(buffer,capacity);
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -3602,6 +3606,15 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fix
 {
     (void) value; (void) clamped; (void) damaged;
     schema_bench_bench_mixed_fixed_clamp_body_( &value->value, clamped, damaged );
+}
+
+/* FixedTable's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_bench_fixed_table_fixed_fits_( const bench_fixed_table_t * value )
+{
+    (void) value;
+    if ( !schema_bench_bench_mixed_fixed_fits_( &value->value ) ) { return 0; }
+    return 1;
 }
 
 /* FixedTable's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
@@ -3935,6 +3948,7 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_fixed_save( const bench_fixed_tab
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_bench_fixed_table_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_bench_fixed_table_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */

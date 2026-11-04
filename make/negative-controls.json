@@ -235,6 +235,22 @@
       ]
     },
     {
+      "name": "base-cpp-write-refusal-storage",
+      "when": "pull-request",
+      "why": "the release gate's control for the C++ writers' storage bound (docs/SPEC.md §5.1: a count or a length past its storage is refused in every build, values debug-only): FixedSave's every-build <T>FixedFits line deleted from a copy of the generated C++ tree, the conformance driver rebuilt -O2 -DNDEBUG against it, and write-refusal-storage-release-cpp's check required red on fref_count and fref_length while wref_count, wref_length and mref_length still answer refused. One optimized driver compile and one leg run, 108 s on the studio; its own row because the base-cpp-write-refusal row already carries three driver compiles.",
+      "targets": [
+        "conformance-negative-control-cpp-write-refusal-storage-release"
+      ]
+    },
+    {
+      "name": "base-c-write-refusal-storage",
+      "when": "pull-request",
+      "why": "the release gate's control for the C writers' storage bound (docs/SPEC.md §5.1): the fixed save's every-build <t>_fixed_fits line deleted from a copy of the generated C tree, the C conformance driver rebuilt -O2 -DNDEBUG against it, and write-refusal-storage-release-c's check required red on fref_count and fref_length while wref_count, wref_length and mref_length still answer refused. One optimized driver compile and one leg run, 71 s on the studio; its own row for the same reason as base-c-write-refusal.",
+      "targets": [
+        "conformance-negative-control-c-write-refusal-storage-release"
+      ]
+    },
+    {
       "name": "base-c-conformance",
       "when": "pull-request",
       "why": "The C JSON driver sabotage and the small message/retention compiler probes share one job. The expanded C driver must not share a job with the other two complete C driver rebuilds.",

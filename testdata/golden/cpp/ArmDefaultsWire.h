@@ -83,6 +83,7 @@ namespace example {
 
 SCHEMA_WRITE_INLINE bool WriteDefaultArm( serialize::WriteStream & stream, const DefaultArm & value )
 {
+    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.entries_count ) >= int32_t( 0 ) && int32_t( value.entries_count ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value.entries_count ), 2 );
     for ( int32_t i = 0; i < value.entries_count; i++ )
@@ -163,6 +164,7 @@ SCHEMA_READ_INLINE bool ReadDefaultChoicePacket( serialize::ReadStream & stream,
 SCHEMA_WRITE_INLINE bool WriteDefaultBulkArm( serialize::WriteStream & stream, const DefaultBulkArm & value )
 {
     schema_write_object( stream, WriteDefaultArm, value.payload );
+    if ( value.data_length < 0 || value.data_length > 2 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.data_length ) >= int32_t( 0 ) && int32_t( value.data_length ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value.data_length ), 2 );
     write_bytes( stream, value.data, value.data_length );

@@ -348,6 +348,7 @@ SCHEMA_WRITE_INLINE bool WriteArmAlign( serialize::WriteStream & stream, const A
     write_bool( stream, value.flag );
     if ( value.flag )
     {
+        if ( value.s_length < 0 || value.s_length > 4 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
         for ( int32_t i = 0; i < value.s_length; i++ )
         {
             serialize_assert( value.s[i] != 0 );
@@ -399,6 +400,7 @@ SCHEMA_WRITE_INLINE bool WriteArmArray( serialize::WriteStream & stream, const A
     write_bool( stream, value.flag );
     if ( value.flag )
     {
+        if ( value.items_count < 0 || value.items_count > 3 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
         serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
         write_bits( stream, uint32_t( value.items_count ), 2 );
         for ( int32_t i = 0; i < value.items_count; i++ )
@@ -524,6 +526,7 @@ SCHEMA_READ_INLINE bool ReadHoldsUneven( serialize::ReadStream & stream, HoldsUn
 SCHEMA_WRITE_INLINE bool WriteArrUneven( serialize::WriteStream & stream, const ArrUneven & value )
 {
     write_bits( stream, value.lead, 5 );
+    if ( value.items_count < 0 || value.items_count > 3 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
@@ -549,6 +552,7 @@ SCHEMA_READ_INLINE bool ReadArrUneven( serialize::ReadStream & stream, ArrUneven
 SCHEMA_WRITE_INLINE bool WriteRegainAfterAlign( serialize::WriteStream & stream, const RegainAfterAlign & value )
 {
     write_bits( stream, value.lead, 5 );
+    if ( value.items_count < 0 || value.items_count > 3 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
@@ -556,6 +560,7 @@ SCHEMA_WRITE_INLINE bool WriteRegainAfterAlign( serialize::WriteStream & stream,
         serialize_assert( int32_t( value.items[i] ) <= int32_t( 8191 ) );
         write_bits( stream, uint32_t( value.items[i] ), 13 );
     }
+    if ( value.s_length < 0 || value.s_length > 4 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     for ( int32_t i = 0; i < value.s_length; i++ )
     {
         serialize_assert( value.s[i] != 0 );

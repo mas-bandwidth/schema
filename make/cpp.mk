@@ -219,7 +219,9 @@ tables-cpp-bench-gate-negative-control: generated/bench/tables/cpp/.stamp
 #     (`make test` runs 4096; 250000 is about 16 minutes against the 60 minute
 #     job cap, the default 1,000,000 would not fit it);
 #   - the block fuzzer at five times the PR scale under a second seed;
-#   - the two NDEBUG refusal gates and the soak's controls the PR tier carries.
+#   - the two NDEBUG refusal gates and the soak's controls the PR tier carries;
+#   - write-refusal-storage-release-cpp, every writer's storage bound with
+#     NDEBUG set (below).
 # tables-cpp-release-flags-negative-control proves the release flags are on.
 TABLES_CPP_SOAK_RELEASE_ITERATIONS ?= 250000
 TABLES_CXXFLAGS_RELEASE = $(TABLES_CXXFLAGS) -O2 -DNDEBUG
@@ -272,6 +274,7 @@ tables-cpp-release-battery: $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(
 	$(MAKE) tables-keyed-none-refusal-negative-control
 	$(MAKE) tables-keyed-max-refusal-ndebug
 	$(MAKE) tables-keyed-max-refusal-negative-control
+	$(MAKE) write-refusal-storage-release-cpp
 
 # THE RELEASE TIER'S NEGATIVE CONTROL. The whole point of the tier is that the
 # battery runs with asserts compiled out and the optimizer on, so a flag
@@ -453,3 +456,74 @@ packet-finite-write-negative-control-cpp: packet-finite-cpp
 	@echo "packet finite C++ negative control: the removed write assert fails exactly $$(wc -l < build/packet-finite/cpp-negative/failed | tr -d ' ') vectors"
 
 test: packet-finite-cpp packet-finite-write-negative-control-cpp
+
+# THE STORAGE BOUND IN A RELEASE BUILD (docs/SPEC.md §5.1). A range off its
+# declaration is refused debug-only on this leg, for speed; a count or a used
+# length past the storage it indexes is not a range, it is how far the writer
+# reads into the value, and every writer refuses it in EVERY build. This gate
+# builds the conformance driver -O2 -DNDEBUG from the real generated tree, runs
+# the leg, and requires the storage rows of the three write surfaces —
+# wref_count and wref_length (Save), fref_count and fref_length (FixedSave),
+# mref_length (SaveMessages: sku 33 over its 32 bytes) — to answer `refused`,
+# and their in-bound twins `wrote`. The value rows answer `wrote` in this build
+# by the ruling, so the leg's matrix is red here and the gate reads the answers.
+WREF_STORAGE_REFUSED := write-refusal/wref_count write-refusal/wref_length write-refusal-fixed/fref_count write-refusal-fixed/fref_length write-refusal-message/mref_length
+WREF_STORAGE_WROTE := write-refusal/wref_count_ok write-refusal/wref_length_ok write-refusal-fixed/fref_count_ok write-refusal-fixed/fref_length_ok write-refusal-message/mref_length_ok
+# $(1) the run's work directory, $(2) the leg, $(3) the rows, $(4) the answer
+# each must hold. A subshell, so a caller can ask it under `if`.
+wref-storage-answers = ( for row in $(3); do got=$$(cat $(1)/out/$(2)/$$row 2>/dev/null || echo missing); \
+	if [ "$$got" != "$(4)" ]; then echo "$(2) $$row: $$got, $(4) expected"; exit 1; fi; echo "$(2) $$row: $$got"; done )
+
+WREF_STORAGE_RELEASE_CPP := build/write-refusal-storage-release-cpp
+.PHONY: write-refusal-storage-release-cpp
+write-refusal-storage-release-cpp: build/conformance-harness build/tables-generated/.stamp
+	@rm -rf $(WREF_STORAGE_RELEASE_CPP) && mkdir -p $(WREF_STORAGE_RELEASE_CPP)
+	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(CONFORMANCE_INCLUDES)) \
+		test/conformance/cpp/main.cpp $(CONFORMANCE_SOURCES) -o $(WREF_STORAGE_RELEASE_CPP)/driver-bin
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(WREF_STORAGE_RELEASE_CPP)" > $(WREF_STORAGE_RELEASE_CPP)/driver
+	@chmod +x $(WREF_STORAGE_RELEASE_CPP)/driver
+	@printf 'cpp %s/driver\n' "$(WREF_STORAGE_RELEASE_CPP)" > $(WREF_STORAGE_RELEASE_CPP)/drivers.txt
+	@./build/conformance-harness run --drivers $(WREF_STORAGE_RELEASE_CPP)/drivers.txt \
+		--work $(WREF_STORAGE_RELEASE_CPP)/work > $(WREF_STORAGE_RELEASE_CPP)/log 2>&1 || true
+	@$(call wref-storage-answers,$(WREF_STORAGE_RELEASE_CPP)/work,cpp,$(WREF_STORAGE_REFUSED),refused) || \
+		{ echo "RELEASE GATE FAILED: a C++ writer wrote past its storage in the -O2 -DNDEBUG build"; exit 1; }
+	@$(call wref-storage-answers,$(WREF_STORAGE_RELEASE_CPP)/work,cpp,$(WREF_STORAGE_WROTE),wrote) || \
+		{ echo "RELEASE GATE FAILED: a C++ writer refused an in-bound count or length in the -O2 -DNDEBUG build"; exit 1; }
+	@echo "write-refusal-storage-release-cpp: every C++ writer refuses a count or a length past its storage with NDEBUG set"
+
+# ITS NEGATIVE CONTROL: FixedSave's every-build storage line (one line, ending
+# in the comment the sed anchors on) is deleted from a COPY of the generated
+# tree, the release driver is rebuilt against the copy, and the gate's check
+# must go red on fref_count and fref_length while the Save and SaveMessages
+# rows still answer `refused`. Nothing tracked is written to.
+CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE := build/conformance-negative-cpp-write-refusal-storage-release
+WREF_STORAGE_ANCHOR := a count or a length past its storage is refused in every build
+.PHONY: conformance-negative-control-cpp-write-refusal-storage-release
+conformance-negative-control-cpp-write-refusal-storage-release: build/conformance-harness build/tables-generated/.stamp
+	@rm -rf $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE) && mkdir -p $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)
+	@cp -R build/tables-generated $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/generated
+	@grep -q '$(WREF_STORAGE_ANCHOR)' $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/generated/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: no storage line to remove in the generated tree"; exit 1; }
+	@for f in $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/generated/*/*.h; do \
+		sed '/$(WREF_STORAGE_ANCHOR)/d' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; done
+	@! grep -rq '$(WREF_STORAGE_ANCHOR)' $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: a storage line survived the sabotage"; exit 1; }
+	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) \
+		$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/generated/,$(CONFORMANCE_INCLUDES))) \
+		test/conformance/cpp/main.cpp \
+		$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/driver-bin
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)" > $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/driver
+	@printf 'cpp %s/driver\n' "$(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)" > $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/drivers.txt
+	@./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/drivers.txt \
+		--work $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/work > $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/log 2>&1 || true
+	@if $(call wref-storage-answers,$(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/work,cpp,write-refusal-fixed/fref_count write-refusal-fixed/fref_length,refused) > $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/check 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: FixedSave without its storage line still refused in the release build"; \
+		cat $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/check; exit 1; fi
+	@$(call wref-storage-answers,$(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/work,cpp,write-refusal/wref_count write-refusal/wref_length write-refusal-message/mref_length,refused) > /dev/null || \
+		{ echo "NEGATIVE CONTROL FAILED: the Save or SaveMessages storage rows moved too, so the control localizes nothing"; exit 1; }
+	@grep -m1 'fref_count' $(CONFORMANCE_NEGATIVE_CPP_WREF_STORAGE)/check
+	@echo "negative control: C++ FixedSave without its every-build storage line writes past storage in the release build"

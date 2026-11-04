@@ -404,6 +404,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_align( serializ
     }
     if ( value->flag )
     {
+        if ( value->s_length < 0 || value->s_length > 4 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
         {
             int32_t i;
             for ( i = 0; i < value->s_length; i++ )
@@ -511,6 +512,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_array( serializ
     }
     if ( value->flag )
     {
+        if ( value->items_count < 0 || value->items_count > 3 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
         serialize_assert( value->items_count >= 0 && value->items_count <= 3 );
         if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
         {
@@ -779,6 +781,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_uneven( seriali
     {
         return 0;
     }
+    if ( value->items_count < 0 || value->items_count > 3 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 3 );
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
@@ -844,6 +847,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_regain_after_align(
     {
         return 0;
     }
+    if ( value->items_count < 0 || value->items_count > 3 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->items_count >= 0 && value->items_count <= 3 );
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
@@ -860,6 +864,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_regain_after_align(
             }
         }
     }
+    if ( value->s_length < 0 || value->s_length > 4 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     {
         int32_t i;
         for ( i = 0; i < value->s_length; i++ )

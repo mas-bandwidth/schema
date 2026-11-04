@@ -1247,6 +1247,18 @@ inline bool TableUtf16Paired( const char16_t * units, int64_t count )
     return true;
 }
 
+// A FIXED WRITE KEEPS THE FIXED READER'S WIDE TEXT (docs/SPEC.md §5.1): the
+// fixed reader refuses a zero unit as text_ill_formed, so the fixed writer's
+// contract holds the storage to the pairing rule above AND to no zero unit.
+inline bool TableUtf16FixedText( const char16_t * units, int64_t count )
+{
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( units[i] == 0 ) { return false; }
+    }
+    return TableUtf16Paired( units, count );
+}
+
 // A CLAMP CUTS AT A CODE UNIT BOUNDARY AND NEVER SPLITS A PAIR (§3, §16.2):
 // the first bound units of a payload the check above already accepted, and
 // where the last kept unit is a HIGH SURROGATE whose low half did not fit,
@@ -11139,8 +11151,13 @@ MAPDEMO_TABLE_INLINE bool ShipConfigSaveBody( TableWriter & w, TableIds & ids, c
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ShipConfigSave( const ShipConfig & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ShipConfigMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11547,10 +11564,14 @@ inline int64_t ShipConfigMeasureMessages( const ShipConfig * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ShipConfigSaveMessages( const ShipConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ShipConfigMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11621,8 +11642,13 @@ MAPDEMO_TABLE_INLINE bool ItemSaveBody( TableWriter & w, TableIds & ids, const I
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ItemSave( const Item & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ItemMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11954,10 +11980,14 @@ inline int64_t ItemMeasureMessages( const Item * values, int64_t count, TableRep
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ItemSaveMessages( const Item * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ItemMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -13731,6 +13761,15 @@ inline void ShipConfigFixedClampBody( ShipConfig & value, int32_t & TABLE_CLAMP_
     }
 }
 
+// ShipConfig's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool ShipConfigFixedFits( const ShipConfig & value )
+{
+    (void) value;
+    if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
 // ShipConfig's write contract (docs/SPEC.md §5.1): false when the record holds a
 // value its declaration does not admit, which FixedSave refuses debug-only.
 TABLE_FIXED_INLINE bool ShipConfigFixedWriteCheck( const ShipConfig & value )
@@ -13738,7 +13777,7 @@ TABLE_FIXED_INLINE bool ShipConfigFixedWriteCheck( const ShipConfig & value )
     (void) value;
     int bad = 0;
     if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length );
     return bad == 0;
 }
 
@@ -13869,6 +13908,7 @@ inline int64_t ShipConfigFixedSave( const ShipConfig * values, int64_t count, ui
 {
     const int64_t need = ShipConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !ShipConfigFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( ShipConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;

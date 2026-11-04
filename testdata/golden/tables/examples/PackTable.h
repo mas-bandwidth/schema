@@ -9780,8 +9780,13 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GunnerSettingsSave( const GunnerSettings & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = GunnerSettingsMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -10208,10 +10213,14 @@ inline int64_t GunnerSettingsMeasureMessages( const GunnerSettings * values, int
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GunnerSettingsSaveMessages( const GunnerSettings * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = GunnerSettingsMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -10345,8 +10354,13 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBody( TableWriter & w, TableIds & ids, 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ShipEntrySave( const ShipEntry & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ShipEntryMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11075,10 +11089,14 @@ inline int64_t ShipEntryMeasureMessages( const ShipEntry * values, int64_t count
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ShipEntrySaveMessages( const ShipEntry * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ShipEntryMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11217,8 +11235,13 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GlobalSettingsSave( const GlobalSettings & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = GlobalSettingsMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11828,10 +11851,14 @@ inline int64_t GlobalSettingsMeasureMessages( const GlobalSettings * values, int
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GlobalSettingsSaveMessages( const GlobalSettings * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = GlobalSettingsMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -12082,8 +12109,13 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t PackConfigSave( const PackConfig & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = PackConfigMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -12962,10 +12994,14 @@ inline int64_t PackConfigMeasureMessages( const PackConfig * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t PackConfigSaveMessages( const PackConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = PackConfigMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -13296,6 +13332,56 @@ TABLE_FIXED_INLINE bool PackConfigFixedFiniteBody( const PackConfig & value )
     return true;
 }
 
+// GunnerSettings's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool GunnerSettingsFixedFits( const GunnerSettings & value )
+{
+    (void) value;
+    if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// ShipEntry's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool ShipEntryFixedFits( const ShipEntry & value )
+{
+    (void) value;
+    if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return false; } // the length indexes the storage (§3.4)
+    if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return false; } // the count indexes the storage (§3.4)
+    if ( value.gunner_present )
+    {
+        if ( !GunnerSettingsFixedFits( value.gunner ) ) { return false; }
+    }
+    return true;
+}
+
+// GlobalSettings's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool GlobalSettingsFixedFits( const GlobalSettings & value )
+{
+    (void) value;
+    if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// PackConfig's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool PackConfigFixedFits( const PackConfig & value )
+{
+    (void) value;
+    if ( !GlobalSettingsFixedFits( value.global ) ) { return false; }
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
+    {
+        if ( !ShipEntryFixedFits( value.ships.slots[i] ) ) { return false; }
+    }
+    if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return false; } // the count indexes the storage (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
+    {
+        if ( !ShipEntryFixedFits( value.reserves[i] ) ) { return false; }
+    }
+    return true;
+}
+
 // GunnerSettings's write contract (docs/SPEC.md §5.1): false when the record holds a
 // value its declaration does not admit, which FixedSave refuses debug-only.
 TABLE_FIXED_INLINE bool GunnerSettingsFixedWriteCheck( const GunnerSettings & value )
@@ -13303,7 +13389,7 @@ TABLE_FIXED_INLINE bool GunnerSettingsFixedWriteCheck( const GunnerSettings & va
     (void) value;
     int bad = 0;
     if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length );
     return bad == 0;
 }
 
@@ -13314,7 +13400,7 @@ TABLE_FIXED_INLINE bool ShipEntryFixedWriteCheck( const ShipEntry & value )
     (void) value;
     int bad = 0;
     if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length );
     if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return false; } // the declared count is the bound (§3.4)
     for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
     {
@@ -13336,7 +13422,7 @@ TABLE_FIXED_INLINE bool GlobalSettingsFixedWriteCheck( const GlobalSettings & va
     bad |= (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
     bad |= (int) ( (uint64_t) value.difficulty > 3u );
     if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return false; } // the declared length is the bound (§3.4)
-    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length );
     return bad == 0;
 }
 
@@ -13496,6 +13582,7 @@ inline int64_t GunnerSettingsFixedSave( const GunnerSettings * values, int64_t c
 {
     const int64_t need = GunnerSettingsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !GunnerSettingsFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { if ( !GunnerSettingsFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( GunnerSettingsFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
@@ -13906,6 +13993,7 @@ inline int64_t ShipEntryFixedSave( const ShipEntry * values, int64_t count, uint
 {
     const int64_t need = ShipEntryFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !ShipEntryFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { if ( !ShipEntryFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( ShipEntryFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
@@ -14300,6 +14388,7 @@ inline int64_t GlobalSettingsFixedSave( const GlobalSettings * values, int64_t c
 {
     const int64_t need = GlobalSettingsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !GlobalSettingsFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { if ( !GlobalSettingsFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( GlobalSettingsFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
@@ -14948,6 +15037,7 @@ inline int64_t PackConfigFixedSave( const PackConfig * values, int64_t count, ui
 {
     const int64_t need = PackConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !PackConfigFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
     for ( int64_t k = 0; k < count; ++k ) { if ( !PackConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     for ( int64_t k = 0; k < count; ++k ) { schema_assert( PackConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header

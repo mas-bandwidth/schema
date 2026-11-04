@@ -345,11 +345,23 @@ tables-c-release:
 	$(MAKE) tables-c-fuzz N=500000
 	$(MAKE) tables-c-fuzz SEED=2 N=500000
 	$(MAKE) tables-c-fuzz-negative-control
+	$(MAKE) write-refusal-storage-release-c
+
+# A REFUSED WRITE WRITES NOTHING (docs/SPEC.md §5.1): the plain, fixed and
+# message saves are each handed a poisoned buffer and a value they refuse in
+# every build, debug and -DNDEBUG alike, and the poison must be intact.
+.PHONY: tables-c-refusal-writes-nothing
+tables-c-refusal-writes-nothing: build/tables-generated-c/.stamp test/c-tables/refusal_main.c
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) test/c-tables/refusal_main.c -o build/schema_test_c_refusal -lm
+	$(CC) $(TABLES_CFLAGS) -DNDEBUG $(C_CONFORMANCE_INCLUDES) test/c-tables/refusal_main.c -o build/schema_test_c_refusal_ndebug -lm
+	./build/schema_test_c_refusal
+	./build/schema_test_c_refusal_ndebug
 
 # THE C TABLES LEG, whole. Everything above, plus the conformance driver under
 # the sanitizers over every surface it answers.
 .PHONY: tables-c
-tables-c: tables-c-wire-fuzz build/conformance-c build/conformance-c-asan tables-c-zero-cost tables-c-json-walk tables-c-fuzz tables-c-fuzz-negative-control tables-c-variable
+tables-c: tables-c-wire-fuzz build/conformance-c build/conformance-c-asan tables-c-zero-cost tables-c-json-walk tables-c-fuzz tables-c-fuzz-negative-control tables-c-variable tables-c-refusal-writes-nothing
 	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
 	$(MAKE) tables-js-leg
 	$(MAKE) tables-js-accessor-negative-control
@@ -527,6 +539,57 @@ conformance-negative-control-c-write-refusal-fixed: build/conformance-harness bu
 
 conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
 	$(call conformance-negative-control-c-wref,write-refusal-message,a message write keeps the declared bounds,write-refusal-message,message)
+
+# THE STORAGE BOUND IN A RELEASE BUILD, C side (docs/SPEC.md §5.1): the twin of
+# write-refusal-storage-release-cpp (make/cpp.mk, which defines the rows and the
+# check). The C conformance driver is built -O2 -DNDEBUG from the real
+# generated tree, and the storage rows of the three write surfaces must answer
+# `refused`, their in-bound twins `wrote`.
+WREF_STORAGE_RELEASE_C := build/write-refusal-storage-release-c
+.PHONY: write-refusal-storage-release-c
+write-refusal-storage-release-c: build/conformance-harness build/tables-generated-c/.stamp
+	@rm -rf $(WREF_STORAGE_RELEASE_C) && mkdir -p $(WREF_STORAGE_RELEASE_C)
+	$(CC) $(TABLES_CFLAGS) -DNDEBUG $(C_CONFORMANCE_INCLUDES) $(C_CONFORMANCE_SOURCES) -o $(WREF_STORAGE_RELEASE_C)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(WREF_STORAGE_RELEASE_C)" > $(WREF_STORAGE_RELEASE_C)/driver
+	@chmod +x $(WREF_STORAGE_RELEASE_C)/driver
+	@printf 'c %s/driver\n' "$(WREF_STORAGE_RELEASE_C)" > $(WREF_STORAGE_RELEASE_C)/drivers.txt
+	@./build/conformance-harness run --drivers $(WREF_STORAGE_RELEASE_C)/drivers.txt \
+		--work $(WREF_STORAGE_RELEASE_C)/work > $(WREF_STORAGE_RELEASE_C)/log 2>&1 || true
+	@$(call wref-storage-answers,$(WREF_STORAGE_RELEASE_C)/work,c,$(WREF_STORAGE_REFUSED),refused) || \
+		{ echo "RELEASE GATE FAILED: a C writer wrote past its storage in the -O2 -DNDEBUG build"; exit 1; }
+	@$(call wref-storage-answers,$(WREF_STORAGE_RELEASE_C)/work,c,$(WREF_STORAGE_WROTE),wrote) || \
+		{ echo "RELEASE GATE FAILED: a C writer refused an in-bound count or length in the -O2 -DNDEBUG build"; exit 1; }
+	@echo "write-refusal-storage-release-c: every C writer refuses a count or a length past its storage with NDEBUG set"
+
+# ITS NEGATIVE CONTROL: the fixed save's every-build storage line deleted from
+# a COPY of the generated C tree, the release driver rebuilt against the copy,
+# and the gate's check red on fref_count and fref_length while the plain and
+# message saves' rows still answer `refused`. Nothing tracked is written to.
+CONFORMANCE_NEGATIVE_C_WREF_STORAGE := build/conformance-negative-c-write-refusal-storage-release
+.PHONY: conformance-negative-control-c-write-refusal-storage-release
+conformance-negative-control-c-write-refusal-storage-release: build/conformance-harness build/tables-generated-c/.stamp
+	@rm -rf $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE) && mkdir -p $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)
+	@cp -R build/tables-generated-c $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/generated
+	@grep -q '$(WREF_STORAGE_ANCHOR)' $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/generated/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: no storage line to remove in the generated tree"; exit 1; }
+	@for f in $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/generated/*/*.h; do \
+		sed '/$(WREF_STORAGE_ANCHOR)/d' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; done
+	@! grep -rq '$(WREF_STORAGE_ANCHOR)' $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: a storage line survived the sabotage"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -DNDEBUG $(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/generated,$(C_CONFORMANCE_INCLUDES)) \
+		$(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/generated,$(C_CONFORMANCE_SOURCES)) -o $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)" > $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/driver
+	@printf 'c %s/driver\n' "$(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)" > $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/drivers.txt
+	@./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/drivers.txt \
+		--work $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/work > $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/log 2>&1 || true
+	@if $(call wref-storage-answers,$(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/work,c,write-refusal-fixed/fref_count write-refusal-fixed/fref_length,refused) > $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/check 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C fixed save without its storage line still refused in the release build"; \
+		cat $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/check; exit 1; fi
+	@$(call wref-storage-answers,$(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/work,c,write-refusal/wref_count write-refusal/wref_length write-refusal-message/mref_length,refused) > /dev/null || \
+		{ echo "NEGATIVE CONTROL FAILED: the plain or message storage rows moved too, so the control localizes nothing"; exit 1; }
+	@grep -m1 'fref_count' $(CONFORMANCE_NEGATIVE_C_WREF_STORAGE)/check
+	@echo "negative control: the C fixed save without its every-build storage line writes past storage in the release build"
 
 # I4 (docs/PORTING.md) — PER-CASE ABSENT, the C driver's half. The C leg
 # answers a case it cannot write as `<case>.absent` (spill_absent_reason): the

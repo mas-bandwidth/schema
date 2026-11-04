@@ -281,6 +281,13 @@ func (g *tableGen) emitFixedMessageSave(st *ir.Struct) {
 				g.pf(" if(buffer==NULL || capacity<0) return -1;\n")
 			}
 		}
+		if !measure {
+			/* A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): the measure
+			   walks the same bodies through the same writer with no buffer, so
+			   it makes every refusal the save makes, and a batch that does not
+			   fit is refused there too; the caller's buffer is untouched on -1. */
+			g.pf(" { int64_t need=%s(values,count,report); if(need<0 || need>capacity) return -1; }\n", g.api(st.Name, "measure_messages"))
+		}
 		g.pf(" w=table_bit_writer(%s,%s);\n", buf, cap)
 		if st.Integrity != "" {
 			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : schema_table_integrity_seal_(%s,w.bits/8);\n}\n", g.api(st.Name, "save_message_body"), buf)

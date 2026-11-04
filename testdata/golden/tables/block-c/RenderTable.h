@@ -3772,6 +3772,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_measure( const blockdemo_re
 static SCHEMA_UNUSED int64_t blockdemo_render_camera_save( const blockdemo_render_camera_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_camera_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_camera_save_body( &w, value ) ) { return -1; }
@@ -4105,6 +4106,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_save_messages(const blockde
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_camera_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -4417,6 +4421,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_measure( const blockdemo_rend
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_save( const blockdemo_render_ship_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_ship_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_ship_save_body( &w, value ) ) { return -1; }
@@ -4907,6 +4912,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_save_messages(const blockdemo
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_ship_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5266,6 +5274,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_measure( const blockdemo_re
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_save( const blockdemo_render_turret_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_turret_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_turret_save_body( &w, value ) ) { return -1; }
@@ -5749,6 +5758,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_save_messages(const blockde
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_turret_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -6083,6 +6095,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_measure( const blockdemo_r
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_save( const blockdemo_render_missile_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_missile_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_missile_save_body( &w, value ) ) { return -1; }
@@ -6449,6 +6462,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_save_messages(const blockd
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_missile_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -6750,6 +6766,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_measure( const blockd
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save( const blockdemo_render_dynamic_prop_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_dynamic_prop_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_dynamic_prop_save_body( &w, value ) ) { return -1; }
@@ -7119,6 +7136,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save_messages(const b
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_dynamic_prop_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -7423,6 +7443,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_measure( const blockde
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save( const blockdemo_render_static_prop_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_static_prop_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_static_prop_save_body( &w, value ) ) { return -1; }
@@ -7823,6 +7844,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save_messages(const bl
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_static_prop_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -8140,6 +8164,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_measure( const block
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save( const blockdemo_render_cosmetic_prop_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_cosmetic_prop_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_cosmetic_prop_save_body( &w, value ) ) { return -1; }
@@ -8561,6 +8586,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save_messages(const 
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_cosmetic_prop_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -8880,6 +8908,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_measure( const blockdemo_ren
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_save( const blockdemo_render_laser_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_laser_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_laser_save_body( &w, value ) ) { return -1; }
@@ -9217,6 +9246,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_save_messages(const blockdem
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_laser_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -9510,6 +9542,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_measure( const blockdemo
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save( const blockdemo_render_explosion_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_explosion_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_explosion_save_body( &w, value ) ) { return -1; }
@@ -9900,6 +9933,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save_messages(const bloc
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_explosion_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -10690,6 +10726,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_measure( const blockdemo_ren
 static SCHEMA_UNUSED int64_t blockdemo_render_frame_save( const blockdemo_render_frame_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_frame_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_frame_save_body( &w, value ) ) { return -1; }
@@ -11316,6 +11353,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_save_messages(const blockdem
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_frame_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -11677,6 +11717,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_measure( const blockdemo_r
 static SCHEMA_UNUSED int64_t blockdemo_render_vector3_save( const blockdemo_render_vector3_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_vector3_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_vector3_save_body( &w, value ) ) { return -1; }
@@ -11940,6 +11981,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_save_messages(const blockd
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_vector3_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -12173,6 +12217,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_measure( const blockdem
 static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_save( const blockdemo_render_quaternion_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_quaternion_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_quaternion_save_body( &w, value ) ) { return -1; }
@@ -12491,6 +12536,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_save_messages(const blo
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_quaternion_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
