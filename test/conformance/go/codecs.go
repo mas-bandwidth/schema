@@ -797,6 +797,20 @@ var codecTable = []codec{
 	row("tabledemo", "LoadoutConfig", tabledemo.LoadoutConfigReset, tabledemo.LoadoutConfigLoad,
 		tabledemo.LoadoutConfigMeasure, tabledemo.LoadoutConfigSave,
 		tabledemo.LoadoutConfigFromJSON, tabledemo.LoadoutConfigToJSONMeasure, tabledemo.LoadoutConfigToJSON, tabledemo.LoadoutConfigCookMeasure, tabledemo.LoadoutConfigCookFrom, snapDemo),
+	regionRow("tabledemo", "WideExtent", tabledemo.WideExtentLoadMeasure, tabledemo.WideExtentLoad,
+		tabledemo.WideExtentMeasure, tabledemo.WideExtentSave,
+		func(text []byte, r *tabledemo.TableReport) (*tabledemo.WideExtent, []byte, bool) {
+			var b tabledemo.WideExtentBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := tabledemo.WideExtentFromJSON(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, tabledemo.WideExtentToJSONMeasure, tabledemo.WideExtentToJSON, tabledemo.WideExtentCookMeasure, tabledemo.WideExtentCookFrom, snapDemo),
 	row("tabledemo", "WideBlob", tabledemo.WideBlobReset, tabledemo.WideBlobLoad,
 		tabledemo.WideBlobMeasure, tabledemo.WideBlobSave,
 		tabledemo.WideBlobFromJSON, tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON, tabledemo.WideBlobCookMeasure, tabledemo.WideBlobCookFrom, snapDemo),
