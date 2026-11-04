@@ -937,6 +937,15 @@
       "dotnet": "pin"
     },
     {
+      "name": "cs-write-refusal-storage-release",
+      "when": "pull-request",
+      "why": "the C# leg's storage release control (docs/SPEC.md §5.1): the conformance driver built Release against a copy of the generated C# tree whose FixedSave does not ask the every-build <T>FixedStorageBody, run through test/conformance/cs/write-refusal-storage-release, which must go red on fref_count (a count past its storage). One dotnet Release build and one harness run of the C# driver.",
+      "targets": [
+        "write-refusal-storage-release-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "cs-packet-finite-write",
       "when": "pull-request",
       "why": "the C# packet writer's finite assert (SPEC §4.3): test/cs built Debug against a copy of generated/cs whose Write has no Debug.Assert(float.IsFinite(..)) / (double.IsFinite(..)), which must go red on exactly the ten generated-assert write checks in test/cs/finite-controls/generated-write.expected. One dotnet build and one test/cs run.",

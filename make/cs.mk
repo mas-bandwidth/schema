@@ -533,6 +533,30 @@ conformance-negative-control-cs-write-refusal-message: build-conformance-cs buil
 	@echo 'C# write-refusal-message negative control: no SaveMessages range check is detected by cs / write-refusal-message; message stays green'
 test-cs: conformance-negative-control-cs-write-refusal-message
 
+# THE STORAGE RELEASE GATE (docs/SPEC.md §5.1): a count or a length that indexes
+# a fixed array's storage is refused in EVERY build, so
+# test/conformance/cs/write-refusal-storage-release builds the conformance
+# driver -c Release, where every Debug.Assert is gone, and requires the storage
+# rows to answer refused (wref_count, wref_length, fref_count, fref_length,
+# mref_length) and their in-bound twins wrote. Its control removes the
+# every-build <T>FixedStorageBody call from every FixedSave in a copy of the
+# generated tree; the gate must go red on the fixed rows.
+.PHONY: write-refusal-storage-release-cs write-refusal-storage-release-cs-negative-control
+write-refusal-storage-release-cs: build-conformance-cs build/conformance-harness
+	@sh test/conformance/cs/write-refusal-storage-release "$(DOTNET)" build/write-refusal-storage-release-cs
+test-cs: write-refusal-storage-release-cs
+
+write-refusal-storage-release-cs-negative-control: build-conformance-cs build/conformance-harness
+	@status=0; sh test/conformance/cs/write-refusal-storage-release "$(DOTNET)" build/write-refusal-storage-release-cs-control \
+		's/^(\s*)for \(int k = 0; k < values\.Length; \+\+k\) \{ if \(!\w+FixedStorageBody\(values\[k\]\)\) \{ return -1; \} \}$$/$$1\/* SABOTAGED: no fixed storage bound *\//' \
+		'FixedStorageBody\(values\[k\]\)' > build/write-refusal-storage-release-cs-control.log 2>&1 || status=$$?; \
+	if [ $$status -ne 1 ]; then cat build/write-refusal-storage-release-cs-control.log; \
+		echo "NEGATIVE CONTROL FAILED: the release gate did not go red on a FixedSave with no storage bound (exit $$status)"; exit 1; fi; \
+	grep -E '^release write-refusal-fixed fref_count: ' build/write-refusal-storage-release-cs-control.log | grep -v ': refused$$' || \
+		{ cat build/write-refusal-storage-release-cs-control.log; echo "NEGATIVE CONTROL: fref_count did not go red"; exit 1; }
+	@echo 'C# storage release negative control: a FixedSave with no every-build storage bound is detected by write-refusal-storage-release-cs'
+test-cs: write-refusal-storage-release-cs-negative-control
+
 generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/cs
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema

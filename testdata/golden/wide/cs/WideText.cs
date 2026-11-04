@@ -58,7 +58,10 @@ namespace Wide
 
         public static bool WriteWideSeven(WriteStream stream, WideSeven value)
         {
-            Debug.Assert(value.TextLength >= 0 && value.TextLength <= 7, "value.TextLength out of range [0, 7]");
+            if (value.TextLength < 0 || value.TextLength > 7) // the length guards the units (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 3))
@@ -119,7 +122,10 @@ namespace Wide
 
         public static bool WriteWideFour(WriteStream stream, WideFour value)
         {
-            Debug.Assert(value.TextLength >= 0 && value.TextLength <= 4, "value.TextLength out of range [0, 4]");
+            if (value.TextLength < 0 || value.TextLength > 4) // the length guards the units (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 3))
@@ -180,7 +186,10 @@ namespace Wide
 
         public static bool WriteNarrowFifteen(WriteStream stream, NarrowFifteen value)
         {
-            Debug.Assert(value.TextLength >= 0 && value.TextLength <= 15, "value.TextLength out of range [0, 15]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
+            if (value.TextLength < 0 || value.TextLength > 15) // the length guards the slice (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 4))
@@ -249,7 +258,10 @@ namespace Wide
 
         public static bool WriteWideInterop(WriteStream stream, WideInterop value)
         {
-            Debug.Assert(value.CaptionLength >= 0 && value.CaptionLength <= 7, "value.CaptionLength out of range [0, 7]");
+            if (value.CaptionLength < 0 || value.CaptionLength > 7) // the length guards the units (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.CaptionLength);
                 if (!stream.SerializeBits(ref offsetValue, 3))

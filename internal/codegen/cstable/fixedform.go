@@ -1530,6 +1530,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitFixedCheckBodyFn(st)
 	}
+	// THE STORAGE PASS, in the same order (fixedcheck.go): the writer asks it
+	// in every build before its first byte.
+	for _, st := range bodies {
+		g.emitFixedStorageBodyFn(st)
+	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
@@ -2018,6 +2023,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md
 		// §3.3), before the first output byte
 		g.pf("    for (int k = 0; k < values.Length; ++k) { if (%sFixedFiniteBody(values[k]) != null) { return -1; } }\n", name)
+	}
+	if fixedStorageNeededStruct(st, map[string]bool{}) {
+		// a count or a length past the storage it indexes is refused in every
+		// build, before the first output byte (docs/SPEC.md §5.1)
+		g.pf("    for (int k = 0; k < values.Length; ++k) { if (!%sFixedStorageBody(values[k])) { return -1; } }\n", name)
 	}
 	if fixedCheckNeededStruct(st, map[string]bool{}) {
 		// a value its declaration refuses is caller error on the write side:

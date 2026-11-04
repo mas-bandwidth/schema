@@ -1309,7 +1309,7 @@ namespace Tabledemo
             if (value == null) return true;
             if (value.SpawnCount < 0 || value.SpawnCount > 64) return false;
             if (value.BannerLength < 0 || value.BannerLength > 16) return false;
-            if (value.Banner != null && !TableWire.TextWellFormed(value.Banner.AsSpan(0, value.BannerLength))) return false;
+            if (value.Banner != null && (!TableWire.TextWellFormed(value.Banner.AsSpan(0, value.BannerLength)) || value.Banner.AsSpan(0, value.BannerLength).IndexOf((byte)0) >= 0)) return false;
             return true;
         }
 
@@ -1341,6 +1341,30 @@ namespace Tabledemo
                 }
             }
             if (!ScoreBoardFixedCheckBody(value.Scores)) return false;
+            return true;
+        }
+
+        // TeamConfig's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool TeamConfigFixedStorageBody(TeamConfig value)
+        {
+            if (value == null) return true;
+            if (value.BannerLength < 0 || value.BannerLength > 16 || (value.Banner != null && value.BannerLength > value.Banner.Length)) return false;
+            return true;
+        }
+
+        // KeyedConfig's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool KeyedConfigFixedStorageBody(KeyedConfig value)
+        {
+            if (value == null) return true;
+            if (value.Teams.Slots != null)
+            {
+                for (int i = 0; i < 3 && i < value.Teams.Slots.Length; ++i)
+                {
+                    if (!TeamConfigFixedStorageBody(value.Teams.Slots[i])) return false;
+                }
+            }
             return true;
         }
 
@@ -1681,6 +1705,7 @@ namespace Tabledemo
         {
             long need = TeamConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (!TeamConfigFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(TeamConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif
@@ -4320,6 +4345,7 @@ namespace Tabledemo
             long need = KeyedConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (KeyedConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!KeyedConfigFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(KeyedConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif

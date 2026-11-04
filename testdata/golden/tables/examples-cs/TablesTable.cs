@@ -1947,7 +1947,7 @@ namespace Tabledemo
         {
             if (value == null) return true;
             if (value.NameLength < 0 || value.NameLength > 32) return false;
-            if (value.Name != null && !TableWire.TextWellFormed(value.Name.AsSpan(0, value.NameLength))) return false;
+            if (value.Name != null && (!TableWire.TextWellFormed(value.Name.AsSpan(0, value.NameLength)) || value.Name.AsSpan(0, value.NameLength).IndexOf((byte)0) >= 0)) return false;
             if (value.IconLength < 0 || value.IconLength > 16) return false;
             if (!LoadoutConfigFixedCheckBody(value.Loadout)) return false;
             return true;
@@ -1959,7 +1959,7 @@ namespace Tabledemo
         {
             if (value == null) return true;
             if (value.VersionNoteLength < 0 || value.VersionNoteLength > 16) return false;
-            if (value.VersionNote != null && !TableWire.TextWellFormed(value.VersionNote.AsSpan(0, value.VersionNoteLength))) return false;
+            if (value.VersionNote != null && (!TableWire.TextWellFormed(value.VersionNote.AsSpan(0, value.VersionNoteLength)) || value.VersionNote.AsSpan(0, value.VersionNoteLength).IndexOf((byte)0) >= 0)) return false;
             if (value.WeaponsCount < 0 || value.WeaponsCount > 8) return false;
             if (value.Weapons != null)
             {
@@ -1974,6 +1974,45 @@ namespace Tabledemo
                 for (int i = 0; i < value.ProfilesCount && i < value.Profiles.Length; ++i)
                 {
                     if (!ProfileConfigFixedCheckBody(value.Profiles[i])) return false;
+                }
+            }
+            return true;
+        }
+
+        // LoadoutConfig's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool LoadoutConfigFixedStorageBody(LoadoutConfig value)
+        {
+            if (value == null) return true;
+            if (value.GradesCount < 0 || value.GradesCount > 4) return false;
+            if (value.AttachmentsCount < 0 || value.AttachmentsCount > 8) return false;
+            return true;
+        }
+
+        // ProfileConfig's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool ProfileConfigFixedStorageBody(ProfileConfig value)
+        {
+            if (value == null) return true;
+            if (value.NameLength < 0 || value.NameLength > 32 || (value.Name != null && value.NameLength > value.Name.Length)) return false;
+            if (value.IconLength < 0 || value.IconLength > 16 || (value.Icon != null && value.IconLength > value.Icon.Length)) return false;
+            if (!LoadoutConfigFixedStorageBody(value.Loadout)) return false;
+            return true;
+        }
+
+        // RootConfig's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool RootConfigFixedStorageBody(RootConfig value)
+        {
+            if (value == null) return true;
+            if (value.VersionNoteLength < 0 || value.VersionNoteLength > 16 || (value.VersionNote != null && value.VersionNoteLength > value.VersionNote.Length)) return false;
+            if (value.WeaponsCount < 0 || value.WeaponsCount > 8) return false;
+            if (value.ProfilesCount < 0 || value.ProfilesCount > 4) return false;
+            if (value.Profiles != null)
+            {
+                for (int i = 0; i < value.ProfilesCount && i < value.Profiles.Length; ++i)
+                {
+                    if (!ProfileConfigFixedStorageBody(value.Profiles[i])) return false;
                 }
             }
             return true;
@@ -3843,6 +3882,7 @@ namespace Tabledemo
             long need = RootConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RootConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!RootConfigFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RootConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif
@@ -5301,6 +5341,7 @@ namespace Tabledemo
             long need = LoadoutConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (LoadoutConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!LoadoutConfigFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(LoadoutConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif
@@ -6265,6 +6306,7 @@ namespace Tabledemo
             long need = ProfileConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (ProfileConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!ProfileConfigFixedStorageBody(values[k])) { return -1; } }
         #if DEBUG
             for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ProfileConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
         #endif
