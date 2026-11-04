@@ -1,0 +1,20 @@
+{
+  "grade": "Silver",
+  "effect": {
+    "ward": {
+      "charge": 2.5
+    }
+  },
+  "buff": {
+    "multiplier": 1.5
+  },
+  "grades": [
+    "Silver",
+    "Gold"
+  ],
+  "tally": {
+    "Bronze": 0,
+    "Silver": 7,
+    "Gold": 0
+  }
+}
