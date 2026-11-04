@@ -43,15 +43,6 @@ func TestBitBigRoundTrip(t *testing.T) {
 
 func TestTextHelpers(t *testing.T) {
 	t.Parallel()
-	if textBoundary([]byte("hello"), 5) != 5 {
-		t.Fatal("textBoundary within bound")
-	}
-	if textBoundary([]byte("héllo"), 3) != 3 {
-		t.Fatal("textBoundary should not split a multibyte rune")
-	}
-	if got := textBoundary([]byte("é"), 1); got != 0 {
-		t.Fatalf("textBoundary at a continuation byte = %d, want 0", got)
-	}
 	units := wideUnits([]byte{0x41, 0x00, 0x42, 0x00})
 	if units[0] != 0x41 || units[1] != 0x42 {
 		t.Fatalf("wideUnits = %v", units)
@@ -77,15 +68,6 @@ func TestTextHelpers(t *testing.T) {
 	}
 	if wideValid([]uint16{0xDC00, 0xD800}) {
 		t.Fatal("a leading low surrogate must be invalid")
-	}
-	if wideBoundary([]uint16{0x41, 0x42}, 2) != 2 {
-		t.Fatal("wideBoundary within bound")
-	}
-	if wideBoundary([]uint16{0xD800, 0xDC00}, 1) != 0 {
-		t.Fatal("wideBoundary must drop an unpaired high surrogate")
-	}
-	if wideBoundary([]uint16{0x41, 0x42}, 1) != 1 {
-		t.Fatal("wideBoundary should keep whole units")
 	}
 }
 

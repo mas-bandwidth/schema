@@ -59,11 +59,11 @@ func MessageCount(data []byte, v *Vocabulary) (int, error) {
 //
 //   - `M` ABOVE THE CALLER'S STORAGE IS A REFUSAL BY NAME, `batch_too_large`,
 //     found from the count before any body is decoded: no counter moves and
-//     `malformed` does not fire. The returned count is the WIRE's `M`, so the
+//     nothing is decoded. The returned count is the WIRE's `M`, so the
 //     caller holds the number it was short by and calls again with storage at
 //     or above it.
 //   - DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md
-//     §4): the returned count is zero, `malformed` is reported, and every
+//     §4): the returned count is zero, the read refuses, and every
 //     body's storage holds its declared defaults.
 func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report) (int, bool, error) {
 	if len(insts) > 0 {
@@ -223,7 +223,7 @@ func (d *bitDecoder) entry(ref uint64) (ir.TableVocabularyEntry, bool) {
 }
 
 // reserved reports one of the three ids the language holds back
-// (docs/SPEC-TABLES.md §3.1, §3.3, §5): each is malformed anywhere but its own
+// (docs/SPEC-TABLES.md §3.1, §3.3, §5): each is damage anywhere but its own
 // transport, and the rule OUTRANKS the wrong-sort rule below.
 func reserved(id uint64) bool {
 	return id == ir.TableBuildVersionWireId || id == ir.TableMessageVocabularyWireId || id == ir.TableNodeWireId
@@ -235,7 +235,7 @@ func reserved(id uint64) bool {
 // one above `E`, one naming a reserved id, and one naming an entry that
 // carries a payload are each damage: the reader RESOLVED the entry and it
 // contradicts the position it was used in, so the next bit's meaning is what
-// is in doubt. ok is false with `malformed` set.
+// is in doubt. ok is false and the batch refuses.
 func (d *bitDecoder) name(ref uint64) (ir.TableVocabularyEntry, bool) {
 	entry, named := d.entry(ref)
 	if !named || reserved(entry.Id) || entry.Kind != 0 {
@@ -247,8 +247,7 @@ func (d *bitDecoder) name(ref uint64) (ir.TableVocabularyEntry, bool) {
 
 // arm resolves a UNION's arm reference, which must name an entry carrying the
 // arm's own kind and shape: a kind-0 entry frames nothing, and a reserved id
-// belongs to no arm (docs/SPEC-TABLES.md §3.3). ok is false with `malformed`
-// set.
+// belongs to no arm (docs/SPEC-TABLES.md §3.3). ok is false and the batch refuses.
 func (d *bitDecoder) arm(ref uint64) (ir.TableVocabularyEntry, bool) {
 	entry, named := d.entry(ref)
 	if !named || reserved(entry.Id) || entry.Kind == 0 {
@@ -373,14 +372,12 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 
 // text reads a `string(N)` or a `bytes(N)`: the length at its own width, the
 // ALIGN that buys a memcpy, then the bytes. A payload longer than this
-// reader's bound keeps what fits and counts `clamped`, which is not damage,
-// because the length was read and the position after it is known.
+// reader's bound refuses length_over_bound (§4).
 //
 // The content rule is kind 12's own (§3), reached through the same textValid
-// and textBoundary the variable form reads with: a payload that is not well-formed
-// UTF-8, or that carries a zero byte, is DAMAGE, checked as the bytes arrive
-// and before this reader's bound, and a clamp cuts at a code point boundary. A
-// `bytes(N)` carries no such rule, because its payload is bytes.
+// the variable form reads with: a payload that is not well-formed UTF-8, or
+// that carries a zero byte, is DAMAGE. A `bytes(N)` carries no such rule,
+// because its payload is bytes.
 func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry ir.TableVocabularyEntry) bool {
 	shape := entry.Shape
 	width := ir.TableMessageBitsRequired(0, shape.Max)
@@ -400,26 +397,19 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 		d.damage()
 		return false
 	}
-	keep := len(raw)
-	if bound := int(f.Type.Size); keep > bound {
-		keep = bound
-		if f.Type.Kind == ir.TString {
-			// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §3.3): the last whole
-			// code point that fits within the bound
-			keep = textBoundary(raw, bound)
-		}
+	if len(raw) > int(f.Type.Size) {
 		d.refuse(ReasonLengthOverBound)
+		return false
 	}
-	cell.Str = raw[:keep]
-	*count = keep
+	cell.Str = raw
+	*count = len(raw)
 	return true
 }
 
 // wideText reads a `wstring(N)` on this form (docs/SPEC-TABLES.md §3.3): the
 // length at bits_required( 0, max ), NO align, then SIXTEEN BITS A CODE UNIT.
 // The content rule is kind 33's own (§3): an unpaired surrogate or a zero unit
-// is DAMAGE, checked as the units arrive and before this reader's bound, and
-// a payload longer than the bound clamps without splitting a pair.
+// is DAMAGE, and a payload longer than the bound refuses length_over_bound.
 func (d *bitDecoder) wideText(cell *tabletext.Cell, count *int, f *ir.Field, entry ir.TableVocabularyEntry) bool {
 	n, ok := d.r.get(ir.TableMessageBitsRequired(0, entry.Shape.Max))
 	if !ok || !d.r.has(int(n)*16) {
@@ -442,12 +432,12 @@ func (d *bitDecoder) wideText(cell *tabletext.Cell, count *int, f *ir.Field, ent
 		d.damage()
 		return false
 	}
-	keep := len(units)
-	if bound := int(f.Type.Size); keep > bound {
-		keep = wideBoundary(units, bound)
+	if len(units) > int(f.Type.Size) {
 		d.refuse(ReasonLengthOverBound)
+		return false
 	}
-	cell.Units = units[:keep]
+	keep := len(units)
+	cell.Units = units
 	*count = keep
 	return true
 }
@@ -495,8 +485,7 @@ func skipRun(r *bitReader, n uint64, width int64) bool {
 
 // array decodes a positional array. NO COUNT RIDES where the shape's `min`
 // equals its `max`, which is every fixed array. A count above the reader's own
-// bound keeps the first `N` elements and counts `clamped`: the elements past
-// it are stepped over, because the stream advances past them either way.
+// bound refuses count_over_bound (§4).
 func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) bool {
 	f := fv.Def
 	shape := entry.Shape
@@ -521,8 +510,8 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	}
 	run := elementRunBits(entry.Kind, shape.Elem, inner)
 	if kept > bound {
-		kept = bound
 		d.refuse(ReasonCountOverBound)
+		return false
 	}
 	// THE SURPLUS OF A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3). The walk
 	// exists to find the bit the array ENDS at, and where the element's width
@@ -733,8 +722,7 @@ func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) b
 
 // scalar reads ONE value at the width the SENDER's shape states and against
 // its range base, and then applies THIS reader's own bounds: a value outside
-// them clamps and counts, exactly as it does on a file (§4). That is what
-// keeps every evolution row standing under a bitpacked body.
+// them refuses out_of_range, exactly as it does on a file (§4).
 func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape ir.TableMessageShape) bool {
 	switch int(kind) {
 	case ir.TableKindBool:
@@ -786,9 +774,9 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 			}
 			value = tabletext.WideFromBytes(raw, int(kind))
 		}
-		clamped := false
-		cell.Wide, clamped = tabletext.WideClamp(value, f)
-		if clamped {
+		var outside bool
+		cell.Wide, outside = tabletext.WideClamp(value, f)
+		if outside {
 			d.refuse(ReasonOutOfRange)
 		}
 		return true
@@ -822,9 +810,9 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 				wide[i] = 0xFF
 			}
 		}
-		clamped := false
-		cell.Wide, clamped = tabletext.WideClamp(tabletext.WideFromBytes(wide[:], ir.TableScalarKind(f)), f)
-		if clamped {
+		var outside bool
+		cell.Wide, outside = tabletext.WideClamp(tabletext.WideFromBytes(wide[:], ir.TableScalarKind(f)), f)
+		if outside {
 			d.refuse(ReasonOutOfRange)
 		}
 		return true
@@ -878,10 +866,9 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 			return false
 		}
 		// AN INDEX ABOVE `count` IS REJECTED, as the packet wire rejects it,
-		// and is never reconstructed and clamped (§3.3, SPEC.md §4.3). The
+		// and is never reconstructed (§3.3, SPEC.md §4.3). The
 		// width spells such an index whenever `count` is not one less than a
 		// power of two, ten bits spelling 1023 over a count of 1000, and the
-		// ranged offset's reconstruct-and-clamp rule does not reach here.
 		count, _, derived := ir.TableMessageQuantization(shape)
 		if !derived || index > uint64(count) {
 			d.damage()
@@ -894,7 +881,6 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 			// A DEQUANTIZED VALUE THAT IS NOT FINITE IS REFUSED, as the packet
 			// reader refuses it (SPEC.md §4.3): every announced fact can be
 			// finite and the top steps still round past the largest float32,
-			// and a clamp would invent a value the sender never named
 			d.set(&NonFiniteRefusal{Field: FloatOwner(d.m, f)})
 			return true
 		}
@@ -921,7 +907,7 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 	v := float64(math.Float32frombits(bits))
 	if ir.TableScalarKind(f) == ir.TableKindF64 {
 		// f32 WIDENED into f64 (§4): every float32 value is exactly
-		// representable, and a float64 field's declared range clamps nothing
+		// representable, and a float64 field's declared range is held as at eight bytes
 		// on this wire, exactly as a payload at sixty-four bits
 		cell.F = v
 		return true

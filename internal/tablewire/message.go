@@ -6,7 +6,7 @@
 // CONNECTION's table rather than a trailer of its own. The table is the UNIT's
 // whole vocabulary in a compiler-settled order, announced once a connection
 // per direction by an ordinary form-`1` file, and everything else about the
-// wire, the elision rules, §4's tolerance and every malformed rule, is §3's
+// wire, the elision rules, §4's evolution and every damage rule, is §3's
 // unchanged.
 package tablewire
 
@@ -36,7 +36,7 @@ const (
 	ReasonNewerForm MessageReason = iota
 	// ReasonNoVocabulary is a form-`2` message that arrived before the
 	// announcement, or after one that was refused. Nothing is decoded, the
-	// reader holds no table for the connection, and `malformed` does not fire.
+	// reader holds no table for the connection, and nothing is decoded.
 	ReasonNoVocabulary
 	// ReasonSecondAnnouncement is a second announcement on a connection. It
 	// does not replace the table, does not amend it and changes nothing. The
@@ -178,10 +178,10 @@ func Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
 // rule already covers the announcement because it IS a file, with TWO STRICT
 // CHECKS over the body: the BUILD VERSION present, exactly once, under kind
 // `9`, eight bytes wide, and the VOCABULARY present, exactly once, under kind
-// `14` over element kind `6`. Every other field is ordinary and tolerant, so
+// `14` over element kind `6`. Every other field is ordinary evolution, so
 // an unknown one is skipped and counted and the announcement can GAIN a field
 // in a later minor without a lockstep redeploy. A FAILED STRICT CHECK IS
-// MALFORMED: the two checks are the two facts the body must carry, so a body
+// DAMAGE: the two checks are the two facts the body must carry, so a body
 // without them is not an announcement.
 //
 // A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is checked here and
@@ -193,7 +193,7 @@ func Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
 // announces one), which is a file and takes §3's rule that
 // a wire it cannot read whole is malformed whole.
 //
-// A refused announcement sets NO VOCABULARY, and a malformed one sets none
+// A refused announcement sets NO VOCABULARY, and a damaged one sets none
 // either. The BUILD VERSION is kept the moment it is read, refusal or not, so
 // that a refusal on this connection names it.
 func (v *Vocabulary) AnnounceRead(data []byte, report *tabletext.Report) error {

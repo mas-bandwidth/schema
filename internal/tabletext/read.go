@@ -1,9 +1,9 @@
 // The text form's READ half (docs/SPEC-TABLES.md §16.2): one JSON text into one
-// instance, over the IR. Every rule here is §16's and mirrors the generated
-// C++ walk — unknown keys skipped and counted, duplicates last-wins and
-// counted, a wrong JSON type skipped rather than coerced, numbers clamped at
-// the declared bounds and then at the storage width, strings clamped at a code
-// point boundary, trailing commas and comments accepted on read and never written.
+// instance, over the IR. It is the one read (§6.5): an unknown key is skipped
+// and counted, and everything else that is not the declaration refuses the
+// whole text: a repeated key, a wrong JSON type, a number outside the declared
+// range or the storage width, a string, array or map past its bound. Trailing
+// commas and comments are accepted on read and never written.
 package tabletext
 
 import (
@@ -408,10 +408,9 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 }
 
 // scanString reads one JSON string, appending ONE CODE POINT AT A TIME — an
-// escape's encoding, or a UTF-8 sequence read whole — so a string longer than
-// the field is clamped AT A CODE POINT BOUNDARY and never cut through a
-// multi-byte character. capacity < 0 is unbounded; the returned bool is
-// whether the scan succeeded, and clamped whether anything was dropped.
+// escape's encoding, or a UTF-8 sequence read whole. capacity < 0 is
+// unbounded; the returned bool is whether the scan succeeded, and over whether
+// the string is longer than capacity, which the caller refuses.
 // scanString is for a string the walk only COMPARES or SKIPS — an object key,
 // an enum, flag or union name, a skipped value — and stores nothing.
 func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {

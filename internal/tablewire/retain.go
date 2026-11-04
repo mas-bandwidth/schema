@@ -621,7 +621,7 @@ func (rt *retainState) capture(inst *tabletext.Instance, id uint64, kind uint8, 
 	if rs.bad || c.off != len(c.buf) {
 		// THE WALK CAN MEET DAMAGE THE READ NEVER LOOKED AT, and its verdict
 		// changes nothing else: the record is dropped, one retain_lost counts,
-		// and `malformed` DOES NOT MOVE. The outer framing was sound, every
+		// and the verdict DOES NOT MOVE. The outer framing was sound, every
 		// sibling decoded, and the reader's own data is exactly what it would
 		// have been with retention off (§6.6).
 		rt.lost(report)
