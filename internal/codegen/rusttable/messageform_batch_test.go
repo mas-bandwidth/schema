@@ -345,8 +345,8 @@ func messageBatchRustc(t *testing.T) {
 // beside a crate root and builds them with rustc alone: a unit's table
 // runtimes are self-contained, so no packet module and no cargo workspace is
 // needed. The probe prints one `BATCH <id> ok` or `BATCH <id> BAD <why>` line
-// per clause.
-func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
+// per clause. flags are extra rustc arguments (e.g. -C debug-assertions=off).
+func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string, flags ...string) string {
 	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
@@ -389,7 +389,7 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "batchprobe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	cmd := exec.Command("rustc", append([]string{"--edition", "2024", "-o", bin, "main.rs"}, flags...)...)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
