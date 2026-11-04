@@ -1517,11 +1517,12 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             if nested:
                 rep.malformed = true
                 return false
-            if r.st.variable and rec.d.variable:
-                if not skip(r, kind):
-                    rep.malformed = true
-                    return false
-                continue
+            // Every reader knows this reserved field. The wire pass has
+            // already checked its records and graph, even for a value-only
+            // declaration; it is never an unknown field to retain.
+            if not skip(r, kind):
+                return read_refuse(rep, "wire_damaged")
+            continue
         let found = slot_by_id(rec, id)
         if not found:
             rep.unknown++

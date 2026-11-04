@@ -127,6 +127,7 @@ table Child {
 }
 
 fixed table Fixed { number int32 }
+table ValueOnly { score int32 }
 
 enum Key { A, B }
 `
@@ -252,5 +253,13 @@ let empty = read_file("empty")
 assert empty
 let fixed_evolution_report = schema_rt.LoadReport {}
 assert not schema_rt.load("Fixed", empty, fixed_evolution_report)
+let evolving = read_file("unknown_node_valid")
+assert evolving
+let retaining_report = schema_rt.LoadReport {}
+let retaining = schema_rt.Retain { capacity: 4096, id_capacity: 256, used: 0, ids: [], known: [] }
+let value_only = schema_rt.load_retain("ValueOnly", evolving, retaining, retaining_report)
+assert value_only and length(value_only.retained) == 0
+assert retaining.used == 0
+schema_rt.release(value_only)
 print("one-read native passed")
 `
