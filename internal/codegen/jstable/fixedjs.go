@@ -373,41 +373,59 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 	g.store(ind, "view", off(base, at), f.Type, expr)
 }
 
-// fixedFieldNeedsValueCheck covers finite floats and required scalar ranges,
-// here or anywhere below it (a struct by value, a union arm, an array).
+// fixedFieldNeedsValueCheck is whether a field holds anything the writer's
+// contract bounds (docs/SPEC.md §5.1), here or anywhere below it (a struct by
+// value, a union arm, an array): a float (finite, and a required one's range),
+// a ranged integer or a bits(N) value, a counted array's count, a text or bytes
+// length, text's well-formedness, an enum ordinal or a union tag.
 func fixedFieldNeedsValueCheck(f *ir.Field) bool {
 	if f == nil {
 		return false
 	}
-	if fixedIsFloat(f.Type) || (f.Required && f.HasIntRange) {
+	if f.Array == ir.ArrayCounted || fixedIsFloat(f.Type) {
 		return true
 	}
-	if f.Type.Kind == ir.TNamed {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes, ir.TWString:
+		return true
+	case ir.TNamed:
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			return slices.ContainsFunc(r.Fields, fixedFieldNeedsValueCheck)
-		case *ir.Union:
-			for _, v := range r.Variants {
-				if fixedFieldNeedsValueCheck(v.F) {
-					return true
-				}
-			}
+		case *ir.Union, *ir.Enum:
+			return true
 		}
+		return false
 	}
-	return false
+	_, _, ranged := ir.TableRawRange(f)
+	return ranged || fixedBitsMax(f) != ""
 }
 
-// emitCheckBody emits <T>FixedCheckBody( value ), THE WRITER'S FINITE CHECK
-// (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go finite-only too,
-// same rule as packets"): false when any float the record would carry is a
-// NaN or an infinity, or a required scalar is outside its declared range, so the
-// save refuses (-1) before it writes a byte. Only a type that holds a float
-// or a required range gets one; other roots have nothing to check.
+// fixedBitsMax is a bits(N) field's largest value as a literal of its storage,
+// or "" when N fills the storage and every stored value is one N bits hold.
+func fixedBitsMax(f *ir.Field) string {
+	if f.Type.Kind != ir.TBits || int64(f.Type.Width) >= 8*fixedStorageBytes(f.Type) {
+		return ""
+	}
+	maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+	return jsIntLit(maxv, fixedIsBig(f.Type))
+}
+
+// emitCheckBody emits <T>FixedCheckBody( value ), THE WRITER'S CONTRACT
+// (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §3.3; Glenn, 2026-11-03): false
+// when any value the record would carry is one its declaration does not
+// admit, so the save refuses (-1) before it writes a byte. It walks the live
+// extent the store walks (a counted array's count, a present optional, the
+// taken arm) and refuses a NaN or an infinity, a required float off its range,
+// a ranged integer off its min/max, a bits(N) value past N, a count or a text,
+// bytes or wide-text length outside its bound, text that is not well-formed
+// UTF-8 or UTF-16 (TableFixedTextWritable), an enum ordinal outside its set
+// and a union tag outside its arms. A type that bounds nothing gets none.
 func (g *fixedGen) emitCheckBody(st *ir.Struct) {
 	if !slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck) {
 		return
 	}
-	g.pf("// %s's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).\n", st.Name)
+	g.pf("// %s's writer preflight: the write contract (docs/SPEC.md §5.1).\n", st.Name)
 	g.pf("export function %sFixedCheckBody(value) {\n", st.Name)
 	for _, f := range st.Fields {
 		if !fixedFieldNeedsValueCheck(f) {
@@ -425,15 +443,35 @@ func (g *fixedGen) emitCheckBody(st *ir.Struct) {
 	g.pf("  return true;\n}\n\n")
 }
 
+// emitCheckValuePayload mirrors emitWritePayload's switch: what the store
+// writes for a field is what this checks.
 func (g *fixedGen) emitCheckValuePayload(f *ir.Field, val, ind string) {
 	name := js.MemberName(f.Name)
+	elem := *f
+	elem.Array, elem.KeyEnum, elem.Type.Optional = ir.ArrayNone, "", false
+	loop := func(count string) {
+		if fixedFieldNeedsValueCheck(&elem) {
+			g.emitCheckValueLoop(f, count, val+"."+name, ind)
+		}
+	}
 	switch {
 	case f.KeyEnum != "":
-		g.emitCheckValueLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), val+"."+name, ind)
+		loop(strconv.FormatInt(f.KeyEnumRef.Max, 10))
 	case f.Array == ir.ArrayFixed:
-		g.emitCheckValueLoop(f, strconv.FormatInt(f.ArrayBound, 10), val+"."+name, ind)
+		loop(strconv.FormatInt(f.ArrayBound, 10))
 	case f.Array == ir.ArrayCounted:
-		g.emitCheckValueLoop(f, fmt.Sprintf("%s.%sCount", val, name), val+"."+name, ind)
+		count := fmt.Sprintf("%s.%sCount", val, name)
+		g.pf("%sif (!TableFixedCountHolds(%s, %d)) { return false; }\n", ind, count, f.ArrayBound)
+		loop(count)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
+		length := fmt.Sprintf("%s.%sLength", val, name)
+		g.pf("%sif (!TableFixedCountHolds(%s, %d)) { return false; }\n", ind, length, f.Type.Size)
+		switch f.Type.Kind {
+		case ir.TString:
+			g.pf("%sif (!TableFixedTextWritable(false, %s.%s, %s)) { return false; }\n", ind, val, name, length)
+		case ir.TWString:
+			g.pf("%sif (!TableFixedTextWritable(true, %s.%s, %s)) { return false; }\n", ind, val, name, length)
+		}
 	default:
 		g.emitCheckValueElement(f, val+"."+name, ind)
 	}
@@ -450,8 +488,6 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 	if f.Required {
 		if lo, hi, ok := fixedFloatClampEnds(f); ok {
 			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
-		} else if lo, hi, ok := ir.TableRawRange(f); ok {
-			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, jsIntLit(lo, fixedIsBig(f.Type)), expr, jsIntLit(hi, fixedIsBig(f.Type)))
 		}
 	}
 	switch f.Type.Kind {
@@ -463,12 +499,32 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 		return
 	}
 	if f.Type.Kind != ir.TNamed {
+		// an integer the storage holds, inside its declared min/max and its
+		// bits(N) width: the negated compare refuses a value that is not a
+		// number of the storage's kind at all
+		big := fixedIsBig(f.Type)
+		if lo, hi, ok := ir.TableRawRange(f); ok && big {
+			g.pf("%sif (!(%s >= %s && %s <= %s)) { return false; }\n", ind, expr, jsIntLit(lo, big), expr, jsIntLit(hi, big))
+		} else if ok {
+			g.pf("%sif (!Number.isInteger(%s) || %s < %s || %s > %s) { return false; }\n", ind, expr, expr, jsIntLit(lo, big), expr, jsIntLit(hi, big))
+		}
+		if maxv := fixedBitsMax(f); maxv != "" {
+			g.pf("%sif (!(%s >= 0 && %s <= %s)) { return false; }\n", ind, expr, expr, maxv)
+		}
 		return
 	}
 	switch r := f.Type.Ref.(type) {
 	case *ir.Struct:
-		g.pf("%sif (!%sFixedCheckBody(%s)) { return false; }\n", ind, r.Name, expr)
+		if slices.ContainsFunc(r.Fields, fixedFieldNeedsValueCheck) {
+			g.pf("%sif (!%sFixedCheckBody(%s)) { return false; }\n", ind, r.Name, expr)
+		}
+	case *ir.Enum:
+		g.pf("%sif (!TableFixedCountHolds(Number(%s), %d)) { return false; }\n", ind, expr, r.Max)
 	case *ir.Union:
+		g.pf("%sif (!TableFixedCountHolds(%s.type, %d)) { return false; }\n", ind, expr, r.Max)
+		if !slices.ContainsFunc(r.Variants, func(v ir.UnionVariant) bool { return fixedFieldNeedsValueCheck(v.F) }) {
+			return
+		}
 		g.pf("%sswitch (%s.type) {\n", ind, expr)
 		for i, v := range r.Variants {
 			if !fixedFieldNeedsValueCheck(v.F) {
