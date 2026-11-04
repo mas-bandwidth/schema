@@ -533,9 +533,11 @@ export function FixedTableMeasureMessages(values, report) {
 
 export function FixedTableSaveMessages(values, buffer, report) {
   if (report === undefined || report === null) { report = {}; }
-  TableMessageResetReport(report);
-  if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
-  if (buffer.length < 2) { return -1; }
+  // A REFUSED BATCH LEAVES THE BUFFER UNTOUCHED (docs/SPEC.md §5.1): the
+  // whole batch is measured first, which checks every value and sizes the
+  // text, so a refusal or a short buffer answers -1 before the first byte.
+  const need = FixedTableMeasureMessages(values, report);
+  if (need < 0 || buffer.length < need) { return -1; }
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   const w = new TableBitWriter(buffer.subarray(2), false);

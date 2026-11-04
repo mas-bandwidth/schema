@@ -957,13 +957,11 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 
 	g.pf("export function %sSaveMessages(values, buffer, report) {\n", n)
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
-	g.pf("  TableMessageResetReport(report);\n")
-	g.pf("  if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, \"batch_too_large\"); return -1; }\n")
-	if st.Integrity != "" {
-		g.pf("  if (buffer.length < 6) { return -1; }\n")
-	} else {
-		g.pf("  if (buffer.length < 2) { return -1; }\n")
-	}
+	g.pf("  // A REFUSED BATCH LEAVES THE BUFFER UNTOUCHED (docs/SPEC.md §5.1): the\n")
+	g.pf("  // whole batch is measured first, which checks every value and sizes the\n")
+	g.pf("  // text, so a refusal or a short buffer answers -1 before the first byte.\n")
+	g.pf("  const need = %sMeasureMessages(values, report);\n", n)
+	g.pf("  if (need < 0 || buffer.length < need) { return -1; }\n")
 	g.pf("  buffer[0] = 2;\n")
 	g.pf("  buffer[1] = values.length - 1;\n")
 	if st.Integrity != "" {

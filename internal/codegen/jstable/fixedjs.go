@@ -419,8 +419,8 @@ func fixedBitsMax(f *ir.Field) string {
 // taken arm) and refuses a NaN or an infinity, a required float off its range,
 // a ranged integer off its min/max, a bits(N) value past N, a count or a text,
 // bytes or wide-text length outside its bound, text that is not well-formed
-// UTF-8 or UTF-16 (TableFixedTextWritable), an enum ordinal outside its set
-// and a union tag outside its arms. A type that bounds nothing gets none.
+// UTF-8 or UTF-16 or that holds a zero byte or unit (TableFixedTextSavable),
+// an enum ordinal outside its set and a union tag outside its arms. A type that bounds nothing gets none.
 func (g *fixedGen) emitCheckBody(st *ir.Struct) {
 	if !slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck) {
 		return
@@ -468,9 +468,9 @@ func (g *fixedGen) emitCheckValuePayload(f *ir.Field, val, ind string) {
 		g.pf("%sif (!TableFixedCountHolds(%s, %d)) { return false; }\n", ind, length, f.Type.Size)
 		switch f.Type.Kind {
 		case ir.TString:
-			g.pf("%sif (!TableFixedTextWritable(false, %s.%s, %s)) { return false; }\n", ind, val, name, length)
+			g.pf("%sif (!TableFixedTextSavable(false, %s.%s, %s)) { return false; }\n", ind, val, name, length)
 		case ir.TWString:
-			g.pf("%sif (!TableFixedTextWritable(true, %s.%s, %s)) { return false; }\n", ind, val, name, length)
+			g.pf("%sif (!TableFixedTextSavable(true, %s.%s, %s)) { return false; }\n", ind, val, name, length)
 		}
 	default:
 		g.emitCheckValueElement(f, val+"."+name, ind)

@@ -49,13 +49,18 @@ func (g *tableGen) emitMessageWrite(st *ir.Struct) {
 	// appends the CRC-32C of the form byte, the count byte and the padded bit
 	// stream, using the variable form's seal. A table without the key emits
 	// the bytes it emitted before.
+	//
+	// A REFUSED BATCH LEAVES THE CALLER'S BUFFER UNTOUCHED (docs/SPEC.md §5.1):
+	// the save measures the whole batch first, which checks every value and
+	// sizes the text, and answers -1 before its first byte when the measure
+	// refuses or the buffer is short.
 	if st.Integrity != "" {
 		g.pf("func %sMeasureMessages(values []*%s,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax{if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};return 6+w.Bits/8}\n", n, typ, n)
-		g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax {if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};if len(buffer)<6{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:len(buffer)-4]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};if report!=nil{report.Clamped+=w.Clamped};return tableIntegritySeal(buffer,2+w.Bits/8)}\n", n, typ, n)
+		g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if need:=%sMeasureMessages(values,report);need<0||int64(len(buffer))<need{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:len(buffer)-4]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};if report!=nil{report.Clamped+=w.Clamped};return tableIntegritySeal(buffer,2+w.Bits/8)}\n", n, typ, n, n)
 		return
 	}
 	g.pf("func %sMeasureMessages(values []*%s,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax{if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};return 2+w.Bits/8}\n", n, typ, n)
-	g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax {if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};if len(buffer)<2{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};if report!=nil{report.Clamped+=w.Clamped};return 2+w.Bits/8}\n", n, typ, n)
+	g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if need:=%sMeasureMessages(values,report);need<0||int64(len(buffer))<need{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};if report!=nil{report.Clamped+=w.Clamped};return 2+w.Bits/8}\n", n, typ, n, n)
 }
 
 // messageInvalid is the message writer's refusal of a value its declaration

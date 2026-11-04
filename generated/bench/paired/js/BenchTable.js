@@ -427,6 +427,14 @@ export function TableFixedTextWritable(wide, a, n) {
   return true;
 }
 
+// THE FIXED WRITER'S TEXT RULE (docs/SPEC.md §5.1): TableFixedTextWritable's,
+// and no zero byte or unit among the n used, since the fixed reader refuses one
+// as text_ill_formed and a writer never produces bytes its own reader refuses.
+export function TableFixedTextSavable(wide, a, n) {
+  for (let i = 0; i < n; i++) { if (a[i] === 0) { return false; } }
+  return TableFixedTextWritable(wide, a, n);
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -2418,7 +2426,7 @@ export function BenchMixedFixedCheckBody(value) {
     default: break;
   }
   if (!TableFixedCountHolds(value.playerNameLength, 15)) { return false; }
-  if (!TableFixedTextWritable(false, value.playerName, value.playerNameLength)) { return false; }
+  if (!TableFixedTextSavable(false, value.playerName, value.playerNameLength)) { return false; }
   if (!TableFixedCountHolds(value.payloadLength, 16)) { return false; }
   if (!Number.isFinite(Math.fround(value.aimX))) { return false; }
   if (!Number.isFinite(Math.fround(value.aimY))) { return false; }

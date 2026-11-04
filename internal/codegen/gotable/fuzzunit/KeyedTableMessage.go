@@ -68,13 +68,7 @@ func TeamConfigMeasureMessages(values []*TeamConfig, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := TeamConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -313,13 +307,7 @@ func GunnerConfigMeasureMessages(values []*GunnerConfig, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := GunnerConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -561,13 +549,7 @@ func TurretConfigMeasureMessages(values []*TurretConfig, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := TurretConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -877,13 +859,7 @@ func HullConfigMeasureMessages(values []*HullConfig, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := HullConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1276,13 +1252,7 @@ func KeyedConfigMeasureMessages(values []*KeyedConfig, report *TableReport) int6
 	return 2 + w.Bits/8
 }
 func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := KeyedConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
