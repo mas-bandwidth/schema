@@ -95,3 +95,20 @@ func TestSingleReadProtocolHasNoAcceptedValueExemption(t *testing.T) {
 		t.Fatalf("old recovery was accepted as a second standard: %+v", e)
 	}
 }
+
+func TestManifestRejectsDuplicateCookRecipes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "manifest")
+	body := "unit u unit.schema\ninstance value u Root value.bin\ncook-write value little.cook big.cook\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadManifest(path, defaultJSONDir); err != nil {
+		t.Fatalf("one recipe: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(body+"cook-write value other.cook other-be.cook\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadManifest(path, defaultJSONDir); err == nil || !strings.Contains(err.Error(), "duplicate cook-write") {
+		t.Fatalf("duplicate recipes can append or overwrite one answer: %v", err)
+	}
+}

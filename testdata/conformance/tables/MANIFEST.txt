@@ -459,7 +459,6 @@ cook-write message_empty          testdata/conformance/tables/cook-write/message
 # feature_full carries non-empty unbounded text (SPEC-TABLES §2.13.1), a
 # `[]string` element and a `map[string]V` key, each a blob record in its
 # holder's extent
-cook-write feature_full           testdata/conformance/tables/cook-write/feature_full.cook testdata/conformance/tables/cook-write/feature_full-be.cook
 cook-write message_batch          testdata/conformance/tables/cook-write/message_batch.cook testdata/conformance/tables/cook-write/message_batch-be.cook
 cook-write message_arms           testdata/conformance/tables/cook-write/message_arms.cook testdata/conformance/tables/cook-write/message_arms-be.cook
 cook-write message_arm_edits      testdata/conformance/tables/cook-write/message_arm_edits.cook testdata/conformance/tables/cook-write/message_arm_edits-be.cook
@@ -1183,8 +1182,8 @@ framing array_header_crosses_L_kind_mismatch tblframe Cfg testdata/wire/tables/f
 framing array_elem_kind_mismatch tblframe Cfg testdata/wire/tables/framing/array_elem_kind_mismatch.bin refused -
 framing array_count_non_canonical tblframe Cfg testdata/wire/tables/framing/array_count_non_canonical.bin refused -
 framing array_header_incomplete_at_end tblframe Cfg testdata/wire/tables/framing/array_header_incomplete_at_end.bin refused -
-framing array_elem_terminator_early listdemo Bounded testdata/wire/tables/framing/array_elem_terminator_early.bin refused -
-framing array_elem_L_past_body listdemo Bounded testdata/wire/tables/framing/array_elem_L_past_body.bin refused -
+framing array_elem_terminator_early tblframe Bounded testdata/wire/tables/framing/array_elem_terminator_early.bin refused -
+framing array_elem_L_past_body tblframe Bounded testdata/wire/tables/framing/array_elem_L_past_body.bin refused -
 framing map_header_crosses_L_kind_mismatch listdemo Squad testdata/wire/tables/framing/map_header_crosses_L_kind_mismatch.bin refused -
 framing map_header_crosses_L listdemo Squad testdata/wire/tables/framing/map_header_crosses_L.bin refused -
 framing map_entry_terminator_early listdemo Squad testdata/wire/tables/framing/map_entry_terminator_early.bin refused -
