@@ -91,6 +91,9 @@ my %kinds = (
 	"block-reason"  => ["refusal", "forgery"],
 	"cook-reason"   => ["refusal", "forgery"],
 	"write-refusal" => ["write-refusal"],
+	"write-refusal-fixed"   => ["write-refusal-fixed"],
+	"write-refusal-message" => ["connection", "write-refusal-message"],
+	"write-refusal-json"    => ["write-refusal-json"],
 );
 my %want = map { $_ => 1 } @{ $kinds{$surface} || [] };
 

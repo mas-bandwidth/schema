@@ -147,11 +147,14 @@ end
 local tableModules: { [string]: { string } } = load(stage .. "tables")
 
 local ctx = {
-	-- require every <Base>Table module of a unit, which registers its descriptors
-	tables = function(key: string)
+	-- require every <Base>Table module of a unit, which registers its
+	-- descriptors, and hand the modules back
+	tables = function(key: string): { any }
+		local mods = {}
 		for _, name in tableModules[key] or {} do
-			load(ROOT .. generated .. "/" .. key .. "/" .. name)
+			mods[#mods + 1] = load(ROOT .. generated .. "/" .. key .. "/" .. name)
 		end
+		return mods
 	end,
 	kind = kind,
 	module = function(key: string, name: string): any?
