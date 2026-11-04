@@ -55,6 +55,9 @@ func wireFuzz(builder bool) error {
 				roster[i] = findCodec(unit, root)
 			}
 		}
+		if form == 3 && retain == 0 && !builder {
+			roster[i] = findCodec(unit, root)
+		}
 		if form == 2 && retain == 0 && !builder {
 			messages[i] = findMessageCodec(unit, root)
 		}
