@@ -33,6 +33,13 @@
 #        driver <manifest> cook-fuzz <seed> <n> <fixtures dir>
 main=test/conformance/goose/main.goose
 goose=${GOOSE:-dist/goose-v2026.2-linux-x64/goose}
+
+# goose_run is `goose run` under a five-minute wall clock (the same limit as
+# internal/codegen/goose/gooserun.Timeout): a program that never ends is killed
+# and answers nonzero, so a hang fails its surface instead of outliving the run.
+goose_run() {
+	timeout --kill-after=10 300 "$goose" run "$@"
+}
 units=${SCHEMA_GOOSE_GENERATED:-build/conformance-goose}
 # THE WORK DIRECTORY is one per units tree and per surface, so calls that run
 # at once under make -j (the forgery fuzzer, the block lead, the controls over
@@ -240,9 +247,9 @@ if [ "$2" = block-fuzz ] || [ "$2" = cook-fuzz ]; then
 		[ -d "$units/$key" ] || { echo "driver: $units/$key is missing (make build/conformance-goose)" >&2; exit 1; }
 		a=$(accel_prep "$units/$key" "$key") || exit 1
 		if [ "$kind" = cook ]; then
-			"$goose" run "$a/accel.goose" -- cook-fuzz "$1" "$key" "$3" "$4" "$5" 2>"$dir/cook-fuzz.$key.err" || status=1
+			goose_run "$a/accel.goose" -- cook-fuzz "$1" "$key" "$3" "$4" "$5" 2>"$dir/cook-fuzz.$key.err" || status=1
 		else
-			"$goose" run "$a/accel.goose" -- block-fuzz "$1" "$key" "$3" "$4" 2>"$dir/block-fuzz.$key.err" || status=1
+			goose_run "$a/accel.goose" -- block-fuzz "$1" "$key" "$3" "$4" 2>"$dir/block-fuzz.$key.err" || status=1
 		fi
 		[ "$status" -eq 0 ] || { cat "$dir/$2.$key.err" >&2; exit 1; }
 	done
@@ -253,7 +260,7 @@ if [ "$2" = block-lead ]; then
 	for key in $(accel_units "$1" block-lead); do
 		[ -d "$units/$key" ] || { echo "driver: $units/$key is missing (make build/conformance-goose)" >&2; exit 1; }
 		a=$(accel_prep "$units/$key" "$key") || exit 1
-		"$goose" run "$a/accel.goose" -- block-lead "$1" "$key" 2>"$dir/block-lead.$key.err" || {
+		goose_run "$a/accel.goose" -- block-lead "$1" "$key" 2>"$dir/block-lead.$key.err" || {
 			status=1
 			cat "$dir/block-lead.$key.err" >&2
 		}
@@ -266,11 +273,11 @@ list)
 	for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 		[ -d "$units/$key" ] || continue
 		glue "$units/$key"
-		"$goose" run "$units/$key/main.goose" -- list "$1" 2>"$dir/list.err"
+		goose_run "$units/$key/main.goose" -- list "$1" 2>"$dir/list.err"
 		status=$?
 		[ "$status" -eq 0 ] || { cat "$dir/list.err" >&2; exit "$status"; }
 		a=$(accel_prep "$units/$key" "$key") || exit 1
-		"$goose" run "$a/accel.goose" -- list "$1" 2>"$dir/list.err"
+		goose_run "$a/accel.goose" -- list "$1" 2>"$dir/list.err"
 		status=$?
 		[ "$status" -eq 0 ] || cat "$dir/list.err" >&2
 		exit "$status"
@@ -296,7 +303,7 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 			continue
 		fi
 		a=$(accel_prep "$u" "$key") || exit 1
-		"$goose" run "$a/accel.goose" -- "$2" "$1" "$key" >>"$out" 2>"$dir/$2.$key.err"
+		goose_run "$a/accel.goose" -- "$2" "$1" "$key" >>"$out" 2>"$dir/$2.$key.err"
 		status=$?
 		if [ "$status" -ne 0 ]; then
 			[ "$status" -eq 2 ] || cat "$dir/$2.$key.err" >&2
@@ -323,7 +330,7 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 		continue
 	fi
 	glue "$u"
-	"$goose" run "$u/main.goose" -- "$2" "$1" "$key" >>"$out" 2>"$dir/$2.$key.err"
+	goose_run "$u/main.goose" -- "$2" "$1" "$key" >>"$out" 2>"$dir/$2.$key.err"
 	status=$?
 	if [ "$status" -ne 0 ]; then
 		[ "$status" -eq 2 ] || cat "$dir/$2.$key.err" >&2

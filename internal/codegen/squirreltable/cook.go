@@ -44,6 +44,9 @@ func cookModule(m *Module) {
 	m.Printf("_M.TableCookByteOrderBytes <- [1, 0, 0, 0, 0, 0, 0, 0];\n")
 	m.Printf("_M.TableCookHeaderBytes <- %d;\n", cookHeaderBytes)
 	m.Printf("_M.TableCookMaxAlign <- %d;\n", cookMaxAlign)
+	// the region's alignment (ir.TableRegionAlign): an unbounded text blob in
+	// a holder's extent is padded to it (docs/SPEC-TABLES.md §2.13.1)
+	m.Printf("_M.TableRegionAlign <- %d;\n", ir.TableRegionAlign(m.Unit))
 	m.Printf("_M.BuildVersionBytes <- [%s];\n", littleEndianBytes(ir.BuildVersion(m.Unit)))
 	m.Printf("_M.cookForms <- {\n")
 	for _, st := range m.Closure {

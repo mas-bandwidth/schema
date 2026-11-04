@@ -8372,18 +8372,34 @@ static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
 {
-    if ( raw == NULL ) { len = -1; return NULL; }
+    if ( raw == NULL )
+    {
+        len = -1;
+        return NULL;
+    }
     uint32_t u = 0;
     memcpy( &u, raw, 4 );
-    if ( u > (uint32_t) INT32_MAX ) { len = -1; return NULL; }
-    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) ) { len = -1; return NULL; }
+    if ( u > (uint32_t) INT32_MAX )
+    {
+        len = -1;
+        return NULL;
+    }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) )
+    {
+        len = -1;
+        return NULL;
+    }
     len = (int32_t) u;
     return (const char *) ( raw + 8 );
 }
 
 inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
 {
-    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    if ( ref.value == 0 )
+    {
+        len = 0;
+        return schema_table_empty_text_ + 8;
+    }
     return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
 }
 inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
@@ -8392,13 +8408,25 @@ inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRe
 }
 inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
 {
-    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
-    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX ) { len = -1; return NULL; }
+    if ( ref.value == 0 )
+    {
+        len = 0;
+        return schema_table_empty_text_ + 8;
+    }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX )
+    {
+        len = -1;
+        return NULL;
+    }
     return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
 }
 inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
 {
-    if ( ctx.arena == NULL ) { len = -1; return NULL; }
+    if ( ctx.arena == NULL )
+    {
+        len = -1;
+        return NULL;
+    }
     return schema_table_text_at_( *ctx.arena, ref, len );
 }
 
@@ -8408,7 +8436,11 @@ inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, con
     if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
     if ( len > 0 && text == NULL ) { return false; }
     if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
-    if ( len == 0 ) { slot.value = 0; return true; }
+    if ( len == 0 )
+    {
+        slot.value = 0;
+        return true;
+    }
     uint32_t at = 0;
     uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
     if ( dst == NULL ) { return false; }
@@ -8498,7 +8530,11 @@ inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, Tabl
     int32_t len = 0;
     const char * bytes = schema_table_text_at_( ctx, src, len );
     if ( bytes == NULL ) { return false; }
-    if ( len == 0 ) { dst.value = 0; return true; }
+    if ( len == 0 )
+    {
+        dst.value = 0;
+        return true;
+    }
     at = ( at + 7 ) & ~(int64_t) 7;
     const int64_t need = TableAlignUp64( 9 + (int64_t) len );
     if ( at + need > capacity ) { return false; }
@@ -8517,9 +8553,17 @@ inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, Tabl
 inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
 {
     uint64_t len = 0;
-    if ( !r.getleb( len ) || !r.room( len ) ) { r.offset = r.size; return true; }
+    if ( !r.getleb( len ) || !r.room( len ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     r.offset += (int64_t) len;
-    if ( len > (uint64_t) kTableBlobMaxLength ) { reason = blob_over_size_cap; return false; }
+    if ( len > (uint64_t) kTableBlobMaxLength )
+    {
+        reason = blob_over_size_cap;
+        return false;
+    }
     if ( len == 0 ) { return true; }
     at = ( at + 7 ) & ~(int64_t) 7;
     at += TableAlignUp64( 9 + (int64_t) len );

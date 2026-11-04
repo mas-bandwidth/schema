@@ -150,8 +150,17 @@ end
 -- before it answers nil; nothing the walk met after the refusal reaches the
 -- report.
 local REPORT_FIELDS = {
-  "malformed", "refused", "unknown", "kindMismatch", "clamped", "widened",
-  "duplicate", "blobShared", "missingRequired", "wireDamaged", "reason",
+  "malformed",
+  "refused",
+  "unknown",
+  "kindMismatch",
+  "clamped",
+  "widened",
+  "duplicate",
+  "blobShared",
+  "missingRequired",
+  "wireDamaged",
+  "reason",
   "nonFiniteFloat",
 }
 
@@ -2096,9 +2105,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   -- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph the load
   -- stored is walked once every index has resolved, by the save's numbering,
   -- which answers nil for a reference to a node whose descent is still open.
-  if not report.malformed and D.number_nodes(T, desc, root, false) == nil then
-    report.malformed = true
-  end
+  if not report.malformed and D.number_nodes(T, desc, root, false) == nil then report.malformed = true end
   release(ctx)
   if report.malformed then return nil end
   return root

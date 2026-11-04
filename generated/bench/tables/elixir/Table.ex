@@ -2830,7 +2830,8 @@ defmodule Benchtable.Table do
 
   defp read_payload(%{t: :int} = f, payload, _nodes, _ids, report) do
     v = int_of(payload, f.width, f.signed)
-    {clamped, report} = clamp_int(v, f, report)
+    {v, report} = clamp_int(v, f, report)
+    {clamped, report} = clamp_bits(v, f, report)
 
     {:cont, clamped, report}
   end
@@ -3450,7 +3451,8 @@ defmodule Benchtable.Table do
 
   defp read_widened(f, kind, payload, report) do
     v = int_of(payload, kind_width(kind), f.signed)
-    {clamped, report} = clamp_int(v, f, report)
+    {v, report} = clamp_int(v, f, report)
+    {clamped, report} = clamp_bits(v, f, report)
     widened = if Map.get(f, :map_key, false), do: report.widened, else: report.widened + 1
     {clamped, %{report | widened: widened}}
   end
@@ -4074,6 +4076,16 @@ defmodule Benchtable.Table do
     do: {hi, %{report | clamped: report.clamped + 1}}
 
   defp clamp_int(v, _f, report), do: {v, report}
+
+  # A bits(N) field rides as the narrowest unsigned kind that holds it, so its
+  # payload can carry a value above 2^N - 1; that value clamps to the top of
+  # the field, after the declared range (docs/SPEC-TABLES.md §4).
+  defp clamp_bits(v, %{bits: bits}, report) when is_integer(bits) and bits > 0 do
+    top = Bitwise.bsl(1, bits) - 1
+    if v > top, do: {top, %{report | clamped: report.clamped + 1}}, else: {v, report}
+  end
+
+  defp clamp_bits(v, _f, report), do: {v, report}
 
   defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
     do: clamp_int(v, %{min: lo, max: hi}, report)
@@ -5211,6 +5223,9 @@ defmodule Benchtable.Table do
 
   defp json_read_field(%{t: :list, text_list: true} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
+    # every element past [..N] counts clamped, the total's drop included
+    # (docs/SPEC-TABLES.md §2.13, §16.2)
+    past = if bound > 0, do: max(length(raw) - bound, 0), else: 0
 
     {elements, _count, _f, report} =
       Enum.reduce_while(raw, {[], 0, f, report}, fn raw, {acc, count, f, report} ->
@@ -5219,14 +5234,17 @@ defmodule Benchtable.Table do
             {:halt, {acc, count, f, report}}
 
           bound > 0 and count >= bound ->
-            {:halt, {acc, count, f, %{report | clamped: report.clamped + 1}}}
+            {:halt, {acc, count, f, %{report | clamped: report.clamped + past}}}
 
           true ->
             {value, report} = json_read_list_elem(f, raw, report)
 
             case text_list_keep(f, value, report) do
-              {:keep, f, report} -> {:cont, {[value | acc], count + 1, f, report}}
-              {:drop, report} -> {:halt, {acc, count, f, report}}
+              {:keep, f, report} ->
+                {:cont, {[value | acc], count + 1, f, report}}
+
+              {:drop, report} ->
+                {:halt, {acc, count, f, %{report | clamped: report.clamped + past}}}
             end
         end
       end)

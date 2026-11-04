@@ -114,6 +114,9 @@ build/tables-generated/f2/F2Block.h allocator-wrappers,cast-align,old-style-cast
 build/tables-generated/f2/F2Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/f2/F2Table.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
 build/tables-generated/f2/Tblf2View.h padded
+build/tables-generated/features/FeaturesTable.cpp cast-align,float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/features/FeaturesTable.h allocator-wrappers,cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
+build/tables-generated/features/FeaturewitnessesView.h padded
 build/tables-generated/fe1/FE1.h covered-switch-default,padded
 build/tables-generated/fe1/FE1Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/fe1/FE1Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum

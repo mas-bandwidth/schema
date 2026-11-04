@@ -149,7 +149,8 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 		}
 		// its own work directory: the default, build/conformance, is the one
 		// a conformance run beside this test writes and compares in
-		cmd := exec.Command(harness, "run", "--only", "elixir", "--work", t.TempDir())
+		work := t.TempDir()
+		cmd := exec.Command(harness, "run", "--only", "elixir", "--work", work)
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -165,7 +166,7 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 		if !bytes.Contains(line[1], []byte("pass ")) {
 			t.Fatalf("the harness reads the Elixir message surface as %q, not a pass", bytes.TrimSpace(line[1]))
 		}
-		dir := filepath.Join(root, "build", "conformance", "out", "elixir", "message")
+		dir := filepath.Join(work, "out", "elixir", "message")
 		var passed []string
 		for _, row := range rows {
 			if variable[row.name] {

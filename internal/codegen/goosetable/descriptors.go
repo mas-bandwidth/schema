@@ -86,7 +86,7 @@ func tagList(tags []string) string {
 }
 
 // stringLit is s as a Goose string literal, escaped by the language's own
-// rule and by no other (the pinned goose_spec.md §2: `\n \t \r \0 \\ \" \'
+// rule and by no other (the pinned goose_spec.md, section 2: `\n \t \r \0 \\ \" \'
 // \xNN`): a quote, a backslash and the control bytes are escaped, and every
 // other byte, UTF-8 included, is written as it is.
 func stringLit(s string) string {

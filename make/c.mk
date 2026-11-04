@@ -1752,8 +1752,8 @@ build/cpp-collections-fuzz: build/collections-cpp/.stamp test/c-tables/collectio
 
 .PHONY: tables-c-collections-fuzz
 tables-c-collections-fuzz: build/c-collections-fuzz build/c-collections-fuzz-asan build/cpp-collections-fuzz
-	SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollection(Cook)?Differential$$' -count=1 -v
-	SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz-asan SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollection(Cook)?Differential$$' -count=1 -v
+	SCHEMA_SLOW=1 SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollection(Cook)?Differential$$' -count=1 -v
+	SCHEMA_SLOW=1 SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz-asan SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollection(Cook)?Differential$$' -count=1 -v
 
 test-c tables-c: tables-c-collections-fuzz
 
