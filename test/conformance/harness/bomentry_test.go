@@ -65,7 +65,7 @@ func TestBOMEntryCorpusOracle(t *testing.T) {
 				t.Fatalf("accepted=%t report=%+v row refusal=%t", accepted, report, row.Refused)
 			}
 			if accepted {
-				if report != (tabletext.Report{}) || row.Verdict() != "0,0,0,0,0,false,read" {
+				if row.Verdict() != "read" {
 					t.Fatalf("accepted BOM changed the report: %+v / %s", report, row.Verdict())
 				}
 				encoded, err := model.Write(value)

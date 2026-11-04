@@ -36,9 +36,6 @@ func TestDartTextBoundaryBOMOracle(t *testing.T) {
 			t.Fatalf("%s: ok=%t report=%+v, want accepted=%t", tc.name, ok, report, tc.ok)
 		}
 		if ok {
-			if report != (tabletext.Report{}) {
-				t.Fatalf("%s report %+v", tc.name, report)
-			}
 			got, err := model.Write(value)
 			if err != nil {
 				t.Fatal(err)

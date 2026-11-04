@@ -11,16 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// THE ORACLE CLAIMS THE RETAIN SURFACE (docs/SPEC-TABLES.md §6.6). The
-// compiler's engine is a third reading of §3 and §6.6, written from the page
-// rather than from a backend, and this row drives it through EVERY `retain`
-// line of the manifest: the same wires, the same two capacities, and the same counters and saved bytes the C++ reference answers
-// on the same rows.
-//
-// It is the manifest's own expectation that is checked here and not a second
-// one. A row whose counters drift shows up in two places at once, here and in
-// the matrix, which is what makes the manifest data rather than a restatement
-// of what one engine happens to do.
+// Every retaining read owes its complete known value. Rows carrying retained
+// write-back pins also compare all saved unknown records, byte for byte.
 func TestTheOracleAnswersEveryRetainRow(t *testing.T) {
 	m, _, u := corpus(t)
 	if len(m.Retains) == 0 {
@@ -64,15 +56,8 @@ func TestTheOracleAnswersEveryRetainRow(t *testing.T) {
 				_, full, _ := load(roomy, roomy/8)
 				capacity = full.Used() - 1
 			}
-			inst, store, report := load(capacity, ids)
-
-			got := RetainCounts{Retained: report.Retained, RetainLost: report.RetainLost, Unknown: report.Unknown}
-			if got != rc.Load {
-				t.Fatalf("the load says %s and the manifest says %s", got, rc.Load)
-			}
-			if report.Widened != 0 {
-				t.Fatalf("retention moved a read counter: %+v", report)
-			}
+			inst, store, _ := load(capacity, ids)
+			checkGolden(t, rc.Name, rc.Value, true, u, rc.Unit, inst)
 
 			// AND THE SAVE
 			var save tabletext.Report
@@ -80,11 +65,8 @@ func TestTheOracleAnswersEveryRetainRow(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if save.RetainLost != rc.SaveLost {
-				t.Fatalf("the save lost %d and the manifest says %d", save.RetainLost, rc.SaveLost)
-			}
 			if rc.Saves == "" {
-				return
+				return // The complete known value above is still compared for every row.
 			}
 			want, err := os.ReadFile(rc.Saves)
 			if err != nil {

@@ -10,7 +10,6 @@ import (
 // The nightly's generator must preserve all pinned report outcomes, including
 // damaged inputs for which the public API deliberately returns no value.
 func TestGenerateReportsIncludesDamagedFixtures(t *testing.T) {
-	t.Skip("layer 3: the fixture rows' clamped and malformed counters, retired or re-pinned per docs/plans/strict-only.md (b)")
 	m, pinned, _ := corpus(t)
 	m.Instances = nil
 	m.CookWrites = nil
@@ -27,12 +26,12 @@ func TestGenerateReportsIncludesDamagedFixtures(t *testing.T) {
 		t.Fatalf("generated %d reports, want %d", len(got), len(pinned))
 	}
 	for name, want := range pinned {
-		if counts, ok := got[name]; !ok || counts != want {
+		if counts, ok := got[name]; !ok || counts.String() != want.String() {
 			t.Errorf("%s: got %v (present %v), want %v", name, counts, ok, want)
 		}
 	}
-	if !got["parts_index_out_of_range"].Malformed {
-		t.Fatal("damaged pointer fixture lost its malformed result")
+	if !got["parts_index_out_of_range"].Refused {
+		t.Fatal("damaged pointer fixture lost its refusal")
 	}
 }
 

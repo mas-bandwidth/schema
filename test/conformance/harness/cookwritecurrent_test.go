@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/compiler"
 )
 
 // TestCookWriteFixturesAreTheToolsBytes holds every committed cook-write
@@ -14,7 +12,6 @@ import (
 // the manifest paths against the repository root avoids changing process cwd
 // in this parallel test.
 func TestCookWriteFixturesAreTheToolsBytes(t *testing.T) {
-	t.Skip("layer 3: cook fixtures whose form-1 wires sit under fixed-declared roots (previous_form, red at base f7bd63363) and the blob_shared fixture the one read refuses, re-pinned per docs/plans/strict-only.md (b)")
 	t.Parallel()
 
 	root := conformanceRoot(t)
@@ -40,14 +37,6 @@ func TestCookWriteFixturesAreTheToolsBytes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wirePath := inst.Wire
-			if !filepath.IsAbs(wirePath) {
-				wirePath = filepath.Join(root, wirePath)
-			}
-			wire, err := os.ReadFile(wirePath)
-			if err != nil {
-				t.Fatal(err)
-			}
 			for _, arm := range []struct {
 				path string
 				big  bool
@@ -56,13 +45,9 @@ func TestCookWriteFixturesAreTheToolsBytes(t *testing.T) {
 				{cw.Little, false, "little-endian"},
 				{cw.Big, true, "big-endian"},
 			} {
-				cooked, _, report, err := u.c.Cook(unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
+				cooked, err := cookRecipe(unit, inst, cw, root, arm.big)
 				if err != nil {
 					t.Errorf("%s: cook: %v", arm.name, err)
-					continue
-				}
-				if !cookedReportClean(inst, report) {
-					t.Errorf("%s: tool output does not read clean: %+v", arm.name, report)
 					continue
 				}
 				fixturePath := arm.path
