@@ -7,64 +7,67 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
+env:
+  PRODUCT_REVISION: 9169630fe1841ac27605c88295e0f28a92a565cd
+  SERIALIZE_TAG: v2.1.3
+  SERIALIZE_GO_TAG: v2.1.1
+  SCHEMA_SLOW: '1'
+  SCHEMA_REQUIRE_CORPUS: '1'
 jobs:
-  review:
+  qualify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - lane: strict-fixed
-            revision: 1c4874ca5bd0c1b9366b03de7c61f35d73bc20d8
-            pattern: '^TestLobsterFixedOneRead$'
-          - lane: evolution
-            revision: a8669c7bc492ae6cacf3a673e1f9d2ee6ed3712f
-            pattern: '^TestLobster(FixedProofEvolution|FixedProofSuite|FixedNestedUnionGuardNames)$'
-          - lane: binary
-            revision: 9c7ccaecc6165891ac4745e82fcf965c1d6596b3
-            pattern: '^TestLobster(UnionArm.*|DefaultsAndRenames.*|SingleRead.*|TableLoad.*|StrictRead.*|RetainUnknown.*|TextLists.*|TableSave.*|TableRelease.*|TableCyclic.*|VariableClass.*|Collections.*|WideKinds.*|Descriptors.*|Optionals.*|TablesAreFiniteOnly.*)$'
-          - lane: cook-identity
-            revision: 29753a4be0ec61c9c435f9ca106b5d7506ae9ec3
-            pattern: '^TestLobsterCookPreservesSharedBlobIdentity$'
+        lane: [native, reference, conformance]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ matrix.revision }}
+          ref: ${{ env.PRODUCT_REVISION }}
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
-      - name: Build exact product compiler for generated refresh
+      - name: Verify exact source and install pinned dependencies
         run: |
-          mkdir -p build/review-compiler
-          git rev-parse HEAD > build/review-compiler/product-head.txt
-          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o build/review-compiler/schema ./cmd/schema
-          shasum -a 256 build/review-compiler/schema > build/review-compiler/sha256.txt
-      - name: Preserve exact compiler
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: lobster-${{ matrix.lane }}-compiler
-          path: build/review-compiler/
-          retention-days: 7
-      - name: Install pinned Lobster runtime
-        run: |
+          test "$(git rev-parse HEAD)" = "$PRODUCT_REVISION"
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git ../serialize.go
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
-      - name: Build fixed lineage corpus
-        if: matrix.lane == 'evolution' || matrix.lane == 'strict-fixed'
-        run: make build/fixedform-corpus/.stamp
-      - name: Native review regressions
-        env:
-          SCHEMA_SLOW: '1'
-          SCHEMA_REQUIRE_CORPUS: '1'
-          TEST_PATTERN: ${{ matrix.pattern }}
+          echo "LOBSTER=$PWD/dist/lobster-v2026.8/bin/lobster" >> "$GITHUB_ENV"
+          mkdir -p build/qualification
+          git rev-parse HEAD > build/qualification/product-head.txt
+      - name: Native package and compiler guards
+        if: matrix.lane == 'native'
         run: |
-          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobstertable -list "$TEST_PATTERN" > /tmp/lobster-selected-tests
-          grep -q "^Test" /tmp/lobster-selected-tests
-          go test ./internal/codegen/lobstertable -run "$TEST_PATTERN" -count=1 -timeout 600s -v
-      - name: Compiler registry guards
-        if: matrix.lane == 'registry'
-        run: go test ./compiler -run 'Lobster(Runtime|UnitView|TableRuntime)' -count=1 -v
+          set -o pipefail
+          make build/fixedform-corpus/.stamp
+          go test ./internal/codegen/lobster/... ./internal/codegen/lobstertable/... -count=1 -timeout=15m -v 2>&1 | tee build/qualification/native.log
+          go test ./compiler -run '^TestLobster' -count=1 -v 2>&1 | tee build/qualification/compiler.log
+      - name: Shared protocol and reference packages
+        if: matrix.lane == 'reference'
+        run: |
+          set -o pipefail
+          go test ./internal/tablewire ./internal/tabletext ./internal/tablecook ./test/conformance/harness ./bench/corpus -count=1 -timeout=10m -v 2>&1 | tee build/qualification/reference.log
+      - name: Complete Lobster matrix and planted controls
+        if: matrix.lane == 'conformance'
+        run: |
+          set -o pipefail
+          make build/conformance-harness build/conformance-lobster build/schema_test_cook
+          printf 'lobster test/conformance/lobster/driver\n' > build/qualification/drivers.txt
+          build/conformance-harness run --drivers build/qualification/drivers.txt --work build/qualification/matrix --results build/qualification/results.json 2>&1 | tee build/qualification/matrix.log
+          for mode in walk framing report cycle; do
+            sh test/conformance/lobster/negative-control "$mode" 2>&1 | tee "build/qualification/control-$mode.log"
+          done
+          make bench-lobster-gate bench-lobster-gate-negative-control 2>&1 | tee build/qualification/bench.log
+          git diff --exit-code -- generated/bench/lobster generated/bench/tables/lobster
+      - name: Preserve exact evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: strict-${{ matrix.lane }}-qualification
+          path: build/qualification/
+          retention-days: 14
