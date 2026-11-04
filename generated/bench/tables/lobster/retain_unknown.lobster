@@ -27,9 +27,9 @@ class Retain:
     // reached
     holders:[Record] = []
 
-// retain_depth_cap is THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): 64
-// nested bodies, the one depth on this path a file can drive.
-let retain_depth_cap = 64
+// The resolving walk shares the binary structured-payload bound (§4, §6.6).
+// Pointer payloads are excluded; they do not add nesting here.
+let retain_depth_cap = binary_max_depth
 
 let map_value_id = 0x7ce4fd9430e80cea // FNV-1a 64 of "value"
 
@@ -118,7 +118,8 @@ def res_framed(rs:Resolver, c:Cursor, kind:int, depth:int) -> void:
     let sub = Cursor { b: substring(c.b, c.off, n), off: 0 }
     c.off += n
     let at = res_mark(rs)
-    res_content(rs, sub, kind, depth + 1)
+    let nested = kind >= 13 and kind <= 16
+    res_content(rs, sub, kind, depth + (if nested: 1 else: 0))
     res_patch(rs, at)
 
 // res_keyed_slot is one triple of an enum-keyed body: the KEY REFERENCE, the
