@@ -32,4 +32,3 @@ class DeprecatedEnumShape : Shape
         return ok
 
 let _descriptors_enum = register_shape(DeprecatedEnumShape { key: "enum" })
-

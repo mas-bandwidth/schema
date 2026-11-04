@@ -1,11 +1,10 @@
 // descriptors.lobster — the table surface's REFLECTION side
 // (docs/SPEC-TABLES.md §8.2, §8.3; docs/PORT-LOBSTER.md, THE CARD MAP): the
 // unit registry and type view, the doc and tag columns, the deprecated enum
-// variant read, and the enum-keyed array's key variants. It joins the load
-// and save runtimes through the shape registry, so neither is edited here.
+// variant markers, and the enum-keyed array's key variants. Read hooks
+// live separately in descriptors_load.lobster so reflection imports no codec.
 // SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
-import .load
 import .schema_tables
 
 namespace schema_rt
@@ -209,7 +208,7 @@ def keyed_slot(key:int, max:int, what:string) -> int:
 
 // THE DEPRECATED ENUM VARIANT (§2.15): the variant keeps its id, but a read
 // yields the field's declared default (an element's zero). The marker is
-// registered from the descriptors, and this file replaces the enum shape.
+// registered from the descriptors; descriptors_load applies it to reads.
 class DeprecatedName:
     enum_name:string
     variant:string
@@ -234,32 +233,6 @@ def enum_default(fd:FieldDescriptor) -> int:
     if fd.has_def:
         return fd.def_int.lo
     return 0
-
-class DeprecatedEnumShape : Shape
-    def field(r:Reader, sl:Slot) -> bool:
-        let ok = enum_cell(r, sl.cell, sl.fd)
-        if ok and sl.cell.i > 0:
-            if is_deprecated_variant(sl.fd.t, variant_name(sl.fd, sl.cell.i)):
-                sl.cell.i = enum_default(sl.fd)
-        return ok
-    def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
-        let e = elem_of(sl.fd)
-        let ok = enum_cell(r, sl.elems[i], e)
-        if ok and sl.elems[i].i > 0:
-            if is_deprecated_variant(e.t, variant_name(e, sl.elems[i].i)):
-                sl.elems[i].i = 0
-        return ok
-    def arm(r:Reader, fv:Slot, n:int) -> bool:
-        let ok = enum_cell(r, fv.cell, fv.fd)
-        if ok and fv.cell.i > 0:
-            if is_deprecated_variant(fv.fd.t, variant_name(fv.fd, fv.cell.i)):
-                fv.cell.i = enum_default(fv.fd)
-        if ok and r.off != r.lo + n:
-            r.st.report.malformed = true
-            return false
-        return ok
-
-let _descriptors_enum = register_shape(DeprecatedEnumShape { key: "enum" })
 
 // Union payload metadata shares the descriptor objects used by the runtime.
 def view_union_arm(union_name:string, tag:int, payload_name:string, record:TableDescriptor?, general:bool):
