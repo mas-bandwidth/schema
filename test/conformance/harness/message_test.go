@@ -225,7 +225,6 @@ func TestTheTailIsUnconditional(t *testing.T) {
 // Red if one byte differs in either direction, which is the negative control
 // on every rule here that says the VALUE does not move.
 func TestTheTwoFormsRoundTrip(t *testing.T) {
-	t.Skip("layer 3: the file-form goldens of fixed-declared roots are form-1 files the fixed read refuses as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, _, u := corpus(t)
 	if len(m.Messages) == 0 {
 		t.Fatal("the manifest names no message")
@@ -281,7 +280,6 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 // batch and the announcement, each at the byte count the table prints. A
 // figure that drifts moves a pinned wire.
 func TestTheCostRows(t *testing.T) {
-	t.Skip("layer 3: the file-form goldens of fixed-declared roots are form-1 files the fixed read refuses as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, model, vocabulary := backend(t)
 	c, _ := m.LookupConnection("backend_conn")
 	if got := len(wireBytes(t, c.Wire)); got != 361 {
@@ -391,7 +389,6 @@ func envelopeOf(t *testing.T, model *tabletext.Model, tag uint64, body *tabletex
 // not carry, sizes a batch as the sum of its bodies alone, or accepts a count
 // of zero.
 func TestTheBatch(t *testing.T) {
-	t.Skip("layer 3: the file-form goldens of fixed-declared roots are form-1 files the fixed read refuses as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, model, vocabulary := backend(t)
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {
@@ -842,7 +839,6 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 // must refuse the announcement as damage and set no vocabulary. Red if any
 // reads or sets anything else.
 func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
-	t.Skip("layer 3: the file_reserved_* wires are form-1 files under fixed-declared roots, refused as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, model, _ := backend(t)
 	names := map[uint64]string{ir.TableNodeWireId: "node_table", ir.TableBuildVersionWireId: "build_version", ir.TableMessageVocabularyWireId: "vocabulary"}
 	for _, id := range []uint64{ir.TableNodeWireId, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId} {

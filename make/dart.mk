@@ -1755,7 +1755,7 @@ test-dart: tables-dart-usage tables-dart-usage-negative-control
 .PHONY: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
 tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
 	SCHEMA_SLOW=1 SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" go test -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors)$$'
-	./build/conformance-harness wire-fuzz --builder --finite-owed tables-finite/dart --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
 
 # Its control: the emitter's counted-list `widened` count is removed
 # (tools/sabotage table-dart-wire-widen), every unit the driver reads is

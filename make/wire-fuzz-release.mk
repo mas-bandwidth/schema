@@ -22,7 +22,7 @@
 #
 # Per leg, three things: the driver command (empty: the leg has no wire-fuzz
 # driver), its prerequisites, and any flags or environment the leg's own fuzz
-# target already passes (--finite-owed names a card, never a silence).
+# target already passes. Every mutant is compared.
 
 WIRE_FUZZ_RELEASE_N     ?= 100000
 WIRE_FUZZ_RELEASE_SEEDS ?= 1 2 3
@@ -41,7 +41,7 @@ WFR_DRIVER_cs    = $(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconform
 
 WFR_DEPS_dart    = build/conformance-dart
 WFR_DRIVER_dart  = build/conformance-dart wire-fuzz
-WFR_FLAGS_dart   = --builder --finite-owed tables-finite/dart
+WFR_FLAGS_dart   = --builder
 
 WFR_DEPS_elixir  = build/elixir-tables-ebin/.stamp
 WFR_DRIVER_elixir = test/conformance/elixir/driver wire-fuzz
@@ -58,7 +58,7 @@ WFR_DRIVER_java  = $(JAVA_WIRE_FUZZ_DRIVER)
 
 WFR_DEPS_js      = build/tables-generated-js/.stamp cards-js-generate
 WFR_DRIVER_js    = test/conformance/js/driver wire-fuzz
-WFR_FLAGS_js     = --mixed-builder --finite-owed tables-finite/js
+WFR_FLAGS_js     = --mixed-builder
 
 WFR_DEPS_lobster = lobster-dist-present build/conformance-lobster build/lobster-wirefuzzhost
 WFR_DRIVER_lobster = $(LOBSTER_WIRE_FUZZ_HOST)
@@ -76,7 +76,7 @@ WFR_ENV_moo      = MOOFUZZ_NOTE=/dev/null
 
 WFR_DEPS_rust    = build/conformance-rust-all
 WFR_DRIVER_rust  = build/conformance-rust-all
-WFR_FLAGS_rust   = --finite-owed tables-finite/rust
+WFR_FLAGS_rust   =
 
 WFR_DEPS_squirrel = toolchain-squirrel build/conformance-squirrel
 WFR_DRIVER_squirrel = $(SQ) test/conformance/squirrel/wirefuzz.nut

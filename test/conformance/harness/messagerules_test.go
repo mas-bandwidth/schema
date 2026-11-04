@@ -179,7 +179,6 @@ func decodeOne(t *testing.T, model *tabletext.Model, root string, v *tablewire.V
 // message, or keeps the appended bit through the message round trip and so
 // contradicts the row §4 states as moved.
 func TestTheMasksWidth(t *testing.T) {
-	t.Skip("layer 3: the form-1 file size of a table now declared fixed, which writes form 3 (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	unit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
 	model := tabletext.NewModel(unit)
 	v := vocabularyOf(t, unit)

@@ -16,7 +16,6 @@ import (
 // the engine encodes each instance's TEXT and the bytes must be the
 // reference's, to the byte.
 func TestTheEngineWritesTheReferencesBytes(t *testing.T) {
-	t.Skip("layer 3: the reference's form-1 pins for roots now declared fixed, which the engine writes as form 3 (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	// the manifest's paths are repository-relative and the test runs in its own
 	// directory, so the root is joined in rather than moved to: a chdir here
 	// would be a chdir for every other test in this package

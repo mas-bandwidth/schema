@@ -417,7 +417,6 @@ func TestImplementationDecodesEachInputOnceAcrossLanguages(t *testing.T) {
 }
 
 func TestOriginalImplementationUsesAllRequiredConstructs(t *testing.T) {
-	t.Skip("layer 3: the implementation corpus's form-1 wires under fixed-declared roots read as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	t.Chdir("../../..")
 	m, err := ReadManifest(defaultManifest, defaultJSONDir)
 	if err != nil {
