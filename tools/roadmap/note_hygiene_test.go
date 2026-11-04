@@ -49,7 +49,7 @@ func parseSexpNodes(raw string) map[string]sexpNode {
 				if esc {
 					esc = false
 				} else if ch == '\\' {
-					esc = TrueBool()
+					esc = true
 				} else if ch == '"' {
 					inStr = false
 				}
@@ -97,8 +97,6 @@ func parseSexpNodes(raw string) map[string]sexpNode {
 	}
 	return out
 }
-
-func TrueBool() bool { return true }
 
 func loadRoadmapAndOverlays(t *testing.T, repoRoot string) (base map[string]sexpNode, merged map[string]sexpNode) {
 	t.Helper()
