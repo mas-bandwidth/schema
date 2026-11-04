@@ -37,8 +37,8 @@ type Instance struct {
 	// on the instance's own line, rather than the harness quietly tolerating a
 	// missing file.
 	NoText bool
-	// GoWireRefusal names a Go wire writer refusal the corpus requires this
-	// instance's Go leg to report instead of emitting bytes.
+	// GoWireRefusal is the legacy field name for an unconditional wire
+	// refusal. Its diagnostic spelling is never compared between ports.
 	GoWireRefusal string
 	// WireRefusedBy names the ports BESIDES Go whose wire writer has taken the
 	// same refusal (marker refused-by=<ports>, which needs go-refusal=): their
@@ -529,6 +529,11 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 						return nil, fmt.Errorf("%s: duplicate no-text marker", where)
 					}
 					inst.NoText = true
+				case marker == "wire-refused":
+					if inst.GoWireRefusal != "" {
+						return nil, fmt.Errorf("%s: duplicate wire refusal marker", where)
+					}
+					inst.GoWireRefusal = "refused"
 				case strings.HasPrefix(marker, "go-refusal=") && strings.TrimPrefix(marker, "go-refusal=") != "":
 					if inst.GoWireRefusal != "" {
 						return nil, fmt.Errorf("%s: duplicate Go wire refusal marker", where)
@@ -566,8 +571,8 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			m.Messages = append(m.Messages, Message{Name: f[1], Connection: f[2], Root: f[3], FileWire: f[4], MessageWire: f[5]})
 		case "retain":
 			// retain <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
-			if len(f) != 10 {
-				return nil, fmt.Errorf("%s: retain takes 10 fields and this line has %d", where, len(f))
+			if len(f) != 8 && len(f) != 10 {
+				return nil, fmt.Errorf("%s: retain takes case, unit, root, wire, capacity, ids and saved wire or -", where)
 			}
 			rc := RetainCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Value: RetainValue(jsonDir, f[1])}
 			switch f[5] {
@@ -585,18 +590,23 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				}
 				rc.Ids = n
 			}
-			counts, err := ParseRetainCounts(f[7])
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", where, err)
+			save := f[7]
+			if len(f) == 10 {
+				// Accept old diagnostic columns while migrating committed data.
+				counts, err := ParseRetainCounts(f[7])
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", where, err)
+				}
+				rc.Load = counts
+				lost, err := strconv.Atoi(f[8])
+				if err != nil || lost < 0 {
+					return nil, fmt.Errorf("%s: invalid legacy retention diagnostic", where)
+				}
+				rc.SaveLost = lost
+				save = f[9]
 			}
-			rc.Load = counts
-			lost, err := strconv.Atoi(f[8])
-			if err != nil || lost < 0 {
-				return nil, fmt.Errorf("%s: %q is not the save's own retain_lost", where, f[8])
-			}
-			rc.SaveLost = lost
-			if f[9] != "-" {
-				rc.Saves = f[9]
+			if save != "-" {
+				rc.Saves = save
 			}
 			m.Retains = append(m.Retains, rc)
 		case "report":
