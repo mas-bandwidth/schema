@@ -181,6 +181,9 @@ jobs:
     # 10-minute test timeout; the gate is not loosened to fit that runner.
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     # EIGHT ROWS, because this job was 650 s median (2026-09-11) and a matrix
     # row is a job: the emitter packages, the compiler package in two halves,
     # everything else, the Elixir emitter alone, the slow-gate accounting in
@@ -804,6 +807,9 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
