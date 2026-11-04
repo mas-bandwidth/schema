@@ -38,7 +38,8 @@ var cookWriteUnits = map[string]string{
 	"tblm2":       "test/tables/M2.schema",
 	"mapdemo":     "tables/maps",
 	"listdemo":    "tables/lists",
-	"widelist":    "tables/widelist",
+	"widelist":         "tables/widelist",
+	"featurewitnesses": "testdata/conformance/feature-witnesses/full/Features.schema",
 }
 
 // cookWriteOwed is every root a cook-write row names that has NO FORM-1 READER
@@ -229,7 +230,7 @@ func TestCookWriteRust(t *testing.T) {
 		}
 		var modules []string
 		for file, data := range files {
-			if file == rusttable.VariableRuntimeModule+".rs" || file == rusttable.BuildVersionModule+".rs" || file == rusttable.TableEnumsModule+".rs" || strings.HasSuffix(file, "_table.rs") {
+			if file == rusttable.VariableRuntimeModule+".rs" || file == rusttable.BuildVersionModule+".rs" || file == rusttable.TableEnumsModule+".rs" || file == "integrity_runtime.rs" || strings.HasSuffix(file, "_table.rs") {
 				if err := os.WriteFile(filepath.Join(dir, file), data, 0o600); err != nil {
 					t.Fatal(err)
 				}

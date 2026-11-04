@@ -1078,6 +1078,58 @@ static partial class Program
             };
         }
         {
+            Codec c=Find("featurewitnesses","Root");
+            c.NativeCook=(bytes,big)=>
+            {
+                long need=Featurewitnesses.Schema.RootLoadMeasure(bytes);
+                if(need<0) { return null; }
+                byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
+                try
+                {
+                    if(Featurewitnesses.Schema.RootLoad((IntPtr)region,need,bytes,new Featurewitnesses.TableReport())==null) { return null; }
+                    long size=Featurewitnesses.Schema.RootCookMeasure((IntPtr)region);
+                    if(size<0) { return null; }
+                    byte[] result=new byte[checked((int)size)];
+                    if(!Featurewitnesses.Schema.RootCook((IntPtr)region,result,big?Featurewitnesses.TableByteOrder.Big:Featurewitnesses.TableByteOrder.Little)) { return null; }
+                    using(var builder=new Featurewitnesses.RootBuilder())
+                    {
+                        if(!Featurewitnesses.Schema.RootLoadBuilder(builder,bytes,new Featurewitnesses.TableReport())) { throw new InvalidOperationException("builder load: Featurewitnesses.Root"); }
+                        byte[] built=new byte[builder.CookMeasure()];
+                        if(!builder.Cook(built,big?Featurewitnesses.TableByteOrder.Big:Featurewitnesses.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Featurewitnesses.Root"); }
+                        if(!builder.Lock() || !builder.Cook(built,big?Featurewitnesses.TableByteOrder.Big:Featurewitnesses.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Featurewitnesses.Root"); }
+                    }
+                    return result;
+                }
+                finally { NativeMemory.AlignedFree(region); }
+            };
+        }
+        {
+            Codec c=Find("featurewitnesses","ArrayRoot");
+            c.NativeCook=(bytes,big)=>
+            {
+                long need=Featurewitnesses.Schema.ArrayRootLoadMeasure(bytes);
+                if(need<0) { return null; }
+                byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
+                try
+                {
+                    if(Featurewitnesses.Schema.ArrayRootLoad((IntPtr)region,need,bytes,new Featurewitnesses.TableReport())==null) { return null; }
+                    long size=Featurewitnesses.Schema.ArrayRootCookMeasure((IntPtr)region);
+                    if(size<0) { return null; }
+                    byte[] result=new byte[checked((int)size)];
+                    if(!Featurewitnesses.Schema.ArrayRootCook((IntPtr)region,result,big?Featurewitnesses.TableByteOrder.Big:Featurewitnesses.TableByteOrder.Little)) { return null; }
+                    using(var builder=new Featurewitnesses.ArrayRootBuilder())
+                    {
+                        if(!Featurewitnesses.Schema.ArrayRootLoadBuilder(builder,bytes,new Featurewitnesses.TableReport())) { throw new InvalidOperationException("builder load: Featurewitnesses.ArrayRoot"); }
+                        byte[] built=new byte[builder.CookMeasure()];
+                        if(!builder.Cook(built,big?Featurewitnesses.TableByteOrder.Big:Featurewitnesses.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Featurewitnesses.ArrayRoot"); }
+                        if(!builder.Lock() || !builder.Cook(built,big?Featurewitnesses.TableByteOrder.Big:Featurewitnesses.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Featurewitnesses.ArrayRoot"); }
+                    }
+                    return result;
+                }
+                finally { NativeMemory.AlignedFree(region); }
+            };
+        }
+        {
             Codec c=Find("listdemo","Unbounded");
             c.NativeCook=(bytes,big)=>
             {

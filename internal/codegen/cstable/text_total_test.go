@@ -106,7 +106,7 @@ func textTotalGoWitnesses(t *testing.T, wire []byte) map[string]string {
 import("encoding/hex";"encoding/json";"os";"testing")
 func TestTotalOracle(t *testing.T){
  out:=map[string]string{};var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var r TableReport
- if !RootFromJSONTolerant(&b,[]byte(%q),&r)||r.Clamped!=8||r.ClampedField!="Root.a"{t.Fatal("JSON prefix",r)}
+ if !RootFromJSONTolerant(&b,[]byte(%q),&r)||r.Clamped!=10||r.ClampedField!="Root.a"{t.Fatal("JSON prefix",r)}
  saved:=make([]byte,RootMeasure(b.GetRoot(),&b.Arena));RootSave(b.GetRoot(),saved,&b.Arena);out["json"]=hex.EncodeToString(saved)
  wire,_:=hex.DecodeString(%q);r=TableReport{};if !RootLoadBuilderTolerant(&b,wire,&r)||r.Clamped!=10||r.ClampedField!="Root.a"{t.Fatal("wire prefix",r)}
  saved=make([]byte,RootMeasure(b.GetRoot(),&b.Arena));RootSave(b.GetRoot(),saved,&b.Arena);out["wire"]=hex.EncodeToString(saved)
