@@ -3424,6 +3424,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         int32_t placed = 0;
         int64_t spent = 0;
         bool total_clamped = false;
+        int32_t seen = 0; // the elements spelled once the total is reached
         for ( ;; )
         {
             char c = TableJsonPeek( in );
@@ -3431,7 +3432,9 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( c == 0 ) { in.bad = true; return false; }
             if ( total_clamped || placed >= f->array_bound )
             {
-                if ( !total_clamped ) { in.report->clamped++; }
+                // an element past [..N] counts, the total having dropped it
+                // or not, as the wire counts its count clamp (§2.13)
+                if ( !total_clamped || ++seen > f->array_bound ) { in.report->clamped++; }
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else
@@ -3444,6 +3447,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                     in.report->clamped++;
                     f->table->reset( element );
                     total_clamped = true;
+                    seen = placed + 1;
                 }
                 else
                 {
@@ -5528,6 +5532,7 @@ bool RenderCameraFromJson( RenderCamera & value, const char * text, int64_t byte
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -5576,6 +5581,7 @@ bool RenderShipFromJson( RenderShip & value, const char * text, int64_t bytes, T
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -5624,6 +5630,7 @@ bool RenderTurretFromJson( RenderTurret & value, const char * text, int64_t byte
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -5672,6 +5679,7 @@ bool RenderMissileFromJson( RenderMissile & value, const char * text, int64_t by
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -5720,6 +5728,7 @@ bool RenderDynamicPropFromJson( RenderDynamicProp & value, const char * text, in
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -5768,6 +5777,7 @@ bool RenderStaticPropFromJson( RenderStaticProp & value, const char * text, int6
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -5816,6 +5826,7 @@ bool RenderCosmeticPropFromJson( RenderCosmeticProp & value, const char * text, 
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -5864,6 +5875,7 @@ bool RenderLaserFromJson( RenderLaser & value, const char * text, int64_t bytes,
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -5912,6 +5924,7 @@ bool RenderExplosionFromJson( RenderExplosion & value, const char * text, int64_
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -5960,6 +5973,7 @@ bool RenderFrameFromJson( RenderFrame & value, const char * text, int64_t bytes,
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -6008,6 +6022,7 @@ bool RenderVector3FromJson( RenderVector3 & value, const char * text, int64_t by
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {
@@ -6056,6 +6071,7 @@ bool RenderQuaternionFromJson( RenderQuaternion & value, const char * text, int6
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
         if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.missing_required != 0 ) { read.refuse_reason = TableRefuseReason::missing_required; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
         else if ( read.kind_mismatch != 0 )
         {

@@ -34,10 +34,13 @@ TableRefuseNonFiniteFloat
 // TableRefuseBlobShared: one blob record named from two slots (docs/SPEC-TABLES.md
 // §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 TableRefuseBlobShared
+// TableRefuseMissingRequired: a record lacks a field declared | required
+// (docs/SPEC-TABLES.md §2.3, §6.5). TableMissingRequired matches it via errors.Is.
+TableRefuseMissingRequired
 // The fixed form's own refusals (docs/SPEC-TABLES.md §6.5, §21.3,
 // docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
-// fixed-form refusal name is a TableRefuseReason member, appended after
-// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
+// fixed-form refusal name is a TableRefuseReason member, following
+// TableRefuseMissingRequired, in §6.5's table order so
 // names, order and spelling agree in all ports. Each member's Error() is its
 // snake_case name, and TableReport.Err() maps a fixed report whose Reason is
 // that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
@@ -90,6 +93,7 @@ case TableRefuseBase64NotCanonical:return "base64_not_canonical"
 case TableRefuseIntegrityMismatch:return "integrity_mismatch"
 case TableRefuseNonFiniteFloat:return "non_finite_float"
 case TableRefuseBlobShared:return "blob_shared"
+case TableRefuseMissingRequired:return "missing_required"
 case TableRefusePreviousForm:return "previous_form"
 case TableRefuseNewerForm:return "newer_form"
 case TableRefuseMessageFormAsFile:return "message_form_as_file"
@@ -133,6 +137,7 @@ func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef
 // the record they were missing, and Error() is the report's own reason.
 type TableMissingRequired struct { Fields string }
 func(m TableMissingRequired) Error() string {return "missing_required: "+m.Fields}
+func(TableMissingRequired) Is(target error) bool {return target==TableRefuseMissingRequired}
 // Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required

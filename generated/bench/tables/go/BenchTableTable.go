@@ -607,10 +607,13 @@ const (
 	// TableRefuseBlobShared: one blob record named from two slots (mas-bandwidth/schema docs/SPEC-TABLES.md
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
+	// TableRefuseMissingRequired: a record lacks a field declared | required
+	// (mas-bandwidth/schema docs/SPEC-TABLES.md §2.3, §6.5). TableMissingRequired matches it via errors.Is.
+	TableRefuseMissingRequired
 	// The fixed form's own refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3,
 	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
-	// fixed-form refusal name is a TableRefuseReason member, appended after
-	// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
+	// fixed-form refusal name is a TableRefuseReason member, following
+	// TableRefuseMissingRequired, in §6.5's table order so
 	// names, order and spelling agree in all ports. Each member's Error() is its
 	// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
 	// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
@@ -690,6 +693,8 @@ func (r TableRefuseReason) Error() string {
 		return "non_finite_float"
 	case TableRefuseBlobShared:
 		return "blob_shared"
+	case TableRefuseMissingRequired:
+		return "missing_required"
 	case TableRefusePreviousForm:
 		return "previous_form"
 	case TableRefuseNewerForm:
@@ -780,7 +785,8 @@ func (m TableBuildVersionMismatch) Error() string {
 // the record they were missing, and Error() is the report's own reason.
 type TableMissingRequired struct{ Fields string }
 
-func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
+func (m TableMissingRequired) Error() string      { return "missing_required: " + m.Fields }
+func (TableMissingRequired) Is(target error) bool { return target == TableRefuseMissingRequired }
 
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
@@ -4366,12 +4372,8 @@ func TableEntityLoadTolerant(value *TableEntity, data []byte, report *TableRepor
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -4682,12 +4684,8 @@ func TableStatLoadTolerant(value *TableStat, data []byte, report *TableReport) b
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -6596,12 +6594,8 @@ func TableMixedLoadTolerant(value *TableMixed, data []byte, report *TableReport)
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7029,12 +7023,8 @@ func TableHitEventLoadTolerant(value *TableHitEvent, data []byte, report *TableR
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7351,12 +7341,8 @@ func TableChatEventLoadTolerant(value *TableChatEvent, data []byte, report *Tabl
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7673,12 +7659,8 @@ func TablePickupEventLoadTolerant(value *TablePickupEvent, data []byte, report *
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {

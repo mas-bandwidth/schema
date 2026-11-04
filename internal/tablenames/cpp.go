@@ -65,6 +65,7 @@ func init() {
 		{Name: "integrity_mismatch", What: "the integrity trailer does not match the bytes before it (§2.14, §3, §19)"},
 		{Name: "non_finite_float", What: "a float whose bits are a NaN or an infinity; every read and every writer refuses it (§3.3)"},
 		{Name: "blob_shared", What: "one blob record named from two slots; every writer refuses to emit it (§2.5)"},
+		{Name: "missing_required", What: "a record lacks a field declared | required (§2.3, §6.5)"},
 		{Name: "Announce", What: "the unit's announcement, written into the caller's buffer (§3.3)"},
 		{Name: "AnnounceMeasure", What: "the announcement's byte count, a constant of the unit"},
 		{Name: "AnnounceRead", What: "read an announcement into one direction's table"},

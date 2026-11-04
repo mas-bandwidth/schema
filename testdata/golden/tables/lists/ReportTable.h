@@ -111,6 +111,7 @@ enum TableRefuseReason : int32_t
     integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
     non_finite_float,      // a plain float whose bits are a NaN or an infinity: every read and every writer refuses it (§3.3); the report's reason is non_finite_float: <field>
     blob_shared,           // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
+    missing_required,      // a record lacks a field declared | required (§2.3, §6.5)
     // THE FORM AND FIXED-FORM NAMES (§3, §3.3, §3.4, §6.5), which the C++ port
     // once kept in a second, message-path enum. Go appended them here, in
     // this order, and the one vocabulary is one enum in every target.
@@ -186,6 +187,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason integrity_mismatch = TableRefuseReason::integrity_mismatch;
     static constexpr TableRefuseReason non_finite_float = TableRefuseReason::non_finite_float;
     static constexpr TableRefuseReason blob_shared = TableRefuseReason::blob_shared;
+    static constexpr TableRefuseReason missing_required = TableRefuseReason::missing_required;
     static constexpr TableRefuseReason previous_form = TableRefuseReason::previous_form;
     static constexpr TableRefuseReason newer_form = TableRefuseReason::newer_form;
     static constexpr TableRefuseReason message_form_as_file = TableRefuseReason::message_form_as_file;
@@ -12177,6 +12179,7 @@ inline const Bytes * BytesLoad( uint8_t * region, int64_t region_bytes, const ui
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
@@ -12366,6 +12369,7 @@ inline bool BytesLoadBuilder( BytesBuilder & builder, const uint8_t * wire_file,
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
@@ -12411,6 +12415,7 @@ inline const Bytes * BytesReadStrict( const uint8_t * wire_file, int64_t wire_fi
             if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
             else if ( report.refused ) { *reason = unknown_form; }
             else if ( report.malformed ) { *reason = wire_damaged; }
+            else if ( report.missing_required ) { *reason = missing_required; }
             else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7
             else if ( report.clamped ) { *reason = clamped; }
             else if ( report.kind_mismatch ) { *reason = kind_mismatch; }
@@ -13136,6 +13141,7 @@ inline const Ints * IntsLoad( uint8_t * region, int64_t region_bytes, const uint
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
@@ -13325,6 +13331,7 @@ inline bool IntsLoadBuilder( IntsBuilder & builder, const uint8_t * wire_file, i
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
@@ -13370,6 +13377,7 @@ inline const Ints * IntsReadStrict( const uint8_t * wire_file, int64_t wire_file
             if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
             else if ( report.refused ) { *reason = unknown_form; }
             else if ( report.malformed ) { *reason = wire_damaged; }
+            else if ( report.missing_required ) { *reason = missing_required; }
             else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7
             else if ( report.clamped ) { *reason = clamped; }
             else if ( report.kind_mismatch ) { *reason = kind_mismatch; }
@@ -14095,6 +14103,7 @@ inline const Floats * FloatsLoad( uint8_t * region, int64_t region_bytes, const 
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
@@ -14284,6 +14293,7 @@ inline bool FloatsLoadBuilder( FloatsBuilder & builder, const uint8_t * wire_fil
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
@@ -14329,6 +14339,7 @@ inline const Floats * FloatsReadStrict( const uint8_t * wire_file, int64_t wire_
             if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
             else if ( report.refused ) { *reason = unknown_form; }
             else if ( report.malformed ) { *reason = wire_damaged; }
+            else if ( report.missing_required ) { *reason = missing_required; }
             else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7
             else if ( report.clamped ) { *reason = clamped; }
             else if ( report.kind_mismatch ) { *reason = kind_mismatch; }

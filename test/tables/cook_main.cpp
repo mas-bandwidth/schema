@@ -1962,6 +1962,7 @@ static const char * reason_name( graphdemo::TableRefuseReason reason )
         case graphdemo::integrity_mismatch: return "integrity_mismatch";
         case graphdemo::non_finite_float: return "non_finite_float";
         case graphdemo::blob_shared: return "blob_shared";
+        case graphdemo::missing_required: return "missing_required";
         case graphdemo::previous_form: return "previous_form";
         case graphdemo::newer_form: return "newer_form";
         case graphdemo::message_form_as_file: return "message_form_as_file";

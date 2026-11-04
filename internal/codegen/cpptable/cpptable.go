@@ -580,6 +580,7 @@ const tableRefuseReasonLaterValues = `
     integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
     non_finite_float,      // a plain float whose bits are a NaN or an infinity: every read and every writer refuses it (§3.3); the report's reason is non_finite_float: <field>
     blob_shared,           // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
+    missing_required,      // a record lacks a field declared | required (§2.3, §6.5)
     // THE FORM AND FIXED-FORM NAMES (§3, §3.3, §3.4, §6.5), which the C++ port
     // once kept in a second, message-path enum. Go appended them here, in
     // this order, and the one vocabulary is one enum in every target.

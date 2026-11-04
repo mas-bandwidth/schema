@@ -91,6 +91,7 @@ enum TableRefuseReason : int32_t
     integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
     non_finite_float,      // a plain float whose bits are a NaN or an infinity: every read and every writer refuses it (§3.3); the report's reason is non_finite_float: <field>
     blob_shared,           // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
+    missing_required,      // a record lacks a field declared | required (§2.3, §6.5)
     // THE FORM AND FIXED-FORM NAMES (§3, §3.3, §3.4, §6.5), which the C++ port
     // once kept in a second, message-path enum. Go appended them here, in
     // this order, and the one vocabulary is one enum in every target.
@@ -166,6 +167,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason integrity_mismatch = TableRefuseReason::integrity_mismatch;
     static constexpr TableRefuseReason non_finite_float = TableRefuseReason::non_finite_float;
     static constexpr TableRefuseReason blob_shared = TableRefuseReason::blob_shared;
+    static constexpr TableRefuseReason missing_required = TableRefuseReason::missing_required;
     static constexpr TableRefuseReason previous_form = TableRefuseReason::previous_form;
     static constexpr TableRefuseReason newer_form = TableRefuseReason::newer_form;
     static constexpr TableRefuseReason message_form_as_file = TableRefuseReason::message_form_as_file;
@@ -6761,6 +6763,7 @@ inline bool MixedEntityLoad( MixedEntity & value, const uint8_t * buffer, int64_
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else
@@ -7842,6 +7845,7 @@ inline bool MixedStatLoad( MixedStat & value, const uint8_t * buffer, int64_t by
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else
@@ -8408,6 +8412,7 @@ inline bool MixedHitEventLoad( MixedHitEvent & value, const uint8_t * buffer, in
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else
@@ -8999,6 +9004,7 @@ inline bool MixedChatEventLoad( MixedChatEvent & value, const uint8_t * buffer, 
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else
@@ -9506,6 +9512,7 @@ inline bool MixedPickupEventLoad( MixedPickupEvent & value, const uint8_t * buff
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else
@@ -11433,6 +11440,7 @@ inline bool BenchMixedLoad( BenchMixed & value, const uint8_t * buffer, int64_t 
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
             else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else

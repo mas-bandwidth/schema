@@ -1507,6 +1507,7 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::integrity_mismatch: return "integrity_mismatch";
         case blockdemo::non_finite_float: return "non_finite_float";
         case blockdemo::blob_shared: return "blob_shared";
+        case blockdemo::missing_required: return "missing_required";
         case blockdemo::previous_form: return "previous_form";
         case blockdemo::newer_form: return "newer_form";
         case blockdemo::message_form_as_file: return "message_form_as_file";

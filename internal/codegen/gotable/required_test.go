@@ -48,7 +48,7 @@ table T
 		}
 	})
 	const body = `package probe
-import ("testing"; "unsafe")
+import ("errors"; "testing"; "unsafe")
 func le8(v uint64) []byte { b:=make([]byte,8); for i:=0;i<8;i++ { b[i]=byte(v>>(8*i)) }; return b }
 func regFor(wire []byte, report *TableReport) ([]byte, *T) {
 	size := TLoadMeasure(wire)
@@ -79,6 +79,7 @@ func TestReq(t *testing.T){
 	_, _ = regFor(old, &r)
 	if r.MissingRequired != 1 { t.Fatalf("want MissingRequired=1, got %+v", r) }
 	if r.Reason != "missing_required: b" { t.Fatalf("want reason %q, got %q", "missing_required: b", r.Reason) }
+	if !errors.Is(r.Err(), TableRefuseMissingRequired) { t.Fatalf("want errors.Is(r.Err(), TableRefuseMissingRequired), got %v", r.Err()) }
 }
 `
 	t.Run("compiled", func(t *testing.T) {
