@@ -7,7 +7,7 @@
 # runtime file the table emitter embeds, checked to have matched,
 # `go build -overlay` into a private compiler, the units regenerated, and the
 # harness required red on exactly the named surfaces with the neighbours green.
-# test/conformance/lobster/negative-control holds all three and says what each
+# test/conformance/lobster/negative-control holds all four and says what each
 # one requires.
 #
 # conformance-negative-control-lobster       refusal of a valid unknown field
