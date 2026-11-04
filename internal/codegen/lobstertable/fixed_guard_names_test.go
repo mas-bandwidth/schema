@@ -23,7 +23,7 @@ union Outer {
 fixed table Root {
     first Outer
     second Outer
-    optional ?[2]Outer
+    optional ?[2]uint8
 }
 `)
 	files, err := lobster.Generate(u)
