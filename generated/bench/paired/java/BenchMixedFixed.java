@@ -181,6 +181,14 @@ public final class BenchMixedFixed {
     // what its declaration does not admit. It runs through `assert` alone,
     // so without -ea the writer trusts.
     static boolean checkWrite(Value v) {
+        return checkWrite(v, false);
+    }
+
+    /**
+     * checkWrite for one form: fixed adds the fixed reader's zero rule, a zero byte or unit in text
+     * refused.
+     */
+    static boolean checkWrite(Value v, boolean fixed) {
         if ((v.sequence >>> 16) != 0) {
             return false;
         }
@@ -201,7 +209,7 @@ public final class BenchMixedFixed {
             return false;
         }
         for (int i = 0; i < v.entitiesCount; i++) {
-            if (!MixedEntityFixed.checkWrite(v.entities[i])) {
+            if (!MixedEntityFixed.checkWrite(v.entities[i], fixed)) {
                 return false;
             }
         }
@@ -209,17 +217,20 @@ public final class BenchMixedFixed {
             return false;
         }
         for (int i = 0; i < v.statsCount; i++) {
-            if (!MixedStatFixed.checkWrite(v.stats[i])) {
+            if (!MixedStatFixed.checkWrite(v.stats[i], fixed)) {
                 return false;
             }
         }
-        if (!MixedEventFixed.checkWrite(v.gameEvent)) {
+        if (!MixedEventFixed.checkWrite(v.gameEvent, fixed)) {
             return false;
         }
         if (v.playerNameLength < 0 || v.playerNameLength > 15) {
             return false;
         }
         if (!TableFixed.utf8WellFormed(v.playerName, v.playerNameLength)) {
+            return false;
+        }
+        if (fixed && TableFixed.holdsZero(v.playerName, v.playerNameLength)) {
             return false;
         }
         if (v.payloadLength < 0 || v.payloadLength > 16) {
@@ -242,10 +253,35 @@ public final class BenchMixedFixed {
      * byte.
      */
     public static boolean checkWriteBatch(Value[] values, int count) {
+        return checkWriteBatch(values, count, false);
+    }
+
+    /** checkWriteBatch for one form; fixed as checkWrite's. */
+    public static boolean checkWriteBatch(Value[] values, int count, boolean fixed) {
         for (int k = 0; k < count; k++) {
-            if (values[k] != null && !checkWrite(values[k])) {
+            if (values[k] != null && !checkWrite(values[k], fixed)) {
                 return false;
             }
+        }
+        return true;
+    }
+
+    /**
+     * every count and length this value's storage is indexed by lies inside that storage: not an
+     * assert, the save answers -1 for it in every build before the first byte is stored.
+     */
+    static boolean checkStorage(Value v) {
+        if (v.entitiesCount < 0 || v.entitiesCount > 8) {
+            return false;
+        }
+        if (v.statsCount < 0 || v.statsCount > 80) {
+            return false;
+        }
+        if (v.playerNameLength < 0 || v.playerNameLength > 15) {
+            return false;
+        }
+        if (v.payloadLength < 0 || v.payloadLength > 16) {
+            return false;
         }
         return true;
     }

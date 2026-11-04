@@ -269,12 +269,26 @@ public final class Render {
         return true;
     }
 
+    // fitsRenderBlock answers whether every count and length writeRenderBlockBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsRenderBlock(RenderBlock value) {
+        if (value.spritesCount < 0 || value.spritesCount > 64) {
+            return false;
+        }
+        return true;
+    }
+
     // writeRenderBlockBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteRenderBlock
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + RENDER_BLOCK_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsRenderBlock).
     public static int writeRenderBlockBits(RenderBlock value, byte[] data, int bitOffset) {
         assert checkWriteRenderBlock(value, data, bitOffset);
+        if (!fitsRenderBlock(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -293,8 +307,10 @@ public final class Render {
 
     // writeRenderBlock packs value into data from its start and returns the bytes written;
     // data must hold RENDER_BLOCK_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeRenderBlock(RenderBlock value, byte[] data) {
-        return (writeRenderBlockBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeRenderBlockBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readRenderBlockBits decodes value from data starting at bit bitOffset, the payload

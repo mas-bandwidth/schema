@@ -95,6 +95,14 @@ public final class MixedEntityFixed {
     // what its declaration does not admit. It runs through `assert` alone,
     // so without -ea the writer trusts.
     static boolean checkWrite(Value v) {
+        return checkWrite(v, false);
+    }
+
+    /**
+     * checkWrite for one form: fixed adds the fixed reader's zero rule, a zero byte or unit in text
+     * refused.
+     */
+    static boolean checkWrite(Value v, boolean fixed) {
         if ((v.entityId >>> 12) != 0) {
             return false;
         }
@@ -136,8 +144,13 @@ public final class MixedEntityFixed {
      * byte.
      */
     public static boolean checkWriteBatch(Value[] values, int count) {
+        return checkWriteBatch(values, count, false);
+    }
+
+    /** checkWriteBatch for one form; fixed as checkWrite's. */
+    public static boolean checkWriteBatch(Value[] values, int count, boolean fixed) {
         for (int k = 0; k < count; k++) {
-            if (values[k] != null && !checkWrite(values[k])) {
+            if (values[k] != null && !checkWrite(values[k], fixed)) {
                 return false;
             }
         }

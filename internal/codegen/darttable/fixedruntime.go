@@ -1275,6 +1275,16 @@ bool tableFixedUtf8WellFormed(Uint8List bytes, int used) {
   return true;
 }
 
+/// tableFixedHoldsZero is the fixed writer's zero rule (docs/SPEC.md §5.1):
+/// the fixed reader refuses a zero byte or a zero unit among a text's used
+/// units as text_ill_formed, so the fixed writer never stores one.
+bool tableFixedHoldsZero(List<int> units, int used) {
+  for (var i = 0; i < used; i++) {
+    if (units[i] == 0) return true;
+  }
+  return false;
+}
+
 /// tableFixedWideWellFormed is the writer's wide text rule (docs/SPEC.md
 /// §5.1): every surrogate among the used units is paired. A zero unit is not
 /// this rule's business.

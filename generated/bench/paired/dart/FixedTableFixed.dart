@@ -43,6 +43,7 @@ import 'BenchFixed.dart'
         fixedTableFixedCheckBody,
         fixedTableFixedDecode,
         fixedTableFixedFiniteBody,
+        fixedTableFixedStorageBody,
         fixedTableFixedWriteBody,
         fixedTableLoadMessageBody,
         fixedTableSaveMessageBody,
@@ -605,10 +606,18 @@ final fixedTableFixedSaveView = TableFixedView();
 /// second walk. Answers the bytes written, or -1; nothing here throws.
 int fixedTableFixedSave(List<FixedTable> values, int count, Uint8List bytes) {
   final need = fixedTableFixedMeasure(count);
-  if (count < 0 || bytes.length < need) {
+  if (count < 0 || count > values.length || bytes.length < need) {
     return -1;
   }
-  assert(values.take(count).every(fixedTableFixedCheckBody), 'write contract: FixedTable');
+  assert(
+    values.take(count).every((v) => fixedTableFixedCheckBody(v, true)),
+    'write contract: FixedTable',
+  );
+  // A COUNT OR A LENGTH PAST ITS STORAGE IS REFUSED in every build:
+  // every record is asked before the first byte is written.
+  for (var k = 0; k < count; k++) {
+    if (!fixedTableFixedStorageBody(values[k])) return -1;
+  }
   // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every
   // record is asked before the first byte is written, so a refusal
   // leaves the caller's bytes as they were.
@@ -857,7 +866,10 @@ int fixedTableMeasureMessages(List<FixedTable> values, TableReport report) {
     report.Refuse('batch_too_large');
     return -1;
   }
-  assert(values.every(fixedTableFixedCheckBody), 'write contract: FixedTable');
+  assert(
+    values.every((v) => fixedTableFixedCheckBody(v, false)),
+    'write contract: FixedTable',
+  );
   final w = TableBitWriter(Uint8List(0))..measuring = true;
   for (final value in values) {
     if (!fixedTableSaveMessageBody(w, value)) return -1;
@@ -878,8 +890,8 @@ int fixedTableSaveMessages(
     report.Refuse('batch_too_large');
     return -1;
   }
-  if (buffer.length < 2) return -1;
-  assert(values.every(fixedTableFixedCheckBody), 'write contract: FixedTable');
+  final need = fixedTableMeasureMessages(values, report);
+  if (need < 0 || buffer.length < need) return -1;
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   final w = TableBitWriter(Uint8List.sublistView(buffer, 2));

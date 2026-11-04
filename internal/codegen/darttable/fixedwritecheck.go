@@ -13,12 +13,20 @@ import (
 // every stored element), a bits(N) value wider than N, an enum ordinal outside
 // its set, a union tag outside its arms, a counted array's count or a text's
 // length outside its bounds, narrow text that is not well-formed UTF-8, and
-// wide text with an unpaired surrogate. THE CHECKS ARE DEBUG ONLY: the fixed
+// wide text with an unpaired surrogate; and, for the fixed form alone (the
+// `fixed` argument), a zero byte or a zero unit in text, which the fixed
+// reader refuses as text_ill_formed. THE CHECKS ARE DEBUG ONLY: the fixed
 // form's save and the message form's MeasureMessages and SaveMessages run them
 // inside one Dart assert over the whole batch, before the first byte is
 // stored, so a release AOT build pays nothing and a refused batch leaves the
 // caller's buffer as it was. A NaN or an infinity is refused in every build by
 // the finite pass, apart from this.
+//
+// MEMORY IS NOT A VALUE: a counted array's count and a text's length index the
+// value's own storage, so the fixed form's save bounds them in EVERY build
+// through <T>FixedStorageBody, a predicate apart from the contract, and
+// answers -1 before the first byte is stored rather than throwing a
+// RangeError mid-write.
 
 // fixedCheckHolds is the Dart condition ONE stored scalar value of f must meet,
 // over expr; "" when no contract binds it here.
@@ -56,7 +64,7 @@ func (g *fixedGen) emitCheckBody(st *ir.Struct) {
 	g.pf("/// %s's write contract (docs/SPEC.md §5.1): false on the first field\n", st.Name)
 	g.pf("/// that holds what its declaration does not admit. A save asserts it over\n")
 	g.pf("/// the whole batch before the first byte is stored.\n")
-	g.fn("bool", lowerFirst(st.Name)+"FixedCheckBody", []string{st.Name + " value"})
+	g.fn("bool", lowerFirst(st.Name)+"FixedCheckBody", []string{st.Name + " value", "bool fixed"})
 	for _, f := range st.Fields {
 		g.emitCheckField(f, "value."+dartName(f.Name), "  ")
 	}
@@ -95,8 +103,10 @@ func (g *fixedGen) emitCheckPayload(f *ir.Field, expr, ind string) {
 		switch f.Type.Kind {
 		case ir.TString:
 			g.pf("%sif (!tableFixedUtf8WellFormed(%s, %s)) return false;\n", ind, expr, length)
+			g.pf("%sif (fixed && tableFixedHoldsZero(%s, %s)) return false;\n", ind, expr, length)
 		case ir.TWString:
 			g.pf("%sif (!tableFixedWideWellFormed(%s, %s)) return false;\n", ind, expr, length)
+			g.pf("%sif (fixed && tableFixedHoldsZero(%s, %s)) return false;\n", ind, expr, length)
 		}
 	default:
 		g.emitCheckElement(f, expr, ind)
@@ -107,7 +117,7 @@ func (g *fixedGen) emitCheckElement(f *ir.Field, expr, ind string) {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%sif (!%sFixedCheckBody(%s)) return false;\n", ind, lowerFirst(r.Name), expr)
+			g.pf("%sif (!%sFixedCheckBody(%s, fixed)) return false;\n", ind, lowerFirst(r.Name), expr)
 			return
 		case *ir.Union:
 			g.pf("%sswitch (%s.type) {\n", ind, expr)
@@ -131,7 +141,126 @@ func (g *fixedGen) emitCheckElement(f *ir.Field, expr, ind string) {
 }
 
 // fixedBatchCheck is the assert a save makes over its batch before the first
-// byte is stored; values and count name the batch.
-func fixedBatchCheck(st *ir.Struct, each string) string {
-	return fmt.Sprintf("  assert(%s.every(%sFixedCheckBody), 'write contract: %s');\n", each, lowerFirst(st.Name), st.Name)
+// byte is stored; each names the batch, and fixed is the form's (the fixed
+// form's zero rule).
+func fixedBatchCheck(st *ir.Struct, each string, fixed bool) string {
+	return fmt.Sprintf("  assert(\n    %s.every((v) => %sFixedCheckBody(v, %t)),\n    'write contract: %s',\n  );\n",
+		each, lowerFirst(st.Name), fixed, st.Name)
+}
+
+// fixedHoldsStorage answers whether st holds, anywhere in its closure by
+// value, a counted array's count or a text's length: a number the writer
+// indexes the value's own storage with.
+func fixedHoldsStorage(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if fixedFieldHoldsStorage(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedFieldHoldsStorage(f *ir.Field, seen map[string]bool) bool {
+	if f.Array == ir.ArrayCounted {
+		return true
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes, ir.TWString:
+		return true
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedHoldsStorage(r, seen)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && fixedFieldHoldsStorage(v.F, seen) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitStorageBody emits <T>FixedStorageBody for one type that holds a count
+// or a length: every one of them inside [0, N], over the value and everything
+// it holds by value. It is not an assert: the save answers -1 for it in every
+// build before the first byte is stored.
+func (g *fixedGen) emitStorageBody(st *ir.Struct) {
+	if !fixedHoldsStorage(st, map[string]bool{}) {
+		return
+	}
+	g.cur = st
+	g.pf("/// %s's storage bound (docs/SPEC.md §5.1): false when a count or a\n", st.Name)
+	g.pf("/// length would index past the storage it counts. Checked in every build.\n")
+	g.fn("bool", lowerFirst(st.Name)+"FixedStorageBody", []string{st.Name + " value"})
+	for _, f := range st.Fields {
+		if !fixedFieldHoldsStorage(f, map[string]bool{}) {
+			continue
+		}
+		expr := "value." + dartName(f.Name)
+		if f.Type.Optional {
+			g.pf("  if (%sPresent) {\n", expr)
+			g.emitStoragePayload(f, expr, "    ")
+			g.pf("  }\n")
+			continue
+		}
+		g.emitStoragePayload(f, expr, "  ")
+	}
+	g.pf("  return true;\n}\n\n")
+}
+
+func (g *fixedGen) emitStoragePayload(f *ir.Field, expr, ind string) {
+	elem := f.Type.Kind == ir.TNamed && fixedFieldHoldsStorage(&ir.Field{Type: f.Type}, map[string]bool{})
+	loop := func(count string) {
+		if !elem {
+			return
+		}
+		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
+		g.emitStorageElement(f, expr+"[i]", ind+"  ")
+		g.pf("%s}\n", ind)
+	}
+	switch {
+	case f.KeyEnum != "":
+		loop(fmt.Sprintf("%d", f.KeyEnumRef.Max))
+	case f.Array == ir.ArrayFixed:
+		loop(fmt.Sprintf("%d", f.ArrayBound))
+	case f.Array == ir.ArrayCounted:
+		count := fixedDartSibling(expr, "Count")
+		g.pf("%sif (%s < 0 || %s > %d) return false;\n", ind, count, count, f.ArrayBound)
+		loop(count)
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+		length := fixedDartSibling(expr, "Length")
+		g.pf("%sif (%s < 0 || %s > %d) return false;\n", ind, length, length, f.Type.Size)
+	default:
+		g.emitStorageElement(f, expr, ind)
+	}
+}
+
+func (g *fixedGen) emitStorageElement(f *ir.Field, expr, ind string) {
+	if f.Type.Kind != ir.TNamed {
+		return
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		if fixedHoldsStorage(r, map[string]bool{}) {
+			g.pf("%sif (!%sFixedStorageBody(%s)) return false;\n", ind, lowerFirst(r.Name), expr)
+		}
+	case *ir.Union:
+		g.pf("%sswitch (%s.type) {\n", ind, expr)
+		for i, v := range r.Variants {
+			if v.F == nil || !fixedFieldHoldsStorage(v.F, map[string]bool{}) {
+				continue
+			}
+			arm := *v.F
+			arm.Type.Optional = false
+			g.pf("%s  case %d:\n", ind, i+1)
+			g.emitStoragePayload(&arm, expr+"."+dartName(v.Name), ind+"    ")
+		}
+		g.pf("%s}\n", ind)
+	}
 }

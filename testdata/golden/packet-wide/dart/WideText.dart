@@ -57,9 +57,15 @@ void initWideSeven(WideSeven value) {
 // writeWideSeven packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // wideSevenMaxBytes. Returns the bytes written.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeWideSeven(WideSeven value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= wideSevenMaxBytes);
+  if (value.textLength < 0 || value.textLength > 7) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -184,9 +190,15 @@ void initWideFour(WideFour value) {
 // writeWideFour packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // wideFourMaxBytes. Returns the bytes written.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeWideFour(WideFour value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= wideFourMaxBytes);
+  if (value.textLength < 0 || value.textLength > 4) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -312,9 +324,15 @@ void initNarrowFifteen(NarrowFifteen value) {
 // writeNarrowFifteen packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // narrowFifteenMaxBytes. Returns the bytes written.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeNarrowFifteen(NarrowFifteen value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= narrowFifteenMaxBytes);
+  if (value.textLength < 0 || value.textLength > 15) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -458,9 +476,15 @@ void initWideInterop(WideInterop value) {
 // writeWideInterop packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // wideInteropMaxBytes. Returns the bytes written.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeWideInterop(WideInterop value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= wideInteropMaxBytes);
+  if (value.captionLength < 0 || value.captionLength > 7) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;

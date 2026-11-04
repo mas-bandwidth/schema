@@ -2465,6 +2465,22 @@ conformance-negative-control-java-write-refusal-fixed: build/conformance-harness
 conformance-negative-control-java-write-refusal-message: build/conformance-harness build-conformance-java
 	sh test/conformance/java/write-refusal-control message "$(JAVA)" "$(JAVAC)"
 
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1: memory is not a value): without
+# -ea the leg must refuse the rows whose count or length overruns a fixed
+# array's storage (fref_count, fref_length, mref_length), in every build and
+# before the first byte (test/conformance/java/write-refusal-release). Its
+# control drops the bound from a copy of RootConfigFixed's save and requires
+# the gate red on fref_count and fref_length.
+.PHONY: write-refusal-storage-release-java
+write-refusal-storage-release-java: build/conformance-harness build-conformance-java
+	sh test/conformance/java/write-refusal-release gate "$(JAVA)" "$(JAVAC)"
+
+test-java: write-refusal-storage-release-java
+
+.PHONY: write-refusal-storage-release-java-negative-control
+write-refusal-storage-release-java-negative-control: build/conformance-harness build-conformance-java
+	sh test/conformance/java/write-refusal-release control "$(JAVA)" "$(JAVAC)"
+
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-java/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

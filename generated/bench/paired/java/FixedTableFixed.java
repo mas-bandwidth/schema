@@ -44,7 +44,15 @@ public final class FixedTableFixed {
     // what its declaration does not admit. It runs through `assert` alone,
     // so without -ea the writer trusts.
     static boolean checkWrite(Value v) {
-        if (!BenchMixedFixed.checkWrite(v.value)) {
+        return checkWrite(v, false);
+    }
+
+    /**
+     * checkWrite for one form: fixed adds the fixed reader's zero rule, a zero byte or unit in text
+     * refused.
+     */
+    static boolean checkWrite(Value v, boolean fixed) {
+        if (!BenchMixedFixed.checkWrite(v.value, fixed)) {
             return false;
         }
         return true;
@@ -55,10 +63,26 @@ public final class FixedTableFixed {
      * byte.
      */
     public static boolean checkWriteBatch(Value[] values, int count) {
+        return checkWriteBatch(values, count, false);
+    }
+
+    /** checkWriteBatch for one form; fixed as checkWrite's. */
+    public static boolean checkWriteBatch(Value[] values, int count, boolean fixed) {
         for (int k = 0; k < count; k++) {
-            if (values[k] != null && !checkWrite(values[k])) {
+            if (values[k] != null && !checkWrite(values[k], fixed)) {
                 return false;
             }
+        }
+        return true;
+    }
+
+    /**
+     * every count and length this value's storage is indexed by lies inside that storage: not an
+     * assert, the save answers -1 for it in every build before the first byte is stored.
+     */
+    static boolean checkStorage(Value v) {
+        if (!BenchMixedFixed.checkStorage(v.value)) {
+            return false;
         }
         return true;
     }
@@ -258,9 +282,9 @@ public final class FixedTableFixed {
         if (need < 0 || buffer.length < need) {
             return -1;
         }
-        assert checkWriteBatch(values, count) : "write contract: FixedTable";
+        assert checkWriteBatch(values, count, true) : "write contract: FixedTable";
         for (int k = 0; k < count; k++) {
-            if (!finite(values[k])) {
+            if (!checkStorage(values[k]) || !finite(values[k])) {
                 return -1;
             }
         }

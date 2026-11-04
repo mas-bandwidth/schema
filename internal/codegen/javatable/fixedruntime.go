@@ -697,6 +697,29 @@ public final class TableFixed {
         return true;
     }
 
+    /**
+     * THE FIXED WRITER'S ZERO RULE (docs/SPEC.md §5.1): the fixed reader refuses a zero byte among
+     * a text's used bytes as text_ill_formed, so the fixed writer never stores one.
+     */
+    public static boolean holdsZero(byte[] src, int len) {
+        for (int i = 0; i < len; i++) {
+            if (src[i] == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** the zero rule over a wide text's used units: a zero unit. */
+    public static boolean holdsZero(char[] units, int len) {
+        for (int i = 0; i < len; i++) {
+            if (units[i] == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** well-formed UTF-8 over src[at, at + len); a zero byte passes only when zeroOk. */
     private static boolean utf8Ok(byte[] src, int at, int len, boolean zeroOk) {
         for (int i = 0; i < len; ) {

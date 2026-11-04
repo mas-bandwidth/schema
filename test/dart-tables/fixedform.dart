@@ -2700,17 +2700,15 @@ void planPartitionCase() {
 }
 
 // ---------------------------------------------------------------------------
-// W5: THE WRITE-SIDE BOUND CHECKS ARE DEBUG ONLY
-// (docs/FIXED-FORM-ALGORITHM.md §3.1). "`count <= Max` and `length <= N` are a
-// caller contract; a release build removes them exactly as it removes
-// `assert`, pays nothing, and clamps nothing." A counted array's count and a
-// text field's length are the WRITER's own numbers, so the writer puts them on
-// the wire as the caller spelled them and does not clamp them the way a READER
-// must clamp a stranger's. The bound is therefore an `assert` — Dart's
-// debug-only idiom, compiled out of the AOT release twin exactly as `assert` is
-// — and this case holds that fact in BOTH configurations the gate runs: the
-// JIT checked twin (`dart --enable-asserts`, where the assert is live) and the
-// AOT release twin (where it is gone).
+// W5: THE WRITE-SIDE BOUND CHECKS (docs/FIXED-FORM-ALGORITHM.md §3.1,
+// docs/SPEC.md §5.1). `count <= Max` and `length <= N` are a caller contract,
+// and the writer clamps neither: it never repairs the caller's number the way
+// a READER must clamp a stranger's. In the checked twin (`dart
+// --enable-asserts`) the contract is an `assert` and fires BY NAME. A count
+// and a length also index the value's own storage, and memory is not a value,
+// so in the AOT release twin the bound is NOT gone: the save refuses with -1
+// before the first byte, throws nothing and leaves the caller's buffer as it
+// was. This case holds both configurations the gate runs.
 // ---------------------------------------------------------------------------
 
 // asserts on = the JIT checked twin; off = the AOT release twin.
@@ -2744,6 +2742,7 @@ void writeChecksDebugOnlyCase() {
   // debug-only character.
   final legal = fx1home.FxRoot();
   legal.marksCount = 4;
+  legal.label.fillRange(0, 8, 0x61);
   legal.labelLength = 8;
   final legalBuf = Uint8List(fx1.fxRootFixedMeasure(1));
   check(
@@ -2788,23 +2787,32 @@ void writeChecksDebugOnlyCase() {
       'W5: a length over N asserts BY NAME (debug only) — got $gotLength, want $wantLength',
     );
   } else {
-    // THE RELEASE TWIN: the bound is GONE and NOTHING is clamped. A count below
-    // zero rides the wire exactly as the caller spelled it and the writer
-    // reports success — the release writer trusts, it does not refuse, and it
-    // does not repair the caller's number either.
-    final under = fx1home.FxRoot();
-    under.marksCount = -1;
-    final buf = Uint8List(fx1.fxRootFixedMeasure(1));
-    check(
-      fx1.fxRootFixedSave(<fx1home.FxRoot>[under], 1, buf) == buf.length,
-      'W5 release: the removed bound does not refuse — the record writes',
-    );
-    final view = ByteData.sublistView(buf);
-    check(
-      view.getInt32(fx1.fxRootFixedHeaderBytes + 8 + 34, Endian.little) == -1,
-      'W5 release: and CLAMPS NOTHING — the out-of-range count is on the wire '
-      'exactly as the caller set it',
-    );
+    // THE RELEASE TWIN: the storage bound stays. A count below zero or over
+    // Max and a length over N are refused with -1, nothing is thrown, nothing
+    // is clamped, and the caller's buffer is exactly as it was.
+    final probes = <String, void Function(fx1home.FxRoot)>{
+      'a count below zero': (v) => v.marksCount = -1,
+      'a count over Max': (v) => v.marksCount = 5,
+      'a length over N': (v) => v.labelLength = 9,
+    };
+    probes.forEach((what, probe) {
+      final bad = fx1home.FxRoot();
+      probe(bad);
+      final buf = Uint8List(fx1.fxRootFixedMeasure(1));
+      buf.fillRange(0, buf.length, 0xA5);
+      var wrote = 0;
+      final outcome = writeOutcome(
+        () => wrote = fx1.fxRootFixedSave(<fx1home.FxRoot>[bad], 1, buf),
+      );
+      check(
+        outcome == 'none' && wrote == -1,
+        'W5 release: $what is refused with -1 — got $outcome, $wrote',
+      );
+      check(
+        buf.every((b) => b == 0xA5),
+        'W5 release: $what is refused before the first byte is stored',
+      );
+    });
   }
 }
 
