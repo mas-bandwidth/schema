@@ -449,7 +449,7 @@ as lines (lowercase hex for bytes).**
   generates every manifest unit for lobster and records each refusal by name
   as `<unit>.refused`; the driver answers that unit's cases `absent` without
   running anything. **The leg answers every surface the harness asks:**
-  `wire` (`load_tolerant` then `save_reasoned`; a graph naming one blob from
+  `wire` (`load` then `save_reasoned`; a graph naming one blob from
   two slots is refused by name, `blob_shared`, as §2.5 requires of every
   writer, and answered `absent`), `report`, `message`, `retain`,
   `retain-save`, `cook`, `cook-write`, `cook-foreign`, `cook-forgery`,
@@ -465,13 +465,19 @@ as lines (lowercase hex for bytes).**
   has no blocking stdin read. The oracle is the Go engine
   (internal/tablewire). The budget is a count: `test-lobster` runs the
   enumerated pass and a small random count, `tables-lobster-release` the
-  release count. Three arms run: the ordinary one over every form-1 root
-  (variable roots answer `load_measure`, a port of `FileRegionMeasure`) and
-  the manifest's fixed message batches, `--builder`, and `--retain` over the
-  variable roots. A VARIABLE message root is not carried: the port's
-  message form is fixed roots only, as Go's is (§3.3), so the arm answers 0
-  for it. The retain arm and the message batches each have a pinned-vector replay and a
-  negative control in `tables-lobster-wire-fuzz-negative-control`.
+  release count. Three arms run: the ordinary one over variable form-1 files,
+  declared-fixed form-3 files through the native Record bridge, and the
+  manifest's fixed message batches; `--builder` and `--retain` cover the
+  variable file roots. Variable roots also answer `load_measure`, a port of
+  `FileRegionMeasure`. The legacy roster label `1` names the file family;
+  the declared codec validates the actual wire's form. Each run reports live
+  seeds, roots, enumerated mutants and random mutants. The comparison is the
+  read verdict and complete accepted canonical write-back; diagnostic counters
+  and allocation measurements are local. VARIABLE message roots have no message
+  form (§3.3). `tables-lobster-wire-fuzz-negative-control` plants a refusal of
+  a valid fixed file, removes a save guard, omits retained unknown fields, and
+  admits malformed message text. Each must change acceptance or bytes, while
+  an unknown-counter-only change and the unplanted replay controls stay green.
   `test/conformance/lobster/wirefuzz-known-leaks.txt` is empty:
   a loaded cyclic graph releases every node. The packet wire's hostile bytes
   are `packet-text-fuzz[lobster]`, and the shared hostile corpus runs through

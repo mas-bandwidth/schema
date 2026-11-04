@@ -25,7 +25,9 @@
 // THE ARM (<arm>) AND THE ENTRY: `file` is the harness's ordinary run and its
 // --retain and --message runs; `builder` is its --builder run.
 //
-//   file, form 1      roots that carry the variable form, through load.
+//   file, form 1      all file roots through load. The legacy roster label
+//                     names the file family; the actual wire starts with
+//                     form 1 (variable) or form 3 (declared fixed).
 //   file, retain 1    variable roots through load_retain and save_retain.
 //   file, form 2      fixed message roots through a whole-batch read.
 //   builder, form 1   variable roots without region preflight.
@@ -64,7 +66,9 @@ def carried(name:string, form:int, retain:int) -> bool:
         return retain == 0 and not d.variable and schema_rt.is_message_root(name)
     if retain == 1:
         return d.variable
-    return form == 1 and not d.fixed
+    // load dispatches declared fixed roots through their native Record
+    // codec and validates the actual wire form. No form-1 fallback exists.
+    return form == 1
 
 // put32 and put64 write one little-endian field into the reply buffer
 def put8(b:string, at:int, v:int) -> string:
