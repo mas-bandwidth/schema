@@ -83,8 +83,11 @@ namespace example {
 
 SCHEMA_WRITE_INLINE bool WriteVec3( serialize::WriteStream & stream, const Vec3 & value )
 {
+    serialize_assert( value.x - value.x == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.x );
+    serialize_assert( value.y - value.y == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.y );
+    serialize_assert( value.z - value.z == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.z );
     return true;
 }
@@ -99,9 +102,13 @@ SCHEMA_READ_INLINE bool ReadVec3( serialize::ReadStream & stream, Vec3 & value )
 
 SCHEMA_WRITE_INLINE bool WriteQuat( serialize::WriteStream & stream, const Quat & value )
 {
+    serialize_assert( value.x - value.x == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.x );
+    serialize_assert( value.y - value.y == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.y );
+    serialize_assert( value.z - value.z == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.z );
+    serialize_assert( value.w - value.w == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.w );
     return true;
 }
@@ -247,10 +254,15 @@ SCHEMA_READ_INLINE bool ReadRigidBody( serialize::ReadStream & stream, RigidBody
 
 SCHEMA_WRITE_INLINE bool WriteInput( serialize::WriteStream & stream, const Input & value )
 {
+    serialize_assert( value.stick_x - value.stick_x == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.stick_x );
+    serialize_assert( value.stick_y - value.stick_y == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.stick_y );
+    serialize_assert( value.throttle - value.throttle == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.throttle );
+    serialize_assert( value.yaw - value.yaw == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.yaw );
+    serialize_assert( value.pitch - value.pitch == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.pitch );
     write_bool( stream, value.fire );
     write_bool( stream, value.alt_fire );

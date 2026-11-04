@@ -1113,6 +1113,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -10322,11 +10339,13 @@ inline bool WeaponConfigSaveMessageBody( TableBitWriter & w, const WeaponConfig 
     if ( value.penetration != 1 )
     {
         w.put( 103, kTableMessageRefBitsHere );
+        schema_assert( ( value.penetration ) >= 0 && ( value.penetration ) <= 10 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.penetration ), 4 );
     }
     if ( value.channel != 0 )
     {
         w.put( 104, kTableMessageRefBitsHere );
+        schema_assert( ( value.channel ) <= 63ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.channel ), 6 );
     }
     if ( value.homing != false )
@@ -11911,6 +11930,7 @@ inline int64_t ProfileConfigMeasureBody( TableIds & ids, const ProfileConfig & v
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 116, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.icon_length < 0 || value.icon_length > 16 ) { return -1; } // storage invariant
     if ( value.icon_length > 0 )
@@ -11966,6 +11986,7 @@ inline int64_t ProfileConfigMeasure( const ProfileConfig & value )
 TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & ids, const ProfileConfig & value )
 {
     if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 116, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -12823,6 +12844,7 @@ inline bool ProfileConfigSaveMessageBody( TableBitWriter & w, const ProfileConfi
     if ( value.name_length > 0 )
     {
         w.put( 38, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.name_length, 6 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
@@ -13442,6 +13464,7 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
     if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return -1; } // storage invariant
     if ( value.weapons_count > 0 )
@@ -13485,6 +13508,7 @@ inline int64_t RootConfigMeasure( const RootConfig & value )
 TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids, const RootConfig & value )
 {
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.version_note_length > 0 )
     {
         w.header( ids.ref_at( 72, 0x8a67c9728746d394ull ), 12 ); // version_note
@@ -13934,6 +13958,7 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
     if ( value.version_note_length > 0 )
     {
         w.put( 91, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.version_note_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.version_note, value.version_note_length );
@@ -14456,6 +14481,7 @@ inline bool AttachmentSaveMessageBody( TableBitWriter & w, const Attachment & va
     if ( value.slot != 0 )
     {
         w.put( 3, kTableMessageRefBitsHere );
+        schema_assert( ( value.slot ) >= 0 && ( value.slot ) <= 7 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.slot ), 3 );
     }
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) )
@@ -15288,6 +15314,7 @@ inline bool DebuffSaveMessageBody( TableBitWriter & w, const Debuff & value )
     if ( value.amount != 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
+        schema_assert( ( value.amount ) >= 0 && ( value.amount ) <= 100 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.amount ), 7 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -15908,6 +15935,111 @@ TABLE_FIXED_INLINE bool RootConfigFixedFiniteBody( const RootConfig & value )
     return true;
 }
 
+// Debuff's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool DebuffFixedWriteCheck( const Debuff & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.amount < 0 ) | (int) ( value.amount > 100 );
+    return bad == 0;
+}
+
+// WeaponConfig's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool WeaponConfigFixedWriteCheck( const WeaponConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.penetration < 0 ) | (int) ( value.penetration > 10 );
+    // bits(6) width clamp
+    bad |= (int) ( value.channel > 63ull );
+    if ( (uint64_t) value.effect.type > 2u ) { return false; } // a union tag outside its arms
+    switch ( value.effect.type )
+    {
+        case EffectType::Debuff:
+        {
+            if ( !DebuffFixedWriteCheck( value.effect.debuff ) ) { return false; }
+            break;
+        }
+        default: break;
+    }
+    return bad == 0;
+}
+
+// Attachment's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool AttachmentFixedWriteCheck( const Attachment & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.slot < 0 ) | (int) ( value.slot > 7 );
+    return bad == 0;
+}
+
+// LoadoutConfig's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool LoadoutConfigFixedWriteCheck( const LoadoutConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.grade > 3u );
+    if ( value.grades_count < 0 || value.grades_count > 4 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.grades_count; ++i )
+    {
+        bad |= (int) ( (uint64_t) value.grades[i] > 3u );
+    }
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
+    {
+        bad |= (int) ( (uint64_t) value.podium[i] > 3u );
+    }
+    if ( !WeaponConfigFixedWriteCheck( value.primary ) ) { return false; }
+    for ( int64_t i = 0; i < (int64_t) 2; ++i )
+    {
+        if ( !WeaponConfigFixedWriteCheck( value.backups[i] ) ) { return false; }
+    }
+    if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.attachments_count; ++i )
+    {
+        if ( !AttachmentFixedWriteCheck( value.attachments[i] ) ) { return false; }
+    }
+    return bad == 0;
+}
+
+// ProfileConfig's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool ProfileConfigFixedWriteCheck( const ProfileConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length );
+    if ( value.icon_length < 0 || value.icon_length > 16 ) { return false; } // the declared length is the bound (§3.4)
+    if ( !LoadoutConfigFixedWriteCheck( value.loadout ) ) { return false; }
+    return bad == 0;
+}
+
+// RootConfig's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RootConfigFixedWriteCheck( const RootConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length );
+    if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.weapons_count; ++i )
+    {
+        if ( !WeaponConfigFixedWriteCheck( value.weapons[i] ) ) { return false; }
+    }
+    if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.profiles_count; ++i )
+    {
+        if ( !ProfileConfigFixedWriteCheck( value.profiles[i] ) ) { return false; }
+    }
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -16080,12 +16212,13 @@ inline int64_t WeaponConfigFixedSave( const WeaponConfig * values, int64_t count
 {
     const int64_t need = WeaponConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !WeaponConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( WeaponConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, WeaponConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) WeaponConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, WeaponConfigFixedLayout, (size_t) WeaponConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !WeaponConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + WeaponConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -16677,12 +16810,13 @@ inline int64_t LoadoutConfigFixedSave( const LoadoutConfig * values, int64_t cou
 {
     const int64_t need = LoadoutConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !LoadoutConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( LoadoutConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, LoadoutConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) LoadoutConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, LoadoutConfigFixedLayout, (size_t) LoadoutConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !LoadoutConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + LoadoutConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -17365,12 +17499,13 @@ inline int64_t ProfileConfigFixedSave( const ProfileConfig * values, int64_t cou
 {
     const int64_t need = ProfileConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !ProfileConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( ProfileConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ProfileConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) ProfileConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, ProfileConfigFixedLayout, (size_t) ProfileConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !ProfileConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + ProfileConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -18354,12 +18489,13 @@ inline int64_t RootConfigFixedSave( const RootConfig * values, int64_t count, ui
 {
     const int64_t need = RootConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RootConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RootConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RootConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RootConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RootConfigFixedLayout, (size_t) RootConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RootConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RootConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -19631,6 +19767,7 @@ inline int64_t ProfileConfigMeasureBodyRetain( TableRetainIds & ids, const Profi
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 116, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.icon_length < 0 || value.icon_length > 16 ) { return -1; } // storage invariant
     if ( value.icon_length > 0 )
@@ -19679,6 +19816,7 @@ inline int64_t ProfileConfigMeasureBodyRetain( TableRetainIds & ids, const Profi
 TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const ProfileConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 116, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -20337,6 +20475,7 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
     if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return -1; } // storage invariant
     if ( value.weapons_count > 0 )
@@ -20373,6 +20512,7 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
 TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const RootConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.version_note_length > 0 )
     {
         w.header( ids.ref_at( 72, 0x8a67c9728746d394ull ), 12 ); // version_note

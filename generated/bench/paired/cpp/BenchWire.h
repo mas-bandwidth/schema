@@ -204,8 +204,11 @@ SCHEMA_WRITE_INLINE bool WriteBenchPacket( serialize::WriteStream & stream, cons
     write_bits( stream, value.bits13, 13 );
     write_bits( stream, value.bits23, 23 );
     write_bool( stream, value.flag );
+    serialize_assert( value.x - value.x == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.x );
+    serialize_assert( value.y - value.y == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.y );
+    serialize_assert( value.z - value.z == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.z );
     write_bits( stream, value.big, 64 );
     write_align( stream );
@@ -514,7 +517,9 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
         float compressed_value = value.aim_z;
         serialize_compressed_float_precomputed( stream, compressed_value, 200u, 8, 2.0f, -1.0f );
     }
+    serialize_assert( value.recoil - value.recoil == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.recoil );
+    serialize_assert( value.drift - value.drift == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.drift );
     write_uint128( stream, value.wide_key );
     write_int128( stream, value.flux, serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ), serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );

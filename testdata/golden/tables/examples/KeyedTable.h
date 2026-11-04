@@ -1113,6 +1113,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -9821,6 +9838,7 @@ inline int64_t TeamConfigMeasureBody( TableIds & ids, const TeamConfig & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
     return bytes;
 }
@@ -9842,6 +9860,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBody( TableWriter & w, TableIds & ids,
         w.put32( uint32_t( value.spawn_count ) );
     }
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.banner_length > 0 )
     {
         w.header( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ), 12 ); // banner
@@ -10119,12 +10138,14 @@ inline bool TeamConfigSaveMessageBody( TableBitWriter & w, const TeamConfig & va
     if ( value.spawn_count != 4 )
     {
         w.put( 98, kTableMessageRefBitsHere );
+        schema_assert( ( value.spawn_count ) >= 0 && ( value.spawn_count ) <= 64 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.spawn_count ), 7 );
     }
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
     if ( value.banner_length > 0 )
     {
         w.put( 99, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.banner_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.banner, value.banner_length );
@@ -13194,6 +13215,7 @@ inline bool ScoreBoardSaveMessageBody( TableBitWriter & w, const ScoreBoard & va
                 uint64_t key_slot = 0;
                 if ( !TableEnumSlot( (Team) ( i + 1 ), key_slot ) ) { return false; }
                 w.put( key_slot, kTableMessageRefBitsHere ); // the slot's VARIANT reference, not its position
+                schema_assert( ( value.per_team[i] ) >= 0 && ( value.per_team[i] ) <= 100000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
                 w.put( (uint64_t) ( value.per_team[i] ), 17 );
             }
         }
@@ -13578,6 +13600,45 @@ TABLE_FIXED_INLINE bool KeyedConfigFixedFiniteBody( const KeyedConfig & value )
     return true;
 }
 
+// TeamConfig's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool TeamConfigFixedWriteCheck( const TeamConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.spawn_count < 0 ) | (int) ( value.spawn_count > 64 );
+    if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.banner, (uint64_t) value.banner_length );
+    return bad == 0;
+}
+
+// ScoreBoard's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool ScoreBoardFixedWriteCheck( const ScoreBoard & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
+    {
+        bad |= (int) ( value.per_team[i] < 0 ) | (int) ( value.per_team[i] > 100000 );
+    }
+    return bad == 0;
+}
+
+// KeyedConfig's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool KeyedConfigFixedWriteCheck( const KeyedConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
+    {
+        if ( !TeamConfigFixedWriteCheck( value.teams.slots[i] ) ) { return false; }
+    }
+    if ( !ScoreBoardFixedWriteCheck( value.scores ) ) { return false; }
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -13705,6 +13766,7 @@ inline int64_t TeamConfigFixedSave( const TeamConfig * values, int64_t count, ui
 {
     const int64_t need = TeamConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( TeamConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TeamConfigFixedHash );
@@ -14039,12 +14101,12 @@ inline int64_t GunnerConfigFixedSave( const GunnerConfig * values, int64_t count
 {
     const int64_t need = GunnerConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !GunnerConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, GunnerConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) GunnerConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, GunnerConfigFixedLayout, (size_t) GunnerConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !GunnerConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + GunnerConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -14394,12 +14456,12 @@ inline int64_t TurretConfigFixedSave( const TurretConfig * values, int64_t count
 {
     const int64_t need = TurretConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !TurretConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TurretConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) TurretConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, TurretConfigFixedLayout, (size_t) TurretConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !TurretConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + TurretConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -14803,12 +14865,12 @@ inline int64_t HullConfigFixedSave( const HullConfig * values, int64_t count, ui
 {
     const int64_t need = HullConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !HullConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, HullConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) HullConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, HullConfigFixedLayout, (size_t) HullConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !HullConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + HullConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -15385,12 +15447,13 @@ inline int64_t KeyedConfigFixedSave( const KeyedConfig * values, int64_t count, 
 {
     const int64_t need = KeyedConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !KeyedConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( KeyedConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, KeyedConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) KeyedConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, KeyedConfigFixedLayout, (size_t) KeyedConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !KeyedConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + KeyedConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -15625,6 +15688,7 @@ inline int64_t TeamConfigMeasureBodyRetain( TableRetainIds & ids, const TeamConf
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -15639,6 +15703,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBodyRetain( TableWriter & w, TableReta
         w.put32( uint32_t( value.spawn_count ) );
     }
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.banner_length > 0 )
     {
         w.header( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ), 12 ); // banner

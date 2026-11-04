@@ -1092,6 +1092,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -8644,6 +8661,7 @@ inline int64_t MetaMeasureBody( TableIds & ids, const Meta & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     return bytes;
 }
@@ -8665,6 +8683,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBody( TableWriter & w, TableIds & ids, const
         w.put32( uint32_t( value.build ) );
     }
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
@@ -8942,12 +8961,14 @@ inline bool MetaSaveMessageBody( TableBitWriter & w, const Meta & value )
     if ( value.build != 1 )
     {
         w.put( 18, kTableMessageRefBitsHere );
+        schema_assert( ( value.build ) >= 0 && ( value.build ) <= 1000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.build ), 10 );
     }
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
     if ( value.tag_length > 0 )
     {
         w.put( 19, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.tag_length, 4 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.tag, value.tag_length );
@@ -9139,6 +9160,7 @@ inline int64_t SettingsMeasureBody( TableIds & ids, const Settings & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
     if ( value.label_length < 0 || value.label_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     return bytes;
 }
@@ -9160,6 +9182,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBody( TableWriter & w, TableIds & ids, c
         w.put32( uint32_t( value.quality ) );
     }
     if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -9437,12 +9460,14 @@ inline bool SettingsSaveMessageBody( TableBitWriter & w, const Settings & value 
     if ( value.quality != 2 )
     {
         w.put( 28, kTableMessageRefBitsHere );
+        schema_assert( ( value.quality ) >= 0 && ( value.quality ) <= 4 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.quality ), 3 );
     }
     if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
         w.put( 29, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.label_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.label, value.label_length );
@@ -9637,6 +9662,7 @@ inline int64_t ListNodeMeasureBody( const Ctx & ctx, const TableNumbering & numb
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.value != 0 ) { bytes += TableLebBytes( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ) ) + 1 + 4; } // value
     if ( value.name_length < 0 || value.name_length > 12 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const ListNode * pointee_next = ListNodeAt( ctx, value.next ); // *ListNode
@@ -9666,6 +9692,7 @@ inline bool ListNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
         w.put32( uint32_t( value.value ) );
     }
     if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -9863,6 +9890,7 @@ inline int64_t TreeNodeMeasureBody( const Ctx & ctx, const TableNumbering & numb
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 12 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const TreeNode * pointee_left = TreeNodeAt( ctx, value.left ); // *TreeNode
@@ -9901,6 +9929,7 @@ inline bool TreeNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
     (void) ctx;
     (void) numbering;
     if ( value.label_length < 0 || value.label_length > 12 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -10288,6 +10317,7 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 24 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
@@ -10385,6 +10415,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     if ( value.name_length < 0 || value.name_length > 24 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -10893,6 +10924,7 @@ inline int64_t DepotMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 12 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_banks = ids.count;
@@ -10945,6 +10977,7 @@ inline bool DepotSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -11248,6 +11281,7 @@ inline int64_t AlbumMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_tint = ids.count;
@@ -11310,6 +11344,7 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -11724,6 +11759,30 @@ inline void SettingsFixedClampBody( Settings & value, int32_t & TABLE_CLAMP_REST
     }
 }
 
+// Meta's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool MetaFixedWriteCheck( const Meta & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.build < 0 ) | (int) ( value.build > 1000 );
+    if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length );
+    return bad == 0;
+}
+
+// Settings's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool SettingsFixedWriteCheck( const Settings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.quality < 0 ) | (int) ( value.quality > 4 );
+    if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length );
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -11851,6 +11910,7 @@ inline int64_t MetaFixedSave( const Meta * values, int64_t count, uint8_t * buff
 {
     const int64_t need = MetaFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( MetaFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, MetaFixedHash );
@@ -12205,6 +12265,7 @@ inline int64_t SettingsFixedSave( const Settings * values, int64_t count, uint8_
 {
     const int64_t need = SettingsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( SettingsFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, SettingsFixedHash );
@@ -18635,6 +18696,7 @@ inline int64_t MetaMeasureBodyRetain( TableRetainIds & ids, const Meta & value, 
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -18649,6 +18711,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBodyRetain( TableWriter & w, TableRetainIds 
         w.put32( uint32_t( value.build ) );
     }
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
@@ -18799,6 +18862,7 @@ inline int64_t SettingsMeasureBodyRetain( TableRetainIds & ids, const Settings &
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
     if ( value.label_length < 0 || value.label_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -18813,6 +18877,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBodyRetain( TableWriter & w, TableRetain
         w.put32( uint32_t( value.quality ) );
     }
     if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -18966,6 +19031,7 @@ inline int64_t ListNodeMeasureBodyRetain( const Ctx & ctx, const TableNumbering 
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.value != 0 ) { bytes += TableLebBytes( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ) ) + 1 + 4; } // value
     if ( value.name_length < 0 || value.name_length > 12 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const ListNode * pointee_next = ListNodeAt( ctx, value.next ); // *ListNode
@@ -18996,6 +19062,7 @@ inline bool ListNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
         w.put32( uint32_t( value.value ) );
     }
     if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -19199,6 +19266,7 @@ inline int64_t TreeNodeMeasureBodyRetain( const Ctx & ctx, const TableNumbering 
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 12 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const TreeNode * pointee_left = TreeNodeAt( ctx, value.left ); // *TreeNode
@@ -19238,6 +19306,7 @@ inline bool TreeNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
     (void) ctx;
     (void) numbering;
     if ( value.label_length < 0 || value.label_length > 12 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -19638,6 +19707,7 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 24 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
@@ -19736,6 +19806,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     if ( value.name_length < 0 || value.name_length > 24 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -20250,6 +20321,7 @@ inline int64_t DepotMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 12 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_banks = ids.count;
@@ -20303,6 +20375,7 @@ inline bool DepotSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -20613,6 +20686,7 @@ inline int64_t AlbumMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_tint = ids.count;
@@ -20676,6 +20750,7 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name

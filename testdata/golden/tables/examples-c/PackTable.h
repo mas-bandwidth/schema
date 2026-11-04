@@ -612,6 +612,21 @@ static SCHEMA_UNUSED int tabledemo_table_wire_utf8( const uint8_t * p, uint64_t 
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int tabledemo_table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !tabledemo_table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t tabledemo_table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -5096,6 +5111,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
 static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_wire_callsign_( tabledemo_table_writer_t * w, const tabledemo_gunner_settings_t * value )
 {
     if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; }
+    schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     tabledemo_table_writer_raw( w, value->callsign, value->callsign_length );
     return !w->overflow;
 }
@@ -5297,6 +5313,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_save_message_body(tabledemo_t
  if(value->callsign_length != 0) {
   tabledemo_table_bit_put(w,13,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->callsign_length<0 || value->callsign_length>24) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) );
   tabledemo_table_bit_put(w,(uint64_t)value->callsign_length,5);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->callsign,value->callsign_length);
@@ -5469,6 +5486,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_messages( tabledemo_gunn
 static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_display_name_( tabledemo_table_writer_t * w, const tabledemo_ship_entry_t * value )
 {
     if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0; }
+    schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     tabledemo_table_writer_raw( w, value->display_name, value->display_name_length );
     return !w->overflow;
 }
@@ -5801,6 +5819,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_message_body(tabledemo_table_
   }
   tabledemo_table_bit_put(w,95,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->display_name_length<0 || value->display_name_length>32) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) );
   tabledemo_table_bit_put(w,(uint64_t)value->display_name_length,6);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->display_name,value->display_name_length);
@@ -5839,6 +5858,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_message_body(tabledemo_table_
   tabledemo_table_bit_put(w,(uint64_t)value->hardpoints_count-0,3);
   { int32_t i;
   for(i=0;i<value->hardpoints_count;i++) {
+    /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->hardpoints[i] >= 0 && value->hardpoints[i] <= 8 );
     tabledemo_table_bit_put(w,(uint64_t)(value->hardpoints[i])-UINT64_C(0),4);
   } }
  }
@@ -6073,6 +6093,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_messages( tabledemo_ship_entr
 static SCHEMA_UNUSED int schema_tabledemo_global_settings_wire_build_note_( tabledemo_table_writer_t * w, const tabledemo_global_settings_t * value )
 {
     if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0; }
+    schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     tabledemo_table_writer_raw( w, value->build_note, value->build_note_length );
     return !w->overflow;
 }
@@ -6397,6 +6418,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_message_body(tabledemo_t
   return 1;
   }
   tabledemo_table_bit_put(w,7,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->tick_rate >= 1 && value->tick_rate <= 240 );
   tabledemo_table_bit_put(w,(uint64_t)(value->tick_rate)-UINT64_C(1),8);
  }
  }
@@ -6427,6 +6449,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_message_body(tabledemo_t
   }
   tabledemo_table_bit_put(w,9,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->build_note_length<0 || value->build_note_length>48) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) );
   tabledemo_table_bit_put(w,(uint64_t)value->build_note_length,6);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->build_note,value->build_note_length);
@@ -7276,6 +7299,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_message_body(tabledemo_table
      break;
      default: return 0;
     }
+    /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->thresholds[i] >= 0 && value->thresholds[i] <= 1000 );
     tabledemo_table_bit_put(w,(uint64_t)(value->thresholds[i])-UINT64_C(0),10);
    } }
  }
@@ -7794,6 +7818,81 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_pack_co
     }
 }
 
+/* GunnerSettings's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_fixed_write_check_( const tabledemo_gunner_settings_t * value )
+{
+    (void) value;
+    if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; } /* the declared length is the bound (§3.4) */
+    if ( !tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) ) { return 0; }
+    return 1;
+}
+
+/* ShipEntry's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_ship_entry_fixed_write_check_( const tabledemo_ship_entry_t * value )
+{
+    (void) value;
+    if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0; } /* the declared length is the bound (§3.4) */
+    if ( !tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) ) { return 0; }
+    if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0; } /* the declared count is the bound (§3.4) */
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->hardpoints_count; ++i )
+        {
+            if ( ( value->hardpoints[i] < 0 ) || ( value->hardpoints[i] > 8 ) ) { return 0; }
+        }
+    }
+    if ( value->gunner_present )
+    {
+        if ( !schema_tabledemo_gunner_settings_fixed_write_check_( &value->gunner ) ) { return 0; }
+    }
+    return 1;
+}
+
+/* GlobalSettings's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_global_settings_fixed_write_check_( const tabledemo_global_settings_t * value )
+{
+    (void) value;
+    if ( ( value->tick_rate < 1 ) || ( value->tick_rate > 240 ) ) { return 0; }
+    if ( (uint64_t) value->difficulty > 3u ) { return 0; } /* an enum ordinal outside its set */
+    if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0; } /* the declared length is the bound (§3.4) */
+    if ( !tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) ) { return 0; }
+    return 1;
+}
+
+/* PackConfig's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_pack_config_fixed_write_check_( const tabledemo_pack_config_t * value )
+{
+    (void) value;
+    if ( !schema_tabledemo_global_settings_fixed_write_check_( &value->global ) ) { return 0; }
+    {
+        int64_t i;
+        for ( i = 0; i < 3; ++i )
+        {
+            if ( !schema_tabledemo_ship_entry_fixed_write_check_( &value->ships[i] ) ) { return 0; }
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < 3; ++i )
+        {
+            if ( ( value->thresholds[i] < 0 ) || ( value->thresholds[i] > 1000 ) ) { return 0; }
+        }
+    }
+    if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0; } /* the declared count is the bound (§3.4) */
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->reserves_count; ++i )
+        {
+            if ( !schema_tabledemo_ship_entry_fixed_write_check_( &value->reserves[i] ) ) { return 0; }
+        }
+    }
+    return 1;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -7911,6 +8010,7 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_save( const tablede
     {
         if ( !schema_tabledemo_gunner_settings_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_tabledemo_gunner_settings_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_gunner_settings_fixed_hash );
@@ -8227,6 +8327,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_save( const tabledemo_sh
     {
         if ( !schema_tabledemo_ship_entry_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_tabledemo_ship_entry_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_ship_entry_fixed_hash );
@@ -8533,6 +8634,7 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_save( const tablede
     {
         if ( !schema_tabledemo_global_settings_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_tabledemo_global_settings_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_global_settings_fixed_hash );
@@ -8982,6 +9084,7 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_save( const tabledemo_p
     {
         if ( !schema_tabledemo_pack_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_tabledemo_pack_config_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_pack_config_fixed_hash );
@@ -9175,6 +9278,8 @@ static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_wire_callsign__retain(
 
     if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0;
     }
+    schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     tabledemo_table_writer_raw( w, value->callsign, value->callsign_length );
     return !w->overflow;
 }
@@ -9364,6 +9469,8 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_display_name__retain( 
 
     if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0;
     }
+    schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     tabledemo_table_writer_raw( w, value->display_name, value->display_name_length );
     return !w->overflow;
 }
@@ -9765,6 +9872,8 @@ static SCHEMA_UNUSED int schema_tabledemo_global_settings_wire_build_note__retai
 
     if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0;
     }
+    schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     tabledemo_table_writer_raw( w, value->build_note, value->build_note_length );
     return !w->overflow;
 }

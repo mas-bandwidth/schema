@@ -1060,6 +1060,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -7697,6 +7714,17 @@ TABLE_FIXED_INLINE bool GunnerSettingsFixedFiniteBody( const GunnerSettings & va
     }
     if ( !TableFloatFinite( value.reload_seconds ) ) { return false; }
     return true;
+}
+
+// GunnerSettings's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool GunnerSettingsFixedWriteCheck( const GunnerSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return false; } // the declared count is the bound (§3.4)
+    if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return false; } // the declared count is the bound (§3.4)
+    return bad == 0;
 }
 
 // ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----
