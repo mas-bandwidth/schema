@@ -67,11 +67,11 @@ print(text)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "j_scan_stored(r, key_limit)"
+	const anchor = `let key_limit = if kf.s == "text": -1 else: if string_key: kf.bound else: json_max_key`
 	if strings.Count(string(raw), anchor) != 1 {
 		t.Fatal("map-key mutation anchor must occur once")
 	}
-	if err := os.WriteFile(runtime, []byte(strings.Replace(string(raw), anchor, "j_scan_stored(r, json_max_key)", 1)), 0644); err != nil {
+	if err := os.WriteFile(runtime, []byte(strings.Replace(string(raw), anchor, "let key_limit = json_max_key", 1)), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if matches() {
