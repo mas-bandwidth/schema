@@ -171,6 +171,9 @@ type tableGen struct {
 	// names its table; fixedLoop is that body's element-loop nesting depth.
 	fixedTable string
 	fixedLoop  int
+	// fixedCheck makes the scalar clamps emit the WRITE side's refusal, a
+	// `return 0` on the clamp's own condition, for <T>_fixed_write_check.
+	fixedCheck bool
 	includes   map[string]bool // referenced files -> #include "<base>Table.h"
 }
 

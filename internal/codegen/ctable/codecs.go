@@ -485,6 +485,13 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 // caller gives it none. An end that sits on the storage width's own limit is
 // one no value can pass, and is left out as the read's clamp leaves it out.
 func (g *tableGen) emitRangeAssert(f *ir.Field, expr, ind string, width int) {
+	g.emitRangeAssertAs(f, expr, ind, width, "a write")
+}
+
+// emitRangeAssertAs is emitRangeAssert with the writer named in the line's
+// comment ("a write", "a message write"), which is what lets a negative control
+// remove one writer's checks.
+func (g *tableGen) emitRangeAssertAs(f *ir.Field, expr, ind string, width int, writer string) {
 	var conds []string
 	if lo, hi, ok := ir.TableRawRange(f); ok {
 		clampMin, clampMax := tableClampEnds(f, width)
@@ -502,7 +509,26 @@ func (g *tableGen) emitRangeAssert(f *ir.Field, expr, ind string, width int) {
 		return
 	}
 	g.wroteAssert = true
-	g.pf("%sschema_assert( %s ); /* a write keeps the declared bounds (SPEC.md §5.1) */\n", ind, strings.Join(conds, " && "))
+	g.pf("%sschema_assert( %s ); /* %s keeps the declared bounds (SPEC.md §5.1) */\n", ind, strings.Join(conds, " && "), writer)
+}
+
+// emitTextAssert is the WRITE CONTRACT's debug-only refusal of ill-formed text
+// (docs/SPEC.md §5.1): a string's used bytes that are not well-formed UTF-8, or
+// a wstring's used units holding an unpaired surrogate. A zero byte or unit is
+// a whole code point and not this check's to refuse. It follows the storage
+// invariant, so it reads only the used storage; schema_assert, so NDEBUG
+// removes it and a release write pays nothing. `writer` names the writer in the
+// line's comment ("a write", "a message write"), which is what lets a negative
+// control remove one writer's checks.
+func (g *tableGen) emitTextAssert(f *ir.Field, value, length, ind, writer string) {
+	switch f.Type.Kind {
+	case ir.TString:
+		g.wroteAssert = true
+		g.pf("%sschema_assert( table_wire_utf8_well_formed( (const uint8_t *) %s, (uint64_t) %s ) ); /* %s keeps well-formed text (SPEC.md §5.1) */\n", ind, value, length, writer)
+	case ir.TWString:
+		g.wroteAssert = true
+		g.pf("%sschema_assert( table_wire_utf16_paired( %s, (int64_t) %s ) ); /* %s keeps well-formed text (SPEC.md §5.1) */\n", ind, value, length, writer)
+	}
 }
 
 // emitTableReadScalarFrom decodes one fixed-width scalar from the named
