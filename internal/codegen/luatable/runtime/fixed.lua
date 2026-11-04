@@ -381,7 +381,6 @@ local function layout_tree(layout)
   local count = string.unpack("<I4", layout, 1)
   if count == 0 or #layout ~= 4 + 17 * count then return nil end
   local i = 0
-  local refusal = nil
   local function parse()
     i = i + 1
     if i > count then return nil end
@@ -390,10 +389,6 @@ local function layout_tree(layout)
     if not ((kind >= 1 and kind <= 16) or (kind >= 18 and kind <= 30) or kind == 32 or kind == 33 or kind == 35 or kind == 36) then return nil end
     local size = string.unpack("<I4", layout, at + 10)
     local kids = string.unpack("<I4", layout, at + 14)
-    if kind == 30 and kids > 65535 then
-      refusal = "plan_too_large"
-      return { id = 0, kind = kind, size = size, children = {} }
-    end
     local node = {
       id = string.unpack("<I8", layout, at + 1),
       kind = kind,
@@ -408,7 +403,6 @@ local function layout_tree(layout)
     return node
   end
   local root = parse()
-  if refusal ~= nil then return { refusal = refusal, kind = 13, size = root and root.size or 0, children = {} } end
   if i ~= count or root == nil or root.kind ~= 13 then return nil end
   local function check_bounds(node)
     if node.size > maxRecordBytes then return false end

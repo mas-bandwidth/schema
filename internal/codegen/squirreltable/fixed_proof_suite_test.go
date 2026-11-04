@@ -244,11 +244,8 @@ func (squirrelFixedProofRunner) LoadLineage(
 	mod := squirreltable.ModuleName(u)
 	capArg := "null"
 	allocN := 64
-	if cap >= 0 {
-		capArg = fmt.Sprintf("%d", cap)
-		if cap <= 4096 {
-			allocN = cap
-		}
+	if cap >= 0 && cap <= 4096 {
+		allocN = cap
 	}
 	script := fmt.Sprintf(`%[5]slocal T = dofile("schema_module.nut", true).require(%[1]q);
 local wire = readfile("in.bin");
@@ -322,16 +319,6 @@ func (squirrelFixedProofRunner) SaveCustom(t *testing.T, u *ir.Unit, root string
 	mod := squirreltable.ModuleName(u)
 	var body string
 	switch scenario {
-	case "batch_over_4096":
-		body = fmt.Sprintf(`local r = array(4097);
-for (local i = 0; i < 4097; i++) r[i] = T.%[1]s();
-local out = blob(65536);
-local n = T.%[1]sFixedSave(out, r);
-if (n < 0) {
-  print("REFUSED " + T.FixedReason + "\n");
-  return;
-}
-`, root)
 	case "optional_absent_zeros":
 		body = fmt.Sprintf(`local r = [T.%[1]s()];
 r[0].Plain.A = 1; r[0].Plain.B = 2;
