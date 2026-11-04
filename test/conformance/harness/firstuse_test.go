@@ -4,9 +4,11 @@ import (
 	"os"
 	"sort"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// FIRST-USE ORDER, ELISION AND DISTINCTNESS, over every pinned instance
+// FIRST-USE ORDER, ELISION AND DISTINCTNESS, over every pinned variable-form instance
 // (docs/SPEC-TABLES.md §3). The id table holds every id the body used, ONCE
 // EACH, in first-use order over the whole wire — root body first, then the node
 // table's records in index order — and an id no body references is never
@@ -26,6 +28,19 @@ func TestTheIdTableIsFirstUseOrderAndNothingElse(t *testing.T) {
 		data, err := os.ReadFile(root + inst.Wire)
 		if err != nil {
 			t.Errorf("%s: %v", inst.Name, err)
+			continue
+		}
+		if len(data) == 0 {
+			t.Errorf("%s: the pinned instance has no form byte", inst.Name)
+			continue
+		}
+		switch data[0] {
+		case ir.TableWireForm:
+			// Only form 1 has a body id table; form 3 carries a layout.
+		case 3: // fixed file
+			continue
+		default:
+			t.Errorf("%s: unexpected pinned file form %d", inst.Name, data[0])
 			continue
 		}
 		f := frameWire(data)

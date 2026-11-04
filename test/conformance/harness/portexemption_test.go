@@ -7,11 +7,9 @@ import (
 	"testing"
 )
 
-// TestHostileIllFormedRowExemptsUnportedLegs pins the ill-formed-UTF-8 hostile
-// row to docs/SPEC-TABLES.md §16.3's rule. Go, C, C++ and Rust owe refusal;
-// a synthetic unported leg owes the explicit original counters. Reversing
-// either answer scores red: an exemption is an expectation, never a skip.
-func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
+// Every leg owes refusal for ill-formed UTF-8 (SPEC-TABLES §16.3), including
+// a newly added leg. The opposite verdict must score red without exemptions.
+func TestHostileIllFormedRowRequiresEveryLegToRefuse(t *testing.T) {
 	t.Parallel()
 
 	const root = "../../../"
@@ -21,8 +19,6 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 	}
 
 	const caseName = "str-illformed-at-bound"
-	// the counters the row carried before the ruling: clamped, read
-	const oldCounters = "0,0,0,1,0,false,read"
 
 	var row *Hostile
 	for i := range m.Hostiles {
@@ -40,7 +36,7 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 		"c":        "refused",
 		"rust":     "refused",
 		"cpp":      "refused",
-		"unported": oldCounters,
+		"unported": "refused",
 	}
 	for lang, verdict := range want {
 		if got := row.VerdictFor(lang); got != verdict {
@@ -64,23 +60,17 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 			}
 		}
 	}
-	if exemptNamed["go"] || exemptNamed["c"] || exemptNamed["cpp"] || exemptNamed["rust"] {
-		t.Fatalf("%s: Go, C, C++ and Rust carry the rule and must not be exempted", caseName)
-	}
-	if !exemptNamed["unported"] {
-		t.Fatalf("%s: the synthetic unported leg is exempted but the harness names no exemption on its line; it must never skip the row in silence", caseName)
+	for lang := range want {
+		if exemptNamed[lang] {
+			t.Errorf("%s: %s must refuse without an exemption", caseName, lang)
+		}
 	}
 
 	dir := t.TempDir()
 
-	// the reversed witness: each leg answering the OTHER leg's verdict is red
-	reversed := map[string]string{
-		"go":       oldCounters,
-		"rust":     oldCounters,
-		"cpp":      oldCounters,
-		"unported": "refused",
-	}
-	for lang, answer := range reversed {
+	// A read verdict and value are wrong for every leg, even a new one.
+	for lang := range want {
+		answer := "read\n{}"
 		e, ok := byLang[lang]
 		if !ok {
 			t.Fatalf("%s: the harness has no expectation for %s", caseName, lang)
