@@ -33,7 +33,8 @@ const (
 	// -4: variable region and retain loads report newer_form on any form byte != 2 (SPEC-TABLES §6.5)
 	// +5: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
 	// +223: the one read (SPEC-TABLES §4, §6.5): the wire-alone check over every byte, the node table and the pointer graph, run before every variable-form body read
-	goOneTableLineBudget = 9799
+	// +9: a message body refuses a field id it has carried (SPEC-TABLES §3.3)
+	goOneTableLineBudget = 9808
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -49,7 +50,8 @@ const (
 	// +8: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
 	// -5027: the one read: no tolerant twins, no clamp or kind-mismatch counting, the wire-alone check shared in the runtime
 	// +2961: a fixed table whose closure holds a union carries the fixed form in a regional unit (RootConfig, LoadoutConfig, ArchiveConfig and their closure: leaves, write bodies, checks, plans)
-	goExamplesLineBudget = 57418
+	// +252: a message body refuses a repeated field id, and an enum-keyed array a repeated slot (SPEC-TABLES §3.2, §3.3)
+	goExamplesLineBudget = 57670
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

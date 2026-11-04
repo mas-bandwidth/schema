@@ -10,11 +10,13 @@ import (
 )
 
 // Sabotage is one negative control's edit: in File (relative to the repository
-// root), the one occurrence of From becomes To.
+// root), the one occurrence of From becomes To, or with All every occurrence
+// (a rule a generated file repeats per table).
 type Sabotage struct {
 	File string
 	From string
 	To   string
+	All  bool
 }
 
 // RunSabotaged is a negative control run through a Go overlay: it rebuilds the
@@ -39,11 +41,12 @@ func RunSabotaged(t *testing.T, root, pkg, run string, sabotages ...Sabotage) (o
 		if err != nil {
 			t.Fatal(err)
 		}
-		if n := strings.Count(string(data), s.From); n != 1 {
+		n := strings.Count(string(data), s.From)
+		if n == 0 || (n != 1 && !s.All) {
 			t.Fatalf("negative control: %q occurs %d times in %s, want once", s.From, n, s.File)
 		}
 		copyPath := filepath.Join(dir, filepath.Base(s.File)+"."+string(rune('a'+i))+".txt")
-		if err := os.WriteFile(copyPath, []byte(strings.Replace(string(data), s.From, s.To, 1)), 0o600); err != nil {
+		if err := os.WriteFile(copyPath, []byte(strings.Replace(string(data), s.From, s.To, -1)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		replace[src] = copyPath

@@ -6093,6 +6093,11 @@ with one message passes one and pays a count of eight bits for it.
 - **BYTES AFTER THE PAD ARE DAMAGE**, exactly as they are in the variable form
   (§3): the batch ends at the pad to the byte boundary, and a buffer with bytes
   left over describes no batch this reader can name.
+- **A FIELD ID TWICE IN ONE BODY IS DAMAGE**, exactly as it is in the variable
+  form (§3), whether this reader can name the id or not: a body carries each
+  field once, and a second occurrence describes no value. **A KEYED SLOT TWICE
+  IN ONE ENUM-KEYED ARRAY IS DAMAGE** by the same rule (§3.2), a key this reader
+  cannot name included.
 
 **THE BATCH IS STATED AS THE UNIT SO THAT LATER FORMS HAVE SOMEWHERE TO STAND.**
 Three bandwidth passes are only available to a writer holding every body at once,

@@ -279,6 +279,9 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 	for i := range inst.Fields {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
 	}
+	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can
+	// name it or not, exactly as on the variable form (§3).
+	seen := map[uint64]bool{}
 	for {
 		ref, ok := d.reference()
 		if !ok {
@@ -300,6 +303,11 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 			d.damage()
 			return false
 		}
+		if seen[entry.Id] {
+			d.damage()
+			return false
+		}
+		seen[entry.Id] = true
 		i, known := index[entry.Id]
 		if !known {
 			d.report.Unknown++
@@ -576,6 +584,9 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		d.damage()
 		return false
 	}
+	// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (§3.2, §3.3), a key this
+	// reader cannot name included.
+	seen := map[uint64]bool{}
 	for range n {
 		ref, ok := d.reference()
 		if !ok {
@@ -588,6 +599,11 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		if !named {
 			return false
 		}
+		if seen[key.Id] {
+			d.damage()
+			return false
+		}
+		seen[key.Id] = true
 		value := enumValueForId(f.KeyEnumRef, key.Id)
 		var sink tabletext.Cell
 		cell := &sink

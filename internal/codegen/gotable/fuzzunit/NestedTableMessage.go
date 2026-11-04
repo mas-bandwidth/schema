@@ -90,6 +90,8 @@ func ArchiveConfigSaveMessages(values []*ArchiveConfig, buffer []byte, report *T
 }
 func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) bool {
 	ArchiveConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -104,6 +106,13 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
 			{

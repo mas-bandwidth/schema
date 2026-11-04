@@ -181,6 +181,8 @@ func RangedSignedSaveMessages(values []*RangedSigned, buffer []byte, report *Tab
 }
 func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) bool {
 	RangedSignedReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -195,6 +197,13 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x48121511bf702eb5:
 			{
@@ -1046,6 +1055,8 @@ func RangedUnsignedSaveMessages(values []*RangedUnsigned, buffer []byte, report 
 }
 func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned) bool {
 	RangedUnsignedReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1060,6 +1071,13 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x0f8897557f37c021:
 			{
@@ -1836,6 +1854,8 @@ func RangedWidthsSaveMessages(values []*RangedWidths, buffer []byte, report *Tab
 }
 func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) bool {
 	RangedWidthsReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1850,6 +1870,13 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x08a60c07b54d8dc7:
 			{

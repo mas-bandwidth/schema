@@ -89,6 +89,8 @@ func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableRe
 }
 func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 	TeamConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -103,6 +105,13 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xceec99e2d65db674:
 			{
@@ -303,6 +312,8 @@ func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *Tab
 }
 func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) bool {
 	GunnerConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -317,6 +328,13 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
@@ -524,6 +542,8 @@ func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *Tab
 }
 func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) bool {
 	TurretConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -538,6 +558,13 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
@@ -810,6 +837,8 @@ func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableRe
 }
 func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 	HullConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -824,6 +853,13 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x7f69d4b5288ba9cf:
 			{
@@ -921,6 +957,8 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					var seenKeys [64]uint64
+					seenKey := seenKeys[:0]
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -932,6 +970,13 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
+						for _, k := range seenKey {
+							if k == id {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+						}
+						seenKey = append(seenKey, id)
 						var key Weapon
 						known := key.TableEnumValue(id)
 						var scratch TurretConfig
@@ -1175,6 +1220,8 @@ func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *Table
 }
 func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool {
 	KeyedConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1189,6 +1236,13 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xbaaeb048a5a8fa6d:
 			{
@@ -1210,6 +1264,8 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					var seenKeys [64]uint64
+					seenKey := seenKeys[:0]
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1221,6 +1277,13 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
+						for _, k := range seenKey {
+							if k == id {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+						}
+						seenKey = append(seenKey, id)
 						var key Team
 						known := key.TableEnumValue(id)
 						var scratch TeamConfig
@@ -1259,6 +1322,8 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					var seenKeys [64]uint64
+					seenKey := seenKeys[:0]
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1270,6 +1335,13 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
+						for _, k := range seenKey {
+							if k == id {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+						}
+						seenKey = append(seenKey, id)
 						var key Hull
 						known := key.TableEnumValue(id)
 						var scratch HullConfig
@@ -1395,6 +1467,8 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 }
 func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool {
 	ScoreBoardReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1409,6 +1483,13 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xf10fad739a0e1660:
 			{
@@ -1430,6 +1511,8 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					var seenKeys [64]uint64
+					seenKey := seenKeys[:0]
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1441,6 +1524,13 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
+						for _, k := range seenKey {
+							if k == id {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+						}
+						seenKey = append(seenKey, id)
 						var key Team
 						known := key.TableEnumValue(id)
 						var scratch int32

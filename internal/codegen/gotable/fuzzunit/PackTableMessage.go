@@ -102,6 +102,8 @@ func GunnerSettingsSaveMessages(values []*GunnerSettings, buffer []byte, report 
 }
 func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings) bool {
 	GunnerSettingsReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -116,6 +118,13 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
@@ -390,6 +399,8 @@ func ShipEntrySaveMessages(values []*ShipEntry, buffer []byte, report *TableRepo
 }
 func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 	ShipEntryReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -404,6 +415,13 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x2d21d7cd66bd5a5d:
 			{
@@ -758,6 +776,8 @@ func GlobalSettingsSaveMessages(values []*GlobalSettings, buffer []byte, report 
 }
 func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings) bool {
 	GlobalSettingsReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -772,6 +792,13 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xa65f859b617deaf3:
 			{
@@ -1169,6 +1196,8 @@ func PackConfigSaveMessages(values []*PackConfig, buffer []byte, report *TableRe
 }
 func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 	PackConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1183,6 +1212,13 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xbb62c62c9808ea37:
 			{
@@ -1253,6 +1289,8 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					var seenKeys [64]uint64
+					seenKey := seenKeys[:0]
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1264,6 +1302,13 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
+						for _, k := range seenKey {
+							if k == id {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+						}
+						seenKey = append(seenKey, id)
 						var key ShipType
 						known := key.TableEnumValue(id)
 						var scratch ShipEntry
@@ -1302,6 +1347,8 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					var seenKeys [64]uint64
+					seenKey := seenKeys[:0]
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1313,6 +1360,13 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
+						for _, k := range seenKey {
+							if k == id {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+						}
+						seenKey = append(seenKey, id)
 						var key Difficulty
 						known := key.TableEnumValue(id)
 						var scratch int32
