@@ -88,13 +88,13 @@ if strictfixed.RowFixedLoad(back, wire, plan, report) == 2 and strictfixed.RowFi
 else:
     print("valid round trip failed: " + report.reason)
 let damaged:[string] = [
-    write_int8_le(wire, second + %[1]d, 2),
-    write_int8_le(wire, second + %[2]d, 2),
-    write_int8_le(wire, second + %[2]d + 1, 2),
-    write_int8_le(wire, second + %[3]d + 4, 2),
-    write_int32_le(wire, second + %[4]d, 11),
-    write_float32_le(wire, second + %[5]d, 2.0),
-    write_int8_le(wire, second + %[6]d, 3),
+    write_int8_le(copy(wire), second + %[1]d, 2),
+    write_int8_le(copy(wire), second + %[2]d, 2),
+    write_int8_le(copy(wire), second + %[2]d + 1, 2),
+    write_int8_le(copy(wire), second + %[3]d + 4, 2),
+    write_int32_le(copy(wire), second + %[4]d, 11),
+    write_float32_le(copy(wire), second + %[5]d, 2.0),
+    write_int8_le(copy(wire), second + %[6]d, 3),
     substring(wire, 0, length(wire) - 1),
     ""
 ]
@@ -108,7 +108,7 @@ for(damaged) bad:
         print("damage case " + string(case_index) + " returned " + string(n) + ": " + report.reason)
     case_index += 1
 // Inactive optional payload and counted-array slack are not values.
-var slack = write_int8_le(wire, second + %[2]d, 0)
+var slack = write_int8_le(copy(wire), second + %[2]d, 0)
 slack = write_int8_le(slack, second + %[2]d + 1, 255)
 slack = write_int32_le(slack, second + %[2]d + 2, 99)
 slack = write_int8_le(slack, second + %[3]d + 4 + 8, 255)
