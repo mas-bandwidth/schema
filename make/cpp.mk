@@ -415,3 +415,12 @@ tables-cpp-format-negative-control: bin/schema tools/sabotage/cpp_clean.go make/
 	@grep -q 'clang-format drift in .*/format/sabotaged/Types\.h' $(CPP_CLEAN_CONTROL)/format/red.out || \
 		{ echo "NEGATIVE CONTROL FAILED: the format gate went red, but not on Types.h"; cat $(CPP_CLEAN_CONTROL)/format/red.out; exit 1; }
 	@echo "negative control: one K&R struct brace in the emitted C++ turns the format gate (clang-format) RED naming the file"
+
+# A separate native fixed-file corpus: the original form-1 pins are historical.
+.PHONY: bench-fixed-table-corpus bench-fixed-table-check
+bench-fixed-table-corpus: build/schema_test_bench_table
+	@mkdir -p bench/corpus/fixed-table
+	./build/schema_test_bench_table fixed-pin
+
+bench-fixed-table-check: build/schema_test_bench_table
+	./build/schema_test_bench_table fixed-verify
