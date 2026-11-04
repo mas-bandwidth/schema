@@ -67,23 +67,45 @@ pub fn json_newline(out: &mut String, depth: usize) {
 pub fn json_escape(s: &str, out: &mut String) {
     out.push('"');
     for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\u{0008}' => out.push_str("\\b"),
-            '\u{000c}' => out.push_str("\\f"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                out.push_str("\\u00");
-                let h = format!("{:02x}", c as u32);
-                out.push_str(&h);
-            }
-            c => out.push(c),
-        }
+        json_escape_char(c, out);
     }
     out.push('"');
+}
+
+/// A wstring(N)'s code units as a JSON string (docs/SPEC-TABLES.md §16.2's
+/// wstring row), transcoded at the boundary unit by unit. An UNPAIRED
+/// SURROGATE is not text: the answer is false, the whole write refuses
+/// (invalid_value, §16.3, §16.14 W0), and nothing is replaced.
+#[allow(dead_code)]
+pub fn json_escape_wide(units: &[u16], out: &mut String) -> bool {
+    out.push('"');
+    for c in char::decode_utf16(units.iter().copied()) {
+        let Ok(c) = c else { return false };
+        json_escape_char(c, out);
+    }
+    out.push('"');
+    true
+}
+
+/// One code point of a JSON string: the escape JSON spells for it, or the
+/// character itself.
+#[allow(dead_code)]
+pub fn json_escape_char(c: char, out: &mut String) {
+    match c {
+        '"' => out.push_str("\\\""),
+        '\\' => out.push_str("\\\\"),
+        '\u{0008}' => out.push_str("\\b"),
+        '\u{000c}' => out.push_str("\\f"),
+        '\n' => out.push_str("\\n"),
+        '\r' => out.push_str("\\r"),
+        '\t' => out.push_str("\\t"),
+        c if (c as u32) < 0x20 => {
+            out.push_str("\\u00");
+            let h = format!("{:02x}", c as u32);
+            out.push_str(&h);
+        }
+        c => out.push(c),
+    }
 }
 
 /// Clamp a string to n bytes at a code point boundary (docs/SPEC-TABLES.md
@@ -1174,8 +1196,8 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		fmt.Fprintf(b, "%sjson_escape(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vWString:
 		// the same text, TRANSCODED at the boundary (docs/SPEC-TABLES.md
-		// §16.2's wstring row): a stored value is paired, so nothing is lost
-		fmt.Fprintf(b, "%sjson_escape(&String::from_utf16_lossy(%s), &mut w.out);\n", ind, borrowOf(x))
+		// §16.2's wstring row); an unpaired surrogate refuses the write (§16.14 W0)
+		fmt.Fprintf(b, "%sif !json_escape_wide(%s, &mut w.out) { w.refused = true; }\n", ind, borrowOf(x))
 	case vBytes:
 		fmt.Fprintf(b, "%sjson_b64(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vEnum:

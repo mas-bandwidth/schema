@@ -614,6 +614,29 @@ defmodule Driver do
           end
       end
     end
+
+    # THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
+    # wire, then the line's damage put into storage in code, then to_json,
+    # which must refuse. This leg has one to_json and no separate measure, so
+    # one call answers for both.
+    for [name, unit, root, wire, damage] <- rows(rows, "write-refusal") do
+      case table_module(unit) do
+        nil ->
+          write_absent(outdir, name <> ".json")
+
+        mod ->
+          case mod.load(root, File.read!(wire)) do
+            {:ok, value, _report} ->
+              case mod.to_json(root, damage_text(value, damage)) do
+                {:ok, text} -> write(outdir, name <> ".json", text)
+                {:error, _} -> write(outdir, name <> ".json", "refused\n")
+              end
+
+            _ ->
+              raise "#{name}: load refused #{wire}"
+          end
+      end
+    end
   end
 
   defp run("cook-write", rows, outdir) do
@@ -1079,6 +1102,17 @@ defmodule Driver do
       end
     end
   end
+
+  # damage_text puts into a fixed root's top-level text field what no read
+  # delivers (testdata/conformance/tables/FORMAT.md, `write-refusal`). A narrow
+  # field holds the bytes 61 FF 62 exactly. A wide field is held as UTF-8, so
+  # the units 0061 D800 0062 are put as the nearest value that is not text:
+  # "a", D800's generalized UTF-8 encoding ED A0 80, then "b".
+  defp damage_text(value, "none"), do: value
+  defp damage_text(value, "narrow:" <> field), do: Map.put(value, field, <<0x61, 0xFF, 0x62>>)
+
+  defp damage_text(value, "wide:" <> field),
+    do: Map.put(value, field, <<0x61, 0xED, 0xA0, 0x80, 0x62>>)
 
   defp write(outdir, name, data) when is_binary(data) do
     File.write!(Path.join(outdir, name), data)
