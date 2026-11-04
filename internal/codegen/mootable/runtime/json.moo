@@ -3126,6 +3126,11 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 				if value then
 					resetField(ed, vd, entry)
 				end
+			elseif valueShape(r) ~= shape(vd) then
+				-- a value of the wrong shape is skipped and counted, and its entry
+				-- stays at the value's default (§16.2), as the Go reference keeps it
+				r.report.kindMismatch += 1
+				value = skipValue(r, depth + 2)
 			else
 				value = readField(r, ed, vd, entry, depth + 1)
 				if value and vd.present ~= nil then
