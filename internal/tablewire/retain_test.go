@@ -550,10 +550,11 @@ func deepWire(depth int) []byte {
 	return b.finish()
 }
 
-// THE CAP IS A SMALL STATED CONSTANT AND IT COUNTS NESTED BODIES: 64 of them
-// (docs/SPEC-TABLES.md §6.6). A record one past the cap is dropped on the same
-// rule as any other shape the walk cannot take, and the LAST DEPTH THE CAP
-// ADMITS still rides, out as well as in. The reference pins these same two
+// THE CAP IS THE BINARY NESTING BOUND AND IT COUNTS NESTED BODIES: 128 of them
+// (docs/SPEC-TABLES.md §4, §6.6). The LAST DEPTH THE CAP ADMITS still rides,
+// out as well as in, and one past it is past the bound every binary walk
+// holds, so the wire-alone check refuses the whole load before the walk
+// reaches it. The reference pins these same two
 // depths in the same words (test/tables/retain_main.cpp, `walk_is_linear`), and
 // a cap that counts from a different floor is a second wire law: the two
 // engines drop different files.
@@ -563,10 +564,11 @@ func TestRetainWalkDepthCap(t *testing.T) {
 		depth    int
 		retained int
 		lost     int
+		refused  bool
 		what     string
 	}{
-		{depth: 64, retained: 1, lost: 0, what: "the last depth the cap admits"},
-		{depth: 65, retained: 0, lost: 1, what: "one past the cap"},
+		{depth: 128, retained: 1, lost: 0, what: "the last depth the cap admits"},
+		{depth: 129, refused: true, what: "one past the cap"},
 	}
 	for _, row := range rows {
 		t.Run(row.what, func(t *testing.T) {
@@ -574,6 +576,12 @@ func TestRetainWalkDepthCap(t *testing.T) {
 			retain := tablewire.Retain{Capacity: 1 << 16, IdCapacity: 1024}
 			var report tabletext.Report
 			ok, err := tablewire.DecodeRetain(m, inst, deepWire(row.depth), &retain, &report)
+			if row.refused {
+				if ok || err == nil || !report.Refused {
+					t.Fatalf("%d nested bodies: the load answered ok=%v err=%v %+v, want a refusal", row.depth, ok, err, report)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}

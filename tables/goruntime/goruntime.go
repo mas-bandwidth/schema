@@ -545,6 +545,11 @@ func TableUTF8Clamp(data []byte, n int64) int64 {
 	return n
 }
 
+// tableBinaryMaxDepth is the binary nesting bound (mas-bandwidth/schema docs/SPEC-TABLES.md §4,
+// binary_max_depth): a root body or a node record is level 0, each table,
+// array or keyed body one level deeper, and level 129 refuses.
+const TableBinaryMaxDepth = 128
+
 func TableWireUtf16Valid(data []byte) bool {
 	if len(data)&1 != 0 {
 		return false
@@ -2006,4 +2011,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x348be2ca18cac598
+const Version uint64 = 0x67281dd57e4ffeb8

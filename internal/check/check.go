@@ -4798,7 +4798,7 @@ func (c *checker) checkSizes() {
 	if len(c.errs) > 0 {
 		return
 	}
-	for _, e := range ir.CheckSizes(c.unit) {
+	for _, e := range append(ir.CheckSizes(c.unit), ir.CheckBinaryDepth(c.unit)...) {
 		pos := ast.Pos{}
 		if d, ok := c.astDecls[e.Owner]; ok {
 			pos = d.DeclPos()

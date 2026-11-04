@@ -46,6 +46,10 @@ type wireCheck struct {
 	// name the field where this reader declares it; detection order is free
 	// (§6.5).
 	nonFinite error
+	// depth is the framed level of the payload being walked: 0 in a root body
+	// or a node record, one more inside each table, array, keyed or map body
+	// (ir.TableBinaryMaxDepth)
+	depth int
 }
 
 // fixedWidthKind reports the kinds whose payload is exactly their width.
@@ -355,11 +359,20 @@ func (c *wireCheck) content(b []byte, kind int) bool {
 			return c.damage("kind 32 with a nonzero L")
 		}
 		return true
-	case kind == ir.TableKindTable:
-		return c.body(b, false, nil)
-	case kind == ir.TableKindArray:
-		return c.array(b)
-	case kind == ir.TableKindKeyed:
+	case kind == ir.TableKindTable, kind == ir.TableKindArray, kind == ir.TableKindKeyed:
+		// THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4): a framed body
+		// is one level deeper than the payload holding it
+		if c.depth >= ir.TableBinaryMaxDepth {
+			return c.damage("a framed payload nested past the binary bound")
+		}
+		c.depth++
+		defer func() { c.depth-- }()
+		switch kind {
+		case ir.TableKindTable:
+			return c.body(b, false, nil)
+		case ir.TableKindArray:
+			return c.array(b)
+		}
 		return c.keyed(b)
 	case kind == ir.TableKindPointer, kind == ir.TableKindEnum, kind == ir.TableKindUnion:
 		end, ok := c.payload(b, 0, kind)
