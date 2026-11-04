@@ -27,7 +27,7 @@ func emitCookForm(g *Gen) error {
 	ck := g.Require("table_cookread")
 	g.Pf("-- the cooked form's layouts (docs/SPEC-TABLES.md §7.2): every record and union\n")
 	g.Pf("-- this module describes, its storage pieces at their C ABI offsets\n")
-	g.Pf("%s.unit(%s)\n", ck, g.K(WideNew("Uint64", new(big.Int).SetUint64(ir.BuildVersion(g.Unit)), 64)))
+	g.Pf("%s.unit(%s, %d)\n", ck, g.K(WideNew("Uint64", new(big.Int).SetUint64(ir.BuildVersion(g.Unit)), 64)), ir.TableRegionAlign(g.Unit))
 	reach := closure(g.Unit)
 	for _, un := range g.File.TableUnions {
 		emitCookUnion(g, ck, un)

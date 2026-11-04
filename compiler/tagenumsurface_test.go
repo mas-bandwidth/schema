@@ -124,6 +124,13 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		max:      "  Missile = 2,\n  Max = 2, -- the exported extent (SPEC §4.2)",
 		nameFunc: "local names = { [0] = \"None\", [1] = \"Laser\", [2] = \"Missile\" }\n  function _M.EnumNameWeaponFireType(value)",
 	},
+	// moo: the name function returns its name table's entry or "???", so
+	// the claim opens at the name table, as Lua's does.
+	"moo": {
+		noCount:  "WeaponFireTypeCount",
+		max:      "M.WeaponFireTypeMax = 2 -- the exported extent (SPEC §4.2)",
+		nameFunc: `local _EnumNameWeaponFireType = table.freeze({ [0] = "None", [1] = "Laser", [2] = "Missile" })`,
+	},
 	"rust": {
 		noCount:  "    pub const COUNT: ",
 		max:      "    pub const MAX: WeaponFireType = WeaponFireType(2); // the exported extent (SPEC §4.2)",
