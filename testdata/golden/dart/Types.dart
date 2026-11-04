@@ -1621,9 +1621,12 @@ void initInputPacket(InputPacket value) {
 // writeInputPacket packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // inputPacketMaxBytes. Returns the bytes written.
+// A count or a length past its storage answers -1 in every build, before
+// the first byte is stored.
 int writeInputPacket(InputPacket value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= inputPacketMaxBytes);
+  if (value.inputsCount < 0 || value.inputsCount > 16) return -1;
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;

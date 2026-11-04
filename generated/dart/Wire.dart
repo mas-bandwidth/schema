@@ -454,9 +454,12 @@ void initProbeSample(ProbeSample value) {
 // writeProbeSample packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // probeSampleMaxBytes. Returns the bytes written.
+// A count or a length past its storage answers -1 in every build, before
+// the first byte is stored.
 int writeProbeSample(ProbeSample value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeSampleMaxBytes);
+  if (value.samplesCount < 0 || value.samplesCount > 8) return -1;
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -1084,9 +1087,12 @@ void initProbeCollider(ProbeCollider value) {
 // writeProbeCollider packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // probeColliderMaxBytes. Returns the bytes written.
+// A count or a length past its storage answers -1 in every build, before
+// the first byte is stored.
 int writeProbeCollider(ProbeCollider value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeColliderMaxBytes);
+  if (value.extrasCount < 0 || value.extrasCount > 2) return -1;
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -1487,9 +1493,16 @@ void initProbeArray(ProbeArray value) {
 // writeProbeArray packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // probeArrayMaxBytes. Returns the bytes written.
+// A count or a length past its storage answers -1 in every build, before
+// the first byte is stored.
 int writeProbeArray(ProbeArray value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeArrayMaxBytes);
+  for (var j0 = 0; j0 < 2; j0++) {
+    if (value.samples[j0].samplesCount < 0 ||
+        value.samples[j0].samplesCount > 8)
+      return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -2003,9 +2016,12 @@ void initBlock(Block value) {
 // writeBlock packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // blockMaxBytes. Returns the bytes written.
+// A count or a length past its storage answers -1 in every build, before
+// the first byte is stored.
 int writeBlock(Block value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= blockMaxBytes);
+  if (value.dataLength < 0 || value.dataLength > 2000) return -1;
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -2145,9 +2161,12 @@ void initChat(Chat value) {
 // writeChat packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // chatMaxBytes. Returns the bytes written.
+// A count or a length past its storage answers -1 in every build, before
+// the first byte is stored.
 int writeChat(Chat value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= chatMaxBytes);
+  if (value.textLength < 0 || value.textLength > 256) return -1;
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -2558,9 +2577,13 @@ void initTestData(TestData value) {
 // writeTestData packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // testDataMaxBytes. Returns the bytes written.
+// A count or a length past its storage answers -1 in every build, before
+// the first byte is stored.
 int writeTestData(TestData value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= testDataMaxBytes);
+  if (value.itemsCount < 0 || value.itemsCount > 16) return -1;
+  if (value.textLength < 0 || value.textLength > 255) return -1;
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
