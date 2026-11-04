@@ -36,3 +36,13 @@ table Cfg
     grades [..4]Grade
     tally  [Grade]int32
 }
+
+// The bounded-array framing vectors keep the historical listdemo vocabulary
+// while reading through an explicitly variable root.
+fixed table Unit { v int32 }
+
+table Bounded
+{
+    items [..8]Unit
+    tag   int32
+}
