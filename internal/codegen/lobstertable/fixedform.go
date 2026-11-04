@@ -147,9 +147,6 @@ func fixedLobsterSimple(st *ir.Struct, depth int) bool {
 	}
 	var fieldOK func(f *ir.Field, d int) bool
 	fieldOK = func(f *ir.Field, d int) bool {
-		if f.Type.Optional && f.Array != ir.ArrayNone {
-			return false // an optional array is a later card's shape
-		}
 		if f.Array != ir.ArrayNone || f.KeyEnumRef != nil {
 			if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
 				return false
@@ -337,9 +334,10 @@ func getField(g *lobster.Gen, owner *ir.Struct, f *ir.Field, expr, base string, 
 }
 
 func getPayload(g *lobster.Gen, owner *ir.Struct, f *ir.Field, expr, base string, off int64, present, ind string) {
-	guard := ""
 	if present != "" {
-		guard = ind + "if " + present + ":\n"
+		g.Pf("%sif %s:\n", ind, present)
+		getPayload(g, owner, f, expr, base, off, "", ind+"    ")
+		return
 	}
 	switch {
 	case f.KeyEnumRef != nil:
@@ -361,11 +359,6 @@ func getPayload(g *lobster.Gen, owner *ir.Struct, f *ir.Field, expr, base string
 		iv := loopVar(f, off)
 		g.Pf("%sfor(%s) %s:\n", ind, count, iv)
 		getElement(g, f, fmt.Sprintf("%s[%s]", expr, iv), base, off+ir.TableFixedCountBytes, elem, iv, ind+"    ")
-		return
-	}
-	if guard != "" {
-		g.Pf("%s", guard)
-		getElementIndented(g, f, expr, base, off, 0, "", ind+"    ")
 		return
 	}
 	getElement(g, f, expr, base, off, 0, "", ind)
@@ -447,7 +440,7 @@ func getUnion(g *lobster.Gen, un *ir.Union, expr, at, ind string) {
 		g.Pf("%sif int(%s.Type) == %d:\n", ind, expr, i+1)
 		f := *v.F
 		f.Name = v.Name
-		getElementIndented(g, &f, expr+"."+ir.GoExportName(v.Name), at, tag, 0, "", ind+"    ")
+		getPayload(g, nil, &f, expr+"."+ir.GoExportName(v.Name), at, tag, "", ind+"    ")
 	}
 }
 
