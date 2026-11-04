@@ -23,6 +23,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -240,9 +241,11 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		var report tabletext.Report
 		value := model.New(root)
 		ok, err := tablewire.Decode(model, value, wire, &report)
-		// Named form refusals are report verdicts. Resource refusals and
-		// other engine errors must still stop generation.
-		if err != nil && !tablewire.ReadRefusal(err) {
+		// A read's refusal is a report verdict. The storage-cap refusal is
+		// this build's resource limit rather than the corpus's answer, so it
+		// stops generation with every other engine error.
+		_, storageCap := errors.AsType[*tablewire.CountRefusal](err)
+		if err != nil && (!tablewire.ReadRefusal(err) || storageCap) {
 			return fmt.Errorf("%s: read: %w", rc.Name, err)
 		}
 		if !ok && err == nil {
