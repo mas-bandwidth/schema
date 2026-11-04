@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"os"
 	"strings"
@@ -76,9 +77,27 @@ func fileInstance(t *testing.T, model *tabletext.Model, root, wire string) *tabl
 	var report tabletext.Report
 	ok, err := tablewire.Decode(model, inst, wireBytes(t, wire), &report)
 	if err != nil || !ok || !report.Silent() {
-		t.Fatalf("%s: the variable form did not read clean: ok=%v err=%v report=%+v", wire, ok, err, report)
+		t.Fatalf("%s: the file form did not read clean: ok=%v err=%v report=%+v", wire, ok, err, report)
 	}
 	return inst
+}
+
+// messageFileWire resolves the current canonical file pin. Message rows also
+// preserve their historical form-1 paths, which fixed roots no longer admit.
+func messageFileWire(t *testing.T, m *Manifest, msg Message) string {
+	t.Helper()
+	inst, err := m.LookupInstance(msg.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := m.LookupConnection(msg.Connection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.Unit != conn.Unit || inst.Root != msg.Root {
+		t.Fatalf("%s: file and message pins name different declarations", msg.Name)
+	}
+	return inst.Wire
 }
 
 // messageInstance decodes one MESSAGE-form golden, a batch of one, against a
@@ -240,21 +259,22 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 		}
 		unit, vocabulary := announced(t, u, c)
 		model := tabletext.NewModel(unit)
-		file := wireBytes(t, msg.FileWire)
+		fileWire := messageFileWire(t, m, msg)
+		file := wireBytes(t, fileWire)
 		message := wireBytes(t, msg.MessageWire)
 		if len(message) < 2 || message[0] != ir.TableWireMessageForm || message[1] != 0 {
 			t.Errorf("%s: the message form's first two bytes are not the form byte 2 and a count of one", msg.Name)
 			continue
 		}
 		// FILE in, MESSAGE out
-		fromFile := fileInstance(t, model, msg.Root, msg.FileWire)
+		fromFile := fileInstance(t, model, msg.Root, fileWire)
 		again, err := tablewire.EncodeMessage(model, fromFile)
 		if err != nil {
 			t.Errorf("%s: %v", msg.Name, err)
 			continue
 		}
 		if string(again) != string(message) {
-			t.Errorf("%s: the variable form saved as a message is %d bytes where the pinned message is %d, first difference at byte %d",
+			t.Errorf("%s: the file form saved as a message is %d bytes where the pinned message is %d, first difference at byte %d",
 				msg.Name, len(again), len(message), firstDifference(again, message))
 		}
 		// MESSAGE in, FILE out
@@ -276,9 +296,10 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 	}
 }
 
-// TestTheCostRows pins the page's arithmetic as vectors: the twelve wires, the
-// batch and the announcement, each at the byte count the table prints. A
-// figure that drifts moves a pinned wire.
+// TestTheCostRows pins the current file layouts and the message arithmetic.
+// Fixed files carry a header, layout length, layout, record hash and body;
+// defaults occupy the same fixed record as populated values. Message, batch
+// and announcement costs retain §3.3's bit arithmetic.
 func TestTheCostRows(t *testing.T) {
 	m, model, vocabulary := backend(t)
 	c, _ := m.LookupConnection("backend_conn")
@@ -295,12 +316,12 @@ func TestTheCostRows(t *testing.T) {
 		name          string
 		file, message int
 	}{
-		{"login_full", 106, 52},
-		{"login_default", 10, 3},
-		{"match_full", 273, 148},
-		{"match_default", 43, 11},
-		{"store_full", 104, 43},
-		{"store_default", 10, 3},
+		{"login_full", 251, 52},
+		{"login_default", 251, 3},
+		{"match_full", 289, 148},
+		{"match_default", 289, 11},
+		{"store_full", 252, 43},
+		{"store_default", 252, 3},
 	}
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {
@@ -312,8 +333,8 @@ func TestTheCostRows(t *testing.T) {
 			t.Errorf("the manifest names no message %s", row.name)
 			continue
 		}
-		if got := len(wireBytes(t, msg.FileWire)); got != row.file {
-			t.Errorf("%s: the variable form is %d bytes, the page prints %d", row.name, got, row.file)
+		if got := len(wireBytes(t, messageFileWire(t, m, msg))); got != row.file {
+			t.Errorf("%s: the fixed file is %d bytes, the pinned layout and record require %d", row.name, got, row.file)
 		}
 		if got := len(wireBytes(t, msg.MessageWire)); got != row.message {
 			t.Errorf("%s: the message form is %d bytes, the page prints %d", row.name, got, row.message)
@@ -322,9 +343,9 @@ func TestTheCostRows(t *testing.T) {
 	// THE THREE FULL AS ONE BATCH UNDER AN ENVELOPE: 244 bytes, against 249
 	// for the three envelopes sent alone and 243 for the three messages sent
 	// BARE as three batches of one
-	login := fileInstance(t, model, "LoginRequest", byName["login_full"].FileWire)
-	match := fileInstance(t, model, "MatchResult", byName["match_full"].FileWire)
-	store := fileInstance(t, model, "StorePurchase", byName["store_full"].FileWire)
+	login := fileInstance(t, model, "LoginRequest", messageFileWire(t, m, byName["login_full"]))
+	match := fileInstance(t, model, "MatchResult", messageFileWire(t, m, byName["match_full"]))
+	store := fileInstance(t, model, "StorePurchase", messageFileWire(t, m, byName["store_full"]))
 	envelopes := []*tabletext.Instance{envelopeOf(t, model, 1, login), envelopeOf(t, model, 2, match), envelopeOf(t, model, 3, store)}
 	batch, err := tablewire.EncodeMessages(model, envelopes)
 	if err != nil {
@@ -394,9 +415,9 @@ func TestTheBatch(t *testing.T) {
 	for _, msg := range m.Messages {
 		byName[msg.Name] = msg
 	}
-	login := fileInstance(t, model, "LoginRequest", byName["login_full"].FileWire)
-	match := fileInstance(t, model, "MatchResult", byName["match_full"].FileWire)
-	store := fileInstance(t, model, "StorePurchase", byName["store_full"].FileWire)
+	login := fileInstance(t, model, "LoginRequest", messageFileWire(t, m, byName["login_full"]))
+	match := fileInstance(t, model, "MatchResult", messageFileWire(t, m, byName["match_full"]))
+	store := fileInstance(t, model, "StorePurchase", messageFileWire(t, m, byName["store_full"]))
 	batch, err := tablewire.EncodeMessages(model, []*tabletext.Instance{login, match, store})
 	if err != nil {
 		t.Fatal(err)
@@ -839,33 +860,40 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 // must refuse the announcement as damage and set no vocabulary. Red if any
 // reads or sets anything else.
 func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
-	m, model, _ := backend(t)
+	m, _, u := corpus(t)
+	unit, err := u.get("tblframe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := tabletext.NewModel(unit)
+	def := model.Lookup("Cfg")
+	if def == nil || tablewire.FixedRoot(model, def) {
+		t.Fatal("reserved-id body tests require a declared variable root")
+	}
 	names := map[uint64]string{ir.TableNodeWireId: "node_table", ir.TableBuildVersionWireId: "build_version", ir.TableMessageVocabularyWireId: "vocabulary"}
 	for _, id := range []uint64{ir.TableNodeWireId, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId} {
-		for _, row := range []struct {
-			name string
-			root string
-		}{{"root", "LoginRequest"}, {"nested", "MatchResult"}} {
-			wire := wireBytes(t, "testdata/wire/tables/file_reserved_"+names[id]+"_"+row.name+".bin")
-			inst := model.New(model.Lookup(row.root))
+		for _, position := range []string{"root", "nested"} {
+			wire := wireBytes(t, "testdata/wire/tables/file_reserved_"+names[id]+"_"+position+".bin")
+			// The same payload with an ordinary id must read. This proves the
+			// reserved-id check is reached, including inside an unknown array,
+			// and a form-level refusal cannot make this test pass vacuously.
+			ordinary := append([]byte(nil), wire...)
+			count := int(binary.LittleEndian.Uint64(ordinary[len(ordinary)-8:]))
+			entry := len(ordinary) - 8 - count*8
+			if binary.LittleEndian.Uint64(ordinary[entry:]) != id {
+				t.Fatalf("%s/%s: the first id is not the reserved witness", names[id], position)
+			}
+			binary.LittleEndian.PutUint64(ordinary[entry:], ir.TableWireId("ordinary"))
+			var control tabletext.Report
+			if ok, err := tablewire.Decode(model, model.New(def), ordinary, &control); err != nil || !ok || control.Refused {
+				t.Fatalf("%s/%s: ordinary-id control did not read: %v %+v", names[id], position, err, control)
+			}
 			var report tabletext.Report
-			_, err := tablewire.Decode(model, inst, wire, &report)
-			if err != nil && !tablewire.ReadRefusal(err) {
-				t.Errorf("%s in a %s file body: %v", names[id], row.name, err)
-				continue
-			}
-			// THE ROOT BODY IS THE NODE TABLE'S OWN TRANSPORT (§3.1): a fixed reader
-			// meeting one there is the table-gained-a-pointer edit, and reads it as
-			// the ordinary unknown it is; everywhere else a reserved id is damage
-			tolerated := id == ir.TableNodeWireId && row.name == "root"
-			if tolerated {
-				if err != nil || report.Unknown != 1 || report.Widened != 0 || report.Refused {
-					t.Errorf("%s in a root file body is the fixed reader's ordinary unknown: %v %+v", names[id], err, report)
-				}
-				continue
-			}
-			if !readRefused(err, report) || report.Unknown != 0 {
-				t.Errorf("%s in a %s file body refuses as damage: %v %+v", names[id], row.name, err, report)
+			ok, err := tablewire.Decode(model, model.New(def), wire, &report)
+			// The root node-table witness has kind 9, whereas its transport
+			// requires kind 12 (§3.1). It is malformed at the root too.
+			if ok || !readRefused(err, report) {
+				t.Errorf("%s in a %s file body must refuse within the body: ok=%v err=%v report=%+v", names[id], position, ok, err, report)
 			}
 		}
 	}
