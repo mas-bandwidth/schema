@@ -30,7 +30,7 @@ fixed table Row {
     live [..2]Leaf
     values [2]int32
     ranged int32 | min = 0, max = 10
-    ratio float32 | min = 0, max = 1
+    ratio float32 | min = 0, max = 1, resolution = 0.01
     tier Tier
 }
 `
