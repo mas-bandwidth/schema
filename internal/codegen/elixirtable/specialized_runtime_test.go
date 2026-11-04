@@ -109,7 +109,7 @@ table Root
 		t.Fatal(err)
 	}
 	src = string(arms[VariableTableModule+".ex"])
-	for _, kept := range append([]string{"  defp arm_content(%{t: :table} = a,", "  defp arm_content(%{t: :void},", "      %{t: :void} -> acc\n", "        if input == nil do\n", "  defp cook_union("}, cookUnionClauses...) {
+	for _, kept := range append([]string{"  defp arm_content(%{t: :table} = a,", "  defp arm_content(%{t: :void},", "      {:ok, %{t: :void}} -> acc\n", "        if input == nil do\n", "  defp cook_union("}, cookUnionClauses...) {
 		if !strings.Contains(src, kept) {
 			t.Errorf("a unit with table and void arms lost %q", kept)
 		}

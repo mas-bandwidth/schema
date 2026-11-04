@@ -1488,6 +1488,26 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-conformance-write-refusal-fixed",
+      "when": "pull-request",
+      "why": "the Elixir FixedSave write-refusal control (docs/SPEC.md §5.1): the fixed writer loses its ranged-integer check, so FixedSave writes a ranged int off its min or max, and the matrix must go red on write-refusal-fixed while wire stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-conformance-write-refusal is.",
+      "targets": [
+        "conformance-negative-control-elixir-write-refusal-fixed"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-conformance-write-refusal-message",
+      "when": "pull-request",
+      "why": "the Elixir SaveMessages write-refusal control (docs/SPEC.md §5.1): the message writer loses its declared-bounds check, so SaveMessages writes a ranged int off its min or max, and the matrix must go red on write-refusal-message while message stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-conformance-write-refusal is.",
+      "targets": [
+        "conformance-negative-control-elixir-write-refusal-message"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "elixir-framing",
       "when": "pull-request",
       "why": "the Elixir framing control (docs/LAYERS/1-framing.md, F6): the emitter loses the id table's 4096-entry cap and the cycle refusal (T8), and the matrix must go red on framing, at frame_entries_4097 and the three cycle rows, while report stays green; a second build drops all but one dependent of each node and must red node_diamond_chain while json-read stays green. This shared-dependency fault also affects report rows with shared nodes, so report is not an unaffected surface for the second build. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-mapsort is.",

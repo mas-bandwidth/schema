@@ -312,6 +312,41 @@ defmodule Benchtable.FixedRuntime do
     raise ArgumentError, "value is #{byte_size(bytes)} bytes, past the declared bound of #{n}"
   end
 
+  @doc """
+  A string's bytes, or ArgumentError when they are not well-formed UTF-8:
+  storage that holds ill-formed text is refused by every writer
+  (docs/SPEC.md §5.1). A zero byte is not ill-formed.
+  """
+  def utf8_text(bytes) do
+    if is_binary(bytes) and String.valid?(bytes) do
+      bytes
+    else
+      raise ArgumentError, "#{inspect(bytes)} is not well-formed UTF-8"
+    end
+  end
+
+  @doc """
+  A wstring's units, or ArgumentError when they are not paired UTF-16: a
+  surrogate with no partner is half a character (docs/SPEC.md §5.1). A zero
+  unit is not ill-formed.
+  """
+  def utf16_text(units) do
+    if is_binary(units) and rem(byte_size(units), 2) == 0 and paired?(units) do
+      units
+    else
+      raise ArgumentError, "#{inspect(units)} is not paired UTF-16"
+    end
+  end
+
+  defp paired?(<<>>), do: true
+
+  defp paired?(<<u::little-unsigned-16, low::little-unsigned-16, rest::binary>>)
+       when u >= 0xD800 and u <= 0xDBFF and low >= 0xDC00 and low <= 0xDFFF,
+       do: paired?(rest)
+
+  defp paired?(<<u::little-unsigned-16, _::binary>>) when u >= 0xD800 and u <= 0xDFFF, do: false
+  defp paired?(<<_::little-unsigned-16, rest::binary>>), do: paired?(rest)
+
   # ---------------------------------------------------------------------------
   # THE HASH: fnv1a64 over the layout's bytes, exactly as written
   # ---------------------------------------------------------------------------

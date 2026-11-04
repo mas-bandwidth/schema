@@ -3782,17 +3782,22 @@ defmodule Benchtable.Table do
 
   defp field_active?(_f, _desc, _value), do: true
 
-  defp validate_record(desc, value) do
+  # The binary writers hold an unbounded text to tableUtf8Valid, which refuses
+  # a zero byte as well; the text writer holds it to well-formed UTF-8 alone,
+  # because it spells a zero byte \u0000 (docs/SPEC-TABLES.md §16.3).
+  defp validate_record(desc, value), do: validate_record(desc, value, &utf8_valid?/1)
+
+  defp validate_record(desc, value, text_ok?) do
     Enum.each(desc.fields, fn f ->
       if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
-        validate_text_list(f, Map.get(value, f.name, f.default))
+        validate_text_list(f, Map.get(value, f.name, f.default), text_ok?)
       end
 
       if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+          if not is_binary(text) or not text_ok?.(text), do: throw(:invalid_value)
         end
       end
 
@@ -3829,7 +3834,15 @@ defmodule Benchtable.Table do
 
   defp written_value(%{t: :union} = f, v), do: written_arm(f.elem, v)
 
-  defp written_value(%{t: t} = f, v) when t in [:string, :bytes] do
+  # a string is well-formed UTF-8 as well: storage that holds ill-formed text
+  # is refused by every writer, and a zero byte is not ill-formed
+  defp written_value(%{t: :string} = f, v) do
+    if not is_binary(v) or not String.valid?(v) or
+         (not Map.get(f, :unbounded, false) and byte_size(v) > f.size),
+       do: throw(:invalid_value)
+  end
+
+  defp written_value(%{t: :bytes} = f, v) do
     if not is_binary(v) or (not Map.get(f, :unbounded, false) and byte_size(v) > f.size),
       do: throw(:invalid_value)
   end
@@ -3907,7 +3920,9 @@ defmodule Benchtable.Table do
 
   defp written_element(%{elem_kind: 12} = f, e) do
     size = Map.get(f, :size, 0)
-    if not is_binary(e) or (size > 0 and byte_size(e) > size), do: throw(:invalid_value)
+
+    if not is_binary(e) or not String.valid?(e) or (size > 0 and byte_size(e) > size),
+      do: throw(:invalid_value)
   end
 
   defp written_element(_f, _e), do: :ok
@@ -4297,7 +4312,7 @@ defmodule Benchtable.Table do
     if String.valid?(prefix), do: prefix, else: utf8_prefix(prefix, byte_size(prefix) - 1)
   end
 
-  defp validate_text_list(f, elements) do
+  defp validate_text_list(f, elements, text_ok?) do
     if not is_list(elements), do: throw(:invalid_value)
     bound = Map.get(f, :array_bound, 0)
     if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
@@ -4308,7 +4323,7 @@ defmodule Benchtable.Table do
       value = Map.get(element, "value", default)
 
       if not (f.text_optional and value == nil) do
-        if not is_binary(value) or not utf8_valid?(value) or
+        if not is_binary(value) or not text_ok?.(value) or
              (not Map.get(f, :text_unbounded, false) and byte_size(value) > f.text_size),
            do: throw(:invalid_value)
       end
@@ -4393,6 +4408,10 @@ defmodule Benchtable.Table do
         Process.delete(:elixir_json_refuse)
       end
     end
+  catch
+    # the reference count walks every union before the text does, so an arm
+    # the union does not declare refuses there (docs/SPEC.md §5.1)
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def from_json(table, text) when is_binary(text) do
@@ -4500,8 +4519,10 @@ defmodule Benchtable.Table do
   end
 
   defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
-      a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
+    case Map.fetch(Map.fetch!(@unions, union).by_name, arm) do
+      {:ok, a} -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
+      # an arm the union does not declare refuses the text (docs/SPEC.md §5.1)
+      :error -> throw(:invalid_value)
     end
   end
 
@@ -4542,7 +4563,7 @@ defmodule Benchtable.Table do
   end
 
   defp json_object(desc, value, depth, label) do
-    validate_record(desc, value)
+    validate_record(desc, value, &String.valid?/1)
     value = Map.merge(defaults(desc), value)
 
     # an absent optional writes no key: presence is the key (§2.3, §16.2)
@@ -4638,7 +4659,7 @@ defmodule Benchtable.Table do
     entry_desc = Map.fetch!(@tables, f.elem)
     value_field = entry_desc.fields |> Enum.at(1)
     pairs = map_entries(f, values)
-    Enum.each(pairs, &validate_record(entry_desc, &1))
+    Enum.each(pairs, fn pair -> validate_record(entry_desc, pair, &String.valid?/1) end)
 
     if pairs == [] do
       "{}"
