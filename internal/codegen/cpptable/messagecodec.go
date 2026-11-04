@@ -346,11 +346,13 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 		width := ir.TableMessageBitsRequired(0, m)
 		if pass == messagePassMeasure {
 			g.pf("%s", loop)
+			g.pf("%s    if ( %s.value_length < 0 || %s.value_length > %d ) { return -1; } // storage invariant\n", ind, elem, elem, m)
 			g.pf("%s    bits += %d + TableAlignBits( at + bits ) + (int64_t) %s.value_length * 8;\n", ind, width, elem)
 			g.pf("%s}\n", ind)
 			return
 		}
 		g.pf("%s", loop)
+		g.pf("%s    if ( %s.value_length < 0 || %s.value_length > %d ) { return false; } // storage invariant\n", ind, elem, elem, m)
 		g.emitTextAssert(ir.TextListValue(f), elem+".value", elem+".value_length", ind+"    ", "a message write")
 		g.pf("%s    w.put( (uint64_t) %s.value_length, %d );\n", ind, elem, width)
 		g.pf("%s    w.align(); // a string payload ALIGNS before its bytes\n", ind)
@@ -531,6 +533,7 @@ func (g *tableGen) emitMessagePayload(f *ir.Field, entry ir.TableVocabularyEntry
 		count := strconv.FormatInt(f.ArrayBound, 10)
 		if f.CountedOnWire() {
 			count = fmt.Sprintf("value.%s_count", f.Name)
+			g.pf("%sif ( %s < 0 || %s > %d ) { return %s; } // storage invariant\n", ind, count, count, f.ArrayBound, messageBad(pass))
 		}
 		g.emitMessageArray(f, entry, count, "value."+f.Name+"[%s]", ind, pass)
 	case tableScalarKind(f) == tkTable:
