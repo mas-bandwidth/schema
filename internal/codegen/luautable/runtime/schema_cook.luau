@@ -355,7 +355,7 @@ local function arm_edges(fd: any, u: any, out: { any })
 	local val = u[arm.slot]
 	if arm.s == "tab" then
 		edges(St.lookup(arm.t), val, out)
-	elseif arm.s == "sblob" or arm.s == "bblob" or arm.s == "text" then
+	elseif arm.s == "sblob" or arm.s == "bblob" then
 		if val ~= nil then out[#out + 1] = { blob = arm.s, val = val } end
 	elseif arm.s == "ptr" then
 		if val ~= nil then out[#out + 1] = { d = St.lookup(arm.t), val = val } end
@@ -375,7 +375,7 @@ edges = function(d: any, v: any, out: { any }): { any }
 		if fd.present ~= nil and not v[fd.present] then continue end
 		local val = v[fd.slot]
 		local s = fd.s
-		if s == "sblob" or s == "bblob" or s == "text" then
+		if s == "sblob" or s == "bblob" then
 			if val ~= nil then out[#out + 1] = { blob = s, val = val } end
 		elseif s == "ptr" then
 			if val ~= nil then out[#out + 1] = { d = St.lookup(fd.t), val = val } end
@@ -539,8 +539,8 @@ local carve_element: any
 local carve_field: any
 
 field_has_extent = function(fd: any): boolean
-	if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then return true end
-	if fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" or fd.s == "text" then return false end
+	if fd.s == "map" or fd.s == "text" or (fd.s == "arr" and fd.array == "list") then return true end
+	if fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" then return false end
 	if fd.s == "tab" then return record_has_extent(St.lookup(fd.t)) end
 	if fd.s == "union" then return union_has_extent(St.lookup(fd.t)) end
 	if fd.s == "arr" then return field_has_extent(fd.e) end
@@ -576,6 +576,7 @@ local function record_extent_align(d: any, seen: any): number
 end
 
 field_extent_align = function(fd: any, seen: any): number
+	if fd.s == "text" then return BLOB_ALIGN end
 	if fd.s == "map" then
 		local entry = St.lookup(fd.t)
 		return max(record_layout(entry).align, record_extent_align(entry, seen))
@@ -635,7 +636,29 @@ carve_field = function(fd: any, v: any, x: any, fieldAt: number, extentBase: num
 		end
 		return true
 	end
-	if fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" or fd.s == "text" then return true end
+	if fd.s == "text" then
+		if (fd.present ~= nil and not v[fd.present]) or not guard_holds(fd, v) then
+			if typeof(x) == "buffer" and buffer.len(x) > 0 then return false end
+			if w ~= nil then put(w, fieldAt, 0, 8) end
+			return true
+		end
+		local n = typeof(x) == "buffer" and buffer.len(x) or 0
+		if n == 0 then
+			if w ~= nil then put(w, fieldAt, 0, 8) end
+			return true
+		end
+		cursor.at = align_up(cursor.at, BLOB_ALIGN)
+		local start = cursor.at
+		cursor.at = start + align_up(BLOB_HEADER + n + 1, cursor.regionAlign or FLOOR)
+		if w ~= nil then
+			local blob = extentBase + start
+			put(w, fieldAt, blob - fieldAt, 8)
+			put(w, blob, n, 4)
+			put_copy(w, blob + BLOB_HEADER, x, n)
+		end
+		return true
+	end
+	if fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" then return true end
 	local at = fieldAt
 	if fd.s == "arr" then
 		x = x or {}
@@ -683,6 +706,23 @@ carve_field = function(fd: any, v: any, x: any, fieldAt: number, extentBase: num
 end
 
 carve_element = function(e: any, x: any, at: number, extentBase: number, cursor: any, w: any, index: any): boolean
+	if e.s == "text" then
+		local n = typeof(x) == "buffer" and buffer.len(x) or 0
+		if n == 0 then
+			if w ~= nil then put(w, at, 0, 8) end
+			return true
+		end
+		cursor.at = align_up(cursor.at, BLOB_ALIGN)
+		local start = cursor.at
+		cursor.at = start + align_up(BLOB_HEADER + n + 1, cursor.regionAlign or FLOOR)
+		if w ~= nil then
+			local blob = extentBase + start
+			put(w, at, blob - at, 8)
+			put(w, blob, n, 4)
+			put_copy(w, blob + BLOB_HEADER, x, n)
+		end
+		return true
+	end
 	if e.s == "tab" then
 		local d = St.lookup(e.t)
 		if not record_has_extent(d) then return true end
@@ -709,9 +749,9 @@ carve_record = function(d: any, v: any, recordBase: number, extentBase: number, 
 	for _, fl in l.fields do
 		local fd = fl.fd
 		local x = field_value(d, fd, v)
-		if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then
+		if fd.s == "map" or fd.s == "text" or (fd.s == "arr" and fd.array == "list") then
 			if not carve_field(fd, v, x, recordBase + fl.at, extentBase, cursor, w, index) then return false end
-		elseif fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" or fd.s == "text" then
+		elseif fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" then
 			-- a pointee and a blob are nodes, not this extent
 		elseif field_has_extent(fd) then
 			if not carve_field(fd, v, x, recordBase + fl.at, extentBase, cursor, w, index) then return false end
@@ -773,7 +813,8 @@ end
 write_value = function(e: any, x: any, at: number, w: any, index: any, holder: any): boolean
 	local s = e.s
 	if s == "ptr" then return write_ref(e, x, at, w, index) end
-	if s == "sblob" or s == "bblob" or s == "text" then return write_ref(e, x, at, w, index) end
+	if s == "sblob" or s == "bblob" then return write_ref(e, x, at, w, index) end
+	if s == "text" then return true end
 	if s == "bool" then put(w, at, x and 1 or 0, 1); return true end
 	if s == "int" then
 		local kw = int_width(e)
@@ -801,7 +842,7 @@ write_value = function(e: any, x: any, at: number, w: any, index: any, holder: a
 		else
 			put_copy(w, at, b, nbytes)
 		end
-		if e.slot ~= nil and holder ~= nil then put(w, piece_at(e, 2, at), count, 4) end
+		put(w, piece_at(e, 2, at), count, 4)
 		return true
 	end
 	if s == "tab" then return write_record(St.lookup(e.t), x, at, w, index) end
@@ -825,7 +866,7 @@ write_record = function(d: any, v: any, base: number, w: any, index: any): boole
 			put(w, base + fl.pieces[#fl.pieces].at, present and 1 or 0, 1)
 		end
 		local ok = true
-		if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then
+		if fd.s == "map" or fd.s == "text" or (fd.s == "arr" and fd.array == "list") then
 			-- the extent writer fills its slot
 		else
 			ok = write_value(fd, x, at, w, index, v)
@@ -849,6 +890,11 @@ local function layout(d: any, root: any): any
 		local key = e.d ~= nil and e.v or e.blob
 		if key ~= nil then index[key] = e end
 	end
+	local ralign = FLOOR
+	for _, td in St.allTables() do
+		local tl = record_layout(td)
+		ralign = max(ralign, max(tl.align, record_extent_align(td, {})))
+	end
 	local offset, align = 0, FLOOR
 	for _, e in entries do
 		if e.d ~= nil then
@@ -856,13 +902,14 @@ local function layout(d: any, root: any): any
 			local extentAlign = record_extent_align(e.d, {})
 			local nodeAlign = max(l.align, extentAlign)
 			align = max(align, nodeAlign)
+			ralign = max(ralign, nodeAlign)
 			offset = align_up(offset, nodeAlign)
 			e.offset = offset
 			local record = l.size
 			local extent = 0
 			if record_has_extent(e.d) then
 				record = align_up(record, max(FLOOR, extentAlign))
-				local cursor = { at = 0 }
+				local cursor = { at = 0, regionAlign = ralign }
 				if not carve_record(e.d, e.v, 0, 0, cursor, nil, index) then return nil end
 				extent = cursor.at
 			end
@@ -878,7 +925,7 @@ local function layout(d: any, root: any): any
 		end
 	end
 	offset = align_up(offset, align)
-	return { entries = entries, index = index, align = align, data = offset, total = HEADER_BYTES + offset + #entries * NODE_TABLE_ENTRY }
+	return { entries = entries, index = index, align = align, regionAlign = ralign, data = offset, total = HEADER_BYTES + offset + #entries * NODE_TABLE_ENTRY }
 end
 
 local function order_of(order: any): boolean?
@@ -899,7 +946,7 @@ local function refused_layout(d: any, root: any): any
 		if e.d ~= nil then
 			if not write_record(e.d, e.v, HEADER_BYTES + e.offset, w, l.index) then return nil end
 			if e.extent > 0 then
-				local cursor = { at = 0 }
+				local cursor = { at = 0, regionAlign = l.regionAlign }
 				local base = HEADER_BYTES + e.offset
 				if not carve_record(e.d, e.v, base, base + e.record, cursor, w, l.index) then return nil end
 				if cursor.at ~= e.extent then return nil end
@@ -937,7 +984,7 @@ function C.Cook(root: any, value: any, order: any): (buffer?, string?)
 		if e.d ~= nil then
 			if not write_record(e.d, e.v, base, w, l.index) then return nil, nil end
 			if e.extent > 0 then
-				local cursor = { at = 0 }
+				local cursor = { at = 0, regionAlign = l.regionAlign }
 				if not carve_record(e.d, e.v, base, base + e.record, cursor, w, l.index) then return nil, nil end
 				if cursor.at ~= e.extent then return nil, nil end
 			end

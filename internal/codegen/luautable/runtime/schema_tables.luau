@@ -69,6 +69,7 @@ export type TableDescriptor = {
 	fixed: boolean,
 	variable: boolean,
 	jsonArray: boolean?, -- docs/SPEC-TABLES.md §16.10
+	textElem: boolean?, -- docs/SPEC-TABLES.md §2.13
 	integrity: string?,
 	place: { tables: { string }, str: boolean, bytes: boolean },
 	fields: { FieldDescriptor },
@@ -169,6 +170,14 @@ function S.lookupTypeId(id: integer): any
 		if d.fields ~= nil and d.id == id then return d end
 	end
 	return nil
+end
+
+function S.allTables(): { TableDescriptor }
+	local out: { TableDescriptor } = {}
+	for _, d in registry do
+		if d.fields ~= nil and d.id ~= 0i then out[#out + 1] = d end
+	end
+	return out
 end
 
 -- THE KEYED ACCESSOR (docs/PORTING.md M5; docs/SPEC-TABLES.md §2.4). An

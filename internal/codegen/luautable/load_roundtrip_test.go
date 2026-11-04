@@ -265,7 +265,45 @@ local function node_fields(desc, v)
 	return table.concat(parts, ",")
 end
 
+local function civil_from_days(z)
+	z = z + 719468
+	local era = (z >= 0 and z or z - 146096) // 146097
+	local doe = z - era * 146097
+	local yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+	local y = yoe + era * 400
+	local doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+	local mp = (5 * doy + 2) // 153
+	local d = doy - (153 * mp + 2) // 5 + 1
+	local m = mp < 10 and mp + 3 or mp - 9
+	if m <= 2 then y = y + 1 end
+	return y, m, d
+end
+
+local function timestamp_text(ns)
+	local v = if typeof(ns) == "integer" then ns else integer.create(ns or 0)
+	local day = 86400000000000i
+	local days = integer.div(v, day)
+	local rem = integer.rem(v, day)
+	if integer.lt(rem, 0i) then
+		days = integer.sub(days, 1i)
+		rem = integer.add(rem, day)
+	end
+	local rest = integer.tonumber(rem)
+	local sec = rest // 1000000000
+	local frac = rest % 1000000000
+	local y, m, d = civil_from_days(integer.tonumber(days))
+	local s = string.format("%04d-%02d-%02dT%02d:%02d:%02d", y, m, d, sec // 3600, (sec % 3600) // 60, sec % 60)
+	if frac ~= 0 then
+		s = s .. "." .. string.format("%09d", frac):gsub("0+$", "")
+	end
+	return s .. "Z"
+end
+
 encode_obj = function(desc, v)
+	if desc.jsonArray then
+		local fd = desc.fields[1]
+		return encode_value(fd, v[fd.slot], v)
+	end
 	return "{" .. node_fields(desc, v) .. "}"
 end
 
@@ -302,6 +340,7 @@ encode_value = function(fd, val, owner)
 	local s = fd.s
 	if s == "bool" then return tostring(val == true) end
 	if s == "int" then
+		if fd.timestamp then return q(timestamp_text(val or 0i)) end
 		if flagsOf[fd] ~= nil then return flags_text(flagsOf[fd], val) end
 		if fd.fbits ~= nil and fd.fbits > 0 then return fixed_text(val or 0, fd.signed, fd.fbits) end
 		return int_text(val or 0, fd.signed)
@@ -317,7 +356,16 @@ encode_value = function(fd, val, owner)
 		return q(b64(str_value(fd, val, owner)))
 	end
 	if s == "enum" then return q(enum_name(fd, val)) end
-	if s == "tab" then return encode_obj(S.lookup(fd.t), val) end
+	if s == "tab" then
+		local d = S.lookup(fd.t)
+		if d.textElem then
+			local vf = d.fields[1]
+			local rec = val or d.new()
+			if vf.present ~= nil and not rec[vf.present] then return "null" end
+			return q(str_value(vf, rec[vf.slot], rec))
+		end
+		return encode_obj(d, val)
+	end
 	if s == "union" then
 		if val == nil or val.Type == nil or val.Type == 0 then return "{}" end
 		local un = S.lookup(fd.t)

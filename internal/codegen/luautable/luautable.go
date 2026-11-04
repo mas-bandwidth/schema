@@ -695,6 +695,9 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string, wire bool) {
 	if t.JsonArray {
 		g.Pf("\tjsonArray = true,\n")
 	}
+	if t.TextElem {
+		g.Pf("\ttextElem = true,\n")
+	}
 	// the table line's `integrity` key (docs/SPEC-TABLES.md §2.14): a
 	// declaring table's file carries the trailer, and schema_refusal.luau's strict
 	// read checks it before any field, by this entry
@@ -931,6 +934,9 @@ func elemDesc(g *luau.Gen, f *ir.Field, wire bool) string {
 	// The optional spelling keeps the record, whose present companion frames
 	// the element under kind 13, so only the plain one is rewritten here.
 	if ir.TextListPlain(f) {
+		if ir.TextListValue(f).Type.TextUnbounded() {
+			return "{ s = \"text\" }"
+		}
 		return fmt.Sprintf("{ s = \"str\", bound = %d }", ir.TextListValue(f).Type.Size)
 	}
 	e := *f

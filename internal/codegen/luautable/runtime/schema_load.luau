@@ -1760,6 +1760,14 @@ end
 -- trailer first, as the strict read does; a trailer that does not match is the
 -- whole-file damage named integrity_mismatch.
 function L.loadTolerant(root: string, bytes: buffer, report: any): any
+	if buffer.len(bytes) < 1 then
+		report.malformed = true
+		return nil
+	end
+	if buffer.readu8(bytes, 0) ~= 1 then
+		report.refused = (report.refused or 0) + 1
+		return nil
+	end
 	local d = S.lookup(root)
 	if d.integrity ~= nil and d.integrity ~= "" then
 		local body = integrityOpen(bytes)

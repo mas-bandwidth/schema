@@ -1192,6 +1192,14 @@ local function walk_text_bytes(T: any, e: any, x: any): number
   return 0
 end
 
+local function text_elem_vf(T: any, fd: any): any
+  if fd.elem ~= nil and fd.elem.shape == "table" then
+    local td = T.Tables[fd.elem.target]
+    if td ~= nil and td.textElem then return td.fields[1] end
+  end
+  return nil
+end
+
 read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '[' then inp.bad = true; return false end
   inp.p = inp.p + 1
@@ -1201,7 +1209,8 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
   end
   local bound = fd.list and 0x7fffffff or fd.bound
   local placed = 0
-  local eshape = shape_of(T, fd.elem)
+  local tvf = text_elem_vf(T, fd)
+  local eshape = if tvf ~= nil then 's' else shape_of(T, fd.elem)
   -- A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the read keeps the longest
   -- prefix whose bytes fit, drops the element that would cross it and every
   -- later one, counted clamped once; an element past [..N] is counted as well
@@ -1224,11 +1233,23 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
       literal(inp, "null")
       placed = placed + 1
       out[placed] = false
+    elseif tvf ~= nil and tvf.optional and vs == 'z' then
+      literal(inp, "null")
+      placed = placed + 1
+      out[placed] = zero_elem(T, fd.elem)
     elseif vs ~= eshape then
       report.kindMismatch = report.kindMismatch + 1
       if not skip_value(inp, depth + 1, graph) then return false end
       placed = placed + 1
       out[placed] = zero_elem(T, fd.elem)
+    elseif tvf ~= nil then
+      placed = placed + 1
+      local rec = zero_elem(T, fd.elem)
+      out[placed] = rec
+      if not read_value(T, tvf, inp, rec, tvf.name, depth + 1, graph, report, true) then
+        return false
+      end
+      if tvf.optional then rec[tvf.name .. "_present"] = true end
     else
       placed = placed + 1
       if out[placed] == nil then out[placed] = zero_elem(T, fd.elem) end
@@ -1274,7 +1295,8 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     if c == nil then inp.bad = true; return false end
     -- a map key is text storage whatever its kind (§16.2, §16.3), and the
     -- key stored is the string's DECODED bytes, escapes included
-    local keytext, clamped, ok = scan_string(inp, MAX_KEY, true)
+    local keycap = if string_key and (kf.bound == nil or kf.bound < 0) then -1 else MAX_KEY
+    local keytext, clamped, ok = scan_string(inp, keycap, true)
     if not ok then return false end
     local kraw = keytext :: string
     if peek(inp) ~= ':' then inp.bad = true; return false end
@@ -2417,14 +2439,34 @@ write_array = function(T: any, fd: any, val: any, depth: number, g: any, w: any)
     return false
   end
   local n = count_of(fd, val)
+  local total = fd.raw ~= nil and fd.raw.total or nil
+  if total ~= nil then
+    local spent = 0
+    for i = 1, n do
+      spent = spent + walk_text_bytes(T, fd.elem, val[i])
+      if spent > total then
+        refuse_reason = "clamped"
+        return false
+      end
+    end
+  end
   if n == 0 then raw(w, "[]"); return true end
+  local tvf = text_elem_vf(T, fd)
   put(w, '[')
   for i = 1, n do
     if i > 1 then put(w, ',') end
     line(w, depth + 1)
     local x = val[i]
     if x == nil then x = zero_elem(T, fd.elem) end
-    if not write_value(T, fd.elem, x, depth + 1, g, w, true) then return false end
+    if tvf ~= nil then
+      if tvf.optional and not x[tvf.name .. "_present"] then
+        raw(w, "null")
+      else
+        if not write_value(T, tvf, x[tvf.name], depth + 1, g, w, true) then return false end
+      end
+    else
+      if not write_value(T, fd.elem, x, depth + 1, g, w, true) then return false end
+    end
   end
   line(w, depth)
   put(w, ']')
@@ -2585,7 +2627,7 @@ local function core_to(T: any, name: string, v: any): string?
   if g == nil then return nil end
   local w = W()
   if not write_table(T, desc, v, 0, g, w) then return nil end
-  if not desc.jsonArray then w.parts[#w.parts + 1] = "\n" end
+  w.parts[#w.parts + 1] = "\n"
   return table.concat(w.parts)
 end
 
@@ -2626,7 +2668,7 @@ end
 adapt_table = function(desc: any): any
   local got = TCache[desc.name]
   if got ~= nil then return got end
-  local a = { name = desc.name, variable = desc.variable, jsonArray = desc.jsonArray, new = desc.new, raw = desc, fields = {} }
+  local a = { name = desc.name, variable = desc.variable, jsonArray = desc.jsonArray, textElem = desc.textElem, new = desc.new, raw = desc, fields = {} }
   TCache[desc.name] = a
   for _, fd in desc.fields do
     a.fields[#a.fields + 1] = adapt_field(fd, desc)
@@ -2791,7 +2833,8 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
     if fd.wide then
       return from_string(wide_bytes(x or {}), (#x or 0) * 2)
     end
-    return from_string(x or "", fd.bound and fd.bound >= 0 and fd.bound or #(x or ""))
+    local cap = if fd.raw ~= nil and fd.raw.slot ~= nil and fd.bound and fd.bound >= 0 then fd.bound else #(x or "")
+    return from_string(x or "", cap)
   elseif s == "wstring" then
     return from_string(wide_bytes(x or {}), (#x or 0) * 2)
   elseif s == "bytes" then return from_string(x or "", fd.bound)
@@ -3015,6 +3058,13 @@ to_lua = function(desc: any, v: any, A: any, memo: any): any
       elseif fd.raw.array == "list" then memo.count[held] = held.n or #held
       elseif fd.raw.array == "fixed" or fd.raw.array == "keyed" then memo.count[held] = fd.raw.bound or 0 end
     end
+    if held ~= nil and fd.raw.s == "arr" and type(v[luau_slot .. "Length"]) == "table" then
+      memo.len = memo.len or {}
+      local lens = v[luau_slot .. "Length"]
+      for i = 1, #held do
+        if held[i] ~= nil and lens[i] ~= nil then memo.len[held[i]] = lens[i] end
+      end
+    end
     if fd.optional then
       if v[fd.raw.present] then
         out[luau_slot] = conv_from_lua(fd, v[luau_slot], A, memo)
@@ -3031,7 +3081,7 @@ from_lua = function(desc: any, v: any, A: any, memo: any): any
   if v == nil then return nil end
   local got = memo.l2v and memo.l2v[v]
   if got ~= nil then return got end
-  local out: any = {}
+  local out: any = if desc.textElem then desc.new() else {}
   memo.l2v = memo.l2v or {}
   memo.l2v[v] = out
   memo.v2l = memo.v2l or {}

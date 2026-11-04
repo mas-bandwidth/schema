@@ -90,6 +90,7 @@ print(tostring(report.malformed) .. "|" .. report.reason .. "|" .. tostring(repo
 			if err != nil {
 				t.Fatal(err)
 			}
+			wantText = append(wantText, '\n')
 			wantWire, err := tablewire.Encode(model, inst)
 			if err != nil {
 				t.Fatal(err)
