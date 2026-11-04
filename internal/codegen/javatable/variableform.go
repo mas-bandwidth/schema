@@ -2278,8 +2278,8 @@ public final class TableJson {
 
     // esc writes one string as a JSON string, escaping the code points JSON
     // requires and passing every other code point through raw (§16.2). A
-    // control character becomes an escape; a lone surrogate is a replacement
-    // character (§16.3).
+    // control character becomes an escape; a lone surrogate is not text and
+    // refuses the write (invalid_value, §16.3, §16.14 W0), nothing replaced.
     public static void esc(StringBuilder b, String s) {
         b.append('"');
         for (int i = 0; i < s.length(); i++) {
@@ -2314,7 +2314,7 @@ public final class TableJson {
                                 || i + 1 >= s.length()
                                 || s.charAt(i + 1) < 0xdc00
                                 || s.charAt(i + 1) > 0xdfff) {
-                            b.append('\ufffd');
+                            throw new Refused("invalid_value: an unpaired surrogate is not text");
                         } else {
                             b.append(c).append(s.charAt(i + 1));
                             i++;
@@ -4179,6 +4179,8 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 	fmt.Fprintf(b, "    public static void writeJsonPointer(StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {\n")
 	b.WriteString("        if (child == null) { b.append(\"null\"); return; }\n")
+	b.WriteString("        // a null nests nothing: the cap counts table values (docs/SPEC-TABLES.md §16.14 W2)\n")
+	b.WriteString("        if (depth > TableJson.In.MAX_JSON_DEPTH) { throw new TableJson.Refused(\"a table value past the depth cap\"); }\n")
 	b.WriteString("        if (graph.useCount(child) <= 1) {\n")
 	fmt.Fprintf(b, "            jsonFields(b, graph, child, depth);\n")
 	b.WriteString("            return;\n")
