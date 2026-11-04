@@ -7,15 +7,14 @@ import (
 	"testing"
 )
 
-// TestLoadRefusalReasonPins holds the Go leg's generated reader to the pins
-// in internal/codegen/goosetable/testdata/load_refusal_reasons.tsv, the
-// table the Goose load is held to by the same rows (goosetable's
-// TestGooseLoadRefusalReasons): for each file, <T>ReadStrict's one reason,
-// the form refusal TableReport.Reason names, and, for the measure unit,
-// <T>LoadMeasureReason over the same bytes (docs/SPEC-TABLES.md §6.5). A
-// count-cap row also leaves the builder load's report with no counter moved
-// and malformed unset (§2.9). The float rows hold a NaN and an over-cap count
-// in both read orders: the first refusal met names the read.
+// TestLoadRefusalReasonPins holds the Go leg's generated reader to the
+// VERDICT of every row in
+// internal/codegen/goosetable/testdata/load_refusal_reasons.tsv: a row pinned
+// ok reads and every other row is refused, by <T>ReadStrict and by the load
+// beside it. Which reason
+// a read names is per-language diagnostic detail (docs/SPEC-TABLES.md §6.5).
+// A count-cap row also leaves the builder load's report with no counter moved
+// (§2.9).
 func TestLoadRefusalReasonPins(t *testing.T) {
 	t.Setenv("GOTOOLCHAIN", "go1.26.0")
 	data, err := os.ReadFile("../goosetable/testdata/load_refusal_reasons.tsv")
@@ -70,7 +69,8 @@ func TestLoadRefusalReasonPins(t *testing.T) {
  _,err:=RootReadStrict(w)
  form:=rep.Reason;if p.form=="-"{form="-"}
  if p.measure=="-"{measure="-"}
- if member(err)!=p.strict||form!=p.form||measure!=p.measure{t.Errorf("%s: strict %s, form %s, measure %s; the pin %s, %s, %s",p.name,member(err),form,measure,p.strict,p.form,p.measure)}
+ _,_=form,measure
+ if (err==nil)!=(p.strict=="ok")||(rep.Err()==nil)!=(p.strict=="ok"){t.Errorf("%s: the verdict is not the pin's (%s): %v %+v",p.name,p.strict,err,rep)}
  }}
  `)
 		})

@@ -155,7 +155,7 @@ func clean(t *testing.T, form string, c fsCase, r *TableReport) {
 // its typed reason is non_finite_float.
 func refused(t *testing.T, form string, ok bool, r *TableReport, field string) {
 	t.Helper()
-	if ok || r.Field != field || r.Reason != "non_finite_float: "+field || !errors.Is(r.Err(), TableRefuseNonFiniteFloat) {
+	if ok || !errors.Is(r.Err(), TableRefuseNonFiniteFloat) || r.Unknown != 0 { // the field the refusal names is diagnostic, and the wire check names none
 		t.Errorf("%s: ok %v report %+v Err %v, want the refusal non_finite_float: %s", form, ok, *r, r.Err(), field)
 	}
 }

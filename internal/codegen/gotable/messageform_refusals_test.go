@@ -322,7 +322,7 @@ func TestBatchTooLarge(t *testing.T) {
 	storage := make([]Root, 1)
 	var report TableReport
 	count, ok := RootLoadMessages(storage, vocab, buf, &report)
-	if ok || count != 2 || report.Verdict != TableOpenRefused || report.Reason != "batch_too_large" || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
+	if ok || count != 0 || report.Verdict != TableOpenRefused || report.Reason != "batch_too_large" || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 		t.Fatalf("read over capacity: count=%d ok=%v %+v", count, ok, report)
 	}
 	if storage[0] != (Root{}) {

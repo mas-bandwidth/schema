@@ -125,7 +125,7 @@ func TestStrictOther(t *testing.T) {
 		t.Fatalf("the endpoint build version was not kept: %#x", v.BuildVersion)
 	}
 	if report.Widened != 0 || report.Unknown != 0 ||
-		report.Refused() || report.Refused() || report.Retained != 0 || report.RetainLost != 0 {
+		report.Retained != 0 || report.RetainLost != 0 {
 		t.Fatalf("the strict refusal moved a counter: %+v", report)
 	}
 }

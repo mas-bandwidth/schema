@@ -104,7 +104,7 @@ func TestIntegrityFixed(t *testing.T) {
 				if r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: want}) { t.Errorf("form byte ^ 0x%02x: %+v, want %s", x, r, want) }
 				continue
 			}
-			if r != (TableReport{Verdict: TableOpenDamaged, Refusal: TableRefuseWireDamaged, Reason: "integrity_mismatch"}) { t.Errorf("byte %d ^ 0x%02x: report %+v, want integrity_mismatch", i, x, r) }
+			if r != (TableReport{Verdict: TableOpenDamaged, Refusal: TableRefuseIntegrityMismatch, Reason: "integrity_mismatch"}) { t.Errorf("byte %d ^ 0x%02x: report %+v, want integrity_mismatch", i, x, r) }
 			if !errors.Is(r.Err(), TableRefuseIntegrityMismatch) { t.Errorf("byte %d ^ 0x%02x: Err() = %v", i, x, r.Err()) }
 		}
 	}
@@ -239,7 +239,7 @@ func TestIntegrityFixedVariableForm(t *testing.T) {
 				}
 				continue
 			}
-			if rr != (TableReport{Verdict: TableOpenDamaged, Refusal: TableRefuseWireDamaged, Reason: "integrity_mismatch"}) {
+			if rr != (TableReport{Verdict: TableOpenDamaged, Refusal: TableRefuseIntegrityMismatch, Reason: "integrity_mismatch"}) {
 				t.Fatalf("byte %d ^ 0x%02x: report %+v, want integrity_mismatch", i, x, rr)
 			}
 			if _, err := FixedRowReadStrict(bad); !errors.Is(err, TableRefuseIntegrityMismatch) {

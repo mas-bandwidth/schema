@@ -395,30 +395,10 @@ func TestOwnBuildVersion(t *testing.T) {
 	t.Run("widened_and_kind_mismatch", func(t *testing.T) {
 		t.Parallel()
 		runMessagePair(t, widenedWriter, widenedReader, "\tw.A = 1\n\tw.B = -5\n\tw.C = 9", `
-	// the plain LoadMessages is strict (docs/SPEC-TABLES.md §6.5) and refuses
-	// the kind mismatch; the tolerant read is the one that counts it
-	if ok || report.Err() != error(new.TableRefuseKindMismatch) {
-		t.Fatalf("the plain read took a kind-mismatched batch: %+v", report)
-	}
-	report = new.TableReport{}
-	count, ok = new.RootLoadMessages(decoded, &vocab, out, &report)
-	if !ok {
-		t.Fatalf("a widening writer's batch was refused: %+v", report)
-	}
-	if report.Widened != 1 {
-		t.Fatalf("the int16-to-int32 widening did not count once: %+v", report)
-	}
-	if decoded[0].B != -5 {
-		t.Fatalf("the widened value is not exact: %+v", decoded[0])
-	}
-	if !report.Refused() {
-		t.Fatalf("the int32-to-float32 change did not count as kind_mismatch: %+v", report)
-	}
-	if decoded[0].C != 0 {
-		t.Fatalf("a kind-mismatched field was misdecoded rather than defaulted: %+v", decoded[0])
-	}
-	if report.Unknown != 0 || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
-		t.Fatalf("a widening and a mismatch moved another counter: %+v", report)
+	// the read refuses the kind mismatch whole (docs/SPEC-TABLES.md §3.3,
+	// §6.5): a count of 0 and nothing landed
+	if ok || count != 0 || report.Err() != error(new.TableRefuseKindMismatch) || decoded[0].B != 0 {
+		t.Fatalf("the read took a kind-mismatched batch: count=%d %+v %+v", count, report, decoded[0])
 	}
 `+detectRecipe+`
 	if !detect() {

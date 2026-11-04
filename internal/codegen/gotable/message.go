@@ -281,7 +281,7 @@ func tableMessageBatchOpenSealed(v *TableVocabulary,data []byte,report *TableRep
  r:=TableMessageReader{Vocabulary:v,Report:*report};defer func(){*report=r.Report}()
  if len(data)==0{r.Report.Refuse(TableRefuseWireDamaged,"");return r,-1}
  if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1}
- if n:=len(data)-4; n<2 || binary.LittleEndian.Uint32(data[n:])!=tableMessageIntegritySum(data[:n]) {r.Report.Verdict=TableOpenDamaged;r.Report.Refuse(TableRefuseWireDamaged,"");r.Report.Reason="integrity_mismatch";return r,-1}
+ if n:=len(data)-4; n<2 || binary.LittleEndian.Uint32(data[n:])!=tableMessageIntegritySum(data[:n]) {r.Report.Verdict=TableOpenDamaged;r.Report.Refuse(TableRefuseIntegrityMismatch,"");return r,-1}
  data=data[:len(data)-4]
  if v==nil||!v.Announced {tableMessageRefuse(&r.Report,"no_vocabulary");return r,-1}
  if len(data)<2{r.Report.Refuse(TableRefuseWireDamaged,"");return r,-1}

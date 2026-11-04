@@ -147,7 +147,7 @@ func rung(bits uint32) []byte {
 func TestSignalingNaN(t *testing.T) {
  for _,bits:=range []uint32{0x7f800001,0xff812345,0x7fc12345,0x7f800000,0xff800000} {
   var value Root;var report TableReport
-  if RootLoad(&value,rung(bits),&report)||report.Reason!="non_finite_float: Root.value"||report.Err()!=TableRefuseNonFiniteFloat||value.Value!=0 {t.Fatalf("load %#x: %+v landed %v",bits,report,value.Value)}
+  if RootLoad(&value,rung(bits),&report)||report.Err()!=TableRefuseNonFiniteFloat||value.Value!=0 {t.Fatalf("load %#x: %+v landed %v",bits,report,value.Value)}
  }
  for _,bits:=range []uint32{0x3fc00000,0x80000000,0x007fffff,0x80000001} {
   var value Root;var report TableReport

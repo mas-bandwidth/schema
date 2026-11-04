@@ -930,7 +930,7 @@ fixed table Host {
     tail int32 = 7
 }
 `, `package probe
-import ("testing"; "unsafe")
+import ("testing")
 
 // the record body, in declared order at declared widths: on, off, maybe's
 // present byte, maybe's value, four of many, then the tail's four

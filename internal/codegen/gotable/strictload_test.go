@@ -25,7 +25,7 @@ agree(t,[]byte{1},TableRefuseWireDamaged)
 agree(t,[]byte{2},TableRefuseUnknownForm)
 agree(t,[]byte{255},TableRefuseUnknownForm)
 agree(t,damaged(),TableRefuseWireDamaged)
-agree(t,malformed(),TableRefuseMalformed)
+agree(t,malformed(),TableRefuseWireDamaged)
 agree(t,onlyUnknown(),nil)
 if got,err:=RootReadStrict(onlyUnknown());err!=nil||got==nil||got.N!=1{t.Fatalf("unknown field %v %+v",err,got)}
 wide:=putFile(2,[]byte{3},false);got,err:=RootReadStrict(wide);if err!=nil||got==nil||got.N!=3{t.Fatalf("widened %v %+v",err,got)}

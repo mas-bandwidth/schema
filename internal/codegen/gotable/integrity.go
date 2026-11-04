@@ -17,7 +17,7 @@ var tableIntegrityTable = crc32.MakeTable(crc32.Castagnoli)
 func tableIntegrityOpen(wire []byte, report *TableReport) ([]byte, bool) {
  if len(wire) == 0 || wire[0] != 1 { return wire, true }
  if tableIntegrityHolds(wire) { return wire[:len(wire)-4], true }
- if report != nil { report.Verdict = TableOpenDamaged; report.Refuse(TableRefuseWireDamaged, ""); report.Reason = "integrity_mismatch" }
+ if report != nil { report.Verdict = TableOpenDamaged; report.Refuse(TableRefuseIntegrityMismatch, "") }
  return nil, false
 }
 

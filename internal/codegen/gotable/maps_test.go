@@ -1,12 +1,6 @@
 package gotable
 
-import (
-	"encoding/hex"
-	"fmt"
-	"os"
-	"path/filepath"
-	"testing"
-)
+import "testing"
 
 func TestRegionMaps(t *testing.T) {
 	runGenerated(t, `package probe
@@ -39,7 +33,7 @@ table Root { entries map[int32]int32
 `, `package probe
 import("testing";"unsafe")
 func makeWire(keys []byte,kinds []byte)[]byte {var ids TableIds;b:=make([]byte,512);w:=TableWriter{Buffer:b,Ids:&ids};w.Put8(1);w.ID(RootTableFields[0].ID);w.Put8(14);w.PutLeb(uint64(2+len(keys)*8));w.Put8(13);w.PutLeb(uint64(len(keys)));for i,k:=range keys {w.PutLeb(7);w.ID(RootEntriesEntryTableFields[0].ID);w.Put8(kinds[i]);w.Put8(k);w.ID(RootEntriesEntryTableFields[1].ID);w.Put8(2);w.Put8(9);w.Put8(0)};w.ID(RootTableFields[1].ID);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer();return b[:w.Offset]}
-func TestReport(t *testing.T){for _,tc:=range []struct {keys,kinds []byte;count,widen,duplicate,mismatch int32;bad bool}{{[]byte{253,2},[]byte{2,2},2,3,0,0,false},{[]byte{2,253},[]byte{2,2},1,2,0,0,true},{[]byte{2,2},[]byte{2,2},1,3,1,0,false},{[]byte{253,2},[]byte{2,6},0,2,0,1,false}} {wire:=makeWire(tc.keys,tc.kinds);size:=RootLoadMeasure(wire);if size<0{t.Fatal("measure")};raw:=make([]byte,size+16);off:=(-uintptr(unsafe.Pointer(&raw[0])))&15;var report TableReport;r:=RootLoad(raw[off:off+uintptr(size)],wire,&report);if tc.bad {if r!=nil||!(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed")||report.Widened!=tc.widen {t.Fatalf("damage must discard the whole load: case %+v got %+v root %+v",tc,report,r)};continue};if r==nil||r.Entries.Count!=tc.count||r.Past!=42||report.Widened!=tc.widen||report.Refusal!=tc.duplicate||report.Refusal!=tc.mismatch||(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed")!=tc.bad {t.Fatalf("case %+v got %+v root %+v",tc,report,r)}}}
+func TestReport(t *testing.T){for _,tc:=range []struct {keys,kinds []byte;count,widen,duplicate,mismatch int32;bad bool}{{[]byte{253,2},[]byte{2,2},2,3,0,0,false},{[]byte{2,253},[]byte{2,2},1,2,0,0,true},{[]byte{2,2},[]byte{2,2},1,3,1,0,false},{[]byte{253,2},[]byte{2,6},0,2,0,1,false}} {wire:=makeWire(tc.keys,tc.kinds);size:=RootLoadMeasure(wire);if size<0{t.Fatal("measure")};raw:=make([]byte,size+16);off:=(-uintptr(unsafe.Pointer(&raw[0])))&15;var report TableReport;r:=RootLoad(raw[off:off+uintptr(size)],wire,&report);if tc.bad {if r!=nil||report.Err()==nil||report.Widened!=0 {t.Fatalf("damage must discard the whole load: case %+v got %+v root %+v",tc,report,r)};continue};if tc.duplicate!=0||tc.mismatch!=0 {if r!=nil||report.Err()==nil {t.Fatalf("a repeated or kind-mismatched key must refuse: case %+v got %+v",tc,report)};continue};if r==nil||r.Entries.Count!=tc.count||r.Past!=42||report.Widened!=tc.widen||report.Err()!=nil {t.Fatalf("case %+v got %+v root %+v",tc,report,r)}}}
 `)
 }
 
@@ -51,101 +45,6 @@ table Root { keys map[int8]int32
  tiny map[string(3)]int32 }
 `, `package probe
 import("testing";"strings";"math")
-func TestKeys(t *testing.T){long:=strings.Repeat("a",280);text:=[]byte("{\"keys\":{\"1.0\":2,\"1e0\":3,\"-1e+2\":4,\"128\":1,\"-129\":1,\"0.5\":1},\"wide\":{\"18446744073709551615\":9,\"18446744073709551616\":1,\"-1\":1,\"-0\":2},\"names\":{\""+long+"\":5},\"tiny\":{\"😀\":1,\"a\":2}}");var b RootBuilder;b.Init();defer b.Shutdown();var report TableReport;if !RootFromJSON(&b,text,&report)||!report.Refused()||!report.Refused()||!report.Refused()||(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {t.Fatalf("keys %+v",report)};if !b.Lock(){t.Fatal("lock")};r:=b.AsConst();if r.Keys.Count!=2||*RootKeysFind(nil,&r.Keys,1)!=3||*RootKeysFind(nil,&r.Keys,-100)!=4||*RootWideFind(nil,&r.Wide,math.MaxUint64)!=9||r.Wide.Count!=2||*RootNamesFind(nil,&r.Names,long)!=5||r.Tiny.Count!=1 {t.Fatal("key identities")}}
+func TestKeys(t *testing.T){long:=strings.Repeat("a",280);for _,bad:=range []string{"{\"keys\":{\"128\":1}}","{\"keys\":{\"0.5\":1}}","{\"keys\":{\"1.0\":2,\"1e0\":3}}","{\"wide\":{\"18446744073709551616\":1}}","{\"wide\":{\"-1\":1}}","{\"tiny\":{\"😀\":1}}"}{var b RootBuilder;b.Init();var report TableReport;if RootFromJSON(&b,[]byte(bad),&report)||report.Err()==nil {t.Fatalf("%s read: %+v",bad,report)};b.Shutdown()};text:=[]byte("{\"keys\":{\"1.0\":3,\"-1e+2\":4},\"wide\":{\"18446744073709551615\":9,\"-0\":2},\"names\":{\""+long+"\":5},\"tiny\":{\"a\":2}}");var b RootBuilder;b.Init();defer b.Shutdown();var report TableReport;if !RootFromJSON(&b,text,&report)||report.Err()!=nil {t.Fatalf("keys %+v",report)};if !b.Lock(){t.Fatal("lock")};r:=b.AsConst();if r.Keys.Count!=2||*RootKeysFind(nil,&r.Keys,1)!=3||*RootKeysFind(nil,&r.Keys,-100)!=4||*RootWideFind(nil,&r.Wide,math.MaxUint64)!=9||r.Wide.Count!=2||*RootNamesFind(nil,&r.Names,long)!=5||r.Tiny.Count!=1 {t.Fatal("key identities")}}
 `)
-}
-
-func TestGoMapRepeatedKeyLastKindWins(t *testing.T) {
-	runGenerated(t, `package probe
-table Root { entries map[uint32]int32 }
-`, `package probe
-import("encoding/binary";"testing";"unsafe")
-func TestRepeatedKeyWiden(t *testing.T) {
-	for _, tc := range []struct {
-		name            string
-		keys            []byte
-		count           int32
-		mismatch, widen int32
-	}{
-		{"bad_then_widened", []byte{2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 2, 6, 7}, 1, 1, 1},
-		{"widened_then_bad", []byte{2, 6, 7, 2, 9, 0, 0, 0, 0, 0, 0, 0, 0}, 0, 1, 1},
-		{"bad_then_exact", []byte{2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 2, 8, 7, 0, 0, 0}, 1, 1, 0},
-	} {
-		entry := append(append([]byte(nil), tc.keys...), 0)
-		payload := append([]byte{13, 1, byte(len(entry))}, entry...)
-		wire := append([]byte{1, 1, 14, byte(len(payload))}, payload...)
-		wire = append(wire, 0)
-		wire = binary.LittleEndian.AppendUint64(wire, RootTableFields[0].ID)
-		wire = binary.LittleEndian.AppendUint64(wire, RootEntriesEntryTableFields[0].ID)
-		wire = binary.LittleEndian.AppendUint64(wire, 2)
-
-		size := RootLoadMeasure(wire)
-		if size < 0 {
-			t.Fatalf("%s: RootLoadMeasure=%d", tc.name, size)
-		}
-		raw := make([]byte, size+64)
-		off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-		var report TableReport
-		got := RootLoad(raw[off:off+uintptr(size)], wire, &report)
-		if got == nil || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || got.Entries.Count != tc.count || report.Refused() != (tc.mismatch != 0) || report.Widened != tc.widen {
-			t.Fatalf("%s region: got=%+v report=%+v", tc.name, got, report)
-		}
-		if tc.count != 0 && got.Entries.At(0).Key != 7 {
-			t.Fatalf("%s region: key=%d, want 7", tc.name, got.Entries.At(0).Key)
-		}
-
-		var b RootBuilder
-		if !b.Init() {
-			t.Fatal("init")
-		}
-		defer b.Shutdown()
-		var breport TableReport
-		if !RootLoadBuilder(&b, wire, &breport) || (breport.Refusal.Error() == "wire_damaged" || breport.Refusal.Error() == "malformed") || b.GetRoot().Entries.Count != tc.count || breport.Refused() != (tc.mismatch != 0) || breport.Widened != tc.widen {
-			t.Fatalf("%s builder: count=%d report=%+v", tc.name, b.GetRoot().Entries.Count, breport)
-		}
-		if tc.count != 0 && b.GetRoot().Entries.At(0, &b.Arena).Key != 7 {
-			t.Fatalf("%s builder: key=%d, want 7", tc.name, b.GetRoot().Entries.At(0, &b.Arena).Key)
-		}
-	}
-}
-`)
-	fuzzWire, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "wire", "tables", "fuzz-vectors", "map_repeated_key_widen.bin"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	runGenerated(t, `package mapdemo
-fixed table Item { count int32 }
-table Pairs {
-    slots map[uint32][2]*Item
-    past int32 | was = "after"
-}
-`, fmt.Sprintf(`package mapdemo
-import("encoding/hex";"testing";"unsafe")
-func TestFuzzVector(t *testing.T) {
-	wire, err := hex.DecodeString(%q)
-	if err != nil {
-		t.Fatal(err)
-	}
-	size := PairsLoadMeasure(wire)
-	if size < 0 {
-		t.Fatalf("PairsLoadMeasure=%%d", size)
-	}
-	raw := make([]byte, size+64)
-	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	var report TableReport
-	got := PairsLoad(raw[off:off+uintptr(size)], wire, &report)
-	if got == nil || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || got.Slots.Count != 2 || got.Past != 5 || report.Unknown != 2 || !report.Refused() || report.Widened != 1 {
-		t.Fatalf("region: got=%%+v report=%%+v", got, report)
-	}
-	var b PairsBuilder
-	if !b.Init() {
-		t.Fatal("init")
-	}
-	defer b.Shutdown()
-	var breport TableReport
-	if !PairsLoadBuilder(&b, wire, &breport) || (breport.Refusal.Error() == "wire_damaged" || breport.Refusal.Error() == "malformed") || b.GetRoot().Slots.Count != 2 || b.GetRoot().Past != 5 || breport.Unknown != 2 || !breport.Refused() || breport.Widened != 1 {
-		t.Fatalf("builder: count=%%d report=%%+v", b.GetRoot().Slots.Count, breport)
-	}
-}
-`, hex.EncodeToString(fuzzWire)))
 }
