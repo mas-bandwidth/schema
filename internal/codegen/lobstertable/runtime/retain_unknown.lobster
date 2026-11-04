@@ -317,9 +317,14 @@ class RetainCaptureImpl : RetainCapture
 // exactly what load reads and reports exactly what load reports, and beside
 // that keeps the fields this build cannot name in the caller's Retain.
 def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> Record?:
+    read_reset(report)
     retain.used = 0
     retain.ids = []
     retain.holders = []
+    retain.known = []
+    if table_of(root).fixed:
+        read_refuse(report, "fixed_class_no_retention")
+        return nil
     retain.known = known_ids()
     let mark = length(retain_captures)
     register_retain_capture(RetainCaptureImpl { retain: retain, report: report })
@@ -508,6 +513,10 @@ class RetainTailImpl : RetainTail
 // §6.6): the save walk reaches every body it writes, and the report accumulates
 // what the load could not keep and what the save could not place.
 def save_retain(rec:Record, retain:Retain, report:LoadReport) -> string:
+    if rec.d.fixed:
+        read_reset(report)
+        read_refuse(report, "fixed_class_no_retention")
+        return ""
     if length(retain.known) == 0:
         retain.known = known_ids()
     retain.ids = []

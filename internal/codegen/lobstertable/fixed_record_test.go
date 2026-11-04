@@ -185,8 +185,11 @@ if sealed_rec:
 else: print("integrity false " + report.reason)
 let damaged = write_int8_le(copy(sealed_wire), length(sealed_wire) - 1, sealed_wire[length(sealed_wire) - 1] ^ 1)
 print("crc " + string(not schema_rt.load("Sealed", damaged, report)))
-let retained = schema_rt.load_retain("Row", wire, schema_rt.Retain {}, report)
-print("retain " + string(retained != nil))
+let retention = schema_rt.Retain { used: 17, ids: [7], known: [9] }
+let retained = schema_rt.load_retain("Row", wire, retention, report)
+print("retain " + string(retained == nil and report.refused and retention.used == 0 and length(retention.ids) == 0 and length(retention.known) == 0))
+let retained_wire = schema_rt.save_retain(authored, retention, report)
+print("retain_save " + string(retained_wire == "" and report.refused))
 let huge = schema_rt.new_record(bridge.HugeDescriptor)
 let huge_wire, huge_why = schema_rt.save_reasoned(huge)
 print("unsupported " + string(huge_wire == "" and huge_why != ""))
@@ -196,7 +199,7 @@ let variable_back = schema_rt.load("Variable", variable_wire, report)
 print("variable " + string(variable_why == "" and variable_wire[0] == 1 and variable_back != nil))
 `
 	out, _ := lobsterEvolutionRun(t, files, main, map[string][]byte{"authored.json": []byte(`{"flag":true,"small":-4}`)})
-	want := "binary true\njson true\ninvalid true\nauthored true\nmalformed true\nempty true\nbatch true\nprevious true\nintegrity true\ncrc true\nretain true\nunsupported true\nvariable true"
+	want := "binary true\njson true\ninvalid true\nauthored true\nmalformed true\nempty true\nbatch true\nprevious true\nintegrity true\ncrc true\nretain true\nretain_save true\nunsupported true\nvariable true"
 	if strings.TrimSpace(out) != want {
 		t.Fatalf("fixed Record bridge:\n%s\nwant:\n%s", out, want)
 	}
