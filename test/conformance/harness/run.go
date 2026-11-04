@@ -235,9 +235,23 @@ func deriveManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "cook %s %s %s %s\n", c.Case, c.Unit, c.Root, repoRelative(c.File))
 	}
 	for _, cw := range m.CookWrites {
-		// the instance is the whole line a driver needs: the two cooked files
-		// the tool wrote are the ANSWER, and an answer never reaches a driver
-		fmt.Fprintf(&b, "cook-write %s\n", cw.Instance)
+		// Construction input travels; the two golden cook files never do.
+		instance, err := m.LookupInstance(cw.Instance)
+		if err != nil {
+			return err
+		}
+		input := cw.Input
+		if input == "" && !instance.NoText {
+			input = instance.JSON
+		}
+		if input == "" {
+			input = "-"
+		}
+		source, alias := "-", "-"
+		if cw.Share != "" {
+			source, alias, _ = strings.Cut(cw.Share, ":")
+		}
+		fmt.Fprintf(&b, "cook-write %s %s %s %s\n", cw.Instance, input, source, alias)
 	}
 	for _, bl := range m.Blocks {
 		fmt.Fprintf(&b, "block %s %s %s\n", bl.Name, bl.Unit, bl.File)
@@ -288,27 +302,19 @@ type expectation struct {
 // so a run prints them rather than skipping the row in silence.
 func hostileExpectations(m *Manifest, lang string) ([]expectation, []string) {
 	out := make([]expectation, 0, len(m.Hostiles))
-	var exemptions []string
 	for _, h := range m.Hostiles {
 		out = append(out, hostileExpectation(h, lang))
-		if !h.Carries(lang) && h.Uncarried != "" {
-			exemptions = append(exemptions, fmt.Sprintf("%s / json-hostile / %s: the row is carried by %s; %s keeps %s (docs/SPEC-TABLES.md §16.3)",
-				lang, h.Name, strings.Join(h.CarriedBy, ","), lang, h.Uncarried))
-		}
 	}
-	return out, exemptions
+	return out, nil
 }
 
 // hostileExpectation is one hostile row's answer for lang: the verdict it
 // owes, then the oracle's value when that verdict is the standard's read. A
 // port on the row's uncarried verdict is held to that verdict line alone.
 func hostileExpectation(h Hostile, lang string) expectation {
-	verdict := h.VerdictFor(lang)
+	verdict := h.Verdict()
 	e := expectation{name: h.Name, want: []byte(verdict + "\n")}
-	switch {
-	case verdict != h.Verdict():
-		e.verdictOnly = true
-	case !h.Refused:
+	if verdict == "read" {
 		e.value = h.Value
 	}
 	return e
@@ -347,12 +353,11 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			out = append(out, expectation{name: msg.Name, want: want})
 		}
 	case "retain":
-		// RETAIN-UNKNOWN's COUNTERS (docs/SPEC-TABLES.md §6.6): the load's two
-		// beside the `unknown` retention never moves, and the save's own
-		// `retain_lost` behind them. The bytes are the other surface's, so each
-		// of the two is one shape.
+		// Retention preserves the complete known value independently of how
+		// much unknown data fits the caller's local store. Retain-save checks
+		// the canonical bytes that preserve unknown data.
 		for _, rc := range m.Retains {
-			out = append(out, expectation{name: rc.Name, want: []byte(rc.Load.String() + " " + strconv.Itoa(rc.SaveLost) + "\n")})
+			out = append(out, expectation{name: rc.Name, want: []byte("read\n"), value: rc.Value})
 		}
 	case "retain-save":
 		// AND THE BYTES THE PAIR WRITES BACK, which a counter cannot see: a
@@ -777,19 +782,33 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		r.mark(e.name, outcomeFail)
 		return
 	}
-	if e.damaged {
-		if !answersDamage(got) {
-			r.failures = append(r.failures, fmt.Sprintf("%s: damaged input owes the refusal, a report line saying malformed; got %q", e.name, firstLine(got)))
+	want := e.want
+	if surface == "report" || surface == "framing" || surface == "json-hostile" || surface == "retain" {
+		if e.damaged {
+			want = []byte("refused\n")
+		}
+		got, err = normalizeReadAnswer(got)
+		if err != nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: invalid read outcome: %v", e.name, err))
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		r.pass++
-		r.mark(e.name, outcomePass)
-		return
-	}
-	want := e.want
-	if e.verdictOnly {
-		got = append([]byte(firstLine(got)), '\n')
+		want, err = normalizeReadAnswer(want)
+		if err != nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: invalid expected outcome: %v", e.name, err))
+			r.mark(e.name, outcomeFail)
+			return
+		}
+		if string(want) == "refused\n" {
+			if !bytes.Equal(got, want) {
+				r.failures = append(r.failures, fmt.Sprintf("%s: read outcome differs: got %s, want refused", e.name, firstLine(got)))
+				r.mark(e.name, outcomeFail)
+				return
+			}
+			r.pass++
+			r.mark(e.name, outcomePass)
+			return
+		}
 	}
 	if e.value != "" {
 		text, err := os.ReadFile(e.value)
@@ -798,8 +817,9 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		want = append(append([]byte{}, e.want...), text...)
-		if _, err := os.Stat(answer + ".absent"); err == nil && bytes.Equal(got, e.want) {
+		verdict := append([]byte{}, want...)
+		want = append(want, text...)
+		if _, err := os.Stat(answer + ".absent"); err == nil && bytes.Equal(got, verdict) {
 			// THE VALUE IS ABSENT, THE VERDICT IS NOT: a leg with no text
 			// writer for this root answers the report line alone beside
 			// `<case>.absent`. The line is held as before; the value counts
@@ -810,7 +830,7 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		}
 		if firstLine(got) == firstLine(want) && !bytes.Equal(got, want) {
 			// the counters agree and the VALUE does not: say so, and where
-			r.failures = append(r.failures, describeValueDiff(e.name, e.want, text, got))
+			r.failures = append(r.failures, describeValueDiff(e.name, verdict, text, got))
 			r.mark(e.name, outcomeFail)
 			return
 		}
@@ -855,7 +875,22 @@ func lineAt(text []byte, at int) string {
 // the counters and any value after the line are undefined and are not read.
 func answersDamage(got []byte) bool {
 	c, err := ParseCounts(firstLine(got))
-	return err == nil && c.Malformed
+	return err == nil && (c.Malformed || c.Refused)
+}
+
+// normalizeReadAnswer accepts the one-bit protocol and the legacy report
+// transport. Repair counters never become a refusal: an old recovering reader
+// that says read still says read, and fails against a strict refusal.
+func normalizeReadAnswer(answer []byte) ([]byte, error) {
+	line, value, _ := bytes.Cut(answer, []byte{'\n'})
+	c, err := ParseCounts(string(line))
+	if err != nil {
+		return nil, err
+	}
+	if c.Refused || c.Malformed {
+		return []byte("refused\n"), nil
+	}
+	return append([]byte("read\n"), value...), nil
 }
 
 func firstLine(b []byte) string {
