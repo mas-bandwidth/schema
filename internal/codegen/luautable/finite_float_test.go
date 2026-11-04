@@ -241,9 +241,9 @@ do
 	local function saves(name: string, f: number, d: number)
 		local v: any = T.FixDescriptor.new()
 		v.F, v.D = f, d
-		local ok, err = pcall(F.save, T.FixDescriptor, fixed, { v })
+		local file, err = F.save(T.FixDescriptor, fixed, { v })
 		local e: any = err
-		row(name, if ok then "written" else tostring(e.name) .. " " .. tostring(e.field))
+		row(name, if file ~= nil then "written" else tostring(e.name) .. " " .. tostring(e.field))
 	end
 	saves("fixed/write/f", NAN32, 2.5)
 	saves("fixed/write/d", 1.5, SNAN64)
@@ -338,8 +338,8 @@ var finiteControls = []finiteControl{
 		[]string{"fixed/read/f", "fixed/read/d"}},
 	{"fixed-write", "schema_fixed.luau",
 		[][2]string{
-			{"local bits = doubleToF32(v)\n\t\t\tif bit32.band(bits, 0x7F800000) == 0x7F800000 then error(nonFinite(f), 0) end", "local bits = doubleToF32(v)"},
-			{"if v ~= v or v == math.huge or v == -math.huge then error(nonFinite(f), 0) end", "-- SABOTAGED"},
+			{"local bits = doubleToF32(v)\n\t\t\tif bit32.band(bits, 0x7F800000) == 0x7F800000 then return nonFinite(f) end", "local bits = doubleToF32(v)"},
+			{"if v ~= v or v == math.huge or v == -math.huge then return nonFinite(f) end", "-- SABOTAGED"},
 		},
 		[]string{"fixed/write/f", "fixed/write/d"}},
 	{"cook-read", "schema_cookread.luau",
