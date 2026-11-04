@@ -126,7 +126,7 @@ func decodeImplementationWitness(u *ir.Unit, inst Instance) (*tabletext.Model, *
 	value := model.New(root)
 	var report tabletext.Report
 	ok, err := tablewire.Decode(model, value, wire, &report)
-	if err != nil || !ok || !report.Silent() {
+	if err != nil || !ok || report.Refused {
 		return nil, nil, false, fmt.Errorf("positive wire does not decode cleanly: ok=%t report=%+v error=%v", ok, report, err)
 	}
 	again, err := encodeImplementationWitness(model, value)
@@ -145,7 +145,7 @@ func decodeImplementationWitness(u *ir.Unit, inst Instance) (*tabletext.Model, *
 	}
 	fromText := model.New(root)
 	report = tabletext.Report{}
-	if !model.Read(fromText, text, &report) || !report.Silent() {
+	if !model.Read(fromText, text, &report) || report.Refused {
 		return nil, nil, false, fmt.Errorf("positive JSON does not decode cleanly: %+v", report)
 	}
 	again, err = encodeImplementationWitness(model, fromText)
