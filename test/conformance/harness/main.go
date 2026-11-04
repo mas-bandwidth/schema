@@ -242,6 +242,10 @@ func main() {
 		if err := implementationReport(os.Stdout, m, *lang); err != nil {
 			fatalf("%v", err)
 		}
+	case "migrate-verdicts":
+		if err := migrateVerdicts(m, *manifest, *jsonDir); err != nil {
+			fatalf("%v", err)
+		}
 	case "migrate-fixed":
 		if err := migrateFixed(m, *manifest, *jsonDir); err != nil {
 			fatalf("%v", err)
