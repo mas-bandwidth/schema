@@ -668,13 +668,16 @@ void initArmAlign(ArmAlign value) {
 // writeArmAlign packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // armAlignMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeArmAlign(ArmAlign value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= armAlignMaxBytes);
   if (value.flag) {
-    if (value.sLength < 0 || value.sLength > 4) return -1;
+    if (value.sLength < 0 || value.sLength > 4) {
+      assert(false, 'write contract: storage');
+      return -1;
+    }
   }
   var scratch = 0;
   var scratchBits = 0;
@@ -902,13 +905,16 @@ void initArmArray(ArmArray value) {
 // writeArmArray packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // armArrayMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeArmArray(ArmArray value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= armArrayMaxBytes);
   if (value.flag) {
-    if (value.itemsCount < 0 || value.itemsCount > 3) return -1;
+    if (value.itemsCount < 0 || value.itemsCount > 3) {
+      assert(false, 'write contract: storage');
+      return -1;
+    }
   }
   var scratch = 0;
   var scratchBits = 0;
@@ -1576,12 +1582,15 @@ void initArrUneven(ArrUneven value) {
 // writeArrUneven packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // arrUnevenMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeArrUneven(ArrUneven value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= arrUnevenMaxBytes);
-  if (value.itemsCount < 0 || value.itemsCount > 3) return -1;
+  if (value.itemsCount < 0 || value.itemsCount > 3) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -1791,13 +1800,19 @@ void initRegainAfterAlign(RegainAfterAlign value) {
 // writeRegainAfterAlign packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // regainAfterAlignMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= regainAfterAlignMaxBytes);
-  if (value.itemsCount < 0 || value.itemsCount > 3) return -1;
-  if (value.sLength < 0 || value.sLength > 4) return -1;
+  if (value.itemsCount < 0 || value.itemsCount > 3) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
+  if (value.sLength < 0 || value.sLength > 4) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;

@@ -429,8 +429,8 @@ func (g *gen) emitWriteFunction(name, low string, items []ir.Item) {
 	g.bpf("// compiled out without --enable-asserts). The buffer behind view must hold\n")
 	g.bpf("// %sMaxBytes. Returns the bytes written.\n", low)
 	if fits != "" {
-		g.bpf("// A count or a length past its storage answers -1 in every build, before\n")
-		g.bpf("// the first byte is stored.\n")
+		g.bpf("// A count or a length past its storage is refused before the first byte\n")
+		g.bpf("// is stored: asserted, and -1 without --enable-asserts.\n")
 	}
 	g.emitSignature("int", "write"+name, []string{name + " value", "ByteData view"})
 	g.bpf("  assert(view.lengthInBytes %% 8 == 0);\n")
@@ -578,8 +578,9 @@ func holdsStorageField(f *ir.Field) bool {
 // emitFitsItems is the writer's EVERY-BUILD bound on the numbers that index
 // the value's own storage, inlined at the top of the write as the write
 // inlines its nested types: every count and length the write would walk
-// inside [0, N], or -1 before the first byte is stored rather than a
-// RangeError mid-write. Unlike the contract it is not an assert.
+// inside [0, N]. The checked build asserts it as a contract; the release
+// build answers -1 before the first byte is stored rather than throwing a
+// RangeError mid-write.
 func (g *gen) emitFitsItems(items []ir.Item, path, ind string) {
 	for _, item := range items {
 		switch item := item.(type) {
@@ -636,20 +637,19 @@ func (g *gen) emitFitsField(f *ir.Field, path, ind string) {
 	}
 }
 
-// emitFitsBound refuses expr outside [0, n], wrapped the way dart format
-// wraps the statement past eighty columns.
+// emitFitsBound refuses expr outside [0, n]: the contract's assert fires in
+// the checked build, as every other writer contract does, and the release
+// build answers -1. The condition wraps the way dart format wraps it past
+// eighty columns.
 func (g *gen) emitFitsBound(expr string, n int64, ind string) {
 	lo, hi := expr+" < 0", fmt.Sprintf("%s > %d", expr, n)
-	one := ind + "if (" + lo + " || " + hi + ") return -1;"
-	head := ind + "if (" + lo + " || " + hi + ")"
-	switch {
-	case len(one) <= 80:
+	if one := ind + "if (" + lo + " || " + hi + ") {"; len(one) <= 80 {
 		g.pf("%s\n", one)
-	case len(head) <= 80:
-		g.pf("%s\n%s  return -1;\n", head, ind)
-	default:
-		g.pf("%sif (%s ||\n%s    %s)\n%s  return -1;\n", ind, lo, ind, hi, ind)
+	} else {
+		g.pf("%sif (%s ||\n%s    %s) {\n", ind, lo, ind, hi)
 	}
+	g.pf("%s  assert(false, 'write contract: storage');\n", ind)
+	g.pf("%s  return -1;\n%s}\n", ind, ind)
 }
 
 func (g *gen) emitFitsScalar(f *ir.Field, name, ind string) {

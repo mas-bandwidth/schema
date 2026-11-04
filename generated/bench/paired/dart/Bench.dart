@@ -1774,15 +1774,27 @@ void initBenchMixed(BenchMixed value) {
 // writeBenchMixed packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // benchMixedMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeBenchMixed(BenchMixed value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= benchMixedMaxBytes);
-  if (value.entitiesCount < 0 || value.entitiesCount > 8) return -1;
-  if (value.statsCount < 0 || value.statsCount > 80) return -1;
-  if (value.playerNameLength < 0 || value.playerNameLength > 15) return -1;
-  if (value.payloadLength < 0 || value.payloadLength > 16) return -1;
+  if (value.entitiesCount < 0 || value.entitiesCount > 8) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
+  if (value.statsCount < 0 || value.statsCount > 80) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
+  if (value.playerNameLength < 0 || value.playerNameLength > 15) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
+  if (value.payloadLength < 0 || value.payloadLength > 16) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;

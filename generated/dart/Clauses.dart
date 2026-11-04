@@ -36,12 +36,15 @@ void initW13(W13 value) {
 // writeW13 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // w13MaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeW13(W13 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w13MaxBytes);
-  if (value.itemsCount < 0 || value.itemsCount > 12) return -1;
+  if (value.itemsCount < 0 || value.itemsCount > 12) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -200,12 +203,15 @@ void initW17(W17 value) {
 // writeW17 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // w17MaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeW17(W17 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w17MaxBytes);
-  if (value.itemsCount < 0 || value.itemsCount > 9) return -1;
+  if (value.itemsCount < 0 || value.itemsCount > 9) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -358,12 +364,15 @@ void initW26(W26 value) {
 // writeW26 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // w26MaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeW26(W26 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w26MaxBytes);
-  if (value.itemsCount < 0 || value.itemsCount > 6) return -1;
+  if (value.itemsCount < 0 || value.itemsCount > 6) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -510,12 +519,15 @@ void initW1(W1 value) {
 // writeW1 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // w1MaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeW1(W1 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w1MaxBytes);
-  if (value.itemsCount < 0 || value.itemsCount > 20) return -1;
+  if (value.itemsCount < 0 || value.itemsCount > 20) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -1013,12 +1025,15 @@ void initW52(W52 value) {
 // writeW52 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // w52MaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeW52(W52 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w52MaxBytes);
-  if (value.itemsCount < 0 || value.itemsCount > 3) return -1;
+  if (value.itemsCount < 0 || value.itemsCount > 3) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -1125,12 +1140,15 @@ void initW50(W50 value) {
 // writeW50 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // w50MaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeW50(W50 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= w50MaxBytes);
-  if (value.itemsCount < 0 || value.itemsCount > 3) return -1;
+  if (value.itemsCount < 0 || value.itemsCount > 3) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -1411,12 +1429,15 @@ void initArrTri3(ArrTri3 value) {
 // writeArrTri3 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // arrTri3MaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeArrTri3(ArrTri3 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= arrTri3MaxBytes);
-  if (value.itemsCount < 0 || value.itemsCount > 10) return -1;
+  if (value.itemsCount < 0 || value.itemsCount > 10) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -2264,13 +2285,19 @@ void initStrs(Strs value) {
 // writeStrs packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // strsMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeStrs(Strs value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= strsMaxBytes);
-  if (value.sLength < 0 || value.sLength > 8) return -1;
-  if (value.bLength < 0 || value.bLength > 8) return -1;
+  if (value.sLength < 0 || value.sLength > 8) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
+  if (value.bLength < 0 || value.bLength > 8) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -2541,12 +2568,15 @@ void initArrNested(ArrNested value) {
 // writeArrNested packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // arrNestedMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeArrNested(ArrNested value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= arrNestedMaxBytes);
-  if (value.itemsCount < 0 || value.itemsCount > 4) return -1;
+  if (value.itemsCount < 0 || value.itemsCount > 4) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;

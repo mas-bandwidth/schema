@@ -43,12 +43,15 @@ void initDefaultArm(DefaultArm value) {
 // writeDefaultArm packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // defaultArmMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeDefaultArm(DefaultArm value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= defaultArmMaxBytes);
-  if (value.entriesCount < 0 || value.entriesCount > 2) return -1;
+  if (value.entriesCount < 0 || value.entriesCount > 2) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -204,18 +207,22 @@ void zeroDefaultChoice(DefaultChoice value) {
 // writeDefaultChoice packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // defaultChoiceMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeDefaultChoice(DefaultChoice value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= defaultChoiceMaxBytes);
   switch (value.type) {
     case DefaultChoiceType.first:
-      if (value.first.entriesCount < 0 || value.first.entriesCount > 2)
+      if (value.first.entriesCount < 0 || value.first.entriesCount > 2) {
+        assert(false, 'write contract: storage');
         return -1;
+      }
     case DefaultChoiceType.second:
-      if (value.second.entriesCount < 0 || value.second.entriesCount > 2)
+      if (value.second.entriesCount < 0 || value.second.entriesCount > 2) {
+        assert(false, 'write contract: storage');
         return -1;
+      }
   }
   var scratch = 0;
   var scratchBits = 0;
@@ -465,20 +472,24 @@ void initDefaultChoicePacket(DefaultChoicePacket value) {
 // writeDefaultChoicePacket packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // defaultChoicePacketMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= defaultChoicePacketMaxBytes);
   switch (value.choice.type) {
     case DefaultChoiceType.first:
       if (value.choice.first.entriesCount < 0 ||
-          value.choice.first.entriesCount > 2)
+          value.choice.first.entriesCount > 2) {
+        assert(false, 'write contract: storage');
         return -1;
+      }
     case DefaultChoiceType.second:
       if (value.choice.second.entriesCount < 0 ||
-          value.choice.second.entriesCount > 2)
+          value.choice.second.entriesCount > 2) {
+        assert(false, 'write contract: storage');
         return -1;
+      }
   }
   var scratch = 0;
   var scratchBits = 0;
@@ -739,14 +750,19 @@ void initDefaultBulkArm(DefaultBulkArm value) {
 // writeDefaultBulkArm packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // defaultBulkArmMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeDefaultBulkArm(DefaultBulkArm value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= defaultBulkArmMaxBytes);
-  if (value.payload.entriesCount < 0 || value.payload.entriesCount > 2)
+  if (value.payload.entriesCount < 0 || value.payload.entriesCount > 2) {
+    assert(false, 'write contract: storage');
     return -1;
-  if (value.dataLength < 0 || value.dataLength > 2) return -1;
+  }
+  if (value.dataLength < 0 || value.dataLength > 2) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;
@@ -976,22 +992,32 @@ void zeroDefaultBulkChoice(DefaultBulkChoice value) {
 // writeDefaultBulkChoice packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // defaultBulkChoiceMaxBytes. Returns the bytes written.
-// A count or a length past its storage answers -1 in every build, before
-// the first byte is stored.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= defaultBulkChoiceMaxBytes);
   switch (value.type) {
     case DefaultBulkChoiceType.first:
       if (value.first.payload.entriesCount < 0 ||
-          value.first.payload.entriesCount > 2)
+          value.first.payload.entriesCount > 2) {
+        assert(false, 'write contract: storage');
         return -1;
-      if (value.first.dataLength < 0 || value.first.dataLength > 2) return -1;
+      }
+      if (value.first.dataLength < 0 || value.first.dataLength > 2) {
+        assert(false, 'write contract: storage');
+        return -1;
+      }
     case DefaultBulkChoiceType.second:
       if (value.second.payload.entriesCount < 0 ||
-          value.second.payload.entriesCount > 2)
+          value.second.payload.entriesCount > 2) {
+        assert(false, 'write contract: storage');
         return -1;
-      if (value.second.dataLength < 0 || value.second.dataLength > 2) return -1;
+      }
+      if (value.second.dataLength < 0 || value.second.dataLength > 2) {
+        assert(false, 'write contract: storage');
+        return -1;
+      }
   }
   var scratch = 0;
   var scratchBits = 0;
