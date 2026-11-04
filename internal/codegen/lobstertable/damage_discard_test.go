@@ -9,6 +9,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // Unlike the framing report surface, these probes inspect the API's returned
@@ -20,6 +22,13 @@ func lobsterDamageProbe(t *testing.T, patchFile, anchor, replacement string) []s
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The file control must reach the variable reader's discard boundary.
+	// The backend message fixtures below keep their declared fixed roots.
+	probe := filepath.Join(t.TempDir(), "FileProbe.schema")
+	if err := os.WriteFile(probe, []byte("package backenddemo\ntable FileProbe { marker uint32 = 7 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	paths = append(paths, probe)
 	g, err := generateLoadUnit(t, paths)
 	if err != nil {
 		t.Fatal(err)
@@ -43,10 +52,14 @@ func lobsterDamageProbe(t *testing.T, patchFile, anchor, replacement string) []s
 	}
 	program.WriteString(`import .load
 import .message
+let good = read_file("good")
 let bad = read_file("bad")
-assert bad
+assert good and bad
 let frep = schema_rt.LoadReport {}
-let rec = schema_rt.load("LoginRequest", bad, frep)
+let valid = schema_rt.load("FileProbe", good, frep)
+assert valid and schema_rt.slot_named(valid, "marker").cell.i == 23
+schema_rt.release(valid)
+let rec = schema_rt.load("FileProbe", bad, frep)
 print(if not rec: "file discarded" else: "file kept")
 schema_rt.release(rec)
 let ann = read_file("ann")
@@ -69,7 +82,16 @@ print(if not whole and delivered == 0 and length(final) == 0: "tail discarded" e
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	inputs := map[string][]byte{"bad": {1}}
+	model := tabletext.NewModel(g.u)
+	value := model.New(model.Lookup("FileProbe"))
+	if !model.Read(value, []byte(`{"marker":23}`), &tabletext.Report{}) {
+		t.Fatal("valid file control JSON refused")
+	}
+	good, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := map[string][]byte{"good": good, "bad": good[:len(good)-1]}
 	for name, file := range map[string]string{"ann": "backend_conn.bin", "wire": "backend_batch_damaged_second_message.bin", "tail": "login_full_message.bin"} {
 		data, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables", file))
 		if err != nil {
