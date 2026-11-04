@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -32,6 +33,34 @@ func TestSingleReadProtocolIgnoresDiagnosticsButKeepsValues(t *testing.T) {
 				t.Fatalf("pass=%d, failures=%v", result.pass, result.failures)
 			}
 		})
+	}
+}
+
+func TestDerivedFramingWithholdsAdmissionAndValueHints(t *testing.T) {
+	manifest := &Manifest{Framings: []FramingCase{
+		{Name: "accept", Unit: "u", Root: "R", Wire: "a.bin", Value: "secret-value.json"},
+		{Name: "reject", Unit: "u", Root: "R", Wire: "b.bin", Refused: true},
+	}}
+	path := filepath.Join(t.TempDir(), "manifest")
+	if err := deriveManifest(manifest, path); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := 0
+	for _, line := range strings.Split(string(body), "\n") {
+		if !strings.HasPrefix(line, "framing ") {
+			continue
+		}
+		rows++
+		if len(strings.Fields(line)) != 5 {
+			t.Fatalf("derived framing exposes an expected outcome: %s", line)
+		}
+	}
+	if rows != 2 || strings.Contains(string(body), "secret-value") {
+		t.Fatalf("derived framing input is incomplete or exposes an answer: %s", body)
 	}
 }
 
