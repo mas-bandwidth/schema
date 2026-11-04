@@ -1421,12 +1421,22 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		fmt.Fprintf(b, "%s    %s.clear();\n", in, field)
 		if f.IsTextList() && f.TextTotal > 0 {
 			fmt.Fprintf(b, "%s    let mut text_spent = 0u64; let mut text_total_hit = false;\n", in)
+			if f.Array != ir.ArrayList {
+				fmt.Fprintf(b, "%s    let mut text_seen = 0usize;\n", in)
+			}
 		}
 		fmt.Fprintf(b, "%s    loop {\n", in)
 		fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
 		elem := in + "        "
 		if f.IsTextList() && f.TextTotal > 0 {
-			fmt.Fprintf(b, "%sif text_total_hit { jr.skip_value(); } else {\n", elem)
+			if f.Array != ir.ArrayList {
+				// the total dropped this element; one past [..N] is counted as
+				// well, as the wire counts its count clamp beside the total (§2.13)
+				fmt.Fprintf(b, "%stext_seen += 1;\n", elem)
+				fmt.Fprintf(b, "%sif text_total_hit { if text_seen > %d { jr.clamped += 1; } jr.skip_value(); } else {\n", elem, f.ArrayBound)
+			} else {
+				fmt.Fprintf(b, "%sif text_total_hit { jr.skip_value(); } else {\n", elem)
+			}
 		}
 		if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
 			if f.ArrayBound == 1 {

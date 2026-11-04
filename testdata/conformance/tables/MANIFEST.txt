@@ -881,6 +881,12 @@ json-hostile timestamp-domain-min-by-offset      featurewitnesses Root testdata/
 json-hostile timestamp-domain-max-by-offset      featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-max-by-offset      0,0,0,0,0,false,read
 json-hostile timestamp-domain-past-min-by-offset featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-past-min-by-offset refused
 json-hostile timestamp-domain-past-max-by-offset featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-past-max-by-offset refused
+# A COUNT PAST [..N] AND THE TOTAL, BOTH COUNTED (§2.13): five labels on the
+# [..4] list, where "abc" carries the sum to 9 and the total drops it and the
+# tail. The fifth element is past the count bound as well, and that clamp is
+# counted beside the total's, so the text and the wire (report
+# text_total_and_count, the same five labels) both answer two clamps.
+json-hostile text-total-and-count         featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-and-count         0,0,0,2,0,false,read
 
 # THE SHARING CONSTRUCT'S OWN EDGES (docs/SPEC-TABLES.md §16.7), over the
 # pointered root: `&node` is a LABEL — with fields after it, it defines a node
@@ -1207,6 +1213,12 @@ instance list_nested listdemo Sheet testdata/wire/tables/list_nested.bin
 instance list_of_maps listdemo Army testdata/wire/tables/list_of_maps.bin
 instance list_migrates listdemo Unbounded testdata/wire/tables/list_migrates.bin
 report list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin
+
+# THE SAME FIVE LABELS ON THE WIRE (§2.13), written by a build whose labels are
+# [..5]string(8) with no total: the reader clamps the count at 4 and the total
+# drops "abc" and what follows, two clamps, as json-hostile
+# text-total-and-count reads the same value from the text.
+report text_total_and_count featurewitnesses Root testdata/wire/tables/text_total_and_count.bin
 
 # Map storage and ordering pins shared by the reference and every port.
 unit mapdemo tables/maps

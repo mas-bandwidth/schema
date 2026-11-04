@@ -316,8 +316,8 @@ print(report.reason)
 
 // TestLuaWireCountPastCapIsCountRefusal pins the hostile corpus's
 // wire-count-refusal row (docs/SPEC-TABLES.md §2.8, §2.9): the map count
-// 2^31 is past the int32 storage cap and names count_refusal, exactly as the
-// engine's builder-path CountRefusal does, while a count AT the cap (2^31-1)
+// 2^31 is past the int32 storage cap and names count_over_extent_cap, the
+// port's name for the engine's builder-path CountRefusal, while a count AT the cap (2^31-1)
 // is not that refusal.
 func TestLuaWireCountPastCapIsCountRefusal(t *testing.T) {
 	t.Parallel()
@@ -330,12 +330,12 @@ func TestLuaWireCountPastCapIsCountRefusal(t *testing.T) {
 	if got := corpus[5:10]; string(got) != "\x80\x80\x80\x80\x08" {
 		t.Fatalf("the corpus count bytes are % x, want 80 80 80 80 08", got)
 	}
-	if reason := wireCountRefusalReason(t, corpus); reason != "count_refusal" {
-		t.Errorf("wire-count-refusal: reason = %q, want count_refusal", reason)
+	if reason := wireCountRefusalReason(t, corpus); reason != "count_over_extent_cap" {
+		t.Errorf("wire-count-refusal: reason = %q, want count_over_extent_cap", reason)
 	}
 	atCap := append([]byte(nil), corpus...)
 	copy(atCap[5:10], []byte{0xff, 0xff, 0xff, 0xff, 0x07})
-	if reason := wireCountRefusalReason(t, atCap); reason == "count_refusal" {
-		t.Errorf("a count at the int32 cap answered count_refusal; it must decode normally")
+	if reason := wireCountRefusalReason(t, atCap); reason == "count_over_extent_cap" {
+		t.Errorf("a count at the int32 cap answered count_over_extent_cap; it must decode normally")
 	}
 }

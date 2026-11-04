@@ -2579,6 +2579,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         if ( depth + 1 > kTableJsonMaxDepth ) { in->bad = 1; return 0; }
         int64_t spent = 0;
         int full = 0;
+        int32_t seen = 0; /* the elements spelled once the total is reached */
         if ( f->kind == 13 || f->text_list != 0 )
         {
             int32_t i;
@@ -2600,6 +2601,9 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( full )
             {
+                /* the total dropped this element; one past [..N] is counted
+                   as well, as the wire counts its count clamp (§2.13) */
+                if ( ++seen > f->array_bound ) { in->report->clamped++; }
                 if ( !table_json_skip_value( in, depth + 2 ) ) { return 0; }
             }
             else if ( placed >= f->array_bound )
@@ -2622,6 +2626,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
                 if ( f->text_total > 0 && !schema_table_json_text_total_keep_( in, elem, f, &spent ) )
                 {
                     full = 1;
+                    seen = placed + 1;
                 }
                 else
                 {
