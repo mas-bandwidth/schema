@@ -124,6 +124,8 @@ class Record:
     // held marks a node record the root reaches, for the one pass at the end
     // of a variable load that unlinks the records it does not (RELEASE)
     held:bool = false
+    // walk is the cycle check's mark: 0 unvisited, 1 open, 2 closed
+    walk:int = 0
 
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
@@ -1585,6 +1587,7 @@ def map_key(body:Reader, k:FieldDescriptor, entry:Record) -> Value, bool, bool, 
         let kind = u8(scan)
         if id == map_key_id:
             if kind != want and widens(kind, want):
+                kind_bad = false
                 widened = true
                 if not scalar_at(scan, cell, k, want, kind):
                     return cell, false, kind_bad, widened
@@ -1977,7 +1980,57 @@ def decode_variable(st:LoadState, root:Record, hi:int):
     if not st.count_refused:
         st.report.stopped = not body_at(reader(st, 1, hi), root, false, false)
     if length(st.nodes) > 0:
+        // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph
+        // the load stored is checked once every index has resolved
+        if not st.report.malformed and load_cyclic(st, root):
+            st.report.malformed = true
         unlink_unreached(st, root)
+
+// load_cyclic reports whether the loaded graph holds a cycle. No writer
+// produces a cyclic wire, so a cycle anywhere refuses the load, one the root
+// never reaches included. The vertices are the root and every node record;
+// the edges are the pointers each one's by-value closure stores (rec_edges).
+// Each vertex is entered once: a pointer to an OPEN vertex is a cycle, and a
+// pointer to a CLOSED one is a legal share. The walk keeps its own stack, so
+// it is linear in vertices plus edges and a chain costs no stack.
+def load_cyclic(st:LoadState, root:Record) -> bool:
+    let all:[Record] = [root]
+    for(st.nodes) node:
+        let nr = node.rec
+        if nr:
+            push(all, nr)
+    var found = false
+    for(all) start:
+        if not found and start.walk == 0:
+            start.walk = 1
+            let first:[Record] = []
+            rec_edges(start, first, false)
+            let stack:[Record] = [start]
+            let edges:[[Record]] = [first]
+            let at:[int] = [0]
+            while not found and length(stack) > 0:
+                let top = length(stack) - 1
+                let es = edges[top]
+                if at[top] >= length(es):
+                    stack[top].walk = 2
+                    pop(stack)
+                    pop(edges)
+                    pop(at)
+                else:
+                    let t = es[at[top]]
+                    at[top] = at[top] + 1
+                    if t.walk == 1:
+                        found = true
+                    elif t.walk == 0:
+                        t.walk = 1
+                        let out:[Record] = []
+                        rec_edges(t, out, false)
+                        push(stack, t)
+                        push(edges, out)
+                        push(at, 0)
+    for(all) r:
+        r.walk = 0
+    return found
 
 // load_tolerant is THE TOLERANT READ, by its own name (docs/SPEC-TABLES.md
 // §6.5): it reads a form-1 wire at the root table named root into a fresh
@@ -2038,9 +2091,10 @@ def load(root:string, data:string, report:LoadReport) -> Record?:
     return rec
 
 // RELEASE (docs/PORT-LOBSTER.md, THE LOAD). Lobster frees by reference
-// counting, and a pointer graph is legal with a cycle (§3.1): a tolerant load
-// places it, and a cycle of Records outlives every reference the caller
-// holds. Two rules keep a load from leaking:
+// counting, and a cycle of Records outlives every reference the caller holds:
+// a load that refuses a cyclic wire (§3.1, §4) has still built one, and so
+// has a load an orphan cycle never reaches. Two rules keep a load from
+// leaking:
 //
 // - THE LOAD OWNS WHAT THE ROOT DOES NOT REACH. At the end of a variable
 //   load, a node record no pointer path from the root reaches (an orphan,
