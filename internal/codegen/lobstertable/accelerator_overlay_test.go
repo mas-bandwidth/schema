@@ -33,29 +33,40 @@ func TestLobsterAcceleratorOverlayNamesEveryClause(t *testing.T) {
 			t.Errorf("overlay lacks the %s row", id)
 		}
 	}
-	existing := existingTestFunctions(t)
+	byFile, existing := testFunctionsByFile(t)
 	rows := parseOverlayRows(t, src)
 	if len(rows) == 0 {
 		t.Fatal("overlay names no rows")
 	}
-	cookWriteTests := map[string]bool{}
+	cookWriteTests := map[string]string{}
 	for _, row := range rows {
-		if !row.done {
-			continue
-		}
 		for _, ev := range row.evidence {
+			file := evidenceFile(ev)
 			for _, name := range testNamesFromEvidence(ev) {
-				if !existing[name] {
-					t.Errorf("%s: evidence names %q, which is not a test in the tree", row.id, name)
+				if file == "" {
+					t.Errorf("%s: evidence %q names tests but no .go file", row.id, ev)
+					continue
+				}
+				if !byFile[file][name] {
+					if existing[name] {
+						t.Errorf("%s: evidence names %q in %s, but it is declared in another file", row.id, name, file)
+					} else {
+						t.Errorf("%s: evidence names %q, which is not a test in the tree", row.id, name)
+					}
 				}
 				if row.id == "port/lobster/vt/cook-write" {
-					cookWriteTests[name] = true
+					cookWriteTests[name] = file
 				}
 			}
 		}
 	}
-	if !cookWriteTests["TestLobsterCook"] {
-		t.Error("cook-write does not name the unbounded-text extent test TestLobsterCook, the row that holds feature_full's unbounded text")
+	for name, file := range map[string]string{
+		"TestLobsterCookExtentCoordinates": "internal/codegen/lobstertable/cook_extent_coordinates_test.go",
+		"TestLobsterCookUnboundedText":     "internal/codegen/lobstertable/cook_unbounded_text_test.go",
+	} {
+		if cookWriteTests[name] != file {
+			t.Errorf("cook-write does not name %s in %s, the extent test from the consolidated JSON and cook card", name, file)
+		}
 	}
 }
 
@@ -98,6 +109,14 @@ func parseOverlayRows(t *testing.T, src string) []overlayRow {
 var quotedStringRe = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
 var testTokenRe = regexp.MustCompile(`Test[A-Za-z0-9_]+`)
 
+func evidenceFile(ev string) string {
+	i := strings.Index(ev, ".go:")
+	if i < 0 {
+		return ""
+	}
+	return ev[:i+3]
+}
+
 func testNamesFromEvidence(ev string) []string {
 	i := strings.Index(ev, ".go:")
 	if i < 0 {
@@ -115,9 +134,10 @@ func testNamesFromEvidence(ev string) []string {
 
 var testDeclRe = regexp.MustCompile(`(?m)^func (Test[A-Za-z0-9_]+)\(`)
 
-func existingTestFunctions(t *testing.T) map[string]bool {
+func testFunctionsByFile(t *testing.T) (map[string]map[string]bool, map[string]bool) {
 	t.Helper()
-	got := map[string]bool{}
+	byFile := map[string]map[string]bool{}
+	existing := map[string]bool{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -125,17 +145,27 @@ func existingTestFunctions(t *testing.T) map[string]bool {
 		if d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		file := filepath.ToSlash(rel)
 		b, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
 		for _, m := range testDeclRe.FindAllSubmatch(b, -1) {
-			got[string(m[1])] = true
+			name := string(m[1])
+			existing[name] = true
+			if byFile[file] == nil {
+				byFile[file] = map[string]bool{}
+			}
+			byFile[file][name] = true
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return got
+	return byFile, existing
 }
