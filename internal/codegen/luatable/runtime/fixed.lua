@@ -13,8 +13,12 @@ local D = require("descriptor")
 local L = require("load")
 local F = {}
 
+local strfind = string.find
+local utf8len = utf8.len
+
 local formByte = 3
 local maxRecordBytes = 65536
+local maxRecords = 4096
 local maxPlanEntries = 4096
 
 -- A FLOAT IN THE FIXED FORM IS FINITE (docs/SPEC-TABLES.md §3.3, §3.4): the
@@ -45,7 +49,7 @@ local function unpack_float(f32, buf, pos)
 end
 
 local function check_utf8(s)
-  if s:find("\0", 1, true) ~= nil or utf8.len(s) == nil then error("text_ill_formed", 0) end
+  if strfind(s, "\0", 1, true) or utf8len(s) == nil then error("text_ill_formed", 0) end
 end
 
 local function check_wstring(t)
@@ -186,8 +190,10 @@ encode_value = function(T, d, v, size, elemSize)
   local s = d.shape
   if s == "int" then
     if d.timestamp then return pack_int(v or 0, 8, true) end
-    local w = d.bits and (d.bits <= 32 and 4 or 8) or d.width
-    return pack_int(v or 0, w, d.signed)
+    -- THE FIXED STORAGE WIDTH IS THE FIELD'S OWN SIZE (docs/
+    -- FIXED-FORM-ALGORITHM.md §3): bits(N) rides at 4 or 8 bytes even where
+    -- the variable form's descriptor width is narrower.
+    return pack_int(v or 0, size, d.signed)
   elseif s == "wide" then
     return pack_wide(v)
   elseif s == "bool" then
@@ -243,19 +249,18 @@ encode_table = function(T, name, v)
   local desc = T.Tables[name]
   if desc == nil then error("fixed: no descriptor for table " .. tostring(name)) end
   v = v or {}
-  local sizes = T.FixedFields[name]
   local parts = {}
   for i, f in ipairs(desc.fields) do
-    local fs = sizes[i].size
+    local fs = f.fixed_size
     if f.optional then
       local present = v[f.name .. "_present"] == true
       if present and v[f.name] ~= nil then
-        parts[#parts + 1] = "\1" .. encode_value(T, f, v[f.name], fs - 1, sizes[i].elem)
+        parts[#parts + 1] = "\1" .. encode_value(T, f, v[f.name], fs - 1, f.fixed_elem)
       else
         parts[#parts + 1] = "\0" .. zeros(fs - 1)
       end
     else
-      parts[#parts + 1] = encode_value(T, f, v[f.name], fs, sizes[i].elem)
+      parts[#parts + 1] = encode_value(T, f, v[f.name], fs, f.fixed_elem)
     end
   end
   return table.concat(parts)
@@ -264,7 +269,7 @@ end
 decode_value = function(T, d, buf, pos, size, elemSize)
   local s = d.shape
   if s == "int" then
-    local w = d.timestamp and 8 or (d.bits and (d.bits <= 32 and 4 or 8) or d.width)
+    local w = d.timestamp and 8 or size
     local signed = d.timestamp or d.signed
     return unpack_int(buf, pos, w, signed)
   elseif s == "wide" then
@@ -325,21 +330,34 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     return v, pos + size
   elseif s == "array" then
     local t = {}
+    if d.elem.shape == "enum" then
+      if d.fixed or d.keyed then
+        local n = d.bound or #d.keyed
+        for i = 1, n do
+          local ev = decode_value(T, d.elem, buf, pos + (i - 1) * elemSize, elemSize)
+          t[i] = ev == nil and false or ev
+        end
+        return t, pos + size
+      end
+      local n = string.unpack("<i4", buf, pos)
+      if n < 0 or n > d.bound then error("count_over_bound") end
+      for i = 1, n do
+        local ev = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
+        t[i] = ev == nil and false or ev
+      end
+      return t, pos + size
+    end
     if d.fixed or d.keyed then
       local n = d.bound or #d.keyed
       for i = 1, n do
-        local ev = decode_value(T, d.elem, buf, pos + (i - 1) * elemSize, elemSize)
-        if ev == nil and d.elem.shape == "enum" then ev = false end
-        t[i] = ev
+        t[i] = decode_value(T, d.elem, buf, pos + (i - 1) * elemSize, elemSize)
       end
       return t, pos + size
     end
     local n = string.unpack("<i4", buf, pos)
     if n < 0 or n > d.bound then error("count_over_bound") end
     for i = 1, n do
-      local ev = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
-      if ev == nil and d.elem.shape == "enum" then ev = false end
-      t[i] = ev
+      t[i] = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
     end
     return t, pos + size
   elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
@@ -352,18 +370,17 @@ decode_table = function(T, name, buf, pos, writerSize)
   local desc = T.Tables[name]
   if desc == nil then error("fixed: no descriptor for table " .. tostring(name)) end
   local v = T["New" .. name]()
-  local sizes = T.FixedFields[name]
   local cursor = pos
   for i, f in ipairs(desc.fields) do
-    local fs = sizes[i].size
+    local fs = f.fixed_size
     if cursor - pos + fs <= writerSize then
       if f.optional then
         local present = buf:byte(cursor) ~= 0
         v[f.name .. "_present"] = present
-        if present then v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, sizes[i].elem) end
+        if present then v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, f.fixed_elem) end
         cursor = cursor + fs
       else
-        v[f.name], cursor = decode_value(T, f, buf, cursor, fs, sizes[i].elem)
+        v[f.name], cursor = decode_value(T, f, buf, cursor, fs, f.fixed_elem)
       end
     else
       break
@@ -710,6 +727,7 @@ function F.read(T, name, buf, strict)
   end
   local rest = #buf - 20 - layoutLen
   if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("malformed") end
+  if rest / recSize > maxRecords then error("plan_too_large") end
   local at = 21 + layoutLen
   if string.unpack("<I8", buf, at) ~= hash then error("no_layout") end
   local value
@@ -733,10 +751,8 @@ function F.write(T, name, value)
   if refused ~= nil then error(refused, 0) end
   local body = encode_table(T, name, value)
   if #body ~= f.size then error("layout_malformed") end
-  local header = string.char(formByte) .. zeros(7) .. pack_uint(f.hash, 8) .. pack_uint(#f.layout, 4) .. f.layout
-  local out = header .. pack_uint(f.hash, 8) .. body
-  local desc = T.Tables[name]
-  if desc ~= nil and desc.integrity ~= nil then
+  local out = f.header .. f.hashPrefix .. body
+  if f.integrity then
     out = out .. string.pack("<I4", L.crc32c(out, #out))
   end
   return out
@@ -759,9 +775,8 @@ function F.save(T, name, values)
   local f = T.Fixed[name]
   if f == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
   values = values or {}
-  local header = string.char(formByte) .. zeros(7) .. pack_uint(f.hash, 8) .. pack_uint(#f.layout, 4) .. f.layout
-  local parts = { header }
-  local hPrefix = pack_uint(f.hash, 8)
+  local parts = { f.header }
+  local hPrefix = f.hashPrefix
   for i = 1, #values do
     local v = values[i]
     local refused = D.refuse_deprecated(T, name, v)
@@ -826,7 +841,11 @@ function F.load(T, name, buf, strict, cap)
   local rest = #buf - 20 - layoutLen
   if recSize <= 8 or rest % recSize ~= 0 then error("truncated", 0) end
   local nRec = rest // recSize
-  if cap ~= nil and nRec > cap then error("batch_too_large", 0) end
+  -- THE CAPACITY IS THE CALLER'S ARGUMENT, AND ITS DEFAULT IS 4,096: an
+  -- omitted (or nil) capacity is the default, never an unbounded read, while
+  -- a caller that sets 4,097 or more may read that many records.
+  cap = cap or maxRecords
+  if nRec > cap then error("batch_too_large", 0) end
   local rep = (entry ~= nil and entry.hash ~= fixed.hash) and { widened = 0 } or nil
   local out = {}
   for k = 1, nRec do
@@ -850,7 +869,29 @@ end
 -- known entry of every fixed table gets its layout tree, false for a layout the
 -- parser refuses.
 function F.prepare(T)
+  -- EACH FIXED FIELD'S SIZE AND ELEMENT WIDTH ARE THE DESCRIPTOR'S
+  -- CONSTANTS (docs/PORTING.md M13): the walk never indexes FixedFields per
+  -- field. This covers every fixed table AND every fixed type a union arm can
+  -- name, which is why it walks FixedFields rather than T.Fixed.
+  for name, sizes in pairs(T.FixedFields) do
+    local desc = T.Tables[name]
+    if desc ~= nil then
+      for i, f in ipairs(desc.fields) do
+        local s = sizes[i]
+        if s ~= nil then
+          f.fixed_size = s.size
+          f.fixed_elem = s.elem
+        end
+      end
+    end
+  end
   for _, fixed in pairs(T.Fixed) do
+    local desc = T.Tables[fixed.table]
+    fixed.integrity = desc ~= nil and desc.integrity ~= nil
+    -- THE WRITER'S HEADER AND HASH PREFIX ARE THE DESCRIPTOR'S CONSTANTS
+    -- (docs/PORTING.md M13), built once here rather than on every save.
+    fixed.header = string.char(formByte) .. zeros(7) .. pack_uint(fixed.hash, 8) .. pack_uint(#fixed.layout, 4) .. fixed.layout
+    fixed.hashPrefix = pack_uint(fixed.hash, 8)
     for _, entry in ipairs(fixed.known or {}) do
       entry.tree = layout_tree(entry.layout) or false
     end

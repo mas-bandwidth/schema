@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,52 +15,47 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-func init() {
-	if os.Getenv("LUA") != "" {
-		return
-	}
-	dist := filepath.Join("..", "..", "..", "dist", "lua-"+luarun.PinnedVersion, "src", "lua")
-	if _, err := os.Stat(dist); err == nil {
-		return
-	}
-	if p, err := exec.LookPath("lua"); err == nil {
-		_ = os.Setenv("LUA", p)
-	}
-}
-
+// Functional (luaBinary): run with SCHEMA_SLOW=1.
+//
 // TestLuaFixedProofSuiteValues runs all 49 contract-independent fixed-table
 // rows through the shared fixedproof value suite against the live C++ oracle.
 func TestLuaFixedProofSuiteValues(t *testing.T) {
-	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
+	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	fixedproof.RunValueSuite(t, luaFixedProofRunner{})
 }
 
+// Functional (luaBinary): run with SCHEMA_SLOW=1.
+//
 // TestLuaFixedProofSuiteNegativeControl runs both the file negative control
 // and the writer negative control across all 49 rows under a hard 2 GiB memory
 // ceiling.
 func TestLuaFixedProofSuiteNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
+	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	fixedproof.RunNegativeControlSuite(t, luaFixedProofRunner{})
 }
 
+// Functional (luaBinary): run with SCHEMA_SLOW=1.
+//
 // TestLuaFixedProofEvolution runs the 16 non-value fixed-table rows
 // (fixed-file-roundtrip and the 15 evolution/layout/plan/lineage/file rows)
 // through the shared fixedproof evolution suite.
 func TestLuaFixedProofEvolution(t *testing.T) {
-	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
+	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	repo := filepath.Join("..", "..", "..")
 	fixedproof.RunEvolutionSuite(t, repo, luaFixedProofRunner{})
 }
 
+// Functional (luaBinary): run with SCHEMA_SLOW=1.
+//
 // TestLuaFixedBatch4097Roundtrip proves that 4,097 fixed records save and read
-// back without an internal 4096 cap, and refuse only when the caller supplies a
-// smaller capacity.
+// back when the caller sets capacity 4,097, that a caller's 4,096 refuses them,
+// and that omitting the capacity (or passing nil) applies the 4,096 default.
 func TestLuaFixedBatch4097Roundtrip(t *testing.T) {
-	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
+	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table Point {\n    x int32 = 1\n    y int32 = 2\n}\n")
 	files, err := luatable.Generate(u)
 	if err != nil {
@@ -81,13 +75,20 @@ local m = T.FixedMeasure("Point", 4097)
 assert(m > 0, "FixedMeasure(4097) returned " .. tostring(m))
 local wire = T.FixedSave("Point", r)
 assert(#wire == m, string.format("#wire=%%d want %%d", #wire, m))
-local back = T.FixedLoad("Point", wire)
+local okOmitted, errOmitted = pcall(function() return T.FixedLoad("Point", wire) end)
+assert(not okOmitted, "expected refusal for 4097 records with the capacity omitted, got ok")
+assert(tostring(errOmitted):find("batch_too_large", 1, true), "omitted capacity refused without batch_too_large: " .. tostring(errOmitted))
+local okNil, errNil = pcall(function() return T.FixedLoad("Point", wire, nil) end)
+assert(not okNil, "expected refusal for 4097 records with a nil capacity, got ok")
+assert(tostring(errNil):find("batch_too_large", 1, true), "nil capacity refused without batch_too_large: " .. tostring(errNil))
+local back = T.FixedLoad("Point", wire, 4097)
 assert(#back == 4097, "#back=" .. tostring(#back))
 assert(back[1].x == 1 and back[1].y == -1, "record 1 mismatch")
 assert(back[2049].x == 2049 and back[2049].y == -2049, "record 2049 mismatch")
 assert(back[4097].x == 4097 and back[4097].y == -4097, "record 4097 mismatch")
-local ok, err = pcall(function() return T.FixedLoad("Point", wire, 4096) end)
-assert(not ok, "expected refusal for 4097 records into cap=4096, got ok")
+local ok4096, err4096 = pcall(function() return T.FixedLoad("Point", wire, 4096) end)
+assert(not ok4096, "expected refusal for 4097 records into cap=4096, got ok")
+assert(tostring(err4096):find("batch_too_large", 1, true), "cap=4096 refused without batch_too_large: " .. tostring(err4096))
 print("OK 4097")
 `, luatable.ModuleName(u))
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(script), 0o644); err != nil {
@@ -285,7 +286,12 @@ func (luaFixedProofRunner) LoadLineage(t *testing.T, u *ir.Unit, root string, li
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
 	mod := luatable.ModuleName(u)
-	capArg := "nil"
+	// The shared driver's cap < 0 means "the leg's default capacity". This
+	// runner passes an explicit caller capacity equal to the file's byte
+	// length, a bound no record batch can exceed, so these rows prove decoding
+	// rather than the runtime's 4,096 default; TestLuaFixedBatch4097Roundtrip
+	// owns that default and the caller-set larger path.
+	capArg := fmt.Sprintf("%d", len(wireBytes))
 	if cap >= 0 {
 		capArg = fmt.Sprintf("%d", cap)
 	}
