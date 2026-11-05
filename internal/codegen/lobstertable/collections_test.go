@@ -415,7 +415,7 @@ func TestLobsterMapRepeatedKeyWiden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "            if kind != want and widens(kind, want):\n                widened = true\n                kind_bad = false\n"
+	const anchor = "            if kind != want and widens(kind, want):\n                kind_bad = false\n                widened = true\n"
 	if n := strings.Count(string(src), anchor); n != 1 {
 		t.Fatalf("the map_key widen anchor is in the emitted runtime %d times, want 1", n)
 	}
