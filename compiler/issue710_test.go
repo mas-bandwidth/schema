@@ -157,10 +157,7 @@ func TestIssue710TableRecovery(t *testing.T) {
 			v := m.New(u.Tables[tc.root])
 			var r tabletext.Report
 			ok, err := tablewire.Decode(m, v, tc.wire, &r)
-			// A form-1 file at a declared fixed root is refused before a field
-			// (§3.4), so the fixed roots refuse as previous_form; the variable
-			// Mapping still reaches the damage and counts malformed.
-			if ok || (err == nil && !r.Malformed) {
+			if ok || err != nil || !r.Malformed {
 				t.Fatalf("damage must discard the whole load: ok=%v err=%v report=%+v", ok, err, r)
 			}
 		})
