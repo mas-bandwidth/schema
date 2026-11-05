@@ -402,6 +402,53 @@ nice -n 19 timeout 300s java -Xmx4g -cp /opt/tla/tla2tools.jar tlc2.TLC \
   -workers 8 -config MCNodeNumbering.cfg -metadir "$JOB/tlc-MCNodeNumbering" NodeNumbering
 ```
 
+# tla/PGroup
+
+The supervision policy of `tools/pgroup` (`supervise.go`'s `step`), which every
+self-hosted CI job runs its steps under. A command runs as the leader of its
+own process group and may start a child that outlives it; pgroup must leave no
+member of the group alive once it is done, whichever way the command ends.
+
+## The instance
+
+One leader and one child (`orphan`), which is all the policy distinguishes: the
+leader's exit is observed, the child's is not. The OS is the environment: the
+leader may die at any time, a forwarded SIGTERM may or may not kill each member,
+and only SIGKILL is certain. The grace timer, once armed, fires once.
+
+## Actions
+
+`Spawn` and `LeaderDies` are the environment. `Exit`, `Stop`, `Wall` and
+`Grace` are the four events `step` takes (`evExit`, `evStop`, `evWall`,
+`evGrace`), each with the actions `step` returns. `Done` is pgroup having
+exited.
+
+## Properties
+
+- **TypeOK**.
+- **NoSurvivor**: once pgroup is done, the leader and its child are dead.
+- **StopEnds**: once stopping (a signal or the wall), pgroup finishes, under
+  weak fairness of its own two events and none for the environment.
+
+## Reversed witnesses
+
+| cfg | switch | property | the bug |
+| --- | --- | --- | --- |
+| `MCPGroup.cfg` | none | all hold | |
+| `MCPGroupKillOnlyLeader.cfg` | `KillOnlyLeader` | `NoSurvivor` | a plain exec: the child outlives the command and holds the step open |
+| `MCPGroupNoGraceKill.cfg` | `NoGraceKill` | `StopEnds` | grace never escalates to SIGKILL, so a member that catches SIGTERM keeps the step open |
+
+The Go side of NoSurvivor is `TestEveryWayOutKillsTheGroup`; the process-level
+proof is `TestOrphanDiesWithTheCommand` with its negative control
+`TestOrphanOutlivesABareCommand` (`tools/pgroup`, under `SCHEMA_SLOW=1`).
+
+## Running
+
+```
+nice -n 19 timeout 120s java -Xmx1g -cp /opt/tla/tla2tools.jar tlc2.TLC \
+  -workers 1 -config MCPGroup.cfg -metadir "$JOB/tlc-MCPGroup" PGroup
+```
+
 Repeat for each of the three cfgs. The runs are recorded in `tla/RUNS.tsv`.
 
 ## What this does not prove
@@ -410,3 +457,7 @@ The id table's first-use order and the bytes a record writes (the conformance
 gate holds those), by-value edges (the graphs are POINTER-ONLY: a by-value edge
 splices its body's slots in at its field's position, which is the same walk),
 and graphs past four nodes and two slots a node.
+
+A member that leaves the group on purpose (setsid, Setpgid), and the window in
+which a reaped leader's pid could be reused as a new group's id before the
+group kill lands.

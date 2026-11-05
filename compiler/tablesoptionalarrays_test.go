@@ -152,6 +152,22 @@ func TestOptionalArraysCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "moo" {
+			// the table descriptors and codecs carry the construct: one
+			// <Base>Table.moo per unit file (compiler/target_moo.go)
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang moo refused the supported shape: %v", err)
+			}
+			table := false
+			for name := range files {
+				table = table || strings.HasSuffix(name, "Table.moo")
+			}
+			if !table {
+				t.Fatal("--lang moo emitted no Table.moo")
+			}
+			continue
+		}
 		if target == "luau" {
 			// the table descriptors and codecs carry the construct: one
 			// <Base>Table.luau per unit file
