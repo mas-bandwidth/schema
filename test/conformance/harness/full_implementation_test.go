@@ -466,9 +466,12 @@ func TestPopulatedFeatureWitnessesCoverEveryRequiredConstruct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// the two WITNESS instances by name: the unit also carries the canonical
+	// writer's rows (docs/SPEC-TABLES.md §16.14), which reuse its roots to pin
+	// bytes and are not what this audit counts
 	m := &Manifest{Units: manifest.Units}
 	for _, inst := range manifest.Instances {
-		if inst.Unit == "featurewitnesses" {
+		if inst.Name == "feature_full" || inst.Name == "feature_array_root" {
 			m.Instances = append(m.Instances, inst)
 		}
 	}
