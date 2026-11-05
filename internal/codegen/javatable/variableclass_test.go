@@ -85,6 +85,24 @@ func TestVariableClassBeyondCardConstructsJava(t *testing.T) {
 // package, which may span files).
 func unitFromDir(t *testing.T, dir string) *ir.Unit {
 	t.Helper()
+	if strings.HasSuffix(dir, ".schema") {
+		b, err := os.ReadFile(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, perrs := parser.Parse(dir, b)
+		if len(perrs) > 0 {
+			t.Fatalf("parse %s: %v", dir, perrs[0])
+		}
+		name := filepath.Base(dir)
+		u, cerrs := check.Unit([]check.SourceFile{{
+			Path: dir, Name: name, Base: strings.TrimSuffix(name, ".schema"), Bytes: b, AST: f,
+		}})
+		if len(cerrs) > 0 {
+			t.Fatalf("check %s: %v", dir, cerrs[0])
+		}
+		return u
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
