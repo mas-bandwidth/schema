@@ -205,6 +205,22 @@ readable transport: an explicit refused or malformed flag means refusal, while
 repair counters never select the verdict. Drivers should emit the plain verdict.
 The retired tolerant/strict split is not an alternate conformance path.
 
+**#2778 IS NOT TAKEN, EXCEPT AS LAYER-4 WORK.** The six legs that pull request
+#2778 gives a strict read (cs, java, js, rust, dart, elixir) pair it with a
+`ReadStrict` driver entry and a `strict-reason` surface, and the verdict-only
+ruling (`refusal-verdict-only`) retires that surface: this harness compares no
+reason name, detection order or diagnostic text, and its row types and surfaces
+carry no such column. The harness therefore takes nothing from #2778. The
+`ReadStrict` entry is generated-code work: a leg's plain read becomes the only
+read when that leg's layer-4 card makes its generator emit the strict read, and
+binding a second strict entry before then would make those drivers demand a
+generated method their tree does not have, sitting beside the tolerant one the
+plan deletes. What the harness needs already exists in its one path: `report`,
+`framing`, `json-hostile` and `retain` read the whole value or refuse, then
+write the wire and the JSON/text forms back (`read\n` plus the complete value;
+`wire` saves; `json-write` writes the text), so read-then-write is the existing
+surface, not a new entry beside it.
+
 Every port owes the same standard verdict. Legacy `carried-by` and `uncarried`
 metadata cannot permit an invalid acceptance. Counter-only and reason-only
 surfaces have no cross-language obligation; cook and block forgeries compare
