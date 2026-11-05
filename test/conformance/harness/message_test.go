@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"strings"
@@ -288,12 +289,12 @@ func TestTheCostRows(t *testing.T) {
 		name          string
 		file, message int
 	}{
-		{"login_full", 106, 52},
-		{"login_default", 10, 3},
-		{"match_full", 273, 148},
-		{"match_default", 43, 11},
-		{"store_full", 104, 43},
-		{"store_default", 10, 3},
+		{"login_full", 251, 52},
+		{"login_default", 251, 3},
+		{"match_full", 289, 148},
+		{"match_default", 289, 11},
+		{"store_full", 252, 43},
+		{"store_default", 252, 3},
 	}
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {
@@ -826,11 +827,17 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 }
 
 // TestTheThreeReservedIdsWhereTheyDoNotBelong plants each reserved id as a
-// field's id in a FILE body and in a nested file body, which must count
-// malformed and nothing else, and plants 0xFFFFFFFFFFFFFFFE,
-// 0xFFFFFFFFFFFFFFFD and a second 0xFFFFFFFFFFFFFFFF as an entry's id in an
-// ANNOUNCEMENT's vocabulary, which must refuse the announcement as malformed
-// and set no vocabulary. Red if any counts or sets anything else.
+// field's id in a form-1 FILE body and in a nested file body at a declared
+// fixed root, and plants 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD and a second
+// 0xFFFFFFFFFFFFFFFF as an entry's id in an ANNOUNCEMENT's vocabulary, which
+// must refuse the announcement as malformed and set no vocabulary.
+//
+// A READER THAT EXPECTS A FIXED TABLE REFUSES EVERY OTHER FORM
+// (docs/rulings.json fixed-root-refuses-form1): both file roots are declared
+// fixed, so each form-1 file is refused by its form byte before any id in its
+// body is looked at, as previous_form, with nothing decoded and no counter
+// moved. Red if any file reads, refuses for another reason, hands back a
+// value or moves a counter.
 func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 	m, model, _ := backend(t)
 	names := map[uint64]string{ir.TableNodeWireId: "node_table", ir.TableBuildVersionWireId: "build_version", ir.TableMessageVocabularyWireId: "vocabulary"}
@@ -840,25 +847,25 @@ func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 			root string
 		}{{"root", "LoginRequest"}, {"nested", "MatchResult"}} {
 			wire := wireBytes(t, "testdata/wire/tables/file_reserved_"+names[id]+"_"+row.name+".bin")
-			inst := model.New(model.Lookup(row.root))
+			def := model.Lookup(row.root)
+			if def == nil || !def.FixedDeclared {
+				t.Fatalf("%s: the root must be a declared fixed table", row.root)
+			}
+			inst := model.New(def)
 			var report tabletext.Report
-			_, err := tablewire.Decode(model, inst, wire, &report)
-			if err != nil {
-				t.Errorf("%s in a %s file body: %v", names[id], row.name, err)
+			ok, err := tablewire.Decode(model, inst, wire, &report)
+			var fixed *tablewire.FixedRefusal
+			if ok || !errors.As(err, &fixed) || fixed.Reason != tablewire.FixedReasonPreviousForm {
+				t.Errorf("%s in a %s file body: a form-1 file at a fixed root refuses as previous_form: ok=%v err=%v", names[id], row.name, ok, err)
 				continue
 			}
-			// THE ROOT BODY IS THE NODE TABLE'S OWN TRANSPORT (§3.1): a fixed reader
-			// meeting one there is the table-gained-a-pointer edit, and reads it as
-			// the ordinary unknown it is; everywhere else a reserved id is damage
-			tolerated := id == ir.TableNodeWireId && row.name == "root"
-			if tolerated {
-				if report.Malformed || report.Unknown != 1 || report.KindMismatch != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Refused {
-					t.Errorf("%s in a root file body is the fixed reader's ordinary unknown: %+v", names[id], report)
-				}
-				continue
+			if report != (tabletext.Report{Refused: true, Reason: tablewire.FixedReasonPreviousForm}) {
+				t.Errorf("%s in a %s file body: a refusal by form moves no counter: %+v", names[id], row.name, report)
 			}
-			if !report.Malformed || report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Refused {
-				t.Errorf("%s in a %s file body counts malformed and nothing else: %+v", names[id], row.name, report)
+			fresh, ferr := tablewire.Encode(model, model.New(def))
+			left, lerr := tablewire.Encode(model, inst)
+			if ferr != nil || lerr != nil || !bytes.Equal(fresh, left) {
+				t.Errorf("%s in a %s file body: the refused read handed back a value", names[id], row.name)
 			}
 		}
 	}

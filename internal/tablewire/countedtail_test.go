@@ -74,7 +74,7 @@ func TestRepeatedCountedUnionTailCooks(t *testing.T) {
 func TestRepeatedCountedRecordTailDefaults(t *testing.T) {
 	m := listModel(t, `package probe
  type Child { n int32 = 7 }
- fixed table Root { values [..3]Child }
+ table Root { values [..3]Child }
  `)
 	before := place(t, m, "Root", `{"values":[{"n":1},{"n":2},{"n":3}]}`)
 	wire, err := tablewire.Encode(m, before)

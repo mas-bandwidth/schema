@@ -41,6 +41,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -366,6 +367,7 @@ func featureProbe(t *testing.T, override map[string][]byte) []string {
 }
 
 func TestGooseCookWriterMatchesIndependentLayout(t *testing.T) {
+	slowtest.Gate(t, "goose")
 	t.Parallel()
 	for _, tc := range cookWriteCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -387,6 +389,7 @@ func TestGooseCookWriterMatchesIndependentLayout(t *testing.T) {
 // declares the cook among its forms (§2.12) gets the region writer and its
 // layout; one that does not gets neither.
 func TestGooseCookRegionWriterHonoursDeclaredForms(t *testing.T) {
+	slowtest.Gate(t, "goose")
 	t.Parallel()
 	const src = `package formsdemo
 table Cooked | forms = "wire,cook" {
@@ -533,6 +536,7 @@ func cookBounds(t *testing.T, override map[string][]byte) (string, bool) {
 // caller's flat value table, so an index in it out of range is a refusal,
 // never a read out of range.
 func TestGooseCookRegionWriterBoundsCallerIndices(t *testing.T) {
+	slowtest.Gate(t, "goose")
 	t.Parallel()
 	out, ok := cookBounds(t, nil)
 	if want := "pointer refused\ntable refused\nunion refused\n"; !ok || out != want {
@@ -563,6 +567,7 @@ func cookSabotage(t *testing.T, pairs ...string) map[string][]byte {
 // then reads out of range and aborts instead of refusing; the root's table is
 // bounded twice, and its control removes both).
 func TestGooseCookRegionWriterNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "goose")
 	t.Parallel()
 	t.Run("unbounded-text-length", func(t *testing.T) {
 		t.Parallel()

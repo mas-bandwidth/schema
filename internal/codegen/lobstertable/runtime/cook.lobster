@@ -202,6 +202,7 @@ class CookTable:
     size:int = 0
     align:int = 8
     record:int = 0
+    region_align:int = 8
     extent:bool = false
     // the unit's build version (§20), so a reflective caller can Open and
     // Cook by the table's name alone
@@ -495,7 +496,7 @@ def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> 
         else:
             cw_str(c, at, sl.cell.s, sl.count, cf.size, cf.count)
     elif s == "text":
-        cw_str(c, at, sl.cell.s, length(sl.cell.s), cf.size, cf.count)
+        return // the extent carver writes its self-relative blob reference
     elif s == "bytes":
         cw_str(c, at, sl.cell.s, sl.count, cf.size, cf.count)
     elif s == "bool":
@@ -539,7 +540,7 @@ def cw_elem(c:CookWrite, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff
         else:
             cw_str(c, at, v.s, length(v.s), vsize, countoff)
     elif s == "text":
-        cw_str(c, at, v.s, length(v.s), vsize, countoff)
+        return // the extent carver writes its self-relative blob reference
     elif s == "bytes":
         cw_str(c, at, v.s, length(v.s), vsize, countoff)
     elif s == "bool":
@@ -607,9 +608,12 @@ class CookCarve:
     big:bool = false
     g:CookGraph? = nil
     extent_at:int = 0
+    region_align:int = 8
     at:int = 0
 
 def cc_has_field(c:CookCarve, fd:FieldDescriptor) -> bool:
+    if fd.s == "text":
+        return true
     if fd.s == "arr":
         return cc_has_field(c, elem_of(fd))
     if fd.s == "tab":
@@ -630,7 +634,7 @@ def cc_field(c:CookCarve, at:int, sl:Slot, cf:CookField) -> void:
     let fd = sl.fd
     if fd.present != "" and not sl.present:
         // Absent map storage must be empty even though wire and JSON omit it.
-        if fd.s == "map" and length(sl.entries) != 0:
+        if (fd.s == "map" and length(sl.entries) != 0) or (fd.s == "text" and length(sl.cell.s) != 0):
             c.invalid_value = true
         return
     if fd.s == "map":
@@ -654,7 +658,9 @@ def cc_field(c:CookCarve, at:int, sl:Slot, cf:CookField) -> void:
     cc_elem(c, at, fd, sl.cell, cf)
 
 def cc_elem(c:CookCarve, at:int, fd:FieldDescriptor, v:Value, cf:CookField) -> void:
-    if fd.s == "tab":
+    if fd.s == "text":
+        cc_text(c, at, v.s)
+    elif fd.s == "tab":
         let t = v.tab
         if t:
             let ct = cook_table_of(fd.t)
@@ -680,6 +686,30 @@ def cc_elem(c:CookCarve, at:int, fd:FieldDescriptor, v:Value, cf:CookField) -> v
         let sl = v.arm
         if sl:
             cc_field(c, at + cu.arm, sl, cu.arms[v.i - 1])
+
+// Unbounded text occupies a reference slot; its blob belongs to this node's
+// extent, with no directory entry (SPEC-TABLES section 2.13.1).
+def cc_text(c:CookCarve, at:int, text:string) -> void:
+    let n = length(text)
+    if n > 0xffffffff:
+        c.invalid_value = true
+        return
+    if n == 0:
+        if c.write:
+            let o = c.o
+            assert o
+            co_u64(o, at, 0, c.big)
+        return
+    c.at = cook_align_up(c.at, 8)
+    let start = c.at
+    c.at += cook_align_up(8 + n + 1, c.region_align)
+    if c.write:
+        let o = c.o
+        assert o
+        let blob = c.extent_at + start
+        co_u64(o, at, blob - at, c.big)
+        co_u32(o, blob, n, c.big)
+        co_bytes(o, blob + 8, text)
 
 def cc_list(c:CookCarve, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> void:
     let count = sl.count
@@ -738,7 +768,7 @@ def cc_map(c:CookCarve, at:int, sl:Slot, fd:FieldDescriptor) -> void:
         cc_record(c, c.extent_at + start + i * fd.lsize, rec, ct)
 
 def cc_extent(rec:Record, t:CookTable, write:bool, o:CookOut?, big:bool, g:CookGraph?, record_at:int, extent_at:int) -> int:
-    let c = CookCarve { write: write, o: o, big: big, g: g, extent_at: extent_at }
+    let c = CookCarve { write: write, o: o, big: big, g: g, extent_at: extent_at, region_align: t.region_align }
     cc_record(c, record_at, rec, t)
     return if c.invalid_value: -1 else: c.at
 
@@ -852,7 +882,14 @@ def cook_write(rec:Record, build:int, big:bool) -> string:
 
 // ---- the cooked read (docs/SPEC-TABLES.md §7.5; uncook.go) ----
 
+class CookRange:
+    start:int
+    end:int
+
 class CookRead:
+    ranges:[CookRange] = []
+    node_base:int = 0
+    node_end:int = 0
     bad:bool = false
     end:int = 0
     data:string
@@ -862,19 +899,48 @@ class CookRead:
     nodes:[Record?] = []
     blobs:[string] = []
 
-// The cooked header has already bounded end to the data region. Validate
-// self-relative container spans with subtraction before addition/multiplication.
-def cr_container(c:CookRead, at:int, count:int, stride:int) -> int:
-    if at < cook_header_bytes or at > c.end or 12 > c.end - at:
+// Check containment before adding the self-relative delta or multiplying.
+// Lists, maps and text blobs share their holder's node extent (§7.4).
+def cr_extent(c:CookRead, at:int, delta:int, count:int, stride:int) -> int:
+    if c.node_base < 0 or c.node_end < c.node_base or at < c.node_base or at > c.node_end or count < 0 or stride <= 0:
         c.bad = true
         return 0
-    let delta = cr_word(c, at)
-    if count < 0 or stride <= 0 or delta < cook_header_bytes - at or delta > c.end - at:
+    if delta < c.node_base - at or delta > c.node_end - at:
         c.bad = true
         return 0
     let start = at + delta
-    if (count > 0 and delta < 12) or count > (c.end - start) / stride:
+    if count > (c.node_end - start) / stride:
         c.bad = true
+        return 0
+    return start
+
+// An extent is registered before walking its contents, so nested text cannot
+// alias its containing array. Reset the population for each directory node.
+def cr_claim(c:CookRead, start:int, end:int) -> bool:
+    for(c.ranges) other:
+        if start < other.end and other.start < end:
+            c.bad = true
+            return false
+    push(c.ranges, CookRange { start: start, end: end })
+    return true
+
+def cr_container(c:CookRead, at:int, count:int, stride:int, align:int) -> int:
+    if at < c.node_base or at > c.node_end or 12 > c.node_end - at:
+        c.bad = true
+        return 0
+    let delta = cr_word(c, at)
+    if count == 0 and delta == 0:
+        return 0
+    if count <= 0 or delta == 0:
+        c.bad = true
+        return 0
+    let start = cr_extent(c, at, delta, count, stride)
+    if c.bad:
+        return 0
+    if align <= 0 or start % align != 0:
+        c.bad = true
+        return 0
+    if not cr_claim(c, start, start + count * stride):
         return 0
     return start
 
@@ -950,6 +1016,32 @@ def cr_count(c:CookRead, at:int, countoff:int, bufsize:int) -> int:
         return 0
     return n
 
+// Unbounded text references are confined to their holder's node extent.
+def cr_unbounded_text(c:CookRead, at:int) -> string:
+    if at < c.node_base or at > c.node_end or 8 > c.node_end - at:
+        c.bad = true
+        return ""
+    let delta = cr_word(c, at)
+    if delta == 0:
+        return ""
+    let start = cr_extent(c, at, delta, 8, 1)
+    if c.bad:
+        return ""
+    if start % 8 != 0:
+        c.bad = true
+        return ""
+    let n = cr_word32(c, start)
+    if n <= 0 or n >= c.node_end - start - 8:
+        c.bad = true
+        return ""
+    // The four pad bytes are written as zero, but readers do not inspect them.
+    if c.data[start + 8 + n] != 0:
+        c.bad = true
+        return ""
+    if not cr_claim(c, start, start + 8 + n + 1):
+        return ""
+    return substring(c.data, start + 8, n)
+
 def cr_text(c:CookRead, at:int, countoff:int, bufsize:int) -> string:
     let n = cr_count(c, at, countoff, bufsize)
     return substring(c.data, at, n)
@@ -1010,7 +1102,10 @@ def cr_field(c:CookRead, at:int, sl:Slot, cf:CookField) -> void:
             sl.cell.s = cr_text(c, at, cf.count, cf.size)
             sl.count = cr_count(c, at, cf.count, cf.size)
     elif s == "text":
-        sl.cell.s = cr_text(c, at, cf.count, cf.size)
+        sl.cell.s = cr_unbounded_text(c, at)
+        sl.count = length(sl.cell.s)
+        if fd.present != "" and not sl.present and cr_word(c, at) != 0:
+            c.bad = true
     elif s == "bytes":
         sl.cell.s = cr_text(c, at, cf.count, cf.size)
         sl.count = cr_count(c, at, cf.count, cf.size)
@@ -1060,7 +1155,7 @@ def cr_elem(c:CookRead, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff:
         else:
             v.s = cr_text(c, at, countoff, vsize)
     elif s == "text":
-        v.s = cr_text(c, at, countoff, vsize)
+        v.s = cr_unbounded_text(c, at)
     elif s == "bytes":
         v.s = cr_text(c, at, countoff, vsize)
     elif s == "bool":
@@ -1096,11 +1191,9 @@ def cr_array(c:CookRead, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> v
 def cr_list(c:CookRead, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> void:
     let count = cr_word32(c, at + 8)
     sl.elems = []
-    if count == 0:
-        sl.count = 0
-        return
-    let start = cr_container(c, at, count, cf.lsize)
-    if c.bad:
+    sl.count = 0
+    let start = cr_container(c, at, count, cf.lsize, cf.lalign)
+    if c.bad or count == 0:
         return
     let e = elem_of(fd)
     var i = 0
@@ -1114,10 +1207,8 @@ def cr_list(c:CookRead, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> vo
 def cr_map(c:CookRead, at:int, sl:Slot, fd:FieldDescriptor) -> void:
     let count = cr_word32(c, at + 8)
     sl.entries = []
-    if count == 0:
-        return
-    let start = cr_container(c, at, count, fd.lsize)
-    if c.bad:
+    let start = cr_container(c, at, count, fd.lsize, fd.lalign)
+    if c.bad or count == 0:
         return
     let ct = cook_table_of(fd.t)
     if not ct:
@@ -1204,6 +1295,9 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
             let ct = cook_table_of(rec.d.name)
             if not ct:
                 return nil
+            c.node_base = c.dir[i]
+            c.node_end = if i + 1 < count: c.dir[i + 1] else: c.end
+            c.ranges = []
             cr_record(c, c.dir[i], rec, ct)
         i++
     let root = c.nodes[0]
