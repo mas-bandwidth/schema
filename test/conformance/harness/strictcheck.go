@@ -122,6 +122,12 @@ func strictReadJSON(model *tabletext.Model, value *tabletext.Instance, text []by
 }
 
 func strictWireCheckForRoot(root *ir.Struct, data []byte) bool {
+	// A fixed root reads form 3 alone (docs/SPEC-TABLES.md §3.4): the check
+	// below walks the variable form's framing, so the engine's own read is
+	// the verdict there.
+	if root != nil && root.FixedDeclared {
+		return true
+	}
 	if root != nil && root.Integrity != "" {
 		if root.Integrity != "crc32c" || len(data) < 5 {
 			return false
