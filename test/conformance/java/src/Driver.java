@@ -736,6 +736,68 @@ public final class Driver {
         boolean flag(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getBoolean(report); }
     }
 
+    // A root declared `fixed table` is a form 3 file, read and written by its
+    // generated <Root>Fixed class: a file holds one record, so the read is
+    // handed room for one. The generator gives <Root>Fixed a root `load` for
+    // the roots declared fixed and for no other, which is what tells the two
+    // kinds of root apart here. The fixed class carries no text form.
+    private static final class FixedCodec {
+        final Class<?> codec;
+        final Class<?> reportType;
+        final Class<?> valueType;
+        final Class<?> tableFixed;
+        FixedCodec(String pkg, String root) throws ReflectiveOperationException {
+            codec = Class.forName(pkg + "." + root + "Fixed");
+            tableFixed = Class.forName(pkg + ".TableFixed");
+            reportType = Class.forName(pkg + ".TableFixed$Report");
+            valueType = Class.forName(pkg + "." + root + "Fixed$Value");
+            Class<?> valueArray = java.lang.reflect.Array.newInstance(valueType, 0).getClass();
+            Class<?> entryArray = java.lang.reflect.Array.newInstance(Class.forName(pkg + ".TableFixed$Entry"), 0).getClass();
+            codec.getMethod("load", valueArray, int.class, byte[].class, entryArray, short[].class, byte[].class, reportType);
+        }
+        Object report() throws ReflectiveOperationException { return reportType.getConstructor().newInstance(); }
+        Object newValues() throws ReflectiveOperationException {
+            Object values = java.lang.reflect.Array.newInstance(valueType, 1);
+            java.lang.reflect.Array.set(values, 0, valueType.getConstructor().newInstance());
+            return values;
+        }
+        // load answers the records read, or -1 when the read refused or found damage
+        int load(Object values, byte[] data, Object report) throws ReflectiveOperationException {
+            Object plan = tableFixed.getMethod("plan", int.class).invoke(null, 1 << 14);
+            Object image = codec.getMethod("image").invoke(null);
+            return (int) codec.getMethod("load", values.getClass(), int.class, byte[].class, plan.getClass(), short[].class, byte[].class, reportType)
+                    .invoke(null, values, 1, data, plan, new short[1 << 14], image, report);
+        }
+        // save answers the file bytes, or null when the writer refuses the values
+        byte[] save(Object values, int count) throws ReflectiveOperationException {
+            int size = (int) codec.getMethod("measure", int.class).invoke(null, count);
+            byte[] buffer = new byte[size];
+            int written = (int) codec.getMethod("save", values.getClass(), int.class, byte[].class).invoke(null, values, count, buffer);
+            return written == size ? buffer : null;
+        }
+        int count(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getInt(report); }
+        boolean flag(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getBoolean(report); }
+    }
+
+    private static FixedCodec fixedCodec(String unit, String root) throws ReflectiveOperationException {
+        try { return new FixedCodec(variableUnitPackage(unit), root); }
+        catch (ClassNotFoundException | NoSuchMethodException absent) { return null; }
+    }
+
+    // The answer line of a read through the fixed form: the five counters of
+    // the `report` surface, which the fixed report holds four of (it has no
+    // duplicate counter), then the verdict.
+    private static String fixedLine(FixedCodec codec, Object report, int read) throws ReflectiveOperationException {
+        boolean refused = codec.flag(report, "refused");
+        boolean malformed = codec.flag(report, "malformed") || (read < 0 && !refused);
+        return String.format("%d,%d,%d,%d,0,%s,%s\n",
+                codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
+                codec.count(report, "widened"), codec.count(report, "clamped"),
+                malformed, refused ? "refused" : "read");
+    }
+
+    private static final String FIXED_NO_TEXT = "fixed table: the fixed form carries no text form in this leg";
+
     // The variable form is emitted for every table the unit holds, so the
     // codec is looked up for every unit. A unit on another classpath, or a
     // root the unit does not declare, is still an explicit absence below.
@@ -818,6 +880,17 @@ public final class Driver {
     private static int surfaceWire(String out) throws IOException {
         for (String[] f : kind("instance")) {
             try {
+                FixedCodec fixed = fixedCodec(f[2], f[3]);
+                if (fixed != null) {
+                    Object report = fixed.report();
+                    Object values = fixed.newValues();
+                    int read = fixed.load(values, Files.readAllBytes(Paths.get(f[4])), report);
+                    if (read < 0 || fixed.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                    byte[] saved = fixed.save(values, read);
+                    if (saved == null) return failInt(f[1] + ": save refused the value");
+                    spill(out, f[1], saved);
+                    continue;
+                }
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
@@ -841,6 +914,15 @@ public final class Driver {
     private static int surfaceReport(String out) throws IOException {
         for (String[] f : kind("report")) {
             try {
+                FixedCodec fixed = fixedCodec(f[2], f[3]);
+                if (fixed != null) {
+                    Object report = fixed.report();
+                    int read = fixed.load(fixed.newValues(), Files.readAllBytes(Paths.get(f[4])), report);
+                    String line = fixedLine(fixed, report, read);
+                    if (line.endsWith(",read\n")) { spillAbsentReason(out, f[1], FIXED_NO_TEXT); }
+                    else { spill(out, f[1], line); }
+                    continue;
+                }
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
@@ -869,6 +951,16 @@ public final class Driver {
     private static int surfaceFraming(String out) throws IOException {
         for (String[] f : kind("framing")) {
             try {
+                FixedCodec fixed = fixedCodec(f[2], f[3]);
+                if (fixed != null) {
+                    Object report = fixed.report();
+                    int read = fixed.load(fixed.newValues(), Files.readAllBytes(Paths.get(f[4])), report);
+                    String line = fixedLine(fixed, report, read);
+                    boolean noValue = f.length > 5 && f[5].equals("no-value");
+                    if (!line.endsWith(",read\n") || noValue) { spill(out, f[1], line); }
+                    else { spillAbsentReason(out, f[1], FIXED_NO_TEXT); }
+                    continue;
+                }
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
@@ -943,6 +1035,7 @@ public final class Driver {
         for (String[] f : kind("instance")) {
             if (noText(f)) continue;
             try {
+                if (fixedCodec(f[2], f[3]) != null) { spillAbsentReason(out, f[1], FIXED_NO_TEXT); continue; }
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
@@ -960,6 +1053,7 @@ public final class Driver {
         for (String[] f : kind("instance")) {
             if (noText(f)) continue;
             try {
+                if (fixedCodec(f[2], f[3]) != null) { spillAbsentReason(out, f[1] + ".json", FIXED_NO_TEXT); continue; }
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1] + ".json"); continue; }
                 Object report = codec.report();
@@ -1047,7 +1141,16 @@ public final class Driver {
             String[] inst = instanceNamed(f[1]);
             if (inst == null) { return failInt("missing instance " + f[1]); }
             CookCodec codec;
-            try { codec = cookCodec(inst[2], inst[3]); }
+            try {
+                if (fixedCodec(inst[2], inst[3]) != null) {
+                    // the cook is fed a value read from a form 1 file, which a
+                    // fixed root's form 3 file is not
+                    spillAbsentReason(out, f[1], FIXED_NO_TEXT);
+                    spillAbsentReason(out, f[1] + "-be", FIXED_NO_TEXT);
+                    continue;
+                }
+                codec = cookCodec(inst[2], inst[3]);
+            }
             catch (ReflectiveOperationException broken) {
                 return failInt(f[1] + ": cook writer lookup failed: " + broken);
             }
