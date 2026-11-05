@@ -181,6 +181,9 @@ jobs:
     # 10-minute test timeout; the gate is not loosened to fit that runner.
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     # EIGHT ROWS, because this job was 650 s median (2026-09-11) and a matrix
     # row is a job: the emitter packages, the compiler package in two halves,
     # everything else, the Elixir emitter alone, the slow-gate accounting in
@@ -672,16 +675,6 @@ jobs:
         if: matrix.group == 'unit-rest'
         run: make toolchain-negative-control
 
-      # THE PYTHON LEG (#1400). Each ported row is a self-checking script, and
-      # until this step no job ran one: the row was documentation of a rule,
-      # not a gate over it. The runner's own python3 is enough; the target
-      # refuses a run that found no rows. Its control is in the base-3 group of
-      # make/negative-controls.json. This is ci-full.yml's go-test job, the
-      # stream's replacement for the ci.yml job the original step rode.
-      - name: the python leg's rows pass
-        if: matrix.group == 'unit-rest'
-        run: make tables-py-packet
-
       # THE ONE LINUX WRITER, per the block at the top of this job. It is last
       # so that what it uploads is the cache AFTER vet and the whole test
       # suite have filled it, which is the widest cache this tree produces.
@@ -716,6 +709,59 @@ jobs:
   # generated/<lang>/.stamp in its make/<lang>.mk is covered the moment it
   # rebases; that scan proves the rules EXIST, and the emission from nothing is
   # what proves one ran.
+
+  # THE LEGS UNDER THEIR BUILD TAGS (make/moo-tagged.mk, make/goose-tagged.mk).
+  # `-tags schema_leg_moo` registers the moo target, so every cross-target gate in
+  # ./compiler meets one more target; go-test above runs both packages
+  # untagged, and certify's test-moo-tables runs only the compiler's tests
+  # named Moo, so without this job a tagged red lands unseen. Its own job,
+  # beside go-test rather than one of its rows, because tools/slowgatescan
+  # credits each go-test row with the tests it selects, and this run selects
+  # the compiler's tests a second time under another build. One `go test`
+  # over the packages (the conformance harness's tagged half too) builds and
+  # runs them in parallel. The goose tag's one tagged test file, the
+  # conformance harness's half, rides beside it.
+  leg-tagged:
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    name: legs under their build tags
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the siblings go-test's compiler rows clone, for the same compiler tests
+      - name: Check out the C, C++, C#, Go and Rust serialize runtimes (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # the pins the compiler's tests run generated code under (go-test's
+      # compiler rows install the same two), and the moo pin both packages run
+      - name: install the Luau and Squirrel pins
+        run: make dist-luau dist-squirrel
+      - uses: ./.github/actions/moo
+
+      - name: the moo leg's packages under schema_leg_moo
+        run: make test-moo-tagged
+
+      - name: the conformance harness under schema_leg_goose
+        run: make test-goose-tagged-harness
+
   generated:
     # Runs on EVERY pull request, not behind the `full-ci` label (issue #1421):
     # this is the one check that names a stale committed generated/ tree, and a
@@ -804,6 +850,9 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2217,6 +2266,12 @@ jobs:
       # caches it under the pin.
       - uses: ./.github/actions/moo
         if: matrix.moo != ''
+
+      # The Python pins (make/python-toolchain.mk: CPython 3.11.18, CPython
+      # 3.15.2 and mypy), for a row naming `python`: .github/actions/python
+      # builds them once per runner image and caches them under the pins.
+      - uses: ./.github/actions/python
+        if: matrix.python != ''
 
       # The Lobster pin, as the conformance row installs it (make dist-lobster
       # at the row's version, the two GL libraries the release binary links).

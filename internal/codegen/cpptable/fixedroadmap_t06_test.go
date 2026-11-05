@@ -140,8 +140,12 @@ func TestFixedRoadmapCppT06Bounds(t *testing.T) {
 			t06Has(t, cppFX1, "{ 8u, 4u, 1u, 0, 1000 },", "cpp/C7 renamed | min = 0, max = 1000")
 			t06Has(t, cppFX1, "{ 12u, 4u, 1u, 0, 1000 },", "cpp/C7 gone | min = 0, max = 1000")
 			t06Has(t, cppFX1, "TableFixedClampKnownRanges( FxRootFixedKnownRanges[lineage_at]", "cpp/C7 the pass is called after the plan")
-			t06Has(t, cppFX1, "if ( landed < b.lo )\n        {\n            landed = b.lo;\n            clamped++;\n        }", "cpp/C7 clamp at min")
-			t06Has(t, cppFX1, "else if ( landed > b.hi )\n        {\n            landed = b.hi;\n            clamped++;\n        }", "cpp/C7 clamp at max")
+			t06Has(t, cppFX1, "if ( below )\n        {\n            landed = (uint64_t) b.lo;\n            clamped++;\n        }", "cpp/C7 clamp at min")
+			t06Has(t, cppFX1, "else if ( above )\n        {\n            landed = (uint64_t) b.hi;\n            clamped++;\n        }", "cpp/C7 clamp at max")
+			// The comparison is in the field's own type: an unsigned kind compares
+			// unsigned, so a uint64 at or above 2^63 is past the max.
+			t06Has(t, cppFX1, "below = raw < (uint64_t) b.lo;", "cpp/C7 an unsigned kind compares unsigned at min")
+			t06Has(t, cppFX1, "above = raw > (uint64_t) b.hi;", "cpp/C7 an unsigned kind compares unsigned at max")
 		}},
 		{"cpp/C9", func(t *testing.T) {
 			// docs/FIXED-FORM-ALGORITHM.md §4.5, §5.8 row 6: a union tag past

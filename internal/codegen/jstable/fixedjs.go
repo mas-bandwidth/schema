@@ -1003,9 +1003,11 @@ func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
 
 // emitDecodeBounds is §4.6's ranged-scalar clamp, inline: a declared min/max
 // (and a bits(N) width that does not fill storage) is held AFTER the load, on
-// the value the consumer will see. The plan never does this. Vacuous ends —
-// a bound sitting on the storage width's own limit — are dropped, because no
-// loaded value can fail them.
+// the value the consumer will see. The plan never does this. These are THIS
+// READER's bounds: a compiled lane's image was already held to its WRITER's
+// range (fixedwriterbounds.go, §4.6), so this is the second clamp of two.
+// Vacuous ends — a bound sitting on the storage width's own limit — are
+// dropped, because no loaded value can fail them.
 func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
 	// A RANGED FLOAT CLAMPS ON LOAD AND COUNTS, exactly as the ranged integer
 	// below does, and against THIS READER'S own min and max (schema#1164,

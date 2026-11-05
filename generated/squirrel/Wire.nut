@@ -402,9 +402,11 @@ _M.ReadProbeShape <- function(stream, value) {
   value.Type = _h.value;
   switch (value.Type) {
     case 1: // Ring
+      value.Ring = _M.ProbeRing();
       if (!_M.ReadProbeRing(stream, value.Ring)) return false;
       break;
     case 2: // Slab
+      value.Slab = _M.ProbeSlab();
       if (!_M.ReadProbeSlab(stream, value.Slab)) return false;
       break;
   }
