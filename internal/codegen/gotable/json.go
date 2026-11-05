@@ -616,6 +616,9 @@ type tableJSONOut struct {
 	measure  bool
 	offset   int64
 	overflow bool
+	// invalid is storage that is not text — ill-formed UTF-8, an unpaired
+	// surrogate — which refuses the whole write (docs/SPEC-TABLES.md §16.14 W0)
+	invalid bool
 	// docs/SPEC-TABLES.md §16.2, the two write options: omit elides a field at
 	// its default; compact drops every whitespace byte outside a string, which
 	// quoted and escaped track
@@ -804,14 +807,10 @@ func tableJSONUTF8(s []byte) (code int32, width int32) {
 	return code, want
 }
 
-// A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
-// byte-transparent — the wire imposes no encoding (§3) and a string may hold
-// anything — so the WRITER is where that obligation is met: a byte that is not
-// part of a well-formed sequence is written as U+FFFD, one per maximal subpart
-// (docs/SPEC-TABLES.md §16.3), and never raw. A text this walk writes is
-// therefore readable by any conforming parser, which a raw byte would not be.
-// The cost is stated plainly: for a string holding invalid UTF-8, the round
-// trip is NOT byte-identical, because the alternative is emitting a text that is not JSON.
+// A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts anything
+// else into storage, so a byte that is not part of a well-formed sequence was
+// put there by a program: the write REFUSES (invalid_value,
+// docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
 func tableJSONWriteString(out *tableJSONOut, s []byte) { out.put('"');tableJSONWriteStringBody(out,s);out.put('"') }
 
 func tableJSONWriteStringBody(out *tableJSONOut, s []byte) {
@@ -845,7 +844,7 @@ func tableJSONWriteStringBody(out *tableJSONOut, s []byte) {
 			default:
 				_, width := tableJSONUTF8(s[i:])
 				if width < 0 {
-					out.text("�") // one per maximal subpart (docs/SPEC-TABLES.md §16.3)
+					out.invalid = true // not text: the write refuses (§16.14 W0)
 					i += int(-width) - 1
 				} else {
 					out.raw(s[i : i+int(width)])
@@ -2523,7 +2522,7 @@ func tableJSONWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, op
 	// every reader accepts a text with or without. Under the compact option
 	// (§16.2) the squeeze drops it, as it drops every whitespace byte.
 	out.put('\n')
-	if out.overflow {
+	if out.overflow || out.invalid {
 		return -1
 	}
 	return out.offset

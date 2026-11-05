@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -382,15 +383,18 @@ func TestUncoveredPaths(t *testing.T) {
 			'a', 0xc3, 0xa9, 0xe2, 0x82, 0xac, 0xf0, 0x9f, 0x98, 0x80,
 			0x80, 0xc0, 0xaf, 0xed, 0xa0, 0x80, 0xf4, 0x90, 0x80, 0x80, 0xe2,
 		}
+		// ill-formed storage REFUSES the write (§16.14, W0): nothing replaced
+		if out, err := m.Write(inst); err == nil || !strings.Contains(err.Error(), "invalid_value") {
+			t.Fatalf("ill-formed storage must refuse invalid_value, got %v:\n%q", err, out)
+		}
+		// and the three well-formed widths alone write raw
+		field(t, inst, "callsign").Cell.Str = []byte{'a', 0xc3, 0xa9, 0xe2, 0x82, 0xac, 0xf0, 0x9f, 0x98, 0x80}
 		out, err := m.Write(inst)
 		if err != nil {
 			t.Fatalf("write: %v", err)
 		}
-		if !utf8.Valid(out) {
-			t.Fatalf("the writer emitted invalid UTF-8: %q", out)
-		}
-		if n := bytes.Count(out, []byte("\ufffd")); n != 11 {
-			t.Fatalf("the writer emitted %d replacement points, want 11:\n%q", n, out)
+		if !utf8.Valid(out) || !bytes.Contains(out, []byte("a\u00e9\u20ac\U0001F600")) {
+			t.Fatalf("the writer did not write the text raw: %q", out)
 		}
 	})
 
@@ -440,9 +444,13 @@ table Words
 			t.Fatal("no Words table")
 		}
 		inst := m.New(st)
-		// a surrogate PAIR is one code point; an unpaired half and a zero unit
-		// each have their own spelling (§16.2, §16.3).
-		field(t, inst, "w").Cell.Units = []uint16{'a', 0xd83d, 0xde00, 0xd800, 0x0000}
+		// a surrogate PAIR is one code point and a zero unit is \u0000; an
+		// unpaired half REFUSES the write (§16.3, §16.14 W0)
+		field(t, inst, "w").Cell.Units = []uint16{'a', 0xd83d, 0xde00, 0xd800}
+		if out, err := m.Write(inst); err == nil || !strings.Contains(err.Error(), "invalid_value") {
+			t.Fatalf("an unpaired surrogate must refuse invalid_value, got %v:\n%q", err, out)
+		}
+		field(t, inst, "w").Cell.Units = []uint16{'a', 0xd83d, 0xde00, 0x0000}
 		out, err := m.Write(inst)
 		if err != nil {
 			t.Fatalf("wstring write: %v", err)
@@ -457,8 +465,8 @@ table Words
 		if m.Read(back, out, &r) || !r.Malformed || r.Reason != "text_holds_zero: Words.w" {
 			t.Fatalf("a zero unit must refuse by name: %+v\n%s", r, out)
 		}
-		// without it the same text round-trips, pair and replacement intact.
-		field(t, inst, "w").Cell.Units = []uint16{'a', 0xd83d, 0xde00, 0xd800}
+		// without it the same text round-trips, the pair intact.
+		field(t, inst, "w").Cell.Units = []uint16{'a', 0xd83d, 0xde00}
 		out, err = m.Write(inst)
 		if err != nil {
 			t.Fatalf("wstring write: %v", err)
@@ -469,7 +477,7 @@ table Words
 			t.Fatalf("wstring round trip: %+v\n%s", rr, out)
 		}
 		units := field(t, back, "w").Cell.Units
-		if len(units) != 4 || units[1] != 0xd83d || units[2] != 0xde00 || units[3] != 0xfffd {
+		if len(units) != 3 || units[1] != 0xd83d || units[2] != 0xde00 {
 			t.Fatalf("wstring units came back %#v", units)
 		}
 	})
