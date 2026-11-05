@@ -72,7 +72,7 @@ emit("$stage/tables.moo",
 my %kinds = (
 	"list"          => [],
 	"wire"          => ["instance"],
-	"json-write"    => ["instance"],
+	"json-write"    => ["instance", "json-write-refusal"],
 	"cook-write"    => ["instance"],
 	"json-read"     => ["instance"],
 	"report"        => ["report"],

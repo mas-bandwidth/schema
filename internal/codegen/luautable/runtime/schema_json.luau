@@ -23,9 +23,9 @@ local MAX_KEY = 255
 local MAX_NUMBER = 511
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
--- A float32's shortest round-trip text is C's %.*g at the fewest digits from
--- 6 up to this cap that read back to the same float32; 9 always does
--- (docs/SPEC-TABLES.md §16.1; internal/tabletext/write.go's writeFloat).
+-- A float32's text is C's %.*g at the fewest digits from 6 up to this cap that
+-- read back to the same float32; 9 always does (docs/SPEC-TABLES.md §16.14,
+-- W12; internal/tabletext/write.go's writeFloat).
 local FLOAT32_DIGITS = 9
 
 -- Luau has no bitwise operators; bit32 is enough for every value below it (a
@@ -1224,20 +1224,6 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
       literal(inp, "null")
       placed = placed + 1
       out[placed] = false
-    elseif fd.opt_text and (vs == 'z' or vs == 's') then
-      -- AN OPTIONAL TEXT LIST (docs/SPEC-TABLES.md §2.13, §16.2): an element
-      -- is a string, or null for an absent one, held as its element record
-      placed = placed + 1
-      local rec = zero_elem(T, fd.elem)
-      out[placed] = rec
-      local vf = T.Tables[fd.elem.target].fields[1]
-      if vs == 'z' then
-        literal(inp, "null")
-        rec[vf.name .. "_present"] = false
-      else
-        if not read_value(T, vf, inp, rec, vf.name, depth + 1, graph, report, false) then return false end
-        rec[vf.name .. "_present"] = true
-      end
     elseif vs ~= eshape then
       report.kindMismatch = report.kindMismatch + 1
       if not skip_value(inp, depth + 1, graph) then return false end
@@ -1839,7 +1825,10 @@ end
 -- the write walk (§16.1, §16.3, §16.7)
 ----------------------------------------------------------------------------
 
-local function W(): any return { parts = {} } end
+-- w.invalid is storage that is not text (ill-formed UTF-8 in a narrow string,
+-- an unpaired surrogate in a wide one), which refuses the whole write,
+-- invalid_value (docs/SPEC-TABLES.md §16.3, §16.14 W0)
+local function W(): any return { parts = {}, invalid = false } end
 local function raw(w: any, s: string) w.parts[#w.parts + 1] = s end
 local function put(w: any, c: string) w.parts[#w.parts + 1] = c end
 local function line(w: any, depth: number)
@@ -1862,7 +1851,7 @@ local function narrow_text_ok(s: string, bound: number): boolean
       i = i + 1
     else
       local width = utf8_seq(s, i)
-      if width < 0 then refuse_reason = "string_not_utf8"; return false end
+      if width < 0 then refuse_reason = "invalid_value"; return false end
       i = i + width
     end
   end
@@ -1879,10 +1868,10 @@ local function wide_text_ok(units: { number }, bound: number): boolean
     if u == 0 then refuse_reason = "text_holds_zero"; return false end
     if u >= 0xd800 and u <= 0xdbff then
       local low = units[i + 1]
-      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "string_not_utf8"; return false end
+      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "invalid_value"; return false end
       i = i + 2
     elseif u >= 0xdc00 and u <= 0xdfff then
-      refuse_reason = "string_not_utf8"; return false
+      refuse_reason = "invalid_value"; return false
     else
       i = i + 1
     end
@@ -1990,7 +1979,7 @@ local function write_string(w: any, s: string)
       i = i + 1
     else
       local width = utf8_seq(s, i)
-      if width < 0 then raw(w, utf8_encode(0xfffd)); i = i + 1
+      if width < 0 then w.invalid = true; i = i + 1 -- not text: the write refuses (§16.14 W0)
       else raw(w, s:sub(i, i + width - 1)); i = i + width end
     end
   end
@@ -2010,8 +1999,9 @@ local function write_wstring(w: any, units: { number })
         i = i + 1
       end
     end
-    if code >= 0xd800 and code <= 0xdfff then code = 0xfffd end
-    if code == 34 then raw(w, '\\"')
+    -- an unpaired surrogate is not text: the write refuses (§16.14 W0)
+    if code >= 0xd800 and code <= 0xdfff then w.invalid = true
+    elseif code == 34 then raw(w, '\\"')
     elseif code == 92 then raw(w, '\\\\')
     elseif code == 8 then raw(w, '\\b')
     elseif code == 12 then raw(w, '\\f')
@@ -2203,8 +2193,11 @@ local function float_text(v: number, single: boolean): string?
     local back = tonumber(text)
     if back ~= nil then
       if single then
+        -- ONE correctly rounded conversion, as the reader lands it (§16.14,
+        -- W12): the double narrowed alone rounds twice
         local narrow = string.unpack("<f", string.pack("<f", back))
-        if narrow == v then return text end
+        local tie = f32_tie(back, text)
+        if (if tie ~= nil then tie else narrow) == v then return text end
       elseif back == v then
         return text
       end
@@ -2438,19 +2431,6 @@ write_array = function(T: any, fd: any, val: any, depth: number, g: any, w: any)
     line(w, depth + 1)
     local x = val[i]
     if x == nil then x = zero_elem(T, fd.elem) end
-    if fd.opt_text then
-      -- AN OPTIONAL TEXT LIST (docs/SPEC-TABLES.md §2.13, §16.2): a present
-      -- element is its string and an absent one is null
-      local vf = T.Tables[fd.elem.target].fields[1]
-      if not x[vf.name .. "_present"] then
-        raw(w, "null")
-      else
-        local text = x[vf.name] or ""
-        if not narrow_text_ok(text, vf.bound or -1) then return false end
-        write_string(w, text)
-      end
-      continue
-    end
     if not write_value(T, fd.elem, x, depth + 1, g, w, true) then return false end
   end
   line(w, depth)
@@ -2612,8 +2592,8 @@ local function core_to(T: any, name: string, v: any): string?
   if g == nil then return nil end
   local w = W()
   if not write_table(T, desc, v, 0, g, w) then return nil end
-  -- every root's text ends in one newline, the array root's too (§16.10)
-  w.parts[#w.parts + 1] = "\n"
+  if w.invalid then refuse_reason = "invalid_value"; return nil end
+  if not desc.jsonArray then w.parts[#w.parts + 1] = "\n" end
   return table.concat(w.parts)
 end
 
@@ -2706,10 +2686,7 @@ adapt_field = function(fd: any, owner: any): any
     if fd.fbits ~= nil then o.fixed_units = true end
     end
   elseif s == "float" then o.shape = "float"; o.f32 = fd.f32; o.lo = fd.lo; o.hi = fd.hi; o.res = fd.res
-  elseif s == "str" then
-    o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
-    -- an unbounded text list element rides as str with no bound (§2.13.1)
-    if not fd.wide and (fd.bound or 0) == 0 then o.bound = -1 end
+  elseif s == "str" then o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
   elseif s == "text" then o.shape = "string"; o.bound = -1
   elseif s == "bytes" then o.shape = "bytes"; o.bound = fd.bound
   elseif s == "enum" then
@@ -2729,7 +2706,6 @@ adapt_field = function(fd: any, owner: any): any
     o.keyed = fd.array == "keyed" and fd.keyvs or nil
     o.elem_kind = fd.ek
     o.str_elem = fd.e ~= nil and (fd.e.s == "str")
-    o.opt_text = fd.optText == true
     o.wide_elem = fd.e ~= nil and fd.e.wide == true
     if o.elem.shape == "int" then
       local names = flag_names(owner, fd)
@@ -2870,12 +2846,6 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
       local xi = x[i]
       if xi == nil and e.shape ~= "table" and e.shape ~= "union" and e.shape ~= "array" and e.shape ~= "map" then
         xi = zero_elem(A, e)
-      end
-      if e.shape == "string" and not e.wide then
-        -- a text list element is its bytes at their own length: it has no
-        -- Length companion to say where padding would end (§2.13)
-        out[i] = from_string(xi or "")
-        continue
       end
       out[i] = conv_to_lua(e, xi, A, memo)
     end

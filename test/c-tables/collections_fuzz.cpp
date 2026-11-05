@@ -43,7 +43,7 @@ static int64_t reference_save_##NS##_##TYPE(const void * value,uint8_t * buffer,
 static int64_t reference_load_measure_##NS##_##TYPE(const uint8_t * wire,int64_t bytes) { return NS::TYPE##LoadMeasure(wire,bytes); } \
 static int64_t reference_cook_measure_##NS##_##TYPE(const void * value) { return NS::TYPE##CookMeasure(*(const NS::TYPE * const *)value); } \
 static int reference_cook_##NS##_##TYPE(const void * value,void * buffer,uint64_t capacity,int big) { return NS::TYPE##Cook(*(const NS::TYPE * const *)value,buffer,capacity,big ? NS::TableByteOrder::Big : NS::TableByteOrder::Little); }
-#define REFERENCE_ROW(NS,TYPE) {#NS,#TYPE,NULL,NULL,reference_load_##NS##_##TYPE,reference_measure_##NS##_##TYPE,reference_save_##NS##_##TYPE,NULL,NULL,reference_storage_##NS##_##TYPE,reference_load_measure_##NS##_##TYPE,reference_cook_measure_##NS##_##TYPE,reference_cook_##NS##_##TYPE,NULL}
+#define REFERENCE_ROW(NS,TYPE) {#NS,#TYPE,NULL,NULL,reference_load_##NS##_##TYPE,reference_measure_##NS##_##TYPE,reference_save_##NS##_##TYPE,NULL,NULL,reference_storage_##NS##_##TYPE,reference_load_measure_##NS##_##TYPE,reference_cook_measure_##NS##_##TYPE,reference_cook_##NS##_##TYPE,NULL,NULL}
 REFERENCE_CODEC(mapdemo,Depth)
 REFERENCE_CODEC(mapdemo,Text)
 REFERENCE_CODEC(mapdemo,Cells)

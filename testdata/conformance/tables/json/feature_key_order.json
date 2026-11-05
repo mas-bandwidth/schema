@@ -1,0 +1,32 @@
+{
+  "revision": -2147483648,
+  "at": "1969-12-31T23:59:59.999999999Z",
+  "lower": 2147483647,
+  "tags": {
+    "": 4,
+    "a": 5,
+    "ab": 3,
+    "b": 2,
+    "｡": 6,
+    "😀": 7
+  },
+  "labels": [
+    "z",
+    "a"
+  ],
+  "optional_labels": [],
+  "words": [
+    "｡",
+    "😀",
+    ""
+  ],
+  "by_name": {
+    "": 7,
+    "A key": 6,
+    "a key that is a prefix": 4,
+    "a key that is a prefix, extended": 5,
+    "~ a tilde key past eight bytes": 3,
+    "｡ a halfwidth key past eight bytes": 2,
+    "😀 an astral key past eight bytes": 1
+  }
+}

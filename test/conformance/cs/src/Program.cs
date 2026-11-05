@@ -767,7 +767,67 @@ static partial class Program
             }
             File.WriteAllBytes(Path.Combine(outDir, f[1] + ".json"), text);
         }
+        // THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
+        // wire, then the line's damage put into storage in code, then ToJson,
+        // which must return -1 from measure and write alike
+        foreach (string[] f in Kind("json-write-refusal"))
+        {
+            Codec codec = Find(f[2], f[3]);
+            if (codec == null) { SpillAbsent(outDir, f[1] + ".json"); continue; }
+            object value = codec.Load(File.ReadAllBytes(f[4]), new Report());
+            if (value == null)
+            {
+                Console.Error.WriteLine("driver: " + f[1] + " does not load");
+                return 1;
+            }
+            if (!DamageText(value, f[5]))
+            {
+                Console.Error.WriteLine("driver: " + f[1] + ": damage " + f[5] + " names no text field");
+                return 1;
+            }
+            byte[] answer = Encoding.ASCII.GetBytes("refused\n");
+            long size = codec.ToJsonMeasure(value);
+            if (size >= 0)
+            {
+                answer = new byte[size];
+                if (codec.ToJson(value, answer) != size)
+                {
+                    Console.Error.WriteLine("driver: " + f[1] + " writes a text its measure did not name");
+                    return 1;
+                }
+            }
+            else if (codec.ToJson(value, new byte[1 << 16]) != -1)
+            {
+                Console.Error.WriteLine("driver: " + f[1] + ": ToJsonMeasure refused and ToJson wrote");
+                return 1;
+            }
+            File.WriteAllBytes(Path.Combine(outDir, f[1] + ".json"), answer);
+        }
         return 0;
+    }
+
+    // DamageText puts into a fixed root's top-level text field what no read
+    // delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the
+    // bytes 61 FF 62 in a narrow field (byte[]), the units 0061 D800 0062 in a
+    // wide one (char[]). The field is reached by reflection on its generated
+    // name and its Length companion.
+    static bool DamageText(object value, string damage)
+    {
+        if (damage == "none") { return true; }
+        int colon = damage.IndexOf(':');
+        if (colon < 0) { return false; }
+        string name = damage.Substring(colon + 1);
+        string member = char.ToUpperInvariant(name[0]) + name.Substring(1);
+        System.Reflection.FieldInfo field = value.GetType().GetField(member);
+        System.Reflection.FieldInfo length = value.GetType().GetField(member + "Length");
+        if (field == null || length == null) { return false; }
+        if (damage.StartsWith("narrow:") && field.GetValue(value) is byte[] narrow && narrow.Length >= 3)
+        { narrow[0] = 0x61; narrow[1] = 0xff; narrow[2] = 0x62; }
+        else if (damage.StartsWith("wide:") && field.GetValue(value) is char[] wide && wide.Length >= 3)
+        { wide[0] = (char)0x61; wide[1] = (char)0xd800; wide[2] = (char)0x62; }
+        else { return false; }
+        length.SetValue(value, 3);
+        return true;
     }
 
     // json-hostile: one tree per rule the text form states (§16.2, §16.3,
