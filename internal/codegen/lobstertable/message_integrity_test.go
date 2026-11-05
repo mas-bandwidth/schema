@@ -16,6 +16,7 @@ import (
 )
 
 func TestLobsterMessageIntegrity(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "lobster message integrity")
 	path := filepath.Join(t.TempDir(), "Batch.schema")
 	const src = `package integritybatch

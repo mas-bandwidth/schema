@@ -139,7 +139,7 @@ def registered_unions() -> [UnionDescriptor]:
 
 // CRC-32C covers the complete file before its root-only trailer (§2.14).
 // Keep it independent of the record walk so a bad checksum decodes nothing.
-/**/let wire_crc32c_table = [
+let wire_crc32c_table = [
     0x00000000, 0xf26b8303, 0xe13b70f7, 0x1350f3f4, 0xc79a971f, 0x35f1141c, 0x26a1e7e8, 0xd4ca64eb,
     0x8ad958cf, 0x78b2dbcc, 0x6be22838, 0x9989ab3b, 0x4d43cfd0, 0xbf284cd3, 0xac78bf27, 0x5e133c24,
     0x105ec76f, 0xe235446c, 0xf165b798, 0x030e349b, 0xd7c45070, 0x25afd373, 0x36ff2087, 0xc494a384,
@@ -174,7 +174,7 @@ def registered_unions() -> [UnionDescriptor]:
     0x79b737ba, 0x8bdcb4b9, 0x988c474d, 0x6ae7c44e, 0xbe2da0a5, 0x4c4623a6, 0x5f16d052, 0xad7d5351,
 ]
 
-/**/def wire_crc32c(data:string, used:int = -1) -> int:
+def wire_crc32c(data:string, used:int = -1) -> int:
     let n = if used < 0: length(data) else: used
     var crc = 0xffffffff
     for(n) i:
@@ -182,7 +182,7 @@ def registered_unions() -> [UnionDescriptor]:
     return (crc ^ 0xffffffff) & 0xffffffff
 
 // Called after the form-byte check, before resolving ids or reading fields.
-/**/def wire_integrity_body(d:TableDescriptor, data:string, minimum:int = 5) -> string, bool:
+def wire_integrity_body(d:TableDescriptor, data:string, minimum:int = 5) -> string, bool:
     if not d.integrity:
         return data, true
     if length(data) < minimum:
