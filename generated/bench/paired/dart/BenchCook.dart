@@ -43,7 +43,7 @@ enum TableRefuseReason {
   allocationFailed('allocation_failed'),
   wireDamaged('wire_damaged'),
   malformed('malformed'),
-  clamped('clamped'),
+  outOfRange('out_of_range'),
   kindMismatch('kind_mismatch'),
   base64Damaged('base64_damaged'),
   base64NotCanonical('base64_not_canonical'),
@@ -69,7 +69,8 @@ enum TableRefuseReason {
   batchTooLarge('batch_too_large'),
   textIllFormed('text_ill_formed'),
   countOverBound('count_over_bound'),
-  lengthOverBound('length_over_bound');
+  lengthOverBound('length_over_bound'),
+  missingRequired('missing_required');
 
   final String word;
   const TableRefuseReason(this.word);
