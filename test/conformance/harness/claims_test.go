@@ -155,7 +155,7 @@ func TestCaseIndexCoversTheCorpus(t *testing.T) {
 	// every registered target now carries some construct, so the leg that
 	// carries none is a stand-in registered here
 	set.carried["carries-none"] = map[string]bool{}
-	unitless := []string{"forgery", "cook-forgery", "cook-reason", "block-reason"}
+	unitless := []string{"forgery", "cook-forgery"}
 	claimedSomewhere := 0
 	for _, s := range surfaces {
 		want, err := expectations(m, s, reports, defaultJSONDir)
