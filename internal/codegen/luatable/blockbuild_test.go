@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
@@ -232,3 +233,77 @@ func TestLuaBlockOpen(t *testing.T) {
 	})
 }
 `
+
+// TestLuaBlockBuilderNegativeControlsFunctional plants one defect per gate into the
+// emitted blockbuild.lua and requires the builder check to go red: the array
+// start alignment removed, the count bound check removed, and the 64-byte
+// extent rounding removed.
+func TestLuaBlockBuilderNegativeControlsFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
+	repo := filepath.Join("..", "..", "..")
+	u := luarun.LoadUnit(t, filepath.Join(repo, "tables", "block"))
+	runProbe := func(t *testing.T, patch func(map[string][]byte)) (string, error) {
+		t.Helper()
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if patch != nil {
+			patch(files)
+		}
+		dir := t.TempDir()
+		luarun.WriteFiles(t, dir, files)
+		probe := fmt.Sprintf(`local T = require(%q)
+local B = require("blockbuild")
+local R = require("block")
+T.BuildVersion = 0x%016x
+local b1, r1 = B.Begin(T, "PaddedFrame", { rows = 3 })
+assert(b1 ~= nil, tostring(r1))
+assert(#b1.bytes %% 64 == 0, "extent not 64-byte aligned")
+assert(b1.arrays[1].offset %% 64 == 0, "array start not 64-byte aligned")
+local h, why = R.BlockOpen(T, "PaddedFrame", b1.bytes, T.BuildVersion)
+assert(h ~= nil, "BlockOpen refused built block: " .. tostring(why))
+local b2, r2 = B.Begin(T, "RenderFrame", { ships = 4097 })
+assert(b2 == nil and type(r2) == "table" and r2.array == "ships", "over-count accepted")
+print("ok")
+`, ModuleName(u), ir.BuildVersion(u))
+		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out, _, runErr := luarun.Try(t, dir, "main.lua", nil)
+		return strings.TrimSpace(out), runErr
+	}
+	if out, err := runProbe(t, nil); err != nil || out != "ok" {
+		t.Fatalf("unsabotaged blockbuild probe failed: %q %v", out, err)
+	}
+	for _, tc := range []struct {
+		name   string
+		anchor string
+		repl   string
+	}{
+		{
+			name:   "align",
+			anchor: "    local count = counts[a.name] or 0\n    local align = math.max(BLOCK_ALIGN, stride_align(a.stride))\n    offset = align_up(offset, align)",
+			repl:   "    local count = counts[a.name] or 0\n    local align = math.max(BLOCK_ALIGN, stride_align(a.stride))\n    offset = align_up(offset, 1)",
+		},
+		{
+			name:   "count",
+			anchor: "if math.type(count) ~= \"integer\" or count < 0 or count > a.max then",
+			repl:   "if math.type(count) ~= \"integer\" or count < 0 then",
+		},
+		{
+			name:   "extent",
+			anchor: "local used = align_up(offset, BLOCK_ALIGN)",
+			repl:   "local used = offset + 1",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out, err := runProbe(t, patchOnce(t, "blockbuild.lua", tc.anchor, tc.repl))
+			if err == nil && out == "ok" {
+				t.Fatalf("NEGATIVE CONTROL FAILED: %s left the blockbuild probe green", tc.name)
+			}
+		})
+	}
+}

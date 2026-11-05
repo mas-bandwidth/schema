@@ -83,6 +83,15 @@ check_value = function(T, where, d, v, elem)
   elseif s == "union" then
     if type(v) ~= "table" or v.tag ~= 0 then return fail(where, "a union is born empty") end
     if T.Unions[d.target] == nil then return fail(where, "union " .. d.target .. " has no descriptor") end
+  elseif s == "wide" then
+    if type(v) ~= "table" or math.type(v.lo) ~= "integer" or math.type(v.hi) ~= "integer" then
+      return fail(where, "wide integer at its default")
+    end
+    if elem then
+      if v.lo ~= 0 or v.hi ~= 0 then return fail(where, "wide element is born zero") end
+    elseif v.lo ~= d.default.lo or v.hi ~= d.default.hi then
+      return fail(where, "wide integer at its default")
+    end
   else
     return fail(where, "unknown shape " .. tostring(s))
   end
