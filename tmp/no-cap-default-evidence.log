@@ -1,0 +1,7 @@
+$ SCHEMA_SLOW=1 LUA=<lua-5.4.8> go test -count=1 -timeout 600s ./internal/codegen/luatable/ -run TestLuaFixedProofEvolution
+--- FAIL: TestLuaFixedProofEvolution (0.00s)
+    --- FAIL: TestLuaFixedProofEvolution/batch-capacity (0.07s)
+        fixedproof.go:1854: 4097 records with no capacity: got n=-1 (reason="batch_too_large"), want 4097
+FAIL
+FAIL	github.com/mas-bandwidth/schema/v2/internal/codegen/luatable	0.164s
+FAIL
