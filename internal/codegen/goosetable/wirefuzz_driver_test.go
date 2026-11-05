@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -129,7 +128,7 @@ func gooseRetainingDriverFrames(t *testing.T, key, rootName string, frames [][]b
 	if goose == "" {
 		t.Fatal(why)
 	}
-	build := exec.Command(goose, "build", "-O2", "wirefuzz.goose", "-o", "wirefuzz")
+	build := gooserun.Command(t, goose, "build", "-O2", "wirefuzz.goose", "-o", "wirefuzz")
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build driver: %v\n%s", err, out)
@@ -146,7 +145,7 @@ func gooseRetainingDriverFrames(t *testing.T, key, rootName string, frames [][]b
 		binary.Write(&input, binary.LittleEndian, uint32(len(b)))
 		input.Write(b)
 	}
-	cmd := exec.Command(filepath.Join(dir, "wirefuzz"), key, "builder")
+	cmd := gooserun.Command(t, filepath.Join(dir, "wirefuzz"), key, "builder")
 	cmd.Dir = dir
 	cmd.Stdin = &input
 	var stdout, stderr bytes.Buffer

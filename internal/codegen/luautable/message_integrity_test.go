@@ -91,11 +91,15 @@ func TestLuauMessageFormIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tablewire.EncodeMessages(Ledger): %v", err)
 	}
-	if !bytes.Equal(plainWire, ledgerWire) {
+	// the engine seals the declaring batch itself (§2.14): the same bytes as
+	// the keyless one, then the CRC-32C of them
+	if len(ledgerWire) != len(plainWire)+4 || !bytes.Equal(plainWire, ledgerWire[:len(plainWire)]) {
 		t.Fatalf("the keyless and declaring batches differ before the trailer: %x vs %x", plainWire, ledgerWire)
 	}
-	wantLedger := append([]byte(nil), ledgerWire...)
-	wantLedger = binary.LittleEndian.AppendUint32(wantLedger, crc32.Checksum(ledgerWire, crc32.MakeTable(crc32.Castagnoli)))
+	if binary.LittleEndian.Uint32(ledgerWire[len(plainWire):]) != crc32.Checksum(plainWire, crc32.MakeTable(crc32.Castagnoli)) {
+		t.Fatalf("the declaring batch's trailer is not the CRC-32C of the batch: %x", ledgerWire)
+	}
+	wantLedger := ledgerWire
 
 	main := `local M = require("./schema_message")
 local T = require("./ProbeTable")

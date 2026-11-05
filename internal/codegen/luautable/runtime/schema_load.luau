@@ -1776,11 +1776,13 @@ local function loadBody(root: string, bytes: buffer, report: any): any
 end
 
 -- A ROOT THAT DECLARES INTEGRITY (docs/SPEC-TABLES.md §2.14) opens its
--- trailer first, as the strict read does; a trailer that does not match is the
--- whole-file damage named integrity_mismatch.
+-- trailer before any field, as the strict read does, once the form byte says
+-- form 1: a file of another form is that form's refusal, damaged or not; a
+-- trailer that does not match is the whole-file damage named
+-- integrity_mismatch.
 function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	local d = S.lookup(root)
-	if d.integrity ~= nil and d.integrity ~= "" then
+	if d.integrity ~= nil and d.integrity ~= "" and buffer.len(bytes) >= 1 and buffer.readu8(bytes, 0) == 1 then
 		local body = integrityOpen(bytes)
 		if body == nil then
 			report.malformed = true

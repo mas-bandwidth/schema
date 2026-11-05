@@ -1,8 +1,3 @@
-// Copyright 2026 Glenn Lewis. All rights reserved.
-//
-// Use of this source code is governed by the Reticulum License
-// that can be found in the LICENSE file.
-
 package goosetable
 
 import (
@@ -12,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1319,12 +1313,12 @@ int main( int argc, char ** argv )
 		cxx = "c++"
 	}
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + serDir, probeCpp, "-o", probeBin}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := gooserun.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("%s: compile C++ reference oracle failed: %v\n%s", id, err, out)
 	}
 
 	cppBinPath := filepath.Join(outDir, "cpp.bin")
-	if out, err := exec.Command(probeBin, "save", cppBinPath).CombinedOutput(); err != nil {
+	if out, err := gooserun.Command(t, probeBin, "save", cppBinPath).CombinedOutput(); err != nil {
 		t.Fatalf("%s: run C++ reference oracle save failed: %v\n%s", id, err, out)
 	}
 	cppBytes, err := os.ReadFile(cppBinPath)
@@ -1337,7 +1331,7 @@ int main( int argc, char ** argv )
 		if err := os.WriteFile(candPath, cand, 0o600); err != nil {
 			return err
 		}
-		out, err := exec.Command(probeBin, "verify", candPath).CombinedOutput()
+		out, err := gooserun.Command(t, probeBin, "verify", candPath).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 		}

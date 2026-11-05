@@ -441,7 +441,7 @@ local edge_value, edge_union, edges
 -- one value's pointer and blob edges, in the walk's order. holder/name name
 -- the slot the value occupies (a table's field or a union arm's payload);
 -- cache holds each map's entries (D.map_entries).
-edge_value = function(T, fd, val, holder, name, out, cache, every)
+edge_value = function(T, fd, val, holder, name, out, cache)
   local s = fd.shape
   if s == "string_blob" or s == "bytes_blob" then
     if val ~= nil and val ~= false then
@@ -451,33 +451,33 @@ edge_value = function(T, fd, val, holder, name, out, cache, every)
     if val ~= nil and val ~= false then out[#out + 1] = { blob = false, target = fd.target, val = val } end
   elseif s == "table" then
     local d = T.Tables[fd.target]
-    if d then edges(T, d, val, out, cache, every) end
+    if d then edges(T, d, val, out, cache) end
   elseif s == "array" then
     local n = D.count_of(fd, val)
     local e = fd.elem
     for i = 1, n do
-      edge_value(T, e, val[i], val, i, out, cache, every)
+      edge_value(T, e, val[i], val, i, out, cache)
     end
   elseif s == "union" then
-    edge_union(T, T.Unions[fd.target], val, out, cache, every)
+    edge_union(T, T.Unions[fd.target], val, out, cache)
   elseif s == "map" then
     -- A MAP IS A BY-VALUE EDGE at its field's position (§2.8, §3.1): its
     -- entries in ascending key order, each descended before the next
     local d = T.Tables[fd.entry]
     for _, kv in ipairs(D.map_entries(cache, fd, val)) do
-      edges(T, d, kv, out, cache, every)
+      edges(T, d, kv, out, cache)
     end
   end
 end
 
 -- a union arm's payload is a field line: its pointers, blobs, tables, arrays
 -- and nested unions are edges at the arm's position (§2.6, §3.1).
-edge_union = function(T, u, val, out, cache, every)
+edge_union = function(T, u, val, out, cache)
   local tag = type(val) == "table" and val.tag or 0
   if tag == 0 or u == nil then return end
   local arm = u.arms[tag]
   if arm == nil or arm.field == nil then return end
-  edge_value(T, arm.field, val[arm.slot], val, arm.slot, out, cache, every)
+  edge_value(T, arm.field, val[arm.slot], val, arm.slot, out, cache)
 end
 
 -- the pointer and blob edges of one node's by-value closure, in the walk's
@@ -485,14 +485,12 @@ end
 -- by-value node (nil) holds only its declared defaults and no pointer or blob
 -- edge (§3, §4.2). AN ABSENT ?T OWNS NO NODE (§2.3): the walk gates on the
 -- presence companion, so a value made absent after it was present writes no
--- stale node for the edges its untouched storage still holds. With every set,
--- a field under a FALSE guard is walked too: the load stored it, and the cycle
--- check (D.cyclic) counts every slot the load stored.
-edges = function(T, desc, v, out, cache, every)
+-- stale node for the edges its untouched storage still holds.
+edges = function(T, desc, v, out, cache)
   if v == nil then return out end
   for _, fd in ipairs(desc.fields) do
-    if (every or D.guard_holds(fd, v)) and not (fd.optional and not v[fd.name .. "_present"]) then
-      edge_value(T, fd, v[fd.name], v, fd.name, out, cache, every)
+    if D.guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
+      edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
     end
   end
   return out
@@ -553,56 +551,6 @@ function D.number_nodes(T, desc, root, refuse_shared)
     end
   end
   return nodes
-end
-
--- D.cyclic reports whether a LOADED graph holds a cycle (docs/SPEC-TABLES.md
--- §3.1, §4; internal/tablewire decodenodes.go cyclic). No writer produces one,
--- so a cyclic wire is damage. The vertices are the root and every record the
--- load placed, reached from the root or not, so a cycle among orphans is still
--- a cycle; verts lists them as { desc, v } after the root. The edges are every
--- pointer slot a vertex's by-value closure STORES, a slot under a false guard
--- included. Each vertex is entered once: a pointer to an OPEN vertex is a
--- cycle, and a pointer to a CLOSED one is a legal share, so the walk is linear
--- in vertices plus slots, and it holds its own stack.
-function D.cyclic(T, desc, root, verts)
-  local all = { { desc = desc, v = root } }
-  local at = { [root] = 1 }
-  for _, x in ipairs(verts) do
-    if at[x.v] == nil then
-      all[#all + 1] = x
-      at[x.v] = #all
-    end
-  end
-  local mark = {} -- nil unvisited, 1 open, 2 closed
-  local cache = {}
-  local function out_of(k)
-    return edges(T, all[k].desc, all[k].v, {}, cache, true)
-  end
-  for start = 1, #all do
-    if mark[start] == nil then
-      mark[start] = 1
-      local stack = { { k = start, edges = out_of(start), i = 0 } }
-      while #stack > 0 do
-        local top = stack[#stack]
-        if top.i >= #top.edges then
-          mark[top.k] = 2
-          stack[#stack] = nil
-        else
-          top.i = top.i + 1
-          local e = top.edges[top.i]
-          local t = not e.blob and at[e.val] or nil
-          if t ~= nil then
-            if mark[t] == 1 then return true end
-            if mark[t] == nil then
-              mark[t] = 1
-              stack[#stack + 1] = { k = t, edges = out_of(t), i = 0 }
-            end
-          end
-        end
-      end
-    end
-  end
-  return false
 end
 
 -- THE DEFAULTS IN PLACE (docs/PORTING.md M1; docs/SPEC-TABLES.md §3, §4). A

@@ -1754,7 +1754,7 @@ test-dart: tables-dart-usage tables-dart-usage-negative-control
 # checked by native extent tests.
 .PHONY: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
 tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
-	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" go test -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors)$$'
+	SCHEMA_SLOW=1 SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" go test -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors)$$'
 	./build/conformance-harness wire-fuzz --builder --finite-owed tables-finite/dart --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
 
 # Its control: the emitter's counted-list `widened` count is removed
@@ -1804,7 +1804,7 @@ test-dart: tables-dart-discard tables-dart-discard-negative-control
 # Keep the JSON byte boundary strict before invoking generated String readers.
 .PHONY: conformance-dart-text-boundary conformance-negative-control-dart-text-boundary
 conformance-dart-text-boundary: build/conformance-harness build/conformance-dart
-	go test -timeout=0 -count=1 -run '^TestDartTextBoundaryBOMOracle$$' ./test/conformance/harness
+	SCHEMA_SLOW=1 go test -timeout=0 -count=1 -run '^TestDartTextBoundaryBOMOracle$$' ./test/conformance/harness
 	sh test/conformance/dart/negative-control-text-boundary positive "$(DART)"
 
 conformance-negative-control-dart-text-boundary: conformance-dart-text-boundary
