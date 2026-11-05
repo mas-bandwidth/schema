@@ -45,6 +45,7 @@ func tableIntegritySeal(buffer []byte, n int64) int64 {
 // sealing them, and every read checking them before the open.
 func (g *tableGen) emitIntegrityMember(st *ir.Struct, blobmask int) {
 	n, typ := st.Name, g.storageName(st.Name)
+	check := g.textWriteCheckBody(st)
 	g.pf("func %sLoadMeasure(wire []byte) int64 { wire,ok:=tableIntegrityOpen(wire,nil);if !ok {return -1};n,_,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);return n }\n", n, n, n, blobmask)
 	g.pf("func %sLoadMeasureReason(wire []byte)(int64,error){wire,ok:=tableIntegrityOpen(wire,nil);if !ok {return -1,TableRefuseIntegrityMismatch};size,_,_,reason:=tableRegionMeasureReason(wire,%sTableType(),%sTableType().NodeType,%d);return size,tableRefuseError(reason)}\n", n, n, n, blobmask)
 	// The plain %sLoad and %sLoadBuilder are emitted by emitRegionMember as the STRICT reads over these
@@ -53,7 +54,7 @@ func (g *tableGen) emitIntegrityMember(st *ir.Struct, blobmask int) {
 	g.pf("func %sLoadTolerant(region,wire []byte,report *TableReport) *%s { wire,ok:=tableIntegrityOpen(wire,report);if !ok {return nil};return (*%s)(tableRegionLoad(region,wire,%sTableType(),%sTableType().NodeType,%d,report)) }\n", n, typ, typ, n, n, blobmask)
 	g.pf("func %sMeasure(value *%s,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);size:=tableRegionSave(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator);if size<0 {return size};return size+4 }\n", n, typ, n)
 	g.pf("func %sMeasureReason(value *%s,context ...TableWriteContext)(int64,error){arena,allocator:=tableWriteOptions(context);size,reason:=tableRegionSaveReason(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator);if size>=0 {size+=4};return size,tableRefuseError(reason)}\n", n, typ, n)
-	g.pf("func %sSave(value *%s,buffer []byte,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);if len(buffer)<4 {return -1};return tableIntegritySeal(buffer,tableRegionSave(unsafe.Pointer(value),%sTableType(),buffer[:len(buffer)-4],false,arena,allocator)) }\n", n, typ, n)
+	g.pf("func %sSave(value *%s,buffer []byte,context ...TableWriteContext) int64 {%sarena,allocator:=tableWriteOptions(context);if len(buffer)<4 {return -1};return tableIntegritySeal(buffer,tableRegionSave(unsafe.Pointer(value),%sTableType(),buffer[:len(buffer)-4],false,arena,allocator)) }\n", n, typ, check, n)
 	g.pf("// %sLoadBuilderTolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5, §2.14): the trailer is\n// checked first, then the value is read into the builder, with the counters counted onto the report; damage\n// answers false with the builder's root at its defaults (docs/SPEC-TABLES.md §4).\n", n)
 	g.pf("func %sLoadBuilderTolerant(b *%sBuilder,wire []byte,report *TableReport) bool {wire,ok:=tableIntegrityOpen(wire,report);if !ok {return false};return tableBuilderLoad(unsafe.Pointer(b.GetRoot()),b.root,&b.Main,wire,%sTableType(),%sTableType().NodeType,%d,report)}\n", n, n, n, n, blobmask)
 }
