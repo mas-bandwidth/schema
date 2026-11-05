@@ -79,11 +79,11 @@ class FieldDescriptor:
     // THE FIXED FORM's byte sizes (docs/FIXED-FORM-ALGORITHM.md §3), named for
     // a field the form carries: the field's whole slot (fb), one element's
     // (eb), a leaf's storage width (sw) and the element count of a fixed or
-    // enum-keyed array (fn)
+    // enum-keyed array (fcount)
     fb:int = 0
     eb:int = 0
     sw:int = 0
-    fn:int = 0
+    fcount:int = 0
 
 // A TableDescriptor is one table, or one packet type a table reaches by value:
 // its node type id (§3.1, the hash of its wire name), its declared class

@@ -859,7 +859,7 @@ def fixed_write_payload(w:FixedWrite, sl:Slot, off:int) -> bool:
     let f = sl.fd
     if f.s == "arr":
         let e = elem_of(f)
-        var n = f.fn
+        var n = f.fcount
         var at = off
         if f.array == "counted":
             if sl.count < 0 or sl.count > f.bound:

@@ -2232,7 +2232,7 @@ def fixed_payload(c:FixedRead, sl:Slot, off:int) -> bool:
     let b = c.r.b
     if f.s == "arr":
         let e = elem_of(f)
-        var n = f.fn
+        var n = f.fcount
         var at = off
         if f.array == "counted":
             let count = read_int32_le(b, off)
