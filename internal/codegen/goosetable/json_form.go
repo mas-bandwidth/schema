@@ -1,7 +1,7 @@
 // THE JSON TEXT FORM (docs/SPEC-TABLES.md §16) for Goose: card
 // schema-goose-json-form and the text walk of schema-goose-text-form
 // (docs/PORT-GOOSE.md, THE CARD MAP). The walk is ONE runtime,
-// runtime/json.goose, emitted byte for byte into every unit (PORTING M9): it
+// runtime/schema_json.goose, emitted byte for byte into every unit (PORTING M9): it
 // reads the descriptors for every decision — keys, bounds, ranges, variant
 // names — and reaches a record's storage through the per-table ACCESSOR this
 // file emits, `_<T>JsonRead` and `_<T>JsonWrite`, a dispatch on the field
@@ -17,14 +17,22 @@
 //	<T>ToJson(v: const T&, out: u8[>..]&) -> i64                                  // appends; -1 refused
 //	<T>ToJsonMeasure(v: const T&) -> i64
 //
-// THE FIXED CLASS IS WHAT THIS FILE CARRIES: every scalar kind up to 64 bits,
-// compressed floats, string(N), bytes(N) as base64, enums, flags, nested
-// tables and types, unions (payload-free arms included), [N]T, [..N]T, [E]T
-// and ?T. A table whose closure holds anything else — a pointer (the &node
-// label, PORTING M14), a blob, a list, a map, unbounded or wide text, a
-// timestamp, a 128-bit or fixed-point kind, a guarded branch, a `json =
-// "array"` or `"value"` table — gets NO text form here, by name in
-// [jsonUncarried], and the conformance leg answers its cases absent.
+// value_bridge.go also emits <T>ToLoaded and <T>FromLoaded for these roots,
+// joining typed JSON values to the shared form-1 load/save representation.
+//
+// THE TYPED ACCESSORS CARRY THE FIXED CLASS: every scalar kind up to 64
+// bits, compressed floats, string(N), bytes(N) as base64, enums, flags,
+// nested tables and types, unions (payload-free arms included), [N]T, [..N]T,
+// [E]T, ?T and a `json = "array"` table. A table whose closure holds anything
+// else — a pointer (the &node label, PORTING M14), a blob, a list, a map,
+// unbounded or wide text, a timestamp, a 128-bit or fixed-point kind, a
+// guarded branch — has no typed record that owns its storage (Goose has no
+// heap; docs/PORT-GOOSE.md, Tables), so [jsonUncarried] names it and this
+// file emits no accessor for it. Its text form is THE VARIABLE CLASS's, over
+// the same flat value table its wire form loads into and saves from:
+// runtime/json_value.goose's json_load_table and json_save_table, which read
+// the descriptors and the unit's TextUnit (emitted below) and answer every
+// table of the unit, fixed or variable.
 package goosetable
 
 import (
@@ -37,6 +45,101 @@ import (
 
 func init() {
 	Register("json_form", emitJSONFormPart)
+	RegisterUnit("json_form", "json", emitJSONUnit)
+}
+
+// TextUnitName is the unit's text facts, schema_rt::JsonUnit, in the
+// package's json module: what the text form needs of a value that the table
+// wire's descriptors do not carry, read by runtime/json_value.goose beside
+// the unit's TableUnit.
+const TextUnitName = "TextUnit"
+
+// emitJSONUnit writes TextUnit: a flags field's variant names, a timestamp
+// array's elements, a text list's fields (§2.13), and the tables declared
+// without the json form (§2.12), which have no text.
+// Every unit with a table gets one, so a program that reads any root's text
+// through json_value.goose names it the same way.
+func emitJSONUnit(g *goose.Gen) error {
+	g.Import("json_value")
+	structs, unions := unitDecls(g.Unit)
+	var facts, noText []string
+	seen := map[string]bool{}
+	fact := func(owner string, ordinal int, f *ir.Field) {
+		t := f.Type
+		names := ""
+		if r, ok := t.Ref.(*ir.Flags); ok && t.Kind == ir.TNamed {
+			names = "_TextUnitFlags" + r.Name
+			if !seen[names] {
+				seen[names] = true
+				q := make([]string, len(r.Variants))
+				for i, v := range r.Variants {
+					q[i] = fmt.Sprintf("%q", v)
+				}
+				g.Declare(names)
+				g.Pf("let %s: (const u8[:])[%d] = [%s];\n", names, len(q), strings.Join(q, ", "))
+			}
+		}
+		stamp := t.Timestamp && (f.Array != ir.ArrayNone || f.KeyEnum != "")
+		text := f.IsTextList()
+		if names == "" && !stamp && !text {
+			return
+		}
+		l := fmt.Sprintf("%s::JsonFact { owner: %q, ordinal: %d", goose.RuntimeNamespace, owner, ordinal)
+		if names != "" {
+			l += ", is_flags: true, flags: " + names
+		}
+		if stamp {
+			l += ", timestamp: true"
+		}
+		if text {
+			l += ", text_list: true"
+		}
+		facts = append(facts, l+", .. }")
+	}
+	var visit func(st *ir.Struct)
+	visit = func(st *ir.Struct) {
+		if seen["struct "+st.Name] {
+			return
+		}
+		seen["struct "+st.Name] = true
+		for i, f := range st.Fields {
+			fact(st.Name, i, f)
+			if f.IsMap() && f.MapEntry != nil {
+				visit(f.MapEntry)
+			}
+		}
+	}
+	for _, st := range structs {
+		visit(st)
+		if st.IsTable && !st.CarriesForm("json") {
+			noText = append(noText, fmt.Sprintf("%q", st.Name))
+		}
+	}
+	for _, un := range unions {
+		for i, v := range un.Variants {
+			if v.F != nil {
+				fact(un.Name, i+1, armField(v))
+			}
+		}
+	}
+	var l lit
+	if len(facts) > 0 {
+		g.Declare("_TextUnitFacts")
+		g.Pf("let _TextUnitFacts: %s::JsonFact[%d] = [\n    %s,\n];\n", goose.RuntimeNamespace, len(facts), strings.Join(facts, ",\n    "))
+		l.add("facts", "_TextUnitFacts")
+	}
+	if len(noText) > 0 {
+		g.Declare("_TextUnitNoText")
+		g.Pf("let _TextUnitNoText: (const u8[:])[%d] = [%s];\n", len(noText), strings.Join(noText, ", "))
+		l.add("no_text", "_TextUnitNoText")
+	}
+	g.Declare(TextUnitName)
+	if len(l.parts) == 0 {
+		g.Pf("let %s: %s::JsonUnit = %s::JsonUnit { .. };\n", TextUnitName, goose.RuntimeNamespace, goose.RuntimeNamespace)
+		return nil
+	}
+	g.Pf("let %s: %s::JsonUnit = %s;\n", TextUnitName, goose.RuntimeNamespace, l.render("JsonUnit"))
+	return nil
 }
 
 // jsonUncarried names the first construct in st's closure the text form does
@@ -193,11 +296,13 @@ func emitJSONFormPart(g *goose.Gen) error {
 	for _, name := range mine {
 		if st := structs[name]; st != nil {
 			e.emitStruct(st)
+			(&valueEmit{jsonEmit: e}).emitStruct(st, tables[name])
 			if tables[name] {
 				e.emitRoot(st)
 			}
 		} else {
 			e.emitUnion(unions[name])
+			(&valueEmit{jsonEmit: e}).emitUnion(unions[name])
 		}
 	}
 	return e.err

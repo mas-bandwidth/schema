@@ -147,7 +147,9 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 				t.Skipf("%s is not built: run make tables-elixir-message-conformance", p)
 			}
 		}
-		cmd := exec.Command(harness, "run", "--only", "elixir")
+		// its own work directory: the default, build/conformance, is the one
+		// a conformance run beside this test writes and compares in
+		cmd := exec.Command(harness, "run", "--only", "elixir", "--work", t.TempDir())
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
 		if err != nil {

@@ -57,6 +57,10 @@ class FakeRunner(m.Runner):
             text = fuzz(arm,int(seed),self.lang)
         elif name.startswith("wire-builder-"):
             text = fuzz("plain", int(name.rsplit("-", 1)[1]), self.lang, builder=True)
+        elif self.lang == "moo" and name in ("packet-normal-0", "packet-ludicrous-0"):
+            tests = argv[argv.index("-run")+1][2:-2].split("|")
+            text = "\n".join("\n".join(native("moo",t).splitlines()[:-1]) for t in tests)
+            text += "\n" + native("moo").splitlines()[-1]
         elif name.startswith("packet-"):
             text = "OK"
             if name == "packet-schema_test_random":
@@ -69,6 +73,10 @@ class FakeRunner(m.Runner):
             tests = argv[argv.index("-run")+1][2:-2].split("|")
             text = "\n".join("\n".join(native("goosetable",t).splitlines()[:-1]) for t in tests)
             text += "\n" + native("goosetable").splitlines()[-1]
+        elif name.startswith("retain-moo-"):
+            tests = argv[argv.index("-run")+1][2:-2].split("|")
+            text = "\n".join("\n".join(native("mootable",t).splitlines()[:-1]) for t in tests)
+            text += "\n" + native("mootable").splitlines()[-1]
         elif name.startswith("retain-"):
             test = argv[argv.index("-run")+1][1:-1]
             package = argv[-1].split("/")[-1]
@@ -466,7 +474,9 @@ class Contracts(unittest.TestCase):
             targets.update(text.split())
         targets.update(("bin/schema","build/conformance-harness","build/c-collections-fuzz","build/cpp-collections-fuzz",
                         "goose-toolchain-ready","build/conformance-harness-goose","build/goose-packet/.stamp",
-                        "packet-finite-goose","packet-finite-goose-negative-control"))
+                        "packet-finite-goose","packet-finite-goose-negative-control",
+                        "moo-toolchain-ready","build/conformance-harness-moo","build/schema-moo","moo-packet-driver",
+                        "packet-finite-moo","packet-finite-moo-negative-control"))
         for lang in m.LANGUAGES:
             if lang!="cpp":
                 for feature in ("defaults","utf8","wide"):
@@ -480,7 +490,10 @@ class Contracts(unittest.TestCase):
         # Goose's gates run go test in their own recipes; the readiness run
         # executes them through goose_uncapped_makefile, which uncaps each.
         goose_outer={name for name in outer if name.startswith("tables-goose-")}
-        self.assertEqual(outer-goose_outer,{"tables-view","tables-fixed-twin","packet-wide-go"})
+        # MOO's likewise, through moo_uncapped_makefile.
+        moo_outer={name for name in outer if name.startswith("tables-moo-")}
+        self.assertEqual(outer-goose_outer-moo_outer,{"tables-view","tables-fixed-twin","packet-wide-go"})
+        self.assertEqual(moo_outer,set(m.FIXED_GATES["moo"].split()))
         self.assertEqual(goose_outer,set(m.FIXED_GATES["goose"].split()))
         runner=FakeRunner(ROOT,"goose")
         m.goose_uncapped_makefile(runner,m.FIXED_GATES["goose"])
@@ -558,6 +571,82 @@ class Contracts(unittest.TestCase):
             runner=FakeRunner(root,"goose")
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertIsNone(m.goose_uncapped_makefile(runner,m.FIXED_GATES["goose"]))
+            self.assertTrue(runner.results[-1]["errors"])
+            runner.temporary.cleanup()
+
+    def test_moo_plan_is_the_expanded_shape(self):
+        required=m.required_phases("moo")
+        for phase in ("prerequisites","implementation","native-moo","native-mootable","native-lockfile",
+                      "packet-build","packet-normal-0","packet-ludicrous-0",
+                      "packet-features","external-table-gates","wire-driver-build","wire-retain-controls",
+                      "retain-moo-save","retain-moo-refusal",
+                      *("wire-"+arm+"-"+str(seed) for arm in ("plain","retain") for seed in (1,2,3))):
+            self.assertIn(phase,required)
+        self.assertNotIn("packet-normal-1",required)
+        # no §5.6 retirement is admitted for MOO
+        self.assertNotIn("moo",m.RETIRED_NATIVE)
+        self.assertTrue(m.native_retirement_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything","moo",set()))
+        # one process over the whole roster, answering the region measure
+        # itself: the plain profile, no dispatcher
+        self.assertEqual(m.driver_command(ROOT,"moo"),"test/conformance/moo/wirefuzz-driver")
+        self.assertNotIn("moo",m.MIXED_BUILDER)
+        self.assertEqual(m.DRIVER_BUILD["moo"],"moo-wire-fuzz-ready")
+
+    def test_moo_main_uses_tagged_harness_and_its_probes(self):
+        real=m.Runner
+        m.Runner=FakeRunner
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(m.main(["moo"]),0)
+            runner=FakeRunner.instances[-1]
+            calls={name:(argv,cwd) for name,argv,cwd in runner.calls}
+            self.assertIn("build/conformance-harness-moo",calls["prerequisites"][0])
+            self.assertIn("moo-toolchain-ready",calls["prerequisites"][0])
+            self.assertEqual(calls["implementation"][0][0],"./build/conformance-harness-moo")
+            for arm in ("plain","retain"):
+                for seed in m.SEEDS:
+                    argv=calls["wire-"+arm+"-"+str(seed)][0]
+                    self.assertEqual(argv[0],"./build/conformance-harness")
+                    self.assertEqual(argv[argv.index("--driver")+1],"test/conformance/moo/wirefuzz-driver")
+                    self.assertNotIn("--mixed-builder",argv)
+            for label,tests in m.MOO_PACKET_PROBES.items():
+                argv=calls["packet-"+label+"-0"][0]
+                self.assertEqual(argv[-1],"./internal/codegen/moo")
+                self.assertEqual(argv[argv.index("-run")+1],"^("+"|".join(tests)+")$")
+            for feature in ("defaults","utf8","wide","finite"):
+                self.assertIn("packet-"+feature+"-moo-negative-control",calls["packet-features"][0])
+            self.assertIn("-f",calls["external-table-gates"][0])
+            for name in ("retain-moo-save","retain-moo-refusal"):
+                self.assertIn("-timeout=0",calls[name][0])
+            runner.temporary.cleanup()
+        finally:
+            m.Runner=real
+
+    def test_moo_probes_fail_on_a_missing_or_failed_probe(self):
+        tests=list(m.MOO_PACKET_PROBES["normal"])
+        partial="\n".join(native("moo",tests[0]).splitlines())
+        self.assertTrue(m.native_result(partial,tests,"moo"))
+        failed="\n".join(native("moo",tests[0],"fail").splitlines())
+        self.assertTrue(m.native_result(failed,tests[:1],"moo"))
+
+    def test_moo_uncapped_makefile_is_exact_and_drift_rejected(self):
+        runner=FakeRunner(ROOT,"moo")
+        path=m.moo_uncapped_makefile(runner,m.FIXED_GATES["moo"])
+        text=path.read_text()
+        self.assertTrue(text.startswith("include Makefile\n"))
+        for target in m.FIXED_GATES["moo"].split():
+            block=m.re.search(r"^"+m.re.escape(target)+r":\n((?:\t[^\n]*\n)+)",text,m.re.MULTILINE)
+            self.assertIsNotNone(block,target)
+            self.assertNotIn("go test -count",block[1])
+            self.assertIn("go test -timeout=0 ",block[1])
+        runner.temporary.cleanup()
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/"make").mkdir()
+            for f in (ROOT/"make").glob("moo*.mk"):
+                (root/"make"/f.name).write_text(f.read_text().replace("go test -count=1 ","go test -count=1 -timeout 600s "))
+            runner=FakeRunner(root,"moo")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertIsNone(m.moo_uncapped_makefile(runner,m.FIXED_GATES["moo"]))
             self.assertTrue(runner.results[-1]["errors"])
             runner.temporary.cleanup()
 

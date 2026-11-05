@@ -1,0 +1,391 @@
+{
+  "language": "cpp",
+  "tested_revision": "b998963b125e6ba2e943c6e38dde661eef886a21",
+  "host": "studio",
+  "command": "python3 test/conformance/nightly-readiness cpp",
+  "finished_utc": "2026-11-03T07:52:52Z",
+  "result": "NIGHTLY_READINESS_PASS language=cpp phases=37",
+  "implementation": {
+    "registered_constructs": 11,
+    "qualified_witnesses": 3
+  },
+  "native_table_events": {
+    "pass": 240,
+    "fail": 0,
+    "skip": 0
+  },
+  "native_package_events": {
+    "lockfile": {
+      "pass": 295,
+      "fail": 0,
+      "skip": 0
+    },
+    "cpp": {
+      "pass": 25,
+      "fail": 0,
+      "skip": 0
+    },
+    "cpptable": {
+      "pass": 240,
+      "fail": 0,
+      "skip": 0
+    },
+    "compiler": {
+      "pass": 3187,
+      "fail": 0,
+      "skip": 0
+    },
+    "harness": {
+      "pass": 381,
+      "fail": 0,
+      "skip": 0
+    },
+    "tabletext": {
+      "pass": 300,
+      "fail": 0,
+      "skip": 0
+    },
+    "tablewire": {
+      "pass": 332,
+      "fail": 0,
+      "skip": 0
+    },
+    "tablepack": {
+      "pass": 208,
+      "fail": 0,
+      "skip": 0
+    },
+    "fixedtwin": {
+      "pass": 12,
+      "fail": 0,
+      "skip": 0
+    }
+  },
+  "plain": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 242,
+    "roots": 64,
+    "enumerated_per_seed": 162066,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "retaining": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 110,
+    "roots": 28,
+    "enumerated_per_seed": 91410,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "results": [
+    {
+      "phase": "readiness-contracts",
+      "exit": 0,
+      "seconds": 0.38367875,
+      "errors": []
+    },
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 30.439720750000003,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 0.3560009579999992,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 0.398136375,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 3.9705565000000043,
+      "errors": []
+    },
+    {
+      "phase": "native-list-cpp",
+      "exit": 0,
+      "seconds": 0.8023809590000042,
+      "errors": []
+    },
+    {
+      "phase": "native-cpp",
+      "exit": 0,
+      "seconds": 0.8273845840000007,
+      "errors": []
+    },
+    {
+      "phase": "native-list-cpptable",
+      "exit": 0,
+      "seconds": 0.3783417909999969,
+      "errors": []
+    },
+    {
+      "phase": "native-cpptable",
+      "exit": 0,
+      "seconds": 89.43128166700001,
+      "errors": []
+    },
+    {
+      "phase": "native-list-compiler",
+      "exit": 0,
+      "seconds": 2.5170360409999972,
+      "errors": []
+    },
+    {
+      "phase": "native-compiler",
+      "exit": 0,
+      "seconds": 379.083632167,
+      "errors": []
+    },
+    {
+      "phase": "native-list-harness",
+      "exit": 0,
+      "seconds": 0.6377810839999825,
+      "errors": []
+    },
+    {
+      "phase": "native-harness",
+      "exit": 0,
+      "seconds": 35.149812042000065,
+      "errors": []
+    },
+    {
+      "phase": "native-list-tabletext",
+      "exit": 0,
+      "seconds": 0.5964100410000128,
+      "errors": []
+    },
+    {
+      "phase": "native-tabletext",
+      "exit": 0,
+      "seconds": 3.0190595419999227,
+      "errors": []
+    },
+    {
+      "phase": "native-list-tablewire",
+      "exit": 0,
+      "seconds": 0.7815539169999965,
+      "errors": []
+    },
+    {
+      "phase": "native-tablewire",
+      "exit": 0,
+      "seconds": 1.9495167090000223,
+      "errors": []
+    },
+    {
+      "phase": "native-list-tablepack",
+      "exit": 0,
+      "seconds": 0.37405662499998016,
+      "errors": []
+    },
+    {
+      "phase": "native-tablepack",
+      "exit": 0,
+      "seconds": 0.7157872499999485,
+      "errors": []
+    },
+    {
+      "phase": "native-list-fixedtwin",
+      "exit": 0,
+      "seconds": 0.39047549999997955,
+      "errors": []
+    },
+    {
+      "phase": "native-fixedtwin",
+      "exit": 0,
+      "seconds": 0.49894462499992187,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 1.6384006250000311,
+      "errors": []
+    },
+    {
+      "phase": "packet-schema_test",
+      "exit": 0,
+      "seconds": 0.11465479200001027,
+      "errors": []
+    },
+    {
+      "phase": "packet-schema_test_guard",
+      "exit": 0,
+      "seconds": 0.08336387500003184,
+      "errors": []
+    },
+    {
+      "phase": "packet-schema_test_wide",
+      "exit": 0,
+      "seconds": 0.08910091600000669,
+      "errors": []
+    },
+    {
+      "phase": "packet-schema_test_random",
+      "exit": 0,
+      "seconds": 0.2050528330000816,
+      "errors": []
+    },
+    {
+      "phase": "packet-schema_test_ludicrous",
+      "exit": 0,
+      "seconds": 0.08134145799999715,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 3.161185875000001,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 35.93256387500003,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 0.6036748750000243,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 19.562950999999998,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 19.35553079099998,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 19.352197040999954,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 18.752468457999953,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 18.852689584000018,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 18.02068924999992,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 338.65866437499994,
+      "errors": []
+    }
+  ],
+  "sha256": {
+    "Makefile.uncapped": "442e847e0073532991af7fa772f7b206426733a45fb57f37167bd32f34183d36",
+    "Makefile.uncapped.json": "c0ad262849873eb500e396add839c3e658ccfabfd4ef13d4d9fff735981f965f",
+    "external-table-gates.command.json": "c8b54ca6dd6454835045068c995c1bb4c17729e40049253a7c31f478248324ac",
+    "external-table-gates.log": "14bf9aca58332b11a462351ed824927eb2b338931e1a38fb76fe59ecdec5e368",
+    "implementation.command.json": "5c6c73612855e5aafaa8dbb86f0346d7406ecf77f8a34945a60ae322e0f83fc9",
+    "implementation.log": "a89763ae2352280dbd2edf477a9d92a712de8ff4076af2df4f886a94ecdd8f87",
+    "native-compiler.command.json": "f72aa640ee923344b048b575dc627edf32274d111b05a985fde05653544256bc",
+    "native-compiler.log": "95b7326ce1c90c3de8ce5aa6e2893dcce41735da728f70456b7f38ffcc4b69d5",
+    "native-cpp.command.json": "07df41b659cd88d74b6611da327b9a43c2197f356e681426972adb48dfa49791",
+    "native-cpp.log": "a69c95c7a52c24b9c61bde30ba4245c555644b84decd9b5d9b7dd3387c2118b2",
+    "native-cpptable.command.json": "054dfd27a1d57d9c6ef9e78885318413dfef93b4f6b7703568ee6da00886c965",
+    "native-cpptable.log": "7717f45288ef939a396a4710bb297e9bc3f73a0d2e73ef8f3c3e95664479a5ac",
+    "native-fixedtwin.command.json": "7a7a77a726bba648b02ca4b03e2f376a086a14cc58c34fcd1b9883b5f75a529b",
+    "native-fixedtwin.log": "7438176f6926ead479a8b4aff019ca07ccd25e248f18263b757a4dcf83e71e14",
+    "native-harness.command.json": "818feb537431f1874c159e6ecf4c61874c570346b11cd8978dde029257783f2f",
+    "native-harness.log": "cfb12330323bb80af3b37ce173c0e53986a7294b0fa39fc96ca7e081632dc2a9",
+    "native-list-compiler.command.json": "355015f5e2bb813ce84a90d17a7978afd76b91dbbe73df3717bacf220d4736b8",
+    "native-list-compiler.log": "89c66c786fcf2f3429dd77d29a3adb8ca89d9e8a9241212ec10775e9eeb81ab9",
+    "native-list-cpp.command.json": "70bc011c341b62c6f0d0529b8b83f6c85be3c529d6d65508fd161915d0e97303",
+    "native-list-cpp.log": "60186e9f80b64d5ea4e979b2e8488d7c0eb95b659de119a87853ad00e04d542f",
+    "native-list-cpptable.command.json": "c3ff2beb74bc6402bd22df0637da142dc4b8d27ee72be4c3d2beea185a609162",
+    "native-list-cpptable.log": "1e79796cbe247b407a15f7c498170ae475e44bf2bf17e9b2021feb3ed48b0b71",
+    "native-list-fixedtwin.command.json": "5599749853605f7fb0922d4b279e4b6b10539e8c4cd768e123a906324347c5cb",
+    "native-list-fixedtwin.log": "679195c4234569d0a54cc18bc9c36c2359fbac575f36f2bc13b444be8c9f640a",
+    "native-list-harness.command.json": "b97d9b9123418252127ceb71c49d438873e19972bfb386fb7d878fa99221b766",
+    "native-list-harness.log": "663b85927b2a5fa1bc04838307419d0e5eec1f0c137f694bc4cea2163e04f30e",
+    "native-list-lockfile.command.json": "9ca4baa379df0a7ec5c212ae96337d17da30dc058b6bb0df5fa455162509675f",
+    "native-list-lockfile.log": "4e49a8d2b475c98becdb1f056ce266b568374882b0d90da24af94476c03dccff",
+    "native-list-tablepack.command.json": "137d75e7446d1338c9e4772a542f25c68caddeca3835201733444ecb65e45148",
+    "native-list-tablepack.log": "657891dbad6080b3de82d87dc68844bf38c92346ed23c6c7120b8aa424dda04f",
+    "native-list-tabletext.command.json": "0ec69540d3750d96db12dd4b59e070e1a7fdff78da80267c1f1f410dfea13f19",
+    "native-list-tabletext.log": "6a1259c44c7edafff2b1782cee6c843762b12189b698c0b3a2c07cddb364124f",
+    "native-list-tablewire.command.json": "636b7fb5ecb5c58b2e789964fdb478c44f92ce054a7664377617786ae9621b20",
+    "native-list-tablewire.log": "7f797dc2bc368805c33b37be2dbe3674c25a0d9c5d68a575bd644df82cf3c4db",
+    "native-lockfile.command.json": "3c60e724b39e9f69297888eada3550f39fe2efc30250d7b1ed8111e0272822f6",
+    "native-lockfile.log": "6bd7d8ee068a1548e1f8f9f2e191d53b7245f2d99de519ee7d63fd76e9bce0ac",
+    "native-tablepack.command.json": "caa53ea9ddb8ae880b12e9a7775fffa0e07357f03a4a7697a9ea3a071187bccc",
+    "native-tablepack.log": "aebacbd19a44387467541c6d661bad936f7b24cb25c4b529d78fec2491c2b635",
+    "native-tabletext.command.json": "1a645a0ad7ce9558563f61f3427f7ffec8dadcf0f684ac885fc1067e0e746bbd",
+    "native-tabletext.log": "2692d475510b60d54b37e91589a4380ed01f54655b2d0b00b82eae3599fc9ddb",
+    "native-tablewire.command.json": "8f68e8d442ed64a0c84fce09f9467d74b83f5fdd8a8b3c376f62d6e752835ed6",
+    "native-tablewire.log": "80b40f329a23a363153478f69e4df817086d4144bccef7993930d3ca0c36a25a",
+    "packet-build.command.json": "8817c24de05568c18ffd442d039ed32f5c1d3a3e9845147649af05bea46b4a7c",
+    "packet-build.log": "51ff87114bed575ce75e13ce886b70a7c1b1bc8c0aa5d7e8354d9107d52a9d35",
+    "packet-features.command.json": "cef3a3915b48f34efb00f936dc56b6b2f7bf735a1e53179a5fc3eff63ec7b781",
+    "packet-features.log": "1e238f16d1f131ea601aa30da5a9788249a728adbc30e804b1ae592768463687",
+    "packet-schema_test.command.json": "3265942b0adb5dc0fc4434aa143934bf087865472fa7bdb6cbd25903bf0264c2",
+    "packet-schema_test.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-schema_test_guard.command.json": "e8642c1eaddc8677b5166d6a233d30f12a76d27bb9ae0d7c7fe53cda4400a42b",
+    "packet-schema_test_guard.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-schema_test_ludicrous.command.json": "4e2a93727ce83d9d27f13b209c183df3fdf470de319175a77335aa6b599c439c",
+    "packet-schema_test_ludicrous.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-schema_test_random.command.json": "7442bbcc2f12b46fd36e030dc49751f025fe3fc20190d5c28e6127b48c3335f4",
+    "packet-schema_test_random.log": "7adca35dfe03652d028dcdd1b6d61891b61f87fc81e92ea20456389e5a77fd4e",
+    "packet-schema_test_wide.command.json": "ef8e0ea0e5c0c847b7837536893e7a5e670bea3fca18e7b2f09b615cc640d3de",
+    "packet-schema_test_wide.log": "04e07ebdf702bd3c5b32f9c8f2ae2ca75a0e2ce42c2ffacd81798635d3b949ba",
+    "prerequisites.command.json": "26bce728f2e4abd3525804eb22584614a0f3bf3e618d1ed804b3adc6b2016886",
+    "prerequisites.log": "f1ec332c09ce8fd3b99631b1e44b41f6a50b646a7fc8630efe31d8e4fc370832",
+    "readiness-contracts.command.json": "e93110fb06aede83f97e38083223a04b2b9513953fa48fe0201680aa3c3261d7",
+    "readiness-contracts.log": "4a396ecab1dd770031d0ade6379bd8cfeba7451e9d551b8b4cbcc09f34871e10",
+    "results.json": "ac7c932e53f283b564d0e033c78d6eb33bf53d918f7899bea43bce80322ea890",
+    "wire-driver-build.command.json": "d326378d08d139582eec68cefdb87675ab489a50a5f236b55b29764286f4c7c3",
+    "wire-driver-build.log": "de2393a06dee9c87ac9434d4c654f2a75fbbec64329d649d72e51bde159e2858",
+    "wire-plain-1.command.json": "3c8f52fc676574daee06260d3417adce4a8274a7c76a3b355ae954ca7090dcd2",
+    "wire-plain-1.log": "a8c74f21d2065aea44b3222a3763125783e740cd85cb7f24ceaf3861048fa30d",
+    "wire-plain-2.command.json": "ae122c74bed32cef91a312ae8d5262c2f4f24b91e91972b34b68e588010c58cc",
+    "wire-plain-2.log": "8acad927f97ba7393e96161c4a4d31cc90c60b972b782a8162625ce13e463bf0",
+    "wire-plain-3.command.json": "7abcb2e1cf5c677cf673e3045be5f3a07cebd4a4b8ab5411f662189f2b88e140",
+    "wire-plain-3.log": "44dd3f06c525824a8313144850749d8f7a97b767c3eeee53a10b0402e1955d9c",
+    "wire-retain-1.command.json": "a5980d62927553bd55c95bdb45f0d8fcd69794e31793062e50e090835d3a7e07",
+    "wire-retain-1.log": "1d43a3fef5be9db4754be447da46a76da3cd1a74e635a6b8529376e203167b97",
+    "wire-retain-2.command.json": "0619ec67ee4c857908fbd6fe8bdbc645d55b99c770b7c579ca781bc54a6d17f7",
+    "wire-retain-2.log": "14b2ad588883382e799635d143fa023aaaf4412df694d97e0fe695e61796ceaf",
+    "wire-retain-3.command.json": "1a77c8e952da4186445280d3f497b0f77b2f79b733fcc2fcb6aed26c8da1c385",
+    "wire-retain-3.log": "498ef18c414ef118d4e9558fa4ed6809891383ba81c861bec7fb2e800410c06a",
+    "wire-retain-controls.command.json": "9090abd51c45352493946f8c38055edfb7268da455593198965a57fe445a4b3f",
+    "wire-retain-controls.log": "c8ba0e6b84478db6dadef0cd884d9929b85bb88b914c9e3e78a15d628439a8f1"
+  }
+}

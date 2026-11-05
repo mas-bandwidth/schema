@@ -212,12 +212,16 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
             TableReport builder_report;
             builder_report.unknown = 7; builder_report.widened = 13; builder_report.duplicate = 19;
             CHECK(!%sLoadBuilderTolerant(builder, wire, (int64_t)sizeof(wire), &builder_report), "%s/%d builder refusal");
-            CHECK(!builder_report.malformed && !builder_report.refused &&
+            CHECK(!builder_report.malformed && builder_report.refused && builder_report.reason == count_over_extent_cap &&
+                builder_report.refuse_reason == count_over_extent_cap &&
                 builder_report.unknown == %d && builder_report.widened == %d && builder_report.duplicate == %d, "%s/%d builder counters");
+            TableReport plain_report;
+            CHECK(!%sLoadBuilder(builder, wire, (int64_t)sizeof(wire), &plain_report) && !plain_report.malformed &&
+                plain_report.refuse_reason == count_over_extent_cap, "%s/%d plain builder reason");
         }
     }
 `, cppBytes(wire), root, root, shape, count, shape, count, shape, count, r.Unknown, r.Widened, r.Duplicate, retainingReport.Retained, retainingReport.RetainLost, shape, count, shape, count,
-				root, shape, count, shape, count, root, root, shape, count, r.Unknown, r.Widened, r.Duplicate, shape, count)
+				root, shape, count, shape, count, root, root, shape, count, r.Unknown, r.Widened, r.Duplicate, shape, count, root, shape, count)
 		}
 		root, wire := cppCountWire(t, u, shape, 0, false)
 		var rep tabletext.Report
@@ -293,13 +297,13 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
 		report := tabletext.Report{Unknown: 7, Widened: 13}
 		ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &report)
 		var refusal *tablewire.CountRefusal
-		if ok || !errors.As(err, &refusal) || report.Malformed || report.Unknown != 8 || report.Widened != 14 {
+		if ok || !errors.As(err, &refusal) || report.Malformed || report.Unknown != 8 || report.Widened != 13 {
 			t.Fatalf("%s: unexpected oracle prefix: %v %v %+v", shape, ok, err, report)
 		}
 		retainingReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
 		retained := tablewire.Retain{Capacity: 4096, IdCapacity: 64}
 		ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &retained, &retainingReport)
-		if ok || !errors.As(err, &refusal) || retainingReport.Malformed || retainingReport.Unknown != 8 || retainingReport.Widened != 14 {
+		if ok || !errors.As(err, &refusal) || retainingReport.Malformed || retainingReport.Unknown != 8 || retainingReport.Widened != 13 {
 			t.Fatalf("%s: unexpected retaining oracle prefix: %v %v %+v", shape, ok, err, retainingReport)
 		}
 		lostReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}

@@ -71,6 +71,7 @@ inline bool TableJsonIsList( const TableFieldInfo * f );
 inline bool TableJsonWriteList( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth );
 // that array back into the slot, every element the text carries
 inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth );
+inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void * slot, int32_t * out_len = NULL );
 
 // ---- json walk: begin ----
 //
@@ -425,6 +426,7 @@ inline bool TableJsonIsEnum( const TableFieldInfo * f )
 inline char TableJsonShape( const TableFieldInfo * f )
 {
     if ( TableJsonIsMap( f ) ) return 'o';     // a MAP: an object keyed by the KEY (§2.8)
+    if ( f->text_list != 0 ) return 'a';       // a TEXT LIST: the plain array of strings (§2.13)
     if ( f->kind == 12 ) return 's';           // string
     if ( f->kind == 33 ) return 's';           // wstring: the same text, transcoded (§16.2)
     if ( TableJsonIsBytes( f ) ) return 's';   // bytes: base64
@@ -446,6 +448,7 @@ inline char TableJsonShape( const TableFieldInfo * f )
 // the ELEMENT shape of an array field — the same classifier one level down
 inline char TableJsonElementShape( const TableFieldInfo * f )
 {
+    if ( f->text_list != 0 ) return 's';
     if ( f->arms != NULL ) return 'o';        // an element of an array of unions: one key, the arm (§2.6)
     // an element that is an ARRAY ROOT is its field's array (§16.10)
     if ( f->kind == 13 && f->table != NULL && f->table->json_array ) return 'a';
@@ -1205,6 +1208,38 @@ inline bool TableJsonWriteTimestamp( TableJsonOut & out, const void * storage )
 inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth );
 // a UNION ARM that names no declaration writes through the field walk one key
 // down (docs/SPEC-TABLES.md §2.6, §16.2), which is defined below
+inline const char * schema_table_json_unbounded_text_at_( const void * slot, int32_t & len )
+{
+    int64_t delta = 0;
+    memcpy( &delta, slot, 8 );
+    if ( delta == 0 ) { len = 0; return ""; }
+    const uint8_t * raw = (const uint8_t *) ( (uintptr_t) slot + (uintptr_t) delta );
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline bool schema_table_json_write_text_element_( TableJsonOut & out, const uint8_t * element, const TableFieldInfo * f )
+{
+    const TableFieldInfo * value = &f->table->fields[0];
+    if ( f->text_list == 2 && TableJsonGetRaw( element + value->present_offset, 1 ) == 0 )
+    {
+        out.raw( "null", 4 );
+        return true;
+    }
+    const uint8_t * val_storage = element + value->offset;
+    if ( value->unbounded )
+    {
+        int32_t len = 0;
+        const char * s = schema_table_json_unbounded_text_at_( val_storage, len );
+        TableJsonWriteString( out, s, len );
+        return true;
+    }
+    TableJsonWriteString( out, (const char *) val_storage, TableJsonCount( element, value ) );
+    return true;
+}
+
 inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const TableFieldInfo * f, int32_t depth );
 
 // one scalar, at one storage address: a nested object, a union, a
@@ -1350,6 +1385,21 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     {
         return TableJsonWriteList( out, (const void *) storage, f, depth );
     }
+    if ( f->text_list != 0 )
+    {
+        const int32_t count = TableJsonCount( base, f );
+        if ( count == 0 ) { out.raw( "[]", 2 ); return true; }
+        out.put( '[' );
+        for ( int32_t i = 0; i < count; i++ )
+        {
+            if ( i > 0 ) { out.put( ',' ); }
+            out.line( depth + 1 );
+            if ( !schema_table_json_write_text_element_( out, storage + (int64_t) i * f->elem_size, f ) ) { return false; }
+        }
+        out.line( depth );
+        out.put( ']' );
+        return true;
+    }
     if ( f->kind == 17 && !f->is_array )
     {
         return TableJsonWritePointer( out, storage, f, depth );
@@ -1377,6 +1427,13 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     }
     if ( f->kind == 12 )
     {
+        if ( f->unbounded )
+        {
+            int32_t len = 0;
+            const char * str = schema_table_json_unbounded_text_at_( storage, len );
+            TableJsonWriteString( out, str, len );
+            return true;
+        }
         TableJsonWriteString( out, (const char *) storage, TableJsonCount( base, f ) );
         return true;
     }
@@ -3310,6 +3367,40 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     return true;
 }
 
+inline bool schema_table_json_read_text_element_( TableJsonIn & in, uint8_t * element, const TableFieldInfo * f, int32_t depth, int32_t & out_bytes )
+{
+    out_bytes = 0;
+    const TableFieldInfo * value = &f->table->fields[0];
+    const char got = TableJsonValueShape( in );
+    if ( f->text_list == 2 && got == 'z' )
+    {
+        return TableJsonLiteral( in, "null" );
+    }
+    if ( got != 's' )
+    {
+        in.report->kind_mismatch++;
+        return TableJsonSkipValue( in, depth + 1 );
+    }
+    uint8_t * val_storage = element + value->offset;
+    if ( value->unbounded )
+    {
+        if ( !schema_table_json_read_unbounded_text_( in, val_storage, &out_bytes ) ) { return false; }
+    }
+    else
+    {
+        int32_t length = 0;
+        if ( !TableJsonScanString( in, (char *) val_storage, (int32_t) value->array_bound, &length, NULL, true ) ) { return false; }
+        val_storage[length] = 0;
+        TableJsonSetCount( element, value, length );
+        out_bytes = length;
+    }
+    if ( f->text_list == 2 )
+    {
+        TableJsonSetRaw( element + value->present_offset, 1, 1 );
+    }
+    return true;
+}
+
 inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldInfo * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
@@ -3321,9 +3412,61 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         return TableJsonReadList( in, (void *) storage, f, depth );
     }
+    if ( f->text_list != 0 )
+    {
+        if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+        in.pos++;
+        for ( int32_t i = 0; i < f->array_bound; i++ )
+        {
+            f->table->reset( storage + (int64_t) i * f->elem_size );
+        }
+        TableJsonSetCount( base, f, 0 );
+        int32_t placed = 0;
+        int64_t spent = 0;
+        bool total_clamped = false;
+        for ( ;; )
+        {
+            char c = TableJsonPeek( in );
+            if ( c == ']' ) { in.pos++; break; }
+            if ( c == 0 ) { in.bad = true; return false; }
+            if ( total_clamped || placed >= f->array_bound )
+            {
+                if ( !total_clamped ) { in.report->clamped++; }
+                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            }
+            else
+            {
+                uint8_t * element = storage + (int64_t) placed * f->elem_size;
+                int32_t elem_bytes = 0;
+                if ( !schema_table_json_read_text_element_( in, element, f, depth, elem_bytes ) ) { return false; }
+                if ( f->text_total > 0 && spent + (int64_t) elem_bytes > f->text_total )
+                {
+                    in.report->clamped++;
+                    f->table->reset( element );
+                    total_clamped = true;
+                }
+                else
+                {
+                    spent += (int64_t) elem_bytes;
+                    placed++;
+                }
+            }
+            c = TableJsonPeek( in );
+            if ( c == ',' ) { in.pos++; continue; }
+            if ( c == ']' ) { in.pos++; break; }
+            in.bad = true;
+            return false;
+        }
+        TableJsonSetCount( base, f, placed );
+        return true;
+    }
 
     if ( f->kind == 12 )
     {
+        if ( f->unbounded )
+        {
+            return schema_table_json_read_unbounded_text_( in, storage, NULL );
+        }
         int32_t length = 0;
         if ( !TableJsonScanString( in, (char *) storage, f->array_bound, &length, NULL, true ) ) { return false; }
         storage[length] = 0;
@@ -3809,6 +3952,7 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     // buffer whose last byte is a closing brace is the one shape that is not.
     out.put( '\n' );
     if ( out.overflow ) { return -1; }
+    if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
 
@@ -3837,6 +3981,13 @@ inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFiel
 inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t depth )
 {
     return TableJsonSkipValue( in, depth + 1 );
+}
+
+inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void *, int32_t * )
+{
+    in.report->malformed = true;
+    in.bad = true;
+    return false;
 }
 
 // ---- this unit declares no map ----
@@ -4391,8 +4542,179 @@ inline std::string tableTextFormCanonFloat( const std::string & token, bool wide
     return std::string( buffer );
 }
 
+inline bool tableTextFormTimestampParse( const std::string & s, int64_t * out )
+{
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    int index = 0;              // 0..18 over "YYYY-MM-DDTHH:MM:SS"
+    int64_t fraction = 0;
+    int digits = 0;
+    int offset_sign = 0, offset_hour = 0, offset_minute = 0;
+    int phase = 0;              // 0 fixed, 1 after seconds, 2 fraction, 4 offset, 10 done
+    for ( size_t k = 0; k < s.size(); k++ )
+    {
+        const char c = s[k];
+        if ( (unsigned char) c == 0 || (unsigned char) c >= 0x80 ) { return false; }
+        if ( phase == 0 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( index == 4 || index == 7 )
+            {
+                if ( c != '-' ) { return false; }
+            }
+            else if ( index == 10 )
+            {
+                if ( c != 'T' && c != 't' ) { return false; }
+            }
+            else if ( index == 13 || index == 16 )
+            {
+                if ( c != ':' ) { return false; }
+            }
+            else
+            {
+                if ( digit < 0 ) { return false; }
+                if ( index < 4 ) { year = year * 10 + digit; }
+                else if ( index < 7 ) { month = month * 10 + digit; }
+                else if ( index < 10 ) { day = day * 10 + digit; }
+                else if ( index < 13 ) { hour = hour * 10 + digit; }
+                else if ( index < 16 ) { minute = minute * 10 + digit; }
+                else
+                {
+                    second = second * 10 + digit;
+                }
+            }
+            index++;
+            if ( index == 19 ) { phase = 1; }
+            continue;
+        }
+        if ( phase == 1 )
+        {
+            if ( c == '.' )
+            {
+                phase = 2;
+                continue;
+            }
+            if ( c == 'Z' || c == 'z' )
+            {
+                phase = 10;
+                continue;
+            }
+            if ( c == '+' || c == '-' )
+            {
+                offset_sign = c == '-' ? -1 : 1;
+                phase = 4;
+                continue;
+            }
+            return false;
+        }
+        if ( phase == 2 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit >= 0 )
+            {
+                if ( digits < 9 ) { fraction = fraction * 10 + digit; }
+                digits++;
+                continue;
+            }
+            if ( digits == 0 ) { return false; }
+            if ( c == 'Z' || c == 'z' )
+            {
+                phase = 10;
+                continue;
+            }
+            if ( c == '+' || c == '-' )
+            {
+                offset_sign = c == '-' ? -1 : 1;
+                phase = 4;
+                continue;
+            }
+            return false;
+        }
+        if ( phase == 4 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_hour = digit * 10;
+            phase = 5;
+            continue;
+        }
+        if ( phase == 5 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_hour += digit;
+            phase = 6;
+            continue;
+        }
+        if ( phase == 6 )
+        {
+            if ( c != ':' ) { return false; }
+            phase = 7;
+            continue;
+        }
+        if ( phase == 7 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_minute = digit * 10;
+            phase = 8;
+            continue;
+        }
+        if ( phase == 8 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_minute += digit;
+            phase = 10;
+            continue;
+        }
+        return false; // anything after the production
+    }
+    if ( phase != 10 ) { return false; }
+    if ( month < 1 || month > 12 ) { return false; }
+    if ( day < 1 || day > TableJsonTimestampMonthDays( year, month ) ) { return false; }
+    if ( hour > 23 || minute > 59 || second > 59 ) { return false; }
+    if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return false; }
+    for ( ; digits < 9; digits++ ) { fraction *= 10; }
+    const int64_t offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    const int64_t seconds = TableJsonTimestampDays( year, month, day ) * 86400 +
+        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+    const int64_t min_second = -9223372037LL;
+    const int64_t max_second = 9223372036LL;
+    const int64_t min_nanos = 145224192LL;
+    const int64_t max_nanos = 854775807LL;
+    if ( seconds < min_second || seconds > max_second ) { return false; }
+    if ( seconds == min_second && fraction < min_nanos ) { return false; }
+    if ( seconds == max_second && fraction > max_nanos ) { return false; }
+    const uint64_t total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
+    *out = (int64_t) total;
+    return true;
+}
+
 inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
+    if ( f->text_list != 0 )
+    {
+        if ( f->text_list == 2 && n.kind == 'z' )
+        {
+            out += "null";
+            tableTextFormCanon( spans, path, "null" );
+            return true;
+        }
+        if ( n.kind != '"' )
+        {
+            *why = "text_kind_mismatch";
+            return false;
+        }
+        const TableFieldInfo * val = &f->table->fields[0];
+        if ( !val->unbounded && val->array_bound != 0 && (int64_t) n.text.size() > val->array_bound )
+        {
+            *why = "text_bound";
+            return false;
+        }
+        TableTextFormJsonString( out, n.text );
+        tableTextFormCanon( spans, path, n.text );
+        return true;
+    }
     if ( f->optional && n.kind == 'z' )
     {
         out += "null";
@@ -4423,7 +4745,20 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             tableTextFormMark( spans, tableTextFormIndex( pp, 0 ), pair.items[0] );
             tableTextFormCanon( spans, tableTextFormIndex( pp, 0 ), pair.items[0].text );
             if ( i > 0 ) { out += ','; }
-            if ( key->kind == 12 ) { TableTextFormJsonString( out, pair.items[0].text ); }
+            if ( key->kind == 12 )
+            {
+                if ( pair.items[0].kind != '"' )
+                {
+                    *why = "text_kind_mismatch";
+                    return false;
+                }
+                if ( !key->unbounded && key->array_bound != 0 && (int64_t) pair.items[0].text.size() > key->array_bound )
+                {
+                    *why = "text_bound";
+                    return false;
+                }
+                TableTextFormJsonString( out, pair.items[0].text );
+            }
             else
             {
                 TableTextFormJsonString( out, pair.items[0].text );
@@ -4450,13 +4785,16 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             *why = "text_kind_mismatch";
             return false;
         }
+        TableFieldInfo element = *f;
+        element.is_array = false;
+        element.optional = false;
         out += '[';
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             if ( i > 0 ) { out += ','; }
             const std::string ip = tableTextFormIndex( path, i );
             tableTextFormMark( spans, ip, n.items[i] );
-            if ( !TableTextFormScalar( n.items[i], f, out, why, ip, spans ) ) { return false; }
+            if ( !TableTextFormScalar( n.items[i], &element, out, why, ip, spans ) ) { return false; }
         }
         out += ']';
         return true;
@@ -4690,7 +5028,24 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         out += ']';
         return true;
     }
-    if ( f->kind == 12 || f->kind == 33 || f->kind == 36 )
+    if ( f->kind == 36 )
+    {
+        if ( n.kind != '"' )
+        {
+            *why = "text_kind_mismatch";
+            return false;
+        }
+        int64_t nanos = 0;
+        if ( !tableTextFormTimestampParse( n.text, &nanos ) )
+        {
+            *why = "text_timestamp";
+            return false;
+        }
+        TableTextFormJsonString( out, n.text );
+        tableTextFormCanon( spans, path, std::to_string( (long long) nanos ) );
+        return true;
+    }
+    if ( f->kind == 12 || f->kind == 33 )
     {
         if ( n.kind != '"' )
         {
@@ -4699,7 +5054,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         }
         int64_t size = (int64_t) n.text.size();
         if ( f->kind == 33 ) { size = TableUtf16Length( n.text ); }
-        if ( f->array_bound != 0 && size > f->array_bound )
+        if ( !f->unbounded && f->array_bound != 0 && size > f->array_bound )
         {
             *why = "text_bound";
             return false;
@@ -4797,6 +5152,39 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
             tableTextFormCanon( spans, path, n.text );
             return true;
         }
+        if ( f->text_list != 0 )
+        {
+            if ( n.kind != '(' )
+            {
+                *why = "text_kind_mismatch";
+                return false;
+            }
+            if ( !f->unbounded_container && n.items.size() > (size_t) f->array_bound )
+            {
+                *why = "text_bound";
+                return false;
+            }
+            out += '[';
+            int64_t spent = 0;
+            for ( size_t i = 0; i < n.items.size(); i++ )
+            {
+                if ( i > 0 ) { out += ','; }
+                const std::string ip = tableTextFormIndex( path, i );
+                tableTextFormMark( spans, ip, n.items[i] );
+                if ( !TableTextFormScalar( n.items[i], f, out, why, ip, spans ) ) { return false; }
+                if ( n.items[i].kind == '"' )
+                {
+                    spent += (int64_t) n.items[i].text.size();
+                    if ( f->text_total > 0 && spent > f->text_total )
+                    {
+                        *why = "text_bound";
+                        return false;
+                    }
+                }
+            }
+            out += ']';
+            return true;
+        }
         if ( f->array_bound != 0 && f->key_name == NULL )
         {
             if ( n.kind != '(' )
@@ -4875,7 +5263,9 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         *why = "text_kind_mismatch";
         return false;
     }
-    out += '{';
+    const bool array_root = info->json_array && info->num_fields == 1;
+    if ( !array_root ) { out += '{'; }
+    bool wrote = false;
     std::vector<int32_t> seen;
     std::vector<size_t> seen_val;
     for ( size_t i = 0; i < n.items.size(); i += 2 )
@@ -4917,10 +5307,18 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         seen_val.push_back( i + 1 );
         const std::string fp = tableTextFormJoin( path, info->fields[found].json );
         tableTextFormMark( spans, fp, key );
-        if ( i > 0 ) { out += ','; }
-        TableTextFormJsonString( out, info->fields[found].json );
-        out += ':';
+        if ( !array_root )
+        {
+            if ( wrote ) { out += ','; }
+            TableTextFormJsonString( out, info->fields[found].json );
+            out += ':';
+        }
         if ( !TableTextFormField( n.items[i + 1], &info->fields[found], out, why, fp, spans ) ) { return false; }
+        wrote = true;
+    }
+    if ( array_root && !wrote )
+    {
+        out += "[]";
     }
     for ( int32_t j = 0; j < info->num_fields; j++ )
     {
@@ -4946,7 +5344,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
             return false;
         }
     }
-    out += '}';
+    if ( !array_root ) { out += '}'; }
     return true;
 }
 
@@ -5209,7 +5607,7 @@ bool PartRowLoadTextForm( const char * text, int64_t bytes, PartRow & value, con
     TableReport report;
     if ( !PartRowFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
-        *refusal = "text_kind_mismatch";
+        *refusal = report.clamped != 0 ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -5241,7 +5639,7 @@ bool PartRowEditTextForm( const char * document, int64_t document_bytes, const T
     TableReport report;
     if ( !PartRowFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
-        *refusal = "text_kind_mismatch";
+        *refusal = report.clamped != 0 ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -5254,7 +5652,7 @@ bool PartFrameLoadTextForm( const char * text, int64_t bytes, PartFrame & value,
     TableReport report;
     if ( !PartFrameFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
-        *refusal = "text_kind_mismatch";
+        *refusal = report.clamped != 0 ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -5286,7 +5684,7 @@ bool PartFrameEditTextForm( const char * document, int64_t document_bytes, const
     TableReport report;
     if ( !PartFrameFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
-        *refusal = "text_kind_mismatch";
+        *refusal = report.clamped != 0 ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;

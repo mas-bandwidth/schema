@@ -22,7 +22,10 @@
 // THE SURFACES (test/conformance/harness/run.go). The table wire, form 1
 // (docs/SPEC-TABLES.md §3, §3.1, §4; docs/PORT-GOOSE.md, THE TABLE WIRE):
 //   wire         load every instance and save it back, byte for byte
-//   report       load every report row, print §4's counters and verdict
+//   report       load every report row, print §4's counters and verdict,
+//                then the §16 text of the value when the read reads
+//   framing      load every framing row, print §4's counters and verdict and,
+//                for a clean read the row owes a value, the §16 text after it
 //   retain       load with retention (§6.6), print the load's three counters
 //                and the save's retain_lost
 //   retain-save  the bytes that retaining save writes back
@@ -30,10 +33,16 @@
 //   message      AnnounceRead the connection's announcement, LoadMessages the
 //                batch against it, SaveMessages what landed: the bytes
 // The JSON text form (docs/SPEC-TABLES.md §16.2, §16.3):
-//   json-hostile FromJsonTolerant of <tree>/<root>.json and its report, through
-//                the unit's text glue: unit.goose, which the shell driver
-//                copies from units/<unit>.goose, or the empty unit.goose beside
-//                this file for a unit that has none (every row ABSENT)
+//   json-read    a tolerant text read -> form-1 save, against the pinned wire:
+//                json-read and json-hostile call one entry point, the
+//                tolerant read (test/conformance/README.md)
+//   json-write   form-1 load -> the canonical text, against the pinned text
+//   json-hostile a tolerant read of <tree>/<root>.json, its report and the
+//                §16 text of the value it left: through
+//                the unit's text glue for a root it names (unit.goose, which
+//                the shell driver copies from units/<unit>.goose, or the empty
+//                unit.goose beside this file), and through the flat value
+//                table for every other root
 // The cook's and the block form's surfaces are accel.goose's: the shell
 // driver runs that program for them.
 import os;
@@ -83,7 +92,10 @@ fn load_file(path: const u8[:], out: u8[>..]&) {
     }
 }
 
-// surface_report: §4's counters and verdict, `u,k,w,c,d,malformed,verdict`.
+// surface_report: §4's counters and verdict, `u,k,w,c,d,malformed,verdict`,
+// then the §16 text of the value when the read reads. A root the glue writes
+// no text for answers the line alone beside its absence: the verdict is held
+// and the value is the missing feature (test/conformance/README.md).
 fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
@@ -93,11 +105,54 @@ fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
-        schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
-        let text = str(report.unknown, ",", report.kind_mismatch, ",", report.widened, ",", report.clamped, ",",
-                       report.duplicate, ",", bool_word(report.malformed), ",",
-                       if report.refused || report.non_finite { "refused" } else { "read" }, "\n");
+        let at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        let refused = report.refused || report.non_finite;
+        var text: u8[>..] = [];
+        text.append(str(report.unknown, ",", report.kind_mismatch, ",", report.widened, ",", report.clamped, ",",
+                        report.duplicate, ",", bool_word(report.malformed), ",",
+                        if refused { "refused" } else { "read" }, "\n"));
+        if !refused && !report.malformed && at >= 0 {
+            var json: u8[>..] = [];
+            if conformance_json_write(f[3], data, vals, nodes, at, json) < 0 {
+                answer(f[1], text);
+                absent(f[1], "");
+                continue;
+            }
+            text.append(json);
+        }
         answer(f[1], text);
+    }
+}
+
+// surface_framing: the framing vectors (docs/LAYERS/1-framing.md): §4's
+// counters and verdict, then the §16 text of the value a clean read leaves,
+// unless the row is marked `no-value`. Damaged input owes the report line
+// alone, because damage discards the whole load (§4).
+fn surface_framing(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 5 || f[0] != "framing" || f[2] != unit { continue; }
+        var no_value = false;
+        for mark in f { if mark == "no-value" { no_value = true; } }
+        var data: u8[>..] = [];
+        load_file(f[4], data);
+        var vals: schema_rt::LoadVal[>..] = [];
+        var nodes: schema_rt::LoadNode[>..] = [];
+        var report = schema_rt::LoadReport { .. };
+        let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        var out: u8[>..] = [];
+        out.append(str(report.unknown, ",", report.kind_mismatch, ",", report.widened, ",", report.clamped, ",",
+                       report.duplicate, ",", bool_word(report.malformed), ",",
+                       if report.refused || report.non_finite { "refused" } else { "read" }, "\n"));
+        if !no_value && root >= 0 && !report.malformed && !report.refused && !report.non_finite {
+            var json: u8[>..] = [];
+            if conformance_json_write(f[3], data, vals, nodes, root, json) < 0 {
+                write_stderr(str("driver: ", f[1], " JSON writer refused\n"));
+                exit(1);
+            }
+            out.append(json);
+        }
+        answer(f[1], out);
     }
 }
 
@@ -124,6 +179,42 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
             continue;
         }
         answer(f[1], out);
+    }
+}
+
+// Read canonical JSON and save form 1; or load form 1 and write canonical
+// JSON: through a root's typed record where it has one, and through the flat
+// value table for every other root (the glue's conformance_json_read and
+// conformance_json_write).
+fn surface_json(lines: const u8[:][:], unit: const u8[:], writing: bool) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 5 || f[0] != "instance" || f[2] != unit { continue; }
+        var no_text = false;
+        for mark in f { if mark == "no-text" { no_text = true; } }
+        if no_text { continue; }
+        let name = if writing { str(f[1], ".json") } else { str(f[1]) };
+        var data: u8[>..] = [];
+        var vals: schema_rt::LoadVal[>..] = [];
+        var nodes: schema_rt::LoadNode[>..] = [];
+        var out: u8[>..<] = [];
+        var result: i64 = -1;
+        if writing {
+            load_file(f[4], data);
+            var report = schema_rt::LoadReport { .. };
+            let at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+            if at < 0 { write_stderr(str("driver: ", f[1], " does not load\n")); exit(1); }
+            var json: u8[>..] = [];
+            result = conformance_json_write(f[3], data, vals, nodes, at, json);
+            out.append(json);
+        } else {
+            var text: u8[>..] = [];
+            load_file(str("testdata/conformance/tables/json/", f[1], ".json"), text);
+            result = conformance_json_read(f[3], text, data, vals, nodes);
+            if result >= 0 && schema_rt::save_table(conformance_unit(), f[3], data, vals, nodes, result, out) != 0 { result = -2; }
+        }
+        if result < 0 { write_stderr(str("driver: ", f[1], " JSON bridge refused\n")); exit(1); }
+        answer(name, out);
     }
 }
 
@@ -188,10 +279,12 @@ fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
     }
 }
 
-// surface_json_hostile: the verdict of FromJsonTolerant over <tree>/<root>.json
-// for every json-hostile row of the unit, `u,k,w,c,d,false,read` or `refused`
-// (test/conformance/README.md). A root the unit's text glue does not name is
-// ABSENT.
+// surface_json_hostile: the verdict of a tolerant read of <tree>/<root>.json
+// for every json-hostile row of the unit, `u,k,w,c,d,false,read` and the §16
+// text of the value it left, or `refused`
+// (test/conformance/README.md): through the unit's text glue for a root it
+// names (its typed <Root>FromJsonTolerant), and through the flat value table
+// for every other root.
 fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
@@ -199,10 +292,7 @@ fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
         var data: u8[>..] = [];
         load_file(str(f[4], "/", f[3], ".json"), data);
         var verdict: u8[>..] = [];
-        if !unit_json_verdict(f[3], data, verdict) {
-            absent(f[1], "");
-            continue;
-        }
+        if !unit_json_verdict(f[3], data, verdict) { conformance_json_verdict(f[3], data, verdict); }
         answer(f[1], verdict);
     }
 }
@@ -254,7 +344,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nreport\nretain\nretain-save\njson-hostile\n");
+        write_stdout("wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\n");
         return;
     }
     if argv.len != 4 {
@@ -266,10 +356,13 @@ fn main() {
     let lines = split(text, '\n');
     let unit = argv[3];
     if argv[1] == "report" { surface_report(lines, unit); return; }
+    if argv[1] == "framing" { surface_framing(lines, unit); return; }
     if argv[1] == "wire" { surface_wire(lines, unit); return; }
     if argv[1] == "message" { surface_message(lines, unit); return; }
     if argv[1] == "retain" { surface_retain(lines, unit, false); return; }
     if argv[1] == "retain-save" { surface_retain(lines, unit, true); return; }
+    if argv[1] == "json-read" { surface_json(lines, unit, false); return; }
+    if argv[1] == "json-write" { surface_json(lines, unit, true); return; }
     if argv[1] == "json-hostile" { surface_json_hostile(lines, unit); return; }
     // a surface this leg does not answer: ABSENT, never a guessed answer
     exit(2);

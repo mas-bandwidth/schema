@@ -764,8 +764,22 @@ public final class Driver {
         catch (ClassNotFoundException | NoSuchMethodException absent) { return null; }
     }
 
+    // The value half of a `report` and `json-hostile` answer
+    // (test/conformance/README.md): the report line, then the §16 text of the
+    // value the read left. Null when the writer refuses the value.
+    private static byte[] withValue(VariableCodec codec, Object value, String line) throws ReflectiveOperationException {
+        byte[] head = line.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] text = codec.toJson(value);
+        if (text == null) return null;
+        byte[] both = new byte[head.length + text.length];
+        System.arraycopy(head, 0, both, 0, head.length);
+        System.arraycopy(text, 0, both, head.length, text.length);
+        return both;
+    }
+
     // json-hostile: one tree per rule the text form states (§16.2, §16.3,
-    // §17.5). The answer is the REPORT the read produces, or `refused`.
+    // §17.5). The answer is the REPORT the read produces, then the §16 text of
+    // the value it left, or `refused`.
     private static int surfaceJsonHostile(String out) throws IOException {
         for (String[] f : kind("json-hostile")) {
             try {
@@ -778,10 +792,12 @@ public final class Driver {
                 if (bad) {
                     spill(out, f[1], "refused\n");
                 } else {
-                    spill(out, f[1], String.format("%d,%d,%d,%d,%d,false,read\n",
+                    byte[] answer = withValue(codec, value, String.format("%d,%d,%d,%d,%d,false,read\n",
                             codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
                             codec.count(report, "widened"), codec.count(report, "clamped"),
                             codec.count(report, "duplicate")));
+                    if (answer == null) return failInt(f[1] + ": toJson refused the value");
+                    spill(out, f[1], answer);
                 }
             } catch (java.lang.reflect.InvocationTargetException thrown) {
                 // A hostile tree is allowed to be refused by breaking the read;
@@ -828,13 +844,17 @@ public final class Driver {
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
-                boolean ok = codec.load(Files.readAllBytes(Paths.get(f[4])), report) != null;
+                Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
                 boolean refused = codec.flag(report, "refused");
-                boolean malformed = codec.flag(report, "malformed") || (!ok && !refused);
-                spill(out, f[1], String.format("%d,%d,%d,%d,%d,%s,%s\n",
+                boolean malformed = codec.flag(report, "malformed") || (value == null && !refused);
+                String line = String.format("%d,%d,%d,%d,%d,%s,%s\n",
                         codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
                         codec.count(report, "widened"), codec.count(report, "clamped"),
-                        codec.count(report, "duplicate"), malformed, refused ? "refused" : "read"));
+                        codec.count(report, "duplicate"), malformed, refused ? "refused" : "read");
+                if (refused || malformed) { spill(out, f[1], line); continue; }
+                byte[] answer = withValue(codec, value, line);
+                if (answer == null) return failInt(f[1] + ": toJson refused the value");
+                spill(out, f[1], answer);
             } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": report codec failed: " + failure); }
         }
         return 0;

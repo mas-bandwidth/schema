@@ -2412,3 +2412,7 @@ conformance-negative-control-java-framing: build/conformance-harness build-confo
 	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/$(JAVA_FRAMING_CONTROL)/share-classes:$(CURDIR)/build/conformance-java Driver" \
 		$(JAVA_FRAMING_CONTROL)/run-share node_diamond_chain
 test-java: conformance-java-framing
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-java/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

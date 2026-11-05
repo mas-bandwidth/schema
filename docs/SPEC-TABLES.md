@@ -3026,12 +3026,20 @@ caller's region before it reads and the other allocates as it goes:
 | the wire says | into a REGION (§6.5) | into a BUILDER (`LoadBuilder`) |
 |---|---|---|
 | a count the BODY CANNOT COVER | `LoadMeasure` answers `-1` with the reason `count_over_length` (§6.5). No `Load` runs, and there is no report, because nothing was read | damage: `malformed` counts and the whole load is discarded (§4) |
-| a count above the `int32` STORAGE CAP | `LoadMeasure` answers `-1` with the reason `count_over_extent_cap` (§6.5). No `Load`, no report | `LoadBuilder` answers NULL. The partial builder is DISCARDED, and nothing else the read produced is defined |
+| a count above the `int32` STORAGE CAP | `LoadMeasure` answers `-1` with the reason `count_over_extent_cap` (§6.5). No `Load`, no report | `LoadBuilder` answers NULL and REFUSES BY THE SAME NAME: the report's reason is `count_over_extent_cap`, as is the strict read's error (and a report's `refused` flag is set and its `refuse_reason` is that name, in a port whose report carries them). `malformed` is NOT set, no counter moves, and the partial builder is DISCARDED |
 
 **NO COUNTER MOVES FOR A `LoadMeasure` REFUSAL**, on §3's rule for the form
 byte: nothing was decoded, so there is nothing to count, and a refusal is not
-one of §4's events. `LoadBuilder`'s NULL is a refusal too and moves no counter
-of its own, and no counter it leaves behind is defined. **A caller that wants one answer for both paths measures first**,
+one of §4's events. **`LoadBuilder`'s NULL is the same refusal by the same
+name**: it answers `count_over_extent_cap`, it is not damage, so `malformed`
+is not set, and it moves no counter. Every builder read answers it this way:
+the tolerant read, the plain one, `ReadStrict` and the retaining loads.
+**When a read meets two refusals, the first in read order names it**: a NaN
+met before an over-cap count answers `non_finite_float`, and an over-cap count
+met first answers `count_over_extent_cap` (the `nan_then_over_cap` and
+`over_cap_then_nan` rows of
+`internal/codegen/goosetable/testdata/load_refusal_reasons.tsv`).
+**A caller that wants one answer for both paths measures first**,
 which is what §6.5 already tells a region caller to do.
 
 **`clamped` CANNOT FIRE ON THE COUNT, and that is the one counter this
@@ -8848,11 +8856,22 @@ tolerance is the versioning model:
   own `L` runs past the map's `L` is damage; a map whose `L` runs past the
   body carrying it is damage, even when a key mismatch came first; otherwise
   the key-kind mismatch is one `kind_mismatch` and the map is skipped by its
-  `L`. A reader may stop at the first damage;
-  where it stops and what it read on the way are not observable, and no
-  conformance row or fuzz comparison looks at them: on damaged input the
-  `framing` rows owe the verdict `malformed` and no value, and the wire
-  fuzzer compares only that both sides say `malformed`. **EVOLUTION IS NOT
+  `L`. **DAMAGE ENDS THE BODY IT IS MET IN, THE ENCLOSING BODY STEPS OVER IT
+  BY ITS `L` AND READS ON, AND A NON-FINITE FLOAT ANYWHERE THE READ REACHES
+  REFUSES IT AS `non_finite_float` (§3.3), WHATEVER DAMAGE THE READ ALSO
+  MET.** Framing damage ends the body whose framing it breaks: nothing after
+  it in that body is read, and an `L` that runs past the body carrying it is
+  damage in that body. Damage to a value whose width or `L` still frames it —
+  a bool byte other than `0` or `1`, ill-formed text — ends nothing, and the
+  body reads on past it. So a NaN after damage in the same body is never
+  reached and the read answers `malformed`, while a NaN after damage in a
+  nested body, or in an earlier element of the same array, is reached and
+  the read refuses; which floats a read reaches is the same in every port,
+  and the wire fuzzer compares it (§4.2,
+  `testdata/wire/tables/fuzz-vectors/INDEX.txt`, the `reach_` vectors). On
+  damaged input with no non-finite float reached, the `framing` rows owe the
+  verdict `malformed` and no value, and the wire fuzzer compares that both
+  sides say `malformed` and neither refuses. **EVOLUTION IS NOT
   DAMAGE** and every other row of this section stands: an unknown field,
   variant, arm or slot skipped and counted, a kind mismatch, a widening, a
   clamp, a duplicate key, an inert short array body; the load succeeds and
@@ -10026,7 +10045,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `bad_layout` | the block accelerator's layout word, pitch, count or offset does not describe its arrays (§7, §19) |
   | `unknown_form` | a form byte THIS CALL does not carry (§3). A file's measure answers it for any byte that is not the variable form, form `2` included, because a batch belongs to the message surface (§3.3); the `Load` beside it answers `message_form_as_file` for `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
   | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
-  | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
+  | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size. The measure's `-1` and the builder read's NULL both answer it, and the strict read refuses with it; neither sets `malformed` (§2.9) |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
   | `invalid_value` | a writer handed a value outside the declaration: a count past its maximum, a value off min or max, an ordinal past its set, ill-formed text. The fixed writer answers it as its save reason (§3.1, §11) |
@@ -10150,7 +10169,8 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
   the root or refuses. It refuses, with ONE typed reason, a read that is
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
-  build-version-mismatched, missing a required field (§2.3), holding a
+  build-version-mismatched, missing a required field (§2.3), carrying a `[]`
+  or map count above the `int32` storage cap (`count_over_extent_cap`, §2.9), holding a
   non-finite plain float (`non_finite_float`, §3.3, a plain float's special values; the tolerant read refuses it too) or
   naming one blob from two slots (`blob_shared`, §2.5). The clamped refusal
   NAMES the clamped field, `<Table>.<field>`, as the other refusals name
@@ -13882,7 +13902,7 @@ in build version (§20.5).
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
-  FixedKnown  FixedFloor  FixedLineagePlans
+  FixedKnown  FixedFloor  FixedLineagePlans  FixedClampKnown
   ```
 
   The Go templates also use Add, Erase, Each, Insert, Find,
@@ -13891,8 +13911,9 @@ in build version (§20.5).
   §2.9 and §2.13), and Type is the union tag type (§2.6); none of these is
   emitted from the bare table name, so none is claimed here — a declaration
   spelling one is not a collision. The fixed-form image and hole names and the
-  maximum plan capacity are package-level Go data (§3.4), and GenPastBound is
-  the exported bound probe helper (§4).
+  maximum plan capacity are package-level Go data (§3.4), GenPastBound is
+  the exported bound probe helper (§4), and FixedClampKnown<i> is a Go tablesn pass holding a record read under lineage entry i to that writers ranges
+  (docs/FIXED-FORM-ALGORITHM.md §4.5).
 
   The last six of the `Fixed` rows are the READING TIER's, and they are the
   price a language with no struct layout pays for the same form. Where the

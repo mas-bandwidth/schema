@@ -1,0 +1,214 @@
+{
+  "language": "elixir",
+  "tested_revision": "d2d77495d63df61bc3097cedf8f049bae97dc1ce",
+  "host": "studio",
+  "command": "python3 test/conformance/nightly-readiness elixir",
+  "finished_utc": "2026-11-03T07:13:02Z",
+  "result": "NIGHTLY_READINESS_PASS language=elixir phases=21",
+  "implementation": {
+    "registered_constructs": 11,
+    "qualified_witnesses": 3
+  },
+  "native_table_events": {
+    "pass": 448,
+    "fail": 0,
+    "skip": 0
+  },
+  "plain": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 238,
+    "roots": 64,
+    "enumerated_per_seed": 162062,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "retaining": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 108,
+    "roots": 28,
+    "enumerated_per_seed": 91408,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "results": [
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 18.418353583,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 0.7265241670000009,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 0.4042777079999986,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 3.2264420419999986,
+      "errors": []
+    },
+    {
+      "phase": "native-list-elixir",
+      "exit": 0,
+      "seconds": 0.31291229200000004,
+      "errors": []
+    },
+    {
+      "phase": "native-elixir",
+      "exit": 0,
+      "seconds": 0.2959627090000012,
+      "errors": []
+    },
+    {
+      "phase": "native-list-elixirtable",
+      "exit": 0,
+      "seconds": 0.6397572919999988,
+      "errors": []
+    },
+    {
+      "phase": "native-elixirtable",
+      "exit": 0,
+      "seconds": 757.407877334,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 0.8414296250000461,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-0",
+      "exit": 0,
+      "seconds": 3.7209404170000653,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-0",
+      "exit": 0,
+      "seconds": 0.7945146250000334,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 13.139373666999973,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 17.974183832999984,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 0.8344342500000721,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 116.25489025000002,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 112.06639729200015,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 112.01564274999987,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 88.332402,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 88.74612470800002,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 90.1195704170002,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 38.22538283400013,
+      "errors": []
+    }
+  ],
+  "sha256": {
+    "external-table-gates.command.json": "196221d21de43a1d611621ade0304695080abc34404ee0d3c8b7dc6723146efc",
+    "external-table-gates.log": "fa1b0bd85452aba54b1bf3b31118338b26be7271b8b2b342adca4a91f551a54e",
+    "implementation.command.json": "bf47fc255b14e781b436bf46992766fee45fce211f9013abd98e8ef9464180ea",
+    "implementation.log": "13fa982dee9dc05f64a14a2129696b4a95f38109abc7f051ed56ef74527be116",
+    "native-elixir.command.json": "97f6f591841d2ac2aa5478c27bd58e33b48e93db4c495a6e101bb8676e7aaa38",
+    "native-elixir.log": "3aff0c8305bf9c496d8ad370ae983cf5aa4a0e8f9e24703ffe22e345f736c242",
+    "native-elixirtable.command.json": "780b99c5d39ee97213f576fd3727f0869c057f0e8cb5a8f53dc713255136a267",
+    "native-elixirtable.log": "1eebf9d3652cb0ec8d81baffe4c92e005b5c82999e7103996947a5b8e2c93c5d",
+    "native-list-elixir.command.json": "d117b5ef14fccc4cb23490f8f00673eb128d21beee5d9949eaf08ab12c0337ff",
+    "native-list-elixir.log": "23247efdc3a623be86291102b3061fcf2f5828bff76b4a1717713bacd51807fc",
+    "native-list-elixirtable.command.json": "8b44633d1249aab2a7d332d76fa470e0a2ef6d989d54d66489423d4c365ae786",
+    "native-list-elixirtable.log": "c69482b355eb1f762eaddf63b2a924a2962437a69acc06433854c9bec311b088",
+    "native-list-lockfile.command.json": "dfda4f79302352156c1f9b55983747313d19f654a2c3b7ab6adb2e5e20567a82",
+    "native-list-lockfile.log": "d3641544e2317935d138ae23a55a4d86cf5d62e5a3619c92cbde4a1c256388c5",
+    "native-lockfile.command.json": "918cf2cc3d3627a6e57babd418cc247abc92652d370422ad5d248890217edf71",
+    "native-lockfile.log": "910bf4b7f4324f00077bee79c0b8ca16c525b8492af7b3627f3117bc1c9f4c37",
+    "packet-build.command.json": "83897f43e7ff430af15295b9b29979a632bd7b3fbd6105d0e20b3fb5b1c0b3be",
+    "packet-build.log": "d04245ab7644fe4f21de33f5ae92b5bfcc46e1f3e6e89c3f02fe6cf1a2b5b7a7",
+    "packet-features.command.json": "b51c0a9abd62e6e8d9dbcc5408f22bd71000290b9ec97ee228a400a0aa23fb91",
+    "packet-features.log": "ac68481800d737595a01a4f2afd57221f374003d1bc1cfc004b8dd29d4d88a02",
+    "packet-ludicrous-0.command.json": "02fde2cbbbcb7e595ef7676cbb1e1baa956f36cd812a6c5ea3871c614a517025",
+    "packet-ludicrous-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-0.command.json": "171f0421cd42c0cf9ac286682054171a946541a41b85036e10a899a21d02b9c7",
+    "packet-normal-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "prerequisites.command.json": "ffbe8f503e407256dcaec134d2f85ccd74b15a45e6934992fe08586449621c17",
+    "prerequisites.log": "4080f239f69355f1e34b0ebc5e3b60e7571d0b730a54f4c1295b66dfa414e5ec",
+    "results.json": "db800a23dda2d957250e416c100a62c3b2420cfc2127acaa75b82879c798dd8a",
+    "wire-driver-build.command.json": "8446a99fb247f9e64c2e2023c1cc42ca22cd38dd626dc2ff5b73f018ce6d6797",
+    "wire-driver-build.log": "64b8e84d657720c799b9b16090ec8bf9bb00951649658c754ec85c6d7519c4c0",
+    "wire-plain-1.command.json": "34248722aa0d2a234c7c5f86b79dbb5d4870c330c82dbbc481484fa90d260196",
+    "wire-plain-1.log": "e6b7e672b41ad22a9e1b5565c43b0f5d205cb8ce1311a69bf0e147e6b0b5d439",
+    "wire-plain-2.command.json": "f5fc232dbf0afe6318f0e0c5ea9e6367332e51c12cfcbf8ed760731c58948235",
+    "wire-plain-2.log": "30441bfc66e9730ddd78f069dbf43bd07e924a5b0bf653c7adaae8d94b1049da",
+    "wire-plain-3.command.json": "c1c7c924612cdc2fae66d99e349f61652fb33dde98a20698ec40927d7ceda254",
+    "wire-plain-3.log": "dbc1ee93be29ace5f2031dce1f02778480ab99945b5ac619bbc7eb87671ce57d",
+    "wire-retain-1.command.json": "f2a41640e8ac75a99ba65b6dc14811fd0e06286c73be49682b2ecd8f21a9a18c",
+    "wire-retain-1.log": "47f3558b482cc98bd4ada614e14f44648c7cd16efb794d940214b3c56c3fb6d8",
+    "wire-retain-2.command.json": "31f465bc39b04b8d05200b3e074604fd8be8764c465941d70c5517737a1a9d9a",
+    "wire-retain-2.log": "36e67320f621d3c86f1e45a270473a213891b8b551996f780c783643f1d324a4",
+    "wire-retain-3.command.json": "cb2cf2bbcb5d345b350f3dae5277d8e9d9252516ea640a853dcd77c0781bfc38",
+    "wire-retain-3.log": "8ab7551b3d2961f636c43cfdd7f5449325ec61abd2e2edde6154cd2e4b6b236c",
+    "wire-retain-controls.command.json": "72728c9da4c925f041a4fbb442910a8a0ad170e1bb002a0c43c747a7a6cb0a26",
+    "wire-retain-controls.log": "1432522993284d055782d891be2d8d18349ae909d6bac3002f71ee3e4c90567a"
+  }
+}

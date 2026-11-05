@@ -39,11 +39,15 @@ type FixedLineageEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
+	// Ranges are the WRITER's ranged integer leaves, on the raw scale
+	// (docs/FIXED-FORM-ALGORITHM.md §4.5): a record read under this entry is
+	// clamped to them first, then to this reader's own ranges.
+	Ranges []ir.TableFixedWriterRange
 }
 
 // FixedLineageOf computes the entry a unit's OWN build locks for table `name`:
-// its layout bytes, the wire hash over them and the definitions digest, and its
-// record size. It is what a lock records at commit, and it is how a test — or a
+// its layout bytes, the wire hash over them and the definitions digest, its
+// record size, and its ranged leaves. It is what a lock records at commit, and it is how a test — or a
 // build reading a sibling generation — states an older entry without a lock.
 //
 // THE HASH IS THE COMPILER'S OWN `ir.TableFixedLayoutHash(layout, st)` and never
@@ -61,6 +65,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
 			Record: fixedHashBytes + fixedTypeBytes(st),
+			Ranges: ir.TableFixedWriterRanges(st),
 		}, true
 	}
 	return FixedLineageEntry{}, false

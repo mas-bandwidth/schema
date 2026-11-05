@@ -36,6 +36,11 @@ type FixedEvolutionEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
+	// Ranges are the WRITER's ranged integer leaves (ir.TableFixedWriterRanges),
+	// so a read through this entry clamps a value to what its writer could
+	// have stored before the reader's own bounds pass runs
+	// (docs/FIXED-FORM-ALGORITHM.md §4.5).
+	Ranges []ir.TableFixedWriterRange
 }
 
 // FixedEvolutionOf is the entry a unit's OWN build locks for table name: its
@@ -48,7 +53,7 @@ func FixedEvolutionOf(u *ir.Unit, name string) (FixedEvolutionEntry, bool) {
 			continue
 		}
 		layout, hash, body := fixedRootFacts(st)
-		return FixedEvolutionEntry{Wire: hash, Layout: layout, Record: 8 + body}, true
+		return FixedEvolutionEntry{Wire: hash, Layout: layout, Record: 8 + body, Ranges: ir.TableFixedWriterRanges(st)}, true
 	}
 	return FixedEvolutionEntry{}, false
 }
@@ -110,13 +115,56 @@ type rawEntry struct {
 	children int
 }
 
-func parseLayout(data []byte) []rawEntry {
+const (
+	evolveRefuseLayoutMalformed      int64 = 31
+	evolveRefuseLayoutRecordTooLarge int64 = 38
+	evolveRefusePlanTooLarge         int64 = 39
+)
+
+func layoutKindKnown(kind int) bool {
+	if kind >= 1 && kind <= 30 {
+		return true
+	}
+	return kind == 32 || kind == 33 || kind == 35
+}
+
+func checkLayoutEntry(all []rawEntry, i, depth int) (int, int64) {
+	if i < 0 || i >= len(all) || depth > 64 {
+		return 0, evolveRefuseLayoutMalformed
+	}
+	e := all[i]
+	if !layoutKindKnown(e.kind) {
+		return 0, evolveRefuseLayoutMalformed
+	}
+	if e.size < 0 || e.size > ir.TableFixedRecordMaxBytes {
+		return 0, evolveRefuseLayoutRecordTooLarge
+	}
+	if e.kind == 30 && e.children > 0xFFFF {
+		return 0, evolveRefusePlanTooLarge
+	}
+	at := i + 1
+	var sum int64
+	for k := 0; k < e.children; k++ {
+		used, refuse := checkLayoutEntry(all, at, depth+1)
+		if refuse != 0 {
+			return 0, refuse
+		}
+		sum += all[at].size
+		if sum > ir.TableFixedRecordMaxBytes {
+			return 0, evolveRefuseLayoutRecordTooLarge
+		}
+		at += used
+	}
+	return at - i, 0
+}
+
+func parseLayout(data []byte) ([]rawEntry, int64) {
 	if len(data) < 4 {
-		return nil
+		return nil, evolveRefuseLayoutMalformed
 	}
 	n := int(uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24)
-	if 4+17*n > len(data) {
-		return nil
+	if n <= 0 || 4+17*n != len(data) {
+		return nil, evolveRefuseLayoutMalformed
 	}
 	out := make([]rawEntry, n)
 	for i := range n {
@@ -132,7 +180,20 @@ func parseLayout(data []byte) []rawEntry {
 			children: int(uint32(data[at+13]) | uint32(data[at+14])<<8 | uint32(data[at+15])<<16 | uint32(data[at+16])<<24),
 		}
 	}
-	return out
+	if out[0].kind != 13 {
+		return nil, evolveRefuseLayoutMalformed
+	}
+	if out[0].size <= 0 || out[0].size > ir.TableFixedRecordMaxBytes {
+		return nil, evolveRefuseLayoutRecordTooLarge
+	}
+	used, refuse := checkLayoutEntry(out, 0, 0)
+	if refuse != 0 {
+		return nil, refuse
+	}
+	if used != len(out) {
+		return nil, evolveRefuseLayoutMalformed
+	}
+	return out, 0
 }
 
 // evolveEntries is the lineage the emitter lays down for one table: oldest
@@ -206,15 +267,16 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("    var known: const u8[:] = %sFixedLayout;\n", n)
 	e.p("    var record_bytes: i64 = %sFixedRecordBytes;\n", n)
 	e.p("    var supported: bool = true;\n")
+	e.p("    var refuse: i64 = schema_rt::FixedRefuseLayoutMalformed;\n")
 	e.p("    if h == %sFixedHash {\n        pick = 0;\n", n)
 	for i, en := range olds {
-		e.p("    } else if h == 0x%016x {\n        pick = %d;\n        known = %sFixedEvolveLayout%d;\n        record_bytes = %d;\n        supported = %sFixedEvolveSupported%d;\n", en.Wire, i+1, n, i+1, en.Record, n, i+1)
+		e.p("    } else if h == 0x%016x {\n        pick = %d;\n        known = %sFixedEvolveLayout%d;\n        record_bytes = %d;\n        supported = %sFixedEvolveSupported%d;\n        refuse = %sFixedEvolveRefuse%d;\n", en.Wire, i+1, n, i+1, en.Record, n, i+1, n, i+1)
 	}
 	e.p("    }\n")
 	e.p("    if pick < 0 {\n        report.hash = h;\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutUnknown, false);\n    }\n")
 	e.p("    if pick > 0 && pick < %sFixedEvolveFloor {\n        report.hash = h;\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutUnsupported, false);\n    }\n", n)
-	e.p("    if !supported {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutMalformed, false);\n    }\n")
 	e.p("    if !schema_rt::fixed_evolve_layout_ok(data, layout_length, known) {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutMalformed, false);\n    }\n")
+	e.p("    if !supported {\n        return schema_rt::fixed_evolve_refuse(report, refuse, false);\n    }\n")
 	e.p("    let rest = data.len - schema_rt::FixedHeaderBytes - 4 - layout_length;\n")
 	e.p("    if record_bytes <= 8 || rest %% record_bytes != 0 {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseTruncated, true);\n    }\n")
 	e.p("    let count = rest / record_bytes;\n")
@@ -240,6 +302,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
 		e.p("            if r != 0 { return schema_rt::fixed_evolve_refuse(report, r, false); }\n")
 		e.p("            _%sFixedRead(img, 0, values[k]);\n", n)
+		e.emitWriterClamps(st, olds[i].Ranges)
 	}
 	e.p("        }\n")
 	e.p("        report.clamped += _%sFixedClamp(values[k]);\n", n)
@@ -264,6 +327,41 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	}
 	e.p("    return count;\n")
 	e.p("}\n")
+}
+
+// emitWriterClamps holds an older entry's ranged leaves to its WRITER's range
+// (docs/FIXED-FORM-ALGORITHM.md §4.5), counting each clamp, before the
+// reader's own bounds pass. A range lands on the reader's field the shared
+// helper matches (ir.TableFixedWriterField): a scalar, or every element of a
+// fixed array, each element held the same as a scalar. The lock refuses a
+// narrowed range, so the writer's range lies inside the reader's and the
+// reader's pass that follows never moves it.
+func (e *fixedEvolveEmit) emitWriterClamps(st *ir.Struct, ranges []ir.TableFixedWriterRange) {
+	for j, r := range ranges {
+		for _, f := range st.Fields {
+			wf, ok := ir.TableFixedWriterField(f, r)
+			if !ok {
+				continue
+			}
+			val := fieldPlace("values[k]", f).val
+			bounds := scalarBounds(elemOf(wf))
+			if f.Array == ir.ArrayFixed {
+				i := fmt.Sprintf("wr%d", j)
+				e.p("            var %s: i64 = 0;\n", i)
+				e.p("            while %s < %d {\n", i, f.ArrayBound)
+				val = val + "[" + i + "]"
+				for _, b := range bounds {
+					e.p("                if %s { %s = %s; report.clamped += 1; }\n", b.over(val), val, b.land)
+				}
+				e.p("                %s += 1;\n            }\n", i)
+				break
+			}
+			for _, b := range bounds {
+				e.p("            if %s { %s = %s; report.clamped += 1; }\n", b.over(val), val, b.land)
+			}
+			break
+		}
+	}
 }
 
 // addExpr joins a base expression and offsets without a leading "+".
@@ -459,6 +557,7 @@ type evolvePlan struct {
 	unknown      int
 	kindMismatch int
 	supported    bool
+	refuse       int64
 }
 
 func signedKind(k int) bool {
@@ -504,6 +603,18 @@ type evolveCompiler struct {
 	counted        map[uint64]bool
 	armDefaults    map[uint64]string
 	plan           *evolvePlan
+	record         int64
+	baseOff        int64
+	tooLarge       bool
+	overflow       bool
+}
+
+func (c *evolveCompiler) checkSrc(oldOff, size int64) bool {
+	if oldOff < 0 || size < 0 || c.baseOff+oldOff+size > c.record {
+		c.tooLarge = true
+		return false
+	}
+	return true
 }
 
 // subtree is how many pre-order entries the subtree rooted at i occupies.
@@ -548,6 +659,7 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 	// wrapper's child. A `?T` read into `?T` copies the present byte.
 	if me.kind == 35 {
 		if te.kind == 35 {
+			c.checkSrc(oldOff, 1)
 			out := []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: 1}}
 			return append(out, c.match(oi+1, ci+1, oldOff+1, curOff+1, census, depth+1)...)
 		}
@@ -556,6 +668,7 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 	}
 	if te.kind != me.kind {
 		if evolveWidens(te.kind, me.kind) {
+			c.checkSrc(oldOff, te.size)
 			return []evolveNode{{op: nodeWiden, oldOff: oldOff, curOff: curOff, oldSize: te.size,
 				newSize: me.size, signed: signedKind(te.kind), float: te.kind == 10 && me.kind == 11, widened: true}}
 		}
@@ -573,12 +686,15 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 		return c.union(oi, ci, oldOff, curOff, census, depth)
 	case 16: // a keyed array: the keys only ever append, so the old bytes stand
 		n := min(me.size, te.size)
+		c.checkSrc(oldOff, n)
 		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}
 	case 12, 33: // string / wstring: length and bytes, slack left at default
 		n := min(me.size, te.size)
+		c.checkSrc(oldOff, n)
 		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}
 	case 30: // an ordinal: a grown width is an unsigned widen, one count each
 		if te.size < me.size {
+			c.checkSrc(oldOff, te.size)
 			return []evolveNode{{op: nodeWiden, oldOff: oldOff, curOff: curOff, oldSize: te.size,
 				newSize: me.size, widened: true}}
 		}
@@ -586,6 +702,11 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 			c.plan.kindMismatch++
 			return nil
 		}
+		if te.children > 0xFFFF {
+			c.overflow = true
+			return nil
+		}
+		c.checkSrc(oldOff, te.size)
 		// THE WRITER'S VARIANT TABLE (gotable tableFixedCompileEntry, kind 30):
 		// each old variant names the reader ordinal by wire id, so a variant the
 		// old writer could not have written never lands a name only this reader
@@ -603,9 +724,11 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 		return []evolveNode{{op: nodeOrdinal, oldOff: oldOff, curOff: curOff, size: te.size, count: int64(te.children), remap: remap}}
 	default:
 		if te.size == me.size {
+			c.checkSrc(oldOff, te.size)
 			return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: te.size}}
 		}
 		if te.size < me.size {
+			c.checkSrc(oldOff, te.size)
 			return []evolveNode{{op: nodeWiden, oldOff: oldOff, curOff: curOff, oldSize: te.size,
 				newSize: me.size, signed: signedKind(te.kind), widened: true}}
 		}
@@ -665,6 +788,10 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 	if c.counted[te.id] || c.counted[me.id] {
 		head = 4
 	}
+	if head == 4 && (te.size < 4 || !c.checkSrc(oldOff, 4)) {
+		c.tooLarge = true
+		return nil
+	}
 	oldN := (te.size - head) / oe.size
 	newN := (me.size - head) / ce.size
 	n := min(newN, oldN)
@@ -677,8 +804,16 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 		out = append(out, evolveNode{op: nodeCountGuard, oldOff: oldOff, count: n})
 		out = append(out, evolveNode{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: 4})
 	}
+	savedBase := c.baseOff
+	if n > 0 {
+		c.checkSrc(oldOff+head, n*oe.size)
+		c.baseOff = savedBase + oldOff + (n-1)*oe.size
+	} else {
+		c.baseOff = savedBase + oldOff
+	}
 	body := c.match(oi+1, ci+1, head, head, census, depth+1)
-	if len(body) > 0 {
+	c.baseOff = savedBase
+	if len(body) > 0 && n > 0 {
 		loop := evolveNode{op: nodeLoop, oldOff: oldOff, curOff: curOff, head: head,
 			oldStride: oe.size, newStride: ce.size, count: n, body: body}
 		if head == 4 {
@@ -708,6 +843,7 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, de
 	// default, so the None tag is stamped over it before any arm can answer.
 	out := []evolveNode{{op: nodeSet, curOff: curOff, arg: 0, size: curTag}}
 	if te.children > 0 {
+		c.checkSrc(oldOff, oldTag)
 		out = append(out, evolveNode{op: nodeForgedTag, oldOff: oldOff, tagWidth: oldTag, count: int64(te.children)})
 	}
 	oa := oi + 1
@@ -724,6 +860,7 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, de
 			ca += c.subtree(c.curAll, ca)
 		}
 		if found >= 0 {
+			c.checkSrc(oldOff, oldTag)
 			var body []evolveNode
 			if t := c.armDefaults[oe.id]; t != "" {
 				// THE SELECTED ARM'S OWN DECLARED DEFAULTS go down before the
@@ -747,10 +884,13 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, de
 // are matched by wire id, arrays loop at their two strides, and a union's arms
 // answer to the writer's tag. A layout this walk cannot place is unsupported.
 func compileEvolvePlan(st *ir.Struct, oldLayout, curLayout []byte) evolvePlan {
-	oldAll := parseLayout(oldLayout)
-	curAll := parseLayout(curLayout)
-	if len(oldAll) == 0 || len(curAll) == 0 {
-		return evolvePlan{}
+	oldAll, refuse := parseLayout(oldLayout)
+	if refuse != 0 {
+		return evolvePlan{refuse: refuse}
+	}
+	curAll, refuse := parseLayout(curLayout)
+	if refuse != 0 {
+		return evolvePlan{refuse: refuse}
 	}
 	counted := map[uint64]bool{}
 	for _, en := range ir.TableFixedWalkRoot(st) {
@@ -761,9 +901,38 @@ func compileEvolvePlan(st *ir.Struct, oldLayout, curLayout []byte) evolvePlan {
 	arms := map[uint64]string{}
 	collectArmDefaults(st, map[string]bool{}, arms)
 	plan := evolvePlan{supported: true}
-	c := &evolveCompiler{oldAll: oldAll, curAll: curAll, counted: counted, armDefaults: arms, plan: &plan}
+	c := &evolveCompiler{oldAll: oldAll, curAll: curAll, counted: counted, armDefaults: arms, plan: &plan, record: oldAll[0].size}
 	plan.nodes = c.match(0, 0, 0, 0, true, 0)
+	if c.tooLarge {
+		return evolvePlan{refuse: evolveRefuseLayoutRecordTooLarge}
+	}
+	if c.overflow || hasEnumOverflow(st, map[string]bool{}) {
+		return evolvePlan{refuse: evolveRefusePlanTooLarge}
+	}
 	return plan
+}
+
+func hasEnumOverflow(st *ir.Struct, seen map[string]bool) bool {
+	if st == nil || seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if f.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch r := f.Type.Ref.(type) {
+		case *ir.Enum:
+			if len(r.Variants) > 0xFFFF || r.Max > 0xFFFF {
+				return true
+			}
+		case *ir.Struct:
+			if hasEnumOverflow(r, seen) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // collectArmDefaults maps a union arm's wire id to the named struct its
@@ -800,11 +969,19 @@ func collectArmDefaults(st *ir.Struct, seen map[string]bool, out map[uint64]stri
 func (e *fixedEvolveEmit) emitEntry(root string, idx int, en FixedEvolutionEntry, st *ir.Struct) {
 	curLayout, _, _ := fixedRootFacts(st)
 	plan := compileEvolvePlan(st, en.Layout, curLayout)
+	if en.Record > 8+ir.TableFixedRecordMaxBytes {
+		plan = evolvePlan{refuse: evolveRefuseLayoutRecordTooLarge}
+	}
 	e.g.Declare(fmt.Sprintf("%sFixedEvolveLayout%d", root, idx))
 	e.g.Declare(fmt.Sprintf("%sFixedEvolveSupported%d", root, idx))
+	e.g.Declare(fmt.Sprintf("%sFixedEvolveRefuse%d", root, idx))
+	if en.Retired && en.Reason != "" {
+		e.p("// RETIRED: %s\n", en.Reason)
+	}
 	e.p("let %sFixedEvolveLayout%d: const u8[:] = \"%s\";\n", root, idx, fixedGooseBytes(en.Layout))
 	e.p("let %sFixedEvolveSupported%d: bool = %t;\n", root, idx, plan.supported)
+	e.p("let %sFixedEvolveRefuse%d: i64 = %d;\n", root, idx, plan.refuse)
 	if !plan.supported {
-		e.p("// %s's entry 0x%016x is not a widening this card lands: the general compiled plan is owed.\n", root, en.Wire)
+		e.p("// %s's entry 0x%016x refuses by name (%d).\n", root, en.Wire, plan.refuse)
 	}
 }

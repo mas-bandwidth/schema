@@ -74,6 +74,12 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
     echo "NEGATIVE CONTROL FAILED: the moo $mode sabotage left conformance green" >&2
     exit 1
 fi
+# the driver staged this control's surfaces under its own directory, never
+# under the plain run's build/conformance-moo-driver
+if [ ! -f "$out/stage/list/manifest.moo" ]; then
+    echo "NEGATIVE CONTROL: the driver staged nothing under $out/stage" >&2
+    exit 1
+fi
 red=$(grep -oE '^ *moo / [a-z-]+' "$out/log" | sed 's/^ *moo \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
 report) want="framing report retain " ; green="wire json-read retain-save" ;;

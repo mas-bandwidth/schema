@@ -68,27 +68,70 @@ struct LoadReport {
     retained: i64,     // §6.6: the unknown fields whose bytes were kept
     retain_lost: i64,  // §6.6: every unknown the load or save could not keep
     stopped: bool,     // §3: framing damage stopped the walk; the whole load is discarded
+    damaged: bool,     // §4's verdict is damage: the file failed its framing, or a value-only root's walk read past damage
     reason: i64,       // a refusal's name (LoadRefuse*; load_refusal_name), 0 for none
 }
 
 // THE LOAD'S REFUSALS BY THE ENGINE'S NAME AND NUMBER (gotable's
-// TableRefuseReason; docs/SPEC-TABLES.md §3, §3.3): a form byte other than 1
-// is refused, form 2 by name because a message is never a file's own form.
+// TableRefuseReason; docs/SPEC-TABLES.md §3, §3.3, §6.5): a form byte other
+// than 1 is refused, form 2 by name because a message is never a file's own
+// form. report.reason holds the refusal the read itself names; load_error
+// answers the strict read's one reason for any load.
 let LoadRefuseOk: i64 = 0;
+let LoadRefuseUnknownForm: i64 = 9;
+let LoadRefuseCountOverExtentCap: i64 = 11;
+let LoadRefuseWireDamaged: i64 = 16;
+let LoadRefuseMalformed: i64 = 17;
+let LoadRefuseClamped: i64 = 18;
+let LoadRefuseKindMismatch: i64 = 19;
 let LoadRefuseIntegrityMismatch: i64 = 22;
+let LoadRefuseNonFiniteFloat: i64 = 23;
+let LoadRefuseBlobShared: i64 = 24;
 let LoadRefuseNewerForm: i64 = 26;
 let LoadRefuseMessageFormAsFile: i64 = 27;
-let LoadRefuseNonFiniteFloat: i64 = 23;
 
 // load_refusal_name is a refusal's name, the string the engine's error gives.
 fn load_refusal_name(code: i64) -> const u8[:] {
     return match code {
+        LoadRefuseUnknownForm => "unknown_form",
+        LoadRefuseCountOverExtentCap => "count_over_extent_cap",
+        LoadRefuseWireDamaged => "wire_damaged",
+        LoadRefuseMalformed => "malformed",
+        LoadRefuseClamped => "clamped",
+        LoadRefuseKindMismatch => "kind_mismatch",
         LoadRefuseIntegrityMismatch => "integrity_mismatch",
+        LoadRefuseNonFiniteFloat => "non_finite_float",
+        LoadRefuseBlobShared => "blob_shared",
         LoadRefuseNewerForm => "newer_form",
         LoadRefuseMessageFormAsFile => "message_form_as_file",
-        LoadRefuseNonFiniteFloat => "non_finite_float",
         _ => "",
     };
+}
+
+// load_error is THE STRICT READ'S ONE REASON for a load whose report is
+// `report` and whose answer was `root` (docs/SPEC-TABLES.md §6.5; gotable's
+// TableReport.Err and <T>ReadStrict, in their order): a non-finite float,
+// then a form byte this reader does not carry (unknown_form, whose report
+// names which), a failed integrity trailer, damage the verdict names
+// (wire_damaged) apart from a malformed body (malformed), then a builder's
+// count past the int32 storage cap (count_over_extent_cap, §2.9), then
+// blob_shared, clamped and kind_mismatch. A load that read nothing whole (no
+// root, or a walk that stopped) and whose report names none of them is
+// wire_damaged, as ReadStrict answers it. It is
+// 0 for a load the strict read keeps: a clean one, or one whose only events
+// are unknown, widened, duplicate or retained.
+fn load_error(report: const LoadReport&, root: i64) -> i64 {
+    if report.non_finite { return LoadRefuseNonFiniteFloat; }
+    if report.reason == LoadRefuseNewerForm || report.reason == LoadRefuseMessageFormAsFile { return LoadRefuseUnknownForm; }
+    if report.reason == LoadRefuseIntegrityMismatch { return LoadRefuseIntegrityMismatch; }
+    if report.damaged { return LoadRefuseWireDamaged; }
+    if report.malformed { return LoadRefuseMalformed; }
+    if report.count_refused { return LoadRefuseCountOverExtentCap; }
+    if report.blob_shared > 0 { return LoadRefuseBlobShared; }
+    if report.clamped > 0 { return LoadRefuseClamped; }
+    if report.kind_mismatch > 0 { return LoadRefuseKindMismatch; }
+    if root < 0 || report.stopped { return LoadRefuseWireDamaged; }
+    return LoadRefuseOk;
 }
 
 // KeyDesc is the key enum of one enum-keyed array (docs/SPEC-TABLES.md §3.2):
@@ -963,21 +1006,27 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             return true, false;
         }
         let want = if bytes { 6 } else { d.ek };
-        if ek != want {
-            if !widens(ek, want) {
-                c.report.kind_mismatch += 1;
-                r.off = end;
-                return true, false;
-            }
-            c.report.widened += 1;
+        if ek != want && !widens(ek, want) {
+            c.report.kind_mismatch += 1;
+            r.off = end;
+            return true, false;
         }
+        // a widened element kind counts once the count is known to land: the
+        // builder's count-cap refusal moves no counter (§2.9), while the
+        // region read's damage still counts it
+        let widened = ek != want;
         var keep = count;
         if list {
-            if count > 0x7FFFFFFF { r.off = end; return collection_cap(c), false; }
+            if count > 0x7FFFFFFF {
+                r.off = end;
+                if widened && !c.cap { c.report.widened += 1; }
+                return collection_cap(c), false;
+            }
         } else if count > d.bound as! u64 {
             keep = d.bound as! u64;
             c.report.clamped += 1;
         }
+        if widened { c.report.widened += 1; }
         var sub = Rd { off: r.off, end: if end < r.off { r.off } else { end } };
         if bytes {
             let at = sub.off;
@@ -1010,9 +1059,24 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             } else {
                 make_slots(c, slot, d.bound, eshape);
             }
+            // a text list's total keeps the longest prefix within it: the
+            // element that would carry the sum past it drops with every
+            // element after it, clamped counted once (§2.13)
+            var spent: i64 = 0;
             var i: i64 = 0;
             while (i as! u64) < keep && i < c.vals[slot].count {
                 if !load_element(c, sub, slot, e, d.ek, i, ek) { break; }
+                if d.text_total > 0 {
+                    let es = c.vals[slot].first + i;
+                    let n = text_bytes(c, es);
+                    if n > d.text_total - spent {
+                        if c.retaining { forget_rec(c, es); }
+                        c.vals[es] = LoadVal { shape: eshape, .. };
+                        c.report.clamped += 1;
+                        break;
+                    }
+                    spent += n;
+                }
                 decoded = i + 1;
                 i += 1;
             }
@@ -1035,6 +1099,15 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
     if d.optional { ride(c, slot); }
     r.off = end; // excess elements and slack skip via the length
     return true, true;
+}
+
+// text_bytes is a text list element's byte length: its record's one value,
+// 0 for an absent `?string(M)` element or a record the read did not make.
+fn text_bytes(c: LoadCtx&, es: i64) -> i64 {
+    if !c.vals[es].made { return 0; }
+    let fs = c.vals[es].first;
+    if c.vals[fs].state != ValPresent { return 0; }
+    return c.vals[fs].len;
 }
 
 // load_element decodes element i of an array (§3): THE ELEMENT POSITION's
@@ -1784,13 +1857,70 @@ fn acyclic(c: LoadCtx&) -> bool {
     return released == vertices;
 }
 
+// IdTableBound is the id table's maximum entry count (docs/SPEC-TABLES.md
+// §3, THE DISTINCTNESS CHECK IS BOUNDED WORK; kTableProbeBound in the
+// generated C++).
+let IdTableBound: i64 = 4096;
+
+// ids_sift moves ids[root] down the max-heap ids[0..n] to its place.
+fn ids_sift(ids: u64[:], root: i64, n: i64) {
+    var i = root;
+    loop {
+        var c = 2 * i + 1;
+        if c >= n { return; }
+        if c + 1 < n && ids[c] < ids[c + 1] { c += 1; }
+        if !(ids[i] < ids[c]) { return; }
+        let t = ids[i];
+        ids[i] = ids[c];
+        ids[c] = t;
+        i = c;
+    }
+}
+
+// ids_distinct proves the id table's n entries at `first` distinct (§3), n at
+// most IdTableBound. Under eight entries a pairwise scan is at most 21
+// comparisons; from eight up the entries are copied into a fixed stack array
+// and heapsorted (in place, no allocation, at most about 2 n log2 n
+// comparisons whatever the ids are), and a repeat sits beside its twin. No
+// hostile table costs quadratic work.
+fn ids_distinct(file: const u8[:], first: i64, n: i64) -> bool {
+    if n < 8 {
+        for i in n {
+            let a = le_at(file, first + i * 8, 8);
+            for j in i {
+                if le_at(file, first + j * 8, 8) == a { return false; }
+            }
+        }
+        return true;
+    }
+    var ids: u64[IdTableBound] = [0; IdTableBound];
+    for i in n { ids[i] = le_at(file, first + i * 8, 8); }
+    var i = n / 2;
+    while i > 0 {
+        i -= 1;
+        ids_sift(ids, i, n);
+    }
+    var end = n;
+    while end > 1 {
+        end -= 1;
+        let t = ids[0];
+        ids[0] = ids[end];
+        ids[end] = t;
+        ids_sift(ids, 0, end);
+    }
+    for i in n - 1 {
+        if ids[i] == ids[i + 1] { return false; }
+    }
+    return true;
+}
+
 // load_with is the one load both entry points share: load_table, and
 // load_table_retain (wire_retain.goose) with retention on.
 fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
     var c = LoadCtx { data: data, unit: unit, vals: vals, nodes: nodes, report: report, ids_at: 0, ids_n: 0, numbered: false, good: false, root_tab: -1, root_val: -1, cap: false, node_n: 0, retain: store, retaining: retaining };
     // THE FORM BYTE IS READ FIRST (§3): form 2 is a stream form and never a
     // file's own, and any form but 1 is refused with no damage reported
-    if data.len < 1 { report.malformed = true; return -1; }
+    if data.len < 1 { report.malformed = true; report.damaged = true; return -1; }
     if data[0] != 1 {
         report.refused = true;
         report.reason = if data[0] == 2 { LoadRefuseMessageFormAsFile } else { LoadRefuseNewerForm };
@@ -1802,38 +1932,41 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     if unit.tables[t].integrity {
         if !integrity_holds(data, 1) {
             report.malformed = true;
+            report.damaged = true;
             report.reason = LoadRefuseIntegrityMismatch;
             return -1;
         }
         file = data[0..data.len - 4];
         c.data = file;
     }
-    // THE ID TABLE, from the end (§3): the count, then 8 x count entries
-    if file.len < 9 { report.malformed = true; return -1; }
+    // THE ID TABLE, from the end (§3): the count, then 8 x count entries.
+    // Damage here and an early end below are the verdict's damage (§4)
+    if file.len < 9 { report.malformed = true; report.damaged = true; return -1; }
     let count = le_at(file, file.len - 8, 8);
-    if count > (file.len / 8) as! u64 { report.malformed = true; return -1; }
+    if count > (file.len / 8) as! u64 { report.malformed = true; report.damaged = true; return -1; }
     let span = (count as! i64) * 8 + 8;
-    if span + 1 > file.len { report.malformed = true; return -1; }
+    if span + 1 > file.len { report.malformed = true; report.damaged = true; return -1; }
+    // THE BOUNDED-WORK CONTRACT (§3): a table that claims more than
+    // IdTableBound entries is malformed, whatever the buffer would hold
+    if count > IdTableBound as! u64 { report.malformed = true; report.damaged = true; return -1; }
     let first = file.len - span;
-    for i in count as! i64 {
-        let a = le_at(file, first + i * 8, 8);
-        for j in i {
-            // ONE ID IN TWO ENTRIES: the whole wire is malformed (§3)
-            if le_at(file, first + j * 8, 8) == a { report.malformed = true; return -1; }
-        }
-    }
+    // ONE ID IN TWO ENTRIES: the whole wire is malformed (§3)
+    if !ids_distinct(file, first, count as! i64) { report.malformed = true; report.damaged = true; return -1; }
     c.ids_at = first;
     c.ids_n = count as! i64;
     let body = Rd { off: 1, end: first };
     let end, terminated = body_extent(c, body);
-    if terminated && end != first { report.malformed = true; return -1; }
+    if terminated && end != first { report.malformed = true; report.damaged = true; return -1; }
     c.root_tab = t;
     c.root_val = fresh_record(c, t);
     c.vals[c.root_val].state = ValPresent;
     if !unit.tables[t].variable {
-        // a value-only table has no node table (§3)
+        // a value-only table has no node table (§3). Damage its walk read
+        // past is the verdict's; damage that stopped the walk is a malformed
+        // body (gotable's <T>LoadTolerant)
         var r = body;
         if !body_at(c, r, t, c.root_val, false, false) { report.stopped = true; }
+        else if report.malformed { report.damaged = true; }
     } else if !load_variable(c, body) {
         report.stopped = true;
     }

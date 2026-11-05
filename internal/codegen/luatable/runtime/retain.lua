@@ -1403,6 +1403,9 @@ function S.LoadRetain(T, name, bytes, retain, report)
   rep.retainLost = rep.retainLost or 0
   local v = load.Load(T, name, bytes, rep)
   if rep.malformed then return nil end
+  -- a count past the int32 storage cap refuses the read (§2.9): nothing is
+  -- captured, and the store is left empty
+  if rep.reason == "count_over_extent_cap" then return nil end
   local retainedBefore, lostBefore = rep.retained, rep.retainLost
   capture(T, name, bytes, retain, rep)
   -- a retained unknown float that is not finite refuses the whole read, and

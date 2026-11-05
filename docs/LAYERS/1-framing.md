@@ -50,7 +50,9 @@ trying to make partial reads well defined. if it fails to read, it's broken
 and everything in it today is suspect. discard." Every rule below that names
 a condition `malformed` names a case of D1, and none of them says what a load
 returns after it: no partial value, no resume point, no default, no counter
-other than the flag. A reader may stop at the first damage.
+other than the flag. Where the read goes after damage is defined, because a
+non-finite float it reaches refuses the read (§3.3): damage ends the body it is
+met in, and the enclosing body steps over that body by its `L` and reads on (§4).
 
 **D2. Evolution is not damage.** §4: "EVOLUTION IS NOT DAMAGE and every other
 row of this section stands: an unknown field, variant, arm or slot skipped and

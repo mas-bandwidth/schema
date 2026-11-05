@@ -436,6 +436,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -4615,32 +4618,41 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
         memcpy( &raw, dst + b.dst, b.width );
-        int64_t v = 0;
+        // THE COMPARISON IS IN THE FIELD'S OWN TYPE: signed for a signed kind,
+        // UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the
+        // max and never below the min. An unsigned kind's bounds are never
+        // negative, so they read as uint64 unchanged.
+        bool below = false;
+        bool above = false;
         if ( b.sgn != 0 )
         {
             const unsigned bits = (unsigned) b.width * 8u;
             const uint64_t top = 1ull << ( bits - 1 );
             if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-            v = (int64_t) raw;
+            below = (int64_t) raw < b.lo;
+            above = (int64_t) raw > b.hi;
         }
         else
         {
-            v = (int64_t) raw;
+            below = raw < (uint64_t) b.lo;
+            above = raw > (uint64_t) b.hi;
         }
-        int64_t landed = v;
-        if ( landed < b.lo )
+        uint64_t landed = 0;
+        if ( below )
         {
-            landed = b.lo;
+            landed = (uint64_t) b.lo;
             clamped++;
         }
-        else if ( landed > b.hi )
+        else if ( above )
         {
-            landed = b.hi;
+            landed = (uint64_t) b.hi;
             clamped++;
         }
-        if ( landed == v ) { continue; }
-        uint64_t out = (uint64_t) landed;
-        memcpy( dst + b.dst, &out, b.width );
+        else
+        {
+            continue;
+        }
+        memcpy( dst + b.dst, &landed, b.width );
     }
     if ( report != NULL ) { report->clamped += clamped; }
 }
@@ -8476,10 +8488,10 @@ inline const TableTypeInfo * LineTableType();
 inline const TableTypeInfo * CaptionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "title", "title", "wstring", 0xda31296c0c1b6029ull, 33, false, true, false, 7, (uint32_t) offsetof( Caption, title ), (uint32_t) sizeof( Caption::title ), (uint32_t) offsetof( Caption, title_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-        { "line", "line", "Line", 0xbf4ba5ad694f5907ull, 13, false, false, false, 0, (uint32_t) offsetof( Caption, line ), (uint32_t) sizeof( Caption::line ), 0xffffffffu, 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-        { "lines", "lines", "Line", 0x5ce3f9a9f1d5001cull, 13, true, true, false, 3, (uint32_t) offsetof( Caption, lines ), (uint32_t) sizeof( Caption::lines[0] ), (uint32_t) offsetof( Caption, lines_count ), 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-        { "body", "body", "Body", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Caption, body ), (uint32_t) sizeof( Caption::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xa633f1f655715ccaull; case 2: return 0x96569b06f223c29aull; case 3: return 0xb1e5e28e4479a274ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Body[] = { { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (uint32_t) offsetof( Body, wide.value ), (uint32_t) sizeof( Body::wide.value ), (uint32_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (uint32_t) offsetof( Body, narrow.value ), (uint32_t) sizeof( Body::narrow.value ), (uint32_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, tally ), (uint32_t) sizeof( Body::tally ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Body, wide ), NULL, &arm_fields_Body[0], 16 }, { (uint32_t) offsetof( Body, narrow ), NULL, &arm_fields_Body[1], 12 }, { (uint32_t) offsetof( Body, tally ), NULL, &arm_fields_Body[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Body, type ), (uint32_t) sizeof( Body::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false },
+        { "title", "title", "wstring", 0xda31296c0c1b6029ull, 33, false, true, false, 7, (uint32_t) offsetof( Caption, title ), (uint32_t) sizeof( Caption::title ), (uint32_t) offsetof( Caption, title_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "line", "line", "Line", 0xbf4ba5ad694f5907ull, 13, false, false, false, 0, (uint32_t) offsetof( Caption, line ), (uint32_t) sizeof( Caption::line ), 0xffffffffu, 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "lines", "lines", "Line", 0x5ce3f9a9f1d5001cull, 13, true, true, false, 3, (uint32_t) offsetof( Caption, lines ), (uint32_t) sizeof( Caption::lines[0] ), (uint32_t) offsetof( Caption, lines_count ), 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "body", "body", "Body", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Caption, body ), (uint32_t) sizeof( Caption::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xa633f1f655715ccaull; case 2: return 0x96569b06f223c29aull; case 3: return 0xb1e5e28e4479a274ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Body[] = { { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (uint32_t) offsetof( Body, wide.value ), (uint32_t) sizeof( Body::wide.value ), (uint32_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (uint32_t) offsetof( Body, narrow.value ), (uint32_t) sizeof( Body::narrow.value ), (uint32_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, tally ), (uint32_t) sizeof( Body::tally ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Body, wide ), NULL, &arm_fields_Body[0], 16 }, { (uint32_t) offsetof( Body, narrow ), NULL, &arm_fields_Body[1], 12 }, { (uint32_t) offsetof( Body, tally ), NULL, &arm_fields_Body[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Body, type ), (uint32_t) sizeof( Body::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
     static const TableTypeInfo info = { "Caption", (uint32_t) sizeof( Caption ), 4, fields, +[]( void * p ) { CaptionReset( *(Caption *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -8488,8 +8500,8 @@ inline const TableTypeInfo * CaptionTableType()
 inline const TableTypeInfo * StampTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "label", "label", "wstring", 0x39f7fcec8fcb623dull, 33, false, true, false, 4, (uint32_t) offsetof( Stamp, label ), (uint32_t) sizeof( Stamp::label ), (uint32_t) offsetof( Stamp, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-        { "seq", "seq", "uint32", 0x823b8a195ce2133cull, 8, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "label", "label", "wstring", 0x39f7fcec8fcb623dull, 33, false, true, false, 4, (uint32_t) offsetof( Stamp, label ), (uint32_t) sizeof( Stamp::label ), (uint32_t) offsetof( Stamp, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "seq", "seq", "uint32", 0x823b8a195ce2133cull, 8, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
     static const TableTypeInfo info = { "Stamp", (uint32_t) sizeof( Stamp ), 2, fields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -8498,7 +8510,7 @@ inline const TableTypeInfo * StampTableType()
 inline const TableTypeInfo * LineTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "text", "text", "wstring", 0xfa04f4ef1995407eull, 33, false, true, false, 4, (uint32_t) offsetof( Line, text ), (uint32_t) sizeof( Line::text ), (uint32_t) offsetof( Line, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "text", "text", "wstring", 0xfa04f4ef1995407eull, 33, false, true, false, 4, (uint32_t) offsetof( Line, text ), (uint32_t) sizeof( Line::text ), (uint32_t) offsetof( Line, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
     static const TableTypeInfo info = { "Line", (uint32_t) sizeof( Line ), 1, fields, +[]( void * p ) { LineReset( *(Line *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

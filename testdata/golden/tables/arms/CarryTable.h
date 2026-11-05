@@ -478,6 +478,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -4777,32 +4780,41 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
         memcpy( &raw, dst + b.dst, b.width );
-        int64_t v = 0;
+        // THE COMPARISON IS IN THE FIELD'S OWN TYPE: signed for a signed kind,
+        // UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the
+        // max and never below the min. An unsigned kind's bounds are never
+        // negative, so they read as uint64 unchanged.
+        bool below = false;
+        bool above = false;
         if ( b.sgn != 0 )
         {
             const unsigned bits = (unsigned) b.width * 8u;
             const uint64_t top = 1ull << ( bits - 1 );
             if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-            v = (int64_t) raw;
+            below = (int64_t) raw < b.lo;
+            above = (int64_t) raw > b.hi;
         }
         else
         {
-            v = (int64_t) raw;
+            below = raw < (uint64_t) b.lo;
+            above = raw > (uint64_t) b.hi;
         }
-        int64_t landed = v;
-        if ( landed < b.lo )
+        uint64_t landed = 0;
+        if ( below )
         {
-            landed = b.lo;
+            landed = (uint64_t) b.lo;
             clamped++;
         }
-        else if ( landed > b.hi )
+        else if ( above )
         {
-            landed = b.hi;
+            landed = (uint64_t) b.hi;
             clamped++;
         }
-        if ( landed == v ) { continue; }
-        uint64_t out = (uint64_t) landed;
-        memcpy( dst + b.dst, &out, b.width );
+        else
+        {
+            continue;
+        }
+        memcpy( dst + b.dst, &landed, b.width );
     }
     if ( report != NULL ) { report->clamped += clamped; }
 }
@@ -7614,6 +7626,189 @@ struct TableExtentCarve
 // answers non-zero here too, and refusing on it is the same answer one level up.
 inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
 
+// ---- UNBOUNDED TEXT in the node extent (docs/SPEC-TABLES.md §2.13.1) ----
+//
+// An unbounded string ([]string, []?string, [..N]string, [..N]?string,
+// map[string]V) stores a TableRef in its generated element or entry record.
+// A zero TableRef is the empty string "". A non-zero TableRef resolves (via
+// self-relative delta in a region/cook, or TableArenaAt in a builder) to an
+// 8-byte aligned TableBlob record in the holder's node extent (§2.5, §2.13.1):
+//   [uint32_t byte_length][uint32_t zero][len UTF-8 bytes]['\0']
+static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
+{
+    if ( raw == NULL ) { len = -1; return NULL; }
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    if ( u > (uint32_t) INT32_MAX ) { len = -1; return NULL; }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) ) { len = -1; return NULL; }
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
+{
+    return schema_table_text_at_( ref, len );
+}
+inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX ) { len = -1; return NULL; }
+    return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
+{
+    if ( ctx.arena == NULL ) { len = -1; return NULL; }
+    return schema_table_text_at_( *ctx.arena, ref, len );
+}
+
+inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, const char * text, int64_t len )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return false; }
+    if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
+    if ( len > 0 && text == NULL ) { return false; }
+    if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
+    if ( len == 0 ) { slot.value = 0; return true; }
+    uint32_t at = 0;
+    uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
+    if ( dst == NULL ) { return false; }
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( dst, &u, 4 );
+    memcpy( dst + 4, &z, 4 );
+    memcpy( dst + 8, text, (size_t) len );
+    dst[8 + len] = 0;
+    slot.value = (int64_t) at;
+    return true;
+}
+
+inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slot, const uint8_t * src, int64_t len )
+{
+    slot.value = 0;
+    if ( len < 0 || len > kTableBlobMaxLength )
+    {
+        if ( nodes.carve != NULL && nodes.carve->worker != NULL ) { nodes.refused = true; }
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    if ( nodes.carve == NULL ) { return false; }
+    if ( nodes.carve->worker != NULL )
+    {
+        uint32_t at = 0;
+        uint8_t * dst = nodes.carve->worker->AllocRaw( 8 + len + 1, 8, at );
+        if ( dst == NULL )
+        {
+            nodes.refused = true;
+            return false;
+        }
+        uint32_t u = (uint32_t) len;
+        uint32_t z = 0;
+        memcpy( dst, &u, 4 );
+        memcpy( dst + 4, &z, 4 );
+        memcpy( dst + 8, src, (size_t) len );
+        dst[8 + len] = 0;
+        slot.value = (int64_t) at;
+        return true;
+    }
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + 7u ) & ~(uintptr_t) 7u );
+    const int64_t bytes = TableAlignUp64( 9 + len );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return false; }
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( base, &u, 4 );
+    memcpy( base + 4, &z, 4 );
+    memcpy( base + 8, src, (size_t) len );
+    base[8 + len] = 0;
+    slot.value = (int64_t) ( base - (const uint8_t *) &slot );
+    return true;
+}
+
+inline int32_t schema_table_text_placed_len_( const TableNodeMap & nodes, const TableRef & ref )
+{
+    int32_t len = 0;
+    if ( nodes.carve != NULL && nodes.carve->worker != NULL && nodes.carve->worker->arena != NULL )
+    {
+        schema_table_text_at_( *nodes.carve->worker->arena, ref, len );
+    }
+    else
+    {
+        schema_table_text_at_( ref, len );
+    }
+    return len > 0 ? len : 0;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_extent_( const Ctx & ctx, const TableRef & slot, int64_t & at )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, slot, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, TableRef & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, src, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { dst.value = 0; return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    const int64_t need = TableAlignUp64( 9 + (int64_t) len );
+    if ( at + need > capacity ) { return false; }
+    uint8_t * block = extent + at;
+    at += need;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( block, &u, 4 );
+    memcpy( block + 4, &z, 4 );
+    memcpy( block + 8, bytes, (size_t) len );
+    block[8 + len] = 0;
+    dst.value = (int64_t) ( block - (const uint8_t *) &dst );
+    return true;
+}
+
+inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
+{
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) ) { r.offset = r.size; return true; }
+    r.offset += (int64_t) len;
+    if ( len > (uint64_t) kTableBlobMaxLength ) { reason = blob_over_size_cap; return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+inline bool schema_table_list_text_wire_extent_( const uint8_t * body, int64_t length, uint64_t bound, int64_t & at, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, NULL );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 12 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( bound > 0 && n > bound ) { n = bound; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }
+        if ( r.offset >= r.size ) { break; }
+    }
+    return true;
+}
+
 // ---- LoadMeasure's framing walk (§6.5) ----
 //
 // The measure reads no field value: it walks each record's field headers,
@@ -7888,6 +8083,21 @@ inline typename TableList<T>::Element * TableListPlace( TableWorker & worker, Ta
     if ( element == NULL ) { return NULL; }
     new ( element ) Element(); // value-init: the declared defaults, and null for a slot
     return element;
+}
+
+template <typename T>
+inline void schema_table_list_drop_last_( TableArena & arena, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.elements.value == 0 || list.count <= 0 ) { return; }
+    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    if ( head->last.value == 0 ) { return; }
+    TableListSegment<Element> * seg = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) head->last.value );
+    if ( seg->used <= 0 ) { return; }
+    const int32_t j = seg->used - 1;
+    seg->dead[j >> 6] |= 1ull << ( j & 63 );
+    head->live--;
+    list.count--;
 }
 
 // ERASE, ADDRESSED BY THE POINTER (§2.9): the element Add handed back is the
@@ -8956,16 +9166,16 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.items, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -8981,6 +9191,7 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -9009,7 +9220,7 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.items, count );
                         if ( fill.refused )
                         {
@@ -9031,6 +9242,7 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -9084,6 +9296,8 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
 template <typename Ctx>
 inline int64_t HolderMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Holder & value )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.carry.type != CarryType::None ) // None elides — the absence of the field is the None
     {
@@ -9133,6 +9347,8 @@ inline int64_t HolderMeasureBody( const Ctx & ctx, const TableNumbering & number
 template <typename Ctx>
 inline bool HolderSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Holder & value )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.carry.type != CarryType::None )
     {
         w.header( ids.ref_at( 23, 0xafcd9a3b099f8ef0ull ), 15 ); // carry
@@ -9195,6 +9411,7 @@ inline bool HolderSaveBody( const Ctx & ctx, const TableNumbering & numbering, T
 
 inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder & value )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     HolderReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -9375,16 +9592,16 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -9400,6 +9617,7 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -9428,7 +9646,7 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, count );
                         if ( fill.refused )
                         {
@@ -9450,6 +9668,7 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -9503,6 +9722,8 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
 template <typename Ctx>
 inline int64_t HandMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Hand & value )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
     if ( value.entries_count > 0 )
@@ -9551,6 +9772,8 @@ inline int64_t HandMeasureBody( const Ctx & ctx, const TableNumbering & numberin
 template <typename Ctx>
 inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Hand & value )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
     if ( value.entries_count > 0 )
     {
@@ -9645,6 +9868,7 @@ inline bool HandSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & value )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     HandReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -9877,6 +10101,8 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
 template <typename Ctx>
 inline int64_t ChainMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Chain & value )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         // links: a kind 14 array of kind 15 elements, INDEX order (§2.9)
@@ -9929,6 +10155,8 @@ inline int64_t ChainMeasureBody( const Ctx & ctx, const TableNumbering & numberi
 template <typename Ctx>
 inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Chain & value )
 {
+    (void) ctx;
+    (void) numbering;
     {
         TableListCursor<Carry> cursor_links = TableListElements( ctx, value.links ); // links
         if ( !cursor_links.ok ) { return false; }
@@ -10026,6 +10254,7 @@ inline bool ChainSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 
 inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & value )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     ChainReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -10101,7 +10330,7 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<Carry> fill = TableListFillBegin( nodes, value.links, count );
                         if ( fill.refused )
                         {
@@ -10123,6 +10352,7 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                             Carry * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -12053,8 +12283,17 @@ inline bool LeafLoadBuilderTolerant( LeafBuilder & builder, const uint8_t * wire
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -12122,7 +12361,10 @@ inline const Leaf * LeafReadStrict( const uint8_t * wire_file, int64_t wire_file
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = LeafLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -12145,6 +12387,11 @@ inline const Leaf * LeafReadStrict( const uint8_t * wire_file, int64_t wire_file
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -12995,8 +13242,17 @@ inline bool HolderLoadBuilderTolerant( HolderBuilder & builder, const uint8_t * 
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -13064,7 +13320,10 @@ inline const Holder * HolderReadStrict( const uint8_t * wire_file, int64_t wire_
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = HolderLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -13087,6 +13346,11 @@ inline const Holder * HolderReadStrict( const uint8_t * wire_file, int64_t wire_
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -13937,8 +14201,17 @@ inline bool HandLoadBuilderTolerant( HandBuilder & builder, const uint8_t * wire
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -14006,7 +14279,10 @@ inline const Hand * HandReadStrict( const uint8_t * wire_file, int64_t wire_file
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = HandLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -14029,6 +14305,11 @@ inline const Hand * HandReadStrict( const uint8_t * wire_file, int64_t wire_file
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -14879,8 +15160,17 @@ inline bool ChainLoadBuilderTolerant( ChainBuilder & builder, const uint8_t * wi
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -14948,7 +15238,10 @@ inline const Chain * ChainReadStrict( const uint8_t * wire_file, int64_t wire_fi
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = ChainLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -14971,6 +15264,11 @@ inline const Chain * ChainReadStrict( const uint8_t * wire_file, int64_t wire_fi
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -15131,16 +15429,16 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.items, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -15156,6 +15454,7 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -15184,7 +15483,7 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.items, count );
                         if ( fill.refused )
                         {
@@ -15206,6 +15505,7 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -15259,6 +15559,8 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
 template <typename Ctx>
 inline int64_t HolderMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Holder & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.carry.type != CarryType::None ) // None elides — the absence of the field is the None
     {
@@ -15309,6 +15611,8 @@ inline int64_t HolderMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
 template <typename Ctx>
 inline bool HolderSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Holder & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.carry.type != CarryType::None )
     {
         w.header( ids.ref_at( 23, 0xafcd9a3b099f8ef0ull ), 15 ); // carry
@@ -15372,6 +15676,7 @@ inline bool HolderSaveBodyRetain( const Ctx & ctx, const TableNumbering & number
 
 inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Holder & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     HolderReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
@@ -15558,16 +15863,16 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -15583,6 +15888,7 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -15611,7 +15917,7 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, count );
                         if ( fill.refused )
                         {
@@ -15633,6 +15939,7 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -15686,6 +15993,8 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
 template <typename Ctx>
 inline int64_t HandMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Hand & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
     if ( value.entries_count > 0 )
@@ -15735,6 +16044,8 @@ inline int64_t HandMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
 template <typename Ctx>
 inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Hand & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
     if ( value.entries_count > 0 )
     {
@@ -15830,6 +16141,7 @@ inline bool HandSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Hand & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     HandReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
@@ -16070,6 +16382,8 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
 template <typename Ctx>
 inline int64_t ChainMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Chain & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         // links: a kind 14 array of kind 15 elements, INDEX order (§2.9)
@@ -16123,6 +16437,8 @@ inline int64_t ChainMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
 template <typename Ctx>
 inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Chain & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     {
         TableListCursor<Carry> cursor_links = TableListElements( ctx, value.links ); // links
         if ( !cursor_links.ok ) { return false; }
@@ -16221,6 +16537,7 @@ inline bool ChainSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 
 inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Chain & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     ChainReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
@@ -16301,7 +16618,7 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                         // records under this field go with the value it is about to lose.
                         TableRetainDiscardField( retain, path, 0 );
@@ -16326,6 +16643,7 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                             Carry * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -19387,28 +19705,28 @@ extern const TableTypeInfo HandTableInfo;
 extern const TableTypeInfo ChainTableInfo;
 
 inline const TableFieldInfo LeafTableFields[] = {
-    { "items", "items", "int32", 0x3e7884bf4f412c6full, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Leaf, items ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Leaf, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "items", "items", "int32", 0x3e7884bf4f412c6full, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Leaf, items ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Leaf, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<int32_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
 };
 inline const TableTypeInfo LeafTableInfo = { "Leaf", (uint32_t) sizeof( Leaf ), 1, LeafTableFields, +[]( void * p ) { LeafReset( *(Leaf *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * LeafTableType() { return &LeafTableInfo; }
 
 inline const TableFieldInfo HolderTableFields[] = {
-    { "carry", "carry", "Carry", 0xafcd9a3b099f8ef0ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Holder, carry ), (uint32_t) sizeof( Holder::carry ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "tail", "tail", "int32", 0xd94c56ef0798d723ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Holder, tail ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Holder, tail.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "carry", "carry", "Carry", 0xafcd9a3b099f8ef0ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Holder, carry ), (uint32_t) sizeof( Holder::carry ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "tail", "tail", "int32", 0xd94c56ef0798d723ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Holder, tail ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Holder, tail.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<int32_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
 };
 inline const TableTypeInfo HolderTableInfo = { "Holder", (uint32_t) sizeof( Holder ), 2, HolderTableFields, +[]( void * p ) { HolderReset( *(Holder *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * HolderTableType() { return &HolderTableInfo; }
 
 inline const TableFieldInfo HandTableFields[] = {
-    { "entries", "entries", "Carry", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Hand, entries ), (uint32_t) sizeof( Hand::entries[0] ), (uint32_t) offsetof( Hand, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Hand, past ), (uint32_t) sizeof( Hand::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "entries", "entries", "Carry", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Hand, entries ), (uint32_t) sizeof( Hand::entries[0] ), (uint32_t) offsetof( Hand, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Hand, past ), (uint32_t) sizeof( Hand::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo HandTableInfo = { "Hand", (uint32_t) sizeof( Hand ), 2, HandTableFields, +[]( void * p ) { HandReset( *(Hand *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * HandTableType() { return &HandTableInfo; }
 
 inline const TableFieldInfo ChainTableFields[] = {
-    { "links", "links", "Carry", 0x5cc201a9f1b8274eull, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Chain, links ), (uint32_t) sizeof( Carry ), (uint32_t) offsetof( Chain, links.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Carry> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Chain, past ), (uint32_t) sizeof( Chain::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "links", "links", "Carry", 0x5cc201a9f1b8274eull, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Chain, links ), (uint32_t) sizeof( Carry ), (uint32_t) offsetof( Chain, links.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Carry> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Carry> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Chain, past ), (uint32_t) sizeof( Chain::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo ChainTableInfo = { "Chain", (uint32_t) sizeof( Chain ), 2, ChainTableFields, +[]( void * p ) { ChainReset( *(Chain *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ChainTableType() { return &ChainTableInfo; }

@@ -538,6 +538,12 @@ func fieldDesc(u *ir.Unit, f *ir.Field, ordinal int) string {
 			elem["textlist"] = code
 		}
 		d["elem"] = render(elem, elemKeys)
+		if f.IsTextList() && f.TextTotal > 0 {
+			// A TEXT LIST'S TOTAL (§2.13): the most bytes its elements hold in
+			// all. Only a list that declares one carries the key.
+			d["total"] = fmt.Sprint(f.TextTotal)
+			return render(d, append(fieldKeys[:len(fieldKeys):len(fieldKeys)], "total"))
+		}
 		if f.KeyEnumRef != nil {
 			p := make([]string, len(f.KeyEnumRef.Variants))
 			for i := range f.KeyEnumRef.Variants {
