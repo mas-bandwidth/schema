@@ -123,21 +123,30 @@ func cppRefuseReasonNames(t *testing.T, src string) []string {
 }
 
 // goRefuseReasonNames reads the TableRefuse* identifiers of the generated
-// iota block, in source order, and returns Go's name stripped of its
+// iota block, in source order, then the report-only member declared after it, and returns Go's name stripped of its
 // TableRefuse prefix and snake_cased, which is the spelling §11 gives C++.
 func goRefuseReasonNames(t *testing.T, src string) []string {
 	t.Helper()
 	const prefix = "TableRefuse"
 	var names []string
 	inBlock := false
+	closed := false
 	for line := range strings.SplitSeq(src, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "const (" {
+		if line == "const (" && !closed {
 			inBlock = true
 			continue
 		}
 		if inBlock && line == ")" {
-			break
+			inBlock, closed = false, true
+			continue
+		}
+		// The report-only member (TableRefuseMissingRequired, 255) sits after
+		// the iota block; the C++ enum carries it last.
+		if closed && strings.HasPrefix(line, "const "+prefix) && strings.HasSuffix(line, " "+prefix+"Reason = 255") {
+			name := strings.Fields(line)[1]
+			names = append(names, snakeRefuseReasonName(strings.TrimPrefix(name, prefix)))
+			continue
 		}
 		if !inBlock || !strings.HasPrefix(line, prefix) {
 			continue
