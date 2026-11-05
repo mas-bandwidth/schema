@@ -1190,6 +1190,7 @@ type TableReader struct {
 	Report *TableReport
 	Ids    []byte
 	Nested bool
+	Depth  int32
 }
 
 func (r *TableReader) Has(n int64) bool {
@@ -1271,7 +1272,7 @@ func (r *TableReader) Resolve(ref uint64) (uint64, bool) {
 }
 
 func (r *TableReader) Sub(n int64) TableReader {
-	return TableReader{Buffer: r.Buffer[r.Offset : r.Offset+n], Report: r.Report, Ids: r.Ids, Nested: true}
+	return TableReader{Buffer: r.Buffer[r.Offset : r.Offset+n], Report: r.Report, Ids: r.Ids, Nested: true, Depth: r.Depth}
 }
 
 func (r *TableReader) Body() (TableReader, bool) {
@@ -1512,6 +1513,7 @@ type tableWireCheck struct {
 	head    uint64
 	gen     uint32
 	reason  TableRefuseReason
+	mark    func(uint64)
 	stamp   [4097]uint32
 }
 
@@ -1644,6 +1646,9 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		index, ok := r.Leb()
 		if !ok || !c.edge(index) {
 			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		if c.mark != nil {
+			c.mark(index)
 		}
 	case 30:
 		ref, ok := r.Leb()
@@ -1955,38 +1960,29 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 	return TableRefuseOk
 }
 
-// tableWireHasNodes answers whether the root's headers carry the node table.
-// Only then does the file have records or a pointer graph whose reachability,
-// sharing and cycles need a whole-file view; a file without one is checked by
-// the body read itself, as it decodes each field (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
-func tableWireHasNodes(r TableReader) bool {
-	probe := r
-	probe.Offset = 0
-	for {
-		ref, ok := probe.Leb()
-		if !ok || ref == 0 {
-			return false
-		}
-		id, ok := probe.Resolve(ref)
-		if !ok || !probe.Has(1) {
-			return false
-		}
-		kind := probe.Get8()
-		if id == 0xffffffffffffffff && kind == 12 {
-			return true
-		}
-		if !probe.Skip(kind) {
-			return false
-		}
-	}
-}
-
 // tableWireSkipValue walks one unknown payload with the wire-alone rules while
 // the body read skips it, so a field this reader cannot name is still held to
 // every condition the wire alone decides (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
 func tableWireSkipValue(r *TableReader, kind uint8) bool {
 	var c tableWireCheck
 	c.ids = len(r.Ids) / 8
+	c.depth = r.Depth
+	if kind == 17 {
+		index, ok := r.Leb()
+		if !ok {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
+		}
+		c.nodes = 0 // tableWireSkipNodes
+		if !c.edge(index) {
+			r.Report.Refuse(c.failed(), "")
+			return false
+		}
+		if c.mark != nil {
+			c.mark(index)
+		}
+		return true
+	}
 	at, ok := c.value(*r, kind)
 	if !ok {
 		r.Report.Refuse(c.failed(), "")
@@ -1996,21 +1992,33 @@ func tableWireSkipValue(r *TableReader, kind uint8) bool {
 	return true
 }
 
-// tableOpenChecked opens a form-1 file and holds every wire-alone condition
-// before the body read starts (mas-bandwidth/schema docs/SPEC-TABLES.md §3, §4, §6.5). It answers
-// the report as a refusal for every verdict but TableOpenOk. A file without a
-// node table is checked in the body read's one walk; only the whole-file graph
-// conditions still need this prepass.
+// tableWireRecordCheck walks one node record whose type this reader does not
+// name, so no LoadBody reaches it, with the same wire-alone rules the body read
+// applies to a record it does name (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5). nodes is the
+// table's record count, which bounds every pointer index; mark, when not nil,
+// names a record a pointer reaches so the graph walk starts there too.
+func tableWireRecordCheck(body TableReader, ids int, nodes uint64, mark func(uint64)) TableRefuseReason {
+	var c tableWireCheck
+	c.ids = ids
+	c.nodes = nodes
+	c.mark = mark
+	end, ok := c.body(body, false)
+	if !ok || end != int64(len(body.Buffer)) {
+		return c.failed()
+	}
+	return c.reason
+}
+
+// tableOpenChecked opens a form-1 file and answers the report as a refusal for
+// every verdict but TableOpenOk (mas-bandwidth/schema docs/SPEC-TABLES.md §3, §4, §6.5). The wire
+// conditions are the body read's one walk, as it decodes each field; there is
+// no separate verification prepass. A variable root's node records are held to
+// the same rules as they are decoded, a record of a type this reader cannot
+// name is walked by tableWireRecordCheck where it is skipped, and the graph is
+// judged over the decoded nodes. A fixed root's body refuses the reserved id
+// in its own walk.
 func tableOpenChecked(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
 	r, verdict := tableOpen(data, report)
-	if verdict == TableOpenOk && tableWireHasNodes(r) {
-		if reason := tableWireVerify(r, nil); reason != TableRefuseOk {
-			verdict = TableOpenDamaged
-			if report != nil {
-				report.Refuse(reason, "")
-			}
-		}
-	}
 	tableOpenAnswer(report, verdict, data)
 	return r, verdict
 }
@@ -6031,6 +6039,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -6048,6 +6061,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				for i := range count {
 					elem, ok := sub.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -6076,6 +6094,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -6093,6 +6116,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				for i := range count {
 					elem, ok := sub.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -6132,6 +6160,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					armKind := r.Get8()
 					payload29, ok := r.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if armKind == 13 || armKind == 14 || armKind == 16 {
+						payload29.Depth += 2
+					} else if armKind == 15 {
+						payload29.Depth++
+					}
+					if payload29.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -6191,6 +6228,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -6245,6 +6287,11 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}

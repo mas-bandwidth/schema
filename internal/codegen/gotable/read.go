@@ -212,6 +212,7 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 // its terminator must be the last byte of its L (docs/SPEC-TABLES.md §3, §4).
 func (g *tableGen) emitReadNested(typ, expr, rdr, ind string) {
 	g.retainReadPath(rdr, "r", "0")
+	g.emitReadDepth(rdr, 1, ind)
 	g.pf("%sif !%sLoadBody(&%s, &%s) { return false }\n", ind, typ, rdr, expr)
 	g.emitCarveReturn("r", rdr, ind)
 	g.pf("%sif %s.Offset != int64(len(%s.Buffer)) { %s; return false }\n", ind, rdr, rdr, damaged)
@@ -238,6 +239,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
 	g.pf("%ssub, ok := r.Body(); if !ok || len(sub.Buffer) < 2 { %s }\n", i, stop)
+	g.emitReadDepth("sub", 1, i)
 	g.pf("%selemKind := sub.Get8(); count, ok := sub.Leb(); if !ok { %s }\n", i, stop)
 	g.pf("%sif elemKind != %d {\n", i, kind)
 	if wireWidenable(kind) {
@@ -265,6 +267,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.retainReadPath("elem", "r", "int(slot)-1")
 		switch kind {
 		case tkTable:
+			g.emitReadDepth("elem", 1, j)
 			g.pf("%sif !%sLoadBody(&elem, &%s[int(slot)-1]) { return false }\n", j, f.Type.Name, expr)
 			g.emitCarveReturn("sub", "elem", j)
 		case tkUnion:
@@ -288,6 +291,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		case tkTable:
 			g.pf("%selem, ok := sub.Body(); if !ok { %s }\n", j, stop)
 			g.retainReadPath("elem", "r", "i")
+			g.emitReadDepth("elem", 1, j)
 			g.pf("%sif !%sLoadBody(&elem, &%s[i]) { return false }\n", j, f.Type.Name, expr)
 			g.emitCarveReturn("sub", "elem", j)
 			g.pf("%sif elem.Offset != int64(len(elem.Buffer)) { %s }\n", j, stop)
@@ -330,6 +334,7 @@ func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind string, element ..
 	i += "\t"
 	g.pf("%sarmID, ok := %s.Resolve(armRef); if !ok || !%s.Has(1) { %s }\n", i, rdr, rdr, stop)
 	g.pf("%sarmKind := %s.Get8(); %s, ok := %s.Body(); if !ok { %s }\n", i, rdr, arm, rdr, stop)
+	g.pf("%sif armKind == 13 || armKind == 14 || armKind == 16 { %s.Depth += 2 } else if armKind == 15 { %s.Depth++ }; if %s.Depth > tableBinaryMaxDepth { %s }\n", i, arm, arm, arm, stop)
 	g.pf("%sswitch armID {\n", i)
 	for ordinal, v := range un.Variants {
 		g.pf("%scase 0x%016x:\n", i, ir.TableWireId(v.WireName()))
@@ -444,6 +449,7 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind string) {
 		elem := g.nextWireWriter()
 		g.pf("%s%s,ok:=%s.Body();if !ok {%s}\n", j, elem, rdr, bad)
 		g.retainReadPath(elem, rdr, "i")
+		g.emitReadDepth(elem, 1, j)
 		g.pf("%sif !%sLoadBody(&%s,&%s[i]) { return false }\n", j, f.Type.Name, elem, expr)
 		g.emitCarveReturn(rdr, elem, j)
 		g.pf("%sif %s.Offset != int64(len(%s.Buffer)) { %s }\n", j, elem, elem, bad)
@@ -668,4 +674,10 @@ func (g *tableGen) floatOwner(f *ir.Field) string {
 		}
 	}
 	return f.Name
+}
+
+// emitReadDepth carries the wire depth through declared structural payloads.
+// Unknown payload validation starts at the same depth as its containing body.
+func (g *tableGen) emitReadDepth(rdr string, levels int, ind string) {
+	g.pf("%s%s.Depth += %d; if %s.Depth > tableBinaryMaxDepth { %s; return false }\n", ind, rdr, levels, rdr, damaged)
 }
