@@ -355,6 +355,53 @@ past what its L frames (§4) and holds the leg to Go's refusal: damage
 discards the whole load, so the read says malformed and nothing of the value
 is compared.
 
+## THE FIXED FORM'S HOT PATH
+
+The fixed-proof repair changed the emitted fixed save/load in three places:
+the optional-array payload decode (`fixedform.go`), the union arm routed
+through the array-aware payload reader (`fixedform.go`), and the plan-capacity
+check in the evolution load (`fixedevolve.go`), beside the leaf-walk local
+names. The first two are NEW paths: before the change a table with an optional
+array had no fixed surface at all, and a union arm that is a counted array was
+emitted as a scalar read and did not compile. There is therefore no earlier
+running implementation of those two paths to regress; the common fixed
+save/load path, which is the one every fixed table already ran, is measured.
+
+The emitter under test was built from the pre-change sprint tip b00a89e12 and
+from the change fc9c7866a, each with `go build ./cmd/schema`, and the same
+schema was generated from each:
+
+```
+fixed table T {
+    a uint8
+    b int32
+    arr [..3]int16
+    s string(5)
+    tail uint32
+}
+```
+
+One program constructs 200 records set off their defaults, saves them once,
+then runs 2,000 load-then-save round trips over that wire (400,000 record round
+trips), timing the loop with `seconds_elapsed()` under the pinned v2026.8
+default JIT with no compiler flags, both arms under `nice -n 19`. The two arms
+were run alternately in one sitting, median of seven runs, on a Linux/x86-64
+fleet host: **before 216,966 µs, after 214,416 µs** — the change is 1.2%
+FASTER, not slower. For this schema the emitted before/after code differs
+only in the plan-capacity clause and the leaf-walk local names; the
+optional-array and array-union-arm decode loops are not emitted before
+because those tables were refused or did
+not compile.
+
+The new paths were measured the same way, after only, median of five runs
+(200 records, 2,000 round trips, `nice -n 19`): optional-arrays 105,253 µs
+(263 ns/record) and array union arms 159,692 µs (399 ns/record). Those loops
+run only when the
+schema declares the shape, so they add nothing to a fixed table that does not.
+The byte verdict is the qualification's: the shared fixed-proof suite holds
+every row to the live C++ oracle's bytes in both directions, and the writer
+mutation and negative controls hold the refusal.
+
 ## THE HARNESS
 
 A Lobster program reads files (`read_file`) and arguments
