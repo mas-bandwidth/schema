@@ -3352,7 +3352,7 @@ func variableDefault(f *ir.Field) string {
 // st, which is a root declared fixed whose record is inside the form 3 ceiling.
 func hasFixedFile(u *ir.Unit, st *ir.Struct) bool {
 	for _, root := range fixedRoots(u) {
-		if root == st {
+		if root.Name == st.Name {
 			return true
 		}
 	}
