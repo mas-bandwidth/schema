@@ -112,6 +112,7 @@ previous_form_vocab9_low 0,0,0,0,0,false,refused
 previous_form_vocab9_wide 0,0,0,0,0,false,refused
 previous_form_vocab_low 0,0,0,0,0,false,refused
 previous_form_vocab_wide 0,0,0,0,0,false,refused
+previous_form_wide_blob 0,0,0,0,0,false,refused
 previous_form_wide_empty 0,0,0,0,0,false,refused
 previous_form_wide_narrow_arm 0,0,0,0,0,false,refused
 previous_form_wide_sites 0,0,0,0,0,false,refused

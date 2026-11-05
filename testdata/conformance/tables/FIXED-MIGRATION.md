@@ -20,7 +20,7 @@ Each new positive wire is encoded from the existing complete canonical JSON and 
 | text_icon_pad_two | `testdata/wire/tables/text_icon_pad_two.bin` | `testdata/conformance/tables/wire/text_icon_pad_two.bin` | previous_form_text_icon_pad_two |
 | text_icon_sixteen | `testdata/wire/tables/text_icon_sixteen.bin` | `testdata/conformance/tables/wire/text_icon_sixteen.bin` | previous_form_text_icon_sixteen |
 | loadout_full | `testdata/wire/tables/loadout_full.bin` | `testdata/conformance/tables/wire/loadout_full.bin` | previous_form_loadout_full |
-| wide_blob | `testdata/wire/tables/wide_blob.bin` | (none) | the fixed-table read was refused: layout_unsupported (docs/SPEC-TABLES.md §3.4) |
+| wide_blob | `testdata/wire/tables/wide_blob.bin` | (none: no file form) | previous_form_wide_blob |
 | archive | `testdata/wire/tables/archive.bin` | `testdata/conformance/tables/wire/archive.bin` | previous_form_archive |
 | keyed_config | `testdata/wire/tables/keyed_config.bin` | `testdata/conformance/tables/wire/keyed_config.bin` | previous_form_keyed_config |
 | keyed_default | `testdata/wire/tables/keyed_default.bin` | `testdata/conformance/tables/wire/keyed_default.bin` | previous_form_keyed_default |
