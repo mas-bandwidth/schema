@@ -580,9 +580,11 @@ COMPILE(lock, T):
 ```
 
 **A TABLE PAST §3.4's CEILING IS NOT A FIXED-FORM ROOT, SO COMPILE CONSULTS NO LINEAGE FOR IT.** SPEC-TABLES
-§3.4 says a fixed table whose record body is past 65536 bytes has NO FORM EMITTED and is NAMED: it keeps form
-`1`, which it never lost. COMPILE therefore **does not run for it at all** — the generator consults no lineage
-for such a table and **parses no entry of it, even when the LOCK carries one** — and the lock does carry one,
+§3.4 says a fixed table whose record body is past 65536 bytes has NO FILE FORM and is NAMED: its file save
+refuses, and a read at its declared fixed root refuses form `1`; it never selects the variable form, and it
+keeps the by-value storage, the cook and the block form (§19). COMPILE therefore **consults no fixed-file
+lineage for it** — the generator **parses no entry of it, even when the LOCK carries one** — and the lock does
+carry one,
 because the lock records every fixed table's layout and is one file five legs read. **That entry is neither an
 error nor data**: not an error, because the lock is correct and #8's "a bug in the lock, and the BUILD FAILS"
 is about an entry of THIS FORM; not data, because there is no form for it to be data of. The only thing the

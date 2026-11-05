@@ -8505,8 +8505,10 @@ added moves it without anyone remembering to.
   Each refuses, writes nothing. A validation nobody watched fail is a validation nobody has.
 - **THE SIZE BOUNDS, one test each.** A fixed table past 4096 bytes
   of record body WARNS, naming the table and the size and changing no exit code;
-  a DECLARED fixed table past 65536 DOES NOT COMPILE, by name; one merely
-  DERIVED into the form past 65536 does not carry the form at all and says so;
+  a DECLARED fixed table past 65536 has NO FILE FORM and is NAMED, which is not
+  a compile refusal: its file save refuses and every read at its root refuses
+  form `1`; one merely DERIVED into the form past 65536 does not carry the form
+  at all and says so;
   and `--fixed-record-limit` turns the advisory into a refusal that fails the
   compile.
 - **THE FORM BYTE'S OWN REFUSALS, one per direction** (§3): a fixed reader given
