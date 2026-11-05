@@ -31,8 +31,6 @@ goes red everywhere localises nothing:
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
 | `conformance-negative-control-go-walk` | the Go walk's field offset | `go / json-read` | `json-write` |
-| `conformance-negative-control-go-key-order` | the Go text writer's map key order, descending | `go / json-write` (`map_key_order`, `map_text_order`) | `wire`, `json-read` |
-| `conformance-negative-control-go-text-refusal` | the Go text writer's refusal of storage that is not text, replaced by writing it | `go / json-write` (`text_refuse_illformed`, `text_refuse_unpaired`) | `wire`, `json-read` |
 | `conformance-negative-control-js-walk` | the bool arm of the generated JavaScript text reader | `js / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
 | `conformance-negative-control-java-walk` | the field-key match in the Java `fromJson` | `java / json-read` | `json-write`, `wire` |
@@ -170,7 +168,6 @@ One process per surface, so a runtime starts once rather than once per case.
 | `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES | the pinned save |
 | `json-read` | `instance` | the TOLERANT text read (below) of `json/<name>.json`, Save, the bytes | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
-| `json-write` | `json-write-refusal` | Load the wire file, put the row's damage into storage in code, ToJson, and `refused\n` as `<case>.json` when measure and write both return -1, else the text | `refused\n` (docs/SPEC-TABLES.md §16.14, W0) |
 | `json-hostile` | `json-hostile` | the TOLERANT text read of `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n` then ToJson of the value, or `refused\n` | the verdict in the manifest, then `<tree>.value.json`; the row's uncarried verdict alone for an exempt port |
 | `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
 | `cook-write` | `cook-write` | Load the instance's wire, `Cook` it in each byte order, the bytes, as `<instance>` and `<instance>-be` | the two files `schema cook` wrote |

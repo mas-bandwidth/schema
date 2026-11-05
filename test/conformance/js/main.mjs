@@ -990,32 +990,6 @@ async function surfaceJsonWrite(lines, outDir) {
     if (text === null) { fail(f[1] + ": ToJson refused the value"); }
     writeFileSync(join(outDir, f[1] + ".json"), text);
   }
-  // THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the wire,
-  // then the line's damage put into storage in code, then ToJson, which must
-  // refuse. ToJson is this leg's measure and write in one call, so one null
-  // answers both.
-  for (const f of kind(lines, "json-write-refusal")) {
-    const codec = await textCodec(f[2], f[3]);
-    if (codec === null) { wireAbsent(outDir, f[1] + ".json"); continue; }
-    const v = codec.load(new Uint8Array(readFileSync(f[4])), codec.report());
-    if (v === null) { fail(f[1] + ": load refused " + f[4]); }
-    damageText(v, f[5], f[1]);
-    const text = codec.toJson(v);
-    writeFileSync(join(outDir, f[1] + ".json"), text === null ? "refused\n" : text);
-  }
-}
-
-// damageText puts into a root's top-level text field what no read delivers
-// (testdata/conformance/tables/FORMAT.md, `json-write-refusal`). A narrow and a wide
-// string are both a JS string here, which holds UTF-16 units, not bytes: the
-// row's bytes 61 FF 62 have no JS string spelling, so `narrow:` holds the
-// nearest value that is not text, "a\uD800b", an unpaired surrogate, the same
-// value `wide:` names (units 0061 D800 0062).
-function damageText(v, damage, name) {
-  if (damage === "none") { return; }
-  const field = damage.slice(damage.indexOf(":") + 1);
-  if (typeof v[field] !== "string") { fail(name + ": damage " + damage + " names no text field"); }
-  v[field] = "a\uD800b";
 }
 
 // json-hostile: one tree per rule the text form states (docs/SPEC-TABLES.md

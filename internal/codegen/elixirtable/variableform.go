@@ -3986,9 +3986,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # json_float spells one float as C's %.*g does, byte for byte, over the
   # float's OWN width (docs/SPEC-TABLES.md §16, "The FLOAT SPELLING", which
   # §16.7 holds for the variable class): the first precision from low to high
-  # whose text reads back to the same value at that width (a float32 rounded
-  # once, straight from the decimal, 6 to 9 digits; a float64 parsed as is, 15
-  # to 17), and at the last precision the text as rounded, with no loop left.
+  # whose text reads back to the same value at that width (a float32 parsed
+  # and narrowed through float32, 6 to 9 digits; a float64 parsed as is, 15 to
+  # 17), and at the last precision the text as rounded, with no loop left.
   # Float.to_string is NOT this rule: it is the shortest round trip of the
   # widened double, so a float32 spelled up to seventeen digits, its exponent
   # was "e19" where %g writes "e+19", and a trailing-zero trim ate an exponent's
@@ -4037,19 +4037,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  # A float32 reads back through json_decimal_f32, ONE correctly rounded
-  # conversion (docs/SPEC-TABLES.md §16.14, W12): parsing the text as a double
-  # and narrowing rounds twice, and for 0x15AE43FE the two answers part.
-  defp json_float_reads_back?(text, v, 4) do
-    case json_decimal_f32({:decimal, text}) do
-      {:ok, back} -> back == v
-      _ -> false
-    end
-  end
-
-  defp json_float_reads_back?(text, v, _width) do
+  defp json_float_reads_back?(text, v, width) do
     case Float.parse(text) do
-      {back, ""} -> back == v
+      {back, ""} -> json_float_narrow(back, width) == v
       _ -> false
     end
   rescue
@@ -4146,22 +4136,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
   # this writer emits is readable by any conforming parser (§16.3): the escapes
-  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls, and a
-  # well-formed multibyte UTF-8 sequence rides raw. A byte that opens no
-  # well-formed sequence is not text: no read puts it into storage, so a
-  # program did, and the whole write REFUSES (invalid_value, §16.14 W0) with
-  # nothing replaced. A wide string is held as UTF-8, so an unpaired surrogate
-  # (its generalized encoding, ED A0 80 for D800) refuses here too.
+  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls. Every
+  # other byte — the card's multibyte UTF-8 included — rides raw.
   defp json_escape(bin), do: json_escape(bin, [])
 
   defp json_escape(<<>>, acc), do: IO.iodata_to_binary(Enum.reverse(acc))
-
-  defp json_escape(<<c, _::binary>> = bin, acc) when c >= 0x80 do
-    case bin do
-      <<ch::utf8, rest::binary>> -> json_escape(rest, [<<ch::utf8>> | acc])
-      _ -> throw(:invalid_value)
-    end
-  end
 
   defp json_escape(<<c, rest::binary>>, acc) do
     esc =

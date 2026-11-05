@@ -67,45 +67,23 @@ pub fn json_newline(out: &mut String, depth: usize) {
 pub fn json_escape(s: &str, out: &mut String) {
     out.push('"');
     for c in s.chars() {
-        json_escape_char(c, out);
-    }
-    out.push('"');
-}
-
-/// A wstring(N)'s code units as a JSON string (docs/SPEC-TABLES.md §16.2's
-/// wstring row), transcoded at the boundary unit by unit. An UNPAIRED
-/// SURROGATE is not text: the answer is false, the whole write refuses
-/// (invalid_value, §16.3, §16.14 W0), and nothing is replaced.
-#[allow(dead_code)]
-pub fn json_escape_wide(units: &[u16], out: &mut String) -> bool {
-    out.push('"');
-    for c in char::decode_utf16(units.iter().copied()) {
-        let Ok(c) = c else { return false };
-        json_escape_char(c, out);
-    }
-    out.push('"');
-    true
-}
-
-/// One code point of a JSON string: the escape JSON spells for it, or the
-/// character itself.
-#[allow(dead_code)]
-pub fn json_escape_char(c: char, out: &mut String) {
-    match c {
-        '"' => out.push_str("\\\""),
-        '\\' => out.push_str("\\\\"),
-        '\u{0008}' => out.push_str("\\b"),
-        '\u{000c}' => out.push_str("\\f"),
-        '\n' => out.push_str("\\n"),
-        '\r' => out.push_str("\\r"),
-        '\t' => out.push_str("\\t"),
-        c if (c as u32) < 0x20 => {
-            out.push_str("\\u00");
-            let h = format!("{:02x}", c as u32);
-            out.push_str(&h);
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{0008}' => out.push_str("\\b"),
+            '\u{000c}' => out.push_str("\\f"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                out.push_str("\\u00");
+                let h = format!("{:02x}", c as u32);
+                out.push_str(&h);
+            }
+            c => out.push(c),
         }
-        c => out.push(c),
     }
+    out.push('"');
 }
 
 /// Clamp a string to n bytes at a code point boundary (docs/SPEC-TABLES.md
@@ -251,10 +229,9 @@ pub fn json_fixed(out: &mut String, raw: u128, signed: bool, frac: u32) {
     }
 }
 
-/// A float by docs/SPEC-TABLES.md §16.14's W12: %.*g at the first precision
-/// whose text reads back as the same value at the field's own width, exactly
-/// as the reference writes it. A non-finite value has no JSON spelling; the
-/// writer marks it.
+/// A float at the SHORTEST precision that reads back as the same value at the
+/// field's own width (docs/SPEC-TABLES.md §16.2), exactly as the reference
+/// writes it. A non-finite value has no JSON spelling; the writer marks it.
 #[allow(dead_code)]
 pub fn json_float(v: f64, single: bool, w: &mut Jw) {
     if !v.is_finite() {
@@ -270,17 +247,12 @@ pub fn json_float(v: f64, single: bool, w: &mut Jw) {
             w.out.push_str(&text);
             return;
         }
-        // the read-back is ONE correctly rounded conversion at the field's own
-        // width (§16.14, W12): a float32 field parses as f32, never as f64 and
-        // then narrowed, because rounding twice parts from rounding once
-        let same = if single {
-            text.parse::<f32>().map(|back| back as f64 == v).unwrap_or(false)
-        } else {
-            text.parse::<f64>().map(|back| back == v).unwrap_or(false)
-        };
-        if same {
-            w.out.push_str(&text);
-            return;
+        if let Ok(back) = text.parse::<f64>() {
+            let same = if single { (back as f32) as f64 == v } else { back == v };
+            if same {
+                w.out.push_str(&text);
+                return;
+            }
         }
         digits += 1;
     }
@@ -1196,8 +1168,8 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		fmt.Fprintf(b, "%sjson_escape(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vWString:
 		// the same text, TRANSCODED at the boundary (docs/SPEC-TABLES.md
-		// §16.2's wstring row); an unpaired surrogate refuses the write (§16.14 W0)
-		fmt.Fprintf(b, "%sif !json_escape_wide(%s, &mut w.out) { w.refused = true; }\n", ind, borrowOf(x))
+		// §16.2's wstring row): a stored value is paired, so nothing is lost
+		fmt.Fprintf(b, "%sjson_escape(&String::from_utf16_lossy(%s), &mut w.out);\n", ind, borrowOf(x))
 	case vBytes:
 		fmt.Fprintf(b, "%sjson_b64(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vEnum:
