@@ -16,7 +16,10 @@ package squirreltable_test
 //   - wire_length_overflow: a length near 2^63 reads as the sentinel, so a
 //     cursor plus a length is bounded and never wraps;
 //   - distinct_empty_string_blobs: two string records of equal bytes are two
-//     records, so the save writes both rather than refusing blob_shared.
+//     records, so the save writes both rather than refusing blob_shared;
+//   - pointer_orphan_cycle: a cycle among records the root never reaches is
+//     a cyclic wire, because the check's vertices are every placed record;
+//     the plant walks the save's numbering from the root.
 
 import (
 	"maps"
@@ -48,6 +51,9 @@ var sqVectorCases = []sqVectorCase{
 		"return v >= 0x4000000000000000 ? 0x4000000000000000 : v;", "return v;"},
 	{"distinct_empty_string_blobs", "blobdemo", "tables/blobs", "Catalog", "schema_table_load.nut",
 		"    if (p.fd.shape == \"sblob\") _M.noteStringOrigin(p.holder, p.key, value, token);\n", ""},
+	{"pointer_orphan_cycle", "graphdemo", "tables/pointers", "Scene", "schema_table_load.nut",
+		"if (_require(\"schema_table_save\").cyclic(T, rootName, v, verts)) report.malformed = true;",
+		"if (_require(\"schema_table_save\").numberForCook(T, rootName, v) == null) report.malformed = true;"},
 }
 
 // sqVectorVerdict answers the first disagreement between the driver and the

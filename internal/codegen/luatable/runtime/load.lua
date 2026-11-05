@@ -760,17 +760,6 @@ local function adopt(ctx, from, to)
   end
 end
 
--- takes slot j out of the queue; its entry is kept at the end for reuse
-local function unqueue(ctx, j)
-  local pending, n = ctx.pending, ctx.np
-  local p = pending[j]
-  for k = j, n - 1 do
-    pending[k] = pending[k + 1]
-  end
-  pending[n] = p
-  ctx.np = n - 1
-end
-
 -- a map entry's key at its declared default: the descriptor's own, except a
 -- wide one, which is a table the constructor builds fresh
 local function key_default(T, entry, kf)
@@ -1167,12 +1156,16 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
         restore(sub, at, n, elim, ebad)
         local dkey = inst[keyname]
         if order == 0 then
-          -- EQUAL: a DUPLICATE, and last wins WHOLE
-          report.duplicate = report.duplicate + 1
-          for j = ctx.np, 1, -1 do
+          -- EQUAL: a DUPLICATE, and last wins WHOLE. The replaced entry's
+          -- queued slots go to the sink: they land nowhere, but each one still
+          -- resolves and counts, as the engine resolves every slot while it
+          -- reads the entry (decodenodes.go resolveCell), so an index past
+          -- the node table is damage even in an entry a later key replaces.
+          for j = 1, ctx.np do
             local pp = ctx.pending[j]
-            if pp.holder == out and pp.key == last then unqueue(ctx, j) end
+            if pp.holder == out and pp.key == last then pp.holder = ctx.sink end
           end
+          report.duplicate = report.duplicate + 1
           out[last] = nil
         else
           last = dkey
@@ -1975,6 +1968,16 @@ local function release(ctx)
   ctx.report, ctx.nodes = nil, NO_NODES
 end
 
+-- placed lists the records a load placed as the cycle check's vertices
+-- (D.cyclic): every table node, reached from the root or not.
+local function placed(nodes)
+  local out = {}
+  for _, node in ipairs(nodes) do
+    if node.kind == "t" then out[#out + 1] = { desc = node.codec, v = node.value } end
+  end
+  return out
+end
+
 -- LoadTolerant loads a form-1 wire for table `name` of module T into a fresh
 -- value and fills report. Damage discards the whole load (§4): every root
 -- class returns nil when malformed, including a wire that cannot open.
@@ -2120,9 +2123,10 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   end
   resolve(ctx, root, desc)
   -- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph the load
-  -- stored is walked once every index has resolved, by the save's numbering,
-  -- which answers nil for a reference to a node whose descent is still open.
-  if not report.malformed and D.number_nodes(T, desc, root, false) == nil then report.malformed = true end
+  -- stored is checked once every index has resolved, over the root and every
+  -- record the load placed, a cycle among records the root never reaches
+  -- included (D.cyclic).
+  if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.malformed = true end
   release(ctx)
   if report.malformed then return nil end
   return root
