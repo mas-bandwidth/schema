@@ -40,7 +40,7 @@ end
 		text := fmt.Sprintf(`{"one":%s,"two":%s,"children":[{"one":%s,"two":%s}]}`, token, token, token, token)
 		inst := m.New(m.Lookup("Root"))
 		report := tabletext.Report{}
-		if !m.Read(inst, []byte(text), &report) || report.Malformed || report.KindMismatch != 0 {
+		if !m.Read(inst, []byte(text), &report) || report.Refused {
 			t.Fatalf("engine input %s report=%+v", text, report)
 		}
 		one, _ := inst.FieldByKey("one")
@@ -53,7 +53,7 @@ end
 		for j, expr := range []string{`value["one"]`, `value["two"]`, `hd(value["children"])["one"]`, `hd(value["children"])["two"]`} {
 			fmt.Fprintf(&probe, "Probe.check(%s == %s, \"case %d field %d pair-safe clamp\")\n", expr, elixirString(want[j]), i, j)
 		}
-		fmt.Fprintf(&probe, "Probe.check(not report.malformed and report.kind_mismatch == 0 and report.clamped == %d, \"case %d report\")\n", report.Clamped, i)
+		fmt.Fprintf(&probe, "Probe.check(not report.malformed and report.kind_mismatch == 0 and report.clamped == %d, \"case %d report\")\n", 0, i)
 	}
 	probe.WriteString("if Process.get(:failures, 0) != 0, do: raise(\"boundary assertions failed\")\nIO.puts(\"ok\")\n")
 	out, err := runArmProbe(t, elixirBinary(t), generateElixir(t, u), probe.String())

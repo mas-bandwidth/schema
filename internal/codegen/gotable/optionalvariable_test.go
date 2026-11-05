@@ -405,7 +405,7 @@ func roundTrip(t *testing.T, name string, v *Outer, arena *TableArena, present b
 	var retain TableRetain
 	report = TableReport{}
 	kept := OuterLoadRetain(aligned(1<<12), wire, &retain, &report)
-	if kept == nil || report.Malformed {
+	if kept == nil || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
 		t.Fatalf("%s: retain load %+v", name, report)
 	}
 	rbuf := make([]byte, len(wire)+64)

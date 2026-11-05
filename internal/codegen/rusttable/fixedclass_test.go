@@ -165,12 +165,13 @@ func TestFixedClassOnTableWireRust(t *testing.T) {
 			inst := m.New(m.Lookup(r.root))
 			var rep tabletext.Report
 			ok, _ := tablewire.Decode(m, inst, r.wire, &rep)
-			malformed := rep.Malformed || (!ok && !rep.Refused)
+			// The verdict is the cross-language contract; counters are
+			// per-language diagnostics (docs/SPEC-TABLES.md §6.5).
 			verdict := "read"
-			if rep.Refused {
+			if !ok || rep.Refused {
 				verdict = "refused"
 			}
-			r.want = fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, malformed, verdict)
+			r.want = verdict
 		}
 	}
 
@@ -319,8 +320,8 @@ func fcLoadFile(t *testing.T, repo, rel string) *ir.Unit {
 	return u
 }
 
-// fixedClassReportMacro prints a load's report the way the conformance
-// driver's `report` surface spells it (test/conformance/rust/src/main.rs).
+// fixedClassReportMacro prints a load's verdict: the whole value, or a
+// refusal of the whole load.
 const fixedClassReportMacro = `
 macro_rules! report_case {
     ($case:expr, $wire:expr, $m:path, $load:ident) => {{
@@ -328,9 +329,8 @@ macro_rules! report_case {
         let wire = std::fs::read($wire).unwrap();
         let mut r = Default::default();
         let ok = table::$load(&wire, &mut r).is_some();
-        let malformed = r.malformed || (!ok && !r.refused);
-        let verdict = if r.refused { "refused" } else { "read" };
-        println!("REPORT {} {},{},{},{},{},{},{}", $case, r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate, malformed, verdict);
+        let verdict = if ok && !r.malformed && !r.refused { "read" } else { "refused" };
+        println!("REPORT {} {}", $case, verdict);
     }};
 }
 `

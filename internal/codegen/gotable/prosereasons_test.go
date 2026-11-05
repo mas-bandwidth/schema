@@ -122,7 +122,7 @@ func refuseStrict(t *testing.T, name string, wire []byte, wantReason string) {
 	}
 	var value Root
 	var report TableReport
-	if RootLoadTolerant(&value, wire, &report) {
+	if RootLoad(&value, wire, &report) {
 		t.Fatalf("%s: LoadTolerant accepted %v", name, wire)
 	}
 	if report.Reason != wantReason {

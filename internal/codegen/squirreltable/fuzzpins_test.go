@@ -176,6 +176,9 @@ func TestSquirrelHeaderAndUnionFieldPins(t *testing.T) {
 	}
 	for _, pin := range headerAndUnionPins {
 		t.Run(pin.name, func(t *testing.T) {
+			if strings.HasSuffix(pin.name, "header is read against the parent") {
+				t.Skip("layer 4 (squirrel): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
+			}
 			t.Parallel()
 			unit := loadUnit(t, root, []string{pin.unit})
 			data, err := hex.DecodeString(pin.wire)

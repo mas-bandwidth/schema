@@ -9,10 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// The builder's count-cap refusal moves no counter (docs/SPEC-TABLES.md
-// §2.9): a list whose element kind widens, with a count past the int32
-// storage cap, refuses with CountRefusal and leaves the report as it was,
-// widened included. The wires are the cap rows of
+// A count past the int32 storage cap refuses count_over_extent_cap on every
+// read (docs/SPEC-TABLES.md §2.9, §6.5), and a refusal carries no counter. The wires are the cap rows of
 // internal/codegen/goosetable/testdata/load_refusal_reasons.tsv, over that
 // table's measure unit.
 func TestCountCapRefusalMovesNoCounter(t *testing.T) {
@@ -31,13 +29,14 @@ func TestCountCapRefusalMovesNoCounter(t *testing.T) {
 		report := tabletext.Report{Unknown: 3}
 		ok, err := tablewire.Decode(m, m.New(root), wire, &report)
 		var capRefusal *tablewire.CountRefusal
-		if ok || !errors.As(err, &capRefusal) || report != (tabletext.Report{Unknown: 3}) {
+		if ok || !errors.As(err, &capRefusal) || !report.Refused || report.Unknown != 0 {
 			t.Errorf("%s: builder %v %v %+v, want the count-cap refusal with no counter moved", row.name, ok, err, report)
 		}
 	}
 	// the control: a widening element kind whose count lands counts one
-	// widened, and so does the region read's over-cap damage
-	wire, err := hex.DecodeString("01010e0602010900000000fb674d1acf7b27210100000000000000")
+	// widened, and the region read refuses the over-cap count as the value
+	// read does
+	wire, err := hex.DecodeString("01010e0302010900fb674d1acf7b27210100000000000000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +49,8 @@ func TestCountCapRefusalMovesNoCounter(t *testing.T) {
 		t.Fatal(err)
 	}
 	report = tabletext.Report{}
-	if ok, err := tablewire.DecodeRegion(m, m.New(root), wire, &report); ok || err != nil || report != (tabletext.Report{Widened: 1, Malformed: true}) {
-		t.Errorf("a widened list over the cap into a region: %v %v %+v, want damage with one widened", ok, err, report)
+	var capRefusal *tablewire.CountRefusal
+	if ok, err := tablewire.DecodeRegion(m, m.New(root), wire, &report); ok || !errors.As(err, &capRefusal) || !report.Refused {
+		t.Errorf("a widened list over the cap into a region: %v %v %+v, want the count-cap refusal", ok, err, report)
 	}
 }

@@ -1526,19 +1526,17 @@ func tableTextFormRead(text []byte, info *TableTypeInfo, limits TableTextFormLim
 	return doc, r.out, nil
 }
 
-// tableTextFormReportError refuses a JSON walk that counted anything: the
-// strict resolve refuses every event the walk can count, so a count here is a
+// tableTextFormReportError refuses a JSON walk that refused or counted an
+// unknown: the strict resolve refuses every such input first, so one here is a
 // disagreement between the two and is never accepted silently.
 func tableTextFormReportError(report TableReport) error {
 	name := TableTextFormKindMismatch
 	switch {
-	case report.Clamped > 0:
+	case report.Refusal == TableRefuseOutOfRange || report.Refusal == TableRefuseCountOverBound || report.Refusal == TableRefuseLengthOverBound:
 		name = TableTextFormBound
 	case report.Unknown > 0:
 		name = TableTextFormUnknownKey
-	case report.Duplicate > 0:
-		name = TableTextFormDuplicateKey
-	case report.Malformed:
+	case report.Refusal == TableRefuseMalformed:
 		name = TableTextFormSyntax
 	}
 	return &TableTextFormError{Name: name}

@@ -38,8 +38,8 @@ func TestBytesFieldFramingAcrossLebWidths(t *testing.T) {
 		if _, err := tablewire.Decode(m, back, wire, &rep); err != nil {
 			t.Fatalf("n=%d decode: %v", n, err)
 		}
-		if rep.Malformed || rep.Unknown != 0 || rep.KindMismatch != 0 {
-			t.Errorf("n=%d decode report: malformed=%v unknown=%d kindmismatch=%d", n, rep.Malformed, rep.Unknown, rep.KindMismatch)
+		if rep.Refused || rep.Unknown != 0 {
+			t.Errorf("n=%d decode report: refused=%v unknown=%d", n, rep.Refused, rep.Unknown)
 		}
 		var got []byte
 		var after int64
