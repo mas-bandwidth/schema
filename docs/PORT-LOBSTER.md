@@ -567,3 +567,321 @@ stands:
 
 Each carry-across construct of compiler/carries.go joins with its own
 `var _ = carryLobster(...)` file when it lands.
+
+
+## Unit-registry runtime measurements (2026-11-05)
+
+Measured source: `39a1ade05b749479cb378b987262eb6e61988adc`. The required
+`key_reader` and `nested_writer` repairs remain unchanged. Restoring `probe`
+causes the generated package named `probe` to fail compilation.
+
+The fleet Linux release archive is Lobster v2026.8 (`0921f7dd5745`), SHA256
+`2f03fb96fdaf6935469c99e43ffb182cab0d797faec7b26eccc9a732df32ad31`.
+Commands used the fleet slot guard, nice 19 and timeout 600 seconds; Go width
+was at most four. Timing processes inherited affinity to logical CPU 0.
+Shared fleet load was approximately 24 on 32 logical CPUs. These are noisy
+shared-fleet observations, not a speedup claim or an isolated-core result.
+
+### Affected paths
+
+Both sides were generated from the measured source. The before overlay
+replaced only `key_reader` with `probe` in `json.lobster` and `nested_writer`
+with `probe` in `message.lobster`. Packages `mapdemo` and `backenddemo` avoid
+the namespace collision, so both versions compile. This comparison isolates
+the repair; it is not a full pre-PR comparison.
+
+JSON uses `tables/maps` Chunks: load `map_chunks.bin`, write JSON once, then
+time JSON read and wire save. Its signed numeric keys execute j_place_map_key.
+Messages use `tables/backend` MatchResult: load `match_full.bin`, then time
+save_messages of that record. Its ten nested PlayerRow records exercise
+mw_cell_rides. Before timing, saved bytes are compared against the committed
+map_chunks.bin and match_full_message.bin goldens, respectively.
+
+Each invocation uses one discarded warmup plus seven measured rounds of
+20,000 operations, folding output lengths into a printed sink. Assertions
+remain enabled. Ten pairs alternate AB/BA. Below: invocation medians, ns/op.
+All pairs are included; no favorable-run selection was performed.
+
+| Pair | JSON before | JSON after | Message before | Message after |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 10771.20 | 6683.60 | 10085.20 | 6419.55 |
+| 1 | 9695.95 | 8578.80 | 8889.75 | 13195.35 |
+| 2 | 8711.80 | 8696.05 | 9908.15 | 9892.00 |
+| 3 | 7411.35 | 8194.55 | 10177.65 | 9024.05 |
+| 4 | 7488.70 | 8103.80 | 10735.80 | 11367.25 |
+| 5 | 5571.55 | 8979.10 | 5772.05 | 7561.25 |
+| 6 | 5096.20 | 7410.10 | 7008.35 | 9142.45 |
+| 7 | 5428.40 | 5725.15 | 6447.50 | 6423.80 |
+| 8 | 5741.60 | 5785.35 | 7311.40 | 6621.60 |
+| 9 | 7476.40 | 5648.25 | 8578.25 | 6849.20 |
+
+Median paired after/before ratios: JSON **1.031143**, messages **0.997347**.
+Ranges: 0.620507–1.611598 and 0.636532–1.484333. These measurements do **not**
+establish the strict no-slowdown timing clause. They were not rerun to seek a
+favorable median.
+
+For both programs, generated C is identical after normalizing only the two
+local identifiers, build timestamp and program fingerprint. Normalized SHA256:
+JSON `014b057218db0d6840c3ffd2f62810592f2483935458148f0e057941705f1290`;
+messages `623fbe77805f4ecd2cb1e5d964906796815199a2e18bf3cef9eca784e176bb10`.
+This proves equal generated C operations, not identical unnormalized artifacts
+or a measured timing bound.
+
+### Reproduce the affected-path comparison
+
+Build `go build -p 4 -o .git/schema ./cmd/schema`. Generate
+`.git/hot-after/maps` from `tables/maps` and `.git/hot-after/backend` from
+`tables/backend`, using `.git/schema generate --lang lobster --out DIR INPUT`.
+Copy `.git/hot-after` to `.git/hot-before` and apply the two substitutions
+above. Save these programs as hot.lobster in their respective directories;
+replace ROOT with the absolute checkout path. Run the pinned archive binary
+with default JIT and assertions enabled, without --runtime-no-asserts.
+
+JSON:
+
+```lobster
+import .mapdemoView
+import .json
+import .load
+let wire = read_file("ROOT/testdata/wire/tables/map_chunks.bin")
+assert wire
+let rec = schema_rt.load_tolerant("Chunks", wire, schema_rt.LoadReport {})
+assert rec
+let text, why = schema_rt.json_write(rec)
+assert why == ""
+let check = schema_rt.json_read("Chunks", text, schema_rt.LoadReport {})
+assert check
+assert schema_rt.save(check) == wire
+var sink = 0
+for(8) round:
+    let start = seconds_elapsed()
+    for(20000) i:
+        sink += i & 1
+        let back = schema_rt.json_read("Chunks", text, schema_rt.LoadReport {})
+        assert back
+        sink += length(schema_rt.save(back))
+    print("json,{round}," + string((seconds_elapsed() - start) * 1000000000.0 / 20000.0))
+print("sink {sink}")
+```
+
+Messages:
+
+```lobster
+import .BackendTable
+import .message
+import .load
+let wire = read_file("ROOT/testdata/wire/tables/match_full.bin")
+assert wire
+let rec = schema_rt.load_tolerant("MatchResult", wire, schema_rt.LoadReport {})
+assert rec
+let values = [rec]
+let expected = read_file("ROOT/testdata/wire/tables/match_full_message.bin")
+assert expected
+let packed, count = schema_rt.save_messages(values, schema_rt.LoadReport {})
+assert count == length(expected)
+assert packed == expected
+var sink = 0
+for(8) round:
+    let start = seconds_elapsed()
+    for(20000) i:
+        sink += i & 1
+        let data, n = schema_rt.save_messages(values, schema_rt.LoadReport {})
+        sink += length(data) + n
+    print("message,{round}," + string((seconds_elapsed() - start) * 1000000000.0 / 20000.0))
+print("sink {sink}")
+```
+
+Set os.sched_setaffinity(0, {0}) in the invoking Python process. For pairs
+0–9 invoke before/after in AB, BA alternating order, discard round 0 and take
+the median of rounds 1–7. Refuse compiler warnings, nonzero status or missing
+sink. `lobster --c-out hot.lobster` writes compiled_lobster_jit.c beside the
+program. Normalize identifier tokens, build timestamp and the fingerprint
+immediately before subfunctions_to_function.
+
+### Correctness gates
+
+`make tables-lobster-view`: PASS 7.107s, all 15 VIEW_CORPUS and 35 manifest
+units, including descriptor-ID and arm-offset controls. The focused
+`go test -p 4 -parallel 4 -count=1 -timeout 600s ./internal/codegen/lobstertable
+-run 'TestLobster(UnitView|RuntimePackage)' -v`: PASS 4.863s, SCHEMA_SLOW=1 and
+the pinned archive. Standard packet and table byte gates both pass, corpus
+IDs fd0748942dc6ae09 and b51387f36d9b59c4. Three refreshed schema_tables copies
+equal the source runtime byte for byte. No source/generated runtime changed
+in this documentation-only repair attempt. Complete regeneration was not rerun.
+
+The full touched-package gate on the carried source passes lobster (0.864s)
+and tablenames (0.005s), but lobstertable fails (168.399s): JsonMatchesTheReference,
+JsonNegativeControl, TableLoadUnlinksWhatTheRootDoesNotReach and its control,
+TableReleaseEndsAReachedCycle and its control, and Cook (all prefixed
+TestLobster). Examples: feature_full saves 233 bytes versus 313, text-total
+clamp counts differ, release tests get a nil root, and the unlink control finds
+zero anchors. These are failures in the carried source before this attempt;
+they are not claimed fixed or green.
+
+<details><summary>All affected-path rounds (round 0 is warmup; ns/op)</summary>
+
+```text
+pair,side,path,rounds0..7,sink
+0,before,maps,7265.1;8012.5;10771.19999999;16960.75;10070.24999999;8379.8;13504.75;12425.79999999,sink 17200000
+0,before,backend,16296.2;14874.8;12708.8;10085.19999999;9687.8;10125.64999999;6502.3;6697.2,sink 47440000
+0,after,maps,14551.5;5851.35;5154.1;7280.5;8315.2;8710.25;6683.6;6114.549999999,sink 17200000
+0,after,backend,10293.55;6394.65;6419.549999999;6453.999999999;6380.1;6154.399999999;6785.749999999;6571.799999999,sink 47440000
+1,after,maps,5479.85;5620.549999999;11310.6;8118.3;8578.799999999;8191.949999999;8825.649999999;10947.24999999,sink 17200000
+1,after,backend,18867.15;36254.75;13195.35;10936.24999999;12833.75;10432.69999999;41366.65;19272.39999999,sink 47440000
+1,before,maps,9138.6;9695.949999999;10618.79999999;10696.84999999;8889.649999999;9801.7;8037.549999999;8221.25,sink 17200000
+1,before,backend,10186.3;8889.749999999;9801.749999999;6118.75;5814.199999999;5876.899999999;9282.999999999;9876.649999999,sink 47440000
+2,before,maps,8799.15;8488.35;8625.05;8708.25;8761.75;8711.8;8750.25;8742.249999999,sink 17200000
+2,before,backend,9939.599999999;9908.15;9910.799999999;10043.95;9953.2;9881.2;9813.05;9769.3,sink 47440000
+2,after,maps,8572.7;8615.75;8558.7;8463.1;8805.049999999;8702.549999999;8696.049999999;8778.949999999,sink 17200000
+2,after,backend,10134.54999999;10067.29999999;9851.149999999;10054.55;7740.849999999;6591.1;9892.0;10996.34999999,sink 47440000
+3,after,maps,9698.45;7368.9;7403.1;7422.299999999;8245.049999999;9709.1;9705.699999999;8194.549999999,sink 17200000
+3,after,backend,8521.899999999;9024.049999999;12361.29999999;12119.64999999;8705.6;8439.949999999;8334.15;11887.34999999,sink 47440000
+3,before,maps,8759.95;7339.0;7411.35;7304.899999999;8929.0;9487.85;9289.749999999;7308.099999999,sink 17200000
+3,before,backend,8457.649999999;10177.65;12041.65;11013.75;8500.95;8566.149999999;10020.55;12163.99999999,sink 47440000
+4,before,maps,7534.35;7368.8;7441.999999999;7459.15;9753.4;9696.799999999;9008.6;7488.7,sink 17200000
+4,before,backend,8489.599999999;10863.65;12227.14999999;10724.89999999;8598.5;8621.599999999;10735.79999999;12113.3,sink 47440000
+4,after,maps,7670.85;7697.85;8103.799999999;9475.95;9638.85;8897.45;7394.25;7426.8,sink 17200000
+4,after,backend,10843.74999999;12165.74999999;10400.14999999;8780.15;11367.25;12720.79999999;12146.15;8823.999999999,sink 47440000
+5,after,maps,8068.149999999;9960.299999999;10007.09999999;8979.1;7945.049999999;7972.349999999;8670.95;9068.2,sink 17200000
+5,after,backend,6684.05;7221.2;7874.1;7624.2;7814.75;7561.249999999;5747.0;6048.849999999,sink 47440000
+5,before,maps,5215.15;6224.45;7243.95;7285.549999999;5334.45;5528.6;5433.949999999;5571.55,sink 17200000
+5,before,backend,6144.7;5791.3;5751.349999999;5889.649999999;5750.05;5772.05;5751.05;5788.799999999,sink 47440000
+6,before,maps,5122.0;5520.95;5003.4;5004.55;5096.2;5134.149999999;5025.65;5196.349999999,sink 17200000
+6,before,backend,6638.649999999;6104.749999999;6364.55;6163.2;7008.35;7175.799999999;7208.599999999;7188.65,sink 47440000
+6,after,maps,6365.699999999;7410.1;7252.299999999;9010.299999999;9331.45;9373.8;6210.5;5255.549999999,sink 17200000
+6,after,backend,6656.0;7779.55;9142.449999999;10195.7;10311.29999999;10778.89999999;7220.599999999;7183.549999999,sink 47440000
+7,after,maps,5522.65;5441.749999999;5503.1;5764.3;5962.199999999;5840.649999999;5302.8;5725.15,sink 17200000
+7,after,backend,7244.95;7516.699999999;7030.65;6113.8;6423.8;5967.95;6260.3;6629.649999999,sink 47440000
+7,before,maps,5300.85;5423.15;5827.65;5539.05;5428.4;5188.049999999;5320.75;5822.649999999,sink 17200000
+7,before,backend,6433.749999999;6159.3;6506.55;6638.25;8893.9;6007.65;6204.349999999;6447.499999999,sink 47440000
+8,before,maps,5238.85;5809.999999999;7307.05;5292.9;5676.85;5211.349999999;6654.1;5741.6,sink 17200000
+8,before,backend,7145.95;6384.55;7962.999999999;7330.4;6237.9;7311.4;10416.29999999;6974.95,sink 47440000
+8,after,maps,6201.9;5616.7;5588.55;5886.5;6195.699999999;5759.8;6487.799999999;5785.35,sink 17200000
+8,after,backend,6130.75;6494.45;6621.6;6408.949999999;6624.399999999;6654.199999999;5844.85;9159.35,sink 47440000
+9,after,maps,9111.2;6702.7;5648.249999999;5366.5;5300.6;5236.449999999;6136.95;6324.35,sink 17200000
+9,after,backend,7175.8;6849.199999999;5932.399999999;8619.299999999;6433.25;6294.349999999;10481.59999999;10468.1,sink 47440000
+9,before,maps,8834.149999999;7773.7;7499.749999999;7564.05;7476.4;7423.35;7412.25;7435.649999999,sink 17200000
+9,before,backend,8433.6;8572.25;8464.65;8597.749999999;9279.55;8578.249999999;6745.999999999;8676.75,sink 47440000
+```
+</details>
+
+### Standard packet and tolerant-table comparison
+
+Baseline: `3bf4ff638b7a` (the pre-carry base); after: measured source above.
+Both use the committed benchmark harness, generated modules and 64-record
+variant corpus, each invocation running its byte/round-trip gate before timing.
+Pin, affinity and alternating ten-pair order are the same as above. Commands:
+`bench/lobster/run --csv --round PAIR --iterations 40000` and
+`bench/tables/lobster/leg run --csv --round PAIR --iterations 4096`, with
+LOBSTER set to the pinned archive binary. Release defaults: JIT, contract
+checks, runtime assertions disabled by the existing route. Counts deliberately
+bound fleet cost; they are recorded here, not full standard-count results.
+Packet family is gen, table family table. No C++/AOT result is claimed.
+The initial table timing attempt used 4000, which the harness correctly refused
+because counts must be multiples of 64; its one completed packet observation
+is preserved below, and no table timing came from that failed attempt.
+
+| Workload | Before median ns/op | After median ns/op | Median paired ratio |
+| --- | ---: | ---: | ---: |
+| packet write | 6082.49 | 5825.57 | 0.979029 |
+| packet round_trip | 14832.22 | 15287.48 | 1.034875 |
+| table write | 96153.89 | 106637.21 | 1.217771 |
+| table round_trip | 368367.19 | 346622.10 | 0.976606 |
+
+These additional shared-fleet observations do not remove the timing uncertainty
+above; no favorable rerun or speedup claim is made.
+
+<details><summary>All standard paired rows (ns/op)</summary>
+
+```text
+pair,side,leg,path,iterations,corpus,ns
+0,before,packet,write,40000,fd0748942dc6ae09,5987.557855
+0,before,packet,round_trip,40000,fd0748942dc6ae09,13589.356816
+0,before,table,write,4096,b51387f36d9b59c4,99552.015928
+0,before,table,round_trip,4096,b51387f36d9b59c4,353731.871242
+0,after,packet,write,40000,fd0748942dc6ae09,5825.333209
+0,after,packet,round_trip,40000,fd0748942dc6ae09,18464.151849
+0,after,table,write,4096,b51387f36d9b59c4,150966.183575
+0,after,table,round_trip,4096,b51387f36d9b59c4,482392.667631
+1,after,packet,write,40000,fd0748942dc6ae09,8340.631386
+1,after,packet,round_trip,40000,fd0748942dc6ae09,19767.533802
+1,after,table,write,4096,b51387f36d9b59c4,143678.160920
+1,after,table,round_trip,4096,b51387f36d9b59c4,492610.837438
+1,before,packet,write,40000,fd0748942dc6ae09,8493.650996
+1,before,packet,round_trip,40000,fd0748942dc6ae09,19471.921489
+1,before,table,write,4096,b51387f36d9b59c4,81906.790073
+1,before,table,round_trip,4096,b51387f36d9b59c4,306842.589751
+2,before,packet,write,40000,fd0748942dc6ae09,4891.889248
+2,before,packet,round_trip,40000,fd0748942dc6ae09,11659.224195
+2,before,table,write,4096,b51387f36d9b59c4,71751.452967
+2,before,table,round_trip,4096,b51387f36d9b59c4,283286.118980
+2,after,packet,write,40000,fd0748942dc6ae09,8191.685439
+2,after,packet,round_trip,40000,fd0748942dc6ae09,14052.048789
+2,after,table,write,4096,b51387f36d9b59c4,107342.206956
+2,after,table,round_trip,4096,b51387f36d9b59c4,351246.926589
+3,after,packet,write,40000,fd0748942dc6ae09,5477.261150
+3,after,packet,round_trip,40000,fd0748942dc6ae09,15570.988135
+3,after,table,write,4096,b51387f36d9b59c4,105853.710173
+3,after,table,round_trip,4096,b51387f36d9b59c4,434971.726838
+3,before,packet,write,40000,fd0748942dc6ae09,7582.708392
+3,before,packet,round_trip,40000,fd0748942dc6ae09,18056.408219
+3,before,table,write,4096,b51387f36d9b59c4,118119.536971
+3,before,table,round_trip,4096,b51387f36d9b59c4,437636.761488
+4,before,packet,write,40000,fd0748942dc6ae09,6720.430108
+4,before,packet,round_trip,40000,fd0748942dc6ae09,17827.854239
+4,before,table,write,4096,b51387f36d9b59c4,130191.381331
+4,before,table,round_trip,4096,b51387f36d9b59c4,455788.514129
+4,after,packet,write,40000,fd0748942dc6ae09,5154.692316
+4,after,packet,round_trip,40000,fd0748942dc6ae09,12301.182144
+4,after,table,write,4096,b51387f36d9b59c4,72469.019494
+4,after,table,round_trip,4096,b51387f36d9b59c4,298062.593145
+5,after,packet,write,40000,fd0748942dc6ae09,5825.808331
+5,after,packet,round_trip,40000,fd0748942dc6ae09,12438.739209
+5,after,table,write,4096,b51387f36d9b59c4,84488.002704
+5,after,table,round_trip,4096,b51387f36d9b59c4,306278.713629
+5,before,packet,write,40000,fd0748942dc6ae09,5968.617012
+5,before,packet,round_trip,40000,fd0748942dc6ae09,13459.493654
+5,before,table,write,4096,b51387f36d9b59c4,102785.486689
+5,before,table,round_trip,4096,b51387f36d9b59c4,408830.744072
+6,before,packet,write,40000,fd0748942dc6ae09,4873.555600
+6,before,packet,round_trip,40000,fd0748942dc6ae09,12468.050620
+6,before,table,write,4096,b51387f36d9b59c4,92755.774047
+6,before,table,round_trip,4096,b51387f36d9b59c4,298240.381748
+6,after,packet,write,40000,fd0748942dc6ae09,6779.752946
+6,after,packet,round_trip,40000,fd0748942dc6ae09,17625.804177
+6,after,table,write,4096,b51387f36d9b59c4,138064.337981
+6,after,table,round_trip,4096,b51387f36d9b59c4,472143.531634
+7,after,packet,write,40000,fd0748942dc6ae09,6770.114009
+7,after,packet,round_trip,40000,fd0748942dc6ae09,16813.504607
+7,after,table,write,4096,b51387f36d9b59c4,105932.203390
+7,after,table,round_trip,4096,b51387f36d9b59c4,321750.321750
+7,before,packet,write,40000,fd0748942dc6ae09,6177.415369
+7,before,packet,round_trip,40000,fd0748942dc6ae09,15436.863229
+7,before,table,write,4096,b51387f36d9b59c4,87873.462214
+7,before,table,round_trip,4096,b51387f36d9b59c4,501002.004008
+8,before,packet,write,40000,fd0748942dc6ae09,6912.713171
+8,before,packet,round_trip,40000,fd0748942dc6ae09,18053.148469
+8,before,table,write,4096,b51387f36d9b59c4,160000.000000
+8,before,table,round_trip,4096,b51387f36d9b59c4,356506.238859
+8,after,packet,write,40000,fd0748942dc6ae09,5515.446007
+8,after,packet,round_trip,40000,fd0748942dc6ae09,14748.609944
+8,after,table,write,4096,b51387f36d9b59c4,102870.075095
+8,after,table,round_trip,4096,b51387f36d9b59c4,341997.264022
+9,after,packet,write,40000,fd0748942dc6ae09,5777.541541
+9,after,packet,round_trip,40000,fd0748942dc6ae09,15003.976054
+9,after,table,write,4096,b51387f36d9b59c4,111074.086416
+9,after,table,round_trip,4096,b51387f36d9b59c4,339558.573854
+9,before,packet,write,40000,fd0748942dc6ae09,5676.915391
+9,before,packet,round_trip,40000,fd0748942dc6ae09,14227.584441
+9,before,table,write,4096,b51387f36d9b59c4,90301.607369
+9,before,table,round_trip,4096,b51387f36d9b59c4,380228.136882
+```
+</details>
+
+Initial invalid-count attempt, completed packet rows only:
+
+```csv
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+lobster,bench_mixed,write,40000,438,1,136847,136847,136847,57.16,0.00,fd0748942dc6ae09,gen,jit,contract,default,unknown
+lobster,bench_mixed,round_trip,40000,438,1,58946,58946,58946,24.62,0.00,fd0748942dc6ae09,gen,jit,contract,default,unknown
+```
