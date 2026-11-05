@@ -19,9 +19,19 @@ import (
 // changed fails the run by name.
 func TestMain(m *testing.M) {
 	// the tree is found from this file, not from the working directory: a test
-	// that re-runs this binary from elsewhere still checks the one tree
+	// that re-runs this binary from elsewhere still checks the one tree. A
+	// -trimpath build answers a module-relative path, so fall back to the
+	// package directory the test runner starts in.
 	_, here, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(here), "..", "..", "..", "testdata")
+	if !filepath.IsAbs(root) {
+		wd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		root = filepath.Join(wd, "..", "..", "..", "testdata")
+	}
 	before, err := treeFingerprint(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
