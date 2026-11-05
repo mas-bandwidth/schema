@@ -395,6 +395,11 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -412,6 +417,11 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 				for i := range count {
 					elem, ok := sub.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -440,6 +450,11 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -457,6 +472,11 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 				for i := range count {
 					elem, ok := sub.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -839,6 +859,11 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -861,6 +886,11 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 						return false
 					}
 					elem.Path = r.Path.step(1, uint32(i))
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !WeaponConfigLoadBodyRetain(&elem, &value.Weapons[i]) {
 						return false
 					}
@@ -886,6 +916,11 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -908,6 +943,11 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 						return false
 					}
 					elem.Path = r.Path.step(2, uint32(i))
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !ProfileConfigLoadBodyRetain(&elem, &value.Profiles[i]) {
 						return false
 					}
@@ -1292,6 +1332,15 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 					armKind := r.Get8()
 					payload8, ok := r.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if armKind == 13 || armKind == 14 || armKind == 16 {
+						payload8.Depth += 2
+					} else if armKind == 15 {
+						payload8.Depth++
+					}
+					if payload8.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1709,6 +1758,15 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 					armKind := r.Get8()
 					payload6, ok := r.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if armKind == 13 || armKind == 14 || armKind == 16 {
+						payload6.Depth += 2
+					} else if armKind == 15 {
+						payload6.Depth++
+					}
+					if payload6.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2244,6 +2302,11 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -2293,6 +2356,11 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2371,6 +2439,11 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			if !WeaponConfigLoadBody(&sub, &value.Primary) {
 				return false
 			}
@@ -2386,6 +2459,11 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2406,6 +2484,11 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 				for i := range count {
 					elem, ok := sub.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2433,6 +2516,11 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -2450,6 +2538,11 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 				for i := range count {
 					elem, ok := sub.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3017,6 +3110,11 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -3070,6 +3168,11 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -3153,6 +3256,11 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 				return false
 			}
 			sub.Path = r.Path.step(4, uint32(0))
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			if !WeaponConfigLoadBodyRetain(&sub, &value.Primary) {
 				return false
 			}
@@ -3168,6 +3276,11 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -3193,6 +3306,11 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 						return false
 					}
 					elem.Path = r.Path.step(5, uint32(i))
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !WeaponConfigLoadBodyRetain(&elem, &value.Backups[i]) {
 						return false
 					}
@@ -3214,6 +3332,11 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -3239,6 +3362,11 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 						return false
 					}
 					elem.Path = r.Path.step(6, uint32(i))
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !AttachmentLoadBodyRetain(&elem, &value.Attachments[i]) {
 						return false
 					}
@@ -3653,6 +3781,11 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -3890,6 +4023,11 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -3950,6 +4088,11 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 			sub, ok := r.Body()
 			if !ok {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -4390,6 +4533,11 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -4628,6 +4776,11 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -4693,6 +4846,11 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				return false
 			}
 			sub.Path = r.Path.step(12, uint32(0))
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			if !LoadoutConfigLoadBodyRetain(&sub, &value.Loadout) {
 				return false
 			}

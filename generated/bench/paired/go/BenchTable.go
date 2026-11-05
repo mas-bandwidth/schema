@@ -1134,6 +1134,7 @@ type TableReader struct {
 	Report *TableReport
 	Ids    []byte
 	Nested bool
+	Depth  int32
 }
 
 func (r *TableReader) Has(n int64) bool {
@@ -1215,7 +1216,7 @@ func (r *TableReader) Resolve(ref uint64) (uint64, bool) {
 }
 
 func (r *TableReader) Sub(n int64) TableReader {
-	return TableReader{Buffer: r.Buffer[r.Offset : r.Offset+n], Report: r.Report, Ids: r.Ids, Nested: true}
+	return TableReader{Buffer: r.Buffer[r.Offset : r.Offset+n], Report: r.Report, Ids: r.Ids, Nested: true, Depth: r.Depth}
 }
 
 func (r *TableReader) Body() (TableReader, bool) {
@@ -1931,6 +1932,7 @@ func tableWireHasNodes(r TableReader) bool {
 func tableWireSkipValue(r *TableReader, kind uint8) bool {
 	var c tableWireCheck
 	c.ids = len(r.Ids) / 8
+	c.depth = r.Depth
 	at, ok := c.value(*r, kind)
 	if !ok {
 		r.Report.Refuse(c.failed(), "")
@@ -6709,6 +6711,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -6726,6 +6733,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				for i := range count {
 					elem, ok := sub.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -6754,6 +6766,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -6771,6 +6788,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				for i := range count {
 					elem, ok := sub.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -6810,6 +6832,15 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					armKind := r.Get8()
 					payload37, ok := r.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if armKind == 13 || armKind == 14 || armKind == 16 {
+						payload37.Depth += 2
+					} else if armKind == 15 {
+						payload37.Depth++
+					}
+					if payload37.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -6869,6 +6900,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -6923,6 +6959,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}

@@ -280,6 +280,11 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -318,6 +323,11 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -628,6 +638,11 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -667,6 +682,11 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}

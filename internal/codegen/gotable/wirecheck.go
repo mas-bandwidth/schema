@@ -349,6 +349,7 @@ func tableWireHasNodes(r TableReader) bool {
 func tableWireSkipValue(r *TableReader, kind uint8) bool {
  var c tableWireCheck
  c.ids=len(r.Ids)/8
+ c.depth=r.Depth
  at,ok:=c.value(*r,kind)
  if !ok { r.Report.Refuse(c.failed(),""); return false }
  r.Offset=at

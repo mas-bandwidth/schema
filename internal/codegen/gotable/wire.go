@@ -276,6 +276,7 @@ type TableReader struct {
 	Report *TableReport
 	Ids []byte
 	Nested bool
+	Depth int32
 }
 
 func (r *TableReader) Has(n int64) bool {
@@ -337,7 +338,7 @@ func (r *TableReader) Resolve(ref uint64) (uint64, bool) {
 }
 
 func (r *TableReader) Sub(n int64) TableReader {
-	return TableReader{Buffer:r.Buffer[r.Offset:r.Offset+n], Report:r.Report, Ids:r.Ids, Nested:true}
+	return TableReader{Buffer:r.Buffer[r.Offset:r.Offset+n], Report:r.Report, Ids:r.Ids, Nested:true, Depth:r.Depth}
 }
 
 func (r *TableReader) Body() (TableReader, bool) {

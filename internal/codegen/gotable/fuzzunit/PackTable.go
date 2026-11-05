@@ -905,6 +905,11 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -950,6 +955,11 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 			}
 			sub, ok := r.Body()
 			if !ok {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -1334,6 +1344,11 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -1384,6 +1399,11 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 				return false
 			}
 			sub.Path = r.Path.step(4, uint32(0))
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			if !GunnerSettingsLoadBodyRetain(&sub, &value.Gunner) {
 				return false
 			}
@@ -1723,6 +1743,11 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2096,6 +2121,11 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2829,6 +2859,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			if !GlobalSettingsLoadBody(&sub, &value.Global) {
 				return false
 			}
@@ -2844,6 +2879,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2896,6 +2936,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						r.Report.Unknown++
 						continue
 					}
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !ShipEntryLoadBody(&elem, &value.Ships[int(slot)-1]) {
 						return false
 					}
@@ -2917,6 +2962,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -3006,6 +3056,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -3023,6 +3078,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 				for i := range count {
 					elem, ok := sub.Body()
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3819,6 +3879,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 				return false
 			}
 			sub.Path = r.Path.step(1, uint32(0))
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			if !GlobalSettingsLoadBodyRetain(&sub, &value.Global) {
 				return false
 			}
@@ -3834,6 +3899,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -3890,6 +3960,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						continue
 					}
 					elem.Path = r.Path.step(2, uint32(int(slot)-1))
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !ShipEntryLoadBodyRetain(&elem, &value.Ships[int(slot)-1]) {
 						return false
 					}
@@ -3911,6 +3986,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -4004,6 +4084,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -4026,6 +4111,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						return false
 					}
 					elem.Path = r.Path.step(4, uint32(i))
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !ShipEntryLoadBodyRetain(&elem, &value.Reserves[i]) {
 						return false
 					}
