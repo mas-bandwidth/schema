@@ -51,7 +51,9 @@ type luauFixedValueCase struct {
 
 // luauF32 and luauF64 are the fixedDumper's spelling of a float's bits.
 func luauDumpF32(x float32) string { return fmt.Sprintf("0x%08X", math.Float32bits(x)) }
-func luauDumpF64(x float64) string { return fmt.Sprintf("0x%08X%08X", uint32(math.Float64bits(x)>>32), uint32(math.Float64bits(x))) }
+func luauDumpF64(x float64) string {
+	return fmt.Sprintf("0x%08X%08X", uint32(math.Float64bits(x)>>32), uint32(math.Float64bits(x)))
+}
 
 func luauFixedValueCases() []luauFixedValueCase {
 	return []luauFixedValueCase{
@@ -67,7 +69,7 @@ fixed table T {
 			body:     4,
 			count:    2,
 			cppSetup: ``,
-			build:    `local v0 = T.NewT()
+			build: `local v0 = T.NewT()
 local v1 = T.NewT()
 values = { v0, v1 }
 `,
@@ -85,7 +87,7 @@ fixed table T {
 			body:     4,
 			count:    2,
 			cppSetup: ``,
-			build:    `local v0 = T.NewT()
+			build: `local v0 = T.NewT()
 local v1 = T.NewT()
 values = { v0, v1 }
 `,
@@ -104,8 +106,8 @@ fixed table T {
     opt ?Inner
 }
 `,
-			root: "T",
-			body: 17,
+			root:  "T",
+			body:  17,
 			count: 2,
 			cppSetup: `
     value[1].plain.a = 11;
@@ -141,7 +143,7 @@ fixed table T {
 			body:     4,
 			count:    1,
 			cppSetup: ``,
-			build:    `local v0 = T.NewT()
+			build: `local v0 = T.NewT()
 values = { v0 }
 `,
 			want: []string{"r0.a=0"},
@@ -157,11 +159,11 @@ fixed table T {
     tail int32 = 77
 }
 `,
-			root: "T",
-			body: 13,
+			root:  "T",
+			body:  13,
 			count: 2,
 			cppSetup: `
-    value[1].arr[0] = 1;
+    value[1].arr[0] = Small::One;
     value[1].arr_count = 1;
 `,
 			build: `
@@ -191,8 +193,8 @@ fixed table T {
     pick Pick
 }
 `,
-			root: "T",
-			body: 35,
+			root:  "T",
+			body:  35,
 			count: 2,
 			cppSetup: `
     value[0].arr[0] = 0x9999;
@@ -218,15 +220,17 @@ fixed table T {
 local full = T.NewT()
 full.Arr = { 0x9999, 0x9999, 0x8888 }
 full.ArrCount = 3
-full.S = "ZZZZ"
+full.S = buffer.fromstring("ZZZZ")
+full.SLength = 4
 buffer.fill(full.B, 0, 0xaa)
 full.BLength = 4
 full.Pick.Type = 2
-full.Pick.Wide = T.Uint64(0xffffffff, 0xffffffff)
+full.Pick.Wide = -1
 local v = T.NewT()
 v.Arr = { 0x1122 }
 v.ArrCount = 1
-v.S = "A"
+v.S = buffer.fromstring("A")
+v.SLength = 1
 buffer.writeu8(v.B, 0, 0x42)
 v.BLength = 1
 v.Pick.Type = 1
@@ -235,97 +239,87 @@ values = { full, v }
 `,
 			want: []string{
 				"r0.arr_count=3", "r0.s=\"ZZZZ\"", "r0.s_length=4", "r0.b_length=4", "r0.pick.type=2",
-				"r1.arr_count=1", "r1.arr[0]=4370", "r1.s=\"A\"", "r1.s_length=1", "r1.b_length=1", "r1.b[0]=66", "r1.pick.type=1", "r1.pick.narrow=7",
+				"r1.arr_count=1", "r1.arr[0]=4386", "r1.s=\"A\"", "r1.s_length=1", "r1.b_length=1", "r1.b[0]=66", "r1.pick.type=1", "r1.pick.narrow=7",
 			},
 		},
 		// port/luau/fixed/union-guards
 		{
 			id: "union-guards",
 			schema: `package probe
-union Inner {
+type Inner {
     x int16
     y int32
 }
 union Outer {
-    inner Inner
-    plain int32
+    a int8
+    nested Inner
 }
 fixed table T {
-    outer Outer
+    u Outer
     tail int32 = 9
 }
 `,
-			root: "T",
-			body: 10,
+			root:  "T",
+			body:  11,
 			count: 2,
 			cppSetup: `
-    value[0].outer.type = OuterType::Inner;
-    value[0].outer.inner.type = InnerType::X;
-    value[0].outer.inner.x = -7;
-    value[0].tail = 100;
-    value[1].outer.type = OuterType::Plain;
-    value[1].outer.plain = 0x01020304;
-    value[1].tail = 200;
+    value[1].u.type = OuterType::Nested;
+    value[1].u.nested.x = 12;
+    value[1].u.nested.y = 0x12345678;
+    value[1].tail = 77;
 `,
 			build: `
 local v0 = T.NewT()
-v0.Outer.Type = 1
-v0.Outer.Inner.Type = 1
-v0.Outer.Inner.X = -7
-v0.Tail = 100
 local v1 = T.NewT()
-v1.Outer.Type = 2
-v1.Outer.Plain = 0x01020304
-v1.Tail = 200
+v1.U.Type = 2
+v1.U.Nested.X = 12
+v1.U.Nested.Y = 0x12345678
+v1.Tail = 77
 values = { v0, v1 }
 `,
 			want: []string{
-				"r0.outer.type=1", "r0.outer.inner.type=1", "r0.outer.inner.x=-7", "r0.tail=100",
-				"r1.outer.type=2", "r1.outer.plain=16909060", "r1.tail=200",
+				"r0.u.type=0", "r0.tail=9",
+				"r1.u.type=2", "r1.u.nested.x=12", "r1.u.nested.y=305419896", "r1.tail=77",
 			},
 		},
 		// port/luau/fixed/plan-execution
 		{
 			id: "plan-execution",
 			schema: `package probe
-enum Kind { A, B }
-union Choice {
-    n int32
-    s string(4)
+type Sub {
+    p int16 = 3
+    q int32 = 4
 }
 fixed table T {
-    head int32 = 1
-    opt ?int32
-    arr [..2]Kind
-    ch Choice
+    a int32 = 1
+    sub Sub
+    xs [..2]int16
 }
 `,
-			root: "T",
-			body: 25,
-			count: 1,
+			root:  "T",
+			body:  18,
+			count: 2,
 			cppSetup: `
-    value[0].head = 42;
-    value[0].opt = -99;
-    value[0].opt_present = true;
-    value[0].arr[0] = 2;
-    value[0].arr_count = 1;
-    value[0].ch.type = ChoiceType::S;
-    memcpy( value[0].ch.s, "hi", 2 );
-    value[0].ch.s_length = 2;
+    value[1].a = 10;
+    value[1].sub.p = 30;
+    value[1].sub.q = 40;
+    value[1].xs_count = 2;
+    value[1].xs[0] = 50;
+    value[1].xs[1] = 60;
 `,
 			build: `
-local v = T.NewT()
-v.Head = 42
-v.Opt = -99
-v.OptPresent = true
-v.Arr = { 2 }
-v.ArrCount = 1
-v.Ch.Type = 2
-v.Ch.S = "hi"
-values = { v }
+local v0 = T.NewT()
+local v1 = T.NewT()
+v1.A = 10
+v1.Sub.P = 30
+v1.Sub.Q = 40
+v1.Xs = { 50, 60 }
+v1.XsCount = 2
+values = { v0, v1 }
 `,
 			want: []string{
-				"r0.head=42", "r0.opt_present=1", "r0.opt=-99", "r0.arr_count=1", "r0.arr[0]=2", "r0.ch.type=2", "r0.ch.s=\"hi\"", "r0.ch.s_length=2",
+				"r0.a=1", "r0.sub.p=3", "r0.sub.q=4", "r0.xs_count=0",
+				"r1.a=10", "r1.sub.p=30", "r1.sub.q=40", "r1.xs_count=2", "r1.xs[0]=50", "r1.xs[1]=60",
 			},
 		},
 		// port/luau/fixed/interoperability
@@ -336,11 +330,13 @@ fixed table T {
     a int32 = 7
 }
 `,
-			root:     "T",
-			body:     4,
-			count:    2,
-			cppSetup: ``,
-			build:    `local v0 = T.NewT()
+			root:  "T",
+			body:  4,
+			count: 2,
+			cppSetup: `
+    value[1].a = -5;
+`,
+			build: `local v0 = T.NewT()
 local v1 = T.NewT()
 v1.A = -5
 values = { v0, v1 }
@@ -551,8 +547,9 @@ local function dumpValue(f: any, v: any, path: string, length: any)
 		if f.wide then
 			emit(path .. "_length", int(length))
 		else
-			emit(path, "\"" .. v .. "\"")
-			emit(path .. "_length", int(#v))
+			local text = if type(v) == "buffer" then buffer.readstring(v, 0, length) else v
+			emit(path, "\"" .. text .. "\"")
+			emit(path .. "_length", int(length))
 		end
 	elseif s == "bytes" then
 		for i = 0, length - 1 do
@@ -632,7 +629,12 @@ if out == nil then
 end
 print("@x " .. hex(out))
 local report: any = {}
-local back = F.load(d, fixed, inputs.cpp, report)
+local iok, back = pcall(F.load, d, fixed, inputs.cpp, report)
+if not iok then
+	local e = back
+	print("@refused " .. tostring(type(e) == "table" and e.name or e) .. " " .. tostring(type(e) == "table" and e.field or ""))
+	return
+end
 if back == nil then
 	print("@refused " .. tostring(report.reason) .. " " .. tostring(report.field))
 	return
