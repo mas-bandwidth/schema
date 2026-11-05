@@ -1,6 +1,7 @@
 package tablewire_test
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -71,7 +72,8 @@ func TestEngineHasNoTolerantPaths(t *testing.T) {
 
 	oversized := listModel(t, "package strictceiling\nfixed table Huge { payload bytes(65536) }")
 	huge := oversized.New(oversized.Lookup("Huge"))
-	if data, err := tablewire.Encode(oversized, huge); len(data) != 0 || err == nil || err.Error() != "table Huge: fixed layout is unsupported" {
+	var fixedRefusal *tablewire.FixedRefusal
+	if data, err := tablewire.Encode(oversized, huge); len(data) != 0 || !errors.As(err, &fixedRefusal) || fixedRefusal.Reason != tablewire.FixedReasonLayoutUnsupported {
 		t.Fatalf("oversized fixed root save = %x, %v; want unsupported layout refusal", data, err)
 	}
 	form1 := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}

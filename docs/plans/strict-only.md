@@ -40,8 +40,8 @@ in `docs/roadmap.sexp`, one task per layer below.
 4. **An unknown enum variant, union arm or keyed slot stays evolution**: the
    value reads `None` (the slot is dropped) and counts `unknown`, as an unknown
    field does. The alternative is to refuse it.
-5. **A repeated field id, map key, keyed slot, node-table field, JSON key and
-   flags name in a JSON flags array are damage** (Glenn's 2026-10-31 list of input no writer produces, held in
+5. **A repeated field id, map key, keyed slot, node-table field and JSON key
+   are damage** (Glenn's 2026-10-31 list of input no writer produces, held in
    #2557). The `duplicate` counter is retired.
 6. **Bytes after a nested union inside its arm's `L` are damage** (the same
    list, item 5).
@@ -62,6 +62,20 @@ in `docs/roadmap.sexp`, one task per layer below.
     no pointer reaches is damage; a record out of first-visit order is not
     (the numbering is positional); every leg answers `layout_unknown`, and
     `layout_newer` and `count_over_length` are retired.
+
+## The carried fixed-root ceiling conflict, resolved
+
+#2790 (`12e994ca4`) says a declared fixed root above 65536 bytes has no file
+form: its file save refuses and its root refuses form `1`. #2789's engine
+instead selected form `1` when `ir.TableFixedEmitted` was false.
+
+The coordinator decided on 2026-11-05 to keep #2790's no-file-form rule.
+The engine now selects the wire class from the declaration and refuses an
+unavailable fixed layout as `layout_unsupported`; a form-`1` input is
+`previous_form`. These names are local engine diagnostics, not cross-language
+comparisons. The carry test exercises the 65536 boundary and one byte above
+it. `internal/tablewire/fixedroot-negative-control` restores the old exemption
+under a source overlay and requires that behavioral test to fail.
 
 ## (c) The layers, in order, each with its gate
 

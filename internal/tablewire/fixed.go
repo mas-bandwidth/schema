@@ -83,7 +83,7 @@ func fixedLayout(st *ir.Struct) ([]byte, uint64) {
 // reference's <T>FixedSave writes for a batch of one.
 func EncodeFixed(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 	if !ir.TableFixedEmitted(m.Unit, inst.Def) {
-		return nil, fmt.Errorf("table %s: fixed layout is unsupported", inst.Def.Name)
+		return nil, &FixedRefusal{Reason: FixedReasonLayoutUnsupported}
 	}
 	if err := m.CheckFileValue(inst); err != nil {
 		return nil, err
