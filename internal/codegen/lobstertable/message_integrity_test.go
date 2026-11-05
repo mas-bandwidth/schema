@@ -18,7 +18,7 @@ import (
 func TestLobsterMessageIntegrity(t *testing.T) {
 	slowtest.Gate(t, "lobster message integrity")
 	path := filepath.Join(t.TempDir(), "Batch.schema")
-	const src = `package batch
+	const src = `package integritybatch
 fixed table Checked | integrity="crc32c" {
  n int32
  count uint16
