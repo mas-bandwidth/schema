@@ -113,7 +113,10 @@ func TestWriteRefusalRoundTwoRefusesIllFormedText(t *testing.T) {
 	files["go.mod"] = []byte("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => " + repo + "\n")
 	files["refusal_test.go"] = []byte(`package probe
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func poisoned(n int) []byte {
 	b := make([]byte, n)
@@ -147,9 +150,14 @@ func TestGeneratedWritersRefuseIllFormedText(t *testing.T) {
 		if n := VarTextMeasure(&v); n != -1 {
 			t.Fatalf("%s: VarTextMeasure got %d, want -1", tc.name, n)
 		}
-		if n := VarTextSave(&v, poisoned(256)); n != -1 {
+		if n, err := VarTextMeasureReason(&v); n != -1 || !errors.Is(err, TableRefuseInvalidValue) {
+			t.Fatalf("%s: VarTextMeasureReason got (%d, %v), want (-1, invalid_value)", tc.name, n, err)
+		}
+		buf := poisoned(256)
+		if n := VarTextSave(&v, buf); n != -1 {
 			t.Fatalf("%s: VarTextSave got %d, want -1", tc.name, n)
 		}
+		untouched(t, tc.name+" VarTextSave", buf)
 	}
 	for _, tc := range []struct {
 		name string
@@ -164,9 +172,14 @@ func TestGeneratedWritersRefuseIllFormedText(t *testing.T) {
 		if n := FixTextMeasure(&f); n != -1 {
 			t.Fatalf("%s: FixTextMeasure got %d, want -1", tc.name, n)
 		}
-		if n := FixTextSave(&f, poisoned(256)); n != -1 {
+		if n, err := FixTextMeasureReason(&f); n != -1 || !errors.Is(err, TableRefuseInvalidValue) {
+			t.Fatalf("%s: FixTextMeasureReason got (%d, %v), want (-1, invalid_value)", tc.name, n, err)
+		}
+		buf := poisoned(256)
+		if n := FixTextSave(&f, buf); n != -1 {
 			t.Fatalf("%s: FixTextSave got %d, want -1", tc.name, n)
 		}
+		untouched(t, tc.name+" FixTextSave", buf)
 	}
 }
 `)

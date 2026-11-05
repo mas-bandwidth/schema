@@ -5414,6 +5414,9 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 }
 
 func TableMixedSave(value *TableMixed, buffer []byte) int64 {
+	if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 || !tableUTF8Valid(value.PlayerName[:value.PlayerNameLength]) {
+		return -1
+	}
 	var ids TableIds
 	w := TableWriter{Buffer: buffer, Ids: &ids}
 	w.Put8(1)

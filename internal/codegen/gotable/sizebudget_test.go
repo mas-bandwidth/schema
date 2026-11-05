@@ -50,7 +50,8 @@ const (
 	// +8: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
 	// +268: the message writer refuses a ranged integer, a bits(N) value and ill-formed text instead of masking them, naming invalid_value through (*TableMessageWriter).Refuse (SPEC.md §5.1, SPEC-TABLES §22.6)
 	// -109: a refused message batch leaves the buffer untouched: SaveMessages measures first, and the measure carries the batch-size refusal (SPEC.md §5.1); the text writer refuses a count past its storage instead of clamping it
-	goExamplesLineBudget = 59642
+	// +24: the Go Save text preflight refuses ill-formed UTF-8 or an unpaired surrogate before the form byte, so a refused Save writes nothing (SPEC.md §5.1)
+	goExamplesLineBudget = 59666
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

@@ -155,17 +155,6 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 	}
 }
 
-func (g *tableGen) emitTableSave(st *ir.Struct) {
-	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
-		return
-	}
-	if st.Integrity != "" {
-		g.pf("func %sSave(value *%s, buffer []byte) int64 {\n if len(buffer) < 4 { return -1 }\n var ids TableIds\n w := TableWriter{Buffer:buffer[:len(buffer)-4], Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return tableIntegritySeal(buffer, w.Offset)\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
-		return
-	}
-	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
-}
-
 // arrayLoopRange is what follows `for i := range` in the loops that index the
 // arrayLengths scratch. gosec G602 cannot bound `range int(n)` against a
 // fixed-size array and flags every arrayLengths[i]; ranging over the scratch
