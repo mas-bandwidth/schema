@@ -52,6 +52,10 @@ typedef struct ConformanceCodec
     int64_t (*cook_measure)(const void * value);
     int (*cook)(const void * value,void * buffer,uint64_t capacity,int big);
     int64_t (*retain_fuzz)(const uint8_t *,int64_t,uint8_t **,ConformanceReport *,int *,int64_t *);
+    /* puts a json-write-refusal line's damage into a loaded fixed root (FORMAT.md,
+       json-write-refusal): 0 when the root has no such text field, NULL for a
+       variable root */
+    int (*damage)(void * value,const char * field,int wide);
 } ConformanceCodec;
 
 /* A GROWING TEXT, for the two dumps. The harness compares bytes, so nothing
