@@ -3348,6 +3348,17 @@ func variableDefault(f *ir.Field) string {
 	return "null"
 }
 
+// hasFixedFile answers whether the unit emits the fixed form's file class for
+// st, which is a root declared fixed whose record is inside the form 3 ceiling.
+func hasFixedFile(u *ir.Unit, st *ir.Struct) bool {
+	for _, root := range fixedRoots(u) {
+		if root == st {
+			return true
+		}
+	}
+	return false
+}
+
 func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	st = variableStruct(st)
 	tables := cardVariableTables(u)
@@ -3613,9 +3624,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
 	}
 	fmt.Fprintf(&b, "        if (r == null) { return null; }\n")
-	if st.FixedDeclared {
-		// a fixed table's file is form 3 (§3.4): the variable form is the one
-		// before it, and a reader that expects a fixed table refuses every other
+	if st.FixedDeclared && !hasFixedFile(u, st) {
+		// a fixed table whose record is past the form 3 ceiling (§3.4) has no
+		// file form: the variable form's file is not one its reader takes
 		fmt.Fprintf(&b, "        report.refused = true;\n")
 		fmt.Fprintf(&b, "        report.reason = \"previous_form\";\n")
 		fmt.Fprintf(&b, "        return null;\n")
