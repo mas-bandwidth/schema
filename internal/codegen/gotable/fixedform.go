@@ -1427,12 +1427,12 @@ func (g *tableGen) emitFixedWriterBounds(st *ir.Struct, perEntry [][]*ir.Field) 
 		if len(fields) == 0 {
 			continue
 		}
-		g.pf("func %sFixedBoundsKnown%d(value *%s) bool {\n\tvar over int32\n", st.Name, i, g.fixedStorage(st.Name))
+		g.pf("func %sFixedBoundsKnown%d(value *%s) bool {\n\tvar count int32\n\tover := &count\n", st.Name, i, g.fixedStorage(st.Name))
 		g.pf("\t_ = value\n")
 		for _, f := range fields {
 			g.emitFixedClampField(f, "value", 1, fixedPassClamp)
 		}
-		g.pf("\treturn over == 0\n}\n\n")
+		g.pf("\treturn count == 0\n}\n\n")
 		out = append(out, i)
 	}
 	return out
