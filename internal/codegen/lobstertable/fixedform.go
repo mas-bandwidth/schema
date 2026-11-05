@@ -483,3 +483,44 @@ func readInt(width int, signed bool) string {
 	}
 	return "read_int64_le"
 }
+
+// fixedFieldFacts are the byte sizes the runtime's form-3 reader and writer
+// walk a field by (docs/FIXED-FORM-ALGORITHM.md §3): the field's whole slot
+// (fb), one element's (eb), a leaf's storage width (sw) and the element count
+// of a fixed or enum-keyed array (fn). A field the form does not carry (a
+// pointer, a map, a list, an unbounded text) names none.
+func fixedFieldFacts(f *ir.Field) []string {
+	if f.Type.Pointer || f.IsMap() || f.Array == ir.ArrayList || f.Type.TextUnbounded() {
+		return nil
+	}
+	parts := []string{
+		fmt.Sprintf("fb: %d", ir.TableFixedFieldBytes(f)),
+		fmt.Sprintf("eb: %d", ir.TableFixedElementBytes(f)),
+		fmt.Sprintf("sw: %d", ir.TableFixedStorageBytes(f.Type)),
+	}
+	switch {
+	case f.KeyEnumRef != nil:
+		parts = append(parts, fmt.Sprintf("fn: %d", f.KeyEnumRef.Max))
+	case f.Array == ir.ArrayFixed:
+		parts = append(parts, fmt.Sprintf("fn: %d", f.ArrayBound))
+	}
+	return parts
+}
+
+// emitFixedFacts writes the table-level facts of the form-3 file: whether the
+// form is emitted for the table, the record's body size, and the writer's
+// layout bytes and hash (the compiler's own walk, never re-derived here).
+func emitFixedFacts(g *lobster.Gen, st *ir.Struct) {
+	if !st.FixedDeclared {
+		return
+	}
+	g.Pf("    fsize: %d,\n", ir.TableFixedTypeBytes(st))
+	if !ir.TableFixedEmitted(g.Unit, st) {
+		return
+	}
+	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+	hash := ir.TableFixedLayoutHash(layout, st)
+	g.Pf("    femit: true,\n")
+	g.Pf("    lhash: %s,\n", idLit(hash))
+	g.Pf("    layout: %s,\n", lobster.StringLit(layout))
+}

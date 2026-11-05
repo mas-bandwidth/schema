@@ -358,6 +358,7 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 	// state the region a C reader of this wire would ask for
 	g.Pf("    rsize: %d,\n", ir.RecordLayout(g.Unit, t).Size)
 	g.Pf("    ralign: %d,\n", ir.TableRegionAlign(g.Unit))
+	emitFixedFacts(g, t)
 	g.Pf("    fields: [\n")
 	guards := fieldGuards(t)
 	for i, f := range t.Fields {
@@ -378,6 +379,7 @@ func emitUnionDescriptor(g *lobster.Gen, un *ir.Union) {
 	g.Pf("// %sDescriptor — union %s as data: one entry per arm, tag order (§2.6)\n", un.Name, un.Name)
 	g.Pf("let %sDescriptor = %s.union_of(%s.UnionDescriptor {\n", un.Name, rt, rt)
 	g.Pf("    name: %s,\n", lobster.StringLit([]byte(un.Name)))
+	g.Pf("    tagw: %d,\n", ir.TableFixedUnionTagBytes(un))
 	g.Pf("    arms: [\n")
 	for i, v := range un.Variants {
 		sep := ","
@@ -481,6 +483,7 @@ func fieldDescWire(g *lobster.Gen, f *ir.Field, ordinal, tag int, wire bool) str
 		size, align := ir.ListElementLayout(g.Unit, f)
 		parts = append(parts, fmt.Sprintf("lsize: %d", size), fmt.Sprintf("lalign: %d", align))
 	}
+	parts = append(parts, fixedFieldFacts(f)...)
 	switch {
 	case f.IsMap():
 		requireHome(g, f.MapEntry.Name)
