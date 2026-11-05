@@ -131,28 +131,6 @@ func framingVerdictFault(fc FramingCase, strictRule string, got framingOutcome) 
 	return nil
 }
 
-// framingVariableUnit is a framing row's unit as the variable form reads it.
-// The framing vectors are form-1 files and the rules they pin are the
-// variable form's (docs/LAYERS/1-framing.md), but a root declared `fixed
-// table` reads form 3 alone and refuses every form-1 file as previous_form
-// before any framing rule runs (docs/SPEC-TABLES.md §3.4). Such a root is
-// read here through a fresh load of its unit with the root's class variable,
-// the same declaration with the same fields and ids, so the battery reaches
-// the rules it was written for. The returned unit is never shared.
-func framingVariableUnit(t *testing.T, m *Manifest, key, root string) *ir.Unit {
-	t.Helper()
-	unit, err := newUnits(m).get(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	st := unit.Tables[root]
-	if st == nil {
-		t.Fatalf("%s declares no table %s", key, root)
-	}
-	st.FixedDeclared = false
-	return unit
-}
-
 // TestFramingVectorsReadThroughTheEngine is THE ORACLE CHECK
 // (docs/LAYERS/1-framing.md): the Go engine, which every leg is fuzzed
 // against, answers every framing vector as the rule text says, READ with the
@@ -177,7 +155,10 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared {
 			key := fc.Unit + "." + fc.Root
 			if variable[key] == nil {
-				variable[key] = framingVariableUnit(t, m, fc.Unit, fc.Root)
+				var err error
+				if variable[key], err = framingVariableUnit(m, fc.Unit, fc.Root); err != nil {
+					t.Fatal(err)
+				}
 			}
 			unit = variable[key]
 		}
