@@ -134,3 +134,45 @@ func TestJavaFixedLayoutIsTheReferenceLayout(t *testing.T) {
 		t.Fatal("the manifest names no fixed root")
 	}
 }
+
+// TestJavaVariableLoadRefusesFixedRoot pins that the variable form's `load` of
+// a root declared fixed refuses with previous_form: a fixed table's file is
+// form 3, and the form 1 file the variable form reads is the one before it.
+// A root of any other kind keeps reading form 1.
+func TestJavaVariableLoadRefusesFixedRoot(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+	u := unitFromPath(t, filepath.Join(repo, "tables", "examples", "Tables.schema"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixed := 0
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if !st.IsTable || st.IsMapEntry() {
+				continue
+			}
+			src := string(files[st.Name+"Variable.java"])
+			at := strings.Index(src, "public static Value load(byte[] data, TableVariable.Report report) {")
+			if at < 0 {
+				t.Errorf("%sVariable has no load", st.Name)
+				continue
+			}
+			body := src[at:]
+			if end := strings.Index(body, "\n    }\n"); end >= 0 {
+				body = body[:end]
+			}
+			refuses := strings.Contains(body, `report.reason = "previous_form"`)
+			if st.FixedDeclared {
+				fixed++
+			}
+			if refuses != st.FixedDeclared {
+				t.Errorf("%s: declared fixed is %v and its variable load refuses form 1 is %v", st.Name, st.FixedDeclared, refuses)
+			}
+		}
+	}
+	if fixed == 0 {
+		t.Fatal("Tables.schema declares no fixed root: the test pins nothing")
+	}
+}
