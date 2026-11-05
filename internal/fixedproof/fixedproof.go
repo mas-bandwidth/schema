@@ -1846,7 +1846,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 			{"the room exactly", three, 3, 3},
 			{"no capacity", three, -1, 3},
 			{"the bad hash in the room", badLast, 3, -1},
-			{"4097 records with no capacity", four097, -1, -1},
+			{"4097 records with no capacity", four097, -1, 4097},
 			{"4097 records past 4096 capacity", four097, 4096, -1},
 		} {
 			n, reason, _, _ := zeroLoad(t, runner, u, "Point", lin, c.file, c.capacity)

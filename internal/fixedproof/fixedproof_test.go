@@ -193,10 +193,7 @@ func (s stubEvoRunner) loadLineage(_ *testing.T, u *ir.Unit, root string, lineag
 		return -1, "leg_diagnostic_ragged", nil, nil
 	}
 	nRec := rest / recSize
-	if cap < 0 {
-		cap = 4096
-	}
-	if !s.ignoreCap && nRec > cap {
+	if !s.ignoreCap && cap >= 0 && nRec > cap {
 		return -1, "leg_diagnostic_caller_cap", nil, nil
 	}
 	for k := range nRec {
