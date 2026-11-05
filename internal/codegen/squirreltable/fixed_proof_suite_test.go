@@ -1,6 +1,7 @@
 package squirreltable_test
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -444,7 +445,9 @@ dump_fields = function(prefix, obj) {
     if (vt == "string") {
       if (enumOrd.rawin(v)) print("FIELD " + key + "=" + enumOrd[v] + "\n");
       else print("FIELD " + key + "=\"" + v + "\"\n");
-    } else if (vt == "integer" || vt == "float" || vt == "bool") {
+    } else if (vt == "bool") {
+      print("FIELD " + key + "=" + (v ? 1 : 0) + "\n");
+    } else if (vt == "integer" || vt == "float") {
       print("FIELD " + key + "=" + v + "\n");
     } else if (vt == "instance") {
       dump_fields(key, v);
@@ -457,7 +460,9 @@ dump_fields = function(prefix, obj) {
         if (et == "string") {
           if (enumOrd.rawin(ev)) print("FIELD " + ekey + "=" + enumOrd[ev] + "\n");
           else print("FIELD " + ekey + "=\"" + ev + "\"\n");
-        } else if (et == "integer" || et == "float" || et == "bool") {
+        } else if (et == "bool") {
+          print("FIELD " + ekey + "=" + (ev ? 1 : 0) + "\n");
+        } else if (et == "integer" || et == "float") {
           print("FIELD " + ekey + "=" + ev + "\n");
         } else if (et == "instance") {
           dump_fields(ekey, ev);
@@ -897,3 +902,59 @@ func squirrelCheckFor(id string) string {
 }
 
 var _ = hex.EncodeToString
+
+// TestSquirrelFixedProofBooleanDumpFunctional holds the runner's typed output
+// protocol: booleans use 0/1, numeric values stay numeric, and text stays quoted.
+// Each broken twin changes exactly one field, including both boolean sites.
+func TestSquirrelFixedProofBooleanDumpFunctional(t *testing.T) {
+	t.Parallel()
+	sqrun.Require(t)
+	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table Presence {\n flag bool\n marker int32\n label string(8)\n flags [2]bool\n}\n")
+	e, ok := fixedproof.LineageEntryOf(u, "Presence")
+	if !ok {
+		t.Fatal("no Presence layout")
+	}
+	body := make([]byte, 19)
+	body[0] = 1
+	binary.LittleEndian.PutUint32(body[1:], 1)
+	binary.LittleEndian.PutUint32(body[5:], 4)
+	copy(body[9:], "true")
+	body[18] = 1
+	want := map[string]string{"r0.flag": "1", "r0.marker": "1", "r0.label": `"true"`, "r0.flags[0]": "0", "r0.flags[1]": "1"}
+	check := func(body []byte) []string {
+		t.Helper()
+		wire := fixedproof.MakeFixedFile(e.Wire, e.Layout, body)
+		n, reason, fields, resaved, counters := (squirrelFixedProofRunner{}).LoadLineage(t, u, "Presence", nil, wire, -1)
+		if n != 1 || reason != "ok" || counters != (fixedproof.LoadCounters{}) || !bytes.Equal(resaved, wire) {
+			t.Fatalf("probe load: n=%d reason=%q counters=%v roundtrip=%v", n, reason, counters, bytes.Equal(resaved, wire))
+		}
+		var red []string
+		for key, value := range want {
+			if fields[key] != value {
+				red = append(red, key)
+			}
+		}
+		sort.Strings(red)
+		return red
+	}
+	if red := check(body); len(red) != 0 {
+		t.Fatalf("valid protocol fields differ: %v", red)
+	}
+	for _, plant := range []struct {
+		name, key string
+		at        int
+		value     byte
+	}{
+		{"scalar-bool", "r0.flag", 0, 0}, {"array-bool", "r0.flags[1]", 18, 0},
+		{"numeric", "r0.marker", 1, 2}, {"text", "r0.label", 9, '1'},
+	} {
+		t.Run(plant.name, func(t *testing.T) {
+			t.Parallel()
+			twin := append([]byte(nil), body...)
+			twin[plant.at] = plant.value
+			if red := check(twin); len(red) != 1 || red[0] != plant.key {
+				t.Fatalf("plant %s red=%v, want only %s", plant.name, red, plant.key)
+			}
+		})
+	}
+}
