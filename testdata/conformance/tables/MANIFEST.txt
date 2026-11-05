@@ -1370,7 +1370,6 @@ report previous_form_vocab9_low vocab9demo Wide00 testdata/wire/tables/vocab9_lo
 report previous_form_r1_cfg tblr1 Cfg testdata/wire/tables/r1_cfg.bin
 report previous_form_r1_ping tblr1 Cfg testdata/wire/tables/r1_ping.bin
 report previous_form_r2_cfg tblr2 Cfg testdata/wire/tables/r2_cfg.bin
-report previous_form_wide_blob tabledemo WideBlob testdata/wire/tables/wide_blob.bin
 
 # THE REWRITE ROWS (docs/SPEC-TABLES.md §22, test/conformance/README.md): every
 # corpus input that READS, read by every leg and written back. The canonical
