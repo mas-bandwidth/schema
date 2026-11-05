@@ -11,10 +11,12 @@
 // The rule in one line: every read returns the whole value or refuses the
 // whole load; the VERDICT is the only cross-language contract; reasons and
 // counters are per-language diagnostics and are never compared. So this pin
-// compares no reason name and no counter: it reads the pages and holds four
+// compares no reason name and no counter: it reads the pages and holds six
 // things — the three rulings are in docs/rulings.json, the plan is there, the
-// spec states the fixed-root refusal by name, and SPEC-TABLES.md names no
-// `LoadTolerant` entry point as a live read.
+// spec states the fixed-root refusal by name, SPEC-TABLES.md names no
+// `LoadTolerant` entry point as a live read, the forged writer-range rows
+// refuse the whole load rather than clamp, and a declared fixed root past the
+// ceiling keeps form `1` in both the page and the engine.
 package compiler
 
 import (
@@ -148,6 +150,73 @@ func TestStrictSpecCarriesOneReadAndFixedRoot(t *testing.T) {
 		} {
 			if !strings.Contains(page, want) {
 				t.Errorf("docs/SPEC-TABLES.md no longer states %q", want)
+			}
+		}
+	})
+
+	t.Run("the forged writer-range rows refuse the whole load", func(t *testing.T) {
+		t.Parallel()
+		data, err := os.ReadFile("../docs/FIXED-FORM-VERSIONING-TESTS.md")
+		if err != nil {
+			t.Fatalf("docs/FIXED-FORM-VERSIONING-TESTS.md: %v", err)
+		}
+		page := string(data)
+		for _, stale := range []string{
+			"clamped == 1",
+			"clamped=1",
+			"clamped=<n>",
+		} {
+			if strings.Contains(page, stale) {
+				t.Errorf("docs/FIXED-FORM-VERSIONING-TESTS.md still requires the retired clamp %q; a forged value refuses the whole load", stale)
+			}
+		}
+		// The scalar, array and unsigned lanes all stay; only the verdict changes.
+		for _, file := range []string{
+			"hostile_range_widen.bin",
+			"hostile_range_widen_array.bin",
+			"hostile_range_widen_u64.bin",
+		} {
+			if !strings.Contains(page, file) {
+				t.Errorf("docs/FIXED-FORM-VERSIONING-TESTS.md no longer carries %s", file)
+			}
+		}
+		if got := strings.Count(page, "refuses the whole load"); got < 3 {
+			t.Errorf("docs/FIXED-FORM-VERSIONING-TESTS.md states the whole-load refusal %d time(s); the three forged range-widen vectors each need it", got)
+		}
+	})
+
+	t.Run("a declared fixed root past the ceiling keeps form 1 in the page and the engine", func(t *testing.T) {
+		t.Parallel()
+		page := readSpecTables(t)
+		for _, stale := range []string{
+			"HAS NO FILE FORM",
+			"refuses form `1`, and a file save of one refuses",
+		} {
+			if strings.Contains(page, stale) {
+				t.Errorf("docs/SPEC-TABLES.md states %q; the engine keeps form `1` for a root past the ceiling", stale)
+			}
+		}
+		for _, want := range []string{
+			"KEEPS FORM `1`",
+			"no form `3` at all, so it keeps form `1`",
+			"outside the rule",
+		} {
+			if !strings.Contains(page, want) {
+				t.Errorf("docs/SPEC-TABLES.md no longer states %q", want)
+			}
+		}
+		data, err := os.ReadFile("../internal/tablewire/fixed.go")
+		if err != nil {
+			t.Fatalf("internal/tablewire/fixed.go: %v", err)
+		}
+		engine := string(data)
+		for _, want := range []string{
+			"carries no form 3",
+			"the variable form's bytes",
+			"ir.TableFixedEmitted(m.Unit, st)",
+		} {
+			if !strings.Contains(engine, want) {
+				t.Errorf("internal/tablewire/fixed.go no longer states %q; the page and the engine have drifted", want)
 			}
 		}
 	})

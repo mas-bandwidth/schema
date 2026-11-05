@@ -125,9 +125,9 @@ tool's engine (pack, unpack, cook, the text form) carries no form `3`, so the
 conformance corpus pins its fixed-root instances and reports as form `1`. A
 declared fixed table past one of §3.4's bounds (a union in a regional unit, a
 record over 65536 bytes, depth past the walk bound, or the leaf cap) carries
-no form `3` at all, and its form `1` is outside the rule above. §3.4's
-SELECTION owns the declaration's bounds and §15 names the work owed; neither
-is restated here.
+no form `3` at all, so it keeps form `1`, and its form `1` is outside the rule
+above. §3.4's SELECTION owns the declaration's bounds and §15 names the work
+owed; neither is restated here.
 
 **How to choose.**
 
@@ -7916,13 +7916,10 @@ three and not one.
   This one IS a wire fact: a reader holds an untrusted peer's layout to the same
   65536 (`layout_record_too_large`, above), so a record past it is one no
   conforming reader decodes, and emitting a writer for it would be emitting
-  bytes nobody can read. A fixed table past it therefore **HAS NO FILE FORM**:
-  its file save refuses (it does not fall back to form `1`), every read at its
-  root refuses form `1` as at every declared fixed root (the reader expects a
-  fixed table, and this is not one), and the compiler names it and its size.
-  It keeps the by-value storage, the cook and the block form (§19). The two
-  sides agree by construction: the writer never produces a record the reader's
-  own bound refuses.
+  bytes nobody can read. A fixed table past it therefore **KEEPS FORM `1`,
+  WHICH IT NEVER LOST**, and the compiler names it and its size rather than
+  dropping the form in silence. The two sides agree by construction: the writer
+  never produces a record the reader's own bound refuses.
 
   **THIS IS NOT A COMPILE REFUSAL, AND THE `fixed` KEYWORD DOES NOT MAKE IT ONE
   — because the keyword declares the CLASS and this bound is the FORM's.** The
@@ -8115,11 +8112,9 @@ exists to prevent.
 - **A DECLARED `fixed table` PAST THE RECORD CEILING IS A FIXED TABLE THAT DOES
   NOT CARRY THIS FORM.** §12.1's render frame at 7.5 MB and §2.8's `WideBlob`
   are exactly that: legitimate `fixed table` declarations of megabytes, carrying
-  a by-value storage, a cook and a block form, and no file form: a read at
-  their root refuses form `1`, and a file save of one refuses rather than
-  falling back to form `1`. **The CLASS and the FORM are two different words**,
-  and this section's bounds are the FORM's. The compiler names them; it does
-  not refuse to compile them.
+  a by-value storage, a cook and a block form, and never form-`3` tables at all.
+  **The CLASS and the FORM are two different words**, and this section's bounds
+  are the FORM's. The compiler names them; it does not refuse them.
 - **A DECLARED `fixed table` PAST THE 4096-LEAF CAP IS A COMPILE ERROR; A
   DERIVED ONE WARNS AND KEEPS FORM `1`.** A plan is laid down as static data in
   an array the compiler sizes, so the cap is the REFERENCE's and not the wire's.
