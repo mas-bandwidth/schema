@@ -39,6 +39,17 @@ stream_count_past_body streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_
 # engine's half.
 pointer_self_cycle graphdemo Scene    testdata/wire/tables/fuzz-vectors/pointer_self_cycle.bin
 
+# A CYCLE THE ROOT NEVER REACHES IS STILL A CYCLIC WIRE (§3.1, §4). The root's
+# head is null, so ListNode 2 and ListNode 3 are orphans, and ListNode 2's
+# `next` names ListNode 2 itself. The vertices of the cycle check are the root
+# and EVERY record the load placed, reached or not, so the whole load is
+# refused as `malformed`: Go's decodeState.cyclic, and the C++ reference's and
+# the C and Go legs' Kahn pass over the node directory. Its twin, the same wire
+# with that pointer back at ListNode 3, holds the same two orphans and loads.
+# Found as graphdemo.Scene graph_deep on the Squirrel builder arm: Lua and
+# Squirrel checked only the graph the root reaches, and loaded it.
+pointer_orphan_cycle graphdemo Scene  testdata/wire/tables/fuzz-vectors/pointer_orphan_cycle.bin
+
 # ILL-FORMED TEXT ON A MESSAGE BODY (§3, §3.3; schema#620). §3's one content
 # rule holds over a form-`2` body unchanged in what it rejects, and §3.3 says
 # so: a kind `12` payload that is not well-formed UTF-8 is DAMAGE, terminal for
@@ -319,4 +330,13 @@ id_table_4096       graphdemo Scene testdata/wire/tables/fuzz-vectors/id_table_4
 id_table_4097       graphdemo Scene testdata/wire/tables/fuzz-vectors/id_table_4097.bin
 id_table_4096_value tblr1     Cfg   testdata/wire/tables/fuzz-vectors/id_table_4096_value.bin
 id_table_4097_value tblr1     Cfg   testdata/wire/tables/fuzz-vectors/id_table_4097_value.bin
+
+# A POINTER INDEX PAST THE NODE TABLE IS DAMAGE WHERE IT IS READ (§3.1, §4),
+# even in a map entry a later DUPLICATE key replaces whole (§2.8). The first
+# entry of mapdemo.Chunks names node 126 of two; the second repeats its key.
+# The engine resolves each slot while it reads the entry (decodenodes.go
+# resolveCell), so the load is refused as `malformed`. The Lua load queued the
+# slot for later and took the replaced entry's slots out of the queue, so it
+# never met the index and loaded. From mapdemo.Chunks, random #20608 of seed 2.
+map_duplicate_pointer_past_table mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_duplicate_pointer_past_table.bin
 
