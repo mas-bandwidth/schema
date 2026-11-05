@@ -24,6 +24,11 @@ import (
 // that order. No magic, no content hash, no protocol id, no length prefix
 // around the whole.
 func Encode(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
+	if FixedRoot(m, inst.Def) {
+		// A FIXED ROOT IS WRITTEN AS FORM 3 (docs/SPEC-TABLES.md §3.4): the
+		// bytes the reference's <T>FixedSave writes, never form 1
+		return EncodeFixed(m, inst)
+	}
 	out, _, err := encodeWith(m, inst, nil)
 	return out, err
 }
