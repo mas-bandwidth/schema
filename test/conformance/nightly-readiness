@@ -463,8 +463,7 @@ def run_native(runner, lang):
                    ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2", path],
                    validate=lambda text, names=listed, pkg=package:
                        native_result(text, names, pkg, runner.native_passes))
-        if status == 0 and not runner.results[-1]["errors"]:
-            runner.native_passes.update(pass_events(text))
+        runner.native_passes.update(pass_events(text))
 
 
 def go_packet_makefile(runner):

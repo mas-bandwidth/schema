@@ -1058,6 +1058,8 @@ const cookWriteRows = [
   ["listdemo", "Sheet", "lists/ListdemoVariable.js"],
   ["listdemo", "Unbounded", "lists/ListdemoVariable.js"],
   ["widelist", "Wide", "widelist/WidelistdemoVariable.js"],
+  // unbounded text in a list element and a map key (docs/SPEC-TABLES.md §2.13.1)
+  ["featurewitnesses", "Root", "features/FeaturewitnessesVariable.js"],
 ];
 
 function cookWriteAbsent(outDir, name) {

@@ -44,6 +44,7 @@ tblrt1 = { path = "../../../build/tables-generated-rust/tblrt1" }
 widedemo = { path = "../../../build/tables-generated-rust/widedemo" }
 scalars = { path = "../../../build/tables-generated-rust/scalars" }
 tblscalars2 = { path = "../../../build/tables-generated-rust/tblscalars2" }
+featurewitnesses = { path = "../../../build/tables-generated-rust/featurewitnesses" }
 
 [profile.dev]
 # the conformance corpus is small and the driver runs seven times per matrix;

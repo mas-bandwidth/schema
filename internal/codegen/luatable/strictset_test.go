@@ -1,13 +1,17 @@
 package luatable
 
 // TestLuaStrictReadRefusesWhatGoRefuses pins the Lua strict read to the
-// generated Go strict read, byte for byte over the conformance manifest's
-// report and refusal rows and over one forged wire per strict-only name
-// (docs/SPEC-TABLES.md §6.5, §11): unknown_form for a form byte, integrity_
-// mismatch, wire_damaged where the framing is damaged, malformed, blob_shared,
-// clamped, kind_mismatch and non_finite_float, while unknown, widened and duplicate
-// ALONE read clean. internal/codegen/gotable/refusal.go (TableReport.Err) is
-// the oracle.
+// generated Go strict read over the conformance manifest's report and refusal
+// rows and over one forged wire per strict-only refusal (docs/SPEC-TABLES.md
+// §6.5, §11): a form byte, an integrity mismatch, damaged framing, a shared
+// blob, a clamp, a kind mismatch and a non-finite float each refuse, while
+// unknown, widened and duplicate ALONE read clean.
+// internal/codegen/gotable/refusal.go (TableReport.Err) is the oracle.
+//
+// THE VERDICT IS WHAT IS PINNED, NOT THE REASON (Glenn's ruling: a refusal's
+// reason is a per-language diagnostic). Lua refuses exactly the wires Go
+// refuses and reads exactly the wires Go reads; the name each gives a refusal
+// may differ.
 
 import (
 	"encoding/binary"
@@ -251,11 +255,31 @@ func strictGoOracle(t *testing.T, u *ir.Unit, cases []strictCase) map[string]str
 	return got
 }
 
-func strictLuaAnswers(t *testing.T, u *ir.Unit, cases []strictCase) map[string]string {
+// strictVerdict is a strict read's answer as a verdict: "read" or "refused".
+func strictVerdict(answer string) string {
+	if answer == "clean" {
+		return "read"
+	}
+	return "refused"
+}
+
+// strictLuaAnswers runs the Lua strict read over the cases. accept, when it
+// names a case, sabotages the generated refusal.lua so ReadStrict reads that
+// one wire whatever it holds: the negative control's runtime, which accepts a
+// wire Go refuses.
+func strictLuaAnswers(t *testing.T, u *ir.Unit, cases []strictCase, accept string) map[string]string {
 	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatalf("generate Lua: %v", err)
+	}
+	if accept != "" {
+		const anchor = "function R.ReadStrict(T, name, bytes, integrity)\n"
+		src := string(files["refusal.lua"])
+		if strings.Count(src, anchor) != 1 {
+			t.Fatal("the ReadStrict anchor is not in refusal.lua exactly once")
+		}
+		files["refusal.lua"] = []byte(strings.Replace(src, anchor, anchor+"  if ACCEPT ~= nil and bytes == ACCEPT then return {} end\n", 1))
 	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
@@ -269,6 +293,7 @@ func strictLuaAnswers(t *testing.T, u *ir.Unit, cases []strictCase) map[string]s
 	rootMap.WriteString("}\n")
 	probe := "local T = require(" + fmt.Sprintf("%q", ModuleName(u)) + ")\n" +
 		"local R = require(\"refusal\")\nlocal inputs = require(\"inputs\")\n" + rootMap.String() +
+		fmt.Sprintf("ACCEPT = inputs[%q]\n", accept) +
 		"local names = {}\nfor k in pairs(inputs) do names[#names+1] = k end\ntable.sort(names)\n" +
 		"for _, k in ipairs(names) do\n" +
 		"  local ok, err = pcall(function() return R.ReadStrict(T, roots[k], inputs[k]) end)\n" +
@@ -294,9 +319,10 @@ func strictLuaAnswers(t *testing.T, u *ir.Unit, cases []strictCase) map[string]s
 	return got
 }
 
-func TestLuaStrictReadRefusesWhatGoRefuses(t *testing.T) {
-	t.Parallel()
-	slowtest.Gate(t, "go and the pinned lua")
+// strictGroups gathers the cases by unit: the manifest's report and refusal
+// rows, and the forged wires in units of their own.
+func strictGroups(t *testing.T) []*strictGroup {
+	t.Helper()
 	repo := "../../.."
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
@@ -346,6 +372,7 @@ func TestLuaStrictReadRefusesWhatGoRefuses(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	var out []*strictGroup
 	for _, key := range keys {
 		g := groups[key]
 		if _, err := Generate(g.unit); err != nil {
@@ -355,17 +382,60 @@ func TestLuaStrictReadRefusesWhatGoRefuses(t *testing.T) {
 			t.Logf("unit %s is not carried by the Lua table backend: %v", g.name, err)
 			continue
 		}
-		goAns := strictGoOracle(t, g.unit, g.cases)
-		luaAns := strictLuaAnswers(t, g.unit, g.cases)
-		for _, c := range g.cases {
-			if c.want != "" && goAns[c.label] != c.want {
-				t.Errorf("%s/%s root %s: Go says %q, the forged wire pins %q\n    wire %s",
-					g.name, c.label, c.root, goAns[c.label], c.want, hex.EncodeToString(c.wire))
-			}
-			if luaAns[c.label] != goAns[c.label] {
-				t.Errorf("%s/%s root %s: Lua says %q, Go says %q\n    wire %s",
-					g.name, c.label, c.root, luaAns[c.label], goAns[c.label], hex.EncodeToString(c.wire))
-			}
+		out = append(out, g)
+	}
+	return out
+}
+
+// strictVerdictMismatches holds one group's Lua verdicts to Go's, and each
+// forged wire's Go verdict to the one it was forged for; it answers one line
+// per disagreement. accept is strictLuaAnswers' sabotage.
+func strictVerdictMismatches(t *testing.T, g *strictGroup, goAns map[string]string, accept string) []string {
+	t.Helper()
+	luaAns := strictLuaAnswers(t, g.unit, g.cases, accept)
+	var bad []string
+	for _, c := range g.cases {
+		if c.want != "" && strictVerdict(goAns[c.label]) != strictVerdict(c.want) {
+			bad = append(bad, fmt.Sprintf("%s/%s root %s: Go %s it (%q), the forged wire pins %s (%q)\n    wire %s",
+				g.name, c.label, c.root, strictVerdict(goAns[c.label]), goAns[c.label], strictVerdict(c.want), c.want, hex.EncodeToString(c.wire)))
+		}
+		if strictVerdict(luaAns[c.label]) != strictVerdict(goAns[c.label]) {
+			bad = append(bad, fmt.Sprintf("%s/%s root %s: Lua %s it (%q), Go %s it (%q)\n    wire %s",
+				g.name, c.label, c.root, strictVerdict(luaAns[c.label]), luaAns[c.label], strictVerdict(goAns[c.label]), goAns[c.label], hex.EncodeToString(c.wire)))
 		}
 	}
+	return bad
+}
+
+func TestLuaStrictReadRefusesWhatGoRefuses(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "go and the pinned lua")
+	for _, g := range strictGroups(t) {
+		for _, line := range strictVerdictMismatches(t, g, strictGoOracle(t, g.unit, g.cases), "") {
+			t.Error(line)
+		}
+	}
+}
+
+// TestLuaStrictReadRefusesWhatGoRefusesNegativeControl sabotages the Lua
+// runtime to read the first wire Go refuses, and requires the verdict
+// comparison to go red on that wire and on no other.
+func TestLuaStrictReadRefusesWhatGoRefusesNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "go and the pinned lua")
+	for _, g := range strictGroups(t) {
+		goAns := strictGoOracle(t, g.unit, g.cases)
+		for _, c := range g.cases {
+			if strictVerdict(goAns[c.label]) != "refused" {
+				continue
+			}
+			bad := strictVerdictMismatches(t, g, goAns, c.label)
+			if len(bad) != 1 || !strings.HasPrefix(bad[0], g.name+"/"+c.label+" ") {
+				t.Fatalf("NEGATIVE CONTROL FAILED: a Lua read that accepts %s/%s, which Go refuses, left %d disagreements, want exactly that one:\n%s",
+					g.name, c.label, len(bad), strings.Join(bad, "\n"))
+			}
+			return
+		}
+	}
+	t.Fatal("no wire Go refuses: the control has nothing to accept")
 }

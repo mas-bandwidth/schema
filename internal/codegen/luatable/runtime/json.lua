@@ -2316,6 +2316,10 @@ end
 -- (internal/codegen/gotable/refusal.go): missing_required once carried, then
 -- malformed, blob_shared, clamped and kind_mismatch.
 function J.FromJson(T, name, text, report)
+  local desc = T.Tables[name]
+  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then
+    error("json: table " .. tostring(name) .. " does not carry json (docs/SPEC-TABLES.md §2.12)", 0)
+  end
   local v = J.FromJsonTolerant(T, name, text, report)
   local reason = nil
   if report.MissingRequired ~= nil and report.MissingRequired > 0 then
@@ -2947,6 +2951,9 @@ end
 -- ONE INSTANCE as ONE text (§16.1): a trailing newline belongs to the form.
 function J.ToJson(T, name, v)
   local desc = T.Tables[name]
+  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then
+    error("json: table " .. tostring(name) .. " does not carry json (docs/SPEC-TABLES.md §2.12)", 0)
+  end
   if desc == nil or v == nil then return nil end
   -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
   local refused = D.refuse_deprecated(T, name, v)

@@ -204,7 +204,9 @@ func runtimeCarriesForm(u *ir.Unit, name string) bool {
 // runtime's entry points, so a call for a form the table leaves out is
 // refused by the form's name (docs/SPEC-TABLES.md §2.12). The emitted
 // runtime files themselves are untouched: a unit with no declaration keeps
-// exactly today's bytes.
+// exactly today's bytes. json.lua carries its gate in the runtime itself
+// (a table with no forms passes it), so the text walk stays one file across
+// every unit (docs/PORTING.md M9).
 func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 	s := string(data)
 	replaceOnce := func(old, repl string) {
@@ -214,15 +216,6 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 		s = strings.Replace(s, old, repl, 1)
 	}
 	switch name {
-	case "json.lua":
-		replaceOnce(
-			"function J.FromJson(T, name, text, report)\n",
-			"function J.FromJson(T, name, text, report)\n  local desc = T.Tables[name]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"json: table \" .. tostring(name) .. \" does not carry json (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
-		)
-		replaceOnce(
-			"function J.ToJson(T, name, v)\n  local desc = T.Tables[name]\n",
-			"function J.ToJson(T, name, v)\n  local desc = T.Tables[name]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"json: table \" .. tostring(name) .. \" does not carry json (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
-		)
 	case "block.lua":
 		replaceOnce(
 			"function B.BlockOpen(T, name, bytes, build_version, base_offset)\n",

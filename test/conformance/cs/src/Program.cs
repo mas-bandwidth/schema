@@ -1560,6 +1560,12 @@ static partial class Program
             c.Cook = (value, bytes, big) => Widelistdemo.Schema.WideCook((Widelistdemo.Wide)value, bytes, big ? Widelistdemo.TableByteOrder.Big : Widelistdemo.TableByteOrder.Little);
         }
         {
+            // unbounded text in a list element and a map key (docs/SPEC-TABLES.md §2.13.1)
+            Codec c = Find("featurewitnesses", "Root");
+            c.CookMeasure = value => Featurewitnesses.Schema.RootCookMeasure((Featurewitnesses.Root)value);
+            c.Cook = (value, bytes, big) => Featurewitnesses.Schema.RootCook((Featurewitnesses.Root)value, bytes, big ? Featurewitnesses.TableByteOrder.Big : Featurewitnesses.TableByteOrder.Little);
+        }
+        {
             Codec c = Find("listdemo", "Unbounded");
             c.CookMeasure = value => Listdemo.Schema.UnboundedCookMeasure((Listdemo.Unbounded)value);
             c.Cook = (value, bytes, big) => Listdemo.Schema.UnboundedCook((Listdemo.Unbounded)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);
