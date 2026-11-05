@@ -18,9 +18,9 @@ func TestPythonDesignPageAndSeedRemoval(t *testing.T) {
 	text := string(page)
 	for _, section := range []string{
 		"## THE DECISIONS", "| D1 |", "| D2 |", "| D3 |", "| D4 |",
-		"| D5 |", "| D6 |", "| D7 |", "| D8 |", "## THE VALUE MAPPING",
-		"## THE NUMBER MODEL", "## TEXT AND BYTES", "float32", "## THE RUNTIME LAYOUT",
-		"## THE HARNESS", "## THE REGISTER", "THE CARD MAP",
+		"| D5 |", "| D6 |", "| D7 |", "| D8 |", "## THE VALUE MAPPING", "### Packet types (SPEC §4)", "| schema | Python value | born as |",
+		"## THE NUMBER MODEL", "## TEXT AND BYTES", "| `bytes(N)` |", "float32", "## THE RUNTIME LAYOUT",
+		"## THE HARNESS", "## THE REGISTER", "## THE CARD MAP",
 	} {
 		if !strings.Contains(text, section) {
 			t.Errorf("docs/PORT-PYTHON.md is missing %q", section)
