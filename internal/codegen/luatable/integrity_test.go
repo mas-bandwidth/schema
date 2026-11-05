@@ -9,8 +9,6 @@ package luatable
 // bytes written by the Go reference engine are the oracle both ways.
 
 import (
-	"encoding/binary"
-	"hash/crc32"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -52,13 +50,10 @@ func TestLuaIntegrityVariableForm(t *testing.T) {
 	if !model.Read(inst, []byte(`{"balance":1000,"label":"ok","count":7}`), &report) || !report.Silent() {
 		t.Fatalf("the value did not place cleanly: %+v", report)
 	}
-	body, err := tablewire.Encode(model, inst)
+	goFile, err := tablewire.Encode(model, inst)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
-	goFile := make([]byte, len(body)+4)
-	copy(goFile, body)
-	binary.LittleEndian.PutUint32(goFile[len(body):], crc32.Checksum(body, crc32.MakeTable(crc32.Castagnoli)))
 
 	// ONE FLIPPED BODY BYTE and a file with its trailer cut off.
 	flipped := append([]byte(nil), goFile...)
@@ -67,7 +62,7 @@ func TestLuaIntegrityVariableForm(t *testing.T) {
 
 	// The trailer is outside the region measure, so the oracle measures the
 	// file without it.
-	measure, whole, refused := tablewire.FileRegionMeasure(u, u.Tables["Ledger"], body)
+	measure, whole, refused := tablewire.FileRegionMeasure(u, u.Tables["Ledger"], goFile)
 	if !whole || refused {
 		t.Fatalf("FileRegionMeasure refused the Go file: whole=%v refused=%v", whole, refused)
 	}

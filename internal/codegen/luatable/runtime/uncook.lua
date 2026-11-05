@@ -128,6 +128,8 @@ local function present_offset(T, f)
     cur = at + enum_width(f)
   elseif s == "int" then
     cur = at + f.width
+  elseif s == "wide" then
+    cur = at + 16
   else
     cur = at
   end
@@ -168,6 +170,8 @@ read_field = function(ctx, f, base)
     v = u8(ctx, at) ~= 0
   elseif s == "int" then
     v = int_at(ctx, at, f.width, f.signed)
+  elseif s == "wide" then
+    v = { lo = i64(ctx, at), hi = i64(ctx, at + 8) }
   elseif s == "flags" then
     -- a flags slot is a uint64 in every target (§7.2)
     v = int_at(ctx, at, 8, false)
@@ -247,6 +251,7 @@ local function zero_elem(T, e)
   local s = e.shape
   if s == "bool" then return false end
   if s == "int" or s == "flags" then return 0 end
+  if s == "wide" then return { lo = 0, hi = 0 } end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
   if s == "wstring" then return {} end
