@@ -7204,10 +7204,11 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
 # the same Makefile this test was read from, so its control can hand it a copy
-RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD
+RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
 .PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
 release-refuses-on-differential:
 	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
+	@printf '{"commit":"%s","cells":1,"red":[]}\n' "$$(git rev-parse HEAD)" > $(RELEASE_GATE_TEST)/green.json
 	go build -o $(RELEASE_GATE_TEST)/schema-clean ./cmd/schema
 	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_GATE_TEST)/encode.gotext internal/tablewire/encode.go
 	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
@@ -7231,7 +7232,7 @@ release-refuses-on-differential:
 RELEASE_GATE_CONTROL := build/release-gate-control
 release-refuses-on-differential-negative-control: release-refuses-on-differential
 	@rm -rf $(RELEASE_GATE_CONTROL) && mkdir -p $(RELEASE_GATE_CONTROL)
-	@sed 's/^release: release-differential$$/release: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
+	@sed 's/^\t$$(MAKE) --no-print-directory release-differential$$/\t@: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
 	@! cmp -s Makefile $(RELEASE_GATE_CONTROL)/Makefile || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage no longer matches release's prerequisite line"; exit 1; }
 	@if $(MAKE) --no-print-directory -f $(RELEASE_GATE_CONTROL)/Makefile release-refuses-on-differential RELEASE_GATE_TEST=$(RELEASE_GATE_CONTROL)/test > $(RELEASE_GATE_CONTROL)/red.out 2>&1; then \

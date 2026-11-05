@@ -164,6 +164,11 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			if !RootConfigLoadBody(&sub, &value.Root) {
 				return false
 			}
@@ -412,6 +417,11 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 				return false
 			}
 			sub.Path = r.Path.step(0, uint32(0))
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			if !RootConfigLoadBodyRetain(&sub, &value.Root) {
 				return false
 			}

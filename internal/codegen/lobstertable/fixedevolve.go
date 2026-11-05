@@ -397,9 +397,10 @@ func emitFixedLeafWalkFn(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("def %sFixedLeaves(out:[schema_rt.TableFixedEntry], src:int, dst:int) -> int:\n", st.Name)
 	off := int64(0)
 	emitted := false
+	sequence := 0
 	for _, f := range st.Fields {
 		if !f.Deprecated {
-			emitFixedFieldLeaves(g, f, off, "    ")
+			emitFixedFieldLeaves(g, f, off, "    ", &sequence)
 			emitted = true
 		}
 		off += ir.TableFixedFieldBytes(f)
@@ -410,25 +411,25 @@ func emitFixedLeafWalkFn(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("    return length(out)\n\n")
 }
 
-func emitFixedFieldLeaves(g *lobster.Gen, f *ir.Field, off int64, ind string) {
+func emitFixedFieldLeaves(g *lobster.Gen, f *ir.Field, off int64, ind string, sequence *int) {
 	base := off
 	if f.Type.Optional {
 		g.Pf("%spush(out, schema_rt.TableFixedEntry { src: src + %d, dst: dst + %d, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedBool })\n", ind, base, base)
 		base += ir.TableFixedPresentBytes
 	}
-	emitFixedPayloadLeaves(g, f, "src", "dst", base, ind)
+	emitFixedPayloadLeaves(g, f, "src", "dst", base, ind, sequence)
 }
 
-func emitFixedPayloadLeaves(g *lobster.Gen, f *ir.Field, srcBase, dstBase string, base int64, ind string) {
+func emitFixedPayloadLeaves(g *lobster.Gen, f *ir.Field, srcBase, dstBase string, base int64, ind string, sequence *int) {
 	switch {
 	case f.KeyEnumRef != nil:
-		emitFixedElementLeavesLoop(g, f, srcBase, dstBase, base, f.KeyEnumRef.Max, ind)
+		emitFixedElementLeavesLoop(g, f, srcBase, dstBase, base, f.KeyEnumRef.Max, ind, sequence)
 	case f.Array == ir.ArrayFixed:
-		emitFixedElementLeavesLoop(g, f, srcBase, dstBase, base, f.ArrayBound, ind)
+		emitFixedElementLeavesLoop(g, f, srcBase, dstBase, base, f.ArrayBound, ind, sequence)
 	case f.Array == ir.ArrayCounted:
 		g.Pf("%spush(out, schema_rt.TableFixedEntry { src: %s + %d, dst: %s + %d, size: %d, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCount })\n",
 			ind, srcBase, base, dstBase, base, f.ArrayBound)
-		emitFixedElementLeavesLoop(g, f, srcBase, dstBase, base+ir.TableFixedCountBytes, f.ArrayBound, ind)
+		emitFixedElementLeavesLoop(g, f, srcBase, dstBase, base+ir.TableFixedCountBytes, f.ArrayBound, ind, sequence)
 	case f.Type.Kind == ir.TString:
 		g.Pf("%spush(out, schema_rt.TableFixedEntry { src: %s + %d, dst: %s + %d, size: %d, aux: %s + %d, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedText, meta: 1 })\n",
 			ind, srcBase, base, dstBase, base, f.Type.Size, dstBase, base+4)
@@ -441,20 +442,22 @@ func emitFixedPayloadLeaves(g *lobster.Gen, f *ir.Field, srcBase, dstBase string
 	default:
 		es := fmt.Sprintf("%s + %d", srcBase, base)
 		ed := fmt.Sprintf("%s + %d", dstBase, base)
-		emitFixedElementLeavesAt(g, f, es, ed, base, ind)
+		emitFixedElementLeavesAt(g, f, es, ed, ind, sequence)
 	}
 }
 
-func emitFixedElementLeavesLoop(g *lobster.Gen, f *ir.Field, srcBase, dstBase string, base, count int64, ind string) {
+func emitFixedElementLeavesLoop(g *lobster.Gen, f *ir.Field, srcBase, dstBase string, base, count int64, ind string, sequence *int) {
 	elem := ir.TableFixedElementBytes(f)
-	iv := fmt.Sprintf("i_lf_%s_%d", ir.GoExportName(f.Name), base)
+	salt := *sequence
+	*sequence++
+	iv := fmt.Sprintf("i_lf_%s_%d", ir.GoExportName(f.Name), salt)
 	g.Pf("%sfor(%d) %s:\n", ind, count, iv)
 	es := fmt.Sprintf("%s + %d + %s * %d", srcBase, base, iv, elem)
 	ed := fmt.Sprintf("%s + %d + %s * %d", dstBase, base, iv, elem)
-	emitFixedElementLeavesAt(g, f, es, ed, base, ind+"    ")
+	emitFixedElementLeavesAt(g, f, es, ed, ind+"    ", sequence)
 }
 
-func emitFixedElementLeavesAt(g *lobster.Gen, f *ir.Field, es, ed string, salt int64, ind string) {
+func emitFixedElementLeavesAt(g *lobster.Gen, f *ir.Field, es, ed string, ind string, sequence *int) {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -462,6 +465,11 @@ func emitFixedElementLeavesAt(g *lobster.Gen, f *ir.Field, es, ed string, salt i
 			g.Pf("%s%sFixedLeaves(out, %s, %s)\n", ind, r.Name, es, ed)
 			return
 		case *ir.Union:
+			// Different nested arms can share the same wire offset. Lobster
+			// forbids shadowing their enclosing guard locals, so number
+			// lexical occurrences rather than deriving a name from the offset.
+			salt := *sequence
+			*sequence++
 			tag := ir.TableFixedUnionTagBytes(r)
 			g.Pf("%spush(out, schema_rt.TableFixedEntry { src: %s, dst: %s, size: %d, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })\n",
 				ind, es, ed, tag)
@@ -474,7 +482,7 @@ func emitFixedElementLeavesAt(g *lobster.Gen, f *ir.Field, es, ed string, salt i
 				g.Pf("%slet %s = length(out)\n", ind, gv)
 				af := *v.F
 				af.Name = v.Name
-				emitFixedPayloadLeaves(g, &af, es, ed, tag, ind)
+				emitFixedPayloadLeaves(g, &af, es, ed, tag, ind, sequence)
 				g.Pf("%svar %s = %s\n", ind, qv, gv)
 				g.Pf("%swhile %s < length(out):\n", ind, qv)
 				g.Pf("%s    push(out[%s].chain, schema_rt.TableFixedGuardLink { grd: %s, arg: %d, arg_w: %d })\n",
@@ -1497,7 +1505,7 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        holes = %sLineageHoles[pick]\n", name)
 	g.Pf("        census_unknown = lane.unknown\n")
 	g.Pf("        census_kind = lane.kind_mismatch\n")
-	g.Pf("    if entry_count > length(plan):\n")
+	g.Pf("    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):\n")
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)\n")
 	g.Pf("    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes\n")
 	g.Pf("    let rest = length(data) - records_start\n")

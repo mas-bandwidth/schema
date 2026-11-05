@@ -842,6 +842,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -1702,6 +1707,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2582,6 +2592,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				elemKind := sub.Get8()
 				count, ok := sub.Leb()
 				if !ok {
@@ -3442,6 +3457,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			{
 				sub, ok := r.Body()
 				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
