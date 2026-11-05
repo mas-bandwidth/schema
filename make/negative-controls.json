@@ -1438,6 +1438,16 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-reach",
+      "when": "pull-request",
+      "why": "the Elixir leg's reach control (make/elixir.mk, docs/SPEC-TABLES.md §4): the nested-body read ends the WHOLE read at damage in a copy of the emitter, and three reach_ vectors replayed over the rebuilt corpus must each go red on the oracle's refusal. It rebuilds the corpus through a sabotaged compiler and runs the harness's Elixir leg, which is why it is a group of its own, as elixir-alloc is. Measured time unmeasured.",
+      "targets": [
+        "tables-elixir-reach-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "goose",
       "when": "pull-request",
       "why": "the Goose leg's fixed-form, message-form, message peer-read and versioning controls (docs/PORT-GOOSE.md; the message-form, peer-read and versioning controls about 2 s each): each target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else.",
@@ -2012,6 +2022,10 @@
     {
       "target": "tables-cpp-format-negative-control",
       "reason": "the C++ format gate's drift control (docs/PORTING.md J4): the emitter writes one struct brace K&R and tables-cpp-format's engine must go red naming Types.h. It needs the pinned clang-format (make/c.mk CLANG_FORMAT_PIN), which the base rows do not install, so it refuses by name where the pin does not resolve and runs in the leg that does: ci-fast.yml's `fixed form and versioning rows` step for the cpp leg, beside tables-cpp-clean itself, as the Java drift control rides test-java."
+    },
+    {
+      "target": "roadmap-check-negative-control",
+      "reason": "the roadmap gate's drift control (tools/roadmap/roadmap.mk): it needs SBCL and full git history for $(ROADMAP_BASE), which the shared negative-control rows on hosted ubuntu-latest runners neither install nor clone, so running it there would refuse at the missing tool before the control ran. It runs in its own gate, .github/workflows/roadmap.yml's `roadmap` job, which fetches full history and checks that sbcl is present before running `make roadmap-check-negative-control` beside the roadmap-check and roadmap-test gates on the fleet runner, on every push to main and on every pull request that touches the roadmap files."
     }
   ]
 }
