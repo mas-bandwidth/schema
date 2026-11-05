@@ -69,6 +69,72 @@
         "and each implementation MUST write out the exact same bytes, so there needs to be some specification for how iteration is done on write, and in what order etc. that is cross language."
       ],
       "source": "relayed by Rowan from the live session. The write algorithm is docs/SPEC-TABLES.md §22, and its gate is the conformance harness's rewrite surface beside the wire, message, retain-save and cook-write surfaces (§22.7): every leg reads every corpus input and writes it back, held to one canonical byte string. This ruling makes nothing not-applicable."
+    },
+    {
+      "id": "strict-only-read",
+      "date": "2026-11-03",
+      "quotes": [
+        "Cut the tolerant wire. It's too much work. It was a mistake to try to do it.",
+        "That's my mistake. It's best to consistently refuse. Too much undefined behavior per-language by trying to be tolerant."
+      ],
+      "source": "Glenn, live in Rowan's session, relayed verbatim in the spec brief. Scope confirmed with him: one read only, the strict read; any damage, out-of-range value, kind mismatch, broken framing or non-finite float refuses the whole load (the brief's 'with exactly one reason name' is SUPERSEDED by refusal-verdict-only: the verdict is the contract and the reason is per-language diagnostic detail); no partial value, no repair, no clamp-and-count, no reading past damage. Kept, because it is not damage: version evolution across a lawful lineage (widening, absent fields at their defaults, unknown fields from a newer writer skipped or retained, form and lineage selection). A value outside the WRITER's range is damage and refuses; it never clamps. The same for the JSON and text readers and the fixed form. Specified in docs/SPEC-TABLES.md §4, §6.5 and §13.10 and docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6 and §5.4.",
+      "supersedes": [
+        "the tolerant read and its named twins: SPEC-TABLES §6.5 'THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS OWN' (61105d0b1, 2026-10-17)",
+        "the owner read policy of 2026-10-17, 'writers always strict, reads forgiving only where that costs nearly nothing' (SPEC-TABLES §11, 1f53ff49d): reads now forgive evolution alone",
+        "blob_shared 'written strict, read tolerant, refused by name on the strict read' (SPEC-TABLES §2.5, 329d0b83a, 2026-10-17): every read refuses it",
+        "the clamp-and-count rules: a value past the reader's range, a count past its bound, a text, bytes or map key past its length (SPEC-TABLES §4, §2.8 'KEYS NEVER CLAMP' 9482a65a4, §2.9, §2.13, §3.3, §16.2), 128-bit saturation, and the fixed form's bounds-pass clamp and forged-ordinal-to-None (FIXED-FORM-ALGORITHM §4.5, §4.6, fixes 5, 9 and 14)",
+        "kind_mismatch as skip-and-read-on, the field at its default (SPEC-TABLES §4): it refuses",
+        "the damage rule's read-on past a damaged body, the opaque-bytes exemption and the float 'reach' rule (SPEC-TABLES §4, a8487aa54 and 03049c123); the discard-the-whole-load half of Glenn's 2026-10-31 ruling stands and now covers every refusal",
+        "the inert short array body (SPEC-TABLES §4, §2.9, dd39038a2) and the header read against the parent (N3, ac7d8b1b6): both are damage",
+        "last-wins on a repeated field id, map key, keyed slot, node-table field and JSON key, with the duplicate counter (SPEC-TABLES §3, §2.8, §3.2, §16.2; N7, ac7d8b1b6): each is damage",
+        "the region recovery rules and the retained-record lifetime under a repeated occurrence (SPEC-TABLES §6.6)",
+        "the fixed form's bool and present-byte normalization (FIXED-FORM-ALGORITHM §4.5, fix 2, bill §12.12): a byte other than 0 or 1 refuses wire_damaged",
+        "schema#1164 statement B (2026-09-19, 'reversible by Glenn'): a compressed float's fixed-form bounds pass is the WRITER's range, as every ranged kind's is",
+        "the report counters kind_mismatch, clamped, duplicate, blob_shared and missing_required (as counts), the malformed flag and the clamped-field slot; the reason clamped is renamed out_of_range in place"
+      ],
+      "earlier": [
+        {
+          "commit": "36f90badb754c669f7582a95e77722f01246518f",
+          "date": "2026-10-31",
+          "message": "docs: damaged input is discarded whole (Glenn's ruling, 2026-10-31)"
+        },
+        {
+          "commit": "61105d0b1ed1c8f7ef5f9b32520ce01aeda686f5",
+          "date": "2026-10-17",
+          "message": "SPEC-TABLES 6.5: the plain Go read name is the strict read; the tolerant read is named"
+        }
+      ]
+    },
+    {
+      "id": "refusal-verdict-only",
+      "date": "2026-11-03",
+      "quotes": [
+        "This is another example of trying to be too correct. It is like a softer version of trying to do partial reads. I am actually OK if there is only a generic failure to read. I do not care about the specific reporting on a per-instance basis. So for example, split it into two things 1. the thing that must be the same across all languages \"failed to read\" (or whatever you call it), and then the per-language specific details about why it is failing to read. That doesn't need to conform, and it can be different across languages.",
+        "Trying to make both the \"failed to read\" and the specific details of why the read fails, it makes each language have to write exactly the same code and do the exact same order when parsing a file. I don't think we need to be correct here.",
+        "Solve this in the simplest possible way"
+      ],
+      "source": "Glenn, live in Rowan's session, relayed verbatim by the coordinator, after two cold reads of the strict-only spec showed that choosing one reason across languages (first by byte order, then by a fixed rank of names) forces every language into the same code and the same check order. The cross-language read contract is the VERDICT alone: the value (identical in every language) or refused, never a partial value. Why a read refused is per-language diagnostic detail, never compared by conformance; the spec's reason vocabulary is recommended and non-normative; each language checks in whatever order is fastest for it. Specified in docs/SPEC-TABLES.md §6.5 and §13.10.",
+      "supersedes": [
+        "the fixed rank of reason names and the byte-order reason selection drafted on rowan/strict-only-spec (commits 983adaed2 and 135d038b3, never on main)",
+        "every reason-identity rule: SPEC-TABLES §6.5 'Strict error identity', 'THE TABLE IS THE WHOLE ENUM, AND EVERY PORT SPELLS THE SAME SET', the same-reason requirement of the wire fuzzer (§4.2) and of the region, builder and measure paths",
+        "#2777's 'damage outranks' ranking and #2762's strict-reason comparison of names: the gate compares verdicts"
+      ]
+    },
+    {
+      "id": "conformance-is-read-then-write",
+      "date": "2026-11-03",
+      "quotes": [
+        "read counters, memory size obviously yes these can change per-language",
+        "3 and 4, yes these should be able to vary",
+        "the only thing that matters is, can we read in the data in each language, and get the valid values in",
+        "and we test this by checking that it can write out that data the same way"
+      ],
+      "source": "Glenn, live in Rowan's session, relayed verbatim by the coordinator, following refusal-verdict-only. 'These' are the read counters (unknown, widened, retained, retain_lost), LoadMeasure and region sizes, and (3, 4) the fuzz harness's counter and flag comparisons and diagnostic text, field names and JSON error positions: all per-language detail, never compared. The cross-language read test is: every leg reads every corpus input; a readable input is written back out (wire, and JSON and text) and the bytes are identical across legs and equal to the canonical bytes; an unreadable input is refused by every leg. Retained unknowns saved back byte-exact carry the never-clobber guarantee. Specified in docs/SPEC-TABLES.md §4, §4.2, §6.5, §6.6 and docs/plans/strict-only.md layer 3.",
+      "supersedes": [
+        "the read counters as compared numbers on every conformance surface (report rows, reports.txt, the wire-fuzz pipe, the retention leg)",
+        "LoadMeasure and region sizes as compared numbers, including the wire fuzzer's EXACT-measure requirement",
+        "the strict-reason surface's reason names, and every comparison of diagnostic text, field names or JSON error positions"
+      ]
     }
   ]
 }
