@@ -89,6 +89,7 @@ func emitCookTable(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("    size: %d,\n", ml.Size)
 	g.Pf("    align: %d,\n", ir.CookNodeAlign(u, st))
 	g.Pf("    record: %d,\n", record)
+	g.Pf("    region_align: %d,\n", ir.TableRegionAlign(u))
 	g.Pf("    extent: %s,\n", boolLit(recordHasExtent(u, st)))
 	g.Pf("    build: %s,\n", buildLit(u))
 	g.Pf("    fields: [\n")
@@ -241,7 +242,7 @@ func recordHasExtent(u *ir.Unit, st *ir.Struct) bool {
 		return false
 	}
 	for _, f := range st.Fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
@@ -270,7 +271,7 @@ func unionHasExtent(u *ir.Unit, un *ir.Union, seen map[*ir.Union]bool) bool {
 		if v.F == nil {
 			continue
 		}
-		if v.F.IsMap() || v.F.IsList() {
+		if v.F.IsMap() || v.F.IsList() || v.F.Type.TextUnbounded() {
 			return true
 		}
 		if v.F.Type.Pointer || v.F.Type.Blob() || v.F.Type.Kind != ir.TNamed {

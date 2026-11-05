@@ -47,6 +47,10 @@ func usage() {
              report, framing and hostile row. All come from the compiler's
              own engine, which is a third implementation of the two forms.
 
+  migrate-fixed
+             explicitly migrate legacy fixed positive wire pins from their
+             complete JSON, preserving the old wires as form-1 refusal rows.
+
   pin        rewrite the goldens a driver writes rather than the engine: the
              cook's canonical node dump, and the block forgery battery
              resolved to byte offsets. Both come from the FIRST driver in the
@@ -241,6 +245,10 @@ func main() {
 		}
 	case "generate":
 		if err := generate(m, *jsonDir, *reports); err != nil {
+			fatalf("%v", err)
+		}
+	case "migrate-fixed":
+		if err := migrateFixed(m, *manifest, *jsonDir); err != nil {
 			fatalf("%v", err)
 		}
 	case "pin":

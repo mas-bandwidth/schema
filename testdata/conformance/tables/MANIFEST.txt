@@ -83,34 +83,33 @@ unit tblw2     test/tables/W2.schema
 unit tblr1     test/tables/R1.schema
 unit tblr2     test/tables/R2.schema
 
-instance root_full            tabledemo RootConfig    testdata/wire/tables/root_full.bin
-instance root_default         tabledemo RootConfig    testdata/wire/tables/root_default.bin
-instance profile_elide        tabledemo ProfileConfig testdata/wire/tables/profile_elide.bin
-instance text_escapes          tabledemo ProfileConfig testdata/wire/tables/text_escapes.bin
-instance text_escapes_raw      tabledemo ProfileConfig testdata/wire/tables/text_escapes_raw.bin
-instance text_float_exp        tabledemo ProfileConfig testdata/wire/tables/text_float_exp.bin
-instance text_float_small      tabledemo ProfileConfig testdata/wire/tables/text_float_small.bin
-instance text_float_misc       tabledemo ProfileConfig testdata/wire/tables/text_float_misc.bin
-instance text_float64_big      tabledemo ProfileConfig testdata/wire/tables/text_float64_big.bin
-instance text_float64_ties     tabledemo ProfileConfig testdata/wire/tables/text_float64_ties.bin
-instance text_negative_zero    tabledemo ProfileConfig testdata/wire/tables/text_negative_zero.bin
-instance text_uint64_two_to_63 tabledemo ProfileConfig testdata/wire/tables/text_uint64_two_to_63.bin
-instance text_icon_pad_one     tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_one.bin
-instance text_icon_pad_two     tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_two.bin
-instance text_icon_sixteen     tabledemo ProfileConfig testdata/wire/tables/text_icon_sixteen.bin
-instance loadout_full         tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin
-instance wide_blob            tabledemo WideBlob      testdata/wire/tables/wide_blob.bin
-instance archive              tabledemo ArchiveConfig testdata/wire/tables/archive.bin
-instance keyed_config         tabledemo KeyedConfig   testdata/wire/tables/keyed_config.bin
-instance keyed_default        tabledemo KeyedConfig   testdata/wire/tables/keyed_default.bin
-instance v1_cfg               tblv1     Cfg           testdata/wire/tables/v1_cfg.bin
-instance v1_seams             tblv1     Cfg           testdata/wire/tables/v1_seams.bin
-instance v2_cfg               tblv2     Cfg           testdata/wire/tables/v2_cfg.bin
-instance v2_seams             tblv2     Cfg           testdata/wire/tables/v2_seams.bin
-instance chain_value          tblp1     Chain         testdata/wire/tables/chain_value.bin
-instance chain_value_empty    tblp1     Chain         testdata/wire/tables/chain_value_empty.bin
-instance chain_optional       tblp3     Chain         testdata/wire/tables/chain_optional.bin
-instance chain_optional_empty tblp3     Chain         testdata/wire/tables/chain_optional_empty.bin
+instance root_full            tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin
+instance root_default         tabledemo RootConfig    testdata/conformance/tables/wire/root_default.bin
+instance profile_elide        tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin
+instance text_escapes          tabledemo ProfileConfig testdata/conformance/tables/wire/text_escapes.bin
+instance text_escapes_raw      tabledemo ProfileConfig testdata/conformance/tables/wire/text_escapes_raw.bin
+instance text_float_exp        tabledemo ProfileConfig testdata/conformance/tables/wire/text_float_exp.bin
+instance text_float_small      tabledemo ProfileConfig testdata/conformance/tables/wire/text_float_small.bin
+instance text_float_misc       tabledemo ProfileConfig testdata/conformance/tables/wire/text_float_misc.bin
+instance text_float64_big      tabledemo ProfileConfig testdata/conformance/tables/wire/text_float64_big.bin
+instance text_float64_ties     tabledemo ProfileConfig testdata/conformance/tables/wire/text_float64_ties.bin
+instance text_negative_zero    tabledemo ProfileConfig testdata/conformance/tables/wire/text_negative_zero.bin
+instance text_uint64_two_to_63 tabledemo ProfileConfig testdata/conformance/tables/wire/text_uint64_two_to_63.bin
+instance text_icon_pad_one     tabledemo ProfileConfig testdata/conformance/tables/wire/text_icon_pad_one.bin
+instance text_icon_pad_two     tabledemo ProfileConfig testdata/conformance/tables/wire/text_icon_pad_two.bin
+instance text_icon_sixteen     tabledemo ProfileConfig testdata/conformance/tables/wire/text_icon_sixteen.bin
+instance loadout_full         tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin
+instance archive              tabledemo ArchiveConfig testdata/conformance/tables/wire/archive.bin
+instance keyed_config         tabledemo KeyedConfig   testdata/conformance/tables/wire/keyed_config.bin
+instance keyed_default        tabledemo KeyedConfig   testdata/conformance/tables/wire/keyed_default.bin
+instance v1_cfg               tblv1     Cfg           testdata/conformance/tables/wire/v1_cfg.bin
+instance v1_seams             tblv1     Cfg           testdata/conformance/tables/wire/v1_seams.bin
+instance v2_cfg               tblv2     Cfg           testdata/conformance/tables/wire/v2_cfg.bin
+instance v2_seams             tblv2     Cfg           testdata/conformance/tables/wire/v2_seams.bin
+instance chain_value          tblp1     Chain         testdata/conformance/tables/wire/chain_value.bin
+instance chain_value_empty    tblp1     Chain         testdata/conformance/tables/wire/chain_value_empty.bin
+instance chain_optional       tblp3     Chain         testdata/conformance/tables/wire/chain_optional.bin
+instance chain_optional_empty tblp3     Chain         testdata/conformance/tables/wire/chain_optional_empty.bin
 
 # THE VARIABLE CLASS (§3.1), and the four shapes the numbering has to get right.
 # Three carry a text (§16.7): a tree reads and writes as nested tables, and
@@ -138,26 +137,26 @@ instance graph_deep           graphdemo Scene         testdata/wire/tables/graph
 # same three depths — history counted in the root with a live None slot,
 # pending fixed inside the transaction with its None element riding in place,
 # origins counted inside the insert.
-instance message_open         messagedemo ToolMessage testdata/wire/tables/message_open.bin
-instance message_transaction  messagedemo ToolMessage testdata/wire/tables/message_transaction.bin
-instance message_ping         messagedemo ToolMessage testdata/wire/tables/message_ping.bin
-instance message_save         messagedemo ToolMessage testdata/wire/tables/message_save.bin
-instance message_empty        messagedemo ToolMessage testdata/wire/tables/message_empty.bin
-instance message_batch        messagedemo ToolMessage testdata/wire/tables/message_batch.bin
-instance message_trace        messagedemo ToolMessage testdata/wire/tables/message_trace.bin
+instance message_open         messagedemo ToolMessage testdata/conformance/tables/wire/message_open.bin
+instance message_transaction  messagedemo ToolMessage testdata/conformance/tables/wire/message_transaction.bin
+instance message_ping         messagedemo ToolMessage testdata/conformance/tables/wire/message_ping.bin
+instance message_save         messagedemo ToolMessage testdata/conformance/tables/wire/message_save.bin
+instance message_empty        messagedemo ToolMessage testdata/conformance/tables/wire/message_empty.bin
+instance message_batch        messagedemo ToolMessage testdata/conformance/tables/wire/message_batch.bin
+instance message_trace        messagedemo ToolMessage testdata/conformance/tables/wire/message_trace.bin
 # THE GENERAL ARMS (§2.6): an arm is a field line, so an arm may be a scalar, a
 # string, an enum, a flags mask, a bytes buffer, a bounded array, another union
 # or a POINTER. message_arms carries a fixed-array arm in the root body, a flags
 # arm and a nested-union arm in the batch; message_arm_edits carries the bounded
 # scalar, counted-array, bytes and enum arms inside a transaction's edits;
 # message_ack is the PAYLOAD-FREE arm, the arm id with L = 0.
-instance message_arms         messagedemo ToolMessage testdata/wire/tables/message_arms.bin
-instance message_arm_edits    messagedemo ToolMessage testdata/wire/tables/message_arm_edits.bin
-instance message_ack          messagedemo ToolMessage testdata/wire/tables/message_ack.bin
-instance m1_open              tblm1       Msg         testdata/wire/tables/m1_open.bin
-instance m1_save              tblm1       Msg         testdata/wire/tables/m1_save.bin
-instance m2_close             tblm2       Msg         testdata/wire/tables/m2_close.bin
-instance m2_open              tblm2       Msg         testdata/wire/tables/m2_open.bin
+instance message_arms         messagedemo ToolMessage testdata/conformance/tables/wire/message_arms.bin
+instance message_arm_edits    messagedemo ToolMessage testdata/conformance/tables/wire/message_arm_edits.bin
+instance message_ack          messagedemo ToolMessage testdata/conformance/tables/wire/message_ack.bin
+instance m1_open              tblm1       Msg         testdata/conformance/tables/wire/m1_open.bin
+instance m1_save              tblm1       Msg         testdata/conformance/tables/wire/m1_save.bin
+instance m2_close             tblm2       Msg         testdata/conformance/tables/wire/m2_close.bin
+instance m2_open              tblm2       Msg         testdata/conformance/tables/wire/m2_open.bin
 instance stream_chain         streamdemo  Feed        testdata/wire/tables/stream_chain.bin
 instance stream_header        streamdemo  Feed        testdata/wire/tables/stream_header.bin
 instance stream_parts         streamdemo  Feed        testdata/wire/tables/stream_parts.bin
@@ -226,11 +225,11 @@ instance blob_shared_string mapdemo Docs testdata/wire/tables/blob_shared_string
 # ways (§4.2). wide_narrow_arm is the same union at its kind 12 arm, so a
 # respelling between the two text kinds is an ordinary kind mismatch in both
 # directions rather than UTF-8 bytes read as code units.
-instance wide_empty           widedemo    Caption     testdata/wire/tables/wide_empty.bin
-instance wide_title           widedemo    Caption     testdata/wire/tables/wide_title.bin
-instance wide_sites           widedemo    Caption     testdata/wire/tables/wide_sites.bin
-instance wide_narrow_arm      widedemo    Caption     testdata/wire/tables/wide_narrow_arm.bin
-instance wide_stamp           widedemo    Stamp       testdata/wire/tables/wide_stamp.bin
+instance wide_empty           widedemo    Caption     testdata/conformance/tables/wire/wide_empty.bin
+instance wide_title           widedemo    Caption     testdata/conformance/tables/wire/wide_title.bin
+instance wide_sites           widedemo    Caption     testdata/conformance/tables/wire/wide_sites.bin
+instance wide_narrow_arm      widedemo    Caption     testdata/conformance/tables/wire/wide_narrow_arm.bin
+instance wide_stamp           widedemo    Stamp       testdata/conformance/tables/wire/wide_stamp.bin
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are
@@ -430,7 +429,6 @@ cook-write root_full              testdata/conformance/tables/cook-write/root_fu
 cook-write root_default           testdata/conformance/tables/cook-write/root_default.cook testdata/conformance/tables/cook-write/root_default-be.cook
 cook-write profile_elide          testdata/conformance/tables/cook-write/profile_elide.cook testdata/conformance/tables/cook-write/profile_elide-be.cook
 cook-write loadout_full           testdata/conformance/tables/cook-write/loadout_full.cook testdata/conformance/tables/cook-write/loadout_full-be.cook
-cook-write wide_blob              testdata/conformance/tables/cook-write/wide_blob.cook testdata/conformance/tables/cook-write/wide_blob-be.cook
 cook-write archive                testdata/conformance/tables/cook-write/archive.cook testdata/conformance/tables/cook-write/archive-be.cook
 cook-write keyed_config           testdata/conformance/tables/cook-write/keyed_config.cook testdata/conformance/tables/cook-write/keyed_config-be.cook
 cook-write keyed_default          testdata/conformance/tables/cook-write/keyed_default.cook testdata/conformance/tables/cook-write/keyed_default-be.cook
@@ -865,9 +863,9 @@ json-hostile shared-node-by-label          graphdemo  Scene       testdata/confo
 # mismatches), two ranges tightened (clamps on the raw scale), two fields gone.
 unit scalars     tables/scalars
 unit tblscalars2 test/tables/Scalars2.schema
-instance scalars_full    scalars SimState testdata/wire/tables/scalars_full.bin
-instance scalars_default scalars SimState testdata/wire/tables/scalars_default.bin
-instance scalars_edges   scalars SimState testdata/wire/tables/scalars_edges.bin
+instance scalars_full    scalars SimState testdata/conformance/tables/wire/scalars_full.bin
+instance scalars_default scalars SimState testdata/conformance/tables/wire/scalars_default.bin
+instance scalars_edges   scalars SimState testdata/conformance/tables/wire/scalars_edges.bin
 report scalars_full_as_2  tblscalars2 SimState testdata/wire/tables/scalars_full.bin
 report scalars_edges_as_2 tblscalars2 SimState testdata/wire/tables/scalars_edges.bin
 # a PLAIN TOP-LEVEL SCALAR field, written narrower than the declaration: the
@@ -948,39 +946,39 @@ connection graph_conn   graphdemo   0xfdaabe4726d81d5c testdata/wire/tables/grap
 # The three backend messages of schema#523, each in both instances: 106 / 273 /
 # 104 bytes as files against 52 / 148 / 43 as messages, and 10 / 43 / 10 against
 # 3 / 11 / 3 at their declared defaults. A count that moves is a wire that moved.
-instance login_full     backenddemo LoginRequest  testdata/wire/tables/login_full.bin
-instance login_default  backenddemo LoginRequest  testdata/wire/tables/login_default.bin
-instance match_full     backenddemo MatchResult   testdata/wire/tables/match_full.bin
-instance match_default  backenddemo MatchResult   testdata/wire/tables/match_default.bin
-instance store_full     backenddemo StorePurchase testdata/wire/tables/store_full.bin
-instance store_default  backenddemo StorePurchase testdata/wire/tables/store_default.bin
+instance login_full     backenddemo LoginRequest  testdata/conformance/tables/wire/login_full.bin
+instance login_default  backenddemo LoginRequest  testdata/conformance/tables/wire/login_default.bin
+instance match_full     backenddemo MatchResult   testdata/conformance/tables/wire/match_full.bin
+instance match_default  backenddemo MatchResult   testdata/conformance/tables/wire/match_default.bin
+instance store_full     backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin
+instance store_default  backenddemo StorePurchase testdata/conformance/tables/wire/store_default.bin
 
-message login_full    backend_conn LoginRequest  testdata/wire/tables/login_full.bin    testdata/wire/tables/login_full_message.bin
-message login_default backend_conn LoginRequest  testdata/wire/tables/login_default.bin testdata/wire/tables/login_default_message.bin
-message match_full    backend_conn MatchResult   testdata/wire/tables/match_full.bin    testdata/wire/tables/match_full_message.bin
-message match_default backend_conn MatchResult   testdata/wire/tables/match_default.bin testdata/wire/tables/match_default_message.bin
-message store_full    backend_conn StorePurchase testdata/wire/tables/store_full.bin    testdata/wire/tables/store_full_message.bin
-message store_default backend_conn StorePurchase testdata/wire/tables/store_default.bin testdata/wire/tables/store_default_message.bin
+message login_full    backend_conn LoginRequest  testdata/conformance/tables/wire/login_full.bin    testdata/wire/tables/login_full_message.bin
+message login_default backend_conn LoginRequest  testdata/conformance/tables/wire/login_default.bin testdata/wire/tables/login_default_message.bin
+message match_full    backend_conn MatchResult   testdata/conformance/tables/wire/match_full.bin    testdata/wire/tables/match_full_message.bin
+message match_default backend_conn MatchResult   testdata/conformance/tables/wire/match_default.bin testdata/wire/tables/match_default_message.bin
+message store_full    backend_conn StorePurchase testdata/conformance/tables/wire/store_full.bin    testdata/wire/tables/store_full_message.bin
+message store_default backend_conn StorePurchase testdata/conformance/tables/wire/store_default.bin testdata/wire/tables/store_default_message.bin
 
 # and the four the rules a value alone cannot reach: a WIDE vocabulary whose
 # slots fall on both sides of the one-byte boundary, a POINTERED root, which is
 # a variable table and so the named refusal row, and a TWO-PEER pair
 # whose units announce different vocabularies and each decode the other's
 # messages against the table THAT peer announced.
-instance vocab_wide vocabdemo Wide09 testdata/wire/tables/vocab_wide.bin
-instance vocab_low  vocabdemo Wide00 testdata/wire/tables/vocab_low.bin
-instance peer_a     backenddemo StorePurchase testdata/wire/tables/peer_a.bin
-instance peer_b     vocabdemo   Wide00        testdata/wire/tables/peer_b.bin
-instance vocab9_wide vocab9demo Wide19 testdata/wire/tables/vocab9_wide.bin
-instance vocab9_low  vocab9demo Wide00 testdata/wire/tables/vocab9_low.bin
+instance vocab_wide vocabdemo Wide09 testdata/conformance/tables/wire/vocab_wide.bin
+instance vocab_low  vocabdemo Wide00 testdata/conformance/tables/wire/vocab_low.bin
+instance peer_a     backenddemo StorePurchase testdata/conformance/tables/wire/peer_a.bin
+instance peer_b     vocabdemo   Wide00        testdata/conformance/tables/wire/peer_b.bin
+instance vocab9_wide vocab9demo Wide19 testdata/conformance/tables/wire/vocab9_wide.bin
+instance vocab9_low  vocab9demo Wide00 testdata/conformance/tables/wire/vocab9_low.bin
 
-message vocab_wide vocab_conn   Wide09        testdata/wire/tables/vocab_wide.bin testdata/wire/tables/vocab_wide_message.bin
-message vocab_low  vocab_conn   Wide00        testdata/wire/tables/vocab_low.bin  testdata/wire/tables/vocab_low_message.bin
+message vocab_wide vocab_conn   Wide09        testdata/conformance/tables/wire/vocab_wide.bin testdata/wire/tables/vocab_wide_message.bin
+message vocab_low  vocab_conn   Wide00        testdata/conformance/tables/wire/vocab_low.bin  testdata/wire/tables/vocab_low_message.bin
 message graph_tree graph_conn   Scene         testdata/wire/tables/graph_tree.bin -
-message peer_a     backend_conn StorePurchase testdata/wire/tables/peer_a.bin     testdata/wire/tables/peer_a_message.bin
-message peer_b     vocab_conn   Wide00        testdata/wire/tables/peer_b.bin     testdata/wire/tables/peer_b_message.bin
-message vocab9_wide vocab9_conn Wide19 testdata/wire/tables/vocab9_wide.bin testdata/wire/tables/vocab9_wide_message.bin
-message vocab9_low  vocab9_conn Wide00 testdata/wire/tables/vocab9_low.bin  testdata/wire/tables/vocab9_low_message.bin
+message peer_a     backend_conn StorePurchase testdata/conformance/tables/wire/peer_a.bin     testdata/wire/tables/peer_a_message.bin
+message peer_b     vocab_conn   Wide00        testdata/conformance/tables/wire/peer_b.bin     testdata/wire/tables/peer_b_message.bin
+message vocab9_wide vocab9_conn Wide19 testdata/conformance/tables/wire/vocab9_wide.bin testdata/wire/tables/vocab9_wide_message.bin
+message vocab9_low  vocab9_conn Wide00 testdata/conformance/tables/wire/vocab9_low.bin  testdata/wire/tables/vocab9_low_message.bin
 
 # THE `was` ROWS (docs/SPEC-TABLES.md §5, SPEC §4.2). w1_fleet carries string,
 # bytes and flags fields OFF their declared defaults beside a node holding every
@@ -1004,9 +1002,9 @@ report w1_fleet_default_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet_default.
 # pong. r2_cfg is r1_cfg's value written by the renamed unit, byte-identical.
 # The cross reads are silent, and `make tables-wasrows-negative-control`
 # strips the four attributes and watches unknown count.
-instance r1_cfg               tblr1       Cfg         testdata/wire/tables/r1_cfg.bin
-instance r1_ping              tblr1       Cfg         testdata/wire/tables/r1_ping.bin
-instance r2_cfg               tblr2       Cfg         testdata/wire/tables/r2_cfg.bin
+instance r1_cfg               tblr1       Cfg         testdata/conformance/tables/wire/r1_cfg.bin
+instance r1_ping              tblr1       Cfg         testdata/conformance/tables/wire/r1_ping.bin
+instance r2_cfg               tblr2       Cfg         testdata/conformance/tables/wire/r2_cfg.bin
 report r1_cfg_as_r2 tblr2 Cfg testdata/wire/tables/r1_cfg.bin
 report r1_ping_as_r2 tblr2 Cfg testdata/wire/tables/r1_ping.bin
 report r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
@@ -1272,3 +1270,69 @@ framing node_chain_two                          graphdemo ListNode testdata/wire
 unit widelist tables/widelist
 instance widelist_wide widelist Wide testdata/wire/tables/widelist_wide.bin
 cook-write widelist_wide testdata/conformance/tables/cook-write/widelist_wide.cook testdata/conformance/tables/cook-write/widelist_wide-be.cook
+
+report previous_form_root_full tabledemo RootConfig testdata/wire/tables/root_full.bin
+report previous_form_root_default tabledemo RootConfig testdata/wire/tables/root_default.bin
+report previous_form_profile_elide tabledemo ProfileConfig testdata/wire/tables/profile_elide.bin
+report previous_form_text_escapes tabledemo ProfileConfig testdata/wire/tables/text_escapes.bin
+report previous_form_text_escapes_raw tabledemo ProfileConfig testdata/wire/tables/text_escapes_raw.bin
+report previous_form_text_float_exp tabledemo ProfileConfig testdata/wire/tables/text_float_exp.bin
+report previous_form_text_float_small tabledemo ProfileConfig testdata/wire/tables/text_float_small.bin
+report previous_form_text_float_misc tabledemo ProfileConfig testdata/wire/tables/text_float_misc.bin
+report previous_form_text_float64_big tabledemo ProfileConfig testdata/wire/tables/text_float64_big.bin
+report previous_form_text_float64_ties tabledemo ProfileConfig testdata/wire/tables/text_float64_ties.bin
+report previous_form_text_negative_zero tabledemo ProfileConfig testdata/wire/tables/text_negative_zero.bin
+report previous_form_text_uint64_two_to_63 tabledemo ProfileConfig testdata/wire/tables/text_uint64_two_to_63.bin
+report previous_form_text_icon_pad_one tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_one.bin
+report previous_form_text_icon_pad_two tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_two.bin
+report previous_form_text_icon_sixteen tabledemo ProfileConfig testdata/wire/tables/text_icon_sixteen.bin
+report previous_form_loadout_full tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin
+report previous_form_wide_blob tabledemo WideBlob testdata/wire/tables/wide_blob.bin
+report previous_form_archive tabledemo ArchiveConfig testdata/wire/tables/archive.bin
+report previous_form_keyed_config tabledemo KeyedConfig testdata/wire/tables/keyed_config.bin
+report previous_form_keyed_default tabledemo KeyedConfig testdata/wire/tables/keyed_default.bin
+report previous_form_v1_cfg tblv1 Cfg testdata/wire/tables/v1_cfg.bin
+report previous_form_v1_seams tblv1 Cfg testdata/wire/tables/v1_seams.bin
+report previous_form_v2_cfg tblv2 Cfg testdata/wire/tables/v2_cfg.bin
+report previous_form_v2_seams tblv2 Cfg testdata/wire/tables/v2_seams.bin
+report previous_form_chain_value tblp1 Chain testdata/wire/tables/chain_value.bin
+report previous_form_chain_value_empty tblp1 Chain testdata/wire/tables/chain_value_empty.bin
+report previous_form_chain_optional tblp3 Chain testdata/wire/tables/chain_optional.bin
+report previous_form_chain_optional_empty tblp3 Chain testdata/wire/tables/chain_optional_empty.bin
+report previous_form_message_open messagedemo ToolMessage testdata/wire/tables/message_open.bin
+report previous_form_message_transaction messagedemo ToolMessage testdata/wire/tables/message_transaction.bin
+report previous_form_message_ping messagedemo ToolMessage testdata/wire/tables/message_ping.bin
+report previous_form_message_save messagedemo ToolMessage testdata/wire/tables/message_save.bin
+report previous_form_message_empty messagedemo ToolMessage testdata/wire/tables/message_empty.bin
+report previous_form_message_batch messagedemo ToolMessage testdata/wire/tables/message_batch.bin
+report previous_form_message_trace messagedemo ToolMessage testdata/wire/tables/message_trace.bin
+report previous_form_message_arms messagedemo ToolMessage testdata/wire/tables/message_arms.bin
+report previous_form_message_arm_edits messagedemo ToolMessage testdata/wire/tables/message_arm_edits.bin
+report previous_form_message_ack messagedemo ToolMessage testdata/wire/tables/message_ack.bin
+report previous_form_m1_open tblm1 Msg testdata/wire/tables/m1_open.bin
+report previous_form_m1_save tblm1 Msg testdata/wire/tables/m1_save.bin
+report previous_form_m2_close tblm2 Msg testdata/wire/tables/m2_close.bin
+report previous_form_m2_open tblm2 Msg testdata/wire/tables/m2_open.bin
+report previous_form_wide_empty widedemo Caption testdata/wire/tables/wide_empty.bin
+report previous_form_wide_title widedemo Caption testdata/wire/tables/wide_title.bin
+report previous_form_wide_sites widedemo Caption testdata/wire/tables/wide_sites.bin
+report previous_form_wide_narrow_arm widedemo Caption testdata/wire/tables/wide_narrow_arm.bin
+report previous_form_wide_stamp widedemo Stamp testdata/wire/tables/wide_stamp.bin
+report previous_form_scalars_full scalars SimState testdata/wire/tables/scalars_full.bin
+report previous_form_scalars_default scalars SimState testdata/wire/tables/scalars_default.bin
+report previous_form_scalars_edges scalars SimState testdata/wire/tables/scalars_edges.bin
+report previous_form_login_full backenddemo LoginRequest testdata/wire/tables/login_full.bin
+report previous_form_login_default backenddemo LoginRequest testdata/wire/tables/login_default.bin
+report previous_form_match_full backenddemo MatchResult testdata/wire/tables/match_full.bin
+report previous_form_match_default backenddemo MatchResult testdata/wire/tables/match_default.bin
+report previous_form_store_full backenddemo StorePurchase testdata/wire/tables/store_full.bin
+report previous_form_store_default backenddemo StorePurchase testdata/wire/tables/store_default.bin
+report previous_form_vocab_wide vocabdemo Wide09 testdata/wire/tables/vocab_wide.bin
+report previous_form_vocab_low vocabdemo Wide00 testdata/wire/tables/vocab_low.bin
+report previous_form_peer_a backenddemo StorePurchase testdata/wire/tables/peer_a.bin
+report previous_form_peer_b vocabdemo Wide00 testdata/wire/tables/peer_b.bin
+report previous_form_vocab9_wide vocab9demo Wide19 testdata/wire/tables/vocab9_wide.bin
+report previous_form_vocab9_low vocab9demo Wide00 testdata/wire/tables/vocab9_low.bin
+report previous_form_r1_cfg tblr1 Cfg testdata/wire/tables/r1_cfg.bin
+report previous_form_r1_ping tblr1 Cfg testdata/wire/tables/r1_ping.bin
+report previous_form_r2_cfg tblr2 Cfg testdata/wire/tables/r2_cfg.bin

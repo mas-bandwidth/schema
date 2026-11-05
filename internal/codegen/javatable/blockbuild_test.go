@@ -126,6 +126,9 @@ type cookWriteUnit struct {
 }
 
 var cookWriteCarried = []cookWriteUnit{
+	{"../../../testdata/conformance/feature-witnesses/full/Features.schema", "featurewitnesses", "featurewitnesses", []cookWriteRoot{
+		{"Root", []string{"feature_full"}},
+	}},
 	{"../../../tables/blobs", "blobdemo", "blobdemo", []cookWriteRoot{
 		{"Catalog", []string{"blob_small", "blob_empty", "blob_large", "blob_shared", "blob_str8", "blob_str16"}},
 	}},
