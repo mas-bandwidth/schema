@@ -1,20 +1,5 @@
-// The corpus read back through the TOOL's own engine.
-//
-// reports.txt and the wire goldens are shared expectations: the per-language
-// drivers are held to them by `harness run`, and `harness generate` writes the
-// counters from internal/tablewire. Neither of those runs tablewire.Decode
-// against the corpus IN A GO TEST, so a decode change that moved a field's
-// STATE without moving a counter — presence is the one that has no counter —
-// could pass `go test ./...`, `make check`, `make conformance-generate` and
-// the C++ conformance leg while the tool and the reference disagreed about
-// what a row decodes to.
-//
-// These tests close that: every report row decodes through tablewire.Decode
-// here, the counters are held to the pinned row, and the STATE OF EVERY
-// OPTIONAL FIELD is pinned as a signature beside it — for the hostile rows
-// and for the shared instance the two writers agree on. The signature is
-// complete by construction (it walks the whole decoded value), so a row's pin
-// cannot silently omit the field that matters.
+// The corpus read through the compiler engine: one acceptance verdict and
+// complete accepted values, with optional presence pinned independently.
 package main
 
 import (
@@ -26,29 +11,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// THE PINNED PRESENCE (docs/SPEC-TABLES.md §2.3). Each entry is the complete
-// signature of the decoded value's optional fields: every `?T` and every
-// `?[N]T`/`?[..N]T` the walk reaches, `present` or `absent`, a counted array
-// carrying the count it decoded. Written from §2.3's rules, not from a run:
-//
-//   - an optional array whose body carries a FOREIGN ELEMENT KIND is §3's
-//     element-kind mismatch, and the field is left at its declared default,
-//     which for an optional is ABSENT;
-//   - every in-body event short of that leaves the field PRESENT, because the
-//     field rode: a count past the bound keeps the prefix and clamps, and a
-//     variant id no build names leaves that slot at None and counts unknown.
+// A legal unknown enum variant leaves the slot at None and keeps presence.
 var pinnedPresence = map[string][]string{
-	// the element kind 8 where this reader declares 13: absent, and `marks`
-	// was never on the wire at all
-	"trace_elem_kind": {"marks=absent", "trace=absent"},
-	// four elements against a bound of three: present, the prefix kept
-	"trace_count_past_bound": {"marks=absent", "trace=present[3]"},
-	// a fixed optional enum array carrying an id no variant names: present,
-	// the slot at None
 	"marks_unknown_variant": {"marks=present", "trace=absent"},
 }
 
@@ -75,7 +42,7 @@ func conformanceRoot(t *testing.T) string {
 
 // corpus loads the manifest and the pinned reports with the repository root as
 // the working directory, which is what every path in the manifest assumes.
-func corpus(t *testing.T) (*Manifest, map[string]Counts, *units) {
+func corpus(t *testing.T) (*Manifest, map[string]string, *units) {
 	t.Helper()
 	t.Chdir(conformanceRoot(t))
 	m, err := ReadManifest(defaultManifest, defaultJSONDir)
@@ -106,14 +73,12 @@ func decodeWire(t *testing.T, u *units, unitKey, root, wire string) (*tabletext.
 	}
 	inst := m.New(def)
 	var report tabletext.Report
-	_, err = tablewire.Decode(m, inst, data, &report)
-	if tablewire.Refused(err) {
-		// A REFUSAL IS THE ANSWER (docs/SPEC-TABLES.md §3): the verdict rides
-		// on the report and nothing was decoded to count over
-		return inst, report
-	}
+	ok, err := strictDecode(m, inst, data, &report)
 	if err != nil {
 		t.Fatalf("%s: the decode refused the root: %v", wire, err)
+	}
+	if !ok || report.Refused {
+		return nil, report
 	}
 	return inst, report
 }
@@ -181,10 +146,11 @@ func checkSignature(t *testing.T, name string, want, got []string) {
 	}
 }
 
-// TestReportRowsDecodeThroughTheEngine runs tablewire.Decode over every
-// evolution case the manifest names and holds it to the pinned row — the
-// counters for every case, and the complete optional-field signature for the
-// cases that carry one.
+// The pinned verdict carries no repair-counter interpretation.
+func pinnedRowRefuses(want string) bool { return want == "refused" }
+
+// Each row is held to its acceptance and complete pinned value. Legacy fixed
+// form-1 admission gaps remain failures until their corpus rows are corrected.
 func TestReportRowsDecodeThroughTheEngine(t *testing.T) {
 	m, pinned, u := corpus(t)
 	seen := map[string]bool{}
@@ -195,20 +161,20 @@ func TestReportRowsDecodeThroughTheEngine(t *testing.T) {
 			continue
 		}
 		inst, report := decodeWire(t, u, rc.Unit, rc.Root, rc.Wire)
-		got := Counts{
-			Unknown:      report.Unknown,
-			KindMismatch: report.KindMismatch,
-			Widened:      report.Widened,
-			Clamped:      report.Clamped,
-			Duplicate:    report.Duplicate,
-			Malformed:    report.Malformed,
-			Refused:      report.Refused,
+		sig, pinnedRow := pinnedPresence[rc.Name]
+		seen[rc.Name] = pinnedRow
+		if pinnedRowRefuses(want) {
+			if inst != nil || !report.Refused {
+				t.Errorf("%s: the one read refuses the row pinned %s and the engine reads %+v", rc.Name, want, report)
+			}
+			continue
 		}
-		if got != want {
-			t.Errorf("%s: the engine reads %s and the corpus pins %s", rc.Name, got, want)
+		if inst == nil || report.Refused {
+			t.Errorf("%s: the engine reads %+v and the corpus pins %s", rc.Name, report, want)
+			continue
 		}
-		if sig, pinnedRow := pinnedPresence[rc.Name]; pinnedRow {
-			seen[rc.Name] = true
+		checkGolden(t, rc.Name, rc.Value, true, u, rc.Unit, inst)
+		if pinnedRow {
 			checkSignature(t, rc.Name, sig, optionalSignature(inst))
 		}
 	}
@@ -232,8 +198,9 @@ func TestInstancesDecodeTheirPinnedPresence(t *testing.T) {
 		}
 		seen[inst.Name] = true
 		value, report := decodeWire(t, u, inst.Unit, inst.Root, inst.Wire)
-		if !report.Silent() {
-			t.Errorf("%s: its own writer's bytes do not read clean: %+v", inst.Name, report)
+		if value == nil || report.Refused {
+			t.Errorf("%s: its own writer's bytes are refused: %+v", inst.Name, report)
+			continue
 		}
 		checkSignature(t, inst.Name, want, optionalSignature(value))
 	}

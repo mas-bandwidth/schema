@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/mas-bandwidth/schema/v2/compiler"
 )
 
 // cookDifferential is THE TOOL AGAINST THE REFERENCE, with nothing pinned in
@@ -54,16 +52,12 @@ func cookDifferential(w io.Writer, m *Manifest, manifest, driverCmd, work string
 		if err != nil {
 			return false, err
 		}
-		wire, err := os.ReadFile(inst.Wire)
-		if err != nil {
-			return false, fmt.Errorf("%s: %w", cw.Instance, err)
-		}
 		for _, arm := range []struct {
 			name string
 			big  bool
 		}{{cw.Instance, false}, {cw.Instance + "-be", true}} {
 			rows++
-			tool, _, _, err := u.c.Cook(unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
+			tool, err := cookRecipe(unit, inst, cw, "", arm.big)
 			if err != nil {
 				fmt.Fprintf(w, "DIFFERS %s: the tool refused it: %v\n", arm.name, err)
 				ok = false
