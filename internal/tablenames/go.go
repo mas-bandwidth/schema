@@ -5,6 +5,9 @@ const Go Backend = 1 << 3
 
 func init() {
 	define(Go,
+		Name{Name: "tableJSONUnknownRepeat", What: "repeated decoded unknown JSON key refusal"},
+		Name{Name: "tableRetainArmLevels", What: "retained union nesting validation"},
+		Name{Name: "tableRetainFrameLevels", What: "retained framing nesting validation"},
 		Name{Name: "tableCycleCheck", What: "linear stored-graph cycle validation"},
 		Name{Name: "tableCycleEdges", What: "linear stored-graph cycle validation"},
 		Name{Name: "tableCycleType", What: "linear stored-graph cycle validation"},
