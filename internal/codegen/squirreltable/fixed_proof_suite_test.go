@@ -445,7 +445,9 @@ dump_fields = function(prefix, obj) {
     if (vt == "string") {
       if (enumOrd.rawin(v)) print("FIELD " + key + "=" + enumOrd[v] + "\n");
       else print("FIELD " + key + "=\"" + v + "\"\n");
-    } else if (vt == "integer" || vt == "float" || vt == "bool") {
+    } else if (vt == "bool") {
+      print("FIELD " + key + "=" + (v ? 1 : 0) + "\n");
+    } else if (vt == "integer" || vt == "float") {
       print("FIELD " + key + "=" + v + "\n");
     } else if (vt == "instance") {
       dump_fields(key, v);
@@ -458,7 +460,9 @@ dump_fields = function(prefix, obj) {
         if (et == "string") {
           if (enumOrd.rawin(ev)) print("FIELD " + ekey + "=" + enumOrd[ev] + "\n");
           else print("FIELD " + ekey + "=\"" + ev + "\"\n");
-        } else if (et == "integer" || et == "float" || et == "bool") {
+        } else if (et == "bool") {
+          print("FIELD " + ekey + "=" + (ev ? 1 : 0) + "\n");
+        } else if (et == "integer" || et == "float") {
           print("FIELD " + ekey + "=" + ev + "\n");
         } else if (et == "instance") {
           dump_fields(ekey, ev);
