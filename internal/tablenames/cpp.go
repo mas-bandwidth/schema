@@ -58,7 +58,7 @@ func init() {
 		{Name: "allocation_failed", What: "an allocation the codec asked for was refused (§7.6)"},
 		{Name: "wire_damaged", What: "a read that reached damage rather than a refusal (§4)"},
 		{Name: "malformed", What: "a tolerant read that saw a malformed body; the report counts it (§4)"},
-		{Name: "out_of_range", What: "a value outside a range the read holds it to; the report counts it (§4, §6.5)"},
+		{Name: "clamped", What: "a tolerant read that clamped a value to its declared bound (§4)"},
 		{Name: "kind_mismatch", What: "a wire field whose kind does not match the declaration (§4)"},
 		{Name: "base64_damaged", What: "base64 text with a byte outside the alphabet or the wrong padding (§16.8)"},
 		{Name: "base64_not_canonical", What: "base64 text that decodes but is not the canonical spelling of its bytes (§16.8)"},

@@ -200,7 +200,7 @@ int main()
         const int64_t m = RootMeasure( s );
         CHECK( m > 0 );
         CHECK( RootSave( s, saved, (int64_t) sizeof saved ) == m );
-        TableRefuseReason why = out_of_range;
+        TableRefuseReason why = clamped;
         const Root * v = RootReadStrict( saved, m, &why );
         CHECK( v != NULL && why == ok );
         CHECK( s.Lock() );
