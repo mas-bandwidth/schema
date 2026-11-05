@@ -63,6 +63,26 @@ in `docs/roadmap.sexp`, one task per layer below.
     (the numbering is positional); every leg answers `layout_unknown`, and
     `layout_newer` and `count_over_length` are retired.
 
+## The one place the two carried pull requests disagree
+
+#2790 and #2789 answer the same sentence of docs/SPEC-TABLES.md §3.4
+differently, and this branch does not decide it.
+
+- **#2790 (`rowan/strict-only-spec`, 12e994ca4): a declared `fixed table` past
+  the 65536-byte ceiling HAS NO FILE FORM.** Its file save refuses rather than
+  fall back to form `1`, and every read at its root refuses form `1`, as at
+  every declared fixed root. §3.4's size-bound bullet and §3.4's selection
+  bullet carry that text, and this branch carries it as written.
+- **#2789 (`rowan/fixed-root-refuses-form1`): the same root KEEPS FORM `1`,
+  WHICH IT NEVER LOST.** The engine it carries computes which roots carry the
+  form in one place (`ir.TableFixedEmitted`), so a root past a bound falls back
+  to the variable form's bytes (`internal/tablewire/fixed.go`), and the
+  compiler's own warnings say the same (`ir/fixedform.go`).
+
+So the page and the engine disagree, and the fixed-form algorithm page still
+says "it keeps form `1`". **NOTHING HERE DECIDES BETWEEN THEM**: layer 2 (the
+Go engine and the oracle) owes the alignment, and the owner owes the answer.
+
 ## (c) The layers, in order, each with its gate
 
 Each layer is secured before the one above it starts (the house's

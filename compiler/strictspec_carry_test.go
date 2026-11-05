@@ -16,7 +16,7 @@
 // spec states the fixed-root refusal by name, SPEC-TABLES.md names no
 // `LoadTolerant` entry point as a live read, the forged writer-range rows
 // refuse the whole load rather than clamp, and a declared fixed root past the
-// ceiling keeps form `1` in both the page and the engine.
+// ceiling has NO FILE FORM in the page.
 package compiler
 
 import (
@@ -185,38 +185,37 @@ func TestStrictSpecCarriesOneReadAndFixedRoot(t *testing.T) {
 		}
 	})
 
-	t.Run("a declared fixed root past the ceiling keeps form 1 in the page and the engine", func(t *testing.T) {
+	// The ceiling rule is the owner's, and the two carried pull requests answer
+	// it differently: #2790 (12e994ca4) says a declared fixed root past the
+	// 65536 ceiling HAS NO FILE FORM (its file save refuses rather than fall
+	// back to form `1`, and every read at its root refuses form `1`), while
+	// #2789's engine still falls back to the variable form. This pin holds the
+	// PAGE's rule as #2790 carries it and says nothing about the engine's
+	// fallback: the card that carries the two pull requests does not decide
+	// between them, and docs/plans/strict-only.md names the place they
+	// disagree.
+	t.Run("a declared fixed root past the ceiling has no file form", func(t *testing.T) {
 		t.Parallel()
 		page := readSpecTables(t)
-		for _, stale := range []string{
-			"HAS NO FILE FORM",
-			"refuses form `1`, and a file save of one refuses",
-		} {
-			if strings.Contains(page, stale) {
-				t.Errorf("docs/SPEC-TABLES.md states %q; the engine keeps form `1` for a root past the ceiling", stale)
-			}
-		}
+		// the page wraps at a fixed width, so a sentence is matched with its
+		// line breaks folded into single spaces
+		flat := strings.Join(strings.Fields(page), " ")
 		for _, want := range []string{
-			"KEEPS FORM `1`",
-			"no form `3` at all, so it keeps form `1`",
-			"outside the rule",
+			// §3.4's size-bound bullet.
+			"A fixed table past it therefore **HAS NO FILE FORM**: its file save refuses (it does not fall back to form `1`), every read at its root refuses form `1` as at every declared fixed root",
+			// §3.4's selection bullet.
+			"and no file form: a read at their root refuses form `1`, and a file save of one refuses rather than falling back to form `1`",
 		} {
-			if !strings.Contains(page, want) {
+			if !strings.Contains(flat, want) {
 				t.Errorf("docs/SPEC-TABLES.md no longer states %q", want)
 			}
 		}
-		data, err := os.ReadFile("../internal/tablewire/fixed.go")
-		if err != nil {
-			t.Fatalf("internal/tablewire/fixed.go: %v", err)
-		}
-		engine := string(data)
-		for _, want := range []string{
-			"carries no form 3",
-			"the variable form's bytes",
-			"ir.TableFixedEmitted(m.Unit, st)",
+		for _, stale := range []string{
+			"A fixed table past it therefore **KEEPS FORM `1`, WHICH IT NEVER LOST**",
+			"no form `3` at all, so it keeps form `1`",
 		} {
-			if !strings.Contains(engine, want) {
-				t.Errorf("internal/tablewire/fixed.go no longer states %q; the page and the engine have drifted", want)
+			if strings.Contains(flat, stale) {
+				t.Errorf("docs/SPEC-TABLES.md states %q; the carried rule is that such a root has no file form", stale)
 			}
 		}
 	})
