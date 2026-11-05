@@ -719,6 +719,17 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 conformance-negative-control-go-framing: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control frame-cap
 
+# THE WRITE ALGORITHM's own control (docs/SPEC-TABLES.md §22.7): the Go leg's
+# generated writer orders a loaded map DESCENDING, then writes a builder's map
+# in insertion order, then numbers nodes over a body's fields in REVERSE, each
+# in a copy of the generated code, and the gate must go red on the instance
+# that pins the rule while what the break cannot reach stays green.
+.PHONY: conformance-negative-control-write-order
+conformance-negative-control-write-order: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control map-order
+	sh test/conformance/go/negative-control builder-sort
+	sh test/conformance/go/negative-control node-order
+
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
 # negative control, the forgery fuzzer plain and under -race, and the soak's
@@ -729,6 +740,7 @@ test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp gener
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
 	$(MAKE) conformance-negative-control-go-framing
+	$(MAKE) conformance-negative-control-write-order
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz

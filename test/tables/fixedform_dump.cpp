@@ -1310,7 +1310,9 @@ static bool vlists_files( const char * dir )
 
         std::vector<vnew_field_deprecate::Lineage> n( 1 );
         vnew_field_deprecate::LineageReset( n[0] );
-        MS( n[0].a, 4 ); MS( n[0].b, 5 ); MS( n[0].c, 6 );
+        // the deprecated `b` is written as its default whatever it holds
+        // (docs/SPEC-TABLES.md §3.4, §22.6), so the manifest records that
+        MS( n[0].a, 4 ); MS( n[0].b, 0 ); MS( n[0].c, 6 );
         if ( !emit( dir, "new_field_deprecate.bin", n, vnew_field_deprecate::LineageFixedMeasure,
                     vnew_field_deprecate::LineageFixedSave ) ) { return false; }
     }
@@ -1319,7 +1321,9 @@ static bool vlists_files( const char * dir )
     {
         std::vector<vold_field_undeprecate::Lineage> o( 1 );
         vold_field_undeprecate::LineageReset( o[0] );
-        MS( o[0].a, 1 ); MS( o[0].b, 2 ); MS( o[0].c, 3 );
+        // the OLD side's `b` is deprecated, so it is written as its default
+        // (docs/SPEC-TABLES.md §3.4, §22.6)
+        MS( o[0].a, 1 ); MS( o[0].b, 0 ); MS( o[0].c, 3 );
         if ( !emit( dir, "old_field_undeprecate.bin", o, vold_field_undeprecate::LineageFixedMeasure,
                     vold_field_undeprecate::LineageFixedSave ) ) { return false; }
 
