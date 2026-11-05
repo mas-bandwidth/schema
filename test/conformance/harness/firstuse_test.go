@@ -28,6 +28,9 @@ func TestTheIdTableIsFirstUseOrderAndNothingElse(t *testing.T) {
 			t.Errorf("%s: %v", inst.Name, err)
 			continue
 		}
+		if len(data) == 0 || data[0] != 1 {
+			continue // first-use order is the variable form's rule; form 3 has no id table
+		}
 		f := frameWire(data)
 		if len(f.entries) == 0 {
 			continue // a wire that names no id at all: nothing to order
