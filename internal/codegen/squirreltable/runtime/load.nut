@@ -1287,7 +1287,7 @@ readArmPayload = function(arm, sub, lpos, wireKind, T, table, inst, report, st) 
 local stringOrigins = {};
 local stringOriginsSweep = 64;
 
-_M["noteStringOrigin"] <- function(holder, key, value, token) {
+_M.noteStringOrigin <- function(holder, key, value, token) {
   local w = holder.weakref();
   local slots = (w in stringOrigins) ? stringOrigins[w] : null;
   if (value == null || token == null) {
@@ -1312,7 +1312,7 @@ _M["noteStringOrigin"] <- function(holder, key, value, token) {
   slots[key] <- { v = value, token = token };
 };
 
-_M["stringIdentity"] <- function(holder, key, value) {
+_M.stringIdentity <- function(holder, key, value) {
   if (holder == null) return value;
   local w = holder.weakref();
   if (!(w in stringOrigins)) return value;

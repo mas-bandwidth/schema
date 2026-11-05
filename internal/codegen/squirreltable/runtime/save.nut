@@ -895,7 +895,7 @@ _M.measure <- function(T, rootName, value, retain = null) {
 // included. Each vertex is entered once: a pointer to an OPEN vertex is a
 // cycle, and a pointer to a CLOSED one is a legal share, so the walk is linear
 // in vertices plus slots, and it holds its own stack.
-_M["cyclic"] <- function(T, root, value, verts) {
+_M.cyclic <- function(T, root, value, verts) {
   local all = [{ d = tableDesc(T, root), v = value }];
   local at = {};
   at[value] <- 0;
