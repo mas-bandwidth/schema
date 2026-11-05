@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -87,6 +88,10 @@ func TestMainNightliesGateInputsAgree(t *testing.T) {
 			continue
 		}
 		foundG103 = true
+		count, err := strconv.Atoi(fields[3])
+		if err != nil || count != 4773 {
+			t.Errorf("tables/gosec/G103 pin = %q, want measured count 4773", fields[3])
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		t.Fatalf("scan Go table lint ratchet: %v", err)
