@@ -1955,7 +1955,7 @@ static const char * reason_name( graphdemo::TableRefuseReason reason )
         case graphdemo::allocation_failed: return "allocation_failed";
         case graphdemo::wire_damaged: return "wire_damaged";
         case graphdemo::malformed: return "malformed";
-        case graphdemo::out_of_range: return "out_of_range";
+        case graphdemo::clamped: return "clamped";
         case graphdemo::kind_mismatch: return "kind_mismatch";
         case graphdemo::base64_damaged: return "base64_damaged";
         case graphdemo::base64_not_canonical: return "base64_not_canonical";
@@ -1982,7 +1982,6 @@ static const char * reason_name( graphdemo::TableRefuseReason reason )
         case graphdemo::text_ill_formed: return "text_ill_formed";
         case graphdemo::count_over_bound: return "count_over_bound";
         case graphdemo::length_over_bound: return "length_over_bound";
-        case graphdemo::missing_required: return "missing_required";
     }
     return "?";
 }
