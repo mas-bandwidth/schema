@@ -106,9 +106,11 @@ _M.ReadDefaultChoice <- function(stream, value) {
   value.Type = _h.value;
   switch (value.Type) {
     case 1: // First
+      value.First = _M.DefaultArm();
       if (!_M.ReadDefaultArm(stream, value.First)) return false;
       break;
     case 2: // Second
+      value.Second = _M.DefaultArm();
       if (!_M.ReadDefaultArm(stream, value.Second)) return false;
       break;
   }
@@ -239,9 +241,11 @@ _M.ReadDefaultBulkChoice <- function(stream, value) {
   value.Type = _h.value;
   switch (value.Type) {
     case 1: // First
+      value.First = _M.DefaultBulkArm();
       if (!_M.ReadDefaultBulkArm(stream, value.First)) return false;
       break;
     case 2: // Second
+      value.Second = _M.DefaultBulkArm();
       if (!_M.ReadDefaultBulkArm(stream, value.Second)) return false;
       break;
   }

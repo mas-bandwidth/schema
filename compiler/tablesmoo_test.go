@@ -83,35 +83,26 @@ func TestMooRegistersItsTableCarriers(t *testing.T) {
 			t.Errorf("%s does not name moo", name)
 		}
 	}
-	for _, c := range []string{carryTimestamp, carryIntegrity, carryTextList, carryTextListTotal, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap} {
+	for _, c := range carryConstructs {
 		if !carries("moo", c) {
 			t.Errorf("moo does not register %s", c)
 		}
 	}
-	for _, c := range []string{carryRequired, carryForms, carryUnboundedText, carryArrayRoot} {
-		if carries("moo", c) {
-			t.Errorf("moo registers %s, which no moo test proves yet", c)
-		}
-	}
 }
 
-// TestMooRefusesTheConstructsItDoesNotCarryByName: each construct the moo
-// table surface does not carry yet is refused by name, naming the target.
-func TestMooRefusesTheConstructsItDoesNotCarryByName(t *testing.T) {
-	for _, c := range []struct{ name, src, want string }{
-		{"required", "package probe\ntable T\n{\n    a int32 | required\n}\n", "required"},
-		{"forms", "package probe\ntable T | forms = \"wire\"\n{\n    a int32\n}\n", "forms"},
-		{"unbounded text", "package probe\ntable T\n{\n    words []string\n}\n", "unbounded"},
-		{"array root", "package probe\ntable G\n{\n    x int32\n}\ntable L | json = \"array\"\n{\n    goals []G\n}\n", "array"},
+// TestMooGeneratesTheConstructsItCarries: each construct compiler/generate.go
+// gates, which moo registers (compiler/carries_moo.go) and
+// internal/codegen/mootable proves, generates under --lang moo.
+func TestMooGeneratesTheConstructsItCarries(t *testing.T) {
+	for _, c := range []struct{ name, src string }{
+		{"required", "package probe\ntable T\n{\n    a int32 | required\n}\n"},
+		{"forms", "package probe\ntable T | forms = \"wire\"\n{\n    a int32\n}\n"},
+		{"unbounded text", "package probe\ntable T\n{\n    words []string\n}\n"},
+		{"array root", "package probe\ntable G\n{\n    x int32\n}\ntable L | json = \"array\"\n{\n    goals []G\n}\n"},
 	} {
-		_, err := New().Generate(unitFromSource(t, c.src), "moo", Options{})
-		if err == nil || !strings.Contains(err.Error(), "moo") || !strings.Contains(err.Error(), c.want) {
-			t.Errorf("%s: want a refusal naming moo and %q, got %v", c.name, c.want, err)
+		if _, err := New().Generate(unitFromSource(t, c.src), "moo", Options{}); err != nil {
+			t.Errorf("%s: --lang moo refused a construct it carries: %v", c.name, err)
 		}
-	}
-	// the control: the same table without the construct generates
-	if _, err := New().Generate(unitFromSource(t, "package probe\ntable T\n{\n    a int32\n}\n"), "moo", Options{}); err != nil {
-		t.Errorf("the control, a variable table: %v", err)
 	}
 }
 

@@ -58,7 +58,6 @@
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-negative-control",
-        "tables-py-packet-negative-control",
         "tables-retain-fixed-class-negative-control",
         "tables-runtime-home-negative-control",
         "tables-slot-negative-control",
@@ -139,6 +138,9 @@
       "targets": [
         "conformance-negative-control-lua",
         "packet-finite-lua-negative-control",
+        "packet-utf8-lua-negative-control",
+        "packet-wide-lua-negative-control",
+        "packet-defaults-lua-negative-control",
         "conformance-negative-control-lua-walk",
         "conformance-negative-control-lua-framing",
         "conformance-negative-control-lua-cycle",
@@ -633,6 +635,15 @@
       "targets": [
         "tables-wire-fuzz-retain-class-negative-control"
       ]
+    },
+    {
+      "name": "python-toolchain",
+      "when": "pull-request",
+      "why": "the Python leg's pin check (docs/PORT-PYTHON.md, THE PIN), on the pins .github/actions/python restores into dist/: PYTHON pointed at the floor interpreter, MYPY pointed at a program that is not the locked mypy, and a copy of the leg's make files with a line that runs an interpreter from PATH, each of which must turn python-toolchain-check red by name. Three shell runs of the check, under 2 s together on a bench, so the row is the pins' cache restore.",
+      "targets": [
+        "python-toolchain-negative-control"
+      ],
+      "python": "pin"
     },
     {
       "name": "moo-tables",
@@ -1693,6 +1704,8 @@
         "tables-squirrel-release-negative-control",
         "packet-finite-squirrel-negative-control",
         "packet-wide-squirrel-negative-control",
+        "packet-utf8-squirrel-negative-control",
+        "packet-defaults-squirrel-negative-control",
         "tables-squirrel-finite-float-negative-control",
         "tables-squirrel-float-parity-negative-control",
         "schema-squirrel-all-port-differential-negative-control",
@@ -1726,6 +1739,7 @@
         "tables-squirrel-map-sort-negative-control",
         "tables-squirrel-count-stop-negative-control",
         "tables-squirrel-block-order-word-negative-control",
+        "tables-squirrel-view-doc-tags-negative-control",
         "tables-squirrel-text-differential-negative-control"
       ],
       "squirrel": "3.2"

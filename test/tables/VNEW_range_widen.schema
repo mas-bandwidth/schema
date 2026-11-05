@@ -1,4 +1,4 @@
-// VNEW_range_widen.schema — NEW: | 0..200
+// VNEW_range_widen.schema — NEW: every range widened: | 0..200, | 0..200, | 0..2000
 //
 // One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
 // The OLD and the NEW file of this pair differ by EXACTLY the row named above,
@@ -12,5 +12,7 @@ fixed table RangeWiden
 {
     lead  uint32 = 1
     v     int32 = 0 | min = 0, max = 200
+    vals  [4]int32 | min = 0, max = 200
+    u     uint64 = 10 | min = 0, max = 2000
     trail uint32 = 2
 }

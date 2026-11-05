@@ -594,7 +594,6 @@ func (m *fixedImage) elem(f *ir.Field) {
 	}
 }
 
-
 // runCustomFixedGoose generates the type and table surfaces for u (plus optional
 // lineage) and runs mainBody under the Goose compiler, returning stdout.
 func runCustomFixedGoose(t *testing.T, u *ir.Unit, lineage map[string][]FixedEvolutionEntry, mainBody string, filesIn map[string][]byte) string {

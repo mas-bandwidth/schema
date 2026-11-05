@@ -439,7 +439,7 @@ func TestCPPRequiredPast512Fields(t *testing.T) {
 	t.Parallel()
 	var sb strings.Builder
 	sb.WriteString("package probe\ntable WideReq\n{\n")
-	for i := 0; i < 519; i++ {
+	for i := range 519 {
 		fmt.Fprintf(&sb, "    f%d int32\n", i)
 	}
 	sb.WriteString("    f519 int32 | required\n}\n")
