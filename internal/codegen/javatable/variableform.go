@@ -3613,15 +3613,15 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
 	}
 	fmt.Fprintf(&b, "        if (r == null) { return null; }\n")
-	fmt.Fprintf(&b, "        Value v = new Value();\n")
 	if st.FixedDeclared {
-		fmt.Fprintf(&b, "        readFields(r, v, null, report);\n")
-		fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
-		fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
-		fmt.Fprintf(&b, "        if (report.malformed) { return null; }\n")
-		fmt.Fprintf(&b, "        return v;\n")
+		// a fixed table's file is form 3 (§3.4): the variable form is the one
+		// before it, and a reader that expects a fixed table refuses every other
+		fmt.Fprintf(&b, "        report.refused = true;\n")
+		fmt.Fprintf(&b, "        report.reason = \"previous_form\";\n")
+		fmt.Fprintf(&b, "        return null;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	} else {
+		fmt.Fprintf(&b, "        Value v = new Value();\n")
 		fmt.Fprintf(&b, "        report.rootTypeId = TYPE_ID;\n")
 		fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);\n")
 		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
