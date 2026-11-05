@@ -77,6 +77,9 @@ var tagGoneFromRelease = map[string][]string{
 var tagRefusesEveryBuild = map[string][]string{
 	"elixir": {`raise ArgumentError, "value.shot is not a Shot value: #{inspect(value_shot_other)}"`},
 	"go":     {"if value.Type > ShotTypeMax {"},
+	// js: the flat writer has no PRODUCTION/checked fork; the tag validates
+	// in every build, return -1, as the non-assert legs do.
+	"js": {"!Number.isInteger(value.shot.type) || value.shot.type < 0 || value.shot.type > 2"},
 	// Goose has no build-removable assert: the writer returns the refusal
 	// kind before the tag rides (internal/codegen/goose/wire.go)
 	"goose": {"if value.Type > ShotTypeMax { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
@@ -102,16 +105,6 @@ func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 			// no writer yet: the claim is owed (countedbirth_test.go,
 			// packetWriterOwed)
 
-		case target == "js":
-			// the fork, not a statement: the contract lives in the checked
-			// flat writer and the production writer is free of it
-			const want = "value.shot.type < 0 || value.shot.type > 2"
-			if got := jsFlatWriter(t, text, "writeVolleyFlatChecked"); !strings.Contains(got, want) {
-				t.Errorf("js: the checked flat writer does not hold the tag, %q absent", want)
-			}
-			if got := jsFlatWriter(t, text, "writeVolleyFlatProduction"); strings.Contains(got, want) {
-				t.Errorf("js: the PRODUCTION flat writer still holds the tag: %q survives release", want)
-			}
 
 		case target == "rust":
 			// an out-of-set tag cannot be BUILT: Shot is a Rust enum and the

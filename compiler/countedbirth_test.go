@@ -91,6 +91,9 @@ var bornAtMinimum = map[string]string{
 var refusesEveryBuild = map[string][]string{
 	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
 	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
+	// js: the flat writer has no PRODUCTION/checked fork; the count range
+	// validates in every build, return -1, as the non-assert legs do.
+	"js": {"!Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8"},
 	// Goose's `assert` aborts in every build and the language has no
 	// build-removable check, so the writer returns the refusal kind, Go's form
 	// (internal/codegen/goose/write.go)
@@ -226,19 +229,6 @@ func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 		text := generatedText(t, countedAboveZero, target)
 
 		if writerStillOwed(t, target, text) {
-			continue
-		}
-
-		if target == "js" {
-			// the fork, not a statement: the contract lives in the checked
-			// writer and the production writer is free of it
-			const want = "value.windowCount < 2 || value.windowCount > 8"
-			if got := jsFlatWriter(t, text, "writeTFlatChecked"); !strings.Contains(got, want) {
-				t.Errorf("js: the checked flat writer does not hold the count, %q absent", want)
-			}
-			if got := jsFlatWriter(t, text, "writeTFlatProduction"); strings.Contains(got, want) {
-				t.Errorf("js: the PRODUCTION flat writer still holds the count: %q survives release", want)
-			}
 			continue
 		}
 
