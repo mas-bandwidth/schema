@@ -1596,12 +1596,15 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 		// it carries and there is no buffer-level entry point to it
 		return
 	}
-	g.pf("// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save\n")
-	g.pf("// makes in every build the measure makes first, and a value that does not fit\n")
-	g.pf("// is refused there too, so the caller's buffer is untouched on -1.\n")
+	g.pf("// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the\n")
+	g.pf("// measure runs first and refuses before the first byte, so the caller's\n")
+	g.pf("// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert\n")
+	g.pf("// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.\n")
 	g.pf("inline int64_t %sSave( const %s & value, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
+	g.pf("#ifndef NDEBUG\n")
 	g.pf("    const int64_t need = %sMeasure( value ); // the value is asked whole before the first byte\n", st.Name)
 	g.pf("    if ( need < 0 || capacity < need ) { return -1; }\n")
+	g.pf("#endif\n")
 	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
 	// writer's capacity is the caller's minus the four trailer bytes, so the
 	// body can never consume the room the trailer needs; the seal then covers
