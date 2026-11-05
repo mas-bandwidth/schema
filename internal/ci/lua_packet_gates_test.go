@@ -3,6 +3,7 @@ package ci
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -35,11 +36,24 @@ func TestLuaPacketGatesWiredWithControls(t *testing.T) {
 	}
 
 	lua := read("make/lua.mk")
-	carries("make/lua.mk (test-lua)", lua,
+	// The gates are wired only when the six names are prerequisites of
+	// test-lua itself: they also occur in the .PHONY lines and in the target
+	// definitions, so a whole-file search cannot tell "test-lua runs these
+	// six targets" from "these six targets exist somewhere in the file".
+	prereqs := targetPrereqs(lua, "test-lua")
+	if len(prereqs) == 0 {
+		t.Fatal("make/lua.mk has no test-lua target")
+	}
+	for _, want := range []string{
 		"packet-utf8-lua", "packet-utf8-lua-negative-control",
 		"packet-wide-lua", "packet-wide-lua-negative-control",
 		"packet-defaults-lua", "packet-defaults-lua-negative-control",
-		"packet-finite-lua")
+		"packet-finite-lua",
+	} {
+		if !slices.Contains(prereqs, want) {
+			t.Errorf("make/lua.mk (the test-lua prerequisites) does not carry %q", want)
+		}
+	}
 	for _, gate := range []string{
 		"packet-utf8-lua packet-utf8-lua-negative-control",
 		"packet-wide-lua packet-wide-lua-negative-control",
@@ -76,4 +90,29 @@ func TestLuaPacketGatesWiredWithControls(t *testing.T) {
 		`"packet-utf8-lua-negative-control"`,
 		`"packet-wide-lua-negative-control"`,
 		`"packet-defaults-lua-negative-control"`)
+}
+
+// targetPrereqs returns the prerequisite names a make target is given in a
+// make file's text. Make allows a target to carry more than one rule, so
+// every "<target>:" line counts, and a rule may continue over a backslash.
+// Recipe lines are not rules and are skipped.
+func targetPrereqs(makeText, target string) []string {
+	var names []string
+	lines := strings.Split(makeText, "\n")
+	for i := 0; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "\t") {
+			continue
+		}
+		rule := strings.TrimSpace(lines[i])
+		for strings.HasSuffix(rule, "\\") && i+1 < len(lines) {
+			rule = strings.TrimSuffix(rule, "\\") + " " + strings.TrimSpace(lines[i+1])
+			i++
+		}
+		rest, ok := strings.CutPrefix(rule, target+":")
+		if !ok {
+			continue
+		}
+		names = append(names, strings.Fields(rest)...)
+	}
+	return names
 }
