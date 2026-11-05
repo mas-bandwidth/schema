@@ -408,7 +408,9 @@ rest (§5.8 row 4).
 - **A RANGED SCALAR** outside the min and max the plan carries: `REFUSE out_of_range`, naming the field.
   **A fixed-point field's bounds are in VALUE UNITS and its storage is raw**, so both ends are shifted by
   `F` first; a `bits(N)` past `2^N - 1` refuses by the same name. A COMPRESSED FLOAT is a ranged scalar
-  here, its range carried by the plan like any other.
+  here, its range carried by the plan like any other. **Every element of a ranged FIXED ARRAY is refused the
+  same as a scalar**, each by the same name. **The comparison is in the field's own type**: signed for a
+  signed kind, UNSIGNED for an unsigned one, so a `uint64` at or above `2^63` is past the max and refuses.
 - **A UNION TAG past the plan's arm count, or an ENUM ORDINAL past the plan's top variant (the `ordinal` op's
   FORGED FLAG, set instead of landing a value): `REFUSE out_of_range`** — a value with no name in the writer's set is not one the writer wrote
   (fixes 5, 9 and 14, as ruled 2026-11-03). This pass is the ONLY place a tag or an ordinal is checked, and it

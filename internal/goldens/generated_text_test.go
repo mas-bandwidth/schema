@@ -54,7 +54,11 @@ func machineWords(t *testing.T) []string {
 			words = append(words, host[:i])
 		}
 	}
-	if u, err := user.Current(); err == nil && u.Username != "" {
+	// a GitHub-hosted runner's account is the word "runner", which the emitted
+	// runtimes use as an ordinary word (the fixed-form plan runner); its home
+	// directory, below, still names that machine
+	if u, err := user.Current(); err == nil && u.Username != "" &&
+		!(os.Getenv("RUNNER_ENVIRONMENT") == "github-hosted" && u.Username == "runner") {
 		words = append(words, u.Username)
 	}
 	if root, err := filepath.Abs("../.."); err == nil {

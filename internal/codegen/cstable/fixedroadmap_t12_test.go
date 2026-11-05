@@ -426,7 +426,6 @@ func t12R29(t *testing.T) {
 	if !ok {
 		t.Fatal("no lineage entry for the writer")
 	}
-	we.Ranges = []FixedRangeSpec{{Name: "n", Lo: 0, Hi: 100}}
 	files, err := GenerateLineage(reader, map[string][]FixedLineageEntry{"Band": {we}})
 	if err != nil {
 		t.Fatalf("GenerateLineage: %v", err)
@@ -496,7 +495,6 @@ func t12R29Forged(t *testing.T) {
 	if !ok {
 		t.Fatal("no lineage entry for the writer")
 	}
-	we.Ranges = []FixedRangeSpec{{Name: "n", Lo: 0, Hi: 100}}
 	dir := t.TempDir()
 	write := func(root string, files map[string][]byte) {
 		for name, data := range files {

@@ -157,7 +157,6 @@ func TestJavaDeclaredForms(t *testing.T) {
 		"wire,cook,block",
 		"wire,json,cook,block",
 	} {
-		dec := dec
 		t.Run("variable/"+dec, func(t *testing.T) {
 			t.Parallel()
 			schema := `package probe
