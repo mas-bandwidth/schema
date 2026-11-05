@@ -2278,8 +2278,9 @@ public final class TableJson {
 
     // esc writes one string as a JSON string, escaping the code points JSON
     // requires and passing every other code point through raw (§16.2). A
-    // control character becomes an escape; a lone surrogate is a replacement
-    // character (§16.3).
+    // control character becomes an escape; an unpaired surrogate is text that
+    // is not text, which refuses the whole write (docs/SPEC-TABLES.md §16.14,
+    // W0).
     public static void esc(StringBuilder b, String s) {
         b.append('"');
         for (int i = 0; i < s.length(); i++) {
@@ -2314,7 +2315,7 @@ public final class TableJson {
                                 || i + 1 >= s.length()
                                 || s.charAt(i + 1) < 0xdc00
                                 || s.charAt(i + 1) > 0xdfff) {
-                            b.append('\ufffd');
+                            throw new Refused("a string holds an unpaired surrogate — the writer refuses text that is not text (docs/SPEC-TABLES.md §16.3, §16.14)");
                         } else {
                             b.append(c).append(s.charAt(i + 1));
                             i++;
@@ -4156,6 +4157,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	}
 
 	fmt.Fprintf(b, "    static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {\n")
+	b.WriteString("        if (depth > TableJson.In.MAX_JSON_DEPTH) { throw new TableJson.Refused(\"a table past the depth cap of 128 (docs/SPEC-TABLES.md §16.7)\"); }\n")
 	if st.JsonArray && len(st.Fields) == 1 {
 		writeJsonFieldValue(b, u, st, st.Fields[0])
 		b.WriteString("    }\n\n")
