@@ -25,6 +25,12 @@ const tableIDBuckets = %d
 const tableWireBytesID uint64 = 0x%016x
 const tableWireStringID uint64 = 0x%016x
 `, n, buckets, ir.TableWireId("bytes"), ir.TableWireId("string")) + source + tableWireCheckSource
+	// A unit with a node table carries the map on its reader: a pointer inside a
+	// slot the reader cannot name still names its target, and the graph walk
+	// starts there too (docs/SPEC-TABLES.md §4, §6.5).
+	if len(variableTableNames(u)) > 0 {
+		res = tableSourceReplace(res, "  c.nodes=0 // tableWireSkipNodes", "  c.nodes=r.Nodes.Count;r.Nodes.Mark(index) // tableWireSkipNodes", 1)
+	}
 	if len(ir.WideTextFields(u)) > 0 {
 		res += tableWStringSource + tableWStringWriteSource
 	}

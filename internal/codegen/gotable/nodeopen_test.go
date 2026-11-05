@@ -11,9 +11,7 @@ import (
 // TestTableOpenHasNoWirePrepass is the red the card names: the open must not
 // run tableWireVerify over the whole file before the body read, because the
 // body read is the one walk that holds the wire-alone conditions
-// (docs/SPEC-TABLES.md §4, §6.5). A node table is verified by tableWireVerify
-// in the region load, the reader that carries it, so the plain open has
-// nothing left to prepass.
+// (docs/SPEC-TABLES.md §4, §6.5).
 func TestTableOpenHasNoWirePrepass(t *testing.T) {
 	t.Parallel()
 	src, err := os.ReadFile("wirecheck.go")
@@ -31,6 +29,28 @@ func TestTableOpenHasNoWirePrepass(t *testing.T) {
 	}
 	if strings.Contains(body, "tableWireVerify") {
 		t.Fatal("tableOpenChecked still runs the separate tableWireVerify prepass")
+	}
+}
+
+// TestRegionLoadHasNoWirePrepass is the reader's remaining red: the region and
+// builder loads must not call tableWireVerify over the opened file before the
+// node and root body reads either. The fields are held as they are decoded,
+// a record of a type the reader cannot name is walked where it is skipped, and
+// the graph is judged over the decoded nodes (docs/SPEC-TABLES.md §4, §6.5).
+func TestRegionLoadHasNoWirePrepass(t *testing.T) {
+	t.Parallel()
+	src, err := os.ReadFile("regions.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(src)
+	if strings.Contains(text, "tableWireVerify(") {
+		t.Fatal("regions.go still calls the separate tableWireVerify prepass before the body read")
+	}
+	for _, want := range []string{"tableWireRecordCheck(", "tableCycleCheckReason("} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("regions.go does not verify in the decode walk: %s absent", want)
+		}
 	}
 }
 
@@ -92,6 +112,12 @@ func TestNodeTableInTheBodyWalk(t *testing.T) {
 	bad := file(&ids, func(w *TableWriter) {}, leaf(&ids, 3))
 	if NodeLoad(region(1<<16), bad, nil) != nil {
 		t.Fatal("a record no pointer reaches was accepted")
+	}
+	// a record of a type this reader cannot name is walked where it is
+	// skipped, so damage inside it refuses the same load
+	badUnknown := record{0x0bad0bad0bad0bad, body(&ids, func(w *TableWriter) { w.ID(0x1234); w.Put8(1); w.Put8(2); w.Put8(0) })}
+	if NodeLoad(region(1<<16), file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) }, leaf(&ids, 3), badUnknown), nil) != nil {
+		t.Fatal("a damaged record of a type the reader cannot name was accepted")
 	}
 	// a fixed root refuses the reserved node-table id in its own body walk,
 	// with no partial value
