@@ -62,7 +62,7 @@ var orphanCycleSpecs = []orphanCycleSpec{
 		vector: "pointer_orphan_cycle",
 		dir:    "pointers",
 		root:   "Scene",
-		from:   "if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then",
+		from:   "if not report.malformed and cyclic(ctx, #ctx.nodes + 1) then",
 		to:     "if not report.malformed and D.number_nodes(T, desc, root, false) == nil then",
 	},
 	{

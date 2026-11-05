@@ -50,7 +50,7 @@ var luaVectorCases = []luaVectorCase{
 		"    local n = r_leb(r)\n    if r.bad or not fits(r, n) then return false end",
 		"    local n = r_leb(r)\n    if r.bad or n < 0 or r.at + n > r.lim then return false end", 1},
 	{"pointer_orphan_cycle", "pointers", "Scene",
-		"if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then",
+		"if not report.malformed and cyclic(ctx, #ctx.nodes + 1) then",
 		"if not report.malformed and D.number_nodes(T, desc, root, false) == nil then", 1},
 	{"map_duplicate_pointer_past_table", "maps", "Chunks",
 		"if pp.holder == out and pp.key == last then pp.holder = ctx.sink end",

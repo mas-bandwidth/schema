@@ -403,3 +403,44 @@ func referenceCount(text string) int {
 		}
 	}
 }
+
+// TestLobsterJsonTextTotalNegativeControl takes the JSON read's text-list
+// total out (docs/SPEC-TABLES.md §2.13: every element is kept whatever the
+// bytes already spent) and requires the comparison to go red on hostile rows
+// that exercise the total, text-total-past among them, and on nothing else.
+func TestLobsterJsonTextTotalNegativeControl(t *testing.T) {
+	t.Parallel()
+	order, byUnit, gen := jsonUnits(t)
+	var gotRed []string
+	for _, key := range order {
+		if key != "featurewitnesses" {
+			continue
+		}
+		g, rows := gen[key], byUnit[key]
+		patchJson(t, g, "                if n <= tot.total - spent:\n", "                if true:\n")
+		res := runJsonUnit(t, g, rows)
+		for i, r := range rows {
+			if r.kind == "instance" {
+				golden, _ := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", r.name+".json"))
+				if string(res.written[i]) != string(golden) {
+					gotRed = append(gotRed, "write "+r.name)
+				}
+				continue
+			}
+			text, _ := os.ReadFile(filepath.Join(root, r.tree, r.root+".json"))
+			if res.verdict[i] != goJsonVerdict(g.u, r.root, text) {
+				gotRed = append(gotRed, "hostile "+r.name)
+			}
+		}
+	}
+	sort.Strings(gotRed)
+	if !slices.Contains(gotRed, "hostile text-total-past") {
+		t.Fatalf("NEGATIVE CONTROL FAILED: without the total, text-total-past still agreed (red: %v)", gotRed)
+	}
+	for _, red := range gotRed {
+		if !strings.HasPrefix(red, "hostile text-total-") {
+			t.Fatalf("NEGATIVE CONTROL FAILED: the total's sabotage also turned %q red (red: %v)", red, gotRed)
+		}
+	}
+	t.Logf("the total's sabotage went red on exactly: %s", strings.Join(gotRed, ", "))
+}

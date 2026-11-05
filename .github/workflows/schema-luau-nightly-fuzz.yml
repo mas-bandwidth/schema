@@ -33,6 +33,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
+          # no Actions cache on a fleet runner: go and its build cache are the
+          # host's, and restoring the hosted cache moves gigabytes per job
+          cache: false
           go-version-file: go.mod
       - name: Luau 0.741 (pinned release)
         run: make dist-luau
@@ -50,6 +53,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
+          # no Actions cache on a fleet runner: go and its build cache are the
+          # host's, and restoring the hosted cache moves gigabytes per job
+          cache: false
           go-version-file: go.mod
       - name: Luau 0.741 (pinned release)
         run: make dist-luau

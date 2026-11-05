@@ -1588,6 +1588,9 @@ def map_key(body:Reader, k:FieldDescriptor, entry:Record) -> Value, bool, bool, 
         if id == map_key_id:
             if kind != want and widens(kind, want):
                 widened = true
+                // this occurrence replaces the earlier key's kind (§2.8, §3:
+                // the last occurrence is the one kept)
+                kind_bad = false
                 if not scalar_at(scan, cell, k, want, kind):
                     return cell, false, kind_bad, widened
                 continue
@@ -1992,7 +1995,7 @@ def decode_variable(st:LoadState, root:Record, hi:int):
 // Each vertex is entered once: a pointer to an OPEN vertex is a cycle, and a
 // pointer to a CLOSED one is a legal share. The walk keeps its own stack, so
 // it is linear in vertices plus edges and a chain costs no stack.
-def load_cyclic(st:LoadState, root:Record) -> bool:
+/**/def load_cyclic(st:LoadState, root:Record) -> bool:
     let all:[Record] = [root]
     for(st.nodes) node:
         let nr = node.rec
