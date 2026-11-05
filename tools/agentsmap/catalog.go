@@ -81,6 +81,7 @@ var catalog = []Entry{
 	e("internal/ci", "workflow pin and SDK gates", "go test ./internal/ci", "go test ./internal/ci"),
 	page("internal/codegen", "nine language emitters", "go test ./internal/codegen/...", "go test ./internal/codegen/..."),
 	e("internal/docgate", "link-and-citation gate over the pages", "go test ./internal/docgate", "make docs-check"),
+	e("internal/fixedproof", "leg-independent fixed-table proof suite", "go test ./internal/fixedproof", "go test ./internal/fixedproof"),
 	e("internal/fixedvector", "fixed form's shared cross-version vectors", "go test ./internal/fixedvector", "go test ./internal/fixedvector"),
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
 	e("internal/fuzz", "seeded fuzz corpus", "go test ./internal/fuzz", "go test ./internal/fuzz"),
