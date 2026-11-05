@@ -6226,8 +6226,9 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
 	@grep -m1 "FAILED" $(MESSAGE_TEXT_LEG_NC)/log
 	@echo "negative control: an emitted reader that accepts ill-formed message text turns the pinned vector RED"
 
-# The GENERATED half of the data: the JSON text of every instance and the read
-# report of every evolution case, both from the compiler's own engine.
+# The GENERATED half of the data: the JSON text of every instance, the read
+# report of every evolution case, and the canonical write-back wire of every
+# readable report, framing and hostile row, all from the compiler's own engine.
 .PHONY: conformance-generate
 conformance-generate: build/conformance-harness
 	./build/conformance-harness generate
