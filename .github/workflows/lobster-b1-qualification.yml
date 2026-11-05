@@ -22,6 +22,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
       - name: Qualify exact packet package
+        env:
+          SCHEMA_SLOW: '1'
         run: |
           test "$(git rev-parse HEAD)" = 3d0d63e642b415b2a1a61071a91b52d0bc69e9ae
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
