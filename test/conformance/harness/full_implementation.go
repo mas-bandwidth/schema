@@ -10,7 +10,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -125,7 +124,7 @@ func decodeImplementationWitness(u *ir.Unit, inst Instance) (*tabletext.Model, *
 	}
 	value := model.New(root)
 	var report tabletext.Report
-	ok, err := tablewire.Decode(model, value, wire, &report)
+	ok, err := fileDecode(model, value, wire, &report)
 	if err != nil || !ok || !report.Silent() || report.Refused || report.NonFiniteFloat != "" {
 		return nil, nil, false, fmt.Errorf("positive wire does not decode cleanly: ok=%t report=%+v error=%v", ok, report, err)
 	}
@@ -158,7 +157,7 @@ func decodeImplementationWitness(u *ir.Unit, inst Instance) (*tabletext.Model, *
 // Integrity is handled by the same neutral file codec used by pack/unpack.
 // There is deliberately no second wrapper which could append or strip twice.
 func encodeImplementationWitness(model *tabletext.Model, value *tabletext.Instance) ([]byte, error) {
-	return tablewire.Encode(model, value)
+	return fileEncode(model, value)
 }
 
 // Walk actual stored values, not every possible declaration edge. Nil pointers,

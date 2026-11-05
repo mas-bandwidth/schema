@@ -12,7 +12,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -388,7 +387,7 @@ func TestImplementationIntegrityMatchesGeneratedGoGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := tablewire.Encode(model, value)
+	body, err := fileEncode(model, value)
 	if err != nil {
 		t.Fatal(err)
 	}

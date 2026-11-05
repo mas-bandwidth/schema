@@ -253,14 +253,14 @@ func TestCTableWireWidening(t *testing.T) {
 	model := tabletext.NewModel(u)
 	{
 		var report tabletext.Report
-		_, err := tablewire.Decode(model, model.New(u.Tables["Root"]), nan, &report)
+		_, err := tablewire.DecodeFileForm(model, model.New(u.Tables["Root"]), nan, &report)
 		if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](err); !refused {
 			t.Fatalf("the oracle must refuse the NaN rung as non_finite_float: %v", err)
 		}
 	}
 	value := model.New(u.Tables["Root"])
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(model, value, wire, &report); err != nil || !ok {
+	if ok, err := tablewire.DecodeFileForm(model, value, wire, &report); err != nil || !ok {
 		t.Fatalf("oracle decode: %v %v", ok, err)
 	}
 	if report.Widened != 5 || report.Clamped != 4 || report.Malformed {

@@ -288,10 +288,10 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	// written back the same way (docs/SPEC-TABLES.md §3.3). Every other rule
 	// of the read is §3's and §4's, unchanged, so the branch is here and
 	// nowhere else in this file.
-	decode := func() (bool, error) { return tablewire.DecodeRegion(r.model, inst, data, &rep) }
-	encode := func() ([]byte, error) { return tablewire.Encode(r.model, inst) }
+	decode := func() (bool, error) { return fileDecodeRegion(r.model, inst, data, &rep) }
+	encode := func() ([]byte, error) { return fileEncode(r.model, inst) }
 	if r.builder {
-		decode = func() (bool, error) { return tablewire.Decode(r.model, inst, data, &rep) }
+		decode = func() (bool, error) { return fileDecode(r.model, inst, data, &rep) }
 	}
 	if r.retain {
 		// THE RETENTION ARM (docs/SPEC-TABLES.md §6.6): the same mutant read
@@ -603,7 +603,7 @@ func (r *wireRoot) countCapped(data []byte) (capped bool) {
 		}
 	}()
 	var rep tabletext.Report
-	_, err := tablewire.Decode(r.model, r.model.New(r.def), data, &rep)
+	_, err := fileDecode(r.model, r.model.New(r.def), data, &rep)
 	_, capped = errors.AsType[*tablewire.CountRefusal](err)
 	return capped
 }

@@ -63,7 +63,7 @@ func cookDifferential(w io.Writer, m *Manifest, manifest, driverCmd, work string
 			big  bool
 		}{{cw.Instance, false}, {cw.Instance + "-be", true}} {
 			rows++
-			tool, _, _, err := u.c.Cook(unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
+			tool, _, _, err := fileCook(u.c, unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
 			if err != nil {
 				fmt.Fprintf(w, "DIFFERS %s: the tool refused it: %v\n", arm.name, err)
 				ok = false
