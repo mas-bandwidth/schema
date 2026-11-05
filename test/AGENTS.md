@@ -65,7 +65,6 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |
 | `packet-wide/` | packet wide-text gates | `make test` | `make test` |
-| `py-packet/` | python packet rows | `make tables-py-packet` | `make tables-py-packet` |
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
 | `rust-agree/` | Rust accessor/descriptor agreement gate | `make tables-rust-accessor-descriptor-agreement` | `make tables-rust-accessor-descriptor-agreement` |
 | `rust-alloc/` | Rust allocation gate, per read path | `make tables-rust-alloc` | `make tables-rust-alloc` |
