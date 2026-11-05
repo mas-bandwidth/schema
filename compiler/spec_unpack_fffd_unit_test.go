@@ -19,13 +19,13 @@ func TestSpecUnpackFffdUnitIsOneAnswer(t *testing.T) {
 	unpack := specTablesSection(t, page,
 		"### 17.3 What comes out", "### 17.4 ")
 
-	if !strings.Contains(writer, "one per maximal subpart") {
-		t.Error("§16.3 must set the ill-formed UTF-8 writer unit to one per maximal subpart")
+	if !strings.Contains(writer, "`-1` with the reason `invalid_value`, naming the field, and nothing is replaced.") {
+		t.Error("§16.3 must state the JSON writer refuses ill-formed text instead of replacing it")
 	}
-	if !strings.Contains(unpack, "ill-formed UTF-8 case handled under §16.3") {
-		t.Error("§17.3 must defer the unpack writer's ill-formed UTF-8 handling to §16.3")
+	if !strings.Contains(unpack, "`invalid_value` (§16.3), which §17.4 makes a nonzero exit.") {
+		t.Error("§17.3 must defer the unpack writer's ill-formed UTF-8 refusal to §16.3")
 	}
 	if strings.Contains(unpack, "one per bad byte") {
-		t.Error("§17.3 must not assign a second replacement unit to unpack")
+		t.Error("§17.3 must not assign a replacement unit to unpack")
 	}
 }

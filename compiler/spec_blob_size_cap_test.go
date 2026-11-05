@@ -44,7 +44,7 @@ func TestSpecBlobPastSizeCapRefusesTheWire(t *testing.T) {
 		"2^32 - 1",
 		"blob_over_size_cap",
 		"-2",
-		"both the strict and the tolerant load return nothing",
+		"the load refuses the same reason and returns nothing",
 	}
 	stales := []string{
 		"§11's derived-size cap",

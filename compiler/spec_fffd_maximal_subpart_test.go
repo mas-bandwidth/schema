@@ -37,38 +37,33 @@ func TestSpecTextFffdIsPerMaximalSubpart(t *testing.T) {
 		stales []string
 	}{
 		{
-			// §16.3: the replacement unit is the Unicode maximal subpart,
-			// with the card's six worked examples.
-			row:  "§16.3 the maximal-subpart unit",
+			// §16.3: the one-read spec refuses ill-formed text by name, never
+			// replacing it with `U+FFFD`, on read and on write.
+			row:  "§16.3 the ill-formed-text rule",
 			text: writer,
 			wants: []string{
-				"A MAXIMAL SUBPART is the unit of that replacement",
-				"The Unicode Standard, chapter 3",
-				"U+FFFD substitution of maximal",
-				"one per maximal subpart",
-				"beginning at the first unconvertible byte",
-				"or, when no such prefix exists, that one byte",
-				"`E2 82 41` writes `U+FFFD` then `A`",
-				"`F0 80 80 80` writes four `U+FFFD`",
-				"`ED A0 80` (a surrogate) writes three",
-				"`C0 AF` writes two",
-				"`F4 90 80 80` writes four",
-				"a lone `FF` writes one",
+				"the READ REFUSES IT BY NAME at every string site",
+				"rather than replacing it",
+				"answers for it rather than emitting a text no",
 			},
 			stales: []string{
+				"A MAXIMAL SUBPART is the unit of that replacement",
+				"one per maximal subpart",
 				"one per sequence",
 				"one `U+FFFD` per ill-formed unit",
 			},
 		},
 		{
-			// §16.2: the wstring row that cites §16.3 now names the
-			// maximal-subpart rule by reference, never restating it.
+			// §16.2: the wstring row states the read refuses ill-formed UTF-8
+			// by name and the writer refuses it `invalid_value`.
 			row:  "§16.2 the reader row that cites §16.3",
 			text: mapping,
 			wants: []string{
-				"§16.3's maximal-subpart rule writes it as `U+FFFD`",
+				"ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`",
+				"the writer refuses it `invalid_value` (§16.3)",
 			},
 			stales: []string{
+				"§16.3's maximal-subpart rule writes it as `U+FFFD`",
 				"and §16.3 writes it as `U+FFFD`",
 			},
 		},
