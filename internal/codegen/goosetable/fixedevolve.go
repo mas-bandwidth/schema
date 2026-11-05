@@ -36,6 +36,11 @@ type FixedEvolutionEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
+	// Ranges are the WRITER's ranged integer leaves (ir.TableFixedWriterRanges),
+	// so a read through this entry clamps a value to what its writer could
+	// have stored before the reader's own bounds pass runs
+	// (docs/FIXED-FORM-ALGORITHM.md §4.5).
+	Ranges []ir.TableFixedWriterRange
 }
 
 // FixedEvolutionOf is the entry a unit's OWN build locks for table name: its
@@ -48,7 +53,7 @@ func FixedEvolutionOf(u *ir.Unit, name string) (FixedEvolutionEntry, bool) {
 			continue
 		}
 		layout, hash, body := fixedRootFacts(st)
-		return FixedEvolutionEntry{Wire: hash, Layout: layout, Record: 8 + body}, true
+		return FixedEvolutionEntry{Wire: hash, Layout: layout, Record: 8 + body, Ranges: ir.TableFixedWriterRanges(st)}, true
 	}
 	return FixedEvolutionEntry{}, false
 }
@@ -297,6 +302,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
 		e.p("            if r != 0 { return schema_rt::fixed_evolve_refuse(report, r, false); }\n")
 		e.p("            _%sFixedRead(img, 0, values[k]);\n", n)
+		e.emitWriterClamps(st, olds[i].Ranges)
 	}
 	e.p("        }\n")
 	e.p("        report.clamped += _%sFixedClamp(values[k]);\n", n)
@@ -321,6 +327,41 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	}
 	e.p("    return count;\n")
 	e.p("}\n")
+}
+
+// emitWriterClamps holds an older entry's ranged leaves to its WRITER's range
+// (docs/FIXED-FORM-ALGORITHM.md §4.5), counting each clamp, before the
+// reader's own bounds pass. A range lands on the reader's field the shared
+// helper matches (ir.TableFixedWriterField): a scalar, or every element of a
+// fixed array, each element held the same as a scalar. The lock refuses a
+// narrowed range, so the writer's range lies inside the reader's and the
+// reader's pass that follows never moves it.
+func (e *fixedEvolveEmit) emitWriterClamps(st *ir.Struct, ranges []ir.TableFixedWriterRange) {
+	for j, r := range ranges {
+		for _, f := range st.Fields {
+			wf, ok := ir.TableFixedWriterField(f, r)
+			if !ok {
+				continue
+			}
+			val := fieldPlace("values[k]", f).val
+			bounds := scalarBounds(elemOf(wf))
+			if f.Array == ir.ArrayFixed {
+				i := fmt.Sprintf("wr%d", j)
+				e.p("            var %s: i64 = 0;\n", i)
+				e.p("            while %s < %d {\n", i, f.ArrayBound)
+				val = val + "[" + i + "]"
+				for _, b := range bounds {
+					e.p("                if %s { %s = %s; report.clamped += 1; }\n", b.over(val), val, b.land)
+				}
+				e.p("                %s += 1;\n            }\n", i)
+				break
+			}
+			for _, b := range bounds {
+				e.p("            if %s { %s = %s; report.clamped += 1; }\n", b.over(val), val, b.land)
+			}
+			break
+		}
+	}
 }
 
 // addExpr joins a base expression and offsets without a leading "+".

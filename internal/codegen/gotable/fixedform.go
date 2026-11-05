@@ -1137,6 +1137,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("var %sFixedLineagePlans = tableFixedLineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash)\n\n",
 		st.Name, st.Name, st.Name, st.Name, st.Name)
 
+	// THE WRITER'S RANGES, per lineage entry (docs/FIXED-FORM-ALGORITHM.md
+	// §4.5): a record read under an older entry is held to what THAT writer
+	// declared, then to this reader's own ranges. One straight-line pass per
+	// entry that bounds anything, spelled by the reader's own clamp emitter
+	// over the reader's storage with the writer's numbers.
+	writerBounds := g.emitFixedWriterBounds(st, fixedWriterFields(st, entries, hash))
+
 	// THE PREFILL IS LAID ONCE (§4.3): the hole list and the default image are
 	// per plan and computed once, at init, never per call. A load path that
 	// recomputed either would allocate on every call with records.
@@ -1378,6 +1385,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("\t\t\tfor j := range k + 1 {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
 		g.pf("\t\t\ttableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())\n\t\t\treport.Field = why\n\t\t\treturn -1\n\t\t}\n")
 	}
+	if len(writerBounds) > 0 {
+		g.pf("\t\tswitch pick {\n")
+		for _, i := range writerBounds {
+			g.pf("\t\tcase %d:\n", i)
+			g.pf("\t\t\tif !%sFixedBoundsKnown%d(&values[k]) {\n", st.Name, i)
+			g.pf("\t\t\t\tfor j := range k + 1 { %sReset(&values[j]) }\n", st.Name)
+			g.pf("\t\t\t\treturn tableFixedRefuse(report, TableRefuseOutOfRange.Error())\n\t\t\t}\n")
+		}
+		g.pf("\t\t}\n")
+	}
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4, §4.6).\n")
@@ -1402,6 +1419,24 @@ and is the cost the identity plan exists to avoid.
 THE PASS RUNS OVER STORAGE, so ONE pass covers both plans. It walks only what a
 read can have written: a counted array's LIVE elements and never its slack, an
 optional's payload only when the present byte says so. */
+
+// emitFixedWriterBounds checks a selected lineage entry against its writer ranges.
+func (g *tableGen) emitFixedWriterBounds(st *ir.Struct, perEntry [][]*ir.Field) []int {
+	var out []int
+	for i, fields := range perEntry {
+		if len(fields) == 0 {
+			continue
+		}
+		g.pf("func %sFixedBoundsKnown%d(value *%s) bool {\n\tvar over int32\n", st.Name, i, g.fixedStorage(st.Name))
+		g.pf("\t_ = value\n")
+		for _, f := range fields {
+			g.emitFixedClampField(f, "value", 1, fixedPassClamp)
+		}
+		g.pf("\treturn over == 0\n}\n\n")
+		out = append(out, i)
+	}
+	return out
+}
 
 func (g *tableGen) emitFixedBoundsBodyFn(st *ir.Struct) {
 	if !ir.TableFixedClampNeeded(st) {

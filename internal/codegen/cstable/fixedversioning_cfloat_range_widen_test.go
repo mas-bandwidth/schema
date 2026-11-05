@@ -50,7 +50,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
             }
             if (back[0].Lead != 1u || back[0].Trail != 2u)
             {
-                bad += ProbeLog.Fail(@NAME@, "a neighbour moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
+                bad += ProbeLog.Fail(@NAME@, "a neighbor moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
             }
             if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != @OLDAIM@)
             {
@@ -77,7 +77,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
             }
             if (back[0].Lead != 1u || back[0].Trail != 2u)
             {
-                bad += ProbeLog.Fail(@NAME@, "a neighbour moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
+                bad += ProbeLog.Fail(@NAME@, "a neighbor moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
             }
             if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != @HOSTILEAIM@)
             {
@@ -104,7 +104,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
             }
             if (back[0].Lead != 1u || back[0].Trail != 2u)
             {
-                bad += ProbeLog.Fail(@NAME@, "a neighbour moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
+                bad += ProbeLog.Fail(@NAME@, "a neighbor moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
             }
             if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != 0x40000000)
             {

@@ -76,7 +76,7 @@ print(tostring(report.malformed) .. "|" .. report.reason .. "|" .. tostring(repo
 		name string
 		text string
 	}{
-		{"empty_array_exact_bytes_no_trailing_lf", `[]`},
+		{"empty_array_exact_bytes", `[]`},
 		{"one_goal_exact_bytes_no_padding", `[{"x":1}]`},
 		{"three_goals_exact_bytes_no_padding", `[{"x":1},{"x":2},{"x":3}]`},
 	} {
@@ -90,6 +90,9 @@ print(tostring(report.malformed) .. "|" .. report.reason .. "|" .. tostring(repo
 			if err != nil {
 				t.Fatal(err)
 			}
+			// the canonical text ends with exactly one newline (§16.1), the
+			// array root's as every root's; model.Write is the value alone
+			wantText = append(wantText, '\n')
 			wantWire, err := tablewire.Encode(model, inst)
 			if err != nil {
 				t.Fatal(err)

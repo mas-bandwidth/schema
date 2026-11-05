@@ -44,7 +44,7 @@ var mooModuleKeys = map[string][]string{
 	"schema_tables.moo":   {"DocNone", "find", "isKnown", "keyed", "known", "lookup", "table", "union"},
 	"table_block.moo":     {"Begin", "Triple", "Write"},
 	"table_blockread.moo": {"BlockOpen", "Read", "ReadAt", "Triple", "info"},
-	"table_cookread.moo":  {"layout", "open", "read", "record", "union", "unionLayout", "unit", "version"},
+	"table_cookread.moo":  {"layout", "open", "read", "record", "regionAlign", "union", "unionLayout", "unit", "version"},
 	"table_cookwrite.moo": {"cook", "measure"},
 	"table_fixed.moo":     {"Names", "check", "fixed", "load", "measure", "save"},
 	"table_load.moo": {"ReadStrict", "integrityOpen", "load", "loadOpened", "loadTolerant", "newReport", "nonFinite",

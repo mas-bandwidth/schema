@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -371,9 +372,7 @@ IO.puts("NODE_RECORD_LIST_COUNT_OK")
 		t.Fatal("negative control target not found in generated Table.ex")
 	}
 	badFiles := make(map[string][]byte, len(files))
-	for k, v := range files {
-		badFiles[k] = v
-	}
+	maps.Copy(badFiles, files)
 	badFiles["Table.ex"] = []byte(strings.Replace(tableEx, target, sabotage, 1))
 	if badOut, badErr := runArmProbe(t, elixirBinary(t), badFiles, probe); badErr == nil || !strings.Contains(badOut, "expected -1 for mutant load_measure, got 136") {
 		t.Fatalf("negative control did not expose the swallowed node extent: %v\n%s", badErr, badOut)

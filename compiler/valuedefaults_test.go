@@ -43,6 +43,30 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			gooseCarriesTableWire(t, out, err)
 			continue
 		}
+		if target == "moo" {
+			// the descriptors carry each declared default as the value the
+			// absent-field answer returns: text and bytes as byte strings, the
+			// flags word as a Uint64 constant (internal/codegen/mootable/desc.go)
+			if err != nil {
+				t.Fatalf("moo refused table defaults: %v", err)
+			}
+			var all strings.Builder
+			for _, b := range out {
+				all.Write(b)
+			}
+			for _, want := range []string{
+				`def = "\x75\x6e\x74\x69\x74\x6c\x65\x64"`,     // "untitled"
+				`def = "\x61\x62"`,                             // "ab"
+				`def = "\x6e\x65\x77"`,                         // "new"
+				"serialize.Uint64.new(0x00000003, 0x00000000)", // { Jump, Crouch }
+				"serialize.Uint64.new(0x00000001, 0x00000000)", // { Jump }
+			} {
+				if !strings.Contains(all.String(), want) {
+					t.Errorf("moo descriptors lack %q", want)
+				}
+			}
+			continue
+		}
 		if target == "luau" {
 			// the descriptors carry each declared default as the value the
 			// absent-field answer returns: text, bytes and the flags word
