@@ -6073,13 +6073,16 @@ MESSAGEDEMO_TABLE_INLINE bool UserSaveBody( TableWriter & w, TableIds & ids, con
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t UserSave( const User & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = UserMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -6477,13 +6480,16 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptSaveBody( TableWriter & w, TableIds & ids, c
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t ScriptSave( const Script & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = ScriptMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -6992,13 +6998,16 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBody( TableWriter & w, TableIds & ids
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t SelectionSave( const Selection & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = SelectionMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -7793,13 +7802,16 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t InsertTextSave( const InsertText & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = InsertTextMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -9149,13 +9161,16 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextSaveBody( TableWriter & w, TableIds & id
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t RemoveTextSave( const RemoveText & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = RemoveTextMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -9693,13 +9708,16 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t EditSave( const Edit & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = EditMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -10679,13 +10697,16 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t OpenDocumentSave( const OpenDocument & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = OpenDocumentMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11211,13 +11232,16 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t SaveDocumentSave( const SaveDocument & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = SaveDocumentMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -12034,13 +12058,16 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t TransactionSave( const Transaction & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = TransactionMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -14377,13 +14404,16 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t ToolMessageSave( const ToolMessage & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = ToolMessageMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -16768,13 +16798,16 @@ MESSAGEDEMO_TABLE_INLINE bool CursorSaveBody( TableWriter & w, TableIds & ids, c
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t CursorSave( const Cursor & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = CursorMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -17258,13 +17291,16 @@ MESSAGEDEMO_TABLE_INLINE bool PingSaveBody( TableWriter & w, TableIds & ids, con
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t PingSave( const Ping & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = PingMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)

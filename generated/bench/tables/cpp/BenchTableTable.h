@@ -6182,13 +6182,16 @@ BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, TableIds & id
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t TableEntitySave( const TableEntity & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = TableEntityMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -7741,13 +7744,16 @@ BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, TableIds & ids,
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t TableStatSave( const TableStat & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = TableStatMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -8605,13 +8611,16 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t TableMixedSave( const TableMixed & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = TableMixedMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11609,13 +11618,16 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t TableHitEventSave( const TableHitEvent & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = TableHitEventMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -12278,13 +12290,16 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, TableIds &
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t TableChatEventSave( const TableChatEvent & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = TableChatEventMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -12798,13 +12813,16 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, TableIds
     return !w.overflow;
 }
 
-// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
-// makes in every build the measure makes first, and a value that does not fit
-// is refused there too, so the caller's buffer is untouched on -1.
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t TablePickupEventSave( const TablePickupEvent & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
     const int64_t need = TablePickupEventMeasure( value ); // the value is asked whole before the first byte
     if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)

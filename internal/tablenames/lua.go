@@ -23,7 +23,7 @@ const Lua Backend = 1 << 9
 // by the file that returns the table.
 var luaModuleKeys = map[string][]string{
 	"the unit's table module (<Package>Tables.lua)": {
-		"AnnounceRead", "Announcement", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "Fixed", "FixedEnums",
+		"AnnounceRead", "Announcement", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "Fixed", "FixedEnums", "FixedLoad", "FixedMeasure", "FixedSave",
 		"FixedFields", "FixedUnions", "Keyed", "LoadMessages", "LoadMessagesTolerant", "MeasureMessages", "MessageBatchMax",
 		"MessageEntries", "MessageNodeId", "MessageRefBits", "MessageRoots", "MessageVersionId", "MessageVocabulary",
 		"MessageVocabularyId", "Package", "ReadFixed", "ReadFixedTolerant", "RegionAlign", "Registry", "SaveMessages",
@@ -38,9 +38,9 @@ var luaModuleKeys = map[string][]string{
 		"F32_EXP", "F64_EXP", "ID_TABLE_BOUND", "by_id", "bytes_less", "check_defaults", "count_of", "deprecated_variant", "field",
 		"fingerprint", "finite", "fresh", "guard_holds", "keyed", "list_layout", "map_entries", "number_nodes",
 		"pointer_reachable", "prepare", "record_size", "refuse_deprecated", "refuse_non_finite", "region_align",
-		"reset", "reset_elem", "seal",
+		"reset", "reset_elem", "seal", "cyclic",
 	},
-	"fixed.lua":         {"read", "write"},
+	"fixed.lua":         {"load", "measure", "read", "save", "write"},
 	"json.lua":          {"FromJson", "FromJsonTolerant", "ToJson"},
 	"load.lua":          {"Load", "LoadMeasure", "LoadTolerant", "NewState", "crc32c"},
 	"message.lua":       {"announceRead", "loadMessages", "measureMessages", "saveMessages"},

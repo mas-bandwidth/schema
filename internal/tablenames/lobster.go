@@ -133,7 +133,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"finite_f32", "finite_f32_bits", "finite_f64", "finite_f64_bits", "float_out_of_range", "float_owner",
 		"forget", "forget_cell", "forget_slot", "forget_value", "has", "hex64", "i128_lt", "i128_shl",
 		"key_is_string", "keyed_keys", "keyed_registry", "keyed_shape", "keyed_variants", "kind_signed",
-		"kind_wide", "kind_width", "leb", "load", "load_tolerant", "load_walk", "map_key", "map_key_fits",
+		"kind_wide", "kind_width", "leb", "load", "load_cyclic", "load_tolerant", "load_walk", "map_key", "map_key_fits",
 		"map_key_id", "map_key_order", "map_shape", "mark_seen", "message_vocabulary_id", "nested_body",
 		"new_record", "new_slot", "node_table_bytes", "node_table_id", "parse_float64", "pointer_shape",
 		"read_leb", "read_raw", "reader", "rec_edges", "refill", "refuse_non_finite", "register_retain_capture",
