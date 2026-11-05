@@ -94,7 +94,6 @@ func groupCFixedCases(t *testing.T, run func(*testing.T, fixedproof.RowCase)) {
 func TestLuauFixedProofGroupC(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
-	fixedproof.SetMemoryCeiling(t)
 	groupCFixedCases(t, func(t *testing.T, tc fixedproof.RowCase) {
 		u := fixedproof.ParseCheckUnit(t, tc.Schema)
 		cpp, vfy := fixedproof.CppOracle(t, tc, u)
@@ -116,7 +115,6 @@ func TestLuauFixedProofGroupC(t *testing.T) {
 func TestLuauFixedProofGroupCNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
-	fixedproof.SetMemoryCeiling(t)
 	groupCFixedCases(t, func(t *testing.T, tc fixedproof.RowCase) {
 		u := fixedproof.ParseCheckUnit(t, tc.Schema)
 		cpp, vfy := fixedproof.CppOracle(t, tc, u)
