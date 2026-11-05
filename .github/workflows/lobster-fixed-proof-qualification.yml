@@ -1,7 +1,7 @@
 name: Lobster fixed proof qualification
 on:
   push:
-    branches: [codex/schema-lobster-fixed-proof]
+    branches: [codex/schema-lobster-fixed-proof, 'sprint/schema-lobster-fixedproof-2809.*']
 permissions:
   contents: read
 jobs:
@@ -20,13 +20,18 @@ jobs:
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
       - name: Check action pins
-        run: go test ./internal/ci -run "^TestEveryActionIsPinnedToACommit$" -count=1
+        run: go test -p 4 -parallel 4 -timeout 600s ./internal/ci -run "^TestEveryActionIsPinnedToACommit$" -count=1
+      - name: Build the canonical C++ fixed-form corpus
+        run: make -j 4 tables-fixedform-corpus
       - name: Compare all 49 rows with the live C++ oracle
         env:
           SCHEMA_SLOW: '1'
+          SCHEMA_REQUIRE_CORPUS: '1'
+          SERIALIZE: ${{ github.workspace }}/build/serialize
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobstertable -run '^TestLobsterFixedProofSuite' -count=1 -v
+          test -f "$SERIALIZE/serialize.h"
+          go test -p 4 -parallel 4 -timeout 600s ./internal/codegen/lobstertable -run '^TestLobsterFixed(ProofSuite|ProofEvolution|NestedUnionGuardNames)' -count=1 -v
   baseline:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -36,5 +41,12 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      - name: Install pinned Lobster runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster
       - name: Check workflow, source goldens and table emitter
-        run: go test ./internal/ci ./internal/goldens ./internal/codegen/lobstertable
+        env:
+          LOBSTER: ${{ github.workspace }}/dist/lobster-v2026.8/bin/lobster
+        run: go test -p 4 -parallel 4 -count=1 -timeout 600s ./internal/ci ./internal/goldens ./internal/codegen/lobstertable

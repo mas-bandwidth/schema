@@ -10,27 +10,22 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-func enableLobsterProofWhenPresent() {
-	if p, _ := lobsterrun.Interpreter(); p != "" && os.Getenv("SCHEMA_SLOW") == "" {
-		_ = os.Setenv("SCHEMA_SLOW", "1")
-	}
-}
-
 func TestLobsterFixedProofSuiteValues(t *testing.T) {
-	enableLobsterProofWhenPresent()
 	t.Parallel()
+	slowtest.Gate(t, "Lobster native fixed-proof qualification")
 	fixedproof.RunValueSuite(t, lobsterFixedProofRunner{})
 }
 
 func TestLobsterFixedProofSuiteNegativeControl(t *testing.T) {
-	enableLobsterProofWhenPresent()
 	t.Parallel()
+	slowtest.Gate(t, "Lobster native fixed-proof qualification")
 	fixedproof.RunNegativeControlSuite(t, lobsterFixedProofRunner{})
 }
 

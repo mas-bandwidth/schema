@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -20,8 +21,8 @@ import (
 // retired entries and corrupted controls. The adapter only projects the native
 // result: it does not translate a successful read into a refusal.
 func TestLobsterFixedProofEvolution(t *testing.T) {
-	enableLobsterProofWhenPresent()
 	t.Parallel()
+	slowtest.Gate(t, "Lobster native fixed-proof qualification")
 	fixedproof.RunEvolutionSuite(t, filepath.Join("..", "..", ".."), lobsterFixedProofRunner{})
 }
 
