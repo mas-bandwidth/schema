@@ -105,7 +105,7 @@ wire — exactly as a form-`3` file handed to a variable root is refused by name
 A variable root is form `1`'s, and that is where it goes.
 
 **A READER THAT EXPECTS A FIXED TABLE REFUSES EVERY OTHER FORM, BY NAME.**
-*"If we expect a fixed table, but it is not, refuse."* (Glenn, 2026-11-03.)
+*"If we expect a fixed table, but it is not, refuse."* (the maintainer, 2026-11-03.)
 One rule, for every read at a declared fixed root that carries form `3`:
 `<T>FixedLoad`, the plain `<T>Load`, `ReadStrict` and the
 retain load alike. Form `1` is `previous_form`, form `2` is
@@ -5026,7 +5026,7 @@ one document rather than two.
   checked exactly as a field's is.
   **Bytes left inside a union arm's `L` after a whole inner union are
   damage**, as a byte after the root's own terminator is (above): no writer
-  emits them, and the whole load refuses `wire_damaged` (§4; Glenn's
+  emits them, and the whole load refuses `wire_damaged` (§4; the maintainer's
   2026-10-31 list of input no writer produces).
 
   **Spellings that add no row, and the one way they differ.** A `?T`
@@ -6418,7 +6418,7 @@ offsets past the sender's own range whenever `max - min` is not one less than a
 power of two, exactly as a reference's width can spell values past `E`. No
 writer emits one, and the announcement says what the writer's range was, so the
 reader refuses the batch `out_of_range` (§6.5), and never clamps
-(Glenn, 2026-11-03: a value outside the writer's range refuses). A value inside
+(the maintainer, 2026-11-03: a value outside the writer's range refuses). A value inside
 the sender's range and outside this reader's own refuses by the same name
 (§4). The quantized float's index above `count` refuses as the packet wire
 refuses it (the quantization paragraph, above).
@@ -8103,7 +8103,7 @@ is no run-time path between the two forms** — which is the surprise the keywor
 exists to prevent.
 
 - **THE READ SIDE REFUSES THE OTHER FORM, BY NAME.** *"If we expect a fixed
-  table, but it is not, refuse."* (Glenn, 2026-11-03.) Every reader emitted at
+  table, but it is not, refuse."* (the maintainer, 2026-11-03.) Every reader emitted at
   a fixed root this form is emitted for (`<T>FixedLoad`, the plain `<T>Load`,
   `ReadStrict` and the retain load) reads form `3` and
   refuses form `1` as `previous_form`, with nothing decoded and no counter
@@ -8577,7 +8577,7 @@ There are no version declarations — no fences, no version numbers, no
 retained lineage in the variable form. **Evolution is carried by the wire
 itself**: a field is its name hash and its kind, so a reader of one build
 can read a writer of another along a lawful lineage. **And there is ONE read**
-(Glenn, 2026-11-03: "Cut the tolerant wire. It's too much work. It was a
+(the maintainer, 2026-11-03: "Cut the tolerant wire. It's too much work. It was a
 mistake to try to do it." and "It's best to consistently refuse. Too much
 undefined behavior per-language by trying to be tolerant."). Every read of
 every form returns the whole value or REFUSES the whole load (§6.5); why it
@@ -8696,7 +8696,7 @@ diagnostic name, which is not normative and is never compared:
   nonzero `L` at any position, a reserved id out of place, and every case
   that makes the whole wire damaged (§3). **No reader accepts damage**, on any
   form, which is what lets fifteen targets owe each other one verdict on one
-  payload. Glenn, 2026-10-31: "failing to read something means the whole
+  payload. The maintainer, 2026-10-31: "failing to read something means the whole
   read is undefined".
 - **A NON-FINITE FLOAT — `non_finite_float`** (§3.3), and **ONE BLOB NAMED
   FROM TWO SLOTS — `blob_shared`** (§2.5). Neither is a value a writer emits.
@@ -9790,7 +9790,7 @@ The builder is designed to go wide, lock-free by ownership:
 
 ### 6.5 The two load paths, and the one read
 
-**EVERY READ IS THE STRICT READ** (Glenn, 2026-11-03: "It's best to
+**EVERY READ IS THE STRICT READ** (the maintainer, 2026-11-03: "It's best to
 consistently refuse. Too much undefined behavior per-language by trying to be
 tolerant."). The region load, the builder load, the retaining load (§6.6), the
 fixed load (§3.4), the message read (§3.3), the JSON read (§16) and the
@@ -9804,7 +9804,7 @@ unknown key, keyed slot, union arm, enum variant or flags name, because that
 form is an authoring file and an unknown name in it is a typo, never a newer
 writer. Every other path accepts the same unknown as evolution.
 
-**THE CROSS-LANGUAGE CONTRACT IS ONE OF TWO OUTCOMES** (Glenn, 2026-11-03: "I
+**THE CROSS-LANGUAGE CONTRACT IS ONE OF TWO OUTCOMES** (the maintainer, 2026-11-03: "I
 am actually OK if there is only a generic failure to read. I do not care about
 the specific reporting on a per-instance basis."). For one input every read in
 every language either RETURNS the value, the same value in every language, or
@@ -9855,7 +9855,7 @@ needs, and the model (`OneVerdict`) treats the limits as fixed constants. A
 leg's own plan cap is never below what the compiler can emit for a table it
 generates; a plan that would not fit is a GENERATE-time refusal, never a read.
 
-**DETECTION ORDER IS FREE, AND EACH LANGUAGE TAKES ITS FASTEST.** Glenn,
+**DETECTION ORDER IS FREE, AND EACH LANGUAGE TAKES ITS FASTEST.** The maintainer,
 2026-11-03: "Trying to make both the "failed to read" and the specific details
 of why the read fails, it makes each language have to write exactly the same
 code and do the exact same order when parsing a file. I don't think we need to
@@ -10006,7 +10006,7 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it and every read refuses it |
   | `build_version_mismatch` | the strict announcement read's typed refusal: the peer's build version and the reader's own do not match, carried as `TableBuildVersionMismatch` (§3.3) |
   | `missing_required` | a record lacks a field declared required (§2.3). The diagnostic text is `missing_required: <Table>.<field>`, and the typed `TableMissingRequired` names the fields |
-  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs. **Every read at a declared fixed root answers it** for a form byte `1` it is handed: `<T>FixedLoad`, the plain `<T>Load`, `ReadStrict` and the retain load alike ("The three wires", *"If we expect a fixed table, but it is not, refuse."*, Glenn, 2026-11-03). The status line under "The three wires" names the legs whose plain read at a fixed root does not answer it yet |
+  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs. **Every read at a declared fixed root answers it** for a form byte `1` it is handed: `<T>FixedLoad`, the plain `<T>Load`, `ReadStrict` and the retain load alike ("The three wires", *"If we expect a fixed table, but it is not, refuse."*, the maintainer, 2026-11-03). The status line under "The three wires" names the legs whose plain read at a fixed root does not answer it yet |
   | `newer_form` | a form byte this reader does not carry and is not older than its own (§3, §3.4, §21.3): the fixed load's answer for a byte it does not carry, and the file `Load`'s answer where the byte is not `2` |
   | `message_form_as_file` | a message batch, form byte `2`, handed to a file or fixed reader whose table lives in the message surface (§3.3). The old prose reason "message form requires an announced vocabulary and a message reader" is this member |
   | `layout_unknown` | a fixed file's header hash that no entry of this build's lineage holds (§3.4, §21.3, algorithm §5.3 step 5). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
@@ -10606,7 +10606,7 @@ that loses nothing**: a record's byte cost is each language's own, so at a tight
 capacity two languages would drop different records; each leg's own capacity
 rule is held by its own gate, on its saved bytes. The counters (`unknown`, `retained`, `retain_lost`) are
 per-language diagnostics a caller may consult before a rewrite; they are never
-compared across languages (Glenn, 2026-11-03: "read counters, memory size
+compared across languages (the maintainer, 2026-11-03: "read counters, memory size
 obviously yes these can change per-language").
 
 **REFUSAL IS PER RECORD AND NEVER PARTIAL.** A record the remaining capacity
@@ -13709,7 +13709,7 @@ in build version (§20.5).
   save and `Lock` all return failure with the cycle named. Nothing
   recurses away. A region loaded from a wire is not re-proved, and a save
   from it reproduces what it was given.
-- **What every read refuses, and what it accepts** (§4, §6.5; Glenn,
+- **What every read refuses, and what it accepts** (§4, §6.5; the maintainer,
   2026-11-03: "It's best to consistently refuse."). A read accepts evolution
   and nothing else: an `unknown` field (a newer writer's field this build
   skips), a `widened` field (the value decoded exactly), and `retained` (a
@@ -14871,7 +14871,7 @@ default; a widening decodes exactly and counts `widened`; and the fixed form
 selects its lineage plan by hash (§21). A value outside the WRITER's range refuses `out_of_range` on every form where
 the read knows that range; it never clamps.
 
-**The second ruling, the same day, and its why.** Glenn: *"I am actually OK if
+**The second ruling, the same day, and its why.** The maintainer: *"I am actually OK if
 there is only a generic failure to read. I do not care about the specific
 reporting on a per-instance basis."* And: *"Trying to make both the "failed to
 read" and the specific details of why the read fails, it makes each language

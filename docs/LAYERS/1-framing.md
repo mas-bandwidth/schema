@@ -50,10 +50,10 @@ and nothing else the read produced is defined.** §4: "DAMAGE — `wire_damaged`
 Damage is input no conforming writer produces and that the wire itself, read
 with no declaration, already shows to be wrong." §6.5: every read is the strict
 read, and the verdict, the value or "refused", is the whole cross-language answer;
-the reason is per-language diagnostic detail. Glenn, 2026-10-31: "failing to read something means the whole read is
+the reason is per-language diagnostic detail. The maintainer, 2026-10-31: "failing to read something means the whole read is
 undefined, in my book." and "there's no point hand wringing trying to make
 partial reads well defined. if it fails to read, it's broken and everything in
-it today is suspect. discard." Glenn, 2026-11-03: "Cut the tolerant wire. It's
+it today is suspect. discard." The maintainer, 2026-11-03: "Cut the tolerant wire. It's
 too much work. It was a mistake to try to do it." and "It's best to
 consistently refuse." Every rule below that names damage names a case of D1,
 and none of them says what a load returns after it: no partial value, no

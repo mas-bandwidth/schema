@@ -1,6 +1,6 @@
 # One read: the plan to cut the tolerant table read
 
-Glenn, 2026-11-03: *"Cut the tolerant wire. It's too much work. It was a mistake
+The maintainer, 2026-11-03: *"Cut the tolerant wire. It's too much work. It was a mistake
 to try to do it."* And: *"That's my mistake. It's best to consistently refuse.
 Too much undefined behavior per-language by trying to be tolerant."*
 
@@ -22,7 +22,7 @@ its fastest order (§6.5).
 This page is the work list. The roadmap entry is `strict-only-read-2026-11-03`
 in `docs/roadmap.sexp`, one task per layer below.
 
-## Decisions taken in the spec, each for Glenn to confirm or overrule
+## Decisions taken in the spec, each for the maintainer to confirm or overrule
 
 1. **`clamped` is renamed `out_of_range` in place**, the same ordinal, as
    `non_finite` was renamed `non_finite_float`, because no read clamps. The
@@ -31,7 +31,7 @@ in `docs/roadmap.sexp`, one task per layer below.
    `length_over_bound`** for a count or a length past the reader's bound (the
    fixed form's names), and `out_of_range` for a value. A text list's `| total`
    is `length_over_bound`.
-3. **The verdict is the whole cross-language contract** (Glenn, 2026-11-03,
+3. **The verdict is the whole cross-language contract** (the maintainer, 2026-11-03,
    docs/rulings.json `refusal-verdict-only`): a read returns the value or
    refuses. Why it refused is per-language diagnostic detail, never compared;
    the reason names in decisions 1 and 2 are RECOMMENDED spellings only. No
@@ -41,7 +41,7 @@ in `docs/roadmap.sexp`, one task per layer below.
    value reads `None` (the slot is dropped) and counts `unknown`, as an unknown
    field does. The alternative is to refuse it.
 5. **A repeated field id, map key, keyed slot, node-table field and JSON key
-   are damage** (Glenn's 2026-10-31 list of input no writer produces, held in
+   are damage** (the maintainer's 2026-10-31 list of input no writer produces, held in
    #2557). The `duplicate` counter is retired.
 6. **Bytes after a nested union inside its arm's `L` are damage** (the same
    list, item 5).
@@ -51,7 +51,7 @@ in `docs/roadmap.sexp`, one task per layer below.
 8. **A table writer refuses a finite compressed float outside its range**
    (`invalid_value`) instead of the quantizer clamping it, and the fixed form's
    plan carries the WRITER's compressed-float range, which overturns
-   schema#1164 statement B (2026-09-19, "reversible by Glenn").
+   schema#1164 statement B (2026-09-19, "reversible by the maintainer").
 9. **A lone or out-of-order surrogate escape in JSON refuses** now, reason
    `malformed` with the text `string_lone_surrogate`, instead of decoding to `U+FFFD`, and the two
    JSONTestSuite `y_object_duplicated_key*` files refuse (a dialect row).
@@ -85,7 +85,7 @@ everything above it is red by design until its own layer lands.
 
 | layer | what | gate |
 |---|---|---|
-| 0 | **The spec** (this branch): SPEC-TABLES, FIXED-FORM-ALGORITHM, SPEC, VERSIONING, LAYERS/1-framing, FIXED-FORM-VERSIONING-TESTS, rulings.json, this plan | A cold read with no memory of the drafting, its findings applied; Glenn's answers to the decisions above. It lands together with layer 2, because the spec-agreement tests read the page |
+| 0 | **The spec** (this branch): SPEC-TABLES, FIXED-FORM-ALGORITHM, SPEC, VERSIONING, LAYERS/1-framing, FIXED-FORM-VERSIONING-TESTS, rulings.json, this plan | A cold read with no memory of the drafting, its findings applied; the maintainer's answers to the decisions above. It lands together with layer 2, because the spec-agreement tests read the page |
 | 1 | **The models**: `tla/Framing.tla` (the inert body and the H3 crossing span removed; the header inside its body), a new `tla/ReadOrder.tla` (invariant `OneVerdict`: every input is accepted with one value or refused, with no partial value, in any detection order), `tla/CardVersioning.tla` (`kindMis` and `clamp` become refusals) | TLC green on a bench machine on a small instance, a reversed witness per new invariant, `tla/RUNS.tsv` rows |
 | 2 | **The Go engine and oracle**: `internal/tablewire`, `internal/tabletext`, `internal/tablecook`, the report (`tabletext.Report`) and `tables/goruntime` `TableReport` and `Err()` | `go test` of those packages; `test/conformance/harness` `TestFramingVectorsReadThroughTheEngine`; the spec-agreement tests (`compiler/specgo_*`, `internal/baseline` `TestEvolutionTableDocsAgreeWithTheGolden`, `compiler/specgo_refusal_enum_test.go`) green against this spec; a negative control per phase |
 | 3 | **The harness and corpora: READ, THEN WRITE** (inventory (b); docs/rulings.json `conformance-is-read-then-write`). Every leg reads every corpus input. For a READABLE input the leg writes the value back out — the wire, and the JSON and text forms — and the bytes are identical across legs and equal to the canonical bytes. For an UNREADABLE input every leg refuses. That is the whole cross-language read contract. Retained unknowns are saved back byte-exact (the retain-save bytes), and cook bytes stay compared. Every surface that compares anything else is retired: report counters, region and measure sizes, reason names, diagnostic text, field names and JSON error positions | The harness's own tests; the Go leg (layer 4's first) green on every surface; `make conformance-pin` writes the canonical bytes and the refuse set from the engine until the C++ leg lands, then from C++ again |
@@ -370,7 +370,7 @@ the canonical wire, JSON and text bytes) or REFUSED. A column, a file or a test
 that pins a counter (`unknown`, `widened`, `retained`, `retain_lost`, and the
 retired six), a region or measure size, a reason name, diagnostic text or an
 error position is retired, not re-pinned. The JSON and text OUTPUT bytes are
-held to the deterministic writer specified on `rowan/deterministic-json`.
+held to the deterministic writer specified on `deterministic-json`.
 
 | surface | where | what it encodes | size | disposition |
 |---|---|---|---|---|
@@ -395,52 +395,52 @@ held to the deterministic writer specified on `rowan/deterministic-json`.
 
 ## (d) The open pull requests
 
-Sixty-three open PRs by `rowan-claude` and `gafferongames` (the two dependabot
+Sixty-three open PRs by the project's two accounts (the two dependabot
 PRs are outside this list). `dev` is 2,353 commits behind main and every
 `sprint/*` base 3,800 to 4,600; a PR on either base is stale whatever it
 carries.
 
 | PR | branch | class | why |
 |---|---|---|---|
-| #2788 | rowan/storage-cap-hardening | keep | storage-cap tests under a memory ceiling and 64-bit stored sizes; stacked on #2787 |
-| #2787 | rowan/storage-cap-all-legs | keep | `storage_over_cap` is a refusal before any build; stacked on #2784 |
-| #2786 | rowan/fuzz-round-2 | rework to refuse | keep the orphan-cycle and retained-id-0 fixes; drop the repeated-map-key slot handling and the superseded-occurrence retain logic; stacked on #2780 |
-| #2785 | rowan/cook-write-scripting | keep | writer side: the cook carries unbounded text |
-| #2784 | rowan/limit-followups | rework to refuse | depth and timestamp limits stand; its kind_mismatch-count fix and the map entry kept at default on a wrong shape now refuse; stacked on #2779 |
-| #2783 | emma/certify-cpp-cs-20261103 | keep | C++ format ratchet and C# JIT warmup |
-| #2782 | emma/certify-wfr-java-dart-elixir-20261103 | rework to refuse | Dart count-cap order and Java absent spill stand; the wire-fuzz `!report.Malformed` guard leans on the retired flag |
-| #2781 | emma/cpp-go-missing-required-reason-20261103 | drop | aligning the `missing_required` enum ordinal across legs is no longer needed for conformance; keep any C++ refusal it adds only if the leg layer wants the diagnostic |
-| #2780 | rowan/fuzz-lua-luau-squirrel | rework to refuse | keep the LEB length wrap and region alignment fixes; drop the repeated-key-widen reset and widening across `L` |
-| #2779 | rowan/limit-vectors | rework to refuse | the at and over limit vectors stand; restate each over-limit answer as a refusal verdict |
-| #2778 | rowan/strict-read-six | rework to refuse | adds a strict read BESIDE the tolerant load in cs, java, js, rust, dart and elixir; it must become the only read, and its reason ranking is dropped: only the verdict is compared; stacked on #2762 |
-| #2777 | rowan/strict-reasons-conform | rework to refuse | its legs already refuse damage; its gate becomes the refuse half of read-then-write, its shared reason TSV and reason pin tests reduce to verdicts, and its spec hunks are superseded; stacked on #2762 |
-| #2776 | emma/certify-release-tooling-20261103 | keep | release-gate Makefile fix; its Java hunk fixes a loader for a clamp-counter test the harness layer deletes |
-| #2775 | rowan/main-reds-20261103 | rework to refuse | the re-pins and the Lobster cycle fix stand; the Elixir `bits(N)` clamp must refuse `out_of_range` |
-| #2771 | rowan/moo-tagged-green | keep | MOO cook writer and tagged CI gates |
-| #2762 | rowan/harness-reasons | rework to refuse | its cross-leg driver plumbing stays as the REFUSE half of the read-then-write gate (each leg answers `ok` or `refused` per input); its reason comparison is retired; it lands first |
-| #2749 | rowan/fixed-range-clamp-vector | rework to refuse | keep `hostile_range_widen.bin`; its answer is `out_of_range`, not a clamp to the writer's range; the PR body is stale |
+| #2788 | storage-cap-hardening | keep | storage-cap tests under a memory ceiling and 64-bit stored sizes; stacked on #2787 |
+| #2787 | storage-cap-all-legs | keep | `storage_over_cap` is a refusal before any build; stacked on #2784 |
+| #2786 | fuzz-round-2 | rework to refuse | keep the orphan-cycle and retained-id-0 fixes; drop the repeated-map-key slot handling and the superseded-occurrence retain logic; stacked on #2780 |
+| #2785 | cook-write-scripting | keep | writer side: the cook carries unbounded text |
+| #2784 | limit-followups | rework to refuse | depth and timestamp limits stand; its kind_mismatch-count fix and the map entry kept at default on a wrong shape now refuse; stacked on #2779 |
+| #2783 | certify-cpp-cs-20261103 | keep | C++ format ratchet and C# JIT warmup |
+| #2782 | certify-wfr-java-dart-elixir-20261103 | rework to refuse | Dart count-cap order and Java absent spill stand; the wire-fuzz `!report.Malformed` guard leans on the retired flag |
+| #2781 | cpp-go-missing-required-reason-20261103 | drop | aligning the `missing_required` enum ordinal across legs is no longer needed for conformance; keep any C++ refusal it adds only if the leg layer wants the diagnostic |
+| #2780 | fuzz-lua-luau-squirrel | rework to refuse | keep the LEB length wrap and region alignment fixes; drop the repeated-key-widen reset and widening across `L` |
+| #2779 | limit-vectors | rework to refuse | the at and over limit vectors stand; restate each over-limit answer as a refusal verdict |
+| #2778 | strict-read-six | rework to refuse | adds a strict read BESIDE the tolerant load in cs, java, js, rust, dart and elixir; it must become the only read, and its reason ranking is dropped: only the verdict is compared; stacked on #2762 |
+| #2777 | strict-reasons-conform | rework to refuse | its legs already refuse damage; its gate becomes the refuse half of read-then-write, its shared reason TSV and reason pin tests reduce to verdicts, and its spec hunks are superseded; stacked on #2762 |
+| #2776 | certify-release-tooling-20261103 | keep | release-gate Makefile fix; its Java hunk fixes a loader for a clamp-counter test the harness layer deletes |
+| #2775 | main-reds-20261103 | rework to refuse | the re-pins and the Lobster cycle fix stand; the Elixir `bits(N)` clamp must refuse `out_of_range` |
+| #2771 | moo-tagged-green | keep | MOO cook writer and tagged CI gates |
+| #2762 | harness-reasons | rework to refuse | its cross-leg driver plumbing stays as the REFUSE half of the read-then-write gate (each leg answers `ok` or `refused` per input); its reason comparison is retired; it lands first |
+| #2749 | fixed-range-clamp-vector | rework to refuse | keep `hostile_range_widen.bin`; its answer is `out_of_range`, not a clamp to the writer's range; the PR body is stale |
 | #2731 | codex/schema-lobster-readiness | drop | its purpose is last-wins on a repeated map key, which is damage |
-| #2576 | rowan/c-cpp-hostile-runners | keep | C and C++ hostile-corpus runners under sanitizers; needs a rebase |
-| #2560 | rowan/remove-wstring | keep | wstring retirement (Glenn, 2026-10-31); draft, needs a rebase |
-| #2559 | rowan/go-cycle-damage-v2 | keep | Go refuses a pointer to an open node; retarget to main (its base #2551 merged) |
-| #2557 | rowan/no-writer-input | rework to refuse | stopped by Glenn; its items (repeats are damage, `duplicate` retired, nested-union trailing bytes) are decisions 5 and 6 here; fold its engine and C++ commits into layers 2 and 4 |
-| #2556 | rowan/rust-discard | drop | Rust discard already on main (82e6c1aa7) |
+| #2576 | c-cpp-hostile-runners | keep | C and C++ hostile-corpus runners under sanitizers; needs a rebase |
+| #2560 | remove-wstring | keep | wstring retirement (the maintainer, 2026-10-31); draft, needs a rebase |
+| #2559 | go-cycle-damage-v2 | keep | Go refuses a pointer to an open node; retarget to main (its base #2551 merged) |
+| #2557 | no-writer-input | rework to refuse | stopped by the maintainer; its items (repeats are damage, `duplicate` retired, nested-union trailing bytes) are decisions 5 and 6 here; fold its engine and C++ commits into layers 2 and 4 |
+| #2556 | rust-discard | drop | Rust discard already on main (82e6c1aa7) |
 | #2544 | codex/moo-block-leads | keep | MOO block base alignment gate |
 | #2543 | codex/moo-block-forgery | keep | MOO block forgery bounds |
-| #2529 | rowan/message-announce-trim | keep | the announcement carries the message closure alone |
-| #2184 | rowan/coverage-luau | drop | base `dev`; covered on main by other routes |
-| #2183 | rowan/coverage-java-retain | drop | base `dev`, stale; re-file any retain-save fix main still lacks |
-| #2182 | rowan/coverage-lua | drop | base `dev`; on main by other routes |
-| #2180 | rowan/coverage-java-cook | drop | base `dev`, stale |
-| #2179 | rowan/coverage-dart-2 | drop | base `dev`, stale |
-| #2178 | rowan/nightly-conformance | drop | base `dev`; `nightly-conformance.yml` is on main |
-| #2177 | rowan/coverage-elixir | drop | base `dev`, stale, and its arm-length read is tolerant |
-| #2174 | rowan/certify-green | drop | base `dev`; fixes an alias of a retired tolerant entry point |
-| #2173 | rowan/coverage-dart | drop | base `dev`, stale |
-| #2172 | rowan/coverage-go | drop | base `dev`; re-file the `+Nr` label if still wanted |
-| #2171 | rowan/coverage-java | drop | base `dev`, stale |
-| #2170 | rowan/coverage-js | drop | base `dev`, stale |
-| #2161 | rowan/caa-logins-only | drop | base `dev`, held; `caa-self-test` is on main |
+| #2529 | message-announce-trim | keep | the announcement carries the message closure alone |
+| #2184 | coverage-luau | drop | base `dev`; covered on main by other routes |
+| #2183 | coverage-java-retain | drop | base `dev`, stale; re-file any retain-save fix main still lacks |
+| #2182 | coverage-lua | drop | base `dev`; on main by other routes |
+| #2180 | coverage-java-cook | drop | base `dev`, stale |
+| #2179 | coverage-dart-2 | drop | base `dev`, stale |
+| #2178 | nightly-conformance | drop | base `dev`; `nightly-conformance.yml` is on main |
+| #2177 | coverage-elixir | drop | base `dev`, stale, and its arm-length read is tolerant |
+| #2174 | certify-green | drop | base `dev`; fixes an alias of a retired tolerant entry point |
+| #2173 | coverage-dart | drop | base `dev`, stale |
+| #2172 | coverage-go | drop | base `dev`; re-file the `+Nr` label if still wanted |
+| #2171 | coverage-java | drop | base `dev`, stale |
+| #2170 | coverage-js | drop | base `dev`, stale |
+| #2161 | caa-logins-only | drop | base `dev`, held; `caa-self-test` is on main |
 | #2135 | sprint/schema-js-generated-checkjs-strict-eslint-gate.w4.g2.e21 | drop | base `sprint/schema-js`, stale |
 | #2133 | sprint/shared-base-forward-merge-schema-go.w2.g1.e21 | drop | a sprint forward merge on a dead base |
 | #2131 | sprint/squirrel-base-forward-merge-schema-go.w3.g1.e21 | drop | a sprint forward merge on a dead base |
@@ -456,18 +456,18 @@ carries.
 | #2090 | sprint/schema-go-json-unknown-key-strict.w1.g1.e21 | drop | an earlier attempt, framed as strict and tolerant |
 | #2086 | sprint/schema-go-unlocked-builder-write-refuses.w7.g1.e21 | drop | an earlier attempt of the arena card |
 | #2082 | sprint/schema-go-unlocked-builder-write-refuses.w6.g1.e21 | drop | an earlier attempt of the arena card |
-| #2050 | rowan/roadmap-shared-generator | keep | the roadmap generator move; waiting on a cold read |
-| #2015 | rowan/base-reds-20261016 | drop | describes reds on the dead sprint bases |
+| #2050 | roadmap-shared-generator | keep | the roadmap generator move; waiting on a cold read |
+| #2015 | base-reds-20261016 | drop | describes reds on the dead sprint bases |
 | #2004 | sprint/elixir-generated-code-passes-credo-at-default-strictness.w2.g1.e21 | drop | stale base, red |
-| #1993 | rowan/make-siblings-dev | drop | base `dev`, conflicting |
+| #1993 | make-siblings-dev | drop | base `dev`, conflicting |
 | #1990 | sprint/elixir-carries-payload-free-arms-on-the-table-wire.w2.g1.e21 | drop | stale base |
 | #1988 | sprint/elixir-answers-the-guard-kind-and-scalar-version-units.w7.g1.e21 | drop | stale base |
 | #1943 | fix/c-fixedform-harness-run-signature | drop | base `dev`; carries a clamp-count signature |
-| #1933 | stella/schema-java-oracle-20261014 | drop | stale draft; its range-conflict topic is now `out_of_range` |
+| #1933 | schema-java-oracle-20261014 | drop | stale draft; its range-conflict topic is now `out_of_range` |
 | #1906 | roadmap/github-cleanup-2026-10-14 | drop | a stale snapshot |
 
 Thirteen keep, eleven rework to refuse, thirty-nine drop. **#2762 and #2777,
 reduced to verdicts, are the base of layer 3**; #2778 is rebuilt on them as the only read in the
 six legs that have none; #2557's engine and C++ commits belong to layers 2 and 4. The limits stack #2779 → #2784 → #2787 → #2788 is sound and
 needs only its over-limit answers restated. Closing the `dev` and `sprint/*`
-PRs is Glenn's call and is not done by this branch.
+PRs is the maintainer's call and is not done by this branch.

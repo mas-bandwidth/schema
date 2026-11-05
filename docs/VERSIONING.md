@@ -366,7 +366,7 @@ section.
 
 ## The read report
 
-**There is one read, and it is strict** (Glenn, 2026-11-03: "Cut the tolerant
+**There is one read, and it is strict** (the maintainer, 2026-11-03: "Cut the tolerant
 wire. It's too much work. It was a mistake to try to do it." and "It's best to
 consistently refuse. Too much undefined behavior per-language by trying to be
 tolerant."). A load returns the whole value or refuses the whole load. The verdict is
