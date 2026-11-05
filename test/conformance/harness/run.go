@@ -796,6 +796,19 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 				r.mark(e.name, outcomeFail)
 				return
 			}
+			// A refusal is the whole answer: a value-bearing write-back wire
+			// beside the verdict line is a partial value the leg saved anyway.
+			save, err := os.Stat(answer + ".wire")
+			if err == nil && save.Size() > 0 {
+				r.failures = append(r.failures, fmt.Sprintf("%s: expected refusal, got a value-bearing write-back wire", e.name))
+				r.mark(e.name, outcomeFail)
+				return
+			}
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				r.failures = append(r.failures, fmt.Sprintf("%s: checking write-back wire: %v", e.name, err))
+				r.mark(e.name, outcomeFail)
+				return
+			}
 			r.pass++
 			r.mark(e.name, outcomePass)
 			return
