@@ -1548,10 +1548,17 @@ fn json_line(out: u8[>..]&, depth: i64) {
     }
 }
 
-// json_put_string writes a string with the seven short escapes, `\u00xx` in
-// lowercase for every other control byte, and one U+FFFD per maximal subpart
-// of an ill-formed sequence (§16.3).
+// json_put_string writes a descriptor's own name, which is always text, as a
+// JSON string (json_put_text).
 fn json_put_string(out: u8[>..]&, s: const u8[:]) {
+    if !json_put_text(out, s) { return; }
+}
+
+// json_put_text writes a string with the seven short escapes and `\u00xx` in
+// lowercase for every other control byte, and answers false for a string that
+// is not text: a byte outside a well-formed sequence refuses the whole write
+// (invalid_value, §16.3, §16.14 W0) and nothing is replaced.
+fn json_put_text(out: u8[>..]&, s: const u8[:]) -> bool {
     let hex = "0123456789abcdef";
     out.push('"');
     var i: i64 = 0;
@@ -1579,21 +1586,18 @@ fn json_put_string(out: u8[>..]&, s: const u8[:]) {
             out.push(c);
         } else {
             let code, w = json_utf8(s, i);
-            if w < 0 {
-                out.append("\xEF\xBF\xBD");
-                i += -w - 1;
-            } else {
-                var k: i64 = 0;
-                while k < w {
-                    out.push(s[i + k]);
-                    k += 1;
-                }
-                i += w - 1;
+            if w < 0 { return false; }
+            var k: i64 = 0;
+            while k < w {
+                out.push(s[i + k]);
+                k += 1;
             }
+            i += w - 1;
         }
         i += 1;
     }
     out.push('"');
+    return true;
 }
 
 // json_put_base64 writes bytes as standard base64, padded (§16.2).
@@ -1658,8 +1662,7 @@ fn json_write_float(out: u8[>..]&, v: f64) -> bool { return json_put_float(out, 
 
 fn json_write_str(out: u8[>..]&, s: const u8[:], length: i32) -> bool {
     if length < 0 || length > s.len { return false; }
-    json_put_string(out, s[..length as i64]);
-    return true;
+    return json_put_text(out, s[..length as i64]);
 }
 
 fn json_write_bytes(out: u8[>..]&, s: const u8[:], length: i32) -> bool {

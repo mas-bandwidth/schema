@@ -277,6 +277,22 @@ local function surfaceJsonRead(all, outdir)
   end
 end
 
+-- damageText puts into a fixed root's top-level text field what no read
+-- delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): a narrow
+-- field is a Lua string, which holds the bytes 61 FF 62 as they are; a wide
+-- field is its array of UTF-16 units, here 0061 D800 0062.
+local function damageText(v, damage)
+  if damage == "none" then return end
+  local form, name = damage:match("^(%a+):(.+)$")
+  if form == "narrow" then
+    v[name] = "a\xffb"
+  elseif form == "wide" then
+    v[name] = { 0x61, 0xd800, 0x62 }
+  else
+    fail("damage " .. damage .. " is not one this driver knows")
+  end
+end
+
 -- json-write: the instance's wire loaded, then ToJson, the text (§16.1).
 local function surfaceJsonWrite(all, outdir)
   for _, f in ipairs(kind(all, "instance")) do
@@ -291,6 +307,21 @@ local function surfaceJsonWrite(all, outdir)
         if text == nil then fail(f[2] .. ": ToJson refused the value: " .. tostring(why)) end
         writeBytes(outdir .. "/" .. f[2] .. ".json", text)
       end
+    end
+  end
+  -- THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the wire,
+  -- then the line's damage put into storage in code, then ToJson, which must
+  -- refuse. The Lua writer has no separate measure: ToJson is the one call.
+  for _, f in ipairs(kind(all, "json-write-refusal")) do
+    local u = unit(f[3])
+    if not u then
+      absent(outdir, f[2] .. ".json", NOT_GENERATED)
+    else
+      local v = u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), newReport())
+      if v == nil then fail(f[2] .. ": load refused " .. f[5]) end
+      damageText(v, f[6])
+      local text = u.json.ToJson(u.T, f[4], v)
+      writeBytes(outdir .. "/" .. f[2] .. ".json", text or "refused\n")
     end
   end
 end
