@@ -152,7 +152,7 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 		}
 		inst := model.New(def)
 		var rep tabletext.Report
-		if !model.Read(inst, rawText, &rep) || rep.Refused {
+		if !strictReadJSON(model, inst, rawText, &rep) {
 			t.Errorf("%s: canonical value %s did not read cleanly", caseName, valuePath)
 			return
 		}
@@ -196,6 +196,8 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 		}
 	}
 
+	framingValues := map[string]bool{}
+	const framingDir = "testdata/conformance/tables/framing"
 	for _, fc := range m.Framings {
 		if fc.Refused {
 			if fc.Value != "" {
@@ -205,18 +207,48 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 			if fc.Value == "" {
 				t.Errorf("readable framing %s has no canonical value file", fc.Name)
 			} else {
+				framingValues[filepath.Base(fc.Value)] = true
 				checkValueBytes(fc.Name, fc.Unit, fc.Root, fc.Value)
 			}
 		}
 	}
+	entries, err := os.ReadDir(filepath.Join(root, framingDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".json") && !framingValues[e.Name()] {
+			t.Errorf("framing value %s is referenced by no read row", filepath.Join(framingDir, e.Name()))
+		}
+	}
 
+	hostileValues := map[string]bool{}
+	hostileDir := ""
 	for _, h := range m.Hostiles {
+		if hostileDir == "" {
+			hostileDir = filepath.Dir(HostileValue(h.Tree))
+		}
 		if h.Refused {
 			if h.Value != "" {
 				t.Errorf("refused json-hostile %s still names value %s", h.Name, h.Value)
 			}
+			if _, err := os.Stat(filepath.Join(root, HostileValue(h.Tree))); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("refused json-hostile %s still has value file %s", h.Name, HostileValue(h.Tree))
+			}
 		} else {
+			hostileValues[filepath.Base(HostileValue(h.Tree))] = true
 			checkValueBytes(h.Name, h.Unit, h.Root, h.Value)
+		}
+	}
+	if hostileDir != "" {
+		entries, err := os.ReadDir(filepath.Join(root, hostileDir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".value.json") && !hostileValues[e.Name()] {
+				t.Errorf("json-hostile value %s is referenced by no read row", filepath.Join(hostileDir, e.Name()))
+			}
 		}
 	}
 

@@ -270,15 +270,34 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	if err := retainValues(u, m.Retains, jsonDir); err != nil {
 		return err
 	}
+	if err := framingValues(u, m.Framings, jsonDir); err != nil {
+		return err
+	}
 
 	// THE HOSTILE ROWS' VALUES: the oracle's text read of each tree, then its
 	// writer, so a leg that counts the same events and lands a different
 	// value is red (test/conformance/README.md, `json-hostile`). The engine's
 	// verdict must be the row's own standard verdict, or the row and the
-	// oracle disagree and the corpus cannot say which value is owed.
+	// oracle disagree and the corpus cannot say which value is owed. A refused
+	// row owes no value file, and one left beside its tree is retired here.
+	hostileKeep := map[string]bool{}
+	hostileDir := ""
 	for _, h := range m.Hostiles {
+		if hostileDir == "" {
+			hostileDir = filepath.Dir(HostileValue(h.Tree))
+		}
+		hostileKeep[filepath.Base(HostileValue(h.Tree))] = true
 		if err := hostileValue(u, h, jsonDir); err != nil {
 			return fmt.Errorf("%s: %w", h.Name, err)
+		}
+	}
+	if hostileDir != "" {
+		dir, err := outPath(jsonDir, hostileDir)
+		if err != nil {
+			return err
+		}
+		if err := pruneHostileValues(dir, hostileKeep); err != nil {
+			return err
 		}
 	}
 
@@ -346,6 +365,29 @@ func pruneValues(dir string, keep map[string]bool) error {
 			}
 			fmt.Printf("conformance: removed %s, which no report row names\n", e.Name())
 		}
+	}
+	return nil
+}
+
+// pruneHostileValues removes a hostile value golden no read row names. The
+// directory also holds the input trees, so only the value files are retired.
+func pruneHostileValues(dir string, keep map[string]bool) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".value.json") || keep[name] {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			return err
+		}
+		fmt.Printf("conformance: removed %s, which no read row names\n", name)
 	}
 	return nil
 }
@@ -429,8 +471,70 @@ func retainValues(u *units, retains []RetainCase, jsonDir string) error {
 	return pruneValues(dir, keep)
 }
 
+// framingValues reads every framing vector with the oracle and writes the
+// value each readable row owes. A refused row owes none, so a value left at
+// its old path is pruned rather than re-pinned (layer 3's read-then-write).
+func framingValues(u *units, framings []FramingCase, jsonDir string) error {
+	if len(framings) == 0 {
+		return nil
+	}
+	keep := map[string]bool{}
+	dirRel := ""
+	for _, fc := range framings {
+		unit, err := u.get(fc.Unit)
+		if err != nil {
+			return err
+		}
+		wire, err := os.ReadFile(fc.Wire)
+		if err != nil {
+			return fmt.Errorf("%s: %w", fc.Name, err)
+		}
+		root := unit.Tables[fc.Root]
+		if root == nil {
+			return fmt.Errorf("%s: root %q names no table", fc.Name, fc.Root)
+		}
+		model := tabletext.NewModel(unit)
+		value := model.New(root)
+		var report tabletext.Report
+		reads, _ := strictDecode(model, value, wire, &report)
+		verdict := "refused"
+		if reads {
+			verdict = "read"
+		}
+		if verdict != fc.Verdict() {
+			return fmt.Errorf("%s: the oracle answers %s and the row says %s", fc.Name, verdict, fc.Verdict())
+		}
+		if !reads {
+			continue
+		}
+		if fc.Value == "" {
+			return fmt.Errorf("%s: a readable row names no value file", fc.Name)
+		}
+		out, err := outPath(jsonDir, fc.Value)
+		if err != nil {
+			return err
+		}
+		if err := writeValue(out, true, func() ([]byte, error) { return model.Write(value) }); err != nil {
+			return fmt.Errorf("%s: %w", fc.Name, err)
+		}
+		keep[filepath.Base(fc.Value)] = true
+		if dirRel == "" {
+			dirRel = filepath.Dir(fc.Value)
+		}
+	}
+	if dirRel == "" {
+		dirRel = "testdata/conformance/tables/framing"
+	}
+	dir, err := outPath(jsonDir, dirRel)
+	if err != nil {
+		return err
+	}
+	return pruneValues(dir, keep)
+}
+
 // hostileValue reads one hostile tree's text with the oracle and writes the
-// value it leaves beside the tree.
+// value it leaves beside the tree. A refused row's old value, if any, is
+// removed: a refused read owes no value file.
 func hostileValue(u *units, h Hostile, jsonDir string) error {
 	unit, err := u.get(h.Unit)
 	if err != nil {
@@ -455,12 +559,16 @@ func hostileValue(u *units, h Hostile, jsonDir string) error {
 	if verdict != h.Verdict() {
 		return fmt.Errorf("the oracle answers %s and the row says %s", verdict, h.Verdict())
 	}
-	if h.Refused {
-		return nil
+	valRel := h.Value
+	if valRel == "" {
+		valRel = HostileValue(h.Tree)
 	}
-	out, err := outPath(jsonDir, h.Value)
+	out, err := outPath(jsonDir, valRel)
 	if err != nil {
 		return err
+	}
+	if h.Refused {
+		return writeValue(out, false, nil)
 	}
 	return writeValue(out, true, func() ([]byte, error) { return model.Write(value) })
 }
