@@ -1,7 +1,7 @@
 // A FIXED ROOT REFUSES FORM 1, AND THE FORM-1 PAIR BESIDE IT IS A STATUS LINE
 // (docs/SPEC-TABLES.md "The three wires", §3.4, the reason table, §15).
 //
-// The rule is Glenn's, 2026-11-03: "If we expect a fixed table, but it is not,
+// The rule, dated 2026-11-03: "If we expect a fixed table, but it is not,
 // refuse." Every read at a declared fixed root that carries form `3` refuses a
 // form-`1` file as `previous_form`, and every write there writes form `3`
 // (docs/rulings.json fixed-root-refuses-form1). What the legs do today is

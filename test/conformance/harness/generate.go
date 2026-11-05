@@ -296,7 +296,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	}
 
 	// THE REWRITE ROWS' CANONICAL BYTES (docs/SPEC-TABLES.md §22): the
-	// oracle's tolerant read of each input, then its write. The input must
+	// oracle's read of each input, then its write. The input must
 	// read, because a row whose read is refused or damaged has no value to
 	// write back. And the canonical bytes are a FIXED POINT: read and written
 	// again they are themselves, or the oracle has two answers for one value.
@@ -504,7 +504,7 @@ func generateRewrites(u *units, m *Manifest, jsonDir string) error {
 	return nil
 }
 
-// rewriteOnce is the oracle's answer for one rewrite input: the tolerant read,
+// rewriteOnce is the oracle's answer for one rewrite input: the read,
 // then the write of the value it leaves.
 func rewriteOnce(unit *ir.Unit, rootName string, data []byte) ([]byte, error) {
 	root := unit.Tables[rootName]

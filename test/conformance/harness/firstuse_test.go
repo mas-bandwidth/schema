@@ -29,7 +29,7 @@ func TestTheIdTableIsFirstUseOrderAndNothingElse(t *testing.T) {
 			continue
 		}
 		if len(data) == 0 || data[0] != 1 {
-			continue // a declared fixed root writes form 3, which has no id table (§3.4)
+			continue // first-use order is the variable form's rule; form 3 has no id table
 		}
 		f := frameWire(data)
 		if len(f.entries) == 0 {

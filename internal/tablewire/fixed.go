@@ -3,10 +3,10 @@
 // table, over the same instance model the variable form uses.
 //
 // A ROOT THAT CARRIES FORM 3 IS WRITTEN AS FORM 3 AND READ AS FORM 3, and
-// nothing else. Glenn, 2026-11-03: "If we expect a fixed table, but it is not,
-// refuse." So Encode writes these bytes for every such root, and Decode refuses
-// a form-1 file there as previous_form with nothing decoded and no counter
-// moved (docs/rulings.json fixed-root-refuses-form1). The declaration fixes
+// nothing else. The rule, dated 2026-11-03: "If we expect a fixed table, but
+// it is not, refuse." So Encode writes these bytes for every such root, and
+// Decode refuses a form-1 file there as previous_form with nothing decoded and
+// no counter moved (docs/rulings.json fixed-root-refuses-form1). The declaration fixes
 // the expected form even when the layout exceeds the emission limits:
 // unavailable fixed forms refuse instead of selecting form 1.
 //

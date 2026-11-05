@@ -41,17 +41,3 @@ fixed table Cfg
     grades [..4]Grade
     tally  [Grade]int32
 }
-
-// CfgVar is Cfg's variable twin. The framing vectors (docs/LAYERS/1-framing.md)
-// exercise the VARIABLE form's frame, and a declared fixed root has no form-1
-// file (docs/rulings.json fixed-root-refuses-form1), so the vectors need a
-// variable root with Cfg's fields. The field names, and so their wire ids, are
-// Cfg's; only the class differs.
-table CfgVar
-{
-    grade  Grade
-    effect Effect
-    buff   Buff
-    grades [..4]Grade
-    tally  [Grade]int32
-}

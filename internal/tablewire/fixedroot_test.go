@@ -10,8 +10,8 @@ import (
 )
 
 // A FIXED ROOT IS FORM 3 IN THE ENGINE, BOTH WAYS (docs/SPEC-TABLES.md "The
-// three wires", §3.4; docs/rulings.json fixed-root-refuses-form1). Glenn,
-// 2026-11-03: "If we expect a fixed table, but it is not, refuse."
+// three wires", §3.4; docs/rulings.json fixed-root-refuses-form1). The rule,
+// dated 2026-11-03: "If we expect a fixed table, but it is not, refuse."
 //
 // The pin is the goose refusal pin's own unit and value
 // (internal/codegen/goosetable/testdata/load_refusal_reasons.tsv), and the two

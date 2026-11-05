@@ -26,7 +26,7 @@ UNLAWFUL                   the lineage entry is not a lawful widening of the rea
 Every integer is little-endian; nothing is aligned or padded between fields. `REFUSE` is total: no plan compiled,
 no value written, no counter moved, and the read's verdict is "refused"; `name` is the RECOMMENDED diagnostic,
 not compared across languages (SPEC-TABLES §6.5). The one §4
-counter this form raises is `widened`; every other condition is a refusal (Glenn, 2026-11-03: "It's best
+counter this form raises is `widened`; every other condition is a refusal (the maintainer, 2026-11-03: "It's best
 to consistently refuse.").
 
 ## 1. The layout
@@ -584,9 +584,11 @@ COMPILE(lock, T):
 ```
 
 **A TABLE PAST §3.4's CEILING IS NOT A FIXED-FORM ROOT, SO COMPILE CONSULTS NO LINEAGE FOR IT.** SPEC-TABLES
-§3.4 says a fixed table whose record body is past 65536 bytes has NO FORM EMITTED and is NAMED: it keeps form
-`1`, which it never lost. COMPILE therefore **does not run for it at all** — the generator consults no lineage
-for such a table and **parses no entry of it, even when the LOCK carries one** — and the lock does carry one,
+§3.4 says a fixed table whose record body is past 65536 bytes has NO FILE FORM and is NAMED: its file save
+refuses, and a read at its declared fixed root refuses form `1`; it never selects the variable form, and it
+keeps the by-value storage, the cook and the block form (§19). COMPILE therefore **consults no fixed-file
+lineage for it** — the generator **parses no entry of it, even when the LOCK carries one** — and the lock does
+carry one,
 because the lock records every fixed table's layout and is one file five legs read. **That entry is neither an
 error nor data**: not an error, because the lock is correct and #8's "a bug in the lock, and the BUILD FAILS"
 is about an entry of THIS FORM; not data, because there is no form for it to be data of. The only thing the
@@ -1253,7 +1255,7 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 3 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes and kept in a caller-supplied cache keyed by hash | `COMPILE` lays every plan down at BUILD TIME (bill §12.5); nothing compiles at run time, and there is no cache to miss |
 | 4 | the VARIANT and ARM counts are the READER's, and the bounds pass CLAMPS to them and to the writer's ranges | the bounds are the WRITER's, per plan (bill §12.5), and the pass REFUSES `out_of_range` past them (§4.6). **The `count` op's bound LANDED** — `e.size = their_n`, the writer's, at `cpptable/fixedruntime.go` — and the writer's RANGES are carried per lineage entry (`TableFixedKnownRange`). What still owes, on the reference and on every port: the refusal in place of the clamp, and the variant and arm counts |
 | 5 | ~~`arg`, the guard's ordinal, is still a BYTE lane~~ **LANDED** (rowan/twin-full-width-lanes): `arg` and `arg2` are `uint64_t` on both twins, the emitted static plan carries them full width, and the compare is at the tag's own width | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
-| 6 | ~~a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH~~ **LANDED** (rowan/twin-full-width-lanes): the two tags are CONJOINED on a second guard lane — in ir's identity walk, in both emitters and in both compiled walks — and `None` carries the outer guard at the OUTER width. The follow-on has LANDED too: THE GUARD CHAIN of §4.1 (R28) — offset+count into a pool of `(guard, arg, argw)` links, outermost first, the layout's 64 the only bound — so a third nested union is carried, not refused; a leg whose compiled plan cannot lay the chain FAILS AT GENERATE TIME (§4.1) and never meets the case at read | an arm inside an arm answers to the OUTER tag too, and to every tag outside it: the guard chain (§4.1) |
+| 6 | ~~a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH~~ **LANDED** (twin-full-width-lanes): the two tags are CONJOINED on a second guard lane — in ir's identity walk, in both emitters and in both compiled walks — and `None` carries the outer guard at the OUTER width. The follow-on has LANDED too: THE GUARD CHAIN of §4.1 (R28) — offset+count into a pool of `(guard, arg, argw)` links, outermost first, the layout's 64 the only bound — so a third nested union is carried, not refused; a leg whose compiled plan cannot lay the chain FAILS AT GENERATE TIME (§4.1) and never meets the case at read | an arm inside an arm answers to the OUTER tag too, and to every tag outside it: the guard chain (§4.1) |
 | 7 | ~~the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`)~~ **LANDED** (rowan/twin-full-width-lanes): a 64-bit temporary on both twins, and the `const` op lands a tag of that width out of a temporary rather than out of the four-byte `aux` lane beside its guard | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
 | 8 | ill-formed text zeroes the field, restores its default and sets a flag | a content violation REFUSES BY NAME, `text_ill_formed` (§4.5, fix 11) |
 | 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |

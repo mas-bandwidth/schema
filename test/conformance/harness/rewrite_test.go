@@ -90,4 +90,3 @@ func TestHandBuiltRefusedInputsHaveNoRewriteRow(t *testing.T) {
 		}
 	}
 }
-

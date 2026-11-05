@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"strings"
@@ -306,7 +307,7 @@ func TestTheCostRows(t *testing.T) {
 			continue
 		}
 		if got := len(wireBytes(t, msg.FileWire)); got != row.file {
-			t.Errorf("%s: the fixed file form is %d bytes, the page prints %d", row.name, got, row.file)
+			t.Errorf("%s: the variable form is %d bytes, the page prints %d", row.name, got, row.file)
 		}
 		if got := len(wireBytes(t, msg.MessageWire)); got != row.message {
 			t.Errorf("%s: the message form is %d bytes, the page prints %d", row.name, got, row.message)
@@ -826,28 +827,45 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 }
 
 // TestTheThreeReservedIdsWhereTheyDoNotBelong plants each reserved id as a
-// field's id in a FILE body and in a nested file body, which must count
-// malformed and nothing else, and plants 0xFFFFFFFFFFFFFFFE,
-// 0xFFFFFFFFFFFFFFFD and a second 0xFFFFFFFFFFFFFFFF as an entry's id in an
-// ANNOUNCEMENT's vocabulary, which must refuse the announcement as malformed
-// and set no vocabulary. Red if any counts or sets anything else.
+// field's id in a form-1 FILE body and in a nested file body at a declared
+// fixed root, and plants 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD and a second
+// 0xFFFFFFFFFFFFFFFF as an entry's id in an ANNOUNCEMENT's vocabulary, which
+// must refuse the announcement as malformed and set no vocabulary.
+//
+// A READER THAT EXPECTS A FIXED TABLE REFUSES EVERY OTHER FORM
+// (docs/rulings.json fixed-root-refuses-form1): both file roots are declared
+// fixed, so each form-1 file is refused by its form byte before any id in its
+// body is looked at, as previous_form, with nothing decoded and no counter
+// moved. Red if any file reads, refuses for another reason, hands back a
+// value or moves a counter.
 func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 	m, model, _ := backend(t)
 	names := map[uint64]string{ir.TableNodeWireId: "node_table", ir.TableBuildVersionWireId: "build_version", ir.TableMessageVocabularyWireId: "vocabulary"}
-	// THE FILE-BODY VECTORS ARE FORM 1 AT A DECLARED FIXED ROOT, which a strict
-	// read refuses before it reads a field (§3.4): the reserved-id walk they
-	// used to exercise is the VARIABLE form's, and the fixed form's form-3
-	// spelling is not these bytes. What remains true of them is the refusal.
 	for _, id := range []uint64{ir.TableNodeWireId, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId} {
 		for _, row := range []struct {
 			name string
 			root string
 		}{{"root", "LoginRequest"}, {"nested", "MatchResult"}} {
 			wire := wireBytes(t, "testdata/wire/tables/file_reserved_"+names[id]+"_"+row.name+".bin")
-			inst := model.New(model.Lookup(row.root))
+			def := model.Lookup(row.root)
+			if def == nil || !def.FixedDeclared {
+				t.Fatalf("%s: the root must be a declared fixed table", row.root)
+			}
+			inst := model.New(def)
 			var report tabletext.Report
-			if _, err := tablewire.Decode(model, inst, wire, &report); err == nil {
-				t.Errorf("%s in a %s file body: the strict read must refuse a form-1 file at a fixed root", names[id], row.name)
+			ok, err := tablewire.Decode(model, inst, wire, &report)
+			var fixed *tablewire.FixedRefusal
+			if ok || !errors.As(err, &fixed) || fixed.Reason != tablewire.FixedReasonPreviousForm {
+				t.Errorf("%s in a %s file body: a form-1 file at a fixed root refuses as previous_form: ok=%v err=%v", names[id], row.name, ok, err)
+				continue
+			}
+			if report != (tabletext.Report{Refused: true, Reason: tablewire.FixedReasonPreviousForm}) {
+				t.Errorf("%s in a %s file body: a refusal by form moves no counter: %+v", names[id], row.name, report)
+			}
+			fresh, ferr := tablewire.Encode(model, model.New(def))
+			left, lerr := tablewire.Encode(model, inst)
+			if ferr != nil || lerr != nil || !bytes.Equal(fresh, left) {
+				t.Errorf("%s in a %s file body: the refused read handed back a value", names[id], row.name)
 			}
 		}
 	}
