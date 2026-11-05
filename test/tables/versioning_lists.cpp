@@ -258,9 +258,9 @@ static void field_append_case()
 //
 // The second column of this row is NOT a refusal: a deprecation is not newer
 // (docs/FIXED-FORM-VERSIONING-TESTS.md names it so), and the OLD reader READS
-// the new file with `b` landing as written, because the new writer still writes
-// the slot. What the NEW reader owes is the other half: `b` dropped and counted
-// once under `unknown`.
+// the new file with `b` landing as its DEFAULT, because the new writer writes a
+// deprecated slot's default image whatever the value holds (docs/SPEC-TABLES.md
+// §3.4, §22.6).
 
 static void field_deprecate_case()
 {
@@ -306,8 +306,8 @@ static void field_deprecate_case()
         const int64_t n = vold_field_deprecate::LineageFixedLoadTolerant( &back, 1, newf.data(), (int64_t) newf.size(),
                                                                  plan.data(), 1024, NULL, &r );
         check( n == 1, "field_deprecate: OLD-READS-NEW — a deprecation is not newer, so the old reader reads" );
-        check( back.a == 4 && back.b == 5 && back.c == 6,
-               "field_deprecate: OLD-READS-NEW — `b` lands as written, because the new writer still writes it" );
+        check( back.a == 4 && back.b == 0 && back.c == 6,
+               "field_deprecate: OLD-READS-NEW — `b` lands as its default, which is what the new writer writes for a deprecated slot" );
         check( !r.refused && !r.malformed, "field_deprecate: OLD-READS-NEW — no refusal and no damage" );
     }
 }
@@ -346,8 +346,8 @@ static void field_undeprecate_case()
         const int64_t n = vnew_field_undeprecate::LineageFixedLoadTolerant( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                                    plan.data(), 1024, NULL, &r );
         check( n == 1, "field_undeprecate: NEW-READS-OLD — one record" );
-        check( back.a == 1 && back.b == 2 && back.c == 3,
-               "field_undeprecate: NEW-READS-OLD — a and b and c land exactly, the undeprecated field included" );
+        check( back.a == 1 && back.b == 0 && back.c == 3,
+               "field_undeprecate: NEW-READS-OLD — a and c land exactly, and b as its default, which the old writer wrote for its deprecated slot" );
         check( !r.refused && !r.malformed, "field_undeprecate: NEW-READS-OLD — no refusal and no damage" );
     }
     {

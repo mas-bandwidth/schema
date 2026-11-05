@@ -1,0 +1,83 @@
+{
+  "name": "diamond",
+  "version": 0,
+  "head": {
+    "value": 1,
+    "name": "l1",
+    "next": {
+      "value": 2,
+      "name": "l2",
+      "next": {
+        "&node": 1,
+        "value": 3,
+        "name": "l3",
+        "next": null
+      }
+    }
+  },
+  "tree": {
+    "label": "top",
+    "left": {
+      "&node": 2,
+      "label": "d",
+      "left": {
+        "&node": 3,
+        "label": "e",
+        "left": null,
+        "right": null
+      },
+      "right": null
+    },
+    "right": {
+      "label": "r",
+      "left": {
+        "&node": 2
+      },
+      "right": {
+        "&node": 3
+      }
+    }
+  },
+  "settings": {
+    "quality": 2,
+    "label": ""
+  },
+  "alias": {
+    "&node": 1
+  },
+  "ground": {
+    "depth": 0,
+    "head": null
+  },
+  "layers": [
+    {
+      "depth": 0,
+      "head": null
+    },
+    {
+      "depth": 1,
+      "head": {
+        "&node": 1
+      }
+    },
+    {
+      "depth": 0,
+      "head": {
+        "&node": 4,
+        "value": 0,
+        "name": "",
+        "next": null
+      }
+    },
+    {
+      "depth": 2,
+      "head": {
+        "&node": 4
+      }
+    }
+  ],
+  "meta": {
+    "build": 1,
+    "tag": ""
+  }
+}

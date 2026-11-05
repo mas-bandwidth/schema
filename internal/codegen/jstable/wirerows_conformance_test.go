@@ -33,7 +33,8 @@ import (
 var wireRowsUncarried = map[string]string{}
 
 // TestWireRowsConformanceJavaScript holds the driver's wireRows table to the
-// manifest's instance and report pairs, less the named uncarried set.
+// manifest's instance, report, rewrite and readable framing pairs, less the
+// named uncarried set.
 func TestWireRowsConformanceJavaScript(t *testing.T) {
 	t.Parallel()
 
@@ -53,7 +54,7 @@ func TestWireRowsConformanceJavaScript(t *testing.T) {
 	// must be named too. A check that passes both plantings guards nothing.
 	t.Run("reversed_witness", func(t *testing.T) {
 		t.Parallel()
-		for _, dropped := range []string{"streamdemo/Feed", "listdemo/Save", "tbla2/Root", "backenddemo/LoginRequest"} {
+		for _, dropped := range []string{"streamdemo/Feed", "listdemo/Save", "tbla2/Root", "backenddemo/LoginRequest", "graphdemo/ListNode", "listdemo/Squad"} {
 			if !slices.Contains(driver, dropped) {
 				t.Fatalf("the witness pair %s is not in the driver's wireRows table", dropped)
 			}
@@ -98,7 +99,7 @@ func wireRowGaps(manifest, driver []string, uncarried map[string]string) []strin
 	}
 	for _, r := range driver {
 		if !named[r] {
-			problems = append(problems, r+": wireRows binds a pair no manifest instance or report row names")
+			problems = append(problems, r+": wireRows binds a pair no manifest wire surface names")
 		}
 	}
 	for r := range uncarried {
@@ -111,7 +112,7 @@ func wireRowGaps(manifest, driver []string, uncarried map[string]string) []strin
 }
 
 // manifestWireRoots is the manifest's distinct (unit, root) pairs over its
-// `instance` and `report` lines, the rows the wire and report surfaces read.
+// instance, report, rewrite and readable framing rows served by wireRows.
 func manifestWireRoots(t *testing.T) []string {
 	t.Helper()
 	f, err := os.Open(filepath.Join("..", "..", "..", "testdata", "conformance", "tables", "MANIFEST.txt"))
@@ -124,7 +125,16 @@ func manifestWireRoots(t *testing.T) []string {
 	s := bufio.NewScanner(f)
 	for s.Scan() {
 		fields := strings.Fields(s.Text())
-		if len(fields) < 4 || (fields[0] != "instance" && fields[0] != "report") {
+		if len(fields) < 4 {
+			continue
+		}
+		switch fields[0] {
+		case "instance", "report", "rewrite":
+		case "framing":
+			if len(fields) < 6 || !strings.HasSuffix(fields[5], ",read") {
+				continue
+			}
+		default:
 			continue
 		}
 		key := fields[2] + "/" + fields[3]
