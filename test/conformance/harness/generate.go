@@ -35,14 +35,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// cookedReportClean holds a cook's report to clean, except that the instance
-// whose wire names one blob from two slots carries that one count: Cook packs
-// the graph as it finds it (§2.5, §7.6), and the tolerant read names what it
-// found. Every other count is still a reason the fixture is not the tool's.
+// cookedReportClean holds a cook's report to clean: any count is a reason the
+// fixture is not the tool's.
 func cookedReportClean(inst Instance, r compiler.TableReport) bool {
-	if inst.GoWireRefusal == "blob_shared" {
-		r.BlobShared = 0
-	}
 	return r.Silent()
 }
 
@@ -152,7 +147,11 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 				inst.Name, len(back), len(wire))
 		}
 
-		if err := writeFileAtomic(inst.JSON, text); err != nil {
+		out, err := outPath(jsonDir, inst.JSON)
+		if err != nil {
+			return err
+		}
+		if err := writeFileAtomic(out, text); err != nil {
 			return err
 		}
 		written[filepath.Base(inst.JSON)] = true
@@ -189,22 +188,22 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		if err != nil {
 			return err
 		}
-		wire, err := os.ReadFile(inst.Wire)
-		if err != nil {
-			return fmt.Errorf("%s: %w", cw.Instance, err)
-		}
 		for _, arm := range []struct {
 			path string
 			big  bool
 		}{{cw.Little, false}, {cw.Big, true}} {
-			cooked, _, report, err := u.c.Cook(unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
+			cooked, err := cookRecipe(unit, inst, cw, "", arm.big)
 			if err != nil {
 				return fmt.Errorf("%s: cook: %w", cw.Instance, err)
 			}
-			if !cookedReportClean(inst, report) {
-				return fmt.Errorf("%s: its own writer's bytes do not read clean: %+v", cw.Instance, report)
+			out, err := outPath(jsonDir, arm.path)
+			if err != nil {
+				return err
 			}
-			if err := writeFileAtomic(arm.path, cooked); err != nil {
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			if err := writeFileAtomic(out, cooked); err != nil {
 				return err
 			}
 		}
@@ -233,57 +232,87 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		model := tabletext.NewModel(unit)
 		var report tabletext.Report
 		value := model.New(root)
-		ok, err := tablewire.Decode(model, value, wire, &report)
-		// Named form refusals are report verdicts. Resource refusals and
-		// other engine errors must still stop generation.
-		if err != nil && !tablewire.Refused(err) {
-			return fmt.Errorf("%s: read: %w", rc.Name, err)
+		reads, _ := strictDecode(model, value, wire, &report)
+		verdict := "read"
+		if !reads {
+			verdict = "refused"
 		}
-		if !ok && err == nil && !report.Malformed {
-			return fmt.Errorf("%s: decoder stopped without a verdict", rc.Name)
+		lines = append(lines, fmt.Sprintf("%-18s %s", rc.Name, verdict))
+		valRel := rc.Value
+		if valRel == "" {
+			valRel = "testdata/conformance/tables/report-values/" + rc.Name + ".json"
 		}
-		counts := Counts{
-			Unknown:      report.Unknown,
-			KindMismatch: report.KindMismatch,
-			Widened:      report.Widened,
-			Clamped:      report.Clamped,
-			Duplicate:    report.Duplicate,
-			Malformed:    report.Malformed,
-			Refused:      report.Refused,
+		values[filepath.Base(valRel)] = true
+		valuePath, err := outPath(jsonDir, valRel)
+		if err != nil {
+			return err
 		}
-		lines = append(lines, fmt.Sprintf("%-18s %s", rc.Name, counts))
-		values[filepath.Base(rc.Value)] = true
-		if err := writeValue(rc.Value, ok && !counts.Malformed && !counts.Refused, func() ([]byte, error) {
+		if err := writeValue(valuePath, reads, func() ([]byte, error) {
 			return model.Write(value)
 		}); err != nil {
 			return fmt.Errorf("%s: %w", rc.Name, err)
 		}
+		if err := writeSaveWire(rc.Save, reads, func() ([]byte, error) {
+			return tablewire.Encode(model, value)
+		}); err != nil {
+			return fmt.Errorf("%s: write-back wire: %w", rc.Name, err)
+		}
 	}
 	sort.Strings(lines)
 	if len(m.Reports) > 0 {
-		if err := pruneValues(filepath.Dir(m.Reports[0].Value), values); err != nil {
+		valRel := m.Reports[0].Value
+		if valRel == "" {
+			valRel = "testdata/conformance/tables/report-values/" + m.Reports[0].Name + ".json"
+		}
+		valueDir, err := outPath(jsonDir, filepath.Dir(valRel))
+		if err != nil {
 			return err
 		}
+		if err := pruneValues(valueDir, values); err != nil {
+			return err
+		}
+	}
+	if err := retainValues(u, m.Retains, jsonDir); err != nil {
+		return err
+	}
+	if err := framingValues(u, m.Framings, jsonDir); err != nil {
+		return err
 	}
 
 	// THE HOSTILE ROWS' VALUES: the oracle's text read of each tree, then its
 	// writer, so a leg that counts the same events and lands a different
 	// value is red (test/conformance/README.md, `json-hostile`). The engine's
 	// verdict must be the row's own standard verdict, or the row and the
-	// oracle disagree and the corpus cannot say which value is owed.
+	// oracle disagree and the corpus cannot say which value is owed. A refused
+	// row owes no value file, and one left beside its tree is retired here.
+	hostileKeep := map[string]bool{}
+	hostileDir := ""
 	for _, h := range m.Hostiles {
-		if err := hostileValue(u, h); err != nil {
+		if hostileDir == "" {
+			hostileDir = filepath.Dir(HostileValue(h.Tree))
+		}
+		hostileKeep[filepath.Base(HostileValue(h.Tree))] = true
+		if err := hostileValue(u, h, jsonDir); err != nil {
 			return fmt.Errorf("%s: %w", h.Name, err)
 		}
 	}
+	if hostileDir != "" {
+		dir, err := outPath(jsonDir, hostileDir)
+		if err != nil {
+			return err
+		}
+		if err := pruneHostileValues(dir, hostileKeep); err != nil {
+			return err
+		}
+	}
 
-	header := `# THE READ REPORTS (docs/SPEC-TABLES.md §4), generated by the compiler's own
+	header := `# THE READ VERDICTS (docs/SPEC-TABLES.md §4), generated by the compiler's own
 # engine over the cases testdata/conformance/tables/MANIFEST.txt names.
 #
-#   <case>  <unknown>,<kind_mismatch>,<widened>,<clamped>,<duplicate>,<malformed>,<verdict>
+#   <case>  read|refused
 #
-# Regenerate with: make conformance-generate. A counter that MOVES under an
-# unchanged schema is stop-the-line, exactly as a wire golden is.
+# Regenerate with: make conformance-generate. Accepted values and canonical
+# writeback bytes are compared exactly; diagnostics remain local.
 
 `
 	body := header + strings.Join(lines, "\n") + "\n"
@@ -309,6 +338,28 @@ func writeValue(path string, reads bool, text func() ([]byte, error)) error {
 		return fmt.Errorf("the engine's writer refused the value: %w", err)
 	}
 	body = oneText(body)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return writeFileAtomic(path, body)
+}
+
+// writeSaveWire writes the canonical write-back wire of an accepted read, and
+// removes a stale one when the row refuses: refusal owes no wire either.
+func writeSaveWire(path string, reads bool, encode func() ([]byte, error)) error {
+	if !reads {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	body, err := encode()
+	if err != nil {
+		return fmt.Errorf("the engine's writer refused the value: %w", err)
+	}
+	if len(body) == 0 {
+		return fmt.Errorf("the engine wrote no bytes")
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -345,9 +396,181 @@ func pruneValues(dir string, keep map[string]bool) error {
 	return nil
 }
 
+// pruneHostileValues removes a hostile value golden no read row names. The
+// directory also holds the input trees, so only the value files are retired.
+func pruneHostileValues(dir string, keep map[string]bool) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".value.json") || keep[name] {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			return err
+		}
+		fmt.Printf("conformance: removed %s, which no read row names\n", name)
+	}
+	return nil
+}
+
+func retainValues(u *units, retains []RetainCase, jsonDir string) error {
+	keep := map[string]bool{}
+	for _, rc := range retains {
+		unit, err := u.get(rc.Unit)
+		if err != nil {
+			return err
+		}
+		wire, err := os.ReadFile(rc.Wire)
+		if err != nil {
+			return fmt.Errorf("retain %s: %w", rc.Name, err)
+		}
+		root := unit.Tables[rc.Root]
+		if root == nil {
+			return fmt.Errorf("retain %s: root %q names no table", rc.Name, rc.Root)
+		}
+		model := tabletext.NewModel(unit)
+		// THE CALLER'S TWO STORES, as test/conformance/README.md and the
+		// retaining read's own test apply them: `full` is roomy, `short` is one
+		// byte under what THIS engine's full load used, and `ids` is either the
+		// full bound or the row's count (§6.6).
+		const roomy = 1 << 20
+		ids := rc.Ids
+		if ids < 0 {
+			ids = roomy / 8
+		}
+		capacity := roomy
+		if rc.Short {
+			probe := &tablewire.Retain{Capacity: roomy, IdCapacity: roomy / 8}
+			var probeReport tabletext.Report
+			if ok, _ := strictDecodeRetain(model, model.New(root), wire, probe, &probeReport); !ok {
+				return fmt.Errorf("retain %s: full read failed: report=%+v", rc.Name, probeReport)
+			}
+			capacity = probe.Used() - 1
+		}
+		value := model.New(root)
+		store := &tablewire.Retain{Capacity: capacity, IdCapacity: ids}
+		var report tabletext.Report
+		if ok, _ := strictDecodeRetain(model, value, wire, store, &report); !ok {
+			return fmt.Errorf("retain %s: read failed: report=%+v", rc.Name, report)
+		}
+		valRel := rc.Value
+		if valRel == "" {
+			valRel = "testdata/conformance/tables/retain-values/" + rc.Name + ".json"
+		}
+		path, err := outPath(jsonDir, valRel)
+		if err != nil {
+			return err
+		}
+		keep[filepath.Base(path)] = true
+		if err := writeValue(path, true, func() ([]byte, error) { return model.Write(value) }); err != nil {
+			return fmt.Errorf("retain %s: %w", rc.Name, err)
+		}
+		// THE SAVE IS THE CANONICAL WRITE-BACK of the retained unknown records,
+		// and every readable row owes it (§6.6, layer 3's read-then-write).
+		if rc.Saves != "" {
+			var saveReport tabletext.Report
+			saved, err := tablewire.EncodeRetain(model, value, store, &saveReport)
+			if err != nil {
+				return fmt.Errorf("retain %s: save: %w", rc.Name, err)
+			}
+			if err := writeFileAtomic(rc.Saves, saved); err != nil {
+				return err
+			}
+		}
+	}
+	if len(retains) == 0 {
+		return nil
+	}
+	valRel := retains[0].Value
+	if valRel == "" {
+		valRel = "testdata/conformance/tables/retain-values/" + retains[0].Name + ".json"
+	}
+	dir, err := outPath(jsonDir, filepath.Dir(valRel))
+	if err != nil {
+		return err
+	}
+	return pruneValues(dir, keep)
+}
+
+// framingValues reads every framing vector with the oracle and writes the
+// value each readable row owes. A refused row owes none, so a value left at
+// its old path is pruned rather than re-pinned (layer 3's read-then-write).
+func framingValues(u *units, framings []FramingCase, jsonDir string) error {
+	if len(framings) == 0 {
+		return nil
+	}
+	keep := map[string]bool{}
+	dirRel := ""
+	for _, fc := range framings {
+		unit, err := u.get(fc.Unit)
+		if err != nil {
+			return err
+		}
+		wire, err := os.ReadFile(fc.Wire)
+		if err != nil {
+			return fmt.Errorf("%s: %w", fc.Name, err)
+		}
+		root := unit.Tables[fc.Root]
+		if root == nil {
+			return fmt.Errorf("%s: root %q names no table", fc.Name, fc.Root)
+		}
+		model := tabletext.NewModel(unit)
+		value := model.New(root)
+		var report tabletext.Report
+		reads, _ := strictDecode(model, value, wire, &report)
+		verdict := "refused"
+		if reads {
+			verdict = "read"
+		}
+		if verdict != fc.Verdict() {
+			return fmt.Errorf("%s: the oracle answers %s and the row says %s", fc.Name, verdict, fc.Verdict())
+		}
+		if !reads {
+			if err := writeSaveWire(fc.Save, false, nil); err != nil {
+				return fmt.Errorf("%s: remove write-back wire: %w", fc.Name, err)
+			}
+			continue
+		}
+		if fc.Value == "" {
+			return fmt.Errorf("%s: a readable row names no value file", fc.Name)
+		}
+		out, err := outPath(jsonDir, fc.Value)
+		if err != nil {
+			return err
+		}
+		if err := writeValue(out, true, func() ([]byte, error) { return model.Write(value) }); err != nil {
+			return fmt.Errorf("%s: %w", fc.Name, err)
+		}
+		if err := writeSaveWire(fc.Save, true, func() ([]byte, error) {
+			return tablewire.Encode(model, value)
+		}); err != nil {
+			return fmt.Errorf("%s: write-back wire: %w", fc.Name, err)
+		}
+		keep[filepath.Base(fc.Value)] = true
+		if dirRel == "" {
+			dirRel = filepath.Dir(fc.Value)
+		}
+	}
+	if dirRel == "" {
+		dirRel = "testdata/conformance/tables/framing"
+	}
+	dir, err := outPath(jsonDir, dirRel)
+	if err != nil {
+		return err
+	}
+	return pruneValues(dir, keep)
+}
+
 // hostileValue reads one hostile tree's text with the oracle and writes the
-// value it leaves beside the tree.
-func hostileValue(u *units, h Hostile) error {
+// value it leaves beside the tree. A refused row's old value, if any, is
+// removed: a refused read owes no value file.
+func hostileValue(u *units, h Hostile, jsonDir string) error {
 	unit, err := u.get(h.Unit)
 	if err != nil {
 		return err
@@ -363,30 +586,43 @@ func hostileValue(u *units, h Hostile) error {
 	}
 	value := model.New(st)
 	var report tabletext.Report
-	ok := model.Read(value, text, &report)
+	ok := strictReadJSON(model, value, text, &report)
 	verdict := "refused"
-	if ok && !report.Malformed {
-		verdict = Counts{
-			Unknown:      report.Unknown,
-			KindMismatch: report.KindMismatch,
-			Widened:      report.Widened,
-			Clamped:      report.Clamped,
-			Duplicate:    report.Duplicate,
-		}.String()
+	if ok {
+		verdict = "read"
 	}
 	if verdict != h.Verdict() {
 		return fmt.Errorf("the oracle answers %s and the row says %s", verdict, h.Verdict())
 	}
-	return writeValue(h.Value, !h.Refused, func() ([]byte, error) { return model.Write(value) })
+	valRel := h.Value
+	if valRel == "" {
+		valRel = HostileValue(h.Tree)
+	}
+	out, err := outPath(jsonDir, valRel)
+	if err != nil {
+		return err
+	}
+	if h.Refused {
+		if err := writeSaveWire(h.Save, false, nil); err != nil {
+			return fmt.Errorf("%s: remove write-back wire: %w", h.Name, err)
+		}
+		return writeValue(out, false, nil)
+	}
+	if err := writeSaveWire(h.Save, true, func() ([]byte, error) {
+		return tablewire.Encode(model, value)
+	}); err != nil {
+		return fmt.Errorf("%s: write-back wire: %w", h.Name, err)
+	}
+	return writeValue(out, true, func() ([]byte, error) { return model.Write(value) })
 }
 
 // readReports loads the generated expectations.
-func readReports(path string) (map[string]Counts, error) {
+func readReports(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]Counts{}
+	out := map[string]string{}
 	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -396,11 +632,41 @@ func readReports(path string) (map[string]Counts, error) {
 		if len(f) != 2 {
 			return nil, fmt.Errorf("%s: %q is not a report line", path, line)
 		}
-		c, err := ParseCounts(f[1])
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
+		verdict := f[1]
+		if _, err := parseReadVerdict(verdict); err != nil {
+			c, cerr := ParseCounts(verdict)
+			if cerr != nil {
+				return nil, fmt.Errorf("%s: %w", path, err)
+			}
+			if c.Refused || c.Malformed {
+				verdict = "refused"
+			} else {
+				verdict = "read"
+			}
 		}
-		out[f[0]] = c
+		out[f[0]] = verdict
 	}
 	return out, nil
+}
+
+// outPath is where generate writes one golden. The manifest names every golden
+// by its place in the corpus, under the directory that holds the corpus's text
+// directory, and generate writes the same relative path under the parent of
+// the jsonDir it was given. Over the corpus that is the golden's own place;
+// over a test's temporary jsonDir every byte lands in the temporary tree, and
+// nothing in the working tree moves.
+func outPath(jsonDir, canonical string) (string, error) {
+	base, err := filepath.Abs(filepath.Dir(defaultJSONDir))
+	if err != nil {
+		return "", err
+	}
+	abs, err := filepath.Abs(canonical)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(base, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s is outside the corpus directory %s", canonical, filepath.Dir(defaultJSONDir))
+	}
+	return filepath.Join(filepath.Dir(jsonDir), rel), nil
 }

@@ -5,20 +5,8 @@ import (
 	"testing"
 )
 
-// THE ORACLE'S ANSWER ON TWO MUTANTS THE LEGS ONCE GOT WRONG, pinned so the
-// side every leg is compared against cannot drift. Both were reds of the C++
-// and C# wire fuzzers on ci-full run 39774840059 (seed 24845619678); the
-// legs were wrong and the oracle right, by docs/SPEC-TABLES.md.
-
-// Mutant 688 (corpus seed root_full, pass kind #72): the root's second field
-// arrives under kind 36, the timestamp, which is an eight-byte payload a
-// reader skips by its width (§2.11, §3). The oracle counts the
-// kind_mismatch, steps over eight bytes and reads on; the next field names an
-// id this reader cannot name under a kind outside the closed set, which counts
-// one unknown and is framing damage (§3: "A kind a reader does not know at all
-// is not skippable"). A leg that could not skip kind 36 stopped one field
-// early and reported unknown 0.
-func TestWireFuzzTimestampKindSkipsEightBytes(t *testing.T) {
+// Historical hostile vector: the complete read must refuse.
+func TestWireFuzzTimestampMismatchRefuses(t *testing.T) {
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "tabledemo", "RootConfig", false, false)
 	if err != nil {
@@ -32,16 +20,13 @@ func TestWireFuzzTimestampKindSkipsEightBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer.report != (Counts{Unknown: 1, KindMismatch: 1, Malformed: true}) {
-		t.Fatalf("kind 36 skip: the oracle says %s, want 1,1,0,0,0,true", answer.report)
+	if answer.accepted || len(answer.encoded) != 0 {
+		t.Fatalf("hostile wire produced a value: %+v", answer)
 	}
 }
 
-// The tblm1.Msg mutant: Save.force, a bool under a union arm, rides the byte
-// 0x6d. A bool byte that is neither 0 nor 1 reads true and is MALFORMED on
-// the tolerant read (§6.5); nothing else about the read changes. A leg that
-// folded the byte to true and said nothing reported malformed false.
-func TestWireFuzzBoolByteAboveOneIsMalformed(t *testing.T) {
+// A bool byte outside 0 and 1 cannot produce an accepted value.
+func TestWireFuzzBoolByteAboveOneRefuses(t *testing.T) {
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "tblm1", "Msg", false, false)
 	if err != nil {
@@ -55,7 +40,7 @@ func TestWireFuzzBoolByteAboveOneIsMalformed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer.report != (Counts{Unknown: 2, Malformed: true}) {
-		t.Fatalf("hostile bool: the oracle says %s, want 2,0,0,0,0,true", answer.report)
+	if answer.accepted || len(answer.encoded) != 0 {
+		t.Fatalf("hostile wire produced a value: %+v", answer)
 	}
 }
