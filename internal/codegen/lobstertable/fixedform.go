@@ -490,7 +490,7 @@ func readInt(width int, signed bool) string {
 // of a fixed or enum-keyed array (fcount). A field the form does not carry (a
 // pointer, a map, a list, an unbounded text) names none.
 func fixedFieldFacts(f *ir.Field) []string {
-	if f.Type.Pointer || f.IsMap() || f.Array == ir.ArrayList || f.Type.TextUnbounded() {
+	if !fixedFieldCarried(f, 0) {
 		return nil
 	}
 	parts := []string{
@@ -511,7 +511,7 @@ func fixedFieldFacts(f *ir.Field) []string {
 // form is emitted for the table, the record's body size, and the writer's
 // layout bytes and hash (the compiler's own walk, never re-derived here).
 func emitFixedFacts(g *lobster.Gen, st *ir.Struct) {
-	if !st.FixedDeclared {
+	if !st.FixedDeclared || !ir.TableFixedSupported(st, 0) {
 		return
 	}
 	g.Pf("    fsize: %d,\n", ir.TableFixedTypeBytes(st))
@@ -523,4 +523,26 @@ func emitFixedFacts(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("    femit: true,\n")
 	g.Pf("    lhash: %s,\n", idLit(hash))
 	g.Pf("    layout: %s,\n", lobster.StringLit(layout))
+}
+
+// fixedFieldCarried reports whether a field's whole closure is one the form
+// carries, so its sizes are defined before they are asked for.
+func fixedFieldCarried(f *ir.Field, depth int) bool {
+	if depth > 64 || f.Type.Pointer || f.IsMap() || f.Array == ir.ArrayList || f.Type.TextUnbounded() {
+		return false
+	}
+	if f.Type.Kind != ir.TNamed {
+		return true
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return ir.TableFixedSupported(r, 0)
+	case *ir.Union:
+		for _, v := range r.Variants {
+			if v.F != nil && !fixedFieldCarried(v.F, depth+1) {
+				return false
+			}
+		}
+	}
+	return true
 }
