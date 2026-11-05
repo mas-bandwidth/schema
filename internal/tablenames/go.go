@@ -240,7 +240,6 @@ func init() {
 		Name{Name: "tableOpenAnswer", What: "the form-1 wire runtime: the open's refusal as a report reason"},
 		Name{Name: "tableRefused", What: "the form-1 wire runtime: a refused load names nothing (docs/SPEC-TABLES.md §4)"},
 		Name{Name: "tableWireVerify", What: "the wire-alone check over a file, with the caller's scratch for the node graph (docs/SPEC-TABLES.md §4)"},
-		Name{Name: "tableWireHasNodes", What: "the wire-alone check over a file: whether the root carries a node table (docs/SPEC-TABLES.md §4)"},
 		Name{Name: "tableWireSkipValue", What: "the wire-alone check: an unknown payload held to every wire-alone condition as it is skipped (docs/SPEC-TABLES.md §4)"},
 		Name{Name: "tableWireCheck", What: "the wire-alone check over every byte of a file (docs/SPEC-TABLES.md §4, §6.5)"},
 		Name{Name: "tableBinaryMaxDepth", What: "the binary nesting bound the wire-alone check holds (docs/SPEC-TABLES.md §4, binary_max_depth)"},
