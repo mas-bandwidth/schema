@@ -57,6 +57,9 @@ func TestDeprecatedFieldKeepsItsSlot(t *testing.T) {
 					if lang == "go" && goDeprecatedDelta(line) {
 						continue
 					}
+					if lang == "cpp" && cppDeprecatedDelta(line) {
+						continue
+					}
 					t.Errorf("%s: deprecation moved something other than the tags column:\n%s", name, line)
 				}
 			}
@@ -128,6 +131,22 @@ func goDeprecatedDelta(line string) bool {
 		"Arg:", "Meta:", "tableFixedBuildPlan",
 		"ed := dst", "es := src", "n++", "tableFixedNoGuard",
 	} {
+		if strings.Contains(line, t) {
+			return true
+		}
+	}
+	return false
+}
+
+// cppDeprecatedDelta reports a line that belongs to the C++ fixed form's
+// deprecated-slot default-write delta: the fixed writer writes a deprecated
+// slot's declared default rather than the live value and materializes the
+// owner's reset body, so those write lines differ between a live and a marked
+// generation without moving the slot. The slot-stability invariant this
+// byte-diff used to prove for C++ is now enforced by
+// internal/codegen/cpptable/fixeddeprecated_test.go.
+func cppDeprecatedDelta(line string) bool {
+	for _, t := range []string{"kDefaults", "value.armor"} {
 		if strings.Contains(line, t) {
 			return true
 		}
