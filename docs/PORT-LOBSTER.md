@@ -326,6 +326,23 @@ carries no `reason`; the text-lists card (schema-lobster-vt-text-lists)
 carries it. Retention (§6.6) and the region read are later cards'
 (retain-unknown).
 
+**The final widened map key.** A repeated map key whose earlier occurrence
+carried an incompatible kind keeps its `kind_bad` flag only until a later
+occurrence widens to the declared kind; the later key replaces the earlier
+kind (§2.8, §3), so `map_key` clears `kind_bad` when it takes the widening
+branch. Without that store the widening entry is discarded even though the
+last key wins. The reset is one store inside the widening branch, so a map
+key that does not widen never executes it. On a Linux/x86-64 fleet host with
+the pinned toolchain (default JIT), 200,000 plain loads of the shared
+`map_repeated_key_widen` vector took a median of 1.274s with the reset and
+0.537s without it: the difference is the repair keeping the widened entry
+instead of dropping it early. On `map_key_widen`, where no key repeats, the
+medians were 0.480s with and 0.471s without, inside run-to-run noise, because
+the added line is unreachable there. `TestLobsterMapRepeatedKeyLastKindWins`
+holds the repeated-key value to the Go reader and removes the reset to check
+the original misdecode returns; `TestLobsterMapRepeatedKeySharedVector` holds
+the shared vector through plain and retaining load, save and reload.
+
 **The test.** `TestLobsterTableLoadMatchesTheReports` loads every report and
 instance row of the tables manifest, one program per unit, and holds each
 row's report to reports.txt and to the Go engine's `tablewire.Decode` on the
@@ -337,6 +354,53 @@ red. `TestLobsterTableLoadBytesCountPastItsBody` raises a bytes body's count
 past what its L frames (§4) and holds the leg to Go's refusal: damage
 discards the whole load, so the read says malformed and nothing of the value
 is compared.
+
+## THE FIXED FORM'S HOT PATH
+
+The fixed-proof repair changed the emitted fixed save/load in three places:
+the optional-array payload decode (`fixedform.go`), the union arm routed
+through the array-aware payload reader (`fixedform.go`), and the plan-capacity
+check in the evolution load (`fixedevolve.go`), beside the leaf-walk local
+names. The first two are NEW paths: before the change a table with an optional
+array had no fixed surface at all, and a union arm that is a counted array was
+emitted as a scalar read and did not compile. There is therefore no earlier
+running implementation of those two paths to regress; the common fixed
+save/load path, which is the one every fixed table already ran, is measured.
+
+The emitter under test was built from the pre-change sprint tip b00a89e12 and
+from the change fc9c7866a, each with `go build ./cmd/schema`, and the same
+schema was generated from each:
+
+```
+fixed table T {
+    a uint8
+    b int32
+    arr [..3]int16
+    s string(5)
+    tail uint32
+}
+```
+
+One program constructs 200 records set off their defaults, saves them once,
+then runs 2,000 load-then-save round trips over that wire (400,000 record round
+trips), timing the loop with `seconds_elapsed()` under the pinned v2026.8
+default JIT with no compiler flags, both arms under `nice -n 19`. The two arms
+were run alternately in one sitting, median of seven runs, on a Linux/x86-64
+fleet host: **before 216,966 µs, after 214,416 µs** — the change is 1.2%
+FASTER, not slower. For this schema the emitted before/after code differs
+only in the plan-capacity clause and the leaf-walk local names; the
+optional-array and array-union-arm decode loops are not emitted before
+because those tables were refused or did
+not compile.
+
+The new paths were measured the same way, after only, median of five runs
+(200 records, 2,000 round trips, `nice -n 19`): optional-arrays 105,253 µs
+(263 ns/record) and array union arms 159,692 µs (399 ns/record). Those loops
+run only when the
+schema declares the shape, so they add nothing to a fixed table that does not.
+The byte verdict is the qualification's: the shared fixed-proof suite holds
+every row to the live C++ oracle's bytes in both directions, and the writer
+mutation and negative controls hold the refusal.
 
 ## THE HARNESS
 

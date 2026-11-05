@@ -173,7 +173,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 // optional holding nothing but defaults is longer on the wire than an absent
 // one, and reads back present.
 func TestPresentOptionalAlwaysRides(t *testing.T) {
-	m := model(t)
+	m := formOneModel(t)
 	absent, err := tablewire.Encode(m, place(t, m, "ShipEntry", `{ "name": "X" }`))
 	if err != nil {
 		t.Fatal(err)
@@ -199,7 +199,7 @@ func TestPresentOptionalAlwaysRides(t *testing.T) {
 // §3.2: a stored key of 0 is None's, which keys no record — framing damage,
 // not an unknown name, and the decode continues past it.
 func TestKeyZeroIsMalformed(t *testing.T) {
-	m := model(t)
+	m := formOneModel(t)
 	inst := place(t, m, "PackConfig", `{ "thresholds": { "Hard": 900 } }`)
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
@@ -229,7 +229,7 @@ func TestKeyZeroIsMalformed(t *testing.T) {
 // §4: a field id this reader cannot name is skipped by its kind and counted,
 // and everything after it still decodes.
 func TestUnknownFieldIsSkipped(t *testing.T) {
-	m := model(t)
+	m := formOneModel(t)
 	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
@@ -256,7 +256,7 @@ func TestUnknownFieldIsSkipped(t *testing.T) {
 // §3: an entry this reader cannot name is never counted at RESOLVE time — a
 // table with an unnameable entry no body references counts nothing at all.
 func TestUnnameableEntryCountsNothing(t *testing.T) {
-	m := model(t)
+	m := formOneModel(t)
 	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
@@ -282,7 +282,7 @@ func TestUnnameableEntryCountsNothing(t *testing.T) {
 // §3: A TABLE THAT CARRIES ONE ID TWICE is malformed for the WHOLE wire, and
 // nothing is decoded.
 func TestRepeatedEntryIsMalformed(t *testing.T) {
-	m := model(t)
+	m := formOneModel(t)
 	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
@@ -338,7 +338,7 @@ func TestUnknownFormIsARefusal(t *testing.T) {
 // §3: a reference ABOVE the entry count is framing damage on the body that
 // carries it, and the LAST legal slot must resolve.
 func TestReferenceBound(t *testing.T) {
-	m := model(t)
+	m := formOneModel(t)
 	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
@@ -372,7 +372,7 @@ func TestReferenceBound(t *testing.T) {
 
 // §3: a NON-CANONICAL reference is malformed — one value has one spelling.
 func TestNonCanonicalReferenceIsMalformed(t *testing.T) {
-	m := model(t)
+	m := formOneModel(t)
 	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
@@ -399,7 +399,7 @@ func TestNonCanonicalReferenceIsMalformed(t *testing.T) {
 // §3: a byte between the root's terminator and the table's first entry is
 // malformed for the WHOLE wire, because no field claims it.
 func TestStrayByteBeforeTheTableIsMalformed(t *testing.T) {
-	m := model(t)
+	m := formOneModel(t)
 	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
@@ -425,7 +425,7 @@ func TestStrayByteBeforeTheTableIsMalformed(t *testing.T) {
 // kind mismatch — skipped, counted, never misdecoded, which is the whole point
 // of the keyed body carrying its own kind.
 func TestKeyedUnderArrayKindIsAMismatch(t *testing.T) {
-	m := model(t)
+	m := formOneModel(t)
 	inst := place(t, m, "PackConfig", `{ "thresholds": { "Hard": 900 } }`)
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {

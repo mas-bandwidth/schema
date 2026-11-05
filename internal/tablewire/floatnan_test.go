@@ -95,7 +95,7 @@ func TestOracleRefusesTheFloatNaNPin(t *testing.T) {
 	t.Parallel()
 	pinned := retainVector(t, "floats_nan")
 	for _, schema := range []string{"F1.schema", "F2.schema"} {
-		m := retainModel(t, schema)
+		m := variableRoots(retainModel(t, schema))
 		inst := m.New(m.Lookup("Floats"))
 		var report tabletext.Report
 		ok, err := tablewire.Decode(m, inst, pinned, &report)
@@ -112,7 +112,7 @@ func TestOracleRefusesTheFloatNaNPin(t *testing.T) {
 // bits, naming its own field.
 func TestOracleRefusesEachNonFinitePattern(t *testing.T) {
 	t.Parallel()
-	m1, m2 := retainModel(t, "F1.schema"), retainModel(t, "F2.schema")
+	m1, m2 := variableRoots(retainModel(t, "F1.schema")), variableRoots(retainModel(t, "F2.schema"))
 	wire, err := tablewire.Encode(m1, finiteFloats(t, m1))
 	if err != nil {
 		t.Fatal(err)
@@ -165,7 +165,7 @@ func TestOracleRefusesEachNonFinitePattern(t *testing.T) {
 // the encoder refuses one by name, in a scalar and in an element.
 func TestOracleWriterRefusesNonFinite(t *testing.T) {
 	t.Parallel()
-	m := retainModel(t, "F1.schema")
+	m := variableRoots(retainModel(t, "F1.schema"))
 	for _, v := range []float64{math.NaN(), math.Inf(1), math.Inf(-1), math.Float64frombits(0x7FF00DEFACED0001)} {
 		for _, name := range []string{"signalling", "quiet", "samples"} {
 			inst := finiteFloats(t, m)
@@ -189,7 +189,7 @@ func TestOracleWriterRefusesNonFinite(t *testing.T) {
 // at both widths and across the float rung.
 func TestOracleSubnormalAndMinusZeroRide(t *testing.T) {
 	t.Parallel()
-	m1, m2 := retainModel(t, "F1.schema"), retainModel(t, "F2.schema")
+	m1, m2 := variableRoots(retainModel(t, "F1.schema")), variableRoots(retainModel(t, "F2.schema"))
 	inst := finiteFloats(t, m1)
 	floatField(t, inst, "signalling").Cell.F = float64(math.Float32frombits(0x80000000)) // -0
 	floatField(t, inst, "payload").Cell.F = float64(math.Float32frombits(0x007FFFFF))    // the largest subnormal

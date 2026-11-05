@@ -9,8 +9,8 @@ The bill is `FIXED-FORM-BILL-READS-BACKWARD.md`; the law is its §2 and §6; the
 |---|---|---|---|
 | **LOCK-REFUSES** | the narrowing does not compile against the lock; the refusal names the table, the definition, the rule, the old and the new value | `internal/lockfile` (Go), one test per row | yes |
 | **LOCK-ALLOWS** | the widening compiles and the lock's lineage gains one entry | `internal/lockfile` | no (a positive) |
-| **NEW-READS-OLD** | the widened reader reads the older writer's file: every old value lands exactly, the reader's tail is the default, the counters are what §5.2 says | the C++ reference first (`test/tables/fixedform_main.cpp`, a lineage pair per row written by the dump), then every leg | yes, per leg |
-| **OLD-REFUSES-NEW** | the older reader given the widened writer's file refuses `layout_newer` before any record, no counter moves, nothing decoded; the refusal carries the file's hash and nothing else (bill §12.4) | the C++ reference first, then every leg | yes, per leg |
+| **NEW-READS-OLD** | the widened reader reads the older writer's file: every old value lands exactly and the reader's tail is the default, so the value written back equals the canonical bytes | the C++ reference first (`test/tables/fixedform_main.cpp`, a lineage pair per row written by the dump), then every leg | yes, per leg |
+| **OLD-REFUSES-NEW** | the older reader given the widened writer's file refuses before any record, nothing decoded (recommended diagnostic `layout_unknown` with the file's hash, bill §12.4) | the C++ reference first, then every leg | yes, per leg |
 
 The two read columns share one corpus: for each row, `fixedform_dump.cpp` writes the OLD file (`vN_<row>.bin`)
 and the NEW file (`vN1_<row>.bin`) from two schemas that differ by exactly that row. Each leg then has two
@@ -30,7 +30,7 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `field_undeprecate` | `{a,b deprecated}` | — | `{a,b}`: "undeprecated" (one way, bill §12.3) | — | — |
 | `field_modify` | `{a int32}` | — | `{a int64}` is `int_widen`; `{a string(8)}`: "kind changed" | — | — |
 | `enum_append` | `Tier {bronze silver gold}` | `+ platinum` | `{bronze gold silver}`: "variant reordered"; `{bronze silver}`: "variant removed"; `{bronze platinum silver gold}`: "variant inserted mid-list"; `{bronze silver golden}`: "variant renamed without was" | ordinals equal; a gold record reads gold | the hash |
-| `enum_width` | 255 variants | 256 variants (width 1 → 2) | a width cannot be set by hand: covered by `enum_append` at the boundary | width 1 ordinal WIDENED into width 2, `widened` += 1; a union crossing 255 arms the same, and the guard compares at the tag's width (bill §12.7) | the hash |
+| `enum_width` | 255 variants | 256 variants (width 1 → 2) | a width cannot be set by hand: covered by `enum_append` at the boundary | width 1 ordinal WIDENED into width 2 (the `widened` count is diagnostic, not compared); a union crossing 255 arms the same, and the guard compares at the tag's width (bill §12.7) | the hash |
 | `union_append` | `Pick {a b}` | `+ c` | reordered / removed / inserted / payload changed: four refusals | an `a` record lands a; the tag width equal | the hash |
 | `union_arm_payload_widen` | arm `a: {x}` | arm `a: {x,y}` | arm `a: {}`: "field removed" | x exact, y default | the hash |
 | `flags_append` | `F {a b}` | `F {a b c}` | `{b a}`: "flag moved"; `{a}`: "flag removed" | mask equal | the hash |
@@ -44,21 +44,21 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `wstring_grow` | `wstring(8)` | `wstring(16)` | `wstring(4)` | as string, in code units | the hash |
 | `bytes_grow` | `bytes(8)` | `bytes(16)` | `bytes(4)` | as string | the hash |
 | `text_kind` | `string(8)` | — | `wstring(8)`: "kind changed"; `bytes(8)`: "kind changed" | — | — |
-| `int_widen` | `int16` | `int32`, `int64` | `int8`: "narrowed"; `uint16`: "signedness"; `float32`: "ladder" | sign-extended exact (-1, MIN, MAX), `widened` += 1 | the hash |
+| `int_widen` | `int16` | `int32`, `int64` | `int8`: "narrowed"; `uint16`: "signedness"; `float32`: "ladder" | sign-extended exact (-1, MIN, MAX) (`widened` diagnostic, not compared) | the hash |
 | `uint_widen` | `uint16` | `uint32` | `uint8`; `int16` | zero-extended | the hash |
 | `float_widen` | `float32` | `float64` | `float32` from `float64`: "narrowed"; `int32`: "ladder" | the bits, NaN payloads included (per the FU ruling on the quiet bit) | the hash |
-| `range_widen` | `int32 \| 0..100`, and beside it `vals [4]int32 \| 0..100` and `u uint64 \| 10..1000` for the writer's-range vectors | `\| 0..200` (`u`: `\| 0..2000`); unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, `clamped` == 0 | the hash |
+| `range_widen` | `int32 \| 0..100`, and beside it `vals [4]int32 \| 0..100` and `u uint64 \| 10..1000` for the writer's-range vectors | `\| 0..200` (`u`: `\| 0..2000`); unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, written back to the canonical bytes | the hash |
 | `range_added` | `int32` | — | `int32 \| 0..100`: "range added where none was" | — | — |
-| `cfloat_res_refine` | `float32 \| min = -1, max = 1, resolution = 0.1` | `resolution = 0.01` | — (the REFINEMENT is the widening; its reverse is `cfloat_res_coarsen`) | every old value lands EXACTLY: the old writer quantized to `0.1`, and `0.1` is a whole multiple of this reader's `0.01`, so nothing requantizes and `clamped == 0` | the hash — the resolution is in the DEFINITIONS DIGEST (`'Q'`, bill §13), so the wire hash moves when the step does and the older reader refuses `layout_newer` |
+| `cfloat_res_refine` | `float32 \| min = -1, max = 1, resolution = 0.1` | `resolution = 0.01` | — (the REFINEMENT is the widening; its reverse is `cfloat_res_coarsen`) | every old value lands EXACTLY: the old writer quantized to `0.1`, and `0.1` is a whole multiple of this reader's `0.01`, so nothing requantizes, and the value written back equals the canonical bytes | the hash — the resolution is in the DEFINITIONS DIGEST (`'Q'`, bill §13), so the wire hash moves when the step does and the older reader refuses `layout_unknown` |
 | `cfloat_res_coarsen` | `float32 \| min = -1, max = 1, resolution = 0.01` | — | `resolution = 0.1`: "resolution coarsened (0.01 -> 0.1)" | — | — |
-| `cfloat_range_widen` | `float32 \| min = -1, max = 1, resolution = 0.01` | `min = -2, max = 2, resolution = 0.01` | `min = -1, max = 0.5`: "range narrowed" | `1.0` lands, `clamped == 0` — a compressed float RIDES AS THE FLOAT (SPEC §3.4), so the bounds follow the ranged-scalar rule | the range, by the hash |
+| `cfloat_range_widen` | `float32 \| min = -1, max = 1, resolution = 0.01` | `min = -2, max = 2, resolution = 0.01` | `min = -1, max = 0.5`: "range narrowed" | `1.0` lands, written back to the canonical bytes — a compressed float RIDES AS THE FLOAT (SPEC §3.4), so the bounds follow the ranged-scalar rule | the range, by the hash |
 | `bits_grow` | `bits(8)` | `bits(12)` | `bits(4)`: "narrowed" | exact | the hash |
 | `fixed_I_grow` | `fixed(8,4)` | `fixed(16,4)` | `fixed(8,8)`: "F changed"; `fixed(4,4)`: "I narrowed (8 -> 4)"; `fixed(12,4)` from `fixed(8,8)`: "F changed" (I + F EQUALS a storage width per SPEC §4.6, so with F held a narrowed I IS a narrowed kind, and the only same-storage move is I against F) | the raw scaled value exact | the hash |
 | `fixed_I_grow_element` | `[4]fixed(12,4)` | `[4]fixed(28,4)` | `[4]fixed(12,4)` from `[4]fixed(28,4)`: "element I narrowed (28 -> 12)" | as the scalar row, per slot | the hash |
 | `optional_add` | `T` | `?T` | `T` from `?T`: "optional removed" | present == 1, value exact | the hash |
 | `nested_append` | `Root { v Vec }`, `Vec {x,y,z}` | `Vec {x,y,z,w}` | `Vec {x,y}`: "field removed" (in the nested type, named as `Root: Vec.z`) | as `field_append`, inside Root | the hash |
 | `default_change` | `a int32 = 1` | — | `a int32 = 2`: "default changed" | — | — |
-| `keyword_change` | `fixed table` | — | `table`: "fixed removed"; the reverse: "fixed added" | — | (a different form, `previous_form` / `newer_form`, not `layout_newer`) |
+| `keyword_change` | `fixed table` | — | `table`: "fixed removed"; the reverse: "fixed added" | — | (a different form, `previous_form` / `newer_form`, not `layout_unknown`) |
 | `closure_plain_table` | — | — | a variable table reached by value: compile refusal (check_fixed) | — | — |
 | `closure_variable_kind` | — | — | a pointer, a map, an unbounded array in the closure: compile refusal | — | — |
 | `closure_self` | — | — | a fixed table reaching itself by value, in an array, through a type, through a pointer: compile refusal | — | — |
@@ -73,7 +73,7 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `floor_at` | a file at the floor reads |
 | `floor_below` | a file one below the floor refuses `layout_unsupported`, no counter, nothing decoded |
 | `floor_raise_live` | the floor raised by one: the file that read yesterday refuses today, by name, and the lock's diff says which |
-| `hash_unknown` | a hash in no lineage refuses `layout_newer` |
+| `hash_unknown` | a hash in no lineage refuses `layout_unknown` |
 | `hash_known_bytes_differ` | a known hash whose layout bytes differ from the lock's refuses `layout_malformed`; the seven §1.1 cases each written against a KNOWN hash land here, not in a runtime walk |
 | `hash_identity` | the reader's own hash selects the identity plan; no plan compiler runs (asserted by shape: no compile symbol reachable from load) |
 | `lineage_merge` | two branches append different fields; after the merge both pre-merge files read on the merged build (the name-subset rule, bill §8a.1) |
@@ -100,27 +100,23 @@ the target and the corpus file named on the card.
 For every bounded row above, one more test on the reference: a forged value in the OLD file past the OLD
 writer's bound (a count of 7 where the old writer declared `[..4]`, an ordinal 5 where the old enum had 3,
 a tag past the old arm count, a scalar past the old range), read by the NEW reader whose own bound is
-wider: it clamps or lands `None` against the WRITER's bound carried by the plan, and counts, never landing
-a value the old writer could not have written. Named `<row>_hostile_case()`.
+wider: it REFUSES against the WRITER's bound carried by the plan — `count_over_bound` for the count,
+`out_of_range` for the ordinal, the tag and the scalar — and never lands a value the old writer could not
+have written (the maintainer, 2026-11-03: a value outside the writer's range refuses; it never clamps). Named `<row>_hostile_case()`.
 
-**The compressed-float rows take a hostile pass too, and it is NOT the one above: the bounds pass is the
-READER's** (schema#1164, ruled 2026-09-19 — statement B; reversible by Glenn). A compressed float is the one
-bounded kind whose bound the PLAN DOES NOT CARRY: `emitFixedClamp` emits a single pass over the reader's own
-`FMin`/`FMax` and the compiled plan carries no range at all, so the old writer's bound has nowhere to live
-once the record is resolved. Two forged files say it, and the pair is the point:
+**The compressed-float rows take the same hostile pass**: the plan carries the WRITER's range for a
+compressed float as it does for every ranged kind, and the bounds pass refuses past it (FIXED-FORM-ALGORITHM
+§4.6). The 2026-09-19 statement B of schema#1164, under which a compressed float's pass was the READER's,
+is overturned by the 2026-11-03 ruling. Two forged files say it:
 
 - `hostile_cfloat_range_widen.bin` is `old_cfloat_range_widen.bin` with `aim` forged to `1.5` — OUTSIDE the
-  old writer's `[-1, 1]`, INSIDE the new reader's `[-2, 2]`. It lands WHOLE and UNCOUNTED: `aim == 1.5`,
-  `clamped == 0`, every other counter `0`. The new definition has made lawful what the old one would have
-  clamped, and that is the widening's stated price. This is the file that tells the two readings apart: a
-  plan that carried the WRITER's range instead would land `1.0` and count `clamped == 1`.
+  old writer's `[-1, 1]`, INSIDE the new reader's `[-2, 2]`. It refuses, writes nothing:
+  the writer could not have written it.
 - `past_cfloat_range_widen.bin` is that same old file with `aim` forged to `5.0`, outside the NEW READER's
-  `[-2, 2]` as well. It clamps to the READER's bound and COUNTS: `aim == 2.0` exactly, `clamped == 1`
-  exactly, every other counter `0`. This is the file that proves the bounds pass runs at all — without it
-  "lands whole, uncounted" is indistinguishable from no pass.
+  `[-2, 2]` as well. It refuses, writes nothing.
 
 The resolution takes no hostile row of its own: a value off the old grid is still a float32 the
-reader lands, and the law's refusal for a moved step is the LOCK's and the HASH's, not a counter's.
+reader lands, and the law's refusal for a moved step is the LOCK's and the HASH's.
 
 **"A min that moves outward changes what the stored value MEANS" is form 1's concern, not this wire's.** In
 the variable form a compressed float rides as a QUANTIZED INDEX — the integer `round((v - min) / res)` — so
@@ -135,25 +131,23 @@ and may not there.
 Four more rows, one per divergence of `FIXED-FORM-ALGORITHM.md` §5.8 that NO row above can reach — a
 row whose subject is not a definition change but a place the reference and this page disagree. They are
 written the same way and they owe the same things: the schema pair or the forged file, the expected verdict,
-the expected counters, and WHICH of the four ways apply — a `—` is a column the row cannot have rather than
-one nobody wrote. **The counters are asserted EXACTLY and never `>= 1`**: every one of these four is a row
-where the right number counted in the wrong place, or counted twice, is the bug, so a `>=` passes the read it
-exists to catch. The reference and the dump are Johnny's; **every other leg builds the fixture from THIS TEXT
+the value where it reads, and WHICH of the four ways apply — a `—` is a column the row cannot have rather than
+one nobody wrote. **The verdict is asserted, and where the row reads, the value written back**; counters and reason names
+are per-language diagnostics and are not asserted across legs. The reference and the dump come from the reference leg; **every other leg builds the fixture from THIS TEXT
 and the row's manifest line, never from `fixedform_dump.cpp`** (§5.9 #32, #37).
 
-| row | the pair / the forged file | the read | the verdict | the counters | the four ways |
+| row | the pair / the forged file | the read | the verdict | the counters (diagnostic, not compared across legs) | the four ways |
 |---|---|---|---|---|---|
-| `writer_bound_count` (§5.8 row 4) | `VOLD_/VNEW_array_bounded_grow` as they stand — `[..4]int32` → `[..8]int32`, the reader's bound WIDER than the writer's — plus one forged file, `hostile_array_bounded_grow.bin`: `old_array_bounded_grow.bin` with the count word set to `7`, a value BETWEEN the writer's `4` and the reader's `8` | the NEW build reads the forged OLD file through its lineage, so the plan is a COMPILED one | `n == 1`; `vals_count == 4` — the WRITER's bound carried by the plan, never the reader's `8` and never the forged `7`; `vals[0..3]` exactly `1000, 1001, 1002, 1003`; `vals[4..7]` the reader's declared default; `lead == 0xAAAAAAAA` and `trail == 0xBBBBBBBB` | `clamped == 1` EXACTLY — the `count` op, once per entry per record (§5.4) — and `unknown == 0`, `kind_mismatch == 0`, `widened == 0`, `malformed` false, `refused` false | NEW-READS-OLD only. LOCK-REFUSES / LOCK-ALLOWS are `array_bounded_grow`'s own and are not repeated; OLD-REFUSES-NEW is `—`: the forged file carries the OLD layout, which the OLD reader takes by identity |
-| `refuse_writes_nothing` (§5.8 row 9) | `VOLD_/VNEW_nested_append` as they stand — the appended nested field `Vec.w = 88` is a NONZERO prefill, which is the only thing that can tell a prefill that ran from one that did not — plus one forged file, `nolayout_nested_append.bin`: `old_nested_append.bin` with the PER-RECORD hash word (the record's first eight bytes) inverted, the header's hash untouched | the NEW build reads it: the header's hash selects the OLD lineage entry, so a COMPILED plan with a NONEMPTY fill list is in hand when step 11 compares the record's hash | `n == -1`, `refused` true, `reason == no_layout`, `malformed` FALSE (the joint assertion of §5.3), `layout_hash` untouched — **and the caller's storage, POISONED with `0x5A` before the load, is `0x5A` in every byte after it**: not the prefill's `88` in `v.w`, not a zero anywhere, nothing | every counter `0` — REFUSE IS TOTAL | OLD-REFUSES-NEW's sibling, run as its own column. NEW-READS-OLD is `nested_append`'s own; LOCK-* are `—` (no definition changed) |
-| `unknown_census` (§5.8 row 11) | A NEW PAIR, `VOLD_/VNEW_unknown_census`: OLD `fixed table Item { a int32 = 0, drop int32 = 0 }` and `fixed table Census { lead uint32 = 1, items [4]Item, trail uint32 = 2 }`, NEW the same with `Item.drop` REMOVED. **The pair is deliberately UNLAWFUL** — §5.1 refuses a removal, which is the row's LOCK column — so the lineage entry is HANDED IN by the probe (§5.9 #1's `GenerateLineage(u, lineage)`, the lock played in one line) and never read from a lock. One file, `old_unknown_census.bin`, four elements, every `a` and every `drop` set | the NEW build reads the OLD file through the handed-in entry | `n == 1`; `items[0..3].a` exactly `10, 11, 12, 13`; `lead`/`trail` stand; `Item.drop` lands nowhere | **`unknown == 1`** — once per FIELD per peer, NOT once per element: `Item.drop` is one field of one peer however many of the four elements carry it, and `4` is the divergence. `kind_mismatch == 0`, `widened == 0`, `clamped == 0`, `malformed` and `refused` false. The census lands ONCE, after the record loop, on a read that returns (§5.9 #6), so a SECOND read of the same peer reports `unknown == 1` again | LOCK-REFUSES: `Item { a }` from `Item { a, drop }` names the table, `Item.drop`, "field removed", and the two field lists. NEW-READS-OLD as above. LOCK-ALLOWS and OLD-REFUSES-NEW are `—`: there is no lawful widening here and no lawful newer file |
-| `forged_ordinal_both_plans` (§5.8 row 12) | `VOLD_/VNEW_enum_append` as they stand — `Tier { Bronze, Silver, Gold }` → `+ Platinum` — plus one forged file, `hostile_enum_append.bin`: `old_enum_append.bin` with `r0.tier` set to `4`, an ordinal PAST the writer's three variants and a name the reader does have | **the SAME bytes read TWICE**: once by the NEW build (the COMPILED plan, selected through the lineage) and once by the OLD build (the IDENTITY plan, its own hash) | both reads `n == 1`; both land `tier == None` and never `Platinum` — the plan's variant count is the WRITER's three; both leave `seq == 9` | **`clamped == 1` on BOTH plans, the same number on both** — the BOUNDS pass's count, once per field (§5.4), and the equality of the two is the row's whole proof. `== 1` and not `>= 1`: a leg that counts in the `ordinal` op AS WELL as in the bounds pass lands `2` and is wrong (§5.4's "counts twice"). Every other counter `0` | NEW-READS-OLD (the compiled column) and a second column on the OLD build (the identity one). LOCK-* are `enum_append`'s; OLD-REFUSES-NEW `—` |
+| `writer_bound_count` (§5.8 row 4) | `VOLD_/VNEW_array_bounded_grow` as they stand — `[..4]int32` → `[..8]int32`, the reader's bound WIDER than the writer's — plus one forged file, `hostile_array_bounded_grow.bin`: `old_array_bounded_grow.bin` with the count word set to `7`, a value BETWEEN the writer's `4` and the reader's `8` | the NEW build reads the forged OLD file through its lineage, so the plan is a COMPILED one | refuses, writes nothing — the WRITER's bound `4` carried by the plan, never the reader's `8` | — | NEW-READS-OLD only. LOCK-REFUSES / LOCK-ALLOWS are `array_bounded_grow`'s own and are not repeated; OLD-REFUSES-NEW is `—`: the forged file carries the OLD layout, which the OLD reader takes by identity |
+| `refuse_writes_nothing` (§5.8 row 9) | `VOLD_/VNEW_nested_append` as they stand — the appended nested field `Vec.w = 88` is a NONZERO prefill, which is the only thing that can tell a prefill that ran from one that did not — plus one forged file, `nolayout_nested_append.bin`: `old_nested_append.bin` with the PER-RECORD hash word (the record's first eight bytes) inverted, the header's hash untouched | the NEW build reads it: the header's hash selects the OLD lineage entry, so a COMPILED plan with a NONEMPTY fill list is in hand when step 11 compares the record's hash | refuses, writes nothing — **the caller's storage, POISONED with `0x5A` before the load, is `0x5A` in every byte after it**: not the prefill's `88` in `v.w`, not a zero anywhere, nothing | — (REFUSE IS TOTAL) | OLD-REFUSES-NEW's sibling, run as its own column. NEW-READS-OLD is `nested_append`'s own; LOCK-* are `—` (no definition changed) |
+| `unknown_census` (§5.8 row 11) | A NEW PAIR, `VOLD_/VNEW_unknown_census`: OLD `fixed table Item { a int32 = 0, drop int32 = 0 }` and `fixed table Census { lead uint32 = 1, items [4]Item, trail uint32 = 2 }`, NEW the same with `Item.drop` REMOVED. **The pair is deliberately UNLAWFUL** — §5.1 refuses a removal, which is the row's LOCK column — so the lineage entry is HANDED IN by the probe (§5.9 #1's `GenerateLineage(u, lineage)`, the lock played in one line) and never read from a lock. One file, `old_unknown_census.bin`, four elements, every `a` and every `drop` set | the NEW build reads the OLD file through the handed-in entry | refuses, writes nothing: the handed-in entry is UNLAWFUL (FIXED-FORM-ALGORITHM §5.4) and COMPILE laid no plan for it | — | LOCK-REFUSES: `Item { a }` from `Item { a, drop }` names the table, `Item.drop`, "field removed", and the two field lists. NEW-READS-OLD as above. LOCK-ALLOWS and OLD-REFUSES-NEW are `—`: there is no lawful widening here and no lawful newer file |
+| `forged_ordinal_both_plans` (§5.8 row 12) | `VOLD_/VNEW_enum_append` as they stand — `Tier { Bronze, Silver, Gold }` → `+ Platinum` — plus one forged file, `hostile_enum_append.bin`: `old_enum_append.bin` with `r0.tier` set to `4`, an ordinal PAST the writer's three variants and a name the reader does have | **the SAME bytes read TWICE**: once by the NEW build (the COMPILED plan, selected through the lineage) and once by the OLD build (the IDENTITY plan, its own hash) | both reads refuse, write nothing — the plan's variant count is the WRITER's three — never `None` and never `Platinum` | — (the SAME verdict on both plans is the row's whole proof) | NEW-READS-OLD (the compiled column) and a second column on the OLD build (the identity one). LOCK-* are `enum_append`'s; OLD-REFUSES-NEW `—` |
 
 **Row 4's three other lanes read from the same rule and are already on the corpus.** The count is the lane the
 row above pins; the ranges are `range_widen_hostile` (the writer's `| 0..100`, the reader's `| 0..200`, a forged
-`150` landing `100` with `clamped == 1`), the variant count is the row below, and the arm count is
-`union_append_hostile` (a forged tag `3` against the writer's two arms landing `None` with `clamped == 1`).
-Those three exist as reference cases today asserting `r.clamped >= 1`; **this section's number is `== 1`** and a
-leg asserts the exact one.
+`150` refusing `out_of_range`), the variant count is the row below, and the arm count is
+`union_append_hostile` (a forged tag `3` against the writer's two arms refusing `out_of_range`). A leg
+asserts the refusal and that nothing landed.
 
 **What `fixedform_dump.cpp` owes, so nine legs read the same bytes** (§5.9 #32's manifest, `build/fixedform-corpus/manifest.txt`):
 
@@ -162,9 +156,9 @@ leg asserts the exact one.
 | `hostile_array_bounded_grow.bin` | `old_array_bounded_grow.bin`'s bytes, then the `vals_count` word OVERWRITTEN with `7` after the save | `file=hostile_array_bounded_grow.bin row=array_bounded_grow side=hostile root=ArrayBoundedGrow records=1 forged=r0.vals_count@<abs byte>=7 values=r0.lead=2863311530,r0.vals_count=4,r0.vals[0]=1000,r0.vals[1]=1001,r0.vals[2]=1002,r0.vals[3]=1003,r0.trail=3149642683` |
 | `nolayout_nested_append.bin` | `old_nested_append.bin`'s bytes, then record 0's first eight bytes (its per-record hash) bitwise INVERTED; the header's hash at file+8 untouched | `file=nolayout_nested_append.bin row=nested_append side=nolayout root=Lineage records=1 forged=r0.record_hash@<abs byte>=~<hash> values=r0.v.x=…,r0.v.y=…,r0.v.z=…,r0.seq=…` |
 | `hostile_enum_append.bin` | `old_enum_append.bin`'s bytes, then `r0.tier` OVERWRITTEN with `4` | `file=hostile_enum_append.bin row=enum_append side=hostile root=Lineage records=1 forged=r0.tier@<abs byte>=4 values=r0.tier=3,r0.seq=9` |
-| `hostile_range_widen.bin` | `old_range_widen.bin`'s layout written with `lead = 1`, `v = 100`, `trail = 2`, then `v` OVERWRITTEN with `150`; the dump reads it back through the NEW reader and refuses to write the row unless `v == 100` and `clamped == 1` | `file=hostile_range_widen.bin row=range_widen side=hostile root=RangeWiden records=1 forged=r0.v@<abs byte>=150 expect=r0.lead=1,r0.v=100,r0.trail=2,clamped=1 values=r0.lead=1,r0.v=100,r0.trail=2` |
-| `hostile_range_widen_array.bin` | `old_range_widen.bin`'s layout (`vals [4]int32 \| 0..100`) written with `vals = 10, 20, 30, 40`, then `vals[2]` OVERWRITTEN with `150`; the NEW reader (`\| 0..200`) reads it, and the dump refuses to write the row unless `vals == 10, 20, 100, 40` and `clamped == 1` | `file=hostile_range_widen_array.bin row=range_widen side=hostile root=RangeWiden records=1 forged=r0.vals[2]@<abs byte>=150 expect=r0.lead=1,r0.v=100,r0.vals[0]=10,r0.vals[1]=20,r0.vals[2]=100,r0.vals[3]=40,r0.u=500,r0.trail=2,clamped=1 values=…,r0.vals[2]=30,…` |
-| `hostile_range_widen_u64.bin` | `old_range_widen.bin`'s layout (`u uint64 \| 10..1000`) written with `u = 500`, then `u` OVERWRITTEN with `2^63 + 7`; the NEW reader (`\| 0..2000`) reads it, and the dump refuses to write the row unless `u == 1000` and `clamped == 1` | `file=hostile_range_widen_u64.bin row=range_widen side=hostile root=RangeWiden records=1 forged=r0.u@<abs byte>=9223372036854775815 expect=r0.lead=1,r0.v=100,r0.u=1000,r0.trail=2,clamped=1 values=r0.lead=1,r0.v=100,r0.u=500,r0.trail=2` |
+| `hostile_range_widen.bin` | `old_range_widen.bin`'s layout written with `lead = 1`, `v = 100`, `trail = 2`, then `v` OVERWRITTEN with `150`; the NEW reader refuses the whole load — no value lands and the caller's storage is untouched, never the writer's max clamped into `v` | `file=hostile_range_widen.bin row=range_widen side=hostile root=RangeWiden records=1 forged=r0.v@<abs byte>=150 values=r0.lead=1,r0.v=100,r0.trail=2` |
+| `hostile_range_widen_array.bin` | `old_range_widen.bin`'s layout (`vals [4]int32 \| 0..100`) written with `vals = 10, 20, 30, 40`, then `vals[2]` OVERWRITTEN with `150`; the NEW reader (`\| 0..200`) refuses the whole load — no element lands, `vals[2]` is never clamped to 100, and the array lane stands beside the scalar | `file=hostile_range_widen_array.bin row=range_widen side=hostile root=RangeWiden records=1 forged=r0.vals[2]@<abs byte>=150 values=…,r0.vals[2]=30,…` |
+| `hostile_range_widen_u64.bin` | `old_range_widen.bin`'s layout (`u uint64 \| 10..1000`) written with `u = 500`, then `u` OVERWRITTEN with `2^63 + 7`; the NEW reader (`\| 0..2000`) refuses the whole load in the field's own type, unsigned — no value lands, `u` is never clamped to 1000, and the unsigned lane stands beside the scalar | `file=hostile_range_widen_u64.bin row=range_widen side=hostile root=RangeWiden records=1 forged=r0.u@<abs byte>=9223372036854775815 values=r0.lead=1,r0.v=100,r0.u=500,r0.trail=2` |
 | `old_unknown_census.bin` | the OLD build, one record: `lead`, `trail`, four `items` with `a` = `10 + i` and `drop` = `900 + i` | `file=old_unknown_census.bin row=unknown_census side=old root=Census records=1 values=r0.lead=…,r0.items[0].a=10,r0.items[0].drop=900,…,r0.trail=…` |
 
 **Two additions to #32's grammar, and nothing else moves.** `side=` gains **`hostile`** and **`nolayout`** —
@@ -174,21 +168,20 @@ same place without computing a record offset out of the dump. **`values=` on a f
 wrote, before the forge** — the wire's lawful values — **and the forged byte is the `forged=` field's;
 the VERDICT is this page's row and never the manifest's**, which is the one place a hostile row departs from
 "assert the manifest" (§5.9 #37): the manifest is the oracle for what went ONTO the wire, this table is the
-oracle for what comes BACK. **A shared cross-version vector is the exception, and it says so with one more
-field, `expect=<path>=<value>,...,clamped=<n>`**, between `forged=` and `values=`: what the C++ reference's
-own NEW reader landed from the forged bytes and the `clamped` its report holds. Every leg reads that answer
-through `internal/fixedvector` and asserts it, so the verdict is the reference's and written once.
-The writer's-range vectors (FIXED-FORM-ALGORITHM.md §4.5, `fixedvector.WriterRange`) are
+oracle for what comes BACK. **A forged file whose read REFUSES carries no `expect=` field and no counter**:
+`forged=` and `values=` say what went onto the wire, and the verdict is this page's row. A read returns the
+whole value or refuses the whole load (docs/rulings.json `strict-only-read`), so nothing lands from a forged
+byte and no counter is compared. The three writer's-range vectors (FIXED-FORM-ALGORITHM.md §4.5) are
 `hostile_range_widen.bin` (a scalar), `hostile_range_widen_array.bin` (one element of a ranged fixed array,
 held the same as a scalar) and `hostile_range_widen_u64.bin` (a `uint64` at or above `2^63`, compared
-unsigned, so it lands the writer's max). `manifest_case` still holds — every `.bin` in the corpus has a line and every
+unsigned): each REFUSES THE WHOLE LOAD, so each keeps its scalar, array and unsigned coverage as a refusal
+rather than a clamp. `manifest_case` still holds — every `.bin` in the corpus has a line and every
 `root=` names a table the generator emitted.
 
-**Row 9's corpus files carry ONE record each, deliberately.** §5.3's loop lands record `k` before it checks
-record `k+1`'s hash, so in a two-record file the refusal arrives with record 0 already written and "not one
-destination byte" cannot be read literally. A one-record file has no such question, and **what a multi-record
-`no_layout` may leave in `out[0..k-1]` is an OPEN QUESTION for the bill, not a thing a leg should guess** —
-named here rather than answered.
+**Row 9's corpus files carry ONE record each, and the multi-record answer is settled.** FIXED-FORM-ALGORITHM
+§5.3 checks every record's hash in its CHECK loop before any record lands, so a multi-record `no_layout`
+leaves `out[0..k-1]` exactly as untouched as `out[k]`: not one destination byte is written. A two-record
+file asserts the same untouched storage as a one-record file.
 
 **Row 11's handed-in entry is the probe's, in one line, and it is the only unlawful thing in the corpus.**
 §5.9 #30 withdrew the owed lawful row because no lawful lineage can move the census; the entry is therefore
@@ -276,7 +269,7 @@ have guessed:
 
 | row | the rule | the oracle | which legs |
 |---|---|---|---|
-| `union_unselected_arm` | after a read that RETURNS, an arm the landed tag did not select is **UNDEFINED**, one word for every target (schema#1157, Glenn: "as designed it is 'undefined'"); a union read defines the tag and the selected arm and nothing else. A consumer reads the selected arm only | `VOLD_/VNEW_union_append` as they stand, destination POISONED with `0x5A` on BOTH columns: `pick.type` and `pick.alpha` land the writer's, `seq` stands, every counter `0` — and the probe **does not compare** `pick.beta` or `pick.gamma`, which is the row's whole content | every leg; no leg is red today, and the row exists to stop one being written |
+| `union_unselected_arm` | after a read that RETURNS, an arm the landed tag did not select is **UNDEFINED**, one word for every target (schema#1157, the maintainer: "as designed it is 'undefined'"); a union read defines the tag and the selected arm and nothing else. A consumer reads the selected arm only | `VOLD_/VNEW_union_append` as they stand, destination POISONED with `0x5A` on BOTH columns: `pick.type` and `pick.alpha` land the writer's, `seq` stands — and the probe **does not compare** `pick.beta` or `pick.gamma`, which is the row's whole content | every leg; no leg is red today, and the row exists to stop one being written |
 
 **IF GLENN REVERSES THIS**, the other expectation is written out so the reversal is one edit and not a
 re-derivation: *after a read that returns, every arm holds either the writer's value (selected) or the arm's

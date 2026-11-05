@@ -340,3 +340,185 @@ func viewEnv(out string) []string {
 	}
 	return append(env, "GOFLAGS=-mod=mod", "GOPROXY=off", "VIEW_OUT="+out)
 }
+
+// viewDocTagsProbe prints one row per table (<T>TableInfo) and one row per
+// field (<T>TableFields), plus the TableDocNone / TableTagsNone shared-empty
+// check, for tables/examples.
+const viewDocTagsBody = `
+local m = dofile("schema_module.nut", true).require("TabledemoTables");
+foreach (name in %s) {
+  local info = m[name + "TableInfo"];
+  if (info.doc == "" && info.doc != m.TableDocNone) print("BAD|" + name + ": empty table doc is not TableDocNone\n");
+  if (info.tags.len() == 0 && info.tags != m.TableTagsNone) print("BAD|" + name + ": empty table tags is not TableTagsNone\n");
+  local fs = m[name + "TableFields"];
+  if (info.fields != fs) print("BAD|" + name + ": TableInfo.fields is not TableFields\n");
+  for (local i = 0; i < fs.len(); i++) {
+    local f = fs[i];
+    if (f.doc == "" && f.doc != m.TableDocNone) print("BAD|" + name + "." + f.name + ": empty field doc is not TableDocNone\n");
+    if (f.tags.len() == 0 && f.tags != m.TableTagsNone) print("BAD|" + name + "." + f.name + ": empty field tags is not TableTagsNone\n");
+  }
+  viewTable("tabledemo", name, info);
+}
+`
+
+func buildSquirrelDocTagsUnit(t *testing.T, root string) (*ir.Unit, []string, map[string][]byte) {
+	t.Helper()
+	u := loadUnit(t, root, []string{"tables/examples"})
+	files, err := squirrel.Generate(u)
+	if err != nil {
+		t.Fatalf("tables/examples: type surface refused: %v", err)
+	}
+	tables, err := squirreltable.Generate(u)
+	if err != nil {
+		t.Fatalf("tables/examples: table surface refused: %v", err)
+	}
+	maps.Copy(files, tables)
+	var names []string
+	for name := range ir.TableClosure(u) {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return u, names, files
+}
+
+func squirrelNamesArray(names []string) string {
+	quoted := make([]string, len(names))
+	for i, n := range names {
+		quoted[i] = fmt.Sprintf("%q", n)
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+func docTagsLines(out []byte) []string {
+	var lines []string
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
+		if strings.HasPrefix(line, "INFO|") || strings.HasPrefix(line, "VIEW|") || strings.HasPrefix(line, "BAD|") {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// TestSquirrelViewDocAndTags pins <T>TableInfo and <T>TableFields doc comments
+// and tags against the Go reference descriptors and the IR on tables/examples
+// (docs/SPEC-TABLES.md §8.1), including WeaponConfig.damage's multi-line doc
+// with its embedded quotes and backslash ("hardness \ hit"), ordered tag lists,
+// and the shared _M.TableDocNone / _M.TableTagsNone definitions on unannotated
+// rows.
+func TestSquirrelViewDocAndTags(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Squirrel interpreter and the Go toolchain")
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, names, files := buildSquirrelDocTagsUnit(t, root)
+	modFile := squirreltable.ModuleName(u) + ".nut"
+	modSrc := string(files[modFile])
+	if strings.Count(modSrc, `_M.TableDocNone <- "";`) != 1 {
+		t.Fatalf("%s defines _M.TableDocNone %d times, want 1", modFile, strings.Count(modSrc, `_M.TableDocNone <- "";`))
+	}
+	if strings.Count(modSrc, `_M.TableTagsNone <- [];`) != 1 {
+		t.Fatalf("%s defines _M.TableTagsNone %d times, want 1", modFile, strings.Count(modSrc, `_M.TableTagsNone <- [];`))
+	}
+
+	dir := t.TempDir()
+	for name, data := range files {
+		writeFile(t, filepath.Join(dir, name), data)
+	}
+	probe := viewPrelude + fmt.Sprintf(viewDocTagsBody, squirrelNamesArray(names))
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(probe))
+	sqLines := docTagsLines(sqrun.Run(t, dir, "main.nut", nil))
+	goLines := runGoView(t, root, viewUnit{key: "tabledemo", unit: u, names: names, dir: dir, modName: squirreltable.ModuleName(u)})
+
+	sort.Strings(sqLines)
+	sort.Strings(goLines)
+	if len(sqLines) != len(goLines) {
+		t.Fatalf("Squirrel printed %d view rows, Go printed %d", len(sqLines), len(goLines))
+	}
+	for i := range sqLines {
+		if sqLines[i] != goLines[i] {
+			t.Fatalf("row %d differs\n squirrel: %s\n       go: %s", i, sqLines[i], goLines[i])
+		}
+	}
+
+	// Pin WeaponConfig and WeaponConfig.damage directly against the IR as well.
+	wc := u.Tables["WeaponConfig"]
+	if wc == nil || wc.Doc == "" || len(wc.Tags) == 0 {
+		t.Fatalf("tables/examples WeaponConfig missing expected IR doc/tags: %+v", wc)
+	}
+	dmg := wc.Fields[0]
+	if dmg.Name != "damage" || !strings.Contains(dmg.Doc, `"hardness \ hit"`) || len(dmg.Tags) != 3 {
+		t.Fatalf("WeaponConfig.damage IR unexpected: doc=%q tags=%v", dmg.Doc, dmg.Tags)
+	}
+}
+
+// TestSquirrelViewDocAndTagsNegativeControl mutates the emitted doc, tags, and
+// shared empty tag list in <T>TableFields and requires the reference pin or
+// shared-empty check to fail on each mutation.
+func TestSquirrelViewDocAndTagsNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Squirrel interpreter and the Go toolchain")
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, names, files := buildSquirrelDocTagsUnit(t, root)
+	modFile := squirreltable.ModuleName(u) + ".nut"
+	baseSrc := string(files[modFile])
+
+	dir := t.TempDir()
+	goLines := runGoView(t, root, viewUnit{key: "tabledemo", unit: u, names: names, dir: dir, modName: squirreltable.ModuleName(u)})
+	sort.Strings(goLines)
+
+	for _, tc := range []struct {
+		name string
+		old  string
+		new  string
+	}{
+		{
+			name: "field-doc-sabotaged",
+			old:  "doc = " + squirrel.StringLit([]byte(u.Tables["WeaponConfig"].Fields[0].Doc)),
+			new:  `doc = _M.TableDocNone`,
+		},
+		{
+			name: "field-tags-sabotaged",
+			old:  `numTags = 3, tags = ["ui_slider", "hot", "tuning"]`,
+			new:  `numTags = 2, tags = ["ui_slider", "hot"]`,
+		},
+		{
+			name: "inline-empty-tags-sabotaged",
+			old:  `numTags = 0, tags = _M.TableTagsNone`,
+			new:  `numTags = 0, tags = []`,
+		},
+	} {
+		if !strings.Contains(baseSrc, tc.old) {
+			t.Fatalf("%s: anchor %q not found in %s", tc.name, tc.old, modFile)
+		}
+		sabotaged := strings.Replace(baseSrc, tc.old, tc.new, 1)
+		subDir := t.TempDir()
+		for name, data := range files {
+			if name == modFile {
+				writeFile(t, filepath.Join(subDir, name), []byte(sabotaged))
+				continue
+			}
+			writeFile(t, filepath.Join(subDir, name), data)
+		}
+		probe := viewPrelude + fmt.Sprintf(viewDocTagsBody, squirrelNamesArray(names))
+		writeFile(t, filepath.Join(subDir, "main.nut"), []byte(probe))
+		sqLines := docTagsLines(sqrun.Run(t, subDir, "main.nut", nil))
+		sort.Strings(sqLines)
+		diff := len(sqLines) != len(goLines)
+		if !diff {
+			for i := range sqLines {
+				if sqLines[i] != goLines[i] {
+					diff = true
+					break
+				}
+			}
+		}
+		if !diff {
+			t.Fatalf("%s: sabotaged <T>TableFields stayed green against the Go reference descriptors", tc.name)
+		}
+	}
+}

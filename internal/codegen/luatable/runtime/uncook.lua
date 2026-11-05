@@ -128,6 +128,8 @@ local function present_offset(T, f)
     cur = at + enum_width(f)
   elseif s == "int" then
     cur = at + f.width
+  elseif s == "wide" then
+    cur = at + 16
   else
     cur = at
   end
@@ -237,6 +239,8 @@ read_field = function(ctx, f, base)
     v = read_map(ctx, f, at)
   elseif s == "array" then
     v = read_array(ctx, f, at)
+  elseif s == "wide" then
+    v = { lo = i64(ctx, at), hi = i64(ctx, at + 8) }
   end
   return v, true
 end
@@ -258,6 +262,7 @@ local function zero_elem(T, e)
     return {}
   end
   if s == "union" then return { tag = 0 } end
+  if s == "wide" then return { lo = 0, hi = 0 } end
   return false
 end
 
