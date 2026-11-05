@@ -17755,11 +17755,12 @@ no content hash, no protocol id, no length prefix around the whole. A
 caller that wants an envelope writes its own few lines around these bytes,
 which is §1's promise that schema imposes no envelope. `unpack` is the
 inverse — it writes the tree back out of a `.bin` — which is the tool round
-trip §1 promises, and `unpack` → `pack` is byte-stable. Ill-formed text cannot
-break it: a `.bin` cannot carry it into storage (damage on the table wire,
-terminal on the packet wire, §3, SPEC.md §4.7), and storage a PROGRAM built
-with ill-formed text or an unpaired surrogate in it is refused by `unpack`'s
-writer, `invalid_value` (§16.3), which §17.4 makes a nonzero exit.
+trip §1 promises, and `unpack` → `pack` is byte-stable, with the
+ill-formed UTF-8 case handled under §16.3: a `.bin` cannot carry ill-formed
+text into storage (damage on the table wire, terminal on the packet wire, §3,
+SPEC.md §4.7), and an instance a PROGRAM built with ill-formed text or an
+unpaired surrogate in it is refused `invalid_value` by
+the writer, never replaced, which §17.4 makes a nonzero exit.
 
 **`pack` THEN `unpack` is the other lap, and it is not byte-stable over a
 HAND-AUTHORED tree**, by the form's own rules and not by any defect: a text
