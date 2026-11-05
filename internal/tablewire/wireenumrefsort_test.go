@@ -30,7 +30,7 @@ func TestEngineWireEnumVariantRefSort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := tabletext.NewModel(u)
+	m := variableRoots(tabletext.NewModel(u))
 	root := m.Lookup("LoadoutConfig")
 	build := func(t *testing.T, text string) []byte {
 		t.Helper()
@@ -129,7 +129,7 @@ func TestEngineWireEnumVariantRefSort(t *testing.T) {
 			over[3] = count + 1
 			overBack := m.New(root)
 			var damaged tabletext.Report
-			if ok, _ := tablewire.Decode(m, overBack, over, &damaged); ok || !damaged.Malformed {
+			if ok, _ := tablewire.Decode(m, overBack, over, &damaged); ok || !damaged.Refused {
 				t.Fatalf("reference past the table: ok=%v report=%+v, want malformed", ok, damaged)
 			}
 		})

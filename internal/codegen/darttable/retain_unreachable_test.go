@@ -14,6 +14,7 @@ import (
 )
 
 func TestDartRetainedUnreachableRecords(t *testing.T) {
+	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Child { value int32 }

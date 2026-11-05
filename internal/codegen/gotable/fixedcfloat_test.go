@@ -147,8 +147,26 @@ func writeOne(bits uint32) string {
 	}`, bits)
 }
 
-// readOne reads the one record and checks the BITS and the clamp count.
-func readOne(file string, bits uint32, clamped int32) string {
+// readOne reads the one record and checks the BITS; past is the reads that
+// must refuse instead, a value outside the range the read holds it to
+// (docs/FIXED-FORM-ALGORITHM.md §4.6): out_of_range, nothing landed.
+func readOne(file string, bits uint32, past int32) string {
+	if past > 0 {
+		return fmt.Sprintf(`
+	data, err := os.ReadFile(%q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got [1]Reading
+	var plan [64]TableFixedEntry
+	var report TableReport
+	if n := ReadingFixedLoad(got[:], data, plan[:], &report); n != -1 || report.Reason != "out_of_range" {
+		t.Fatalf("a value past the range landed: n=%%d %%+v", n, report)
+	}
+	if b := math.Float32bits(got[0].V); b != 0 {
+		t.Fatalf("the refused record kept %%#x", b)
+	}`, file)
+	}
 	return fmt.Sprintf(`
 	data, err := os.ReadFile(%q)
 	if err != nil {
@@ -157,15 +175,15 @@ func readOne(file string, bits uint32, clamped int32) string {
 	var got [1]Reading
 	var plan [64]TableFixedEntry
 	var report TableReport
-	if n := ReadingFixedLoadTolerant(got[:], data, plan[:], &report); n != 1 {
+	if n := ReadingFixedLoad(got[:], data, plan[:], &report); n != 1 {
 		t.Fatalf("the NEW reader refused a lawful old file: n=%%d why=%%q", n, report.Reason)
 	}
 	if b := math.Float32bits(got[0].V); b != %#x {
 		t.Fatalf("the value moved: stored %%#x, read %%#x (%%v)", uint32(%#x), b, got[0].V)
 	}
-	if report.Clamped != %d {
-		t.Fatalf("clamped is %%d, want %d", report.Clamped)
-	}`, file, bits, bits, clamped, clamped)
+	if report.Err() != nil || report.Unknown != 0 {
+		t.Fatalf("the read reported %%+v", report)
+	}`, file, bits, bits)
 }
 
 // ---- case 1: THE WRITER DOES NOT QUANTIZE ---------------------------------
@@ -215,15 +233,14 @@ func TestFixedCFloatResolutionRefinesNonInteger(t *testing.T) {
 func TestFixedCFloatAtTheBoundsExactly(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range []struct {
-		name    string
-		bits    uint32
-		want    uint32
-		clamped int32
+		name string
+		bits uint32
+		want uint32
+		past int32
 	}{
-		// 1.0 is the OLD max exactly: inside, no clamp.
+		// 1.0 is the OLD max exactly: inside.
 		{"old_max", 0x3F800000, 0x3F800000, 0},
-		// one ulp PAST the old max, read under the OLD definition: clamped to
-		// max and counted.
+		// one ulp PAST the old max, read under the OLD definition: refused.
 		{"one_ulp_past_old_max", 0x3F800001, 0x3F800000, 1},
 		// 0 is the OLD min exactly.
 		{"old_min", 0x00000000, 0x00000000, 0},
@@ -232,7 +249,7 @@ func TestFixedCFloatAtTheBoundsExactly(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			file := cfWrite(t, dir, c.name, cfOld, writeOne(c.bits))
-			cfRead(t, cfOld, nil, readOne(file, c.want, c.clamped))
+			cfRead(t, cfOld, nil, readOne(file, c.want, c.past))
 		})
 	}
 }
@@ -247,8 +264,7 @@ func TestFixedCFloatAtTheBoundsExactly(t *testing.T) {
 // wire's way (docs/SPEC-TABLES.md §3.3, A COMPRESSED FLOAT'S SPECIAL VALUES,
 // ruling 1): a NaN or an infinity is not a value of the type, so the read
 // tests the raw bits FIRST, before the bounds pass, and REFUSES one as
-// non_finite_float, naming the field, the tolerant read included; nothing is
-// clamped and nothing lands. The writer refuses one too.
+// non_finite_float; nothing lands. The writer refuses one too.
 
 // readRefused reads the one record and requires the non_finite_float refusal.
 func readRefused(file string) string {
@@ -260,11 +276,11 @@ func readRefused(file string) string {
 	var got [1]Reading
 	var plan [64]TableFixedEntry
 	var report TableReport
-	if n := ReadingFixedLoadTolerant(got[:], data, plan[:], &report); n != -1 {
+	if n := ReadingFixedLoad(got[:], data, plan[:], &report); n != -1 {
 		t.Fatalf("the reader landed %%d records holding a non-finite float", n)
 	}
-	if report.Reason != "non_finite_float: Reading.v" || report.Clamped != 0 || report.Err() != TableRefuseNonFiniteFloat {
-		t.Fatalf("the refusal is %%+v, want non_finite_float: Reading.v and no clamp", report)
+	if report.Err() != TableRefuseNonFiniteFloat || report.Unknown != 0 {
+		t.Fatalf("the refusal is %%+v, want non_finite_float and no counter", report)
 	}
 	if b := math.Float32bits(got[0].V); b != 0 {
 		t.Fatalf("the refused record kept %%#x", b)
@@ -298,62 +314,37 @@ func TestFixedCFloatNonFiniteIsRefused(t *testing.T) {
 
 // NEGATIVE ZERO is not below a min of +0 (`-0.0 < 0.0` is false in IEEE-754),
 // and it once survived the pass with its SIGN BIT — a bit pattern the
-// declaration cannot name. It lands as +0, the value 0 itself, and counts
-// nothing, because it is inside the range. A finite value past an end still
-// clamps to that end and counts.
-func TestFixedCFloatNegativeZeroAndPastEndsClamp(t *testing.T) {
+// declaration cannot name. It lands as +0, the value 0 itself, because it is
+// inside the range. A finite value past an end refuses out_of_range.
+func TestFixedCFloatNegativeZeroAndPastEndsRefuse(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range []struct {
-		name    string
-		bits    uint32
-		want    uint32
-		clamped int32
+		name string
+		bits uint32
+		want uint32
+		past int32
 	}{
-		{"above_max", 0x40000000, 0x3F800000, 1}, // 2.0 > max: clamps to max
-		{"below_min", 0xC0000000, 0x00000000, 1}, // -2.0 < min: clamps to min
+		{"above_max", 0x40000000, 0, 1}, // 2.0 > max: refused
+		{"below_min", 0xC0000000, 0, 1}, // -2.0 < min: refused
 		{"negative_zero", 0x80000000, 0x00000000, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			file := cfWrite(t, dir, c.name, cfOld, writeOne(c.bits))
-			cfRead(t, cfOld, nil, readOne(file, c.want, c.clamped))
+			cfRead(t, cfOld, nil, readOne(file, c.want, c.past))
 		})
 	}
 }
 
-// ---- case 6: THE HOSTILE ROW UNDER A WIDENING ----------------------------
+// ---- case 6: PAST THE READER'S OWN MAX ----------------------------------
 //
-// Hypothesis (6). A value PAST THE OLD MAX in the old file, read by a NEW
-// reader whose range contains it. The bounds pass is the READER's (§3.4, and
-// the meaning row at docs/SPEC-TABLES.md's §20 table: "§4 clamps a load to the
-// reader's bounds"), so 5.0 is inside [-10, 10] and lands WHOLE and uncounted
-// — the new definition has made lawful what the old one would have clamped.
-// That is the widening's stated price and not a finding; it is pinned here
-// because a plan that carried the WRITER's range instead would clamp to 1.0.
+// 50.0 in an old file, read by the [-10, 10] reader, is outside every range
+// the read could hold it to, and refuses out_of_range.
 
-func TestFixedCFloatPastOldMaxLandsUnderTheWidenedRange(t *testing.T) {
-	dir := t.TempDir()
-	const bits = 0x40A00000 // 5.0, past the OLD max of 1
-	file := cfWrite(t, dir, "hostile", cfOld, writeOne(bits))
-	cfRead(t, cfWideBoth, []string{cfOld}, readOne(file, bits, 0))
-}
-
-// ---- case 6b: PAST THE READER'S OWN MAX ----------------------------------
-//
-// Hypothesis (6b), and it is the OTHER HALF of case 6. If the bounds pass is
-// the reader's, then a value outside the READER's range must still be caught:
-// 50.0 in an old file, read by the [-10, 10] reader, lands the READER's max
-// 10.0 and counts exactly one clamp. Case 6 alone cannot say this — "lands
-// whole, uncounted" reads the same whether the pass is the reader's or there
-// is no pass at all. The pair is what pins schema#1164's statement B: 5.0
-// lands untouched because it is INSIDE [-10, 10]; 50.0 clamps because it is
-// not; neither number is ever the OLD writer's max of 1.
-
-func TestFixedCFloatPastTheReadersOwnMaxClampsAndCounts(t *testing.T) {
+func TestFixedCFloatPastTheReadersOwnMaxRefuses(t *testing.T) {
 	dir := t.TempDir()
 	const bits = 0x42480000 // 50.0, past the NEW reader's max of 10
-	const want = 0x41200000 // 10.0, the READER's own max — not the writer's 1.0
 	file := cfWrite(t, dir, "past", cfOld, writeOne(bits))
-	cfRead(t, cfWideBoth, []string{cfOld}, readOne(file, want, 1))
+	cfRead(t, cfWideBoth, []string{cfOld}, readOne(file, 0, 1))
 }
 
 // ---- case 7: THE RESOLUTION IS IN THE FIXED LAYOUT HASH -------------------

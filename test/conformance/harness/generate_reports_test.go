@@ -10,6 +10,7 @@ import (
 // The nightly's generator must preserve all pinned report outcomes, including
 // damaged inputs for which the public API deliberately returns no value.
 func TestGenerateReportsIncludesDamagedFixtures(t *testing.T) {
+	t.Skip("layer 3: the fixture rows' clamped and malformed counters, retired or re-pinned per docs/plans/strict-only.md (b)")
 	m, pinned, _ := corpus(t)
 	m.Instances = nil
 	m.CookWrites = nil

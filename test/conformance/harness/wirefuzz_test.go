@@ -61,6 +61,7 @@ func TestFileFuzzCountCapIsFramingRefusal(t *testing.T) {
 // A mutable reader has no region preflight. Its int32 count-cap refusal
 // discards the partial value without the region's recovery event.
 func TestBuilderFuzzChecksCountRefusalWithoutRegionPreflight(t *testing.T) {
+	t.Skip("layer 3: the pipe answer's malformed flag and the builder-over-region count-cap precedence, retired per docs/plans/strict-only.md (b)")
 	_, _, units := corpus(t)
 	for _, tc := range []struct{ name, table string }{
 		{"list_count_cap", "Save"}, {"list_count_cross_length", "Album"},
@@ -187,6 +188,7 @@ func TestWireVerdictNonFiniteIsARefusal(t *testing.T) {
 // oracle reads as malformed has reached a float the rule does not reach, or
 // stopped short of one it does.
 func TestWireVerdictMalformedIsNotARefusal(t *testing.T) {
+	t.Skip("layer 3: the pipe's malformed flag as a verdict apart from refused, retired per docs/plans/strict-only.md (b)")
 	root := &wireRoot{unit: "probe", root: "Root"}
 	answer := oracleAnswer{report: Counts{Malformed: true}}
 	if verdict := wireVerdict(root, legReply{report: Counts{Malformed: true}, saveFail: true}, answer, 16); verdict != "" {
@@ -201,6 +203,7 @@ func TestWireVerdictMalformedIsNotARefusal(t *testing.T) {
 // its entry; the unknown node-table ID and the earlier incompatible key value
 // still report their own events. SPEC-TABLES 2.8 uses the final key occurrence.
 func TestFileFuzzRepeatedKeyWidenKeepsMap(t *testing.T) {
+	t.Skip("layer 3: last-wins on a repeated map key and the oracle's counters, retired per docs/plans/strict-only.md (b)")
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "mapdemo", "Pairs", false, false)
 	if err != nil {

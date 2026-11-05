@@ -16,12 +16,331 @@ package bench
 
 import (
 	"encoding/binary"
+	"github.com/mas-bandwidth/schema/v2/tables/goruntime"
 	"github.com/mas-bandwidth/serialize.go/v2"
 	"math"
-	"slices"
-	"unicode/utf8"
 	"unsafe"
 )
+
+// ---- the shared runtime (docs/SPEC-TABLES.md §8.4): this unit was generated with
+// the Go option runtime=shared, so the table-independent machinery is imported ----
+
+// A unit and its runtime come from one compiler: either difference overflows.
+const _ = uint64(goruntime.Version - 0x67281dd57e4ffeb8)
+const _ = uint64(0x67281dd57e4ffeb8 - goruntime.Version)
+
+type TableReport = goruntime.TableReport
+
+const TableDocNone = goruntime.TableDocNone
+
+func tableJSONGetRaw(a0 unsafe.Pointer, a1 uint32) uint64 { return goruntime.TableJSONGetRaw(a0, a1) }
+
+func tableJSONSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJSONSetRaw(a0, a1, a2) }
+
+func tableJSONGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
+	return goruntime.TableJSONGetSigned(a0, a1)
+}
+
+type TableRefuseReason = goruntime.TableRefuseReason
+
+const TableRefuseOk = goruntime.TableRefuseOk
+const TableRefuseNotACook = goruntime.TableRefuseNotACook
+const TableRefuseForeignOrder = goruntime.TableRefuseForeignOrder
+const TableRefuseWrongBuildVersion = goruntime.TableRefuseWrongBuildVersion
+const TableRefuseReservedNotZero = goruntime.TableRefuseReservedNotZero
+const TableRefuseBadAlignment = goruntime.TableRefuseBadAlignment
+const TableRefuseTruncated = goruntime.TableRefuseTruncated
+const TableRefuseUnalignedBase = goruntime.TableRefuseUnalignedBase
+const TableRefuseBadLayout = goruntime.TableRefuseBadLayout
+const TableRefuseUnknownForm = goruntime.TableRefuseUnknownForm
+const TableRefuseCountOverLength = goruntime.TableRefuseCountOverLength
+const TableRefuseCountOverExtentCap = goruntime.TableRefuseCountOverExtentCap
+const TableRefuseBlobOverSizeCap = goruntime.TableRefuseBlobOverSizeCap
+const TableRefuseDataCycle = goruntime.TableRefuseDataCycle
+const TableRefuseInvalidValue = goruntime.TableRefuseInvalidValue
+const TableRefuseAllocationFailed = goruntime.TableRefuseAllocationFailed
+const TableRefuseWireDamaged = goruntime.TableRefuseWireDamaged
+const TableRefuseMalformed = goruntime.TableRefuseMalformed
+const TableRefuseOutOfRange = goruntime.TableRefuseOutOfRange
+const TableRefuseKindMismatch = goruntime.TableRefuseKindMismatch
+const TableRefuseBase64Damaged = goruntime.TableRefuseBase64Damaged
+const TableRefuseBase64NotCanonical = goruntime.TableRefuseBase64NotCanonical
+const TableRefuseIntegrityMismatch = goruntime.TableRefuseIntegrityMismatch
+const TableRefuseNonFiniteFloat = goruntime.TableRefuseNonFiniteFloat
+const TableRefuseBlobShared = goruntime.TableRefuseBlobShared
+const TableRefusePreviousForm = goruntime.TableRefusePreviousForm
+const TableRefuseNewerForm = goruntime.TableRefuseNewerForm
+const TableRefuseMessageFormAsFile = goruntime.TableRefuseMessageFormAsFile
+const TableRefuseLayoutUnknown = goruntime.TableRefuseLayoutUnknown
+const TableRefuseLayoutUnsupported = goruntime.TableRefuseLayoutUnsupported
+const TableRefuseLayoutNewer = goruntime.TableRefuseLayoutNewer
+const TableRefuseLayoutMalformed = goruntime.TableRefuseLayoutMalformed
+const TableRefuseLayoutCountMismatch = goruntime.TableRefuseLayoutCountMismatch
+const TableRefuseLayoutKindUnknown = goruntime.TableRefuseLayoutKindUnknown
+const TableRefuseLayoutKindInvalid = goruntime.TableRefuseLayoutKindInvalid
+const TableRefuseLayoutSizeMismatch = goruntime.TableRefuseLayoutSizeMismatch
+const TableRefuseLayoutTreeUnclosed = goruntime.TableRefuseLayoutTreeUnclosed
+const TableRefuseLayoutTooDeep = goruntime.TableRefuseLayoutTooDeep
+const TableRefuseLayoutRecordTooLarge = goruntime.TableRefuseLayoutRecordTooLarge
+const TableRefusePlanTooLarge = goruntime.TableRefusePlanTooLarge
+const TableRefuseNoLayout = goruntime.TableRefuseNoLayout
+const TableRefuseBatchTooLarge = goruntime.TableRefuseBatchTooLarge
+const TableRefuseTextIllFormed = goruntime.TableRefuseTextIllFormed
+const TableRefuseCountOverBound = goruntime.TableRefuseCountOverBound
+const TableRefuseLengthOverBound = goruntime.TableRefuseLengthOverBound
+
+const TableRefuseMissingRequired = goruntime.TableRefuseMissingRequired
+
+type tableTruncatedMalformed = goruntime.TableTruncatedMalformed
+
+func tableRefuseError(a0 TableRefuseReason) error { return goruntime.TableRefuseError(a0) }
+
+type TableBuildVersionMismatch = goruntime.TableBuildVersionMismatch
+
+type TableMissingRequired = goruntime.TableMissingRequired
+
+type TableOutOfRange = goruntime.TableOutOfRange
+
+type TableMalformedField = goruntime.TableMalformedField
+
+const tableWireBytesID = goruntime.TableWireBytesID
+
+const tableWireStringID = goruntime.TableWireStringID
+
+func tableLebBytes(a0 uint64) int64 { return goruntime.TableLebBytes(a0) }
+
+type TableOpenVerdict = goruntime.TableOpenVerdict
+
+const TableOpenOk = goruntime.TableOpenOk
+const TableOpenRefused = goruntime.TableOpenRefused
+const TableOpenDamaged = goruntime.TableOpenDamaged
+const TableOpenBodyStopped = goruntime.TableOpenBodyStopped
+
+func tableKindBytes(a0 uint8) int64 { return goruntime.TableKindBytes(a0) }
+
+func tableKindWidens(a0, a1 uint8) bool { return goruntime.TableKindWidens(a0, a1) }
+
+func tableUTF8Word(a0 []byte) uint64 { return goruntime.TableUTF8Word(a0) }
+
+func tableUTF8Valid(a0 []byte) bool { return goruntime.TableUTF8Valid(a0) }
+
+func tableUTF8Clamp(a0 []byte, a1 int64) int64 { return goruntime.TableUTF8Clamp(a0, a1) }
+
+const tableBinaryMaxDepth = goruntime.TableBinaryMaxDepth
+
+func tableWireUtf16Valid(a0 []byte) bool { return goruntime.TableWireUtf16Valid(a0) }
+
+func tableOpenAnswer(a0 *TableReport, a1 TableOpenVerdict, a2 []byte) bool {
+	return goruntime.TableOpenAnswer(a0, a1, a2)
+}
+
+func tableRefused(a0 *TableReport) { goruntime.TableRefused(a0) }
+
+type TableBitWriter = goruntime.TableBitWriter
+
+type TableBitReader = goruntime.TableBitReader
+
+type TableMessageShape = goruntime.TableMessageShape
+
+type TableMessageEntry = goruntime.TableMessageEntry
+
+type TableVocabulary = goruntime.TableVocabulary
+
+type TableMessageReader = goruntime.TableMessageReader
+
+const TableFixedForm = goruntime.TableFixedForm
+
+const TableFixedHeaderBytes = goruntime.TableFixedHeaderBytes
+
+const TableFixedHashAt = goruntime.TableFixedHashAt
+
+const tableFixedCopy = goruntime.TableFixedCopy
+const tableFixedCount = goruntime.TableFixedCount
+const tableFixedText = goruntime.TableFixedText
+const tableFixedOrdinal = goruntime.TableFixedOrdinal
+const tableFixedWiden = goruntime.TableFixedWiden
+const tableFixedConst = goruntime.TableFixedConst
+const tableFixedWidenF = goruntime.TableFixedWidenF
+const tableFixedBool = goruntime.TableFixedBool
+const tableFixedTag = goruntime.TableFixedTag
+
+const tableFixedTextUTF8 = goruntime.TableFixedTextUTF8
+const tableFixedTextWide = goruntime.TableFixedTextWide
+const tableFixedTextBytes = goruntime.TableFixedTextBytes
+
+const tableFixedPresent = goruntime.TableFixedPresent
+
+const tableFixedNoGuard = goruntime.TableFixedNoGuard
+
+const tableFixedEntryBytes = goruntime.TableFixedEntryBytes
+
+const tableFixedLayoutHeaderBytes = goruntime.TableFixedLayoutHeaderBytes
+
+const tableFixedRecordMaxBytes = goruntime.TableFixedRecordMaxBytes
+
+const tableFixedMaxDepth = goruntime.TableFixedMaxDepth
+
+type TableFixedEntry = goruntime.TableFixedEntry
+
+type TableFixedGuardLink = goruntime.TableFixedGuardLink
+
+type TableFixedDst = goruntime.TableFixedDst
+
+const tableFixedDstDeprecated = goruntime.TableFixedDstDeprecated
+
+type tableFixedPlan = goruntime.TableFixedPlan
+
+func tableFixedWidens(a0, a1 uint8) bool { return goruntime.TableFixedWidens(a0, a1) }
+
+func tableFixedSignedKind(a0 uint8) bool { return goruntime.TableFixedSignedKind(a0) }
+
+func tableFixedKindKnown(a0 uint8) bool { return goruntime.TableFixedKindKnown(a0) }
+
+func tableFixedOrdinalWidth(a0 uint32) bool { return goruntime.TableFixedOrdinalWidth(a0) }
+
+func tableFixedLeafSize(a0 uint8, a1 uint32) (admitted, leaf bool) {
+	return goruntime.TableFixedLeafSize(a0, a1)
+}
+
+func tableFixedRuns(a0 uint8) bool { return goruntime.TableFixedRuns(a0) }
+
+func tableFixedArgWidth(a0 uint8) uint32 { return goruntime.TableFixedArgWidth(a0) }
+
+func tableFixedTagAt(a0 []byte, a1 uint32, a2 uint8) uint64 {
+	return goruntime.TableFixedTagAt(a0, a1, a2)
+}
+
+func tableFixedPartition(a0 []TableFixedEntry, a1 int32) int32 {
+	return goruntime.TableFixedPartition(a0, a1)
+}
+
+func tableFixedBuildPlan(a0 func([]TableFixedEntry, [][]TableFixedGuardLink, uint32, uint32) int, a1 int) tableFixedPlan {
+	return goruntime.TableFixedBuildPlan(a0, a1)
+}
+
+func tableFixedPut8(a0 []byte, a1 uint8) { goruntime.TableFixedPut8(a0, a1) }
+
+func tableFixedPut16(a0 []byte, a1 uint16) { goruntime.TableFixedPut16(a0, a1) }
+
+func tableFixedPut32(a0 []byte, a1 uint32) { goruntime.TableFixedPut32(a0, a1) }
+
+func tableFixedPut64(a0 []byte, a1 uint64) { goruntime.TableFixedPut64(a0, a1) }
+
+func tableFixedPutF32(a0 []byte, a1 float32) { goruntime.TableFixedPutF32(a0, a1) }
+
+func tableFixedPutF64(a0 []byte, a1 float64) { goruntime.TableFixedPutF64(a0, a1) }
+
+func tableFixedPut128(a0 []byte, a1, a2 uint64) { goruntime.TableFixedPut128(a0, a1, a2) }
+
+func tableFixedGet32(a0 []byte) uint32 { return goruntime.TableFixedGet32(a0) }
+
+func tableFixedGet64(a0 []byte) uint64 { return goruntime.TableFixedGet64(a0) }
+
+func tableFixedCopyRun(a0, a1 []byte, a2 uint32) { goruntime.TableFixedCopyRun(a0, a1, a2) }
+
+func tableFixedRun(a0 []TableFixedEntry, a1 int32, a2, a3 []byte, a4 *TableReport) string {
+	return goruntime.TableFixedRun(a0, a1, a2, a3, a4)
+}
+
+func tableFixedTextIllFormed(a0 uint8, a1 uint32, a2 []byte) bool {
+	return goruntime.TableFixedTextIllFormed(a0, a1, a2)
+}
+
+func tableFixedUTF8Ok(a0 []byte) bool { return goruntime.TableFixedUTF8Ok(a0) }
+
+func tableFixedUnitsIllFormed(a0 []uint16) bool { return goruntime.TableFixedUnitsIllFormed(a0) }
+
+func tableFixedTextRefusal(a0 []TableFixedEntry, a1 int32, a2 []byte) string {
+	return goruntime.TableFixedTextRefusal(a0, a1, a2)
+}
+
+func tableFixedDead(a0 [][2]uint32, a1 uint32) bool { return goruntime.TableFixedDead(a0, a1) }
+
+type tableFixedLayoutEntry = goruntime.TableFixedLayoutEntry
+
+type tableFixedLayoutView = goruntime.TableFixedLayoutView
+
+func tableFixedEntryAt(a0 tableFixedLayoutView, a1 int32) tableFixedLayoutEntry {
+	return goruntime.TableFixedEntryAt(a0, a1)
+}
+
+func tableFixedSubtree(a0 tableFixedLayoutView, a1 int32) int32 {
+	return goruntime.TableFixedSubtree(a0, a1)
+}
+
+func tableFixedUnionArmBytes(a0 tableFixedLayoutView, a1 int32) uint32 {
+	return goruntime.TableFixedUnionArmBytes(a0, a1)
+}
+
+func tableFixedTagBytes(a0 tableFixedLayoutView, a1 int32) uint32 {
+	return goruntime.TableFixedTagBytes(a0, a1)
+}
+
+func tableFixedSrcEnd(a0 TableFixedEntry) uint64 { return goruntime.TableFixedSrcEnd(a0) }
+
+const tableFixedRemapMax = goruntime.TableFixedRemapMax
+
+type tableFixedHole = goruntime.TableFixedHole
+
+func tableFixedLand(a0 []byte, a1, a2 uint32) { goruntime.TableFixedLand(a0, a1, a2) }
+
+func tableFixedHoles(a0 []TableFixedEntry, a1 int32, a2 uint32) []tableFixedHole {
+	return goruntime.TableFixedHoles(a0, a1, a2)
+}
+
+type TableFixedKnownLayout = goruntime.TableFixedKnownLayout
+
+type tableFixedLineagePlan = goruntime.TableFixedLineagePlan
+
+func tableFixedSelect(a0 []TableFixedKnownLayout, a1 uint64) int32 {
+	return goruntime.TableFixedSelect(a0, a1)
+}
+
+func tableFixedRefuseHash(a0 *TableReport, a1 string, a2 uint64) int64 {
+	return goruntime.TableFixedRefuseHash(a0, a1, a2)
+}
+
+func tableFixedRefuse(a0 *TableReport, a1 string) int64 { return goruntime.TableFixedRefuse(a0, a1) }
+
+func tableFixedOverlay(a0 unsafe.Pointer, a1 uintptr) []byte {
+	return goruntime.TableFixedOverlay(a0, a1)
+}
+
+const TableMessageBatchMax = goruntime.TableMessageBatchMax
+
+func tableMessageBits(a0 uint64) int64 { return goruntime.TableMessageBits(a0) }
+
+func tableMessageRefuse(a0 *TableReport, a1 string) bool { return goruntime.TableMessageRefuse(a0, a1) }
+
+func tableMessageKnownKind(a0 uint8) bool { return goruntime.TableMessageKnownKind(a0) }
+
+func tableMessageKindBits(a0 uint8) int64 { return goruntime.TableMessageKindBits(a0) }
+
+func tableMessageCount(a0 *TableBitReader, a1 TableMessageShape) (uint64, bool) {
+	return goruntime.TableMessageCount(a0, a1)
+}
+
+func tableMessageSkip(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 TableMessageEntry, a4 int) bool {
+	return goruntime.TableMessageSkip(a0, a1, a2, a3, a4)
+}
+
+func tableMessageSkipBody(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 int) bool {
+	return goruntime.TableMessageSkipBody(a0, a1, a2, a3)
+}
+
+func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]byte) bool {
+	return goruntime.TableMessageReadScalar(a0, a1, a2)
+}
+
+func tableMessageWriteScalar(a0 *TableBitWriter, a1 *int32, a2 TableMessageShape, a3, a4 uint64) {
+	goruntime.TableMessageWriteScalar(a0, a1, a2, a3, a4)
+}
+
+func tableMessageBatchOpen(a0 *TableVocabulary, a1 []byte, a2 *TableReport) (TableMessageReader, int64) {
+	return goruntime.TableMessageBatchOpen(a0, a1, a2)
+}
+
+func tableMessageBatchClose(a0 *TableMessageReader) bool { return goruntime.TableMessageBatchClose(a0) }
 
 // BenchMixedRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
@@ -134,57 +453,6 @@ type MixedEventRow struct {
 // announcement carries before the first body so an endpoint's build is knowable.
 const BuildVersion uint64 = 0x41d3559378bfa852
 
-// TableReport is the table-wire read report — the permissive contract's
-// ledger. Silence (all zero) means the data matched this reader's schema
-// exactly. Err (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5) is the STRICT read's typed reason
-// for malformed, clamped, kind-mismatched, unknown form, wire-damaged and
-// build-version-mismatched. Unknown, Widened and Retained alone are not one.
-type TableReport struct {
-	Retained, RetainLost int32
-	Verdict              TableOpenVerdict // unsupported form is distinct from damage
-	Reason               string           // why the form was refused; empty for a file read
-	Widened              int32            // a compatible wider kind preserved the value
-	Unknown              int32            // unknown field ids skipped (newer data)
-	KindMismatch         int32            // known id, changed type — skipped, never misdecoded
-	Clamped              int32            // out-of-range values clamped to declared bounds
-	// ClampedField names the field or path whose value a read clamped
-	// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5), empty when none: the strict read's clamped
-	// refusal carries it, apart from Reason.
-	ClampedField string
-	// NonFiniteFloat names the first NaN or infinity float a read met,
-	// <Table>.<field>: every read refuses it (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
-	NonFiniteFloat string
-	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
-	// A body carrying an id twice is legal input
-	// whose last occurrence wins, silently. A wire read always leaves it zero.
-	Duplicate int32
-	// MissingRequired counts required fields (mas-bandwidth/schema docs/SPEC-TABLES.md §2.3) the
-	// record did not carry: a record an older writer produced before the field
-	// became required. The refusal names the field in Reason.
-	MissingRequired int32
-	Malformed       bool // framing damage; decode stopped, partial result kept
-	// BlobShared counts the extra slots that named a blob record another slot
-	// already named (mas-bandwidth/schema docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
-	// node, never a copy per slot, and the strict read refuses blob_shared.
-	BlobShared int32
-	// BuildVersionRemote and BuildVersionOwn are the two build versions a strict
-	// announcement refusal carries (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the endpoint's
-	// announcement and this unit's own. They are zero on every other read.
-	BuildVersionRemote uint64
-	BuildVersionOwn    uint64
-	// FixedRaised is true only on a FIXED form's refusal
-	// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
-	// BY NAME (via its TableRefuseReason member), and the four form-byte
-	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
-	// still answers unknown_form on the message path.
-	FixedRaised bool
-	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
-	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
-	// reports it too — the operator's other answer, a layout this build served
-	// and has retired.
-	LayoutHash uint64
-}
-
 // ---- reflection (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
 //
 // Static field descriptors for every type in the table closure: name, the
@@ -199,15 +467,6 @@ type TableReport struct {
 // expressions of the compiler's own layout model, so the generated numbers are
 // this build's own rather than a guess about it. They are what lets one
 // generic walk drive the text form for every table.
-
-// THE SHARED EMPTY DOC (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1): a declaration with no ///
-// block carries a doc column naming this one definition, so absence costs a
-// unit no string data and a printer concatenates doc columns with no nil test.
-// Go gives a string no address identity, so what the rule is READ OFF here is
-// the emitted text: the generated file defines the empty doc once and every
-// unannotated row names that definition, rather than each row carrying an
-// inline "" of its own.
-const TableDocNone = ""
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
@@ -370,44 +629,6 @@ type tableJSONGraphNode struct {
 // ---- storage is the HOST's, so every load and store goes through a width
 // ---- switch rather than a copy into the low bytes of a wider word
 
-func tableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
-	switch width {
-	case 1:
-		return uint64(*(*uint8)(storage))
-	case 2:
-		return uint64(*(*uint16)(storage))
-	case 4:
-		return uint64(*(*uint32)(storage))
-	case 8:
-		return *(*uint64)(storage)
-	}
-	return 0
-}
-
-func tableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
-	switch width {
-	case 1:
-		*(*uint8)(storage) = uint8(value)
-	case 2:
-		*(*uint16)(storage) = uint16(value)
-	case 4:
-		*(*uint32)(storage) = uint32(value)
-	case 8:
-		*(*uint64)(storage) = value
-	}
-}
-
-func tableJSONGetSigned(storage unsafe.Pointer, width uint32) int64 {
-	raw := tableJSONGetRaw(storage, width)
-	if width < 8 {
-		sign := uint64(1) << (width*8 - 1)
-		if raw&sign != 0 {
-			raw |= ^((sign << 1) - 1)
-		}
-	}
-	return int64(raw)
-}
-
 type tableMapKey struct {
 	text []byte
 	raw  uint64
@@ -517,396 +738,6 @@ func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 	}
 }
 
-// TableRefuseReason is the typed error shared by file and accelerator failures.
-// A successful call returns nil; a failure returns its first failing clause.
-type TableRefuseReason uint8
-
-const (
-	TableRefuseOk TableRefuseReason = iota
-	TableRefuseNotACook
-	TableRefuseForeignOrder
-	TableRefuseWrongBuildVersion
-	TableRefuseReservedNotZero
-	TableRefuseBadAlignment
-	TableRefuseTruncated
-	TableRefuseUnalignedBase
-	TableRefuseBadLayout
-	TableRefuseUnknownForm
-	TableRefuseCountOverLength
-	TableRefuseCountOverExtentCap
-	TableRefuseBlobOverSizeCap
-	TableRefuseDataCycle
-	TableRefuseInvalidValue
-	TableRefuseAllocationFailed
-	TableRefuseWireDamaged
-	TableRefuseMalformed
-	TableRefuseClamped
-	TableRefuseKindMismatch
-	TableRefuseBase64Damaged
-	TableRefuseBase64NotCanonical
-	TableRefuseIntegrityMismatch
-	// TableRefuseNonFiniteFloat: a NaN or infinity float, refused by every read and
-	// writer (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3); the retired non_finite's ordinal (§6.5).
-	TableRefuseNonFiniteFloat
-	// TableRefuseBlobShared: one blob record named from two slots (mas-bandwidth/schema docs/SPEC-TABLES.md
-	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
-	TableRefuseBlobShared
-	// The fixed form's own refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3,
-	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
-	// fixed-form refusal name is a TableRefuseReason member, appended after
-	// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
-	// names, order and spelling agree in all ports. Each member's Error() is its
-	// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
-	// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
-	// for a fixed load that refused. The form-byte refusals keep answering
-	// TableRefuseUnknownForm, as §6.5's strict error identity requires.
-	TableRefusePreviousForm
-	TableRefuseNewerForm
-	TableRefuseMessageFormAsFile
-	TableRefuseLayoutUnknown
-	TableRefuseLayoutUnsupported
-	TableRefuseLayoutNewer
-	TableRefuseLayoutMalformed
-	TableRefuseLayoutCountMismatch
-	TableRefuseLayoutKindUnknown
-	TableRefuseLayoutKindInvalid
-	TableRefuseLayoutSizeMismatch
-	TableRefuseLayoutTreeUnclosed
-	TableRefuseLayoutTooDeep
-	TableRefuseLayoutRecordTooLarge
-	TableRefusePlanTooLarge
-	TableRefuseNoLayout
-	TableRefuseBatchTooLarge
-	TableRefuseTextIllFormed
-	TableRefuseCountOverBound
-	TableRefuseLengthOverBound
-)
-
-func (r TableRefuseReason) Error() string {
-	switch r {
-	case TableRefuseOk:
-		return "ok"
-	case TableRefuseNotACook:
-		return "not_a_cook"
-	case TableRefuseForeignOrder:
-		return "foreign_order"
-	case TableRefuseWrongBuildVersion:
-		return "wrong_build_version"
-	case TableRefuseReservedNotZero:
-		return "reserved_not_zero"
-	case TableRefuseBadAlignment:
-		return "bad_alignment"
-	case TableRefuseTruncated:
-		return "truncated"
-	case TableRefuseUnalignedBase:
-		return "unaligned_base"
-	case TableRefuseBadLayout:
-		return "bad_layout"
-	case TableRefuseUnknownForm:
-		return "unknown_form"
-	case TableRefuseCountOverLength:
-		return "count_over_length"
-	case TableRefuseCountOverExtentCap:
-		return "count_over_extent_cap"
-	case TableRefuseBlobOverSizeCap:
-		return "blob_over_size_cap"
-	case TableRefuseDataCycle:
-		return "data_cycle"
-	case TableRefuseInvalidValue:
-		return "invalid_value"
-	case TableRefuseAllocationFailed:
-		return "allocation_failed"
-	case TableRefuseWireDamaged:
-		return "wire_damaged"
-	case TableRefuseMalformed:
-		return "malformed"
-	case TableRefuseClamped:
-		return "clamped"
-	case TableRefuseKindMismatch:
-		return "kind_mismatch"
-	case TableRefuseBase64Damaged:
-		return "base64_damaged"
-	case TableRefuseBase64NotCanonical:
-		return "base64_not_canonical"
-	case TableRefuseIntegrityMismatch:
-		return "integrity_mismatch"
-	case TableRefuseNonFiniteFloat:
-		return "non_finite_float"
-	case TableRefuseBlobShared:
-		return "blob_shared"
-	case TableRefusePreviousForm:
-		return "previous_form"
-	case TableRefuseNewerForm:
-		return "newer_form"
-	case TableRefuseMessageFormAsFile:
-		return "message_form_as_file"
-	case TableRefuseLayoutUnknown:
-		return "layout_unknown"
-	case TableRefuseLayoutUnsupported:
-		return "layout_unsupported"
-	case TableRefuseLayoutNewer:
-		return "layout_newer"
-	case TableRefuseLayoutMalformed:
-		return "layout_malformed"
-	case TableRefuseLayoutCountMismatch:
-		return "layout_count_mismatch"
-	case TableRefuseLayoutKindUnknown:
-		return "layout_kind_unknown"
-	case TableRefuseLayoutKindInvalid:
-		return "layout_kind_invalid"
-	case TableRefuseLayoutSizeMismatch:
-		return "layout_size_mismatch"
-	case TableRefuseLayoutTreeUnclosed:
-		return "layout_tree_unclosed"
-	case TableRefuseLayoutTooDeep:
-		return "layout_too_deep"
-	case TableRefuseLayoutRecordTooLarge:
-		return "layout_record_too_large"
-	case TableRefusePlanTooLarge:
-		return "plan_too_large"
-	case TableRefuseNoLayout:
-		return "no_layout"
-	case TableRefuseBatchTooLarge:
-		return "batch_too_large"
-	case TableRefuseTextIllFormed:
-		return "text_ill_formed"
-	case TableRefuseCountOverBound:
-		return "count_over_bound"
-	case TableRefuseLengthOverBound:
-		return "length_over_bound"
-	}
-	return "invalid refusal reason"
-}
-
-// tableTruncatedMalformed is the typed error a truncated fixed load answers
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5 strict error identity, §3.4): a short file is
-// malformed by class and truncated by name, so a caller matching either sees
-// it. It is a value, not the caller's *TableReport, so the error keeps its
-// answer when the report is reused. The rule is on this error, not on the
-// enum: the fixed writer's short output buffer returns TableRefuseTruncated
-// itself and never matches malformed.
-type tableTruncatedMalformed struct{}
-
-func (tableTruncatedMalformed) Error() string { return TableRefuseTruncated.Error() }
-func (tableTruncatedMalformed) Is(target error) bool {
-	return target == TableRefuseTruncated || target == TableRefuseMalformed
-}
-func tableRefuseError(reason TableRefuseReason) error {
-	if reason == TableRefuseOk {
-		return nil
-	}
-	return reason
-}
-
-// TableBuildVersionMismatch is the typed error a strict announcement refusal
-// reports (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the endpoint's build version and the
-// reader's own, each a 64-bit number.
-type TableBuildVersionMismatch struct{ Remote, Own uint64 }
-
-func (m TableBuildVersionMismatch) Error() string {
-	const digits = "0123456789abcdef"
-	var remote, own [16]byte
-	p, o := m.Remote, m.Own
-	for i := 15; i >= 0; i-- {
-		remote[i] = digits[p&0xf]
-		p >>= 4
-	}
-	for i := 15; i >= 0; i-- {
-		own[i] = digits[o&0xf]
-		o >>= 4
-	}
-	return "build_version_mismatch: remote 0x" + string(remote[:]) + " own 0x" + string(own[:])
-}
-
-// TableMissingRequired is the typed error a strict read reports for a record
-// that lacks a | required field (mas-bandwidth/schema docs/SPEC-TABLES.md §2.3): Fields names the
-// missing fields, comma-separated in declaration order, at whatever depth of
-// the record they were missing, and Error() is the report's own reason.
-type TableMissingRequired struct{ Fields string }
-
-func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
-
-// Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
-// The read report). A strict read refuses malformed, clamped, kind-mismatched,
-// unknown form, wire-damaged, build-version-mismatched, missing-required
-// (§2.3, naming the field), a non-finite float (§3.3, refused by every read:
-// non_finite_float, named in NonFiniteFloat and Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
-func (r *TableReport) Err() error {
-	if r == nil {
-		return nil
-	}
-	if r.Reason == "build_version_mismatch" {
-		return TableBuildVersionMismatch{Remote: r.BuildVersionRemote, Own: r.BuildVersionOwn}
-	}
-	// A NON-FINITE FLOAT outranks every later verdict: no read keeps one (§3.3).
-	if r.NonFiniteFloat != "" {
-		return TableRefuseNonFiniteFloat
-	}
-	// The fixed form's named refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3) answer as
-	// their TableRefuseReason member, so errors.Is(err, TableRefuseLayoutUnknown)
-	// holds for a fixed load that refused. The form-byte refusals (previous_form,
-	// newer_form, message_form_as_file) are NOT in this switch: §6.5's strict error
-	// identity keeps them answering TableRefuseUnknownForm below.
-	if r.FixedRaised && r.Verdict == TableOpenRefused {
-		switch r.Reason {
-		case "layout_unknown":
-			return TableRefuseLayoutUnknown
-		case "layout_unsupported":
-			return TableRefuseLayoutUnsupported
-		case "layout_newer":
-			return TableRefuseLayoutNewer
-		case "layout_malformed":
-			return TableRefuseLayoutMalformed
-		case "layout_count_mismatch":
-			return TableRefuseLayoutCountMismatch
-		case "layout_kind_unknown":
-			return TableRefuseLayoutKindUnknown
-		case "layout_kind_invalid":
-			return TableRefuseLayoutKindInvalid
-		case "layout_size_mismatch":
-			return TableRefuseLayoutSizeMismatch
-		case "layout_tree_unclosed":
-			return TableRefuseLayoutTreeUnclosed
-		case "layout_too_deep":
-			return TableRefuseLayoutTooDeep
-		case "layout_record_too_large":
-			return TableRefuseLayoutRecordTooLarge
-		case "plan_too_large":
-			return TableRefusePlanTooLarge
-		case "no_layout":
-			return TableRefuseNoLayout
-		case "batch_too_large":
-			return TableRefuseBatchTooLarge
-		case "text_ill_formed":
-			return TableRefuseTextIllFormed
-		case "count_over_bound":
-			return TableRefuseCountOverBound
-		case "length_over_bound":
-			return TableRefuseLengthOverBound
-		case "truncated":
-			return TableRefuseTruncated
-		case "reserved_not_zero":
-			return TableRefuseReservedNotZero
-		}
-		return TableRefuseUnknownForm
-	}
-	// The fixed form's framing-damage returns (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.4) set
-	// Malformed and their Reason without FixedRaised, because they return -1
-	// directly instead of through tableFixedRefuse. A short fixed file keeps the
-	// truncated name and answers the malformed class through a value error; the
-	// enum itself stays one name per clause, so a save's short output buffer is
-	// truncated and not malformed.
-	if r.Reason == "truncated" {
-		if r.Malformed {
-			return tableTruncatedMalformed{}
-		}
-		return TableRefuseTruncated
-	}
-	if r.Reason == "reserved_not_zero" {
-		return TableRefuseReservedNotZero
-	}
-	if r.Verdict == TableOpenRefused || r.Reason == "previous_form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" {
-		return TableRefuseUnknownForm
-	}
-	if r.Reason == "integrity_mismatch" {
-		return TableRefuseIntegrityMismatch
-	}
-	// A builder load that met a count above the int32 storage cap refused it by
-	// name (mas-bandwidth/schema docs/SPEC-TABLES.md §2.9): not damage, so Malformed stays false.
-	if r.Reason == "count_over_extent_cap" {
-		return TableRefuseCountOverExtentCap
-	}
-	if r.Verdict == TableOpenDamaged {
-		return TableRefuseWireDamaged
-	}
-	if r.MissingRequired > 0 {
-		const p = "missing_required: "
-		f := r.Reason
-		if len(f) >= len(p) && f[:len(p)] == p {
-			f = f[len(p):]
-		}
-		return TableMissingRequired{Fields: f}
-	}
-	if r.Malformed {
-		const p = "malformed: "
-		if len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
-			return TableMalformedField{Field: r.Reason[len(p):]}
-		}
-		return TableRefuseMalformed
-	}
-	// A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
-	// the one node and counts it; the strict read refuses it by name.
-	if r.BlobShared > 0 {
-		return TableRefuseBlobShared
-	}
-	if r.Clamped > 0 {
-		if r.ClampedField != "" {
-			return TableClampedField{Field: r.ClampedField}
-		}
-		return TableRefuseClamped
-	}
-	if r.KindMismatch > 0 {
-		return TableRefuseKindMismatch
-	}
-	return nil
-}
-
-// tableNonFiniteFloat names a float whose raw bits a read found to be a NaN or
-// an infinity (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the field is not written and the load,
-// tolerant too, refuses as non_finite_float. The first name wins. It takes the
-// report's slot, not a method, so the shared runtime (§8.4) can export it; the
-// file and message readers both pass &r.Report.NonFiniteFloat.
-func tableNonFiniteFloat(slot *string, field string) {
-	if *slot == "" {
-		*slot = field
-	}
-}
-
-// tableNonFiniteRefused names a load's non-finite float in Reason; the caller
-// refuses and lands nothing (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
-func tableNonFiniteRefused(report *TableReport) bool {
-	if report.NonFiniteFloat == "" {
-		return false
-	}
-	report.Reason = "non_finite_float: " + report.NonFiniteFloat
-	return true
-}
-
-// tableTextClamped names the field whose value a read clamped (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §6.5), so a strict read can say which field. The first name a read records
-// wins, as for non_finite_float. It lands in the report's own ClampedField slot,
-// apart from Reason, so the clamped refusal keeps its field whatever Reason holds. The slot is named by pointer
-// so the same emitted call compiles in every reader context (the table read's
-// *TableReader, the message read's TableMessageReader).
-func tableTextClamped(clampedField *string, field string) {
-	if clampedField != nil && *clampedField == "" {
-		*clampedField = field
-	}
-}
-
-// TableClampedField is a strict read's clamped refusal naming the field it clamped
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
-type TableClampedField struct{ Field string }
-
-func (e TableClampedField) Error() string        { return "clamped: " + e.Field }
-func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
-
-// tableTextMalformed names the text list or map whose element or key a read
-// refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1), so a strict read can say which field.
-func tableTextMalformed(r *TableReport, field string) {
-	if r != nil && r.Reason == "" {
-		r.Reason = "malformed: " + field
-	}
-}
-
-// TableMalformedField is a strict read's malformed refusal naming the text
-// list or map it refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1):
-// errors.Is(err, TableRefuseMalformed) holds.
-type TableMalformedField struct{ Field string }
-
-func (e TableMalformedField) Error() string        { return "malformed: " + e.Field }
-func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
-
 const tableIDCapacity = 79
 const tableIDBuckets = 256
 
@@ -984,15 +815,6 @@ func (ids *TableIds) Truncate(mark int) {
 			ids.slot[o] = 0
 		}
 	}
-}
-
-func tableLebBytes(v uint64) int64 {
-	n := int64(1)
-	for v >= 128 {
-		n++
-		v >>= 7
-	}
-	return n
 }
 
 // TableWriter writes into the caller's buffer, or counts exactly the same
@@ -1161,16 +983,6 @@ func (w *TableWriter) Trailer() {
 	w.Put64(uint64(w.Ids.Count))
 }
 
-// TableOpenVerdict distinguishes an unsupported form from framing damage.
-type TableOpenVerdict uint8
-
-const (
-	TableOpenOk TableOpenVerdict = iota
-	TableOpenRefused
-	TableOpenDamaged
-	TableOpenBodyStopped
-)
-
 // TableReader holds one bounded body and a view of the file's id trailer.
 // Sub-readers share the trailer and report, but cannot consume sibling bytes.
 type TableReader struct {
@@ -1273,22 +1085,6 @@ func (r *TableReader) Body() (TableReader, bool) {
 	return sub, true
 }
 
-func tableKindBytes(kind uint8) int64 {
-	switch kind {
-	case 1, 2, 6, 20, 25:
-		return 1
-	case 3, 7, 21, 26:
-		return 2
-	case 4, 8, 10, 22, 27:
-		return 4
-	case 5, 9, 11, 23, 28, 36:
-		return 8
-	case 18, 19, 24, 29:
-		return 16
-	}
-	return 0
-}
-
 func (r *TableReader) Skip(kind uint8) bool {
 	if n := tableKindBytes(kind); n != 0 {
 		if !r.Has(n) {
@@ -1344,9 +1140,6 @@ func (r TableReader) EndsEarly() bool {
 
 func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
 	r := TableReader{Report: report}
-	if report != nil {
-		report.NonFiniteFloat = ""
-	} // this read's own refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3)
 	if len(data) == 0 {
 		return r, TableOpenDamaged
 	}
@@ -1423,11 +1216,6 @@ func tableOpenFramed(data []byte, report *TableReport) (TableReader, TableOpenVe
 	return r, verdict
 }
 
-func tableKindWidens(from, to uint8) bool {
-	return (from >= 2 && from <= 5 && (to > from && to <= 5 || to == 18)) ||
-		(from >= 6 && from <= 9 && (to > from && to <= 9 || to == 19)) || from == 10 && to == 11
-}
-
 func (r *TableReader) Unsigned(kind uint8) uint64 {
 	switch tableKindBytes(kind) {
 	case 1:
@@ -1454,90 +1242,459 @@ func (r *TableReader) Signed(kind uint8) int64 {
 	}
 }
 
-// tableUTF8Word is the form-1 writer's little-endian word load for its in-line
-// text test (emitTextWords): a function of the runtime file, which imports
-// encoding/binary, so the generated writers in any file of the unit can call it.
-func tableUTF8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
+type tableWireCheck struct {
+	depth   int32
+	ids     int
+	nodes   uint64
+	records TableReader
+	graph   []uint64
+	release bool
+	head    uint64
+	gen     uint32
+	reason  TableRefuseReason
+	stamp   [4097]uint32
+}
 
-func tableUTF8Valid(data []byte) bool {
-	// One pass, eight bytes a step: z gathers the zero-byte test of every word
-	// (exact: a word has a zero byte if and only if its lane is set), hi gathers
-	// the high bits. No zero and no high bit is ASCII with no NUL; a high bit
-	// sends the text to utf8.Valid, the zero test having already been answered.
-	var hi, z uint64
-	i := 0
-	for ; i+8 <= len(data); i += 8 {
-		x := uint64(data[i]) | uint64(data[i+1])<<8 | uint64(data[i+2])<<16 | uint64(data[i+3])<<24 | uint64(data[i+4])<<32 | uint64(data[i+5])<<40 | uint64(data[i+6])<<48 | uint64(data[i+7])<<56
-		hi |= x
-		z |= (x - 0x0101010101010101) &^ x
+func (c *tableWireCheck) fail(reason TableRefuseReason) bool {
+	if c.reason == TableRefuseOk {
+		c.reason = reason
 	}
-	for ; i < len(data); i++ {
-		c := uint64(data[i])
-		hi |= c
-		z |= (c - 1) &^ c
+	return false
+}
+
+// failed is the walk's refusal, wire_damaged where no rule named one.
+func (c *tableWireCheck) failed() TableRefuseReason {
+	if c.reason == TableRefuseOk {
+		return TableRefuseWireDamaged
 	}
-	if z&0x8080808080808080 != 0 {
+	return c.reason
+}
+
+// edge is one kind 17 payload: a node index, 0 for null, 1 for the root and
+// 2 on for the node table's records in order (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1). Every
+// pointer lies inside the root's descent, so one naming the root is a cycle.
+func (c *tableWireCheck) edge(index uint64) bool {
+	if index == 0 {
+		return true
+	}
+	if index == 1 || index > c.nodes+1 {
+		return c.fail(TableRefuseWireDamaged)
+	}
+	if c.graph == nil {
+		return true
+	}
+	at := &c.graph[2*(index-1)]
+	if !c.release {
+		if uint32(*at) == ^uint32(0) {
+			return c.fail(TableRefuseWireDamaged)
+		}
+		*at++
+		return true
+	}
+	if uint32(*at) == 0 {
+		return c.fail(TableRefuseWireDamaged)
+	}
+	*at--
+	if uint32(*at) == 0 {
+		*at |= c.head << 32
+		c.head = index + 1
+	}
+	return true
+}
+
+// The walk takes each reader BY VALUE and answers the offset it reached: a
+// reader passed by pointer down a recursion this deep is moved to the heap by
+// the compiler, and the read allocates nothing of its own.
+
+// body walks one table body from r.Offset to its terminator: the reserved ids
+// only where they are the body's own transport, and no id twice. It answers
+// the offset after the terminator.
+func (c *tableWireCheck) body(r TableReader, root bool) (int64, bool) {
+	c.gen++
+	gen := c.gen
+	probe := r
+	for {
+		ref, ok := probe.Leb()
+		if !ok {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		if ref == 0 {
+			break
+		}
+		if ref > uint64(c.ids) || !probe.Has(1) {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		if c.stamp[ref] == gen {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		c.stamp[ref] = gen
+		if !probe.Skip(probe.Get8()) {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+	}
+	for {
+		ref, _ := r.Leb()
+		if ref == 0 {
+			return r.Offset, true
+		}
+		id, _ := r.Resolve(ref)
+		kind := r.Get8()
+		if id == 0xfffffffffffffffe || id == 0xfffffffffffffffd {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		if id == 0xffffffffffffffff {
+			if !root || kind != 12 {
+				return 0, c.fail(TableRefuseWireDamaged)
+			}
+			r.Body()
+			continue
+		}
+		at, ok := c.value(r, kind)
+		if !ok {
+			return 0, false
+		}
+		r.Offset = at
+	}
+}
+
+// value walks one payload of a kind from r.Offset — a field's, or an
+// element's, an element being encoded as a field's payload of its kind — and
+// answers the offset after it.
+func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
+	switch kind {
+	case 1:
+		if !r.Has(1) || r.Get8() > 1 {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+	case 10:
+		if !r.Has(4) {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		if r.Get32()&0x7f800000 == 0x7f800000 {
+			return 0, c.fail(TableRefuseNonFiniteFloat)
+		}
+	case 11:
+		if !r.Has(8) {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		if r.Get64()&0x7ff0000000000000 == 0x7ff0000000000000 {
+			return 0, c.fail(TableRefuseNonFiniteFloat)
+		}
+	case 17:
+		index, ok := r.Leb()
+		if !ok || !c.edge(index) {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+	case 30:
+		ref, ok := r.Leb()
+		if !ok || ref > uint64(c.ids) {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+	case 15:
+		return c.union(r)
+	case 12, 13, 14, 16, 31, 32, 33:
+		sub, ok := r.Body()
+		if !ok || !c.framed(sub, kind) {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+	default:
+		n := tableKindBytes(kind)
+		if n == 0 || !r.Has(n) {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		r.Offset += n
+	}
+	return r.Offset, true
+}
+
+// framed walks the content of an L-framed payload of a kind — a field's
+// L-framed kinds, an arm's and a keyed slot's element — which fills its L.
+func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
+	var at int64
+	var ok bool
+	switch kind {
+	case 12:
+		return tableUTF8Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
+	case 33:
+		return tableWireUtf16Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
+	case 31:
+		return true
+	case 32:
+		return len(sub.Buffer) == 0 || c.fail(TableRefuseWireDamaged)
+	case 13, 14, 16:
+		if c.depth >= tableBinaryMaxDepth {
+			return c.fail(TableRefuseWireDamaged)
+		}
+		c.depth++
+		if kind == 13 {
+			at, ok = c.body(sub, false)
+		} else {
+			at, ok = c.array(sub, kind == 16)
+		}
+		c.depth--
+	case 15:
+		at, ok = c.union(sub)
+	case 17, 30:
+		at, ok = c.value(sub, kind)
+	default:
+		if n := tableKindBytes(kind); n == 0 || int64(len(sub.Buffer)) != n {
+			return c.fail(TableRefuseWireDamaged)
+		}
+		at, ok = c.value(sub, kind)
+	}
+	if !ok {
 		return false
 	}
-	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
+	return at == int64(len(sub.Buffer)) || c.fail(TableRefuseWireDamaged)
 }
 
-func tableUTF8Clamp(data []byte, n int64) int64 {
-	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 {
-		n--
+// array walks an array or keyed body: its header inside its own L, then count
+// elements of its element kind. A keyed body's element is a slot: a nonzero
+// key reference, no key twice, and an element whose L frames its kind's
+// payload exactly, as an arm's does.
+func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
+	if len(sub.Buffer) < 2 {
+		return 0, c.fail(TableRefuseWireDamaged)
 	}
-	return n
+	kind := sub.Get8()
+	count, ok := sub.Leb()
+	if !ok {
+		return 0, c.fail(TableRefuseWireDamaged)
+	}
+	// a count past the int32 storage cap refuses by its own name (§2.9), and one
+	// the body cannot cover (an element is a byte at least) is damage
+	if count > math.MaxInt32 {
+		return 0, c.fail(TableRefuseCountOverExtentCap)
+	}
+	if count > uint64(len(sub.Buffer))-uint64(sub.Offset) {
+		return 0, c.fail(TableRefuseWireDamaged)
+	}
+	if !keyed {
+		for range count {
+			at, ok := c.value(sub, kind)
+			if !ok {
+				return 0, false
+			}
+			sub.Offset = at
+		}
+		return sub.Offset, true
+	}
+	c.gen++
+	gen := c.gen
+	probe := sub
+	for range count {
+		key, ok := probe.Leb()
+		if !ok || key == 0 || key > uint64(c.ids) {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		if c.stamp[key] == gen {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		c.stamp[key] = gen
+		if _, ok := probe.Body(); !ok {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+	}
+	for range count {
+		sub.Leb()
+		elem, _ := sub.Body()
+		if !c.framed(elem, kind) {
+			return 0, false
+		}
+	}
+	return sub.Offset, true
 }
 
-// TableBitWriter uses the packet wire's low-bit-first order. Measuring walks
-// the identical stream, including alignment, without touching a buffer.
-type TableBitWriter struct {
-	Buffer              []byte
-	Bits                int64
-	Measuring, Overflow bool
-}
-type TableBitReader struct {
-	Buffer []byte
-	Offset int64
-}
-type TableMessageShape struct {
-	Kind, Packing uint8
-	Bits          int64
-	Base          [2]uint64
-	Min, Max      int64
-	QMin, QDelta  float32
-	QCount        uint32
-}
-type TableMessageEntry struct {
-	ID             uint64
-	Shape, Element TableMessageShape
+// union walks one union payload: the arm reference, and where it is not 0 the
+// arm's kind and its L-framed payload.
+func (c *tableWireCheck) union(r TableReader) (int64, bool) {
+	ref, ok := r.Leb()
+	if !ok || ref > uint64(c.ids) {
+		return 0, c.fail(TableRefuseWireDamaged)
+	}
+	if ref == 0 {
+		return r.Offset, true
+	}
+	if !r.Has(1) {
+		return 0, c.fail(TableRefuseWireDamaged)
+	}
+	kind := r.Get8()
+	arm, ok := r.Body()
+	if !ok {
+		return 0, c.fail(TableRefuseWireDamaged)
+	}
+	// a union is a level when its arm is structural: a table, an array, a
+	// keyed or map body, or another union; a scalar arm adds none
+	structural := kind == 13 || kind == 14 || kind == 15 || kind == 16
+	if structural {
+		if c.depth >= tableBinaryMaxDepth {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		c.depth++
+	}
+	good := c.framed(arm, kind)
+	if structural {
+		c.depth--
+	}
+	if !good {
+		return 0, c.fail(TableRefuseWireDamaged)
+	}
+	return r.Offset, true
 }
 
-// Storage belongs to the caller and is resolved once for one connection direction.
-type TableVocabulary struct {
-	Entries            []TableMessageEntry
-	Count, RefBits     int64
-	BuildVersion       uint64
-	Announced, Refused bool
-	MaxBytes           int64
-	Strict             bool
+// record walks the node record at offset in the node table: a blob's bytes, or
+// a table body of any type, named or not.
+func (c *tableWireCheck) record(at int64) bool {
+	r := c.records
+	r.Offset = at
+	ref, _ := r.Leb()
+	id, _ := r.Resolve(ref)
+	body, _ := r.Body()
+	switch id {
+	case tableWireBytesID:
+		return true
+	case tableWireStringID:
+		return tableUTF8Valid(body.Buffer) || c.fail(TableRefuseWireDamaged)
+	}
+	return c.framed(body, 13)
 }
-type TableMessageReader struct {
-	Bits       TableBitReader
-	Vocabulary *TableVocabulary
-	Report     TableReport
-	IndexBits  int64
+
+// tableWireVerify holds every wire-alone condition over an opened file
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): the root body, the node table and every
+// record in it, and the pointer graph. scratch holds two words per node,
+// at the node index less one (record i of the table is node i+1); a nil or
+// short scratch is allocated here, which only a file with a node table needs.
+func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
+	var c tableWireCheck
+	c.ids = len(r.Ids) / 8
+	// the node table, found by the root's headers: a declared count, then that
+	// many records, each a type reference and an L-framed body, filling the field
+	probe := r
+	probe.Offset = 0
+	for {
+		ref, ok := probe.Leb()
+		if !ok || ref == 0 {
+			break
+		}
+		id, ok := probe.Resolve(ref)
+		if !ok || !probe.Has(1) {
+			break
+		}
+		kind := probe.Get8()
+		if id == 0xffffffffffffffff && kind == 12 {
+			payload, ok := probe.Body()
+			if !ok {
+				break
+			}
+			count, ok := payload.Leb()
+			if !ok || count > uint64(len(payload.Buffer)) {
+				return TableRefuseWireDamaged
+			}
+			c.records = payload
+			c.nodes = count
+			break
+		}
+		if !probe.Skip(kind) {
+			break
+		}
+	}
+	if c.nodes > 0 {
+		if uint64(len(scratch)) < 2*(c.nodes+1) {
+			scratch = make([]uint64, 2*(c.nodes+1))
+		}
+		c.graph = scratch[:2*(c.nodes+1)]
+		clear(c.graph)
+		rec := c.records
+		for i := uint64(2); i <= c.nodes+1; i++ {
+			c.graph[2*(i-1)+1] = uint64(rec.Offset)
+			ref, ok := rec.Leb()
+			if !ok {
+				return TableRefuseWireDamaged
+			}
+			if _, ok := rec.Resolve(ref); !ok {
+				return TableRefuseWireDamaged
+			}
+			if _, ok := rec.Body(); !ok {
+				return TableRefuseWireDamaged
+			}
+		}
+		if rec.Offset != int64(len(rec.Buffer)) {
+			return TableRefuseWireDamaged
+		}
+	}
+	// the first pass: every check, and each record's in-degree
+	root := r
+	root.Offset = 0
+	if end, ok := c.body(root, true); !ok || end != int64(len(root.Buffer)) {
+		return c.failed()
+	}
+	for i := uint64(2); i <= c.nodes+1; i++ {
+		if !c.record(int64(c.graph[2*(i-1)+1])) {
+			return c.failed()
+		}
+	}
+	if c.nodes == 0 {
+		return TableRefuseOk
+	}
+	// a blob named twice is shared, and a record no pointer names is unreachable
+	for i := uint64(2); i <= c.nodes+1; i++ {
+		if uint32(c.graph[2*(i-1)]) > 1 {
+			rec := c.records
+			rec.Offset = int64(c.graph[2*(i-1)+1])
+			ref, _ := rec.Leb()
+			if id, _ := rec.Resolve(ref); id == tableWireBytesID || id == tableWireStringID {
+				return TableRefuseBlobShared
+			}
+		}
+	}
+	for i := uint64(2); i <= c.nodes+1; i++ {
+		if uint32(c.graph[2*(i-1)]) == 0 {
+			return TableRefuseWireDamaged
+		}
+	}
+	// Kahn's algorithm from the root: a record a cycle holds is never released
+	c.release = true
+	if _, ok := c.body(root, true); !ok {
+		return c.failed()
+	}
+	visited := uint64(0)
+	for c.head != 0 {
+		i := c.head - 1
+		c.head = c.graph[2*(i-1)] >> 32
+		c.graph[2*(i-1)] &= 0xffffffff
+		visited++
+		if !c.record(int64(c.graph[2*(i-1)+1])) {
+			return c.failed()
+		}
+	}
+	if visited != c.nodes {
+		return TableRefuseWireDamaged
+	}
+	return TableRefuseOk
+}
+
+// tableOpenChecked opens a form-1 file and holds every wire-alone condition
+// before the body read starts (mas-bandwidth/schema docs/SPEC-TABLES.md §3, §4, §6.5). It answers
+// the report as a refusal for every verdict but TableOpenOk.
+func tableOpenChecked(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
+	r, verdict := tableOpen(data, report)
+	if verdict == TableOpenOk {
+		if reason := tableWireVerify(r, nil); reason != TableRefuseOk {
+			verdict = TableOpenDamaged
+			if report != nil {
+				report.Refuse(reason, "")
+			}
+		}
+	}
+	tableOpenAnswer(report, verdict, data)
+	return r, verdict
 }
 
 type TableMessageWriter struct {
 	TableBitWriter
 	IndexBits int64
-	Clamped   int32
+	Over      int32
 }
-
-const TableFixedForm uint8 = 3
-const TableFixedHeaderBytes = 16
-const TableFixedHashAt = 8
 
 // THE FIXED LOAD'S REFUSAL NAMES ARE THE ONE ENUM (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §6.5, §21.3): every fixed-form refusal is a TableRefuseReason member, and
@@ -1553,803 +1710,6 @@ const TableFixedHashAt = 8
 // TableRefuseLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES §21.3)
 // for a hash the lock lineage proves newer, which nothing on the wire or in the
 // lock does today, so no Go fixed load answers it.
-
-const (
-	tableFixedCopy uint8 = iota
-	tableFixedCount
-	tableFixedText
-	tableFixedOrdinal
-	tableFixedWiden
-	tableFixedConst
-	tableFixedWidenF
-	tableFixedBool
-	tableFixedTag
-)
-
-const (
-	tableFixedTextUTF8  uint8 = 1
-	tableFixedTextWide  uint8 = 2
-	tableFixedTextBytes uint8 = 3
-)
-
-const tableFixedNoGuard uint32 = 0xFFFFFFFF
-const tableFixedEntryBytes int32 = 17
-
-// THE LAYOUT'S OWN BOUNDS (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1.1). The header is
-// the u32 entry count and nothing else. 65536 is the form's record body bound,
-// which a DECLARED fixed table is held to at compile time and an untrusted
-// endpoint's layout is held to here, so the two sides agree by construction. The
-// depth is a bound on THIS READER'S WALK and not on the wire: the reference
-// states 64 and every leg states the same number.
-const tableFixedLayoutHeaderBytes int32 = 4
-const tableFixedRecordMaxBytes uint32 = 65536
-const tableFixedMaxDepth int32 = 64
-
-// Arg is the guard's arm ordinal: tableFixedRun compares src[Guard] against
-// it. Meta is a text entry's flavour (tableFixedTextUTF8/Wide/Bytes). They
-// shared one lane until reference-fix 12; compiling a string under a union
-// arm overwrote the guard with the flavour and the read skipped the string.
-// tableFixedEntryBytes is the FILE layout entry (id+kind+size+children),
-// not this in-memory plan row — Meta does not ride the wire.
-// ArgW IS THE GUARD'S WIDTH IN BYTES (§5.2 THE GUARD'S WIDTH): a union tag is
-// one, two, four or eight bytes, clamped 1..8, and 0 reads as 1. The guard is
-// tested at that FULL width and never at its first byte — a foreign two-byte
-// tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
-// (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
-type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard uint32
-	// Arg IS THE GUARD'S ORDINAL AT FULL WIDTH (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
-	// §4.1: arg : u64, "no byte lane anywhere"): a union past 255 arms or an
-	// enum past 65535 variants holds its ordinal whole in this lane, and the
-	// compare is made against the 64-bit tag load, never a truncation of it.
-	Arg uint64
-	// Guard2 / Arg2 / ArgW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
-	// TO (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1): the entry runs only when BOTH tags
-	// hold their ordinal. ArgW2 of zero is "no outer tag", so a plan that never
-	// nests a union leaves the lane unset and the read is unchanged.
-	Guard2 uint32
-	Arg2   uint64
-	// GuardIndex / GuardCount ARE THE GUARD CHAIN (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
-	// §4.1): offset+count into a pool of (guard, arg, argw) links, OUTERMOST
-	// FIRST. GuardIndex is a BYTE OFFSET from the plan's own base, where the pool
-	// is laid behind the entries the way the ordinal remap tables are, so the
-	// plan stays one slice and the read loop one signature. Every guarded entry
-	// carries its whole chain; the two lanes above stay its innermost two, the
-	// special case, so the loop walks the pool only for a chain past two. The
-	// only bound on a chain is the layout's 64 (tableFixedMaxDepth).
-	GuardIndex, GuardCount               uint32
-	Op, ArgW, DstSize, Sign, Meta, ArgW2 uint8
-}
-
-// TableFixedGuardLink is ONE LINK of a guard chain (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
-// §4.1): the offset of the tag it reads, the ordinal the tag must hold, and the
-// width it is compared at. A chain is a CONJUNCTION — every link must hold.
-type TableFixedGuardLink struct {
-	Guard uint32
-	Arg   uint64
-	ArgW  uint8
-}
-
-// guardLink is link j of e's chain, read out of the pool laid behind the plan's
-// entries (§4.1: offset+count into the pool). A method, so the unit's package
-// scope gains no name a schema could collide with.
-func (e TableFixedEntry) guardLink(plan []TableFixedEntry, j uint32) TableFixedGuardLink {
-	at := uintptr(e.GuardIndex) + uintptr(j)*unsafe.Sizeof(TableFixedGuardLink{})
-	return *(*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&plan[0]), at))
-}
-
-// chainHolds is whether every link of a chain PAST TWO holds: an arm inside an
-// arm inside an arm answers to EVERY enclosing tag, the outermost first
-// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1). A chain of one or two is the two-lane
-// special case, already tested on Guard and Guard2.
-func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
-	if p.GuardCount <= 2 {
-		return true
-	}
-	for j := range p.GuardCount {
-		l := p.guardLink(plan, j)
-		if tableFixedTagAt(src, l.Guard, l.ArgW) != l.Arg {
-			return false
-		}
-	}
-	return true
-}
-
-type TableFixedDst struct {
-	Dst, Stride, Aux   uint32
-	Counted, Arg, Meta uint8
-}
-
-// Arg's high bit marks a deprecated destination field: every compiled lineage
-// plan leaves it uncovered so the reset-image prefill supplies its default.
-const tableFixedDstDeprecated uint8 = 0x80
-
-type tableFixedPlan struct {
-	Entries []TableFixedEntry
-	Count   int32
-	// Split is the number of UNGUARDED entries (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
-	// §4.1): the index the guarded half starts at, stated by the plan itself.
-	Split int32
-}
-
-func tableFixedWidens(from, to uint8) bool {
-	if from >= 6 && from <= 9 && to >= 6 && to <= 9 {
-		return to > from
-	}
-	if from >= 2 && from <= 5 && to >= 2 && to <= 5 {
-		return to > from
-	}
-	// THE FIXED-POINT RUNGS, signed 20..24 and unsigned 25..29: a fixed(I,F)
-	// into a wider I at equal F is a LADDER widen and not a kind that moved
-	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1, §5.1).
-	if from >= 20 && from <= 24 && to >= 20 && to <= 24 {
-		return to > from
-	}
-	if from >= 25 && from <= 29 && to >= 25 && to <= 29 {
-		return to > from
-	}
-	return from == 10 && to == 11
-}
-
-// A WIDEN'S SIGN IS THE LADDER'S: the source sign-extends when the WRITER's
-// kind is signed — i8..i64 and a SIGNED fixed(I,F), 20..24 — and zero-extends
-// otherwise (§5.2).
-func tableFixedSignedKind(kind uint8) bool {
-	return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24)
-}
-
-// THE CLOSED KIND SET (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1): §3's own kinds 1..30,
-// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-// adds, the optional wrapper 35. 0 is no kind at all, 31 is §3's BODY framing
-// escape and 34 is reserved: none of the three is a kind a declaration spells,
-// so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
-// leaf to step over — the form byte versions the kinds behind it, so a kind
-// this build does not know names a FORM this reader never saw.
-func tableFixedKindKnown(kind uint8) bool {
-	if kind >= 1 && kind <= 30 {
-		return true
-	}
-	return kind == 32 || kind == 33 || kind == 35
-}
-
-// tableFixedOrdinalWidth is the widths an ordinal — an enum's, a union tag's —
-// is stored at.
-func tableFixedOrdinalWidth(n uint32) bool { return n == 1 || n == 2 || n == 4 || n == 8 }
-
-// tableFixedLeafSize answers whether a kind is a LEAF and, if it is, whether
-// the size it states is one its kind admits (§1.2). Kind and size fix each
-// other on this wire with ONE exception, stated here rather than left to be
-// found: a bits(N) field rides at its DECLARED STORAGE WIDTH — four bytes for
-// N <= 32 and eight above — under the unsigned integer kind its BIT COUNT
-// picks, so kinds 6 and 7 admit 4 as well as their own width.
-func tableFixedLeafSize(kind uint8, size uint32) (admitted, leaf bool) {
-	leaf = true
-	switch kind {
-	case 1, 2: // bool, i8
-		return size == 1, leaf
-	case 3: // i16
-		return size == 2, leaf
-	case 4: // i32
-		return size == 4, leaf
-	case 5: // i64
-		return size == 8, leaf
-	case 6: // u8, and bits( 1 .. 8 )
-		return size == 1 || size == 4, leaf
-	case 7: // u16, and bits( 9 .. 16 )
-		return size == 2 || size == 4, leaf
-	case 8: // u32, and bits( 17 .. 32 )
-		return size == 4, leaf
-	case 9: // u64, flags, and bits( 33 .. 64 )
-		return size == 8, leaf
-	case 10: // f32
-		return size == 4, leaf
-	case 11: // f64
-		return size == 8, leaf
-	case 17: // a pointer index, which no fixed table carries
-		return size == 4, leaf
-	case 18, 19: // i128, u128
-		return size == 16, leaf
-	case 20, 25: // fixed8, ufixed8
-		return size == 1, leaf
-	case 21, 26:
-		return size == 2, leaf
-	case 22, 27:
-		return size == 4, leaf
-	case 23, 28:
-		return size == 8, leaf
-	case 24, 29:
-		return size == 16, leaf
-	case 32: // a variant, and an arm that holds nothing
-		return size == 0, leaf
-	}
-	return true, false
-}
-
-// tableFixedRuns is whether an op advances src and dst together one byte at a
-// time, which is the whole of what lets two adjacent entries become one.
-func tableFixedRuns(op uint8) bool { return op == tableFixedCopy || op == tableFixedBool }
-
-// THE GUARD'S WIDTH, clamped (§5.2): 0 reads as 1, and nothing above 8 is a
-// width an ordinal is stored at.
-func tableFixedArgWidth(w uint8) uint32 {
-	if w == 0 {
-		return 1
-	}
-	if w > 8 {
-		return 8
-	}
-	return uint32(w)
-}
-
-// tableFixedTagAt loads the guard WHOLE, little-endian, at its own width. A
-// one-byte compare fires arm 1 on a foreign 0x0101; this is the compare.
-func tableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
-	n := tableFixedArgWidth(w)
-	var v uint64
-	for k := range n {
-		v |= uint64(src[at+k]) << (8 * k)
-	}
-	return v
-}
-
-// THE PLAN IS PARTITIONED (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, §5.9
-// item 42): every UNGUARDED entry first, then every guarded one, and the
-// split — the NUMBER OF UNGUARDED ENTRIES, the index the second half starts
-// at, not a count of guarded ones — is a property of that order. The emitter
-// lays entries down in field order, so a field past a union would land an
-// unguarded entry behind a guarded one; the builders repair that here, each
-// in its own half, and never coalesce across the split. The run loop still
-// tests the guard per entry, which item 42 allows outright: what a leg may
-// not do is skip the partition. tableFixedPartition stable-partitions the
-// built entries in place and returns the split; a plan with no guarded entry
-// has its split at the END, not at zero.
-func tableFixedPartition(plan []TableFixedEntry, n int32) int32 {
-	split := int32(0)
-	for i := range n {
-		if plan[i].Guard == tableFixedNoGuard {
-			e := plan[i]
-			copy(plan[split+1:i+1], plan[split:i])
-			plan[split] = e
-			split++
-		}
-	}
-	return split
-}
-
-// tableFixedBuildPlan runs the emitted leaf walk and lays THE GUARD CHAIN
-// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1). The walk records each entry's links
-// INNERMOST FIRST, because an inner union stamps before the outer one that
-// holds it; here they are turned OUTERMOST FIRST, the innermost two are laid on
-// the Guard and Guard2 lanes (the two-lane special case), and the whole chain is
-// laid ONCE into a pool behind the entries, deduped by content, so an entry
-// carries offset+count into it. Two entries under one chain share one slice of
-// the pool, so the coalescer compares GuardIndex and GuardCount alone.
-func tableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, uint32, uint32) int, n int) tableFixedPlan {
-	scratch := make([]TableFixedEntry, n)
-	links := make([][]TableFixedGuardLink, n)
-	written := emit(scratch, links, 0, 0)
-	var pool []TableFixedGuardLink
-	index := map[string]uint32{}
-	for i := range written {
-		chain := links[i]
-		k := len(chain)
-		if k == 0 {
-			continue
-		}
-		for a, b := 0, k-1; a < b; a, b = a+1, b-1 {
-			chain[a], chain[b] = chain[b], chain[a]
-		}
-		e := &scratch[i]
-		e.Guard, e.Arg, e.ArgW = chain[k-1].Guard, chain[k-1].Arg, chain[k-1].ArgW
-		if k >= 2 {
-			e.Guard2, e.Arg2, e.ArgW2 = chain[k-2].Guard, chain[k-2].Arg, chain[k-2].ArgW
-		}
-		kb := make([]byte, 0, k*13)
-		for _, l := range chain {
-			kb = binary.LittleEndian.AppendUint32(kb, l.Guard)
-			kb = binary.LittleEndian.AppendUint64(kb, l.Arg)
-			kb = append(kb, l.ArgW)
-		}
-		key := string(kb)
-		at, ok := index[key]
-		if !ok {
-			at = uint32(len(pool))
-			index[key] = at
-			pool = append(pool, chain...)
-		}
-		e.GuardIndex = at
-		e.GuardCount = uint32(k)
-	}
-	// THE POOL RIDES BEHIND THE ENTRIES, in the plan's own allocation, and
-	// GuardIndex becomes its byte offset from the plan's base.
-	entryBytes := int(unsafe.Sizeof(TableFixedEntry{}))
-	linkBytes := int(unsafe.Sizeof(TableFixedGuardLink{}))
-	raw := make([]TableFixedEntry, n+(len(pool)*linkBytes+entryBytes-1)/entryBytes)
-	copy(raw, scratch[:written])
-	if len(pool) > 0 {
-		base := uintptr(n * entryBytes)
-		copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&raw[0]), base)), len(pool)), pool)
-		for i := range written {
-			if raw[i].GuardCount != 0 {
-				raw[i].GuardIndex = uint32(base) + raw[i].GuardIndex*uint32(linkBytes)
-			}
-		}
-	}
-	out := 0
-	for i := range written {
-		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
-			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
-			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
-			raw[out-1].Guard2 == raw[i].Guard2 && raw[out-1].Arg2 == raw[i].Arg2 &&
-			raw[out-1].ArgW2 == raw[i].ArgW2 &&
-			raw[out-1].GuardIndex == raw[i].GuardIndex && raw[out-1].GuardCount == raw[i].GuardCount &&
-			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
-			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
-			raw[out-1].Size += raw[i].Size
-			continue
-		}
-		raw[out] = raw[i]
-		out++
-	}
-	n = out
-	// The split is KEPT, not discarded (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1):
-	// the plan states where its guarded half starts.
-	split := tableFixedPartition(raw, int32(n))
-	return tableFixedPlan{Entries: raw[:n], Count: int32(n), Split: split}
-}
-
-func tableFixedPut8(b []byte, v uint8)         { b[0] = v }
-func tableFixedPut16(b []byte, v uint16)       { binary.LittleEndian.PutUint16(b, v) }
-func tableFixedPut32(b []byte, v uint32)       { binary.LittleEndian.PutUint32(b, v) }
-func tableFixedPut64(b []byte, v uint64)       { binary.LittleEndian.PutUint64(b, v) }
-func tableFixedPutF32(b []byte, v float32)     { tableFixedPut32(b, math.Float32bits(v)) }
-func tableFixedPutF64(b []byte, v float64)     { tableFixedPut64(b, math.Float64bits(v)) }
-func tableFixedPut128(b []byte, lo, hi uint64) { tableFixedPut64(b, lo); tableFixedPut64(b[8:], hi) }
-func tableFixedGet32(b []byte) uint32          { return binary.LittleEndian.Uint32(b) }
-func tableFixedGet64(b []byte) uint64          { return binary.LittleEndian.Uint64(b) }
-
-func tableFixedCopyRun(d, s []byte, n uint32) {
-	if n == 0 {
-		return
-	}
-	if n <= 16 {
-		if n >= 8 {
-			a := binary.LittleEndian.Uint64(s)
-			b := binary.LittleEndian.Uint64(s[n-8:])
-			binary.LittleEndian.PutUint64(d, a)
-			binary.LittleEndian.PutUint64(d[n-8:], b)
-		} else if n >= 4 {
-			a := binary.LittleEndian.Uint32(s)
-			b := binary.LittleEndian.Uint32(s[n-4:])
-			binary.LittleEndian.PutUint32(d, a)
-			binary.LittleEndian.PutUint32(d[n-4:], b)
-		} else {
-			d[0] = s[0]
-			d[n>>1] = s[n>>1]
-			d[n-1] = s[n-1]
-		}
-		return
-	}
-	copy(d[:n], s[:n])
-}
-
-func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
-	// REFUSE is total even for direct callers of the runner: the generated load
-	// performs this pre-scan too, but the compiled-plan tests and any future
-	// internal caller must not observe the old clamp-and-write path.
-	if why := tableFixedTextRefusal(plan, count, src); why != "" {
-		return why
-	}
-	// READ(plan, split, ...) (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.4): the plan is
-	// partitioned unguarded-first (§4.1), so the split is the first guarded
-	// index; entries below it run WITHOUT a guard test and only the guarded
-	// half from split on tests one.
-	split := count
-	for i := range count {
-		if plan[i].Guard != tableFixedNoGuard {
-			split = i
-			break
-		}
-	}
-	for i := range count {
-		p := plan[i]
-		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2). Below the
-		// split there is no guard to test (§4.4).
-		if i >= split && p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
-			continue
-		}
-		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the entry
-		// runs only when the second lane's tag holds its ordinal as well.
-		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
-			continue
-		}
-		// AND EVERY TAG FURTHER OUT, the guard chain past the two lanes (§4.1).
-		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
-			continue
-		}
-		switch p.Op {
-		case tableFixedCopy:
-			tableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
-		case tableFixedTag:
-			// A UNION TAG NAMING NO ARM LANDS AS None AND COUNTS UNKNOWN,
-			// which is what form 1 does with an arm id it does not know
-			// (mas-bandwidth/schema docs/SPEC-TABLES.md §4). Copied raw it would land as a
-			// discriminant no variant spells, and every arm's guard would
-			// then decline to fill it — a value that is neither None nor an
-			// arm. Aux is the reader's own arm count.
-			var tag uint64
-			for k := range p.Size {
-				tag |= uint64(src[p.Src+k]) << (8 * k)
-			}
-			if tag > uint64(p.Aux) {
-				tag = 0
-				report.Unknown++
-			}
-			for k := range p.Size {
-				dst[p.Dst+k] = byte(tag >> (8 * k))
-			}
-		case tableFixedBool:
-			// A GO bool IS NOT A BYTE. A Go true is the byte 1 (v == true,
-			// array equality). if v is TESTB (nonzero) on amd64 and TBZ bit
-			// 0 on arm64, so a hostile 2 reads true on one and false on the
-			// other. The wire says nonzero is true (mas-bandwidth/schema docs/SPEC-TABLES.md §3);
-			// normalise here (byte != 0 -> 1) and never copy.
-			for k := range p.Size {
-				v := byte(0)
-				if src[p.Src+k] != 0 {
-					v = 1
-				}
-				dst[p.Dst+k] = v
-			}
-		case tableFixedCount:
-			v := int32(tableFixedGet32(src[p.Src:]))
-			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
-		case tableFixedText:
-			v := int32(tableFixedGet32(src[p.Src:]))
-			unit := uint32(1)
-			if p.Meta == tableFixedTextWide {
-				unit = 2
-			}
-			capn := p.Size / unit
-			// tableFixedTextRefusal above already proved the used extent and
-			// content; this path only lands the validated value and live bytes.
-			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
-			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
-			if p.Meta != tableFixedTextBytes && uint32(v) < capn {
-				off := p.Aux + uint32(v)*unit
-				dst[off] = 0
-				if unit == 2 {
-					dst[off+1] = 0
-				}
-			}
-		case tableFixedOrdinal:
-			// SIXTY-FOUR BITS. An ordinal rides at 1, 2, 4 or 8 bytes (§1.2);
-			// read through a 32-bit temporary an eight-byte ordinal loses its
-			// top four bytes, so a forged 0x1_0000_0001 would land as 1.
-			// THE OP MOVES NOTHING (§5.4): a raw past the writer's set lands
-			// None here, and tableFixedForgedBounds counts it once in the
-			// BOUNDS pass, on the compiled plan as the storage clamp counts the
-			// identity plan's own forged tag (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4,
-			// §5.8 row 12, fix 27).
-			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
-			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
-			table := unsafe.Slice(p16, int(*p16)+1)
-			var v uint32
-			if raw != 0 && raw <= uint64(table[0]) {
-				v = uint32(table[raw])
-			}
-			switch p.DstSize {
-			case 1:
-				dst[p.Dst] = uint8(v)
-			case 2:
-				binary.LittleEndian.PutUint16(dst[p.Dst:], uint16(v))
-			case 8:
-				binary.LittleEndian.PutUint64(dst[p.Dst:], uint64(v))
-			default:
-				binary.LittleEndian.PutUint32(dst[p.Dst:], v)
-			}
-		case tableFixedWiden:
-			var raw uint64
-			for i := range p.Size {
-				raw |= uint64(src[p.Src+i]) << (8 * i)
-			}
-			if p.Sign != 0 {
-				bits := p.Size * 8
-				top := uint64(1) << (bits - 1)
-				if raw&top != 0 {
-					raw |= ^((top << 1) - 1)
-				}
-			}
-			for i := range p.DstSize {
-				dst[p.Dst+uint32(i)] = byte(raw >> (8 * i))
-			}
-			report.Widened++
-		case tableFixedWidenF:
-			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3,
-			// §21.2): exact for a finite float32; a NaN or an infinity stays one,
-			// and the finite pass after the run refuses it.
-			tableFixedPut64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(tableFixedGet32(src[p.Src:])))))
-			report.Widened++
-		case tableFixedConst:
-			aux := p.Aux
-			for i := range p.Size {
-				dst[p.Dst+i] = byte(aux >> (8 * i))
-			}
-			// THE OP MOVES NOTHING (§5.4): the unguarded None const lands None,
-			// and a raw tag past the writer's arm count (this entry's DstSize) is
-			// counted once by tableFixedForgedBounds, the BOUNDS pass, on the
-			// compiled plan as the storage clamp counts the identity plan's own
-			// forged tag (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12, fix 27).
-			// tableFixedSrcEnd gives this one entry a source reach, so the
-			// record bound has already refused a plan that would read past it.
-		}
-	}
-	return ""
-}
-
-// tableFixedForgedBounds is the BOUNDS pass's count of a forged ordinal or union
-// tag (§5.4, fix 27): a raw ordinal past the writer's variant count, or a raw
-// union tag past the writer's arm count, is landed None by the ordinal/const
-// op — which moves nothing — and counted HERE, once per field, on the compiled
-// plan exactly as the identity plan's storage clamp counts its own forged tag.
-// The identity plan carries no ordinal or unguarded const entry (its union
-// tag and leaves are copy), so this pass is silent for it, and the writer's
-// count the storage clamp cannot see — the remap table's length word, or the
-// entry's DstSize — is why the count lives in the plan-aware pass here and not
-// in the op (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12).
-func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, report *TableReport) {
-	for i := range count {
-		p := plan[i]
-		// THE GUARD AT ITS FULL WIDTH, matching tableFixedRun (§5.2): an entry
-		// whose guard does not match never lands, so it never counts.
-		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
-			continue
-		}
-		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): an entry
-		// whose second lane does not hold never lands, so it never counts.
-		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
-			continue
-		}
-		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
-			continue
-		}
-		switch p.Op {
-		case tableFixedOrdinal:
-			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
-			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
-			table := unsafe.Slice(p16, int(*p16)+1)
-			if raw != 0 && raw > uint64(table[0]) {
-				report.Clamped++
-			}
-		case tableFixedConst:
-			if p.Aux == 0 && p.DstSize != 0 && p.Guard == tableFixedNoGuard {
-				var raw uint64
-				for k := range p.Size {
-					raw |= uint64(src[p.Src+k]) << (8 * k)
-				}
-				if raw > uint64(p.DstSize) {
-					report.Clamped++
-				}
-			}
-		}
-	}
-}
-
-// tableFixedTextIllFormed reports whether a text payload's USED units are the
-// text its kind says (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-// with no zero byte for string, paired non-zero UTF-16 code units for wstring.
-// bytes(N) carries no text rule at all, and slack past the used units is
-// unspecified and never a refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
-// is the clamped length in the flavour's own units. THE STRING RULE IS THE
-// PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
-// interior zero (mas-bandwidth/schema internal/codegen/golang/functions.go, the TString arm), so
-// every ill-formed sequence utf8 refuses — overlong, surrogate, past U+10FFFF,
-// an invalid lead — refuses here too and not only structural truncation.
-func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
-	switch meta {
-	case tableFixedTextUTF8:
-		if !utf8.Valid(p[:used]) {
-			return true
-		}
-		if slices.Contains(p[:used], 0) {
-			return true
-		}
-	case tableFixedTextWide:
-		for i := uint32(0); i < used; i++ {
-			u := uint16(p[i*2]) | uint16(p[i*2+1])<<8
-			switch {
-			case u == 0:
-				return true
-			case u >= 0xD800 && u <= 0xDBFF:
-				if i+1 >= used {
-					return true
-				}
-				lo := uint16(p[(i+1)*2]) | uint16(p[(i+1)*2+1])<<8
-				if lo < 0xDC00 || lo > 0xDFFF {
-					return true
-				}
-				i++
-			case u >= 0xDC00 && u <= 0xDFFF:
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// tableFixedUTF8Ok is the WRITER's string rule over the used bytes: well-formed
-// UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
-// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
-// holds on read). It is one pass, eight bytes a step, with no branch in the
-// loop: z gathers each word's zero-byte test, which is exact (a word has a
-// zero byte if and only if its lane is set), and hi gathers the high bits. A
-// zero refuses; text with no high bit is ASCII and passes; only text with a
-// byte at or past 0x80 goes on to utf8.Valid. The result is identical to the
-// two-pass spelling.
-func tableFixedUTF8Ok(p []byte) bool {
-	var hi, z uint64
-	i := 0
-	for ; i+8 <= len(p); i += 8 {
-		x := tableFixedGet64(p[i:])
-		hi |= x
-		z |= (x - 0x0101010101010101) &^ x
-	}
-	if i < len(p) && len(p) >= 8 {
-		// The tail as one word, overlapping bytes already tested: the test
-		// is the same answer for a byte seen twice.
-		x := tableFixedGet64(p[len(p)-8:])
-		hi |= x
-		z |= (x - 0x0101010101010101) &^ x
-	} else {
-		for ; i < len(p); i++ {
-			c := uint64(p[i])
-			hi |= c
-			z |= (c - 1) &^ c
-		}
-	}
-	if z&0x8080808080808080 != 0 {
-		return false
-	}
-	return hi&0x8080808080808080 == 0 || utf8.Valid(p)
-}
-
-// tableFixedUnitsIllFormed is the WRITER's twin of the wide arm above, over the
-// caller's own wstring storage: the used units are paired UTF-16 with no zero
-// unit (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5).
-func tableFixedUnitsIllFormed(units []uint16) bool {
-	for i := 0; i < len(units); i++ {
-		u := units[i]
-		switch {
-		case u == 0:
-			return true
-		case u >= 0xD800 && u <= 0xDBFF:
-			if i+1 >= len(units) || units[i+1] < 0xDC00 || units[i+1] > 0xDFFF {
-				return true
-			}
-			i++
-		case u >= 0xDC00 && u <= 0xDFFF:
-			return true
-		}
-	}
-	return false
-}
-
-// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
-// text entries, run before the caller's storage is touched. A count or a text
-// length past the PLAN's bound refuses by name — count_over_bound /
-// length_over_bound — and an ill-formed payload refuses text_ill_formed
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11,
-// §5.8 row 8). REFUSE is total: no counter moves, nothing is decoded, and not
-// one destination byte is written. It walks each entry under its own guards,
-// writes nothing and moves no counter.
-func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
-	for i := range count {
-		p := plan[i]
-		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
-		// entry runs only under its own tag, and one that does not run cannot
-		// refuse. An arm inside an arm answers the outer tag too (§4.1).
-		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
-			continue
-		}
-		// AND THE OUTER TAGS (§4.1): the second lane, then the chain past it.
-		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
-			continue
-		}
-		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
-			continue
-		}
-		switch p.Op {
-		case tableFixedCount:
-			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 || v > int32(p.Size) {
-				return TableRefuseCountOverBound.Error()
-			}
-		case tableFixedText:
-			unit := uint32(1)
-			if p.Meta == tableFixedTextWide {
-				unit = 2
-			}
-			capn := p.Size / unit
-			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 || uint32(v) > capn {
-				return TableRefuseLengthOverBound.Error()
-			}
-			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return TableRefuseTextIllFormed.Error()
-			}
-		}
-	}
-	return ""
-}
-
-type tableFixedLayoutEntry struct {
-	ID             uint64
-	Size, Children uint32
-	Kind           uint8
-}
-type tableFixedLayoutView struct {
-	Bytes []byte
-	Count int32
-}
-
-// AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a layout is
-// arithmetic over child counts a STRANGER wrote, so the one place that can hold
-// the whole walk inside the buffer is the one place that touches it. An
-// out-of-range index answers kind 0xFF, which is a kind no declaration has and
-// nothing matches, so the walk that asked for it finds nothing and moves on.
-func tableFixedEntryAt(b tableFixedLayoutView, i int32) tableFixedLayoutEntry {
-	if b.Bytes == nil || i < 0 || i >= b.Count {
-		return tableFixedLayoutEntry{Kind: 0xFF}
-	}
-	e := b.Bytes[int64(tableFixedLayoutHeaderBytes)+int64(i)*int64(tableFixedEntryBytes):]
-	return tableFixedLayoutEntry{
-		ID:       tableFixedGet64(e),
-		Kind:     e[8],
-		Size:     tableFixedGet32(e[9:]),
-		Children: tableFixedGet32(e[13:]),
-	}
-}
-
-// tableFixedSubtree is how many entries the subtree rooted at i occupies, so a
-// walk steps over a child it does not want without knowing what is in it.
-//
-// ITERATIVE ON PURPOSE (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1.1). A layout is a
-// stranger's bytes, so a chain of single-child entries is a stack depth the WIRE
-// gets to choose; this walk gives it none. The pending counter is the pre-order
-// walk's own arithmetic: one entry is owed at the start, each entry owes its
-// children, and the subtree ends when nothing is owed.
-func tableFixedSubtree(b tableFixedLayoutView, i int32) int32 {
-	if i < 0 || i >= b.Count {
-		return 1
-	}
-	pending := int64(1)
-	n := int32(0)
-	at := i
-	for pending > 0 && at < b.Count {
-		pending--
-		n++
-		pending += int64(tableFixedEntryAt(b, at).Children)
-		at++
-		if pending > int64(b.Count) {
-			break
-		}
-	}
-	return n
-}
-
-func tableFixedUnionArmBytes(b tableFixedLayoutView, i int32) uint32 {
-	e := tableFixedEntryAt(b, i)
-	var widest uint32
-	at := i + 1
-	for k := uint32(0); k < e.Children && at < b.Count; k++ {
-		a := tableFixedEntryAt(b, at)
-		if a.Size > widest {
-			widest = a.Size
-		}
-		at += tableFixedSubtree(b, at)
-	}
-	return widest
-}
 
 // ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
 //
@@ -2550,10 +1910,6 @@ func tableFixedCheckEntry(c *tableFixedCheck, i, depth int32) int32 {
 	return at - i
 }
 
-func tableFixedTagBytes(b tableFixedLayoutView, i int32) uint32 {
-	return tableFixedEntryAt(b, i).Size - tableFixedUnionArmBytes(b, i)
-}
-
 // tableFixedParseLayout is the WHOLE of what a reader trusts a layout on. It
 // answers the view and a REASON BY NAME — empty when the layout passed every
 // rule — and the caller reports that reason. A layout that fails any rule SETS
@@ -2620,6 +1976,10 @@ type tableFixedCompiler struct {
 	chainAt   uint32
 	chainLaid bool
 	report    *TableReport
+	// unlawful is a writer field whose kind moved off every ladder: no plan
+	// is laid, and a file under the entry's hash refuses layout_malformed
+	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4).
+	unlawful bool
 }
 
 // layGuards lays one guard chain into the plan's pool, behind the entries and
@@ -2637,43 +1997,6 @@ func (c *tableFixedCompiler) layGuards(links []TableFixedGuardLink) uint32 {
 	at := uint32(total - c.pool)
 	copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&c.plan[0]), uintptr(at))), len(links)), links)
 	return at
-}
-
-// tableFixedSrcEnd is the last source byte, exclusive, an entry reads — the
-// guard included, because a guarded entry loads the tag before anything else.
-func tableFixedSrcEnd(e TableFixedEntry) uint64 {
-	var end uint64
-	switch e.Op {
-	case tableFixedConst:
-		end = 0 // a constant reads no source at all
-		if e.Aux == 0 && e.DstSize != 0 {
-			// EXCEPT THE UNION'S None CONST, which reads the writer's raw tag
-			// to count a clamp past DstSize arms (schema#1254). It has a source
-			// reach, so one past the writer's record refuses the plan whole
-			// like every other entry — and the read loop needs no bound of its
-			// own.
-			end = uint64(e.Src) + uint64(e.Size)
-		}
-	case tableFixedCount:
-		end = uint64(e.Src) + 4 // Size is the BOUND, not a byte count
-	case tableFixedText:
-		end = uint64(e.Src) + 4 + uint64(e.Size)
-	default:
-		end = uint64(e.Src) + uint64(e.Size)
-	}
-	if e.Guard != tableFixedNoGuard {
-		if g := uint64(e.Guard) + uint64(tableFixedArgWidth(e.ArgW)); g > end {
-			end = g
-		}
-	}
-	// THE OUTER TAG IS READ BEFORE THE ENTRY TOO (§4.1), so its bytes are part
-	// of the entry's source reach.
-	if e.ArgW2 != 0 {
-		if g := uint64(e.Guard2) + uint64(tableFixedArgWidth(e.ArgW2)); g > end {
-			end = g
-		}
-	}
-	return end
 }
 
 func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
@@ -2724,10 +2047,6 @@ func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
 	c.plan[c.count] = e
 	c.count++
 }
-
-// tableFixedRemapMax is the longest remap table the pool's u16 length word can
-// name. A writer's variant count above it is a layout this reader cannot plan.
-const tableFixedRemapMax uint32 = 0xFFFF
 
 func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 {
 	bytes := (n + 1) * 2
@@ -2808,9 +2127,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			tableFixedPush(c, e)
 			return
 		}
-		if c.report != nil {
-			c.report.KindMismatch++
-		}
+		c.unlawful = true
 		return
 	}
 	// T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the writer
@@ -2824,7 +2141,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	}
 	switch me.Kind {
 	case 35:
-		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Guard: guard, Op: tableFixedBool, Arg: arg})
+		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Aux: te.Size - 1, Meta: tableFixedPresent, Guard: guard, Op: tableFixedBool, Arg: arg})
 		tableFixedCompileEntry(c, theirs, ti+1, theirAt+1, mine, mi+1, dst, myAt, guard, arg, census)
 	case 13:
 		tableFixedMatchChildren(c, theirs, ti, theirAt, mine, mi, dst, at, guard, arg, census)
@@ -2852,7 +2169,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
@@ -2978,8 +2295,8 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			e.DstSize = uint8(me.Size)
 			e.Op = tableFixedWiden
 			tableFixedPush(c, e)
-		} else if c.report != nil {
-			c.report.KindMismatch++
+		} else {
+			c.unlawful = true
 		}
 	}
 }
@@ -3004,6 +2321,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	// plan storage.
 	if c.tooLarge {
 		return -3
+	}
+	if c.unlawful {
+		return -2
 	}
 	if c.overflow {
 		return -1
@@ -3035,78 +2355,6 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	return out
 }
 
-// tableFixedHole is one dst range the winning plan does not land. Load copies
-// declared defaults into exactly these, from one Reset image. Identity's list
-// on Go is ABI padding and unselected union arms.
-type tableFixedHole struct {
-	Off, Size uint32
-}
-
-func tableFixedLand(cover []byte, off, n uint32) {
-	if n == 0 {
-		return
-	}
-	end := uint32(len(cover))
-	if off >= end {
-		return
-	}
-	last := off + n
-	last = min(last, end)
-	for i := off; i < last; i++ {
-		cover[i] = 1
-	}
-}
-
-// tableFixedHoles is the complement of the unguarded dest writes. Guarded
-// entries (union arms, compiled tag consts) are not always written, so they
-// stay holes and keep the defaults. The write sizes match tableFixedRun.
-func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tableFixedHole {
-	if dstSize == 0 {
-		return nil
-	}
-	cover := make([]byte, dstSize)
-	for i := range count {
-		p := plan[i]
-		if p.Guard != tableFixedNoGuard {
-			continue
-		}
-		switch p.Op {
-		case tableFixedCopy, tableFixedBool, tableFixedTag, tableFixedConst:
-			tableFixedLand(cover, p.Dst, p.Size)
-		case tableFixedCount:
-			tableFixedLand(cover, p.Dst, 4)
-		case tableFixedText:
-			tableFixedLand(cover, p.Dst, 4)
-			tableFixedLand(cover, p.Aux, p.Size)
-		case tableFixedWiden:
-			tableFixedLand(cover, p.Dst, uint32(p.DstSize))
-		case tableFixedWidenF:
-			tableFixedLand(cover, p.Dst, 8)
-		case tableFixedOrdinal:
-			n := uint32(4)
-			if p.DstSize == 1 || p.DstSize == 2 || p.DstSize == 8 {
-				n = uint32(p.DstSize)
-			}
-			tableFixedLand(cover, p.Dst, n)
-		}
-	}
-	var holes []tableFixedHole
-	i := uint32(0)
-	for i < dstSize {
-		if cover[i] != 0 {
-			i++
-			continue
-		}
-		j := i + 1
-		for j < dstSize && cover[j] == 0 {
-			j++
-		}
-		holes = append(holes, tableFixedHole{Off: i, Size: j - i})
-		i = j
-	}
-	return holes
-}
-
 // ---- THE LINEAGE, AS STATIC DATA (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5) ----------
 //
 // A fixed table reads BACKWARD and never forward. A file is matched on the
@@ -3117,44 +2365,6 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 // the lineage proves direction, SPEC-TABLES §21.3); a hash it holds below the
 // floor is layout_unsupported (upgrade the client). Those are the operator's
 // two distinct answers.
-
-// TableFixedKnownLayout is one locked layout: the wire hash a file is matched
-// on, the layout bytes verbatim with its byte length BESIDE the pointer, and
-// the RECORD SIZE taken from the lock and never from the file. The members are
-// §5.9 #19's: hash, layout, layout_bytes, record_bytes, in that order.
-type TableFixedKnownLayout struct {
-	Hash        uint64
-	Layout      []byte
-	LayoutBytes int
-	Record      int64
-}
-
-// tableFixedLineagePlan is one older entry's plan, laid down once from the
-// LOCK'S bytes. Unknown and KindMismatch are the COMPILE census: a writer field
-// no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4).
-type tableFixedLineagePlan struct {
-	Entries      []TableFixedEntry
-	Count        int32
-	Unknown      int32
-	KindMismatch int32
-	Why          string
-}
-
-func tableFixedSelect(known []TableFixedKnownLayout, hash uint64) int32 {
-	for i := range known {
-		if known[i].Hash == hash {
-			return int32(i)
-		}
-	}
-	return -1
-}
-
-// tableFixedRefuseHash is the two refusals that report the FILE'S hash and
-// nothing else (§5.3).
-func tableFixedRefuseHash(report *TableReport, reason string, hash uint64) int64 {
-	report.LayoutHash = hash
-	return tableFixedRefuse(report, reason)
-}
 
 // tableFixedLineagePlans compiles one plan per lineage entry from THE LOCK'S
 // layout bytes, at package initialization — nothing compiles on the load path,
@@ -3193,33 +2403,14 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 				continue
 			}
 			out[i] = tableFixedLineagePlan{
-				Entries:      plan[:made],
-				Count:        made,
-				Unknown:      census.Unknown,
-				KindMismatch: census.KindMismatch,
+				Entries: plan[:made],
+				Count:   made,
+				Unknown: census.Unknown,
 			}
 			break
 		}
 	}
 	return out
-}
-
-// A REFUSAL BY NAME HAS COUNTERS ALL ZERO (§5.3's joint table). A no_layout
-// found mid-batch must not carry record 0's counters out with it, and a report
-// a caller reuses must not keep a refusal that is no longer true. The FILE'S
-// hash survives, because the two refusals that report it set it first.
-func tableFixedRefuse(report *TableReport, reason string) int64 {
-	hash := report.LayoutHash
-	*report = TableReport{}
-	report.LayoutHash = hash
-	report.Verdict = TableOpenRefused
-	report.FixedRaised = true
-	report.Reason = reason
-	return -1
-}
-
-func tableFixedOverlay(ptr unsafe.Pointer, n uintptr) []byte {
-	return unsafe.Slice((*byte)(ptr), n)
 }
 
 // One descriptor per union declaration, initialized after package data.
@@ -3715,7 +2906,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -3723,12 +2914,12 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
@@ -3736,38 +2927,34 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 4095 {
-							v = 4095
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.entity_id")
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.entity_id")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.EntityID = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.entity_id")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 4095 {
-					v = 4095
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.entity_id")
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.entity_id")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.EntityID = uint32(v)
 			}
@@ -3775,46 +2962,34 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -16383 {
-							v = -16383
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_x")
-						} else if v > 16383 {
-							v = 16383
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_x")
+						if v < -16383 || v > 16383 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_x")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.PosX = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.pos_x")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -16383 {
-					v = -16383
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_x")
-				} else if v > 16383 {
-					v = 16383
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_x")
+				if v < -16383 || v > 16383 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_x")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.PosX = int32(v)
 			}
@@ -3822,46 +2997,34 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -16383 {
-							v = -16383
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_y")
-						} else if v > 16383 {
-							v = 16383
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_y")
+						if v < -16383 || v > 16383 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_y")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.PosY = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.pos_y")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -16383 {
-					v = -16383
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_y")
-				} else if v > 16383 {
-					v = 16383
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_y")
+				if v < -16383 || v > 16383 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_y")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.PosY = int32(v)
 			}
@@ -3869,46 +3032,34 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -16383 {
-							v = -16383
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_z")
-						} else if v > 16383 {
-							v = 16383
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_z")
+						if v < -16383 || v > 16383 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_z")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.PosZ = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.pos_z")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -16383 {
-					v = -16383
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_z")
-				} else if v > 16383 {
-					v = 16383
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.pos_z")
+				if v < -16383 || v > 16383 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_z")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.PosZ = int32(v)
 			}
@@ -3916,38 +3067,34 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 511 {
-							v = 511
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.yaw")
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.yaw")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Yaw = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.yaw")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 511 {
-					v = 511
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.yaw")
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.yaw")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Yaw = uint32(v)
 			}
@@ -3955,38 +3102,34 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 511 {
-							v = 511
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.pitch")
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pitch")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Pitch = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.pitch")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 511 {
-					v = 511
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.pitch")
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pitch")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Pitch = uint32(v)
 			}
@@ -3994,46 +3137,34 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2048 {
-							v = -2048
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_x")
-						} else if v > 2047 {
-							v = 2047
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_x")
+						if v < -2048 || v > 2047 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_x")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.VelX = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.vel_x")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2048 {
-					v = -2048
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_x")
-				} else if v > 2047 {
-					v = 2047
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_x")
+				if v < -2048 || v > 2047 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_x")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.VelX = int32(v)
 			}
@@ -4041,46 +3172,34 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2048 {
-							v = -2048
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_y")
-						} else if v > 2047 {
-							v = 2047
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_y")
+						if v < -2048 || v > 2047 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_y")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.VelY = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.vel_y")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2048 {
-					v = -2048
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_y")
-				} else if v > 2047 {
-					v = 2047
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_y")
+				if v < -2048 || v > 2047 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_y")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.VelY = int32(v)
 			}
@@ -4088,46 +3207,34 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2048 {
-							v = -2048
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_z")
-						} else if v > 2047 {
-							v = 2047
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_z")
+						if v < -2048 || v > 2047 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_z")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.VelZ = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.vel_z")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2048 {
-					v = -2048
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_z")
-				} else if v > 2047 {
-					v = 2047
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.vel_z")
+				if v < -2048 || v > 2047 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_z")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.VelZ = int32(v)
 			}
@@ -4135,62 +3242,46 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.health")
-						} else if v > 1000 {
-							v = 1000
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedEntity.health")
+						if v < 0 || v > 1000 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.health")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Health = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.health")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.health")
-				} else if v > 1000 {
-					v = 1000
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedEntity.health")
+				if v < 0 || v > 1000 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.health")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Health = int32(v)
 			}
 		case 0xa0b610205f2c6e01: // weapon
 			if kind != 30 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.weapon")
+				return false
 			}
 			{
 				variantRef, ok := r.Leb()
 				if !ok {
-					r.Report.Malformed = true
+					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
 				if variantRef == 0 {
@@ -4198,7 +3289,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				} else {
 					id, ok := r.Resolve(variantRef)
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					if !value.Weapon.TableEnumValue(id) {
@@ -4210,7 +3301,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4220,15 +3311,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.damage")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4237,144 +3324,53 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			}
 		case 0x11a44fc1d1243da7: // moving
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.moving")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: Moving"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Moving = b != 0
 			}
 		case 0x7674cfd19b9031ca: // firing
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedEntity.firing")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: Firing"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Firing = b != 0
 			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// MixedEntityLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts, with the report's counters counted onto the one
-// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
-// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
-// a form it does not carry. MixedEntityLoad is the strict read; call this one by name.
-func MixedEntityLoadTolerant(value *MixedEntity, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message_form_as_file"
-		}
-	}
-	if verdict != TableOpenOk {
-		MixedEntityReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	report.Malformed = false
-	if !MixedEntityLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			MixedEntityReset(value)
-			report.Malformed = report.Malformed || before.Malformed
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			MixedEntityReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		if report.Malformed {
-			MixedEntityReset(value)
-		}
-		report.Malformed = report.Malformed || before.Malformed
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		MixedEntityReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	if report.Malformed {
-		MixedEntityReset(value)
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	report.Malformed = before.Malformed
-	return true
-}
-
-// MixedEntityLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever MixedEntityReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. MixedEntityLoadTolerant also reads past an evolution event.
+// MixedEntityLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func MixedEntityLoad(value *MixedEntity, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -4382,24 +3378,21 @@ func MixedEntityLoad(value *MixedEntity, data []byte, report *TableReport) bool 
 	} else {
 		*read = TableReport{}
 	}
-	ok := MixedEntityLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !MixedEntityLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		MixedEntityReset(value)
 		return false
 	}
 	return true
 }
 
-// MixedEntityReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// MixedEntityReadStrict is MixedEntityLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func MixedEntityReadStrict(wire []byte) (*MixedEntity, error) {
 	value := &MixedEntity{}
 	var report TableReport
-	ok := MixedEntityLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !MixedEntityLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -4496,7 +3489,7 @@ func MixedStatLoadBody(r *TableReader, value *MixedStat) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -4504,34 +3497,30 @@ func MixedStatLoadBody(r *TableReader, value *MixedStat) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x80ab75f0866dbf65: // stat_id
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedStat.stat_id")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
 				if v > 255 {
-					v = 255
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedStat.stat_id")
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedStat.stat_id")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.StatID = uint32(v)
 			}
@@ -4539,143 +3528,52 @@ func MixedStatLoadBody(r *TableReader, value *MixedStat) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -512 {
-							v = -512
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedStat.delta")
-						} else if v > 511 {
-							v = 511
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedStat.delta")
+						if v < -512 || v > 511 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedStat.delta")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Delta = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedStat.delta")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -512 {
-					v = -512
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedStat.delta")
-				} else if v > 511 {
-					v = 511
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedStat.delta")
+				if v < -512 || v > 511 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedStat.delta")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Delta = int32(v)
 			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// MixedStatLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts, with the report's counters counted onto the one
-// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
-// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
-// a form it does not carry. MixedStatLoad is the strict read; call this one by name.
-func MixedStatLoadTolerant(value *MixedStat, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message_form_as_file"
-		}
-	}
-	if verdict != TableOpenOk {
-		MixedStatReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	report.Malformed = false
-	if !MixedStatLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			MixedStatReset(value)
-			report.Malformed = report.Malformed || before.Malformed
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			MixedStatReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		if report.Malformed {
-			MixedStatReset(value)
-		}
-		report.Malformed = report.Malformed || before.Malformed
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		MixedStatReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	if report.Malformed {
-		MixedStatReset(value)
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	report.Malformed = before.Malformed
-	return true
-}
-
-// MixedStatLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever MixedStatReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. MixedStatLoadTolerant also reads past an evolution event.
+// MixedStatLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func MixedStatLoad(value *MixedStat, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -4683,24 +3581,21 @@ func MixedStatLoad(value *MixedStat, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
-	ok := MixedStatLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !MixedStatLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		MixedStatReset(value)
 		return false
 	}
 	return true
 }
 
-// MixedStatReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// MixedStatReadStrict is MixedStatLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func MixedStatReadStrict(wire []byte) (*MixedStat, error) {
 	value := &MixedStat{}
 	var report TableReport
-	ok := MixedStatLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !MixedStatLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -4831,7 +3726,7 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -4839,12 +3734,12 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
@@ -4852,38 +3747,34 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 4095 {
-							v = 4095
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.target_id")
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.target_id")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.TargetID = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedHitEvent.target_id")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 4095 {
-					v = 4095
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.target_id")
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.target_id")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.TargetID = uint32(v)
 			}
@@ -4891,46 +3782,34 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.damage")
-						} else if v > 4095 {
-							v = 4095
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.damage")
+						if v < 0 || v > 4095 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.damage")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Damage = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedHitEvent.damage")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.damage")
-				} else if v > 4095 {
-					v = 4095
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.damage")
+				if v < 0 || v > 4095 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.damage")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Damage = int32(v)
 			}
@@ -4938,166 +3817,69 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.hit_kind")
-						} else if v > 7 {
-							v = 7
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.hit_kind")
+						if v < 0 || v > 7 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.hit_kind")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.HitKind = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedHitEvent.hit_kind")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.hit_kind")
-				} else if v > 7 {
-					v = 7
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.hit_kind")
+				if v < 0 || v > 7 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.hit_kind")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.HitKind = int32(v)
 			}
 		case 0x126167908c9aa52d: // crit
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedHitEvent.crit")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: Crit"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Crit = b != 0
 			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// MixedHitEventLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts, with the report's counters counted onto the one
-// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
-// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
-// a form it does not carry. MixedHitEventLoad is the strict read; call this one by name.
-func MixedHitEventLoadTolerant(value *MixedHitEvent, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message_form_as_file"
-		}
-	}
-	if verdict != TableOpenOk {
-		MixedHitEventReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	report.Malformed = false
-	if !MixedHitEventLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			MixedHitEventReset(value)
-			report.Malformed = report.Malformed || before.Malformed
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			MixedHitEventReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		if report.Malformed {
-			MixedHitEventReset(value)
-		}
-		report.Malformed = report.Malformed || before.Malformed
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		MixedHitEventReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	if report.Malformed {
-		MixedHitEventReset(value)
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	report.Malformed = before.Malformed
-	return true
-}
-
-// MixedHitEventLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever MixedHitEventReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. MixedHitEventLoadTolerant also reads past an evolution event.
+// MixedHitEventLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func MixedHitEventLoad(value *MixedHitEvent, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -5105,24 +3887,21 @@ func MixedHitEventLoad(value *MixedHitEvent, data []byte, report *TableReport) b
 	} else {
 		*read = TableReport{}
 	}
-	ok := MixedHitEventLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !MixedHitEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		MixedHitEventReset(value)
 		return false
 	}
 	return true
 }
 
-// MixedHitEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// MixedHitEventReadStrict is MixedHitEventLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func MixedHitEventReadStrict(wire []byte) (*MixedHitEvent, error) {
 	value := &MixedHitEvent{}
 	var report TableReport
-	ok := MixedHitEventLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !MixedHitEventLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -5219,7 +3998,7 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -5227,12 +4006,12 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
@@ -5240,46 +4019,34 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedChatEvent.channel")
-						} else if v > 3 {
-							v = 3
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedChatEvent.channel")
+						if v < 0 || v > 3 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedChatEvent.channel")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Channel = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedChatEvent.channel")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedChatEvent.channel")
-				} else if v > 3 {
-					v = 3
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedChatEvent.channel")
+				if v < 0 || v > 3 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedChatEvent.channel")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Channel = int32(v)
 			}
@@ -5287,135 +4054,52 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 4095 {
-							v = 4095
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedChatEvent.speaker")
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedChatEvent.speaker")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Speaker = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedChatEvent.speaker")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 4095 {
-					v = 4095
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedChatEvent.speaker")
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedChatEvent.speaker")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Speaker = uint32(v)
 			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// MixedChatEventLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts, with the report's counters counted onto the one
-// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
-// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
-// a form it does not carry. MixedChatEventLoad is the strict read; call this one by name.
-func MixedChatEventLoadTolerant(value *MixedChatEvent, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message_form_as_file"
-		}
-	}
-	if verdict != TableOpenOk {
-		MixedChatEventReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	report.Malformed = false
-	if !MixedChatEventLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			MixedChatEventReset(value)
-			report.Malformed = report.Malformed || before.Malformed
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			MixedChatEventReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		if report.Malformed {
-			MixedChatEventReset(value)
-		}
-		report.Malformed = report.Malformed || before.Malformed
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		MixedChatEventReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	if report.Malformed {
-		MixedChatEventReset(value)
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	report.Malformed = before.Malformed
-	return true
-}
-
-// MixedChatEventLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever MixedChatEventReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. MixedChatEventLoadTolerant also reads past an evolution event.
+// MixedChatEventLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func MixedChatEventLoad(value *MixedChatEvent, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -5423,24 +4107,21 @@ func MixedChatEventLoad(value *MixedChatEvent, data []byte, report *TableReport)
 	} else {
 		*read = TableReport{}
 	}
-	ok := MixedChatEventLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !MixedChatEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		MixedChatEventReset(value)
 		return false
 	}
 	return true
 }
 
-// MixedChatEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// MixedChatEventReadStrict is MixedChatEventLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func MixedChatEventReadStrict(wire []byte) (*MixedChatEvent, error) {
 	value := &MixedChatEvent{}
 	var report TableReport
-	ok := MixedChatEventLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !MixedChatEventLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -5537,7 +4218,7 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -5545,12 +4226,12 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
@@ -5558,38 +4239,34 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 1023 {
-							v = 1023
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedPickupEvent.item_id")
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedPickupEvent.item_id")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.ItemID = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedPickupEvent.item_id")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 1023 {
-					v = 1023
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedPickupEvent.item_id")
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedPickupEvent.item_id")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.ItemID = uint32(v)
 			}
@@ -5597,143 +4274,52 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedPickupEvent.amount")
-						} else if v > 255 {
-							v = 255
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "MixedPickupEvent.amount")
+						if v < 0 || v > 255 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedPickupEvent.amount")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Amount = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "MixedPickupEvent.amount")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedPickupEvent.amount")
-				} else if v > 255 {
-					v = 255
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "MixedPickupEvent.amount")
+				if v < 0 || v > 255 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedPickupEvent.amount")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Amount = int32(v)
 			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// MixedPickupEventLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts, with the report's counters counted onto the one
-// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
-// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
-// a form it does not carry. MixedPickupEventLoad is the strict read; call this one by name.
-func MixedPickupEventLoadTolerant(value *MixedPickupEvent, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message_form_as_file"
-		}
-	}
-	if verdict != TableOpenOk {
-		MixedPickupEventReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	report.Malformed = false
-	if !MixedPickupEventLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			MixedPickupEventReset(value)
-			report.Malformed = report.Malformed || before.Malformed
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			MixedPickupEventReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		if report.Malformed {
-			MixedPickupEventReset(value)
-		}
-		report.Malformed = report.Malformed || before.Malformed
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		MixedPickupEventReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	if report.Malformed {
-		MixedPickupEventReset(value)
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	report.Malformed = before.Malformed
-	return true
-}
-
-// MixedPickupEventLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever MixedPickupEventReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. MixedPickupEventLoadTolerant also reads past an evolution event.
+// MixedPickupEventLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func MixedPickupEventLoad(value *MixedPickupEvent, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -5741,24 +4327,21 @@ func MixedPickupEventLoad(value *MixedPickupEvent, data []byte, report *TableRep
 	} else {
 		*read = TableReport{}
 	}
-	ok := MixedPickupEventLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !MixedPickupEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		MixedPickupEventReset(value)
 		return false
 	}
 	return true
 }
 
-// MixedPickupEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// MixedPickupEventReadStrict is MixedPickupEventLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func MixedPickupEventReadStrict(wire []byte) (*MixedPickupEvent, error) {
 	value := &MixedPickupEvent{}
 	var report TableReport
-	ok := MixedPickupEventLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !MixedPickupEventLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -6399,7 +4982,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -6407,12 +4990,12 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
@@ -6420,38 +5003,34 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 65535 {
-							v = 65535
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.sequence")
+							r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.sequence")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Sequence = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.sequence")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 65535 {
-					v = 65535
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.sequence")
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.sequence")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Sequence = uint32(v)
 			}
@@ -6459,46 +5038,34 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.ack_sequence")
-						} else if v > 65535 {
-							v = 65535
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.ack_sequence")
+						if v < 0 || v > 65535 {
+							r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ack_sequence")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.AckSequence = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.ack_sequence")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.ack_sequence")
-				} else if v > 65535 {
-					v = 65535
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.ack_sequence")
+				if v < 0 || v > 65535 {
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ack_sequence")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.AckSequence = int32(v)
 			}
@@ -6506,38 +5073,34 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 4294967295 {
-							v = 4294967295
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.ack_bits")
+							r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ack_bits")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.AckBits = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.ack_bits")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
 				if v > 4294967295 {
-					v = 4294967295
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.ack_bits")
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ack_bits")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.AckBits = uint32(v)
 			}
@@ -6545,7 +5108,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -6555,15 +5118,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.session_id")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -6574,7 +5133,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -6584,15 +5143,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.client_id")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -6603,46 +5158,34 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.nonce")
-						} else if v > 18446744073709551615 {
-							v = 18446744073709551615
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.nonce")
+						if v < 0 || v > 18446744073709551615 {
+							r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.nonce")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Nonce = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.nonce")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.nonce")
-				} else if v > 18446744073709551615 {
-					v = 18446744073709551615
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.nonce")
+				if v < 0 || v > 18446744073709551615 {
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.nonce")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Nonce = uint64(v)
 			}
@@ -6650,46 +5193,34 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -1000000000000 {
-							v = -1000000000000
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.world_time")
-						} else if v > 1000000000000 {
-							v = 1000000000000
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.world_time")
+						if v < -1000000000000 || v > 1000000000000 {
+							r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.world_time")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.WorldTime = int64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.world_time")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int64(r.Get64())
-				if v < -1000000000000 {
-					v = -1000000000000
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.world_time")
-				} else if v > 1000000000000 {
-					v = 1000000000000
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.world_time")
+				if v < -1000000000000 || v > 1000000000000 {
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.world_time")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.WorldTime = int64(v)
 			}
@@ -6697,240 +5228,209 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 281474976710655 {
-							v = 281474976710655
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.frame_tick")
+							r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.frame_tick")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.FrameTick = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.frame_tick")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
 				if v > 281474976710655 {
-					v = 281474976710655
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.frame_tick")
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.frame_tick")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.FrameTick = uint64(v)
 			}
 		case 0x3c460475f9be69c6: // server_time
 			if kind != 22 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.server_time")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.server_time")
-				} else if v > 16776960 {
-					v = 16776960
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.server_time")
+				if v < 0 || v > 16776960 {
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.server_time")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.ServerTime = int32(v)
 			}
 		case 0x935d0fb07bb3822a: // entities
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.entities")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 13 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 13 {
+					r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.entities")
+					return false
+				}
+				if count > 8 {
+					r.Report.Refuse(TableRefuseCountOverBound, "BenchMixed.entities")
+					return false
+				}
+				for i := range count {
+					elem, ok := sub.Body()
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 8 {
-						keep = 8
-						r.Report.Clamped++
+					if !MixedEntityLoadBody(&elem, &value.Entities[i]) {
+						return false
 					}
-					previous := value.EntitiesCount
-					decoded := int32(0)
-					for i := range keep {
-						elem, ok := sub.Body()
-						if !ok {
-							r.Report.Malformed = true
-							break
-						}
-						MixedEntityLoadBody(&elem, &value.Entities[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
-							r.Report.Malformed = true
-							MixedEntityReset(&value.Entities[i])
-						}
-						decoded = int32(i + 1)
+					if elem.Offset != int64(len(elem.Buffer)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					for i := decoded; i < previous; i++ {
-						MixedEntityReset(&value.Entities[i])
-					}
-					value.EntitiesCount = decoded
+				}
+				value.EntitiesCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xee639cad45b1994c: // stats
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.stats")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 13 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 13 {
+					r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.stats")
+					return false
+				}
+				if count > 80 {
+					r.Report.Refuse(TableRefuseCountOverBound, "BenchMixed.stats")
+					return false
+				}
+				for i := range count {
+					elem, ok := sub.Body()
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 80 {
-						keep = 80
-						r.Report.Clamped++
+					if !MixedStatLoadBody(&elem, &value.Stats[i]) {
+						return false
 					}
-					previous := value.StatsCount
-					decoded := int32(0)
-					for i := range keep {
-						elem, ok := sub.Body()
-						if !ok {
-							r.Report.Malformed = true
-							break
-						}
-						MixedStatLoadBody(&elem, &value.Stats[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
-							r.Report.Malformed = true
-							MixedStatReset(&value.Stats[i])
-						}
-						decoded = int32(i + 1)
+					if elem.Offset != int64(len(elem.Buffer)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					for i := decoded; i < previous; i++ {
-						MixedStatReset(&value.Stats[i])
-					}
-					value.StatsCount = decoded
+				}
+				value.StatsCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0x2e35dc5321aa5790: // game_event
 			if kind != 15 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.game_event")
+				return false
 			}
 			{
 				payload38 := &value.GameEvent
 				armRef, ok := r.Leb()
 				if !ok {
-					r.Report.Malformed = true
+					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-				if armRef == 0 {
-					payload38.Type = MixedEventTypeNone
-				} else {
+				payload38.Type = MixedEventTypeNone
+				if armRef != 0 {
 					armID, ok := r.Resolve(armRef)
 					if !ok || !r.Has(1) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					armKind := r.Get8()
 					payload37, ok := r.Body()
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					payload38.Type = MixedEventTypeNone
 					switch armID {
 					case 0x33732819300680aa:
 						if armKind != 13 {
-							r.Report.KindMismatch++
-							break
+							r.Report.Refuse(TableRefuseKindMismatch, "MixedEvent.hit")
+							return false
 						}
 						payload38.Type = MixedEventTypeHit
-						MixedHitEventLoadBody(&payload37, &payload38.Hit)
+						if !MixedHitEventLoadBody(&payload37, &payload38.Hit) {
+							return false
+						}
 						if payload37.Offset != int64(len(payload37.Buffer)) {
-							payload38.Type = MixedEventTypeNone
-							r.Report.Malformed = true
-							break
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 					case 0xf2a38d910b5b348b:
 						if armKind != 13 {
-							r.Report.KindMismatch++
-							break
+							r.Report.Refuse(TableRefuseKindMismatch, "MixedEvent.chat")
+							return false
 						}
 						payload38.Type = MixedEventTypeChat
-						MixedChatEventLoadBody(&payload37, &payload38.Chat)
+						if !MixedChatEventLoadBody(&payload37, &payload38.Chat) {
+							return false
+						}
 						if payload37.Offset != int64(len(payload37.Buffer)) {
-							payload38.Type = MixedEventTypeNone
-							r.Report.Malformed = true
-							break
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 					case 0x9fa3a41c86ecb765:
 						if armKind != 13 {
-							r.Report.KindMismatch++
-							break
+							r.Report.Refuse(TableRefuseKindMismatch, "MixedEvent.pickup")
+							return false
 						}
 						payload38.Type = MixedEventTypePickup
-						MixedPickupEventLoadBody(&payload37, &payload38.Pickup)
+						if !MixedPickupEventLoadBody(&payload37, &payload38.Pickup) {
+							return false
+						}
 						if payload37.Offset != int64(len(payload37.Buffer)) {
-							payload38.Type = MixedEventTypeNone
-							r.Report.Malformed = true
-							break
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 					default:
 						r.Report.Unknown++
@@ -6939,154 +5439,123 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			}
 		case 0x5759ce7586bbb5a3: // loadout
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.loadout")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 6 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 6 {
+					r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.loadout")
+					return false
+				}
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "BenchMixed.loadout")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
+					{
+						v := sub.Unsigned(elemKind)
+						value.Loadout[i] = uint8(v)
 					}
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Unsigned(elemKind)
-							value.Loadout[i] = uint8(v)
-						}
-					}
+				}
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0x13a62f542cf8e86e: // player_name
 			if kind != 12 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.player_name")
 				return false
 			}
-			if !tableUTF8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.PlayerName[:])
-				value.PlayerNameLength = 0
-				break
+			sub, ok := r.Body()
+			if !ok || !tableUTF8Valid(sub.Buffer) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 15 {
-				keep = tableUTF8Clamp(sub.Buffer, 15)
-				r.Report.Clamped++
+			if len(sub.Buffer) > 15 {
+				r.Report.Refuse(TableRefuseLengthOverBound, "BenchMixed.player_name")
+				return false
 			}
 			clear(value.PlayerName[:])
-			copy(value.PlayerName[:keep], sub.Buffer)
-			value.PlayerNameLength = int32(keep)
+			copy(value.PlayerName[:], sub.Buffer)
+			value.PlayerNameLength = int32(len(sub.Buffer))
 		case 0xcfb8a9d063b5e9e5: // payload
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.payload")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 6 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 6 {
+					r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.payload")
+					return false
+				}
+				if count > 16 {
+					r.Report.Refuse(TableRefuseLengthOverBound, "BenchMixed.payload")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 16 {
-						keep = 16
-						r.Report.Clamped++
+					{
+						v := sub.Unsigned(elemKind)
+						value.Payload[i] = byte(v)
 					}
-					previous := value.PayloadLength
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Unsigned(elemKind)
-							value.Payload[i] = byte(v)
-						}
-						decoded = int32(i + 1)
-					}
-					if decoded < previous {
-						clear(value.Payload[decoded:previous])
-					}
-					value.PayloadLength = decoded
+				}
+				value.PayloadLength = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xdbaf7be5e24296c9: // aim_x
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.aim_x")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.aim_x")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "BenchMixed.aim_x")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
-					if v < -1.0 {
-						v = -1.0
-						r.Report.Clamped++
-						tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_x")
-					} else if v > 1.0 {
-						v = 1.0
-						r.Report.Clamped++
-						tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_x")
+					if v < -1.0 || v > 1.0 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.aim_x")
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					} else if v == 0 {
 						v = 0
 					}
@@ -7095,31 +5564,25 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			}
 		case 0xdbaf7ae5e2429516: // aim_y
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.aim_y")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.aim_y")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "BenchMixed.aim_y")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
-					if v < -1.0 {
-						v = -1.0
-						r.Report.Clamped++
-						tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_y")
-					} else if v > 1.0 {
-						v = 1.0
-						r.Report.Clamped++
-						tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_y")
+					if v < -1.0 || v > 1.0 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.aim_y")
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					} else if v == 0 {
 						v = 0
 					}
@@ -7128,31 +5591,25 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			}
 		case 0xdbaf79e5e2429363: // aim_z
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.aim_z")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.aim_z")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "BenchMixed.aim_z")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
-					if v < -1.0 {
-						v = -1.0
-						r.Report.Clamped++
-						tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_z")
-					} else if v > 1.0 {
-						v = 1.0
-						r.Report.Clamped++
-						tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_z")
+					if v < -1.0 || v > 1.0 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.aim_z")
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					} else if v == 0 {
 						v = 0
 					}
@@ -7161,21 +5618,19 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			}
 		case 0x9cef31fff7e2e457: // recoil
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.recoil")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.recoil")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "BenchMixed.recoil")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Recoil = v
@@ -7185,7 +5640,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 11 {
 				if tableKindWidens(kind, 11) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -7198,7 +5653,9 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 							finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b)
 						}
 						if !finite {
-							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.drift")
+							r.Report.Refuse(TableRefuseNonFiniteFloat, "BenchMixed.drift")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						} else {
 							value.Drift = v
 						}
@@ -7206,21 +5663,19 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.drift")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get64()
 				if b&0x7ff0000000000000 == 0x7ff0000000000000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.drift")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "BenchMixed.drift")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float64frombits(b)
 					value.Drift = v
@@ -7230,7 +5685,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 19 {
 				if tableKindWidens(kind, 19) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -7246,15 +5701,11 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.wide_key")
+				return false
 			}
 			if !r.Has(16) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -7267,7 +5718,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 18 {
 				if tableKindWidens(kind, 18) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -7278,65 +5729,49 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						} else {
 							v = serialize.Int128From64(r.Signed(kind))
 						}
-						if v.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 {
-							v = (serialize.Int128{Lo: 0, Hi: 18446744004990074880})
-							r.Report.Clamped++
-						} else if v.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
-							v = (serialize.Int128{Lo: 0, Hi: 68719476736})
-							r.Report.Clamped++
+						if v.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || v.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+							r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.flux")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Flux = v
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.flux")
+				return false
 			}
 			if !r.Has(16) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				var v serialize.Int128
 				v.Lo = r.Get64()
 				v.Hi = r.Get64()
-				if v.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 {
-					v = (serialize.Int128{Lo: 0, Hi: 18446744004990074880})
-					r.Report.Clamped++
-				} else if v.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
-					v = (serialize.Int128{Lo: 0, Hi: 68719476736})
-					r.Report.Clamped++
+				if v.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || v.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.flux")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Flux = v
 			}
 		case 0xbf30e00dc53307a9: // ping
 			if kind != 26 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.ping")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.ping")
-				} else if v > 64000 {
-					v = 64000
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.ping")
+				if v < 0 || v > 64000 {
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ping")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Ping = uint16(v)
 			}
@@ -7344,61 +5779,51 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 16777215 {
-							v = 16777215
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.crc_hint")
+							r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.crc_hint")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.CrcHint = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.crc_hint")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
 				if v > 16777215 {
-					v = 16777215
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.crc_hint")
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.crc_hint")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.CrcHint = uint32(v)
 			}
 		case 0xc08292176cfd8672: // has_extra
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.has_extra")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: HasExtra"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.HasExtra = b != 0
 			}
@@ -7406,46 +5831,34 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.extra")
-						} else if v > 255 {
-							v = 255
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.extra")
+						if v < 0 || v > 255 {
+							r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.extra")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Extra = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.extra")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.extra")
-				} else if v > 255 {
-					v = 255
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.extra")
+				if v < 0 || v > 255 {
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.extra")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Extra = int32(v)
 			}
@@ -7453,143 +5866,52 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.idle_ticks")
-						} else if v > 15 {
-							v = 15
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.idle_ticks")
+						if v < 0 || v > 15 {
+							r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.idle_ticks")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.IdleTicks = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.idle_ticks")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.idle_ticks")
-				} else if v > 15 {
-					v = 15
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "BenchMixed.idle_ticks")
+				if v < 0 || v > 15 {
+					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.idle_ticks")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.IdleTicks = int32(v)
 			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// BenchMixedLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts, with the report's counters counted onto the one
-// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
-// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
-// a form it does not carry. BenchMixedLoad is the strict read; call this one by name.
-func BenchMixedLoadTolerant(value *BenchMixed, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message_form_as_file"
-		}
-	}
-	if verdict != TableOpenOk {
-		BenchMixedReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	report.Malformed = false
-	if !BenchMixedLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			BenchMixedReset(value)
-			report.Malformed = report.Malformed || before.Malformed
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			BenchMixedReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		if report.Malformed {
-			BenchMixedReset(value)
-		}
-		report.Malformed = report.Malformed || before.Malformed
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		BenchMixedReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	if report.Malformed {
-		BenchMixedReset(value)
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	report.Malformed = before.Malformed
-	return true
-}
-
-// BenchMixedLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever BenchMixedReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. BenchMixedLoadTolerant also reads past an evolution event.
+// BenchMixedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func BenchMixedLoad(value *BenchMixed, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -7597,26 +5919,969 @@ func BenchMixedLoad(value *BenchMixed, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
-	ok := BenchMixedLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !BenchMixedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		BenchMixedReset(value)
 		return false
 	}
 	return true
 }
 
-// BenchMixedReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// BenchMixedReadStrict is BenchMixedLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func BenchMixedReadStrict(wire []byte) (*BenchMixed, error) {
 	value := &BenchMixed{}
 	var report TableReport
-	ok := BenchMixedLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !BenchMixedLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
+}
+
+// ---- THE FIXED FORM, form byte 3 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4) ----
+//
+// A record is an eight-byte hash of the writer's layout and then the values
+// in declared order, every field at its declared storage width. The writer is
+// constant-offset stores; the reader is ONE loop over ONE plan.
+
+func MixedEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.EntityID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.PosX))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 8
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.PosY))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 12
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.PosZ))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 16
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Yaw))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 20
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Pitch))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 24
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.VelX))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 28
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.VelY))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 32
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.VelZ))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 36
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Health))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 40
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Weapon))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 41
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Damage))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 49
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Moving))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	{
+		es := src + 50
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Firing))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	return n
+}
+
+func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
+	tableFixedPut32(b[0:], uint32(value.EntityID))
+	tableFixedPut32(b[4:], uint32(value.PosX))
+	tableFixedPut32(b[8:], uint32(value.PosY))
+	tableFixedPut32(b[12:], uint32(value.PosZ))
+	tableFixedPut32(b[16:], uint32(value.Yaw))
+	tableFixedPut32(b[20:], uint32(value.Pitch))
+	tableFixedPut32(b[24:], uint32(value.VelX))
+	tableFixedPut32(b[28:], uint32(value.VelY))
+	tableFixedPut32(b[32:], uint32(value.VelZ))
+	tableFixedPut32(b[36:], uint32(value.Health))
+	tableFixedPut8(b[40:], uint8(value.Weapon))
+	tableFixedPut64(b[41:], uint64(value.Damage))
+	{
+		p := uint8(0)
+		if value.Moving {
+			p = 1
+		}
+		tableFixedPut8(b[49:], p)
+	}
+	{
+		p := uint8(0)
+		if value.Firing {
+			p = 1
+		}
+		tableFixedPut8(b[50:], p)
+	}
+}
+
+func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(MixedStat{}.StatID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(MixedStat{}.Delta))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
+	tableFixedPut32(b[0:], uint32(value.StatID))
+	tableFixedPut32(b[4:], uint32(value.Delta))
+}
+
+func MixedHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.TargetID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.Damage))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 8
+		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.HitKind))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 12
+		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.Crit))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	return n
+}
+
+func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
+	tableFixedPut32(b[0:], uint32(value.TargetID))
+	tableFixedPut32(b[4:], uint32(value.Damage))
+	tableFixedPut32(b[8:], uint32(value.HitKind))
+	{
+		p := uint8(0)
+		if value.Crit {
+			p = 1
+		}
+		tableFixedPut8(b[12:], p)
+	}
+}
+
+func MixedChatEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(MixedChatEvent{}.Channel))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(MixedChatEvent{}.Speaker))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
+	tableFixedPut32(b[0:], uint32(value.Channel))
+	tableFixedPut32(b[4:], uint32(value.Speaker))
+}
+
+func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(MixedPickupEvent{}.Amount))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
+	tableFixedPut32(b[0:], uint32(value.ItemID))
+	tableFixedPut32(b[4:], uint32(value.Amount))
+}
+
+func BenchMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Sequence))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AckSequence))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 8
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AckBits))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 12
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.SessionID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 20
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.ClientID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 24
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Nonce))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 32
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.WorldTime))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 40
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.FrameTick))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 48
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.ServerTime))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	out[n] = TableFixedEntry{Src: src + 52, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), Size: 8, Aux: 51, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
+	n++
+	for i := range uint32(8) {
+		es := src + 56 + i*51
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Entities)) + i*uint32(unsafe.Sizeof(MixedEntity{}))
+		n += MixedEntityFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	out[n] = TableFixedEntry{Src: src + 464, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Size: 80, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
+	n++
+	for i := range uint32(80) {
+		es := src + 468 + i*8
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Stats)) + i*uint32(unsafe.Sizeof(MixedStat{}))
+		n += MixedStatFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	{
+		es := src + 1108
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.GameEvent))
+		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(MixedEvent{}.Type)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag
+		n++
+		{ // arm hit, ordinal 1
+			guardAt := n
+			n += MixedHitEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
+			for q := guardAt; q < n; q++ {
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 1, ArgW: 1})
+			}
+		}
+		{ // arm chat, ordinal 2
+			guardAt := n
+			n += MixedChatEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
+			for q := guardAt; q < n; q++ {
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
+			}
+		}
+		{ // arm pickup, ordinal 3
+			guardAt := n
+			n += MixedPickupEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
+			for q := guardAt; q < n; q++ {
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 3, ArgW: 1})
+			}
+		}
+	}
+	for i := range uint32(4) {
+		es := src + 1122 + i*1
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Loadout)) + i*uint32(unsafe.Sizeof(uint8(0)))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	out[n] = TableFixedEntry{Src: src + 1126, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), Size: 15, Aux: dst + uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // player_name
+	n++
+	out[n] = TableFixedEntry{Src: src + 1145, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(BenchMixed{}.Payload)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 3} // payload
+	n++
+	{
+		es := src + 1165
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AimX))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1169
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AimY))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1173
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AimZ))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1177
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Recoil))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1181
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Drift))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1189
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.WideKey))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 16, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1205
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Flux))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 16, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1221
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Ping))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 2, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1223
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.CrcHint))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1227
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.HasExtra))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	{
+		es := src + 1228
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Extra))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1232
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
+	tableFixedPut32(b[0:], uint32(value.Sequence))
+	tableFixedPut32(b[4:], uint32(value.AckSequence))
+	tableFixedPut32(b[8:], uint32(value.AckBits))
+	tableFixedPut64(b[12:], uint64(value.SessionID))
+	tableFixedPut32(b[20:], uint32(value.ClientID))
+	tableFixedPut64(b[24:], uint64(value.Nonce))
+	tableFixedPut64(b[32:], uint64(value.WorldTime))
+	tableFixedPut64(b[40:], uint64(value.FrameTick))
+	tableFixedPut32(b[48:], uint32(value.ServerTime))
+	tableFixedPut32(b[52:], uint32(value.EntitiesCount))
+	{
+		livei := min(max(int64(value.EntitiesCount), 0), 8)
+		for i := range livei {
+			clear(b[56:][i*51 : i*51+51])
+			MixedEntityFixedWriteBody(b[56:][i*51:], &value.Entities[i])
+		}
+		clear(b[56:][livei*51 : 408])
+	}
+	tableFixedPut32(b[464:], uint32(value.StatsCount))
+	{
+		livei := min(max(int64(value.StatsCount), 0), 80)
+		for i := range livei {
+			clear(b[468:][i*8 : i*8+8])
+			MixedStatFixedWriteBody(b[468:][i*8:], &value.Stats[i])
+		}
+		clear(b[468:][livei*8 : 640])
+	}
+	tableFixedPut8(b[1108:], uint8(value.GameEvent.Type))
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		MixedHitEventFixedWriteBody(b[1108:][1:], &value.GameEvent.Hit)
+	case MixedEventTypeChat:
+		MixedChatEventFixedWriteBody(b[1108:][1:], &value.GameEvent.Chat)
+	case MixedEventTypePickup:
+		MixedPickupEventFixedWriteBody(b[1108:][1:], &value.GameEvent.Pickup)
+	}
+	for i := range int64(4) {
+		tableFixedPut8(b[1122:][i*1:], uint8(value.Loadout[i]))
+	}
+	tableFixedPut32(b[1126:], uint32(value.PlayerNameLength))
+	copy(b[1126:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
+	tableFixedPut32(b[1145:], uint32(value.PayloadLength))
+	copy(b[1145:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
+	tableFixedPutF32(b[1165:], value.AimX)
+	tableFixedPutF32(b[1169:], value.AimY)
+	tableFixedPutF32(b[1173:], value.AimZ)
+	tableFixedPutF32(b[1177:], value.Recoil)
+	tableFixedPutF64(b[1181:], value.Drift)
+	tableFixedPut128(b[1189:], value.WideKey.Lo, value.WideKey.Hi)
+	tableFixedPut128(b[1205:], value.Flux.Lo, value.Flux.Hi)
+	tableFixedPut16(b[1221:], uint16(value.Ping))
+	tableFixedPut32(b[1223:], uint32(value.CrcHint))
+	{
+		p := uint8(0)
+		if value.HasExtra {
+			p = 1
+		}
+		tableFixedPut8(b[1227:], p)
+	}
+	tableFixedPut32(b[1228:], uint32(value.Extra))
+	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
+}
+
+// MixedEntity's read-side bounds: each value outside them counts one in over.
+func MixedEntityFixedBoundsBody(value *MixedEntity, over *int32) {
+	_, _ = value, over
+	if value.EntityID > 4095 {
+		(*over)++
+	}
+	if value.PosX < -16383 || value.PosX > 16383 {
+		(*over)++
+	}
+	if value.PosY < -16383 || value.PosY > 16383 {
+		(*over)++
+	}
+	if value.PosZ < -16383 || value.PosZ > 16383 {
+		(*over)++
+	}
+	if value.Yaw > 511 {
+		(*over)++
+	}
+	if value.Pitch > 511 {
+		(*over)++
+	}
+	if value.VelX < -2048 || value.VelX > 2047 {
+		(*over)++
+	}
+	if value.VelY < -2048 || value.VelY > 2047 {
+		(*over)++
+	}
+	if value.VelZ < -2048 || value.VelZ > 2047 {
+		(*over)++
+	}
+	if value.Health < 0 || value.Health > 1000 {
+		(*over)++
+	}
+	if uint64(value.Weapon) > 15 {
+		(*over)++
+	}
+}
+
+// MixedStat's read-side bounds: each value outside them counts one in over.
+func MixedStatFixedBoundsBody(value *MixedStat, over *int32) {
+	_, _ = value, over
+	if value.StatID > 255 {
+		(*over)++
+	}
+	if value.Delta < -512 || value.Delta > 511 {
+		(*over)++
+	}
+}
+
+// MixedHitEvent's read-side bounds: each value outside them counts one in over.
+func MixedHitEventFixedBoundsBody(value *MixedHitEvent, over *int32) {
+	_, _ = value, over
+	if value.TargetID > 4095 {
+		(*over)++
+	}
+	if value.Damage < 0 || value.Damage > 4095 {
+		(*over)++
+	}
+	if value.HitKind < 0 || value.HitKind > 7 {
+		(*over)++
+	}
+}
+
+// MixedChatEvent's read-side bounds: each value outside them counts one in over.
+func MixedChatEventFixedBoundsBody(value *MixedChatEvent, over *int32) {
+	_, _ = value, over
+	if value.Channel < 0 || value.Channel > 3 {
+		(*over)++
+	}
+	if value.Speaker > 4095 {
+		(*over)++
+	}
+}
+
+// MixedPickupEvent's read-side bounds: each value outside them counts one in over.
+func MixedPickupEventFixedBoundsBody(value *MixedPickupEvent, over *int32) {
+	_, _ = value, over
+	if value.ItemID > 1023 {
+		(*over)++
+	}
+	if value.Amount < 0 || value.Amount > 255 {
+		(*over)++
+	}
+}
+
+// BenchMixed's read-side bounds: each value outside them counts one in over.
+func BenchMixedFixedBoundsBody(value *BenchMixed, over *int32) {
+	_, _ = value, over
+	if value.Sequence > 65535 {
+		(*over)++
+	}
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		(*over)++
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		(*over)++
+	}
+	if value.FrameTick > 281474976710655 {
+		(*over)++
+	}
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		(*over)++
+	}
+	for i := range int64(value.EntitiesCount) {
+		MixedEntityFixedBoundsBody(&value.Entities[i], over)
+	}
+	for i := range int64(value.StatsCount) {
+		MixedStatFixedBoundsBody(&value.Stats[i], over)
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		(*over)++
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		MixedHitEventFixedBoundsBody(&value.GameEvent.Hit, over)
+	case MixedEventTypeChat:
+		MixedChatEventFixedBoundsBody(&value.GameEvent.Chat, over)
+	case MixedEventTypePickup:
+		MixedPickupEventFixedBoundsBody(&value.GameEvent.Pickup, over)
+	}
+	if value.AimX < -1.0 || value.AimX > 1.0 {
+		(*over)++
+	} else if value.AimX == 0 {
+		value.AimX = 0
+	}
+	if value.AimY < -1.0 || value.AimY > 1.0 {
+		(*over)++
+	} else if value.AimY == 0 {
+		value.AimY = 0
+	}
+	if value.AimZ < -1.0 || value.AimZ > 1.0 {
+		(*over)++
+	} else if value.AimZ == 0 {
+		value.AimZ = 0
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		(*over)++
+	}
+	if value.Ping > 64000 {
+		(*over)++
+	}
+	if value.CrcHint > 16777215 {
+		(*over)++
+	}
+	if value.Extra < 0 || value.Extra > 255 {
+		(*over)++
+	}
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		(*over)++
+	}
+}
+
+// BenchMixedFixedFiniteBody is BenchMixed's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func BenchMixedFixedFiniteBody(value *BenchMixed) string {
+	if value.AimX-value.AimX != 0 {
+		return "BenchMixed.aim_x"
+	}
+	if value.AimY-value.AimY != 0 {
+		return "BenchMixed.aim_y"
+	}
+	if value.AimZ-value.AimZ != 0 {
+		return "BenchMixed.aim_z"
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return "BenchMixed.recoil"
+	}
+	if value.Drift-value.Drift != 0 {
+		return "BenchMixed.drift"
+	}
+	return ""
+}
+
+// MixedEntity's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedEntityFixedCheckBody(value *MixedEntity) bool {
+	_ = value
+	if value.EntityID > 4095 {
+		return false
+	}
+	if value.PosX < -16383 || value.PosX > 16383 {
+		return false
+	}
+	if value.PosY < -16383 || value.PosY > 16383 {
+		return false
+	}
+	if value.PosZ < -16383 || value.PosZ > 16383 {
+		return false
+	}
+	if value.Yaw > 511 {
+		return false
+	}
+	if value.Pitch > 511 {
+		return false
+	}
+	if value.VelX < -2048 || value.VelX > 2047 {
+		return false
+	}
+	if value.VelY < -2048 || value.VelY > 2047 {
+		return false
+	}
+	if value.VelZ < -2048 || value.VelZ > 2047 {
+		return false
+	}
+	if value.Health < 0 || value.Health > 1000 {
+		return false
+	}
+	if uint64(value.Weapon) > 15 {
+		return false
+	}
+	return true
+}
+
+// MixedStat's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedStatFixedCheckBody(value *MixedStat) bool {
+	_ = value
+	if value.StatID > 255 {
+		return false
+	}
+	if value.Delta < -512 || value.Delta > 511 {
+		return false
+	}
+	return true
+}
+
+// MixedHitEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedHitEventFixedCheckBody(value *MixedHitEvent) bool {
+	_ = value
+	if value.TargetID > 4095 {
+		return false
+	}
+	if value.Damage < 0 || value.Damage > 4095 {
+		return false
+	}
+	if value.HitKind < 0 || value.HitKind > 7 {
+		return false
+	}
+	return true
+}
+
+// MixedChatEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedChatEventFixedCheckBody(value *MixedChatEvent) bool {
+	_ = value
+	if value.Channel < 0 || value.Channel > 3 {
+		return false
+	}
+	if value.Speaker > 4095 {
+		return false
+	}
+	return true
+}
+
+// MixedPickupEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedPickupEventFixedCheckBody(value *MixedPickupEvent) bool {
+	_ = value
+	if value.ItemID > 1023 {
+		return false
+	}
+	if value.Amount < 0 || value.Amount > 255 {
+		return false
+	}
+	return true
+}
+
+// BenchMixed's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func BenchMixedFixedCheckBody(value *BenchMixed) bool {
+	var z, hi uint64
+	if value.Sequence > 65535 {
+		return false
+	}
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		return false
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		return false
+	}
+	if value.FrameTick > 281474976710655 {
+		return false
+	}
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		return false
+	}
+	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		return false
+	}
+	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
+		if !MixedEntityFixedCheckBody(&value.Entities[i]) {
+			return false
+		}
+	}
+	if value.StatsCount < 0 || value.StatsCount > 80 {
+		return false
+	}
+	for i := int64(value.StatsCount) - 1; i >= 0; i-- {
+		if !MixedStatFixedCheckBody(&value.Stats[i]) {
+			return false
+		}
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		return false
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		if !MixedHitEventFixedCheckBody(&value.GameEvent.Hit) {
+			return false
+		}
+	case MixedEventTypeChat:
+		if !MixedChatEventFixedCheckBody(&value.GameEvent.Chat) {
+			return false
+		}
+	case MixedEventTypePickup:
+		if !MixedPickupEventFixedCheckBody(&value.GameEvent.Pickup) {
+			return false
+		}
+	}
+	if n := int(value.PlayerNameLength); uint(n) > 15 {
+		return false
+	} else {
+		p := value.PlayerName[:n]
+		if len(p) >= 8 {
+			x := tableFixedGet64(p)
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+			p = p[8:]
+		}
+		if len(p) > 0 {
+			var x uint64
+			if n >= 8 {
+				x = tableFixedGet64(value.PlayerName[n-8:])
+			} else {
+				m := uint64(1)<<(8*uint(n)) - 1
+				x = tableFixedGet64(value.PlayerName[:])&m | 0x0101010101010101&^m
+			}
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+		}
+	}
+	if value.PayloadLength < 0 || value.PayloadLength > 16 {
+		return false
+	}
+	if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
+		return false
+	}
+	if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
+		return false
+	}
+	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return false
+	}
+	if value.Drift-value.Drift != 0 {
+		return false
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		return false
+	}
+	if value.Ping > 64000 {
+		return false
+	}
+	if value.CrcHint > 16777215 {
+		return false
+	}
+	if value.Extra < 0 || value.Extra > 255 {
+		return false
+	}
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		return false
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	if hi&0x8080808080808080 != 0 {
+		return BenchMixedFixedCheckBodyExact(value)
+	}
+	return true
+}
+
+// BenchMixedFixedCheckBodyExact is BenchMixedFixedCheckBody with each string asked by
+// tableFixedUTF8Ok: the answer for text with a byte at or past 0x80 (§3.1).
+func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
+	_ = value
+	if value.Sequence > 65535 {
+		return false
+	}
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		return false
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		return false
+	}
+	if value.FrameTick > 281474976710655 {
+		return false
+	}
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		return false
+	}
+	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		return false
+	}
+	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
+		if !MixedEntityFixedCheckBody(&value.Entities[i]) {
+			return false
+		}
+	}
+	if value.StatsCount < 0 || value.StatsCount > 80 {
+		return false
+	}
+	for i := int64(value.StatsCount) - 1; i >= 0; i-- {
+		if !MixedStatFixedCheckBody(&value.Stats[i]) {
+			return false
+		}
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		return false
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		if !MixedHitEventFixedCheckBody(&value.GameEvent.Hit) {
+			return false
+		}
+	case MixedEventTypeChat:
+		if !MixedChatEventFixedCheckBody(&value.GameEvent.Chat) {
+			return false
+		}
+	case MixedEventTypePickup:
+		if !MixedPickupEventFixedCheckBody(&value.GameEvent.Pickup) {
+			return false
+		}
+	}
+	if uint32(value.PlayerNameLength) > 15 || !tableFixedUTF8Ok(value.PlayerName[:value.PlayerNameLength]) {
+		return false
+	}
+	if value.PayloadLength < 0 || value.PayloadLength > 16 {
+		return false
+	}
+	if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
+		return false
+	}
+	if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
+		return false
+	}
+	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return false
+	}
+	if value.Drift-value.Drift != 0 {
+		return false
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		return false
+	}
+	if value.Ping > 64000 {
+		return false
+	}
+	if value.CrcHint > 16777215 {
+		return false
+	}
+	if value.Extra < 0 || value.Extra > 255 {
+		return false
+	}
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		return false
+	}
+	return true
 }
 
 // ---- reflection descriptors (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----

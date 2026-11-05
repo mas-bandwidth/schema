@@ -93,27 +93,16 @@ func retainArmOccurrenceWire() []byte {
 	return b.finish()
 }
 
-func TestRetainOracleForgetsAnArmByOccurrence(t *testing.T) {
+// A SECOND OCCURRENCE OF A FIELD IS DAMAGE (docs/SPEC-TABLES.md §4, §6.5): the
+// retaining read refuses it whole, and the retention store is empty.
+func TestRetainOracleRefusesASecondOccurrence(t *testing.T) {
 	t.Parallel()
 	m := retainArmOccurrenceModel(t)
 	inst := m.New(m.Lookup("Node"))
 	retain := tablewire.Retain{Capacity: 8192, IdCapacity: 1024}
 	var report tabletext.Report
 	ok, err := tablewire.DecodeRetain(m, inst, retainArmOccurrenceWire(), &retain, &report)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ok {
-		t.Fatal("the load refused a well-framed file")
-	}
-	if report.Retained != 1 || report.RetainLost != 0 {
-		t.Fatalf("load: retained=%d retain_lost=%d, want 1 / 0", report.Retained, report.RetainLost)
-	}
-	var save tabletext.Report
-	if _, err := tablewire.EncodeRetain(m, inst, &retain, &save); err != nil {
-		t.Fatal(err)
-	}
-	if save.RetainLost != 0 {
-		t.Fatalf("save: retain_lost=%d, want 0: the earlier arm's record survived the occurrence that replaced it", save.RetainLost)
+	if ok || tablewire.RefusalReason(err) != tablewire.ReasonWireDamaged || retain.Used() != 0 {
+		t.Fatalf("load: %v %v %+v used %d", ok, err, report, retain.Used())
 	}
 }

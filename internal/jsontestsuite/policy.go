@@ -32,13 +32,16 @@ const (
 	verdictAccept  = "accept"
 	verdictDialect = "accept (dialect)"
 	verdictRefuse  = "refuse"
+	verdictRefuseD = "refuse (dialect)"
 )
 
 // Row is one line of §16.12's table.
 type Row struct {
-	File    string
-	Accept  bool
-	Dialect bool // `accept (dialect)`: an n_ file the §16.2 dialect accepts
+	File   string
+	Accept bool
+	// Dialect marks a row the §16.2 dialect decides: `accept (dialect)`, an n_
+	// file it accepts, or `refuse (dialect)`, a y_ file it refuses.
+	Dialect bool
 	Reason  string
 }
 
@@ -193,14 +196,19 @@ func ParseTable(spec []byte) (map[string]Row, error) {
 		case verdictDialect:
 			row.Accept, row.Dialect = true, true
 		case verdictRefuse:
+		case verdictRefuseD:
+			row.Dialect = true
 		default:
-			return nil, fmt.Errorf("jsontestsuite: %s: verdict %q is not accept, accept (dialect) or refuse", file, cells[1])
+			return nil, fmt.Errorf("jsontestsuite: %s: verdict %q is not accept, accept (dialect), refuse or refuse (dialect)", file, cells[1])
 		}
 		if row.Reason == "" {
 			return nil, fmt.Errorf("jsontestsuite: %s: a row with no reason", file)
 		}
-		if row.Dialect && !strings.HasPrefix(file, "n_") {
+		if row.Dialect && row.Accept && !strings.HasPrefix(file, "n_") {
 			return nil, fmt.Errorf("jsontestsuite: %s: accept (dialect) is for n_ files only", file)
+		}
+		if row.Dialect && !row.Accept && !strings.HasPrefix(file, "y_") {
+			return nil, fmt.Errorf("jsontestsuite: %s: refuse (dialect) is for y_ files only", file)
 		}
 		if _, dup := rows[file]; dup {
 			return nil, fmt.Errorf("jsontestsuite: %s: two rows", file)

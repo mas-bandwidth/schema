@@ -100,17 +100,14 @@ func mapsModel(t *testing.T) *tabletext.Model {
 }
 
 // A KEY THIS READER CANNOT HOLD WHOLE MUST NOT BECOME A DIFFERENT KEY
-// (docs/SPEC-TABLES.md §2.8). The walker scans a key into a fixed buffer, so a
-// key longer than it is truncated there, and two keys that share the prefix it
-// keeps merge into ONE entry keyed by bytes the text never spelled, while
-// `clamped`, which the scan raises either way, says nothing about it.
-// `EdgeRow.names` is string(300), so the DECLARED bound holds both keys and
-// only the reader's own does not.
+// (docs/SPEC-TABLES.md §2.8). Two keys that share a long prefix are two keys:
+// a read that truncated them into one buffer would merge them into ONE entry
+// keyed by bytes the text never spelled. `EdgeRow.names` is string(300), so
+// the declared bound holds both keys.
 //
-// What the page states is the IDENTITY, so that is what this pins: every entry
-// the map holds is a key the text spelled. Whether a key past the reader's
-// buffer but inside the declared bound should be DROPPED or held WHOLE is the
-// page's to say, and this row is green under either answer.
+// What the page states is the IDENTITY, so that is what this pins: the read
+// returns the whole value or refuses (§6.5), and every entry a read holds is
+// a key the text spelled.
 func TestAMapKeyIsNeverTruncatedIntoAnother(t *testing.T) {
 	m := mapsModel(t)
 	first := strings.Repeat("a", 255) + "b"
@@ -118,15 +115,18 @@ func TestAMapKeyIsNeverTruncatedIntoAnother(t *testing.T) {
 	text := `{"names":{"` + first + `":{"count":1},"` + second + `":{"count":2}},"past":5}`
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
-	if !m.Read(inst, []byte(text), &r) || r.Malformed {
-		t.Fatalf("the text is well formed: %+v", r)
-	}
-	if r.Duplicate != 0 {
-		t.Errorf("two distinct keys are not a duplicate: %+v", r)
+	if !m.Read(inst, []byte(text), &r) {
+		if !r.Refused {
+			t.Fatalf("a read that returns false refuses: %+v", r)
+		}
+		return
 	}
 	fv, ok := inst.FieldByKey("names")
 	if !ok {
 		t.Fatal("no names field")
+	}
+	if len(fv.Entries) != 2 {
+		t.Errorf("two distinct keys are two entries, got %d", len(fv.Entries))
 	}
 	for _, cell := range fv.Entries {
 		key := string(cell.Tab.Fields[0].Cell.Str)
@@ -142,42 +142,44 @@ func TestAMapKeyIsNeverTruncatedIntoAnother(t *testing.T) {
 
 // AN INTEGER MAP KEY IS READ BY §16.2's INTEGER RULE AND BY NOTHING ELSE
 // (docs/SPEC-TABLES.md §2.8), so "2.0" and "1e3" are the integers 2 and 1000 in
-// a key exactly as in a field, at every integer key kind. The KEY's own policy
-// over that value is REJECTION: a value outside the key kind's range drops the
-// whole entry as kind_mismatch, and a key is never clamped.
+// a key exactly as in a field, at every integer key kind. A value outside the
+// key kind's range refuses the whole read (§6.5), and a key is never clamped.
 func TestAnIntegerMapKeyTakesTheIntegerRule(t *testing.T) {
 	m := mapsModel(t)
 	for _, tc := range []struct {
-		root, field, text string
-		count             int
-		mismatch          int
-		keys              []uint64
+		root, field, entries string
+		keys                 []uint64
+		outside              []string
 	}{
-		{"WideRow", "entries", `{"entries":{"2.0":{"count":1},"1e3":{"count":2},"99999999999":{"count":3}}}`,
-			2, 1, []uint64{2, 1000}},
-		{"EdgeRow", "ids", `{"ids":{"2.0":{"count":1},"1e19":{"count":2},"18446744073709551615":{"count":3},` +
-			`"-1":{"count":4},"1e30":{"count":5}}}`,
-			3, 2, []uint64{2, 10000000000000000000, 18446744073709551615}},
+		{"WideRow", "entries", `"2.0":{"count":1},"1e3":{"count":2}`,
+			[]uint64{2, 1000}, []string{"99999999999"}},
+		{"EdgeRow", "ids", `"2.0":{"count":1},"1e19":{"count":2},"18446744073709551615":{"count":3}`,
+			[]uint64{2, 10000000000000000000, 18446744073709551615}, []string{"-1", "1e30"}},
 	} {
 		t.Run(tc.root, func(t *testing.T) {
 			inst := m.New(m.Lookup(tc.root))
 			var r tabletext.Report
-			if !m.Read(inst, []byte(tc.text), &r) || r.Malformed {
-				t.Fatalf("the text is well formed: %+v", r)
-			}
-			if r.KindMismatch != tc.mismatch || r.Clamped != 0 {
-				t.Fatalf("expected %d kind_mismatch and no clamp, got %+v", tc.mismatch, r)
+			if !m.Read(inst, []byte(`{"`+tc.field+`":{`+tc.entries+`}}`), &r) {
+				t.Fatalf("every key is in the kind's range: %+v", r)
 			}
 			fv, ok := inst.FieldByKey(tc.field)
 			if !ok {
 				t.Fatalf("no %s field", tc.field)
 			}
-			if len(fv.Entries) != tc.count {
-				t.Fatalf("expected %d entries, got %d", tc.count, len(fv.Entries))
+			if len(fv.Entries) != len(tc.keys) {
+				t.Fatalf("expected %d entries, got %d", len(tc.keys), len(fv.Entries))
 			}
 			for i, want := range tc.keys {
 				if got := fv.Entries[i].Tab.Fields[0].Cell.U; got != want {
 					t.Errorf("entry %d: key %d, want %d", i, got, want)
+				}
+			}
+			for _, key := range tc.outside {
+				inst := m.New(m.Lookup(tc.root))
+				var r tabletext.Report
+				text := `{"` + tc.field + `":{` + tc.entries + `,"` + key + `":{"count":9}}}`
+				if m.Read(inst, []byte(text), &r) || !r.Refused {
+					t.Errorf("the key %s is outside the kind's range and the read returns: %+v", key, r)
 				}
 			}
 		})
@@ -187,9 +189,8 @@ func TestAnIntegerMapKeyTakesTheIntegerRule(t *testing.T) {
 // A KEY IS THE INTEGER'S SPELLING AND NOTHING AROUND IT (docs/SPEC-TABLES.md
 // §16.2). A key is read by the integer rule and by nothing else, and that rule
 // reads RFC 8259's number grammar, which has no room in it for whitespace: a
-// padded spelling is not a JSON number at all, so it is `malformed` on the same
-// terms as `1-2`, and the read stops there with the instance holding what was
-// placed before the stop (§16.1).
+// padded spelling is not a JSON number at all, so the read refuses on the same
+// terms as `1-2`, and the instance holds nothing it placed (§6.5).
 //
 // A reader that steps over the padding on its way in hands the digit path a
 // byte that is not a digit, and what comes back is a key of its own making: the
@@ -201,40 +202,32 @@ func TestWhitespaceIsNeverPartOfAMapKey(t *testing.T) {
 	var r tabletext.Report
 	text := `{"ids":{"2402":{"count":7}," 2":{"count":1}}}`
 	if m.Read(inst, []byte(text), &r) {
-		t.Errorf("a padded key is not a JSON number: the read must stop, got %+v", r)
+		t.Errorf("a padded key is not a JSON number: the read must refuse, got %+v", r)
 	}
-	if !r.Malformed {
-		t.Errorf("a padded key is malformed: %+v", r)
-	}
-	if r.Duplicate != 0 {
-		t.Errorf("a padded 2 is not the key 2402, so nothing is a duplicate: %+v", r)
+	if !r.Refused {
+		t.Errorf("a padded key refuses: %+v", r)
 	}
 	fv, ok := inst.FieldByKey("ids")
 	if !ok {
 		t.Fatal("no ids field")
 	}
-	for _, cell := range fv.Entries {
-		if got := cell.Tab.Fields[0].Cell.U; got != 2402 {
-			t.Errorf("the map holds the key %d, which the text never spelled", got)
-		}
+	if len(fv.Entries) != 0 {
+		t.Errorf("a refused read holds no entry, got %d", len(fv.Entries))
 	}
 }
 
 // AN INTEGER KEY SPELLED WITH A DECIMAL POINT IS PARSED AS AN INTEGER, never
 // through a double (docs/SPEC-TABLES.md §16.2). A double carries 53 bits of
-// mantissa, so it cannot tell 9007199254740993 from its neighbour, and a key
-// read through one lands on the neighbour's identity: two keys the text spells
-// separately become one entry.
+// mantissa, so it cannot tell 9007199254740993 from its neighbor, and a key
+// read through one lands on the neighbor's identity: two keys the text spells
+// separately become one, and the read refuses a repeat the text never wrote.
 func TestADecimalMapKeyDoesNotRoundIntoItsNeighbour(t *testing.T) {
 	m := mapsModel(t)
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
 	text := `{"ids":{"9007199254740992":{"count":1},"9007199254740993.0":{"count":2}}}`
-	if !m.Read(inst, []byte(text), &r) || r.Malformed {
-		t.Fatalf("the text is well formed: %+v", r)
-	}
-	if r.Duplicate != 0 || r.KindMismatch != 0 || r.Clamped != 0 {
-		t.Errorf("two keys 2^53 apart are two keys: %+v", r)
+	if !m.Read(inst, []byte(text), &r) {
+		t.Fatalf("two keys 2^53 apart are two keys: %+v", r)
 	}
 	fv, ok := inst.FieldByKey("ids")
 	if !ok {
@@ -254,21 +247,15 @@ func TestADecimalMapKeyDoesNotRoundIntoItsNeighbour(t *testing.T) {
 // THE SAME VALUE SPELLED TWO WAYS IS THE SAME KEY (docs/SPEC-TABLES.md §16.2):
 // `2` and `2.0` are the integer 2 wherever an integer is read, and that holds at
 // the top of the uint64 domain as well as at the bottom. Read through a double,
-// 18446744073709551615.0 rounds UP to 2^64 and is dropped as outside the kind,
-// where the digits alone are exactly the key the kind holds.
+// 18446744073709551615.0 rounds UP to 2^64 and falls outside the kind, where
+// the digits alone are exactly the key the kind holds. The two spellings are
+// one key written twice, and a repeated key refuses (§6.5).
 func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
 	m := mapsModel(t)
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
-	text := `{"ids":{"18446744073709551615":{"count":1},"18446744073709551615.0":{"count":2}}}`
-	if !m.Read(inst, []byte(text), &r) || r.Malformed {
-		t.Fatalf("the text is well formed: %+v", r)
-	}
-	if r.KindMismatch != 0 || r.Clamped != 0 {
-		t.Errorf("the decimal spelling of UINT64_MAX is a key the kind holds: %+v", r)
-	}
-	if r.Duplicate != 1 {
-		t.Errorf("the two spellings are one key, so the second is a duplicate: %+v", r)
+	if !m.Read(inst, []byte(`{"ids":{"18446744073709551615.0":{"count":2}}}`), &r) {
+		t.Fatalf("the decimal spelling of UINT64_MAX is a key the kind holds: %+v", r)
 	}
 	fv, ok := inst.FieldByKey("ids")
 	if !ok {
@@ -280,63 +267,33 @@ func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
 	if got := fv.Entries[0].Tab.Fields[0].Cell.U; got != 18446744073709551615 {
 		t.Errorf("key %d, want 18446744073709551615", got)
 	}
-	item := fv.Entries[0].Tab.Fields[1].Cell.Tab
-	if item == nil {
-		t.Fatal("the entry carries no value")
-	}
-	count, ok := item.FieldByKey("count")
-	if !ok {
-		t.Fatal("no count field")
-	}
-	if count.Cell.I != 2 {
-		t.Errorf("last wins: count %d, want 2", count.Cell.I)
+	inst = m.New(m.Lookup("EdgeRow"))
+	r = tabletext.Report{}
+	text := `{"ids":{"18446744073709551615":{"count":1},"18446744073709551615.0":{"count":2}}}`
+	if m.Read(inst, []byte(text), &r) || !r.Refused {
+		t.Errorf("the two spellings are one key repeated, which refuses: %+v", r)
 	}
 }
 
-// AN INTEGER KEY PAST THE SCAN'S BUFFER DROPS AS kind_mismatch, in this reader
-// and in the C++ reference's (#609). The bytes a scan keeps are a PREFIX, and a
-// prefix is a different token, so the entry drops rather than a truncation
-// being read as a value.
-//
-// The length alone does not settle it, which is what this row holds: the key
-// below is 256 bytes and spells the integer 1, a value the kind holds, and the
-// prefix that fits the buffer spells 1 as well. A read that truncated would
-// merge it into the entry beside it and call two keys one. The map keeps one
-// entry, and it is the one the text spells as 1.
+// AN INTEGER KEY PAST THE SCAN'S BUFFER is never read as its truncated prefix
+// (#609). The bytes a scan keeps are a PREFIX, and a prefix is a different
+// token. The key below is 256 bytes and spells the integer 1, a value the
+// kind holds, beside the key 1 itself: the text holds one key twice or a key
+// this reader cannot scan, and either refuses (§6.5).
 func TestAnIntegerMapKeyPastTheBufferDrops(t *testing.T) {
 	m := mapsModel(t)
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
 	long := "1e" + strings.Repeat("0", 254)
 	text := `{"ids":{"1":{"count":7},"` + long + `":{"count":9}}}`
-	if !m.Read(inst, []byte(text), &r) || r.Malformed {
-		t.Fatalf("an over-long key drops its entry and the read goes on: %+v", r)
-	}
-	if r.KindMismatch != 1 {
-		t.Errorf("the entry drops as kind_mismatch: %+v", r)
-	}
-	if r.Duplicate != 0 {
-		t.Errorf("a truncated key would collide with the 1 beside it: %+v", r)
+	if m.Read(inst, []byte(text), &r) || !r.Refused {
+		t.Errorf("an over-long key refuses the read: %+v", r)
 	}
 	fv, ok := inst.FieldByKey("ids")
 	if !ok {
 		t.Fatal("no ids field")
 	}
-	if len(fv.Entries) != 1 {
-		t.Fatalf("expected one entry, got %d", len(fv.Entries))
-	}
-	if got := fv.Entries[0].Tab.Fields[0].Cell.U; got != 1 {
-		t.Errorf("key %d, want 1", got)
-	}
-	item := fv.Entries[0].Tab.Fields[1].Cell.Tab
-	if item == nil {
-		t.Fatal("the entry carries no value")
-	}
-	count, ok := item.FieldByKey("count")
-	if !ok {
-		t.Fatal("no count field")
-	}
-	if count.Cell.I != 7 {
-		t.Errorf("the surviving entry is the first: count %d, want 7", count.Cell.I)
+	if len(fv.Entries) != 0 {
+		t.Errorf("a refused read holds no entry, got %d", len(fv.Entries))
 	}
 }

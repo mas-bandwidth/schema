@@ -79,7 +79,7 @@ func discardWireJava(t *testing.T, u *ir.Unit, root, text string) []byte {
 	}
 	wire[at] = 37
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("%s: the engine does not read the vector as damage: ok=%v err=%v %+v", root, ok, err, report)
 	}
 	return wire

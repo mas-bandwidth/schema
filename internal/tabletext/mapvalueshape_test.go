@@ -9,9 +9,12 @@ import (
 	"testing"
 )
 
-// A valid map key supplies the slot. A well-formed wrong-shape value is
-// skipped, leaves the declared default, and counts one kind mismatch (§16.2).
-func TestMapValueWrongShapeUsesDefault(t *testing.T) {
+// A valid map key supplies the slot, and a well-formed wrong-shape value
+// refuses the whole read (§16.2, §6.5). Each corpus row's columns name the
+// condition its input carries; a row with none reads to its expected value,
+// and every row's expected value reads clean, which is the accepted twin of
+// each refusal.
+func TestMapValueWrongShapeRefuses(t *testing.T) {
 	t.Parallel()
 	fixture := "../../testdata/conformance/feature-witnesses/map-value-shape"
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))
@@ -42,20 +45,23 @@ func TestMapValueWrongShapeUsesDefault(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
+			refused := tc.Malformed || tc.Mismatch > 0 || tc.Duplicate > 0
 			value := m.New(m.Lookup("Maps"))
 			var report tabletext.Report
 			ok := m.Read(value, []byte(tc.Input), &report)
-			want := tabletext.Report{KindMismatch: tc.Mismatch, Duplicate: tc.Duplicate, Malformed: tc.Malformed}
-			if ok == tc.Malformed || report != want {
-				t.Fatalf("read ok=%t report=%+v, want ok=%t report=%+v", ok, report, !tc.Malformed, want)
+			if ok == refused || report.Refused != refused || (!refused && !report.Silent()) {
+				t.Fatalf("read ok=%t report=%+v, want refused=%t", ok, report, refused)
 			}
-			if tc.Malformed {
+			if tc.Expected == "" {
 				return
 			}
 			expected := m.New(m.Lookup("Maps"))
 			var expectedReport tabletext.Report
 			if !m.Read(expected, []byte(tc.Expected), &expectedReport) || !expectedReport.Silent() {
 				t.Fatalf("expected value is not clean: %+v", expectedReport)
+			}
+			if refused {
+				return
 			}
 			got, err := m.Write(value)
 			if err != nil {
