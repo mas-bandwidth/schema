@@ -94,6 +94,7 @@ previous_form_store_default 0,0,0,0,0,false,refused
 previous_form_store_full 0,0,0,0,0,false,refused
 previous_form_text_escapes 0,0,0,0,0,false,refused
 previous_form_text_escapes_raw 0,0,0,0,0,false,refused
+previous_form_text_float32_double_round 0,0,0,0,0,false,refused
 previous_form_text_float64_big 0,0,0,0,0,false,refused
 previous_form_text_float64_ties 0,0,0,0,0,false,refused
 previous_form_text_float_exp 0,0,0,0,0,false,refused
