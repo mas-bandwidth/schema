@@ -42,6 +42,3 @@ MCCardVersioningSuppressUnknown.cfg	CardVersioning	counterexample	UnknownIsRepor
 MCCardVersioningChangeBody.cfg	CardVersioning	counterexample	BodyUnchanged	28	28	2	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCCardVersioningRefuseShipped.cfg	CardVersioning	counterexample	ShippedUpgradeSucceeds	74	64	3	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCCardVersioningTolerantRead.cfg	CardVersioning	counterexample	ReadIsWholeOrRefused	364	274	3	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
-MCPGroup.cfg	PGroup	exhaustive	-	64	30	5	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
-MCPGroupKillOnlyLeader.cfg	PGroup	counterexample	NoSurvivor	30	22	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
-MCPGroupNoGraceKill.cfg	PGroup	counterexample	StopEnds	74	38	5	13	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
