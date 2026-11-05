@@ -27,7 +27,8 @@ export LUAU LUAU_ANALYZE
 dist-luau:
 	@mkdir -p $(LUAU_DIST) build/dist-luau
 	@curl -fsSL -o build/dist-luau/luau-ubuntu.zip $(LUAU_ZIP_URL)
-	@got=$$(sha256sum build/dist-luau/luau-ubuntu.zip | cut -d' ' -f1); \
+	@got=$$(sha256sum build/dist-luau/luau-ubuntu.zip 2>/dev/null | cut -d' ' -f1); \
+	if [ -z "$$got" ]; then got=$$(shasum -a 256 build/dist-luau/luau-ubuntu.zip | cut -d' ' -f1); fi; \
 	if [ "$$got" != "$(LUAU_ZIP_SHA)" ]; then \
 		echo "dist-luau REFUSES: luau-ubuntu.zip sha256 $$got is not the pin $(LUAU_ZIP_SHA)"; \
 		rm -f build/dist-luau/luau-ubuntu.zip; exit 1; fi
