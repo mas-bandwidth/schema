@@ -219,7 +219,7 @@ func viewFieldDescriptor(f *ir.Field, ordinal int, wire bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{ name = %q, ", f.Name)
 	if wire {
-		fmt.Fprintf(&b, "key = %q, ", ir.TableFieldJsonKey(f))
+		fmt.Fprintf(&b, "key = %s, ", lua.ByteString([]byte(ir.TableFieldJsonKey(f))))
 	}
 	fmt.Fprintf(&b, "id = %s, ordinal = %d, type = %q, type_name = %q, optional = %v",
 		idLit(id), ordinal, spelling, spelling, f.Type.Optional)
@@ -374,7 +374,7 @@ func emitViewUnions(b *strings.Builder, u *ir.Unit, reached map[string]bool) {
 				// while retaining the ordinary field's complete storage metadata.
 				field = strings.Replace(field, fmt.Sprintf("kind = %d,", ir.TableWireFieldKind(&af)), fmt.Sprintf("kind = %d,", viewArmKind(&af)), 1)
 				if !reached[un.Name] {
-					field = strings.Replace(field, fmt.Sprintf("key = %q, ", ir.TableFieldJsonKey(&af)), "", 1)
+					field = strings.Replace(field, fmt.Sprintf("key = %s, ", lua.ByteString([]byte(ir.TableFieldJsonKey(&af)))), "", 1)
 					field = strings.Replace(field, "id = "+idLit(ir.TableFieldWireId(&af)), "id = "+idLit(0), 1)
 				}
 				fmt.Fprintf(b, "      { value = %d, name = %q, id = %s, payload_name = %q, field = %s, doc = %s%s },\n",
