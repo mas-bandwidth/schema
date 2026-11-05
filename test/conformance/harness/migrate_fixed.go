@@ -142,7 +142,7 @@ func migrateFixed(m *Manifest, manifest, jsonDir string) error {
 }
 
 // migrateFraming rewrites, in place, every framing row whose root is a
-// declared fixed table and whose file is not form 3 to the verdict the rule
+// declared fixed table and whose file carries a form byte other than 3 to the verdict the rule
 // owes it, `refused` with no value. It returns every value file a row named
 // before, true where a row still names it, so the ones no row names any
 // longer can be removed.
@@ -167,7 +167,9 @@ func migrateFraming(m *Manifest, u *units, lines []string) (map[string]bool, err
 		if err != nil {
 			return nil, err
 		}
-		if len(wire) > 0 && wire[0] == 3 {
+		// an empty file has no form byte to refuse by: it is damage, and its
+		// row keeps the verdict it owes
+		if len(wire) == 0 || wire[0] == 3 {
 			continue
 		}
 		for i, line := range lines {
