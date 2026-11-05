@@ -19,7 +19,7 @@ jobs:
       - name: Install pinned Lobster
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0 sbcl
           make dist-lobster
       - name: Qualify exact packet package
         env:
@@ -31,12 +31,14 @@ jobs:
       - name: Check out qualification branch revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: a7a9de758425f8366d3ad92acc40639fdb267f14
+          ref: 929401aa10e9e84a10a71fb5ccf021f71bd72caa
           clean: false
       - name: Qualify strengthened packet package
         env:
           SCHEMA_SLOW: '1'
         run: |
-          test "$(git rev-parse HEAD)" = a7a9de758425f8366d3ad92acc40639fdb267f14
+          test "$(git rev-parse HEAD)" = 929401aa10e9e84a10a71fb5ccf021f71bd72caa
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
           go test ./internal/codegen/lobster/... -count=1 -timeout 600s -v
+      - name: Roadmap tests on delivery revision
+        run: go test ./tools/roadmap -count=1 -timeout 600s -v
