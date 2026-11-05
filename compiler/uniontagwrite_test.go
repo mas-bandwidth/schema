@@ -105,7 +105,6 @@ func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 			// no writer yet: the claim is owed (countedbirth_test.go,
 			// packetWriterOwed)
 
-
 		case target == "rust":
 			// an out-of-set tag cannot be BUILT: Shot is a Rust enum and the
 			// tag is its discriminant, so write_shot is a total match with
