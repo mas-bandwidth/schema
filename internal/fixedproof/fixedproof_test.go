@@ -23,14 +23,29 @@ func (s stubEvoRunner) HasFixedRoot(_ *testing.T, u *ir.Unit, root string) bool 
 }
 
 func (s stubEvoRunner) SaveCustom(_ *testing.T, u *ir.Unit, root string, scenario string) ([]byte, string) {
+	eOwn, _ := LineageEntryOf(u, root)
+	writingWant := []byte{1, 0, 0, 0, 0x22, 0x11, 0, 0, 0, 0, 1, 0, 0, 0, 'A', 0, 0, 0, 1, 0, 0, 0, 0x42, 0, 0, 0, 1, 7, 0, 0, 0, 0, 0, 0, 0}
 	switch scenario {
 	case "optional_absent_zeros":
 		return make([]byte, 45), ""
 	case "live_extents_base":
-		eOwn, _ := LineageEntryOf(u, root)
 		body := make([]byte, 13)
 		binary.LittleEndian.PutUint32(body[0:], 1)
 		return MakeFixedFile(eOwn.Wire, eOwn.Layout, body), ""
+	case "writing_slack_batch":
+		return MakeFixedFile(eOwn.Wire, eOwn.Layout, make([]byte, 35), writingWant), ""
+	case "writing_overcount":
+		return nil, "leg_diagnostic_invalid_value"
+	case "writing_slack_unzeroed":
+		unzeroed := bytes.Clone(writingWant)
+		unzeroed[6] = 0xaa
+		return MakeFixedFile(eOwn.Wire, eOwn.Layout, make([]byte, 35), unzeroed), ""
+	case "closure_small_42":
+		body := make([]byte, 4)
+		binary.LittleEndian.PutUint32(body, 42)
+		return MakeFixedFile(eOwn.Wire, eOwn.Layout, body), ""
+	case "outer_nested":
+		return MakeFixedFile(eOwn.Wire, eOwn.Layout, make([]byte, 57)), ""
 	case "writing_slack_zeros":
 		return make([]byte, 64), ""
 	default:
@@ -53,6 +68,9 @@ func (s stubEvoRunner) LoadLineage(_ *testing.T, u *ir.Unit, root string, lineag
 		return -1, "leg_diagnostic_layout_len", nil, nil
 	}
 	layout := wireBytes[20 : 20+layoutLen]
+	if root == "Target" {
+		return -1, "leg_diagnostic_record_too_large", nil, nil
+	}
 
 	var entries []LineageEntry
 	if lineage != nil {
@@ -138,6 +156,23 @@ func (s stubEvoRunner) LoadLineage(_ *testing.T, u *ir.Unit, root string, lineag
 	}
 	if root == "T" && recSize == 8+10 {
 		fields["r0.tail"] = "42"
+	}
+	if root == "Small" && recSize == 8+4 {
+		fields["r0.x"] = "42"
+	}
+	if root == "Boundary" && recSize == 8+16 {
+		fields["r0.name"] = `"edgecase"`
+	}
+	if root == "Outer" && recSize == 8+57 {
+		fields["r0.head"] = "7"
+		fields["r0.inner.a"] = "11"
+		fields["r0.inner.b"] = `"one"`
+		fields["r0.items[1].a"] = "33"
+		fields["r0.items[1].b"] = `"six"`
+		fields["r0.items[0].b"] = `"hi"`
+		fields["r0.maybe_present"] = "true"
+		fields["r0.maybe.a"] = "44"
+		fields["r0.tail"] = "9"
 	}
 	resaved := wireBytes
 	if root == "T" && recSize == 8+18 {

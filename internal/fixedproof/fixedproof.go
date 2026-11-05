@@ -15,15 +15,18 @@ import (
 	"encoding/binary"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
@@ -101,7 +104,18 @@ type EvoRunner interface {
 	//   - resaved: re-saved wire bytes when count >= 0
 	LoadLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]LineageEntry, wireBytes []byte, cap int) (count int, reason string, fields map[string]string, resaved []byte)
 	// SaveCustom runs a custom record-construction and FixedSave scenario for
-	// rows like optional-values, writing, compiled-plans (W14), and batch-capacity.
+	// rows like optional-values, writing, fixed-closure, compiled-plans (W14),
+	// and batch-capacity. The shared scenarios are:
+	//   optional_absent_zeros  ?Inner absent with an in-memory payload
+	//   live_extents_base      [..3]Small, ?Small, tail int32 = 77
+	//   writing_slack_batch    the two-record slack batch (second record's full
+	//                          35 bytes are asserted)
+	//   writing_overcount      ArrCount = 4, which the writer must refuse
+	//   writing_slack_unzeroed the same batch with the per-record zeroing
+	//                          planted out, for the negative control
+	//   closure_small_42       Small { x int32 = 7 } with x = 42
+	//   outer_nested           Outer with Inner by value, [2]Inner, ?Inner
+	// A scenario the leg cannot construct returns a non-empty reason.
 	SaveCustom(t *testing.T, u *ir.Unit, root string, scenario string) (wireBytes []byte, reason string)
 	// HasFixedRoot reports whether Generate(u) emits fixed-form support for root.
 	HasFixedRoot(t *testing.T, u *ir.Unit, root string) bool
@@ -125,6 +139,38 @@ func ParseCheckUnit(t *testing.T, src string) *ir.Unit {
 		t.Fatalf("check probe.schema: %v", cerrs[0])
 	}
 	return u
+}
+
+// UnitRefusal loads src through the compiler and returns its refusal, or "".
+func UnitRefusal(t *testing.T, src string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "Probe.schema")
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compiler.New().Load([]string{p}); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// RootOf is the file's root: the fixed root no other fixed table names by value.
+func RootOf(t *testing.T, u *ir.Unit) string {
+	t.Helper()
+	roots := ir.TableFixedFormRoots(u)
+	named := map[string]bool{}
+	for _, st := range roots {
+		for _, f := range st.Fields {
+			named[f.Type.Name] = true
+		}
+	}
+	for _, st := range roots {
+		if !named[st.Name] {
+			return st.Name
+		}
+	}
+	t.Fatal("no fixed root")
+	return ""
 }
 
 // LoadRepoUnit loads a schema file relative to the repository root.
@@ -1511,6 +1557,101 @@ func findFixedCorpus(t *testing.T, repoRoot string) (string, map[string]int) {
 	return corpus, records
 }
 
+// manifestLine is one corpus manifest line: its record count and the values the
+// reference landed, normalised so a float compares by its bits and a
+// fixed-point value by its raw integer.
+type manifestLine struct {
+	records int
+	values  map[string]string
+}
+
+var manifestValueSplit = regexp.MustCompile(`,(r\d+\.)`)
+
+func readFixedManifest(t *testing.T, corpus string) map[string]manifestLine {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]manifestLine{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		head, values, _ := strings.Cut(line, " values=")
+		var file string
+		ml := manifestLine{values: map[string]string{}}
+		for field := range strings.FieldsSeq(head) {
+			k, v, _ := strings.Cut(field, "=")
+			switch k {
+			case "file":
+				file = v
+			case "records":
+				ml.records, _ = strconv.Atoi(v)
+			}
+		}
+		if file == "" {
+			continue
+		}
+		// a value may hold a comma inside its quotes: split only before the
+		// next r<k>. key
+		for kv := range strings.SplitSeq(manifestValueSplit.ReplaceAllString(values, "\x00$1"), "\x00") {
+			k, v, ok := strings.Cut(kv, "=")
+			if ok {
+				ml.values[k] = normaliseManifestValue(v)
+			}
+		}
+		out[file] = ml
+	}
+	return out
+}
+
+func normaliseManifestValue(v string) string {
+	if _, raw, ok := strings.Cut(v, "|raw="); ok {
+		return "raw=" + raw
+	}
+	if _, bits, ok := strings.Cut(v, "|0x"); ok {
+		return "0x" + strings.ToUpper(bits)
+	}
+	return v
+}
+
+// compareManifest holds every manifest value the reader names to the value it
+// landed and answers how many were compared. A key the reader does not name (a
+// field it does not declare, a wide string's units) is not compared.
+func compareManifest(t *testing.T, what string, ml manifestLine, dump map[string]string) int {
+	t.Helper()
+	compared := 0
+	for k, want := range ml.values {
+		got, ok := dump[k]
+		if !ok || strings.HasPrefix(want, `u"`) || strings.Contains(want, "\\") {
+			continue
+		}
+		if raw, ok := strings.CutPrefix(got, "raw="); ok && !strings.HasPrefix(want, "raw=") {
+			got = raw
+		}
+		if widened, ok := widenedFloat32(want, got); ok {
+			want = widened
+		}
+		if got != want {
+			t.Errorf("%s: %s landed %s, the reference wrote %s", what, k, got, want)
+		}
+		compared++
+	}
+	return compared
+}
+
+// widenedFloat32 is the float64 pattern a float32 pattern widens to, when the
+// reference wrote a float32 (0x and eight digits) and the read landed a float64
+// (0x and sixteen): the ordinary conversion, exact for every finite float32.
+func widenedFloat32(want, got string) (string, bool) {
+	if len(want) != 10 || len(got) != 18 || !strings.HasPrefix(want, "0x") || !strings.HasPrefix(got, "0x") {
+		return "", false
+	}
+	bits, err := strconv.ParseUint(want[2:], 16, 32)
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("0x%016X", math.Float64bits(float64(math.Float32frombits(uint32(bits))))), true
+}
+
 // RunEvolutionSuite drives the 16 non-value fixed-table rows (fixed-file-roundtrip
 // and the 15 evolution/layout/plan/lineage/file rows) against runner.
 func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
@@ -1772,47 +1913,134 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	// 40. fixed-closure (F5, F6, R5, R6, R14, R16, R22)
 	t.Run("fixed-closure", func(t *testing.T) {
 		t.Parallel()
-		uOver := ParseCheckUnit(t, "package probe\nfixed table Huge {\n    a [8192]uint64\n    b uint8\n}\nfixed table Small {\n    x int32\n}\n")
-		if runner.HasFixedRoot(t, uOver, "Huge") {
-			t.Errorf("R6: Huge (65537B) should not be emitted as a fixed root")
-		}
-		if !runner.HasFixedRoot(t, uOver, "Small") {
-			t.Errorf("R6: Small should be emitted as a fixed root")
-		}
 
-		u := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1\n}\n")
-		entryBytes := func(id uint64, kind byte, size, children uint32) []byte {
-			b := binary.LittleEndian.AppendUint64(nil, id)
-			b = append(b, kind)
-			b = binary.LittleEndian.AppendUint32(b, size)
-			return binary.LittleEndian.AppendUint32(b, children)
-		}
-		// F6: root size 0 and root size 65537 -> refused
-		zeroLay := binary.LittleEndian.AppendUint32(nil, 1)
-		zeroLay = append(zeroLay, entryBytes(0x1111, ir.TableKindTable, 0, 0)...)
-		eZero := LineageEntry{Wire: 0x1001, Layout: zeroLay, Record: 8}
+		t.Run("R6", func(t *testing.T) {
+			t.Parallel()
+			u := ParseCheckUnit(t, "package probe\nfixed table Big {\n    blob bytes(70000)\n}\nfixed table Small {\n    x int32 = 7\n}\n")
+			warns, errs := ir.TableFixedRecordBounds(u, 0)
+			if len(errs) != 0 || len(warns) != 1 || !strings.Contains(warns[0], "Big") || !strings.Contains(warns[0], "65536") {
+				t.Fatalf("R6: the ceiling is not named: %v %v", warns, errs)
+			}
+			if _, ok := LineageEntryOf(u, "Big"); ok {
+				t.Errorf("R6: Big has a fixed lineage entry")
+			}
+			if runner.HasFixedRoot(t, u, "Big") {
+				t.Errorf("R6: Big should not be emitted as a fixed root")
+			}
+			if !runner.HasFixedRoot(t, u, "Small") {
+				t.Errorf("R6: Small should be emitted as a fixed root")
+			}
+			file, why := runner.SaveCustom(t, u, "Small", "closure_small_42")
+			if why != "" {
+				t.Fatalf("R6: save Small failed: %s", why)
+			}
+			eSmall, _ := LineageEntryOf(u, "Small")
+			n, r, f, _ := runner.LoadLineage(t, u, "Small", map[string][]LineageEntry{"Small": {eSmall}}, file, -1)
+			if n != 1 || f["r0.x"] != "42" {
+				t.Errorf("R6: Small n=%d r=%q x=%q, want 1 42", n, r, f["r0.x"])
+			}
+		})
 
-		overLay := binary.LittleEndian.AppendUint32(nil, 2)
-		overLay = append(overLay, entryBytes(0x1111, ir.TableKindTable, 65537, 1)...)
-		overLay = append(overLay, entryBytes(0x2222, ir.TableKindI32, 65537, 0)...)
-		eOver := LineageEntry{Wire: 0x1002, Layout: overLay, Record: 8 + 65537}
+		t.Run("R14_W10", func(t *testing.T) {
+			t.Parallel()
+			u := ParseCheckUnit(t, "package probe\nfixed table Target {\n    lead uint32 = 1\n    name string(8) = \"ok\"\n    trail uint32 = 2\n}\nfixed table Boundary {\n    lead uint32 = 1\n    name string(8) = \"ok\"\n}\n")
+			base, _ := LineageEntryOf(u, "Target")
+			bound, _ := LineageEntryOf(u, "Boundary")
+			bound.Wire ^= 0x1111
+			size := func(e *LineageEntry, i int, n uint32) {
+				binary.LittleEndian.PutUint32(e.Layout[4+17*i+9:], n)
+			}
+			mk := func(x uint64, f func(e *LineageEntry)) LineageEntry {
+				e := base
+				e.Wire ^= x
+				e.Layout = bytes.Clone(base.Layout)
+				f(&e)
+				e.Record = 8 + int64(binary.LittleEndian.Uint32(e.Layout[4+9:]))
+				return e
+			}
+			hugeField := mk(0x0303, func(e *LineageEntry) { size(e, 0, 65536); size(e, 2, 65537) })
+			childSum := mk(0x0404, func(e *LineageEntry) { size(e, 0, 65536); size(e, 2, 65530) })
+			reach := mk(0x0505, func(e *LineageEntry) { size(e, 0, 15) })
+			lin := map[string][]LineageEntry{"Boundary": {bound}, "Target": {hugeField, childSum, reach}}
 
-		// R22: unknown kind byte 99 -> refused
-		badKindLay := binary.LittleEndian.AppendUint32(nil, 2)
-		badKindLay = append(badKindLay, entryBytes(0x1111, ir.TableKindTable, 4, 1)...)
-		badKindLay = append(badKindLay, entryBytes(0x2222, 99, 4, 0)...)
-		eBadKind := LineageEntry{Wire: 0x1003, Layout: badKindLay, Record: 8 + 4}
+			var bb [16]byte
+			binary.LittleEndian.PutUint32(bb[0:], 9)
+			binary.LittleEndian.PutUint32(bb[4:], 8)
+			copy(bb[8:], "edgecase")
+			n, r, f, _ := runner.LoadLineage(t, u, "Boundary", lin, MakeFixedFile(bound.Wire, bound.Layout, bb[:]), -1)
+			if n != 1 || f["r0.name"] != `"edgecase"` {
+				t.Errorf("W10: the entry ending at the record: n=%d r=%q name=%q", n, r, f["r0.name"])
+			}
+			for name, e := range map[string]LineageEntry{"hugeField": hugeField, "childSum": childSum, "reach": reach} {
+				if n, r, _, _ := runner.LoadLineage(t, u, "Target", lin, MakeFixedFile(e.Wire, e.Layout), -1); n != -1 {
+					t.Errorf("R14 %s: n=%d r=%q, want -1 (refused)", name, n, r)
+				}
+			}
+		})
 
-		lin := map[string][]LineageEntry{"T": {eZero, eOver, eBadKind}}
-		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eZero.Wire, zeroLay), -1); n != -1 {
-			t.Errorf("F6 zero size: got n=%d r=%q, want -1 (refused)", n, r)
-		}
-		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eOver.Wire, overLay, make([]byte, 65537)), -1); n != -1 {
-			t.Errorf("F6 over size: got n=%d r=%q, want -1 (refused)", n, r)
-		}
-		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eBadKind.Wire, badKindLay, make([]byte, 4)), -1); n != -1 {
-			t.Errorf("R22 bad kind: got n=%d r=%q, want -1 (refused)", n, r)
-		}
+		t.Run("R22", func(t *testing.T) {
+			t.Parallel()
+			u := ParseCheckUnit(t, "package probe\nfixed table Inner {\n    a int32 = 10\n    b string(4) = \"hi\"\n}\nfixed table Outer {\n    head uint32 = 1\n    inner Inner\n    items [2]Inner\n    maybe ?Inner\n    tail uint32 = 2\n}\n")
+			file, why := runner.SaveCustom(t, u, "Outer", "outer_nested")
+			if why != "" {
+				t.Fatalf("R22: save Outer failed: %s", why)
+			}
+			n, r, f, resaved := runner.LoadLineage(t, u, "Outer", nil, file, -1)
+			for k, want := range map[string]string{"r0.head": "7", "r0.inner.a": "11", "r0.inner.b": `"one"`, "r0.items[1].a": "33", "r0.items[1].b": `"six"`, "r0.items[0].b": `"hi"`, "r0.maybe_present": "true", "r0.maybe.a": "44", "r0.tail": "9"} {
+				if f[k] != want {
+					t.Errorf("R22: %s landed %q, want %s", k, f[k], want)
+				}
+			}
+			if n != 1 || !bytes.Equal(resaved, file) {
+				t.Errorf("R22: the nested closure does not round-trip: n=%d r=%q", n, r)
+			}
+			for _, c := range []struct{ field, want, src string }{
+				{"Outer.child", "holds the variable table VarChild by value", "package probe\ntable VarChild { x int32 }\nfixed table Outer { child VarChild }\n"},
+				{"Outer.ptr", "is a pointer", "package probe\ntable Node { x int32 }\nfixed table Outer { ptr *Node }\n"},
+				{"Outer.m", "is a map", "package probe\nfixed table Outer { m map[uint32]int32 }\n"},
+				{"Outer.arr", "is an unbounded array", "package probe\nfixed table Outer { arr []int32 }\n"},
+				{"Sub.extra", "sits in an `if` branch", "package probe\ntype Sub {\n    gate bool\n    if gate {\n        extra int32\n    }\n}\nfixed table Outer { sub Sub }\n"},
+			} {
+				msg := UnitRefusal(t, c.src)
+				if !strings.Contains(msg, c.field) || !strings.Contains(msg, c.want) || !strings.Contains(msg, "docs/SPEC-TABLES.md") {
+					t.Errorf("R22 %s: the refusal is %q", c.field, msg)
+				}
+			}
+			if UnitRefusal(t, "package probe\nfixed table T { next T }\n") == "" {
+				t.Errorf("R22: a fixed table that reaches itself by value is not refused")
+			}
+
+			uT := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1\n}\n")
+			entryBytes := func(id uint64, kind byte, size, children uint32) []byte {
+				b := binary.LittleEndian.AppendUint64(nil, id)
+				b = append(b, kind)
+				b = binary.LittleEndian.AppendUint32(b, size)
+				return binary.LittleEndian.AppendUint32(b, children)
+			}
+			// F6: root size 0 and root size 65537 -> refused
+			zeroLay := binary.LittleEndian.AppendUint32(nil, 1)
+			zeroLay = append(zeroLay, entryBytes(0x1111, ir.TableKindTable, 0, 0)...)
+			eZero := LineageEntry{Wire: 0x1001, Layout: zeroLay, Record: 8}
+			overLay := binary.LittleEndian.AppendUint32(nil, 2)
+			overLay = append(overLay, entryBytes(0x1111, ir.TableKindTable, 65537, 1)...)
+			overLay = append(overLay, entryBytes(0x2222, ir.TableKindI32, 65537, 0)...)
+			eOver := LineageEntry{Wire: 0x1002, Layout: overLay, Record: 8 + 65537}
+			// R22: unknown kind byte 99 -> refused
+			badKindLay := binary.LittleEndian.AppendUint32(nil, 2)
+			badKindLay = append(badKindLay, entryBytes(0x1111, ir.TableKindTable, 4, 1)...)
+			badKindLay = append(badKindLay, entryBytes(0x2222, 99, 4, 0)...)
+			eBadKind := LineageEntry{Wire: 0x1003, Layout: badKindLay, Record: 8 + 4}
+			lin := map[string][]LineageEntry{"T": {eZero, eOver, eBadKind}}
+			if n, r, _, _ := runner.LoadLineage(t, uT, "T", lin, MakeFixedFile(eZero.Wire, zeroLay), -1); n != -1 {
+				t.Errorf("F6 zero size: n=%d r=%q, want -1 (refused)", n, r)
+			}
+			if n, r, _, _ := runner.LoadLineage(t, uT, "T", lin, MakeFixedFile(eOver.Wire, overLay, make([]byte, 65537)), -1); n != -1 {
+				t.Errorf("F6 over size: n=%d r=%q, want -1 (refused)", n, r)
+			}
+			if n, r, _, _ := runner.LoadLineage(t, uT, "T", lin, MakeFixedFile(eBadKind.Wire, badKindLay, make([]byte, 4)), -1); n != -1 {
+				t.Errorf("R22 bad kind: n=%d r=%q, want -1 (refused)", n, r)
+			}
+		})
 	})
 
 	// 41. retirement (R3, R4)
@@ -1910,6 +2138,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	t.Run("field-evolution", func(t *testing.T) {
 		t.Parallel()
 		corpus, _ := findFixedCorpus(t, repoRoot)
+		manifest := readFixedManifest(t, corpus)
 		older := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_rename_without_was.schema")
 		newer := LoadRepoUnit(t, repoRoot, "test/tables/VNEW_rename_without_was.schema")
 		eOld, _ := LineageEntryOf(older, "Lineage")
@@ -1917,10 +2146,14 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		if eOld.Wire != eNew.Wire {
 			t.Fatalf("E6: rename under was moved hash")
 		}
-		oldData, _ := os.ReadFile(filepath.Join(corpus, "old_rename_without_was.bin"))
+		oldData, err := os.ReadFile(filepath.Join(corpus, "old_rename_without_was.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		n, r, f, _ := runner.LoadLineage(t, newer, "Lineage", map[string][]LineageEntry{"Lineage": {eNew}}, oldData, -1)
-		if n != 1 || f["r0.b"] == "" {
-			t.Errorf("E6: n=%d r=%q b=%q", n, r, f["r0.b"])
+		want := manifest["old_rename_without_was.bin"].values["r0.a"]
+		if n != 1 || want == "" || f["r0.b"] != want {
+			t.Errorf("E6: n=%d r=%q b=%q, the writer's a=%q", n, r, f["r0.b"], want)
 		}
 		for _, row := range []string{"field_deprecate", "field_undeprecate"} {
 			o := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_"+row+".schema")
@@ -1929,6 +2162,36 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 			en, _ := LineageEntryOf(nu, "Lineage")
 			if eo.Wire != en.Wire {
 				t.Errorf("E8 %s: hash moved", row)
+			}
+			for _, c := range []struct {
+				u    *ir.Unit
+				mod  string
+				file string
+			}{{nu, "VNEW_" + row, "old_" + row + ".bin"}, {o, "VOLD_" + row, "new_" + row + ".bin"}} {
+				data, err := os.ReadFile(filepath.Join(corpus, c.file))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n, r, _, _ := runner.LoadLineage(t, c.u, "Lineage", nil, data, -1); n != 1 {
+					t.Errorf("E8 %s %s: n=%d r=%q, want 1", row, c.file, n, r)
+				}
+			}
+		}
+		for _, row := range []string{"field_append", "enum_append", "union_append", "flags_append", "nested_append", "keyed_array_enum_append"} {
+			o := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_"+row+".schema")
+			nu := LoadRepoUnit(t, repoRoot, "test/tables/VNEW_"+row+".schema")
+			eo, _ := LineageEntryOf(o, RootOf(t, o))
+			file := "old_" + row + ".bin"
+			data, err := os.ReadFile(filepath.Join(corpus, file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			gotN, gotR, gotF, _ := runner.LoadLineage(t, nu, RootOf(t, o), map[string][]LineageEntry{RootOf(t, o): {eo}}, data, -1)
+			if gotN != manifest[file].records {
+				t.Errorf("R19 %s: n=%d r=%q, want %d", row, gotN, gotR, manifest[file].records)
+			}
+			if compareManifest(t, "R19 "+row, manifest[file], gotF) == 0 {
+				t.Errorf("R19 %s: no manifest value compared", row)
 			}
 		}
 	})
@@ -1956,17 +2219,27 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	t.Run("writing", func(t *testing.T) {
 		t.Parallel()
 		u := ParseCheckUnit(t, "package probe\nunion Pick {\n    narrow uint8\n    wide uint64\n}\nfixed table T {\n    arr [..3]uint16\n    s string(4)\n    b bytes(4)\n    pick Pick\n}\n")
-		file, why := runner.SaveCustom(t, u, "T", "writing_slack_zeros")
+		file, why := runner.SaveCustom(t, u, "T", "writing_slack_batch")
 		if why != "" {
-			t.Fatalf("writing_slack_zeros failed: %s", why)
+			t.Fatalf("writing_slack_batch failed: %s", why)
 		}
-		body := len(file) - 35
-		// Arr slack at body+6..body+9 (4B), S slack at body+15..body+17 (3B),
-		// B slack at body+23..body+25 (3B), Pick narrow slack at body+28..body+34 (7B)
-		for _, idx := range []int{6, 7, 8, 9, 15, 16, 17, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34} {
-			if file[body+idx] != 0 {
-				t.Errorf("W1/W3/W8: non-zero slack byte at body+%d: 0x%02x", idx, file[body+idx])
-			}
+		if len(file) < 35 {
+			t.Fatalf("writing_slack_batch: %d bytes, want at least the 35-byte record", len(file))
+		}
+		body := file[len(file)-35:]
+		want := []byte{1, 0, 0, 0, 0x22, 0x11, 0, 0, 0, 0, 1, 0, 0, 0, 'A', 0, 0, 0, 1, 0, 0, 0, 0x42, 0, 0, 0, 1, 7, 0, 0, 0, 0, 0, 0, 0}
+		if !bytes.Equal(body, want) {
+			t.Errorf("W1/W3/W8: the second record is\n%x, want\n%x", body, want)
+		}
+		if wire, why := runner.SaveCustom(t, u, "T", "writing_overcount"); why == "" || len(wire) != 0 {
+			t.Errorf("W5: an out-of-contract count was written: %d bytes, reason=%q", len(wire), why)
+		}
+		unzeroed, why := runner.SaveCustom(t, u, "T", "writing_slack_unzeroed")
+		if why != "" {
+			t.Fatalf("writing_slack_unzeroed failed: %s", why)
+		}
+		if bytes.Equal(unzeroed, file) {
+			t.Errorf("the negative control: an unzeroed record image still writes zero slack")
 		}
 	})
 
