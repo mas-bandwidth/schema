@@ -498,6 +498,27 @@ func retainValues(u *units, retains []RetainCase, jsonDir string) error {
 	return pruneValues(dir, keep)
 }
 
+// framingVariableUnit is a framing row's unit as the variable form reads it.
+// The framing vectors are form-1 files and the rules they pin are the
+// variable form's (docs/LAYERS/1-framing.md), but a root declared `fixed
+// table` reads form 3 alone and refuses every form-1 file as previous_form
+// before any framing rule runs (docs/SPEC-TABLES.md §3.4). Such a root is
+// read through a fresh load of its unit with the root's class variable, the
+// same declaration with the same fields and ids, so the battery reaches the
+// rules it was written for. The returned unit is never shared.
+func framingVariableUnit(m *Manifest, key, root string) (*ir.Unit, error) {
+	unit, err := newUnits(m).get(key)
+	if err != nil {
+		return nil, err
+	}
+	st := unit.Tables[root]
+	if st == nil {
+		return nil, fmt.Errorf("%s declares no table %s", key, root)
+	}
+	st.FixedDeclared = false
+	return unit, nil
+}
+
 // framingValues reads every framing vector with the oracle and writes the
 // value each readable row owes. A refused row owes none, so a value left at
 // its old path is pruned rather than re-pinned (layer 3's read-then-write).
@@ -506,11 +527,22 @@ func framingValues(u *units, framings []FramingCase, jsonDir string) error {
 		return nil
 	}
 	keep := map[string]bool{}
+	variable := map[string]*ir.Unit{}
 	dirRel := ""
 	for _, fc := range framings {
 		unit, err := u.get(fc.Unit)
 		if err != nil {
 			return err
+		}
+		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared {
+			key := fc.Unit + "." + fc.Root
+			if variable[key] == nil {
+				variable[key], err = framingVariableUnit(u.m, fc.Unit, fc.Root)
+				if err != nil {
+					return err
+				}
+			}
+			unit = variable[key]
 		}
 		wire, err := os.ReadFile(fc.Wire)
 		if err != nil {
