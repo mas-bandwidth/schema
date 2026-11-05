@@ -367,8 +367,16 @@ func emitViewUnions(b *strings.Builder, u *ir.Unit, reached map[string]bool) {
 					i+1, arm.Name, idLit(id), ir.FieldTypeSpelling(arm.F), collection, arm.Type, docLit(arm.Doc), atags)
 			default:
 				spelling := ir.FieldTypeSpelling(arm.F)
-				field := fmt.Sprintf("{ name = %q, type_name = %q, kind = %d, bound = %d, arm_offset = %d, doc = %s%s }",
-					arm.Name, spelling, viewArmKind(arm.F), viewArmBound(arm.F), payloadOffset, docLit(arm.Doc), atags)
+				af := *arm.F
+				af.Doc, af.Tags = arm.Doc, arm.Tags
+				field := armFieldDescriptorAt(u, &af, i+1, payloadOffset, fieldPieces(u, &af))
+				// A registry arm uses the scalar/element kind named by §8.7,
+				// while retaining the ordinary field's complete storage metadata.
+				field = strings.Replace(field, fmt.Sprintf("kind = %d,", ir.TableWireFieldKind(&af)), fmt.Sprintf("kind = %d,", viewArmKind(&af)), 1)
+				if !reached[un.Name] {
+					field = strings.Replace(field, fmt.Sprintf("key = %q, ", ir.TableFieldJsonKey(&af)), "", 1)
+					field = strings.Replace(field, "id = "+idLit(ir.TableFieldWireId(&af)), "id = "+idLit(0), 1)
+				}
 				fmt.Fprintf(b, "      { value = %d, name = %q, id = %s, payload_name = %q, field = %s, doc = %s%s },\n",
 					i+1, arm.Name, idLit(id), spelling, field, docLit(arm.Doc), atags)
 			}
@@ -397,14 +405,3 @@ func viewArmKind(f *ir.Field) int {
 	return ir.TableWireScalarKind(f)
 }
 
-func viewArmBound(f *ir.Field) int64 {
-	switch {
-	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		return 0
-	case f.Array != ir.ArrayNone:
-		return f.ArrayBound
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
-		return f.Type.Size
-	}
-	return 0
-}

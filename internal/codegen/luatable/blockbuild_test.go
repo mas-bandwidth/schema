@@ -234,12 +234,13 @@ func TestLuaBlockOpen(t *testing.T) {
 }
 `
 
-// TestLuaBlockBuilderNegativeControls plants one defect per gate into the
+// TestLuaBlockBuilderNegativeControlsFunctional plants one defect per gate into the
 // emitted blockbuild.lua and requires the builder check to go red: the array
 // start alignment removed, the count bound check removed, and the 64-byte
 // extent rounding removed.
-func TestLuaBlockBuilderNegativeControls(t *testing.T) {
+func TestLuaBlockBuilderNegativeControlsFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	u := luarun.LoadUnit(t, filepath.Join(repo, "tables", "block"))
 	runProbe := func(t *testing.T, patch func(map[string][]byte)) (string, error) {

@@ -2,6 +2,7 @@ package luatable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -298,10 +299,11 @@ func runUnitView(t *testing.T, files map[string][]byte, printer string) string {
 	return string(luarun.Run(t, dir, "main.lua", nil))
 }
 
-// TestLuaUnitViewCorpus holds UnitView() over all 50 units (15 VIEW_CORPUS +
+// TestLuaUnitViewCorpusFunctional holds UnitView() over all 50 units (15 VIEW_CORPUS +
 // 35 tables manifest) byte-for-byte against internal/viewlisting.
-func TestLuaUnitViewCorpus(t *testing.T) {
+func TestLuaUnitViewCorpusFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
 	units := luaViewUnits(t)
 	listed := 0
 	for _, vu := range units {
@@ -331,11 +333,12 @@ func TestLuaUnitViewCorpus(t *testing.T) {
 	t.Logf("%d of %d units listed from UnitView()", listed, len(units))
 }
 
-// TestLuaUnitViewNegativeControl breaks each claim the corpus gate holds, one
+// TestLuaUnitViewNegativeControlFunctional breaks each claim the corpus gate holds, one
 // at a time in a copy of the generated text, and requires the gate RED on the
 // line that claim owns (docs/SPEC-TABLES.md §8.7).
-func TestLuaUnitViewNegativeControl(t *testing.T) {
+func TestLuaUnitViewNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	load := func(t *testing.T, rel string) (*ir.Unit, map[string][]byte) {
 		t.Helper()
@@ -421,12 +424,13 @@ func TestLuaUnitViewNegativeControl(t *testing.T) {
 	})
 }
 
-// TestLuaUnitViewPacketStorage holds a type no table reaches to §8.2: it has a
+// TestLuaUnitViewPacketStorageFunctional holds a type no table reaches to §8.2: it has a
 // descriptor in the view module, its fields carry no table-wire identity (id 0,
 // no json key), an unreached enum carries id 0 on every variant, a reached type
 // keeps its ids, and nothing outside the view module requires it (§8.4).
-func TestLuaUnitViewPacketStorage(t *testing.T) {
+func TestLuaUnitViewPacketStorageFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "Probe.schema")
 	const src = `package probe
@@ -510,12 +514,13 @@ print("OK")
 	}
 }
 
-// TestLuaEmptyDocIsOneDefinition holds §8.7\x27s ABSENCE IS ONE SHARED EMPTY
+// TestLuaEmptyDocIsOneDefinitionFunctional holds §8.7\x27s ABSENCE IS ONE SHARED EMPTY
 // STRING on the emitted text: every module defines _M.DocNone = "" once, every
 // row with no doc names _M.DocNone, and no generated module writes an inline
 // doc = "" or tags = {}.
-func TestLuaEmptyDocIsOneDefinition(t *testing.T) {
+func TestLuaEmptyDocIsOneDefinitionFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
 	scan := func(files map[string][]byte) (refs int, inline []string) {
 		for _, name := range sortedKeys(mapStrings(files)) {
 			if !strings.HasSuffix(name, "Tables.lua") && !strings.HasSuffix(name, "View.lua") {

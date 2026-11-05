@@ -4,7 +4,7 @@ package luatable
 // tables/block (the manifest\x27s blockdemo unit), whose block images the C++
 // reference wrote (test/tables/block_main.cpp):
 //
-//	TestLuaBuildVersion
+//	TestLuaBuildVersionFunctional
 //	    constant    T.BuildVersion is `schema build-version`\x27s (ir.BuildVersion)
 //	                and the one the C++ reference stamped into both committed
 //	                block images
@@ -17,12 +17,13 @@ package luatable
 //	                flipped, refuses wrong_build_version, and the clause
 //	                precedes alignment and truncation
 //
-// TestLuaBuildVersionNegativeControl breaks each clause once and requires its
+// TestLuaBuildVersionNegativeControlFunctional breaks each clause once and requires its
 // own lines red.
 
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -162,8 +163,9 @@ func luaBuildVersionGate(t *testing.T, mutate func(*testing.T, map[string][]byte
 	return red
 }
 
-func TestLuaBuildVersion(t *testing.T) {
+func TestLuaBuildVersionFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
 	for clause, whys := range luaBuildVersionGate(t, nil) {
 		for _, why := range whys {
 			t.Errorf("%s: %s", clause, why)
@@ -171,8 +173,9 @@ func TestLuaBuildVersion(t *testing.T) {
 	}
 }
 
-func TestLuaBuildVersionNegativeControl(t *testing.T) {
+func TestLuaBuildVersionNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
 	plant := func(file, from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {
 			src := string(files[file])

@@ -10,6 +10,7 @@ package luatable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -322,11 +323,12 @@ print("block-refusals-ok")
 	return luarun.Try(t, dir, "main.lua", map[string][]byte{"block": image})
 }
 
-// TestLuaBlockReadNegativeControls plants one defect per gate into the emitted
+// TestLuaBlockReadNegativeControlsFunctional plants one defect per gate into the emitted
 // block.lua and requires that gate to go red: a float read one bit off (the
 // dump), and the pitch, bound, and base-alignment checks removed.
-func TestLuaBlockReadNegativeControls(t *testing.T) {
+func TestLuaBlockReadNegativeControlsFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
 	for _, tc := range []struct {
 		name   string
 		anchor string
