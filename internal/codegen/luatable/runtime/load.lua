@@ -761,17 +761,6 @@ local function adopt(ctx, from, to)
   end
 end
 
--- takes slot j out of the queue; its entry is kept at the end for reuse
-local function unqueue(ctx, j)
-  local pending, n = ctx.pending, ctx.np
-  local p = pending[j]
-  for k = j, n - 1 do
-    pending[k] = pending[k + 1]
-  end
-  pending[n] = p
-  ctx.np = n - 1
-end
-
 -- a map entry's key at its declared default: the descriptor's own, except a
 -- wide one, which is a table the constructor builds fresh
 local function key_default(T, entry, kf)
@@ -1168,12 +1157,16 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
         restore(sub, at, n, elim, ebad)
         local dkey = inst[keyname]
         if order == 0 then
-          -- EQUAL: a DUPLICATE, and last wins WHOLE
-          report.duplicate = report.duplicate + 1
-          for j = ctx.np, 1, -1 do
+          -- EQUAL: a DUPLICATE, and last wins WHOLE. The replaced entry's
+          -- queued slots go to the sink: they land nowhere, but each one still
+          -- resolves and counts, as the engine resolves every slot while it
+          -- reads the entry (decodenodes.go resolveCell), so an index past
+          -- the node table is damage even in an entry a later key replaces.
+          for j = 1, ctx.np do
             local pp = ctx.pending[j]
-            if pp.holder == out and pp.key == last then unqueue(ctx, j) end
+            if pp.holder == out and pp.key == last then pp.holder = ctx.sink end
           end
+          report.duplicate = report.duplicate + 1
           out[last] = nil
         else
           last = dkey

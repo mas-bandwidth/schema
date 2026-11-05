@@ -58,7 +58,8 @@ func main() {
 
 func git(args ...string) (string, error) {
 	out, err := exec.Command("git", args...).Output()
-	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
 		return "", fmt.Errorf("git %s: %v: %s", strings.Join(args, " "), err, exit.Stderr)
 	}
 	return string(out), err

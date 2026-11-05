@@ -139,6 +139,9 @@
       "targets": [
         "conformance-negative-control-lua",
         "packet-finite-lua-negative-control",
+        "packet-utf8-lua-negative-control",
+        "packet-wide-lua-negative-control",
+        "packet-defaults-lua-negative-control",
         "conformance-negative-control-lua-walk",
         "conformance-negative-control-lua-framing",
         "conformance-negative-control-lua-cycle",

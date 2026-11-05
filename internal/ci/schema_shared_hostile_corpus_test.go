@@ -168,16 +168,13 @@ func TestSchemaSharedHostileCorpusSources(t *testing.T) {
 	}
 	root := repoRoot(t)
 	for _, c := range cases {
-		for _, prefix := range hostilecorpus.SourceDirs {
-			if i := strings.Index(c.Provenance, prefix); i >= 0 {
-				rest := strings.Fields(c.Provenance[i+len(prefix):])[0]
-				p := filepath.Join(root, filepath.FromSlash(prefix+rest))
-				fi, err := os.Stat(p)
-				if err != nil {
-					t.Errorf("%s: source %s does not exist: %v", c.Name, p, err)
-				} else if !fi.Mode().IsRegular() {
-					t.Errorf("%s: source %s is not a regular file", c.Name, p)
-				}
+		for _, src := range hostilecorpus.CitedSources(c, hostilecorpus.SourceDirs) {
+			p := filepath.Join(root, filepath.FromSlash(src))
+			fi, err := os.Stat(p)
+			if err != nil {
+				t.Errorf("%s: source %s does not exist: %v", c.Name, p, err)
+			} else if !fi.Mode().IsRegular() {
+				t.Errorf("%s: source %s is not a regular file", c.Name, p)
 			}
 		}
 	}

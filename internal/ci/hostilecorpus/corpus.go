@@ -401,6 +401,27 @@ var ExcludedSourceDirs = []string{
 	"internal/fuzz/testdata/fuzz/",
 }
 
+// CitedSources returns every source file a case cites under the given trees.
+// A conformance vector cites its input and, when the vector carries one, its
+// expected-value golden: both are leaf files of the same tree.
+func CitedSources(c Case, dirs []string) []string {
+	var out []string
+	for _, prefix := range dirs {
+		rest := c.Provenance
+		for {
+			i := strings.Index(rest, prefix)
+			if i < 0 {
+				break
+			}
+			rest = rest[i+len(prefix):]
+			if f := strings.Fields(rest); len(f) > 0 {
+				out = append(out, prefix+f[0])
+			}
+		}
+	}
+	return out
+}
+
 // Uncovered returns every leaf file under the given source trees that no case's
 // provenance cites. Each dir is walked recursively, so vector files nested in
 // case subdirectories are required to be cited too. A value golden
@@ -409,12 +430,8 @@ var ExcludedSourceDirs = []string{
 func Uncovered(root string, dirs []string, cases []Case) []string {
 	caught := map[string]bool{}
 	for _, c := range cases {
-		for _, prefix := range dirs {
-			if i := strings.Index(c.Provenance, prefix); i >= 0 {
-				if rest := strings.Fields(c.Provenance[i+len(prefix):]); len(rest) > 0 {
-					caught[prefix+rest[0]] = true
-				}
-			}
+		for _, src := range CitedSources(c, dirs) {
+			caught[src] = true
 		}
 	}
 	var uncovered []string
