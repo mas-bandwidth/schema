@@ -150,8 +150,17 @@ end
 -- before it answers nil; nothing the walk met after the refusal reaches the
 -- report.
 local REPORT_FIELDS = {
-  "malformed", "refused", "unknown", "kindMismatch", "clamped", "widened",
-  "duplicate", "blobShared", "missingRequired", "wireDamaged", "reason",
+  "malformed",
+  "refused",
+  "unknown",
+  "kindMismatch",
+  "clamped",
+  "widened",
+  "duplicate",
+  "blobShared",
+  "missingRequired",
+  "wireDamaged",
+  "reason",
   "nonFiniteFloat",
 }
 
@@ -2117,9 +2126,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   -- stored is checked once every index has resolved, over the root and every
   -- record the load placed, a cycle among records the root never reaches
   -- included (D.cyclic).
-  if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then
-    report.malformed = true
-  end
+  if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.malformed = true end
   release(ctx)
   if report.malformed then return nil end
   return root

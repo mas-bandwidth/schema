@@ -89,9 +89,11 @@ func fixedCoalesce(in []fixedPlanEntry) []fixedPlanEntry {
 }
 
 // fixedRangeOf answers a field's declared clamp bounds, as Elixir literals, or
-// two "nil"s when the field carries no range. THE BOUNDS DO NOT RIDE and a
-// value outside the reader's own range CLAMPS ON LOAD, counting one `clamped` —
-// the generated projection, the same pass for either plan.
+// two "nil"s when the field carries no range. These are THIS READER's bounds:
+// the generated projection, the same pass for either plan, clamps a value
+// outside them and counts one `clamped`. A compiled lane's image is held to
+// its WRITER's range first (docs/FIXED-FORM-ALGORITHM.md §4.6,
+// fixedwriterbounds.go), so the projection's clamp is the second of the two.
 func fixedRangeOf(f *ir.Field) (string, string) {
 	if !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
 		return "nil", "nil"

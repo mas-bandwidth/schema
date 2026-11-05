@@ -205,6 +205,18 @@ local wideFits = function(val, bound) {
   foreach (u in val) if (typeof u != "integer" || u < 0 || u > 0xFFFF) return false;
   return true;
 };
+// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the sum of the elements'
+// byte lengths, an absent `?string` element counting zero, is past the
+// declared total. Save and Measure refuse such a value with nothing written.
+local textTotalPast = function(d, val) {
+  local sum = 0;
+  foreach (rec in val) {
+    if (rec == null || (d.textlist == 2 && !rec.ValuePresent)) continue;
+    sum += rec.Value.len();
+    if (sum > d.total) return true;
+  }
+  return false;
+};
 local wideUnits = function(w, val) {
   foreach (u in val) { wu8(w, u); wu8(w, u >> 8); }
 };
@@ -278,7 +290,7 @@ local edgesOf;
 local shapeEdges;
 local armEdges;
 
-shapeEdges = function(T, d, val, out, holder = null, key = null, every = false) {
+shapeEdges = function(T, d, val, out, holder = null, key = null) {
   if (d.shape == "ptr") {
     if (val != null) out.append({ kind = "t", d = tableDesc(T, d.table), v = val });
     return;
@@ -289,11 +301,11 @@ shapeEdges = function(T, d, val, out, holder = null, key = null, every = false) 
     return;
   }
   if (d.shape == "tab") {
-    edgesOf(T, tableDesc(T, d.table), val, out, every);
+    edgesOf(T, tableDesc(T, d.table), val, out);
     return;
   }
   if (d.shape == "union") {
-    armEdges(T, unionDesc(T, d.table), val, out, every);
+    armEdges(T, unionDesc(T, d.table), val, out);
     return;
   }
   if (d.shape == "map") {
@@ -303,8 +315,8 @@ shapeEdges = function(T, d, val, out, holder = null, key = null, every = false) 
     local vd = d.mapvalue;
     foreach (i in mapWriteOrder(val, kd.member)) {
       local ent = val[i];
-      shapeEdges(T, kd, ent[kd.member], out, ent, kd.member, every);
-      shapeEdges(T, vd, ent[vd.member], out, ent, vd.member, every);
+      shapeEdges(T, kd, ent[kd.member], out, ent, kd.member);
+      shapeEdges(T, vd, ent[vd.member], out, ent, vd.member);
     }
     return;
   }
@@ -323,28 +335,26 @@ shapeEdges = function(T, d, val, out, holder = null, key = null, every = false) 
       }
     } else if (e.shape == "tab") {
       local td = tableDesc(T, e.table);
-      for (local i = 0; i < n; i++) edgesOf(T, td, val[i], out, every);
+      for (local i = 0; i < n; i++) edgesOf(T, td, val[i], out);
     } else if (e.shape == "union") {
       local u = unionDesc(T, e.table);
-      for (local i = 0; i < n; i++) armEdges(T, u, val[i], out, every);
+      for (local i = 0; i < n; i++) armEdges(T, u, val[i], out);
     }
   }
 };
 
-// With every set, a field under a FALSE guard is walked too: the load stored
-// it, and the cycle check (_M.cyclic) counts every slot the load stored.
-edgesOf = function(T, c, v, out, every = false) {
+edgesOf = function(T, c, v, out) {
   foreach (fd in c.fields) {
-    if (!every && !guardHolds(fd, v)) continue;
+    if (!guardHolds(fd, v)) continue;
     if (fd.optional && !v[fd.member + "Present"]) continue;
     local val = v[fd.member];
     if (fd.shape == "tab" && val == null) continue;
     if (fd.shape == "arr" && val == null) continue;
-    shapeEdges(T, fd, val, out, v, fd.member, every);
+    shapeEdges(T, fd, val, out, v, fd.member);
   }
 };
 
-armEdges = function(T, u, inst, out, every = false) {
+armEdges = function(T, u, inst, out) {
   if (inst == null) return;
   local t = inst.Type;
   if (t == null || t == 0) return;
@@ -353,7 +363,7 @@ armEdges = function(T, u, inst, out, every = false) {
   if (arm == null) return;
   local p = arm.payload;
   if (p == null) return;
-  shapeEdges(T, p, inst[p.member], out, inst, p.member, every);
+  shapeEdges(T, p, inst[p.member], out, inst, p.member);
 };
 
 local number = function(T, c, root, cook = false) {
@@ -776,6 +786,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
     }
     if (!always && !arrayRides(d, val)) return true;
     if (!d.list && val.len() > d.bound) return false;
+    if (("total" in d) && textTotalPast(d, val)) return false;
     wleb(w, idsRef(ids, d.id)); wu8(w, 14);
     local body = newWriter();
     local n = writeArrayBody(T, d, val, body, ids, nodes, root);
@@ -871,51 +882,6 @@ _M.measure <- function(T, rootName, value, retain = null) {
   local b = _M.save(T, rootName, value, retain);
   if (b == null) return -1;
   return b.len();
-};
-
-// cyclic reports whether a LOADED graph holds a cycle (docs/SPEC-TABLES.md
-// §3.1, §4; internal/tablewire decodenodes.go cyclic). No writer produces one,
-// so a cyclic wire is damage. The vertices are the root and every record the
-// load placed, reached from the root or not, so a cycle among orphans is still
-// a cycle; verts lists the records as { d, v }. The edges are every pointer
-// slot a vertex's by-value closure STORES, a slot under a false guard
-// included. Each vertex is entered once: a pointer to an OPEN vertex is a
-// cycle, and a pointer to a CLOSED one is a legal share, so the walk is linear
-// in vertices plus slots, and it holds its own stack.
-_M.cyclic <- function(T, root, value, verts) {
-  local all = [{ d = tableDesc(T, root), v = value }];
-  local at = {};
-  at[value] <- 0;
-  foreach (x in verts) {
-    if (x.v in at) continue;
-    at[x.v] <- all.len();
-    all.append(x);
-  }
-  local mark = array(all.len(), 0); // 0 unvisited, 1 open, 2 closed
-  local outOf = function(k) {
-    local out = [];
-    edgesOf(T, all[k].d, all[k].v, out, true);
-    return out;
-  };
-  for (local start = 0; start < all.len(); start++) {
-    if (mark[start] != 0) continue;
-    mark[start] = 1;
-    local stack = [{ k = start, edges = outOf(start), i = 0 }];
-    while (stack.len() > 0) {
-      local top = stack[stack.len() - 1];
-      if (top.i >= top.edges.len()) { mark[top.k] = 2; stack.pop(); continue; }
-      local e = top.edges[top.i];
-      top.i = top.i + 1;
-      if (e.kind != "t" || !(e.v in at)) continue;
-      local t = at[e.v];
-      if (mark[t] == 1) return true;
-      if (mark[t] == 0) {
-        mark[t] = 1;
-        stack.append({ k = t, edges = outOf(t), i = 0 });
-      }
-    }
-  }
-  return false;
 };
 
 // Shared canonical traversal for the cooked writer. The public wire surface

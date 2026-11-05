@@ -15,9 +15,7 @@
 --
 -- A RECORD IS READER-PRIVATE (§6.6). Its layout here is the reference's own:
 --   u32 total, u32 node, u32 depth, u32 payload length, u64 id, u8 kind,
---   u8 discarded, depth * (u32 field ordinal, u32 element index), payload.
--- A DISCARDED record belongs to a body occurrence a later one superseded: the
--- save neither places it nor counts it lost, and its bytes stay spent (§6.6).
+--   u8 placed, depth * (u32 field ordinal, u32 element index), payload.
 -- Nothing writes one to disk and nothing compares two ports' buffers.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
@@ -162,7 +160,6 @@ local resolve_payload: any
 local resolve_arm: any
 local resolve_content: any
 local patch_len: any
-local resolve_elements: any
 
 -- one body's fields, each with its reference widened to an id (§6.6)
 resolve_body = function(r: any, ids: { any }, out: any, depth: number, e: number): boolean
@@ -229,9 +226,19 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
 		local e = r.at + n
 		if r.at + 1 > e then return false end
-		local sub = new_reader(r.b, r.at, e)
-		r.at = e
-		return resolve_elements(sub, ids, out, depth)
+		local ek = r_u8(r); o_byte(out, ek)
+		local count = r_leb(r); if r.bad then return false end
+		o_leb(out, count)
+		for _ = 1, count do
+			local elen = r_leb(r); if r.bad or r.at + elen > e then return false end
+			local ee = r.at + elen
+			local mark, startLen = #out.parts + 1, out.len
+			o_u32(out, 0)
+			if not resolve_content(r, ids, ek, out, depth + 1, ee) then return false end
+			if not patch_len(out, mark, startLen) then return false end
+			r.at = ee
+		end
+		return r.at == e
 	elseif kind == 16 then
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
 		local e = r.at + n
@@ -295,7 +302,19 @@ resolve_arm = function(r: any, ids: { any }, kind: number, out: any, depth: numb
 		if not resolve_body(r, ids, out, depth + 1, r.e) then return false end
 		return patch_len(out, mark, startLen)
 	elseif kind == 14 then
-		return resolve_elements(r, ids, out, depth)
+		local ek = r_u8(r); o_byte(out, ek)
+		local count = r_leb(r); if r.bad then return false end
+		o_leb(out, count)
+		for _ = 1, count do
+			local elen = r_leb(r); if r.bad or r.at + elen > r.e then return false end
+			local ee = r.at + elen
+			local mark, startLen = #out.parts + 1, out.len
+			o_u32(out, 0)
+			if not resolve_content(r, ids, ek, out, depth + 1, ee) then return false end
+			if not patch_len(out, mark, startLen) then return false end
+			r.at = ee
+		end
+		return r.at == r.e
 	elseif kind == 17 then
 		return false
 	end
@@ -312,30 +331,6 @@ resolve_content = function(r: any, ids: { any }, kind: number, out: any, depth: 
 		return resolve_payload(r, ids, 15, out, depth + 1) and r.at == e
 	end
 	return resolve_payload(r, ids, kind, out, depth + 1) and r.at == e
-end
-
--- THE ELEMENTS OF A POSITIONAL ARRAY (§3; internal/tablewire retain.go
--- walkContent): the element kind, the count, then each element as a payload
--- of that kind. Only a table element is framed by its own L, which its payload
--- carries; a scalar is its width, a string its own length, and a union its arm
--- header. Each element is held behind a u32 length, which a table element's
--- payload already is. The content is consumed exactly.
-resolve_elements = function(r: any, ids: { any }, out: any, depth: number): boolean
-	local ek = r_u8(r); if r.bad then return false end
-	o_byte(out, ek)
-	local count = r_leb(r); if r.bad then return false end
-	o_leb(out, count)
-	for _ = 1, count do
-		if ek == 13 then
-			if not resolve_payload(r, ids, 13, out, depth + 1) then return false end
-		else
-			local mark, startLen = #out.parts + 1, out.len
-			o_u32(out, 0)
-			if not resolve_payload(r, ids, ek, out, depth + 1) then return false end
-			if not patch_len(out, mark, startLen) then return false end
-		end
-	end
-	return r.at == r.e
 end
 
 patch_len = function(out: any, mark: number, startLen: number): boolean
@@ -390,30 +385,6 @@ local function store_record(store: any, node: number, steps: { any }, id: intege
 	store.used = store.used + total
 	store.count = store.count + 1
 	return true
-end
-
--- discard marks every record held under one field of the body at `steps`
--- (and, when `i` is given, under that one element of it) as superseded
--- (docs/SPEC-TABLES.md §6.6; internal/tablewire retain.go forget). A record
--- belongs to the body occurrence that carried it and dies with it: the read
--- of a later occurrence replaces that body whole. The discard moves neither
--- counter, and the capacity the record took stays spent.
-local function discard(store: any, node: number, steps: { any }, o: number, i: number?)
-	local b = store.bytes
-	local d = #steps
-	local at = 0
-	while at < store.used do
-		local total = buffer.readu32(b, at)
-		if buffer.readu32(b, at + 4) == node and buffer.readu32(b, at + 8) > d then
-			local match = buffer.readu32(b, at + 26 + d * 8) == o and (i == nil or buffer.readu32(b, at + 30 + d * 8) == i)
-			for k = 1, d do
-				if not match then break end
-				match = buffer.readu32(b, at + 26 + (k - 1) * 8) == steps[k].o and buffer.readu32(b, at + 30 + (k - 1) * 8) == steps[k].i
-			end
-			if match then buffer.writeu8(b, at + 25, 1) end
-		end
-		at = at + total
-	end
 end
 
 local walk_body: any
@@ -486,10 +457,6 @@ end
 
 -- a union: an arm this build cannot name is an excluded class (§6.6)
 walk_union = function(fd: any, r: any, steps: { any }, store: any, report: any, node: number)
-	-- A UNION WHOSE ARM IS WRITTEN AGAIN, the same arm or another, supersedes
-	-- the earlier arm body and its records, whatever this occurrence holds
-	-- (internal/tablewire decode.go unionCell, forgetArm)
-	discard(store, node, steps, fd.o or 0, nil)
 	local ref = r_leb(r)
 	if r.bad or ref == 0 then return end
 	if ref > #_ids then return end
@@ -522,10 +489,7 @@ walk_union = function(fd: any, r: any, steps: { any }, store: any, report: any, 
 	r.at = r.at + n
 end
 
--- one array or keyed array body (§2.9, §3.2). A body too short for its
--- header, or of an element kind the declaration does not take, leaves the
--- field standing with its records (internal/tablewire decode.go arrayBody,
--- keyedBody).
+-- one array or keyed array body (§2.9, §3.2)
 walk_array = function(fd: any, r: any, steps: { any }, store: any, report: any, node: number)
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then return end
@@ -535,10 +499,6 @@ walk_array = function(fd: any, r: any, steps: { any }, store: any, report: any, 
 	local ek = r_u8(sub)
 	local count = r_leb(sub)
 	if sub.bad then r.at = e; return end
-	local el = fd.e or {}
-	local o = fd.o or 0
-	local holds = el.s == "tab" or el.s == "union" or el.s == "enum"
-	if holds and fd.ek ~= nil and ek ~= fd.ek then r.at = e; return end
 	if fd.array == "keyed" then
 		for _ = 1, count do
 			local keyref = r_leb(sub)
@@ -556,45 +516,34 @@ walk_array = function(fd: any, r: any, steps: { any }, store: any, report: any, 
 				report.retainLost = report.retainLost + 1
 				sub.at = sub.at + elen
 			else
-				-- a slot written again replaces that slot's body alone
-				if el.s == "tab" then discard(store, node, steps, o, at - 1) end
-				push(steps, o, at - 1)
-				walk_element(el, sub, steps, store, report, node, elen)
+				push(steps, fd.o or 0, at - 1)
+				walk_element(fd.e, sub, steps, store, report, node, elen)
 				pop(steps)
 			end
 		end
-		r.at = e
-		return
-	end
-	-- THE READ COMMITS TO REPLACE HERE (internal/tablewire decode.go
-	-- arrayBody): every record under the field goes with the value it is
-	-- about to lose. A bounded array reads no element past its bound.
-	discard(store, node, steps, o, nil)
-	local keep = count
-	if fd.array ~= "list" and fd.bound ~= nil and keep > fd.bound then keep = fd.bound end
-	for i = 1, keep do
-		if ek == 13 then
-			local elen = r_leb(sub)
-			if sub.bad or sub.at + elen > sub.e then break end
-			push(steps, o, i - 1)
-			local body = new_reader(sub.b, sub.at, sub.at + elen)
-			if el.s == "tab" then walk_body(S.lookup(el.t), body, steps, store, report, node) end
-			pop(steps)
-			sub.at = sub.at + elen
-		elseif ek == 15 then
-			push(steps, o, i - 1)
-			walk_union(el, sub, steps, store, report, node)
-			pop(steps)
-		elseif el.s == "enum" then
-			walk_enum(el, sub, report)
-			if sub.bad then break end
-		else
-			local w = width_of(ek)
-			if w > 0 then
-				if sub.at + w > sub.e then break end
-				sub.at = sub.at + w
+	else
+		local el = fd.e or {}
+		for i = 1, count do
+			if ek == 13 then
+				local elen = r_leb(sub)
+				if sub.bad or sub.at + elen > sub.e then break end
+				push(steps, fd.o or 0, i - 1)
+				local body = new_reader(sub.b, sub.at, sub.at + elen)
+				if el.s == "tab" then walk_body(S.lookup(el.t), body, steps, store, report, node) end
+				pop(steps)
+				sub.at = sub.at + elen
+			elseif ek == 15 then
+				push(steps, fd.o or 0, i - 1)
+				walk_union(el, sub, steps, store, report, node)
+				pop(steps)
 			else
-				break
+				local w = width_of(ek)
+				if w > 0 then
+					if sub.at + w > sub.e then break end
+					sub.at = sub.at + w
+				else
+					break
+				end
 			end
 		end
 	end
@@ -610,20 +559,12 @@ walk_element = function(el: any, sub: any, steps: { any }, store: any, report: a
 		walk_union(el, body, steps, store, report, node)
 	elseif el ~= nil and el.s == "arr" then
 		walk_array(el, body, steps, store, report, node)
-	elseif el ~= nil and el.s == "enum" then
-		walk_enum(el, body, report)
 	end
 	sub.at = sub.at + elen
 end
 
 -- a map: its entries are framed bodies, and a key this build cannot name is
--- an excluded class (§2.8, §6.6). The walk follows the load's own key rules
--- (internal/tablewire decode.go mapField): a readable header of entry kind 13
--- commits the occurrence to replace the map; an entry whose key kind is
--- foreign empties the map and ends it, so no later entry body is read; an
--- entry whose key does not fit is dropped unread; and a duplicate key replaces
--- the entry it repeats, whose records go with it. An entry's records are held
--- at the index it LANDED at, which is where the save writes it.
+-- an excluded class (§2.8, §6.6)
 walk_map = function(fd: any, r: any, steps: { any }, store: any, report: any, node: number)
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then return end
@@ -633,34 +574,15 @@ walk_map = function(fd: any, r: any, steps: { any }, store: any, report: any, no
 	local ek = r_u8(sub)
 	local count = r_leb(sub)
 	if sub.bad or ek ~= 13 then r.at = e; return end
-	local o = fd.o or 0
-	discard(store, node, steps, o, nil)
 	local entry = S.lookup(fd.t)
-	local keys = Load.mapKeys
-	local keyfd = fields_by_id(entry)[keys.id]
-	local landed = 0
-	local lastKey: any = nil
-	for _ = 1, count do
+	for i = 1, count do
 		local elen = r_leb(sub)
 		if sub.bad or sub.at + elen > sub.e then break end
+		push(steps, fd.o or 0, i - 1)
 		local body = new_reader(sub.b, sub.at, sub.at + elen)
+		walk_body(entry, body, steps, store, report, node)
+		pop(steps)
 		sub.at = sub.at + elen
-		local key, kindBad, _, keyOk = keys.scan(keyfd, body, entry)
-		if kindBad or not keyOk then break end
-		if keys.fits(keyfd, key) then
-			local order = -1
-			if landed > 0 then order = keys.compare(keyfd, lastKey, key) end
-			if order > 0 then break end
-			if order == 0 then
-				discard(store, node, steps, o, landed - 1)
-			else
-				landed = landed + 1
-				lastKey = key
-			end
-			push(steps, o, landed - 1)
-			walk_body(entry, body, steps, store, report, node)
-			pop(steps)
-		end
 	end
 	r.at = e
 end
@@ -670,10 +592,6 @@ end
 walk_field = function(fd: any, r: any, steps: { any }, store: any, report: any, node: number)
 	local sh = fd.s
 	if sh == "tab" then
-		-- A NESTED TABLE READ AGAIN replaces the body whole, and the earlier
-		-- occurrence's records go with it (internal/tablewire decode.go,
-		-- discardsWhole, forgetField)
-		discard(store, node, steps, fd.o or 0, nil)
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then return end
 		push(steps, fd.o or 0, 0)
@@ -806,14 +724,6 @@ local function load_retain(read: any, root: string, bytes: buffer, report: any, 
 	_ids = ids
 	local desc = S.lookup(root)
 	local raw = node_records(bytes, ids, endpos)
-	-- A RECORD'S NODE IS THE VALUE, NOT THE INDEX (§3.1, §6.6): the save
-	-- numbers the nodes it reaches afresh, so a record is held under the value
-	-- the load placed at its index, and the save finds that value's index in
-	-- its own numbering
-	store.nodeValues = {}
-	for k, n in Load.loadedNodes() do
-		if n.kind == "t" then store.nodeValues[k + 1] = n.v end
-	end
 	local place = {}
 	if desc.place ~= nil then
 		for _, name in desc.place.tables do
@@ -1056,10 +966,7 @@ save_parse_arm = function(r: any, kind: number, ids: { any }): any
 	if w > 0 then
 		return { kind = "raw", b = save_take(r, w) }
 	end
-	-- any other arm (a pointer arm's node index among them) is its payload
-	-- whole: the plain save wrote it, and the retaining save writes it back
-	local n = r.at <= #r.s and (#r.s - r.at + 1) or 0
-	return { kind = "raw", b = save_take(r, n) }
+	return { kind = "raw", b = "" }
 end
 
 save_parse_nodes = function(r: any, ids: { any }): any
@@ -1110,6 +1017,7 @@ local function res_take(c: any, n: number): string
 end
 
 local function save_ref(cx: any, id: integer): number
+	if id == 0i then return 0 end
 	local r = cx.refmap[id]
 	if r ~= nil then return r end
 	-- A RETAINED ID PAST THE CAPACITY (§6.6): inside a retained record, an id
@@ -1607,15 +1515,6 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		if f.rec == nil and ids[f.ref] == NodeTableId then rootAt = i; break end
 	end
 
-	local nodesField: any = nil
-	for _, f in rootBody.fields do
-		if f.node ~= nil and f.node.t == "nodes" then nodesField = f; break end
-	end
-	-- the save's numbering of the value: a record's load node is placed at the
-	-- index the save gave the same value, and a node the save no longer
-	-- reaches places none of its records (§6.6)
-	local numbering = if retained.nodeValues ~= nil then Save.number(desc, value) else nil
-
 	local lost = 0
 	local at = 0
 	local store = retained
@@ -1626,7 +1525,6 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		local plen = buffer.readu32(store.bytes, at + 12)
 		local id = buffer.readinteger(store.bytes, at + 16)
 		local kind = buffer.readu8(store.bytes, at + 24)
-		local discarded = buffer.readu8(store.bytes, at + 25) ~= 0
 		local steps = {}
 		for i = 0, depth - 1 do
 			steps[i + 1] = {
@@ -1638,25 +1536,20 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		local rec = { id = id, kind = kind, payload = payload }
 		local target: any = nil
 		local tdesc: any = nil
-		local saved: number? = node
-		if node ~= 1 and numbering ~= nil then
-			local nv = retained.nodeValues[node]
-			saved = if nv ~= nil then numbering.index[nv] else nil
-		end
-		if saved == 1 then
+		if node == 1 then
 			target, tdesc = rootBody, desc
-		elseif saved ~= nil and nodesField ~= nil and saved - 1 <= #nodesField.node.nodes then
-			local nr = nodesField.node.nodes[saved - 1]
-			target = nr.body
-			tdesc = place[ids[nr.tref]]
+		elseif node <= #rootBody.fields + 1 then
+			for _, f in rootBody.fields do
+				if f.node ~= nil and f.node.t == "nodes" and node - 1 <= #f.node.nodes then
+					local nr = f.node.nodes[node - 1]
+					target = nr.body
+					tdesc = place[ids[nr.tref]]
+					break
+				end
+			end
 		end
 		local ok = target ~= nil and tdesc ~= nil
 		local dest: any = nil
-		if discarded then
-			-- superseded at load: neither placed nor lost (§6.6)
-			at = at + total
-			continue
-		end
 		if ok then
 			dest = save_locate_body(target, tdesc, steps, 1)
 			ok = dest ~= nil

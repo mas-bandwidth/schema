@@ -82,20 +82,19 @@ test-luau: tables-luau-wire-fuzz tables-luau-wire-fuzz-negative-control
 # THE LEG's PINNED VECTORS (test/conformance/luau/wire-fuzz-vectors.txt): every
 # Luau red the fuzzer found, each replayed through the leg and the oracle
 # exactly as found (the harness's --replay: one mutant, no enumerated or random
-# pass), on the retaining arm (--retain) where its line ends in `retain`. Its
-# control reverts each vector's fix in a scratch copy of the emitted units and
-# requires that vector's replay red.
+# pass). Its control reverts each vector's fix in a scratch copy of the emitted
+# units and requires that vector's replay red.
 .PHONY: tables-luau-wire-fuzz-vectors tables-luau-wire-fuzz-vectors-negative-control
 tables-luau-wire-fuzz-vectors: build/conformance-harness build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
 	@mkdir -p build/wire-fuzz
-	@n=0; grep -v '^#' test/conformance/luau/wire-fuzz-vectors.txt | grep . | while read -r name unit root file arm; do \
+	@n=0; grep -v '^#' test/conformance/luau/wire-fuzz-vectors.txt | grep . | while read -r name unit root file; do \
 		LUAUFUZZ_NOTE=$(CURDIR)/build/wire-fuzz/luau-vectors.absent \
-			./build/conformance-harness wire-fuzz $$( [ "$$arm" = retain ] && echo --retain ) --driver test/conformance/luau/wirefuzz-driver \
+			./build/conformance-harness wire-fuzz --driver test/conformance/luau/wirefuzz-driver \
 			--replay $$file --unit $$unit --root $$root --failed build/wire-fuzz/failed-luau-vector.bin \
 			> build/wire-fuzz/luau-vector-$$name.log 2>&1 || { cat build/wire-fuzz/luau-vector-$$name.log; exit 1; }; \
 		grep -qE '(^|[^0-9])0 divergences' build/wire-fuzz/luau-vector-$$name.log || \
 			{ cat build/wire-fuzz/luau-vector-$$name.log; exit 1; }; \
-		echo "tables-luau-wire-fuzz-vectors: $$name ($$unit.$$root$${arm:+, $$arm}) 0 divergences"; \
+		echo "tables-luau-wire-fuzz-vectors: $$name ($$unit.$$root) 0 divergences"; \
 	done
 
 tables-luau-wire-fuzz-vectors-negative-control: build/conformance-harness build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
