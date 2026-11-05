@@ -2362,10 +2362,23 @@ public final class TableJson {
                 b.append(text);
                 return;
             }
-            double back = Double.parseDouble(text);
-            if (single ? (double) (float) back == value : back == value) {
-                b.append(text);
-                return;
+            // W12's read-back is ONE correctly rounded conversion at the field's
+            // own width: parsing a float32 field's text as a double and then
+            // narrowing rounds twice, and for two float32 magnitudes the answers
+            // part (docs/SPEC-TABLES.md §16.14). Parse the candidate at the
+            // field's own width and compare there.
+            if (single) {
+                float back = Float.parseFloat(text);
+                if (back == (float) value) {
+                    b.append(text);
+                    return;
+                }
+            } else {
+                double back = Double.parseDouble(text);
+                if (back == value) {
+                    b.append(text);
+                    return;
+                }
             }
         }
     }
