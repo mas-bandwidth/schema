@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -12,10 +11,13 @@ import (
 )
 
 // TestMainNightliesGateInputsAgree records the concrete inputs whose drift
-// broke the main nightlies: hostile vectors were not all in the portable
-// corpus, the table G103 pin lagged the measured generated corpus, and the Lua
-// fuzz oracle omitted a runtime refusal name. It reads committed files only;
-// the integration gates remain responsible for measuring behavior.
+// broke the main nightlies and pins them to the committed files each gate
+// reads: hostile vectors are cited in the portable corpus, the Go generated
+// lint gate holds its table measurement apart from its checked-in ratchet
+// (so the pin moves only through its regeneration target), and the Lua fuzz
+// oracle carries every runtime refusal name. The integration gates remain
+// responsible for measuring behavior; this test holds the shape of their
+// inputs.
 func TestMainNightliesGateInputsAgree(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -54,6 +56,7 @@ func TestMainNightliesGateInputsAgree(t *testing.T) {
 	gateMake := readCI(t, root, "make/schema-go-generated-golangci-lint-gate.mk")
 	for _, target := range []string{
 		"schema-go-generated-golangci-lint-gate-nightly-measure:",
+		"schema-go-generated-golangci-lint-gate-nightly:",
 		"schema-go-generated-golangci-lint-gate-ratchet-regenerate:",
 	} {
 		if !strings.Contains(gateMake, target) {
@@ -71,15 +74,19 @@ func TestMainNightliesGateInputsAgree(t *testing.T) {
 	foundG103 := false
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	for scanner.Scan() {
-		fields := strings.Split(scanner.Text(), "\t")
-		if len(fields) != 4 || fields[0] != "tables" || fields[1] != "gosec" || fields[2] != "G103" {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 4 {
+			t.Errorf("ratchet line %q is not corpus/linter/rule/count", line)
+			continue
+		}
+		if fields[0] != "tables" || fields[1] != "gosec" || fields[2] != "G103" {
 			continue
 		}
 		foundG103 = true
-		count, err := strconv.Atoi(fields[3])
-		if err != nil || count != 4773 {
-			t.Errorf("tables/gosec/G103 pin = %q, want measured count 4773", fields[3])
-		}
 	}
 	if err := scanner.Err(); err != nil {
 		t.Fatalf("scan Go table lint ratchet: %v", err)
