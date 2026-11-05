@@ -674,7 +674,10 @@ namespace Example
             }
             if (value.Flag)
             {
-                Debug.Assert(value.SLength >= 0 && value.SLength <= 4, "value.SLength out of range [0, 4]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
+                if (value.SLength < 0 || value.SLength > 4) // the length guards the slice (§6.3): refused in every build
+                {
+                    return false;
+                }
                 {
                     uint offsetValue = (uint)(value.SLength);
                     if (!stream.SerializeBits(ref offsetValue, 3))
@@ -814,7 +817,10 @@ namespace Example
             }
             if (value.Flag)
             {
-                Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+                if (value.ItemsCount < 0 || value.ItemsCount > 3) // the count guards the loop (§6.3): refused in every build
+                {
+                    return false;
+                }
                 {
                     uint offsetValue = (uint)(value.ItemsCount);
                     if (!batch.SerializeBits(ref offsetValue, 2))
@@ -1207,7 +1213,10 @@ namespace Example
             {
                 return false;
             }
-            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.ItemsCount < 0 || value.ItemsCount > 3) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 2))
@@ -1288,7 +1297,10 @@ namespace Example
             {
                 return false;
             }
-            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.ItemsCount < 0 || value.ItemsCount > 3) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!stream.SerializeBits(ref offsetValue, 2))
@@ -1307,7 +1319,10 @@ namespace Example
                     }
                 }
             }
-            Debug.Assert(value.SLength >= 0 && value.SLength <= 4, "value.SLength out of range [0, 4]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
+            if (value.SLength < 0 || value.SLength > 4) // the length guards the slice (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.SLength);
                 if (!stream.SerializeBits(ref offsetValue, 3))

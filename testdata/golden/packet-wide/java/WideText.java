@@ -162,12 +162,26 @@ public final class WideText {
         return true;
     }
 
+    // fitsWideSeven answers whether every count and length writeWideSevenBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsWideSeven(WideSeven value) {
+        if (value.textLength < 0 || value.textLength > 7) {
+            return false;
+        }
+        return true;
+    }
+
     // writeWideSevenBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteWideSeven
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + WIDE_SEVEN_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsWideSeven).
     public static int writeWideSevenBits(WideSeven value, byte[] data, int bitOffset) {
         assert checkWriteWideSeven(value, data, bitOffset);
+        if (!fitsWideSeven(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -184,8 +198,10 @@ public final class WideText {
 
     // writeWideSeven packs value into data from its start and returns the bytes written;
     // data must hold WIDE_SEVEN_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeWideSeven(WideSeven value, byte[] data) {
-        return (writeWideSevenBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeWideSevenBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readWideSevenBits decodes value from data starting at bit bitOffset, the payload
@@ -268,12 +284,26 @@ public final class WideText {
         return true;
     }
 
+    // fitsWideFour answers whether every count and length writeWideFourBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsWideFour(WideFour value) {
+        if (value.textLength < 0 || value.textLength > 4) {
+            return false;
+        }
+        return true;
+    }
+
     // writeWideFourBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteWideFour
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + WIDE_FOUR_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsWideFour).
     public static int writeWideFourBits(WideFour value, byte[] data, int bitOffset) {
         assert checkWriteWideFour(value, data, bitOffset);
+        if (!fitsWideFour(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -290,8 +320,10 @@ public final class WideText {
 
     // writeWideFour packs value into data from its start and returns the bytes written;
     // data must hold WIDE_FOUR_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeWideFour(WideFour value, byte[] data) {
-        return (writeWideFourBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeWideFourBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readWideFourBits decodes value from data starting at bit bitOffset, the payload
@@ -376,12 +408,26 @@ public final class WideText {
         return true;
     }
 
+    // fitsNarrowFifteen answers whether every count and length writeNarrowFifteenBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsNarrowFifteen(NarrowFifteen value) {
+        if (value.textLength < 0 || value.textLength > 15) {
+            return false;
+        }
+        return true;
+    }
+
     // writeNarrowFifteenBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteNarrowFifteen
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + NARROW_FIFTEEN_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsNarrowFifteen).
     public static int writeNarrowFifteenBits(NarrowFifteen value, byte[] data, int bitOffset) {
         assert checkWriteNarrowFifteen(value, data, bitOffset);
+        if (!fitsNarrowFifteen(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -399,8 +445,10 @@ public final class WideText {
 
     // writeNarrowFifteen packs value into data from its start and returns the bytes written;
     // data must hold NARROW_FIFTEEN_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeNarrowFifteen(NarrowFifteen value, byte[] data) {
-        return (writeNarrowFifteenBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeNarrowFifteenBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readNarrowFifteenBits decodes value from data starting at bit bitOffset, the payload
@@ -510,12 +558,26 @@ public final class WideText {
         return true;
     }
 
+    // fitsWideInterop answers whether every count and length writeWideInteropBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsWideInterop(WideInterop value) {
+        if (value.captionLength < 0 || value.captionLength > 7) {
+            return false;
+        }
+        return true;
+    }
+
     // writeWideInteropBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteWideInterop
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + WIDE_INTEROP_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsWideInterop).
     public static int writeWideInteropBits(WideInterop value, byte[] data, int bitOffset) {
         assert checkWriteWideInterop(value, data, bitOffset);
+        if (!fitsWideInterop(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -532,8 +594,10 @@ public final class WideText {
 
     // writeWideInterop packs value into data from its start and returns the bytes written;
     // data must hold WIDE_INTEROP_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeWideInterop(WideInterop value, byte[] data) {
-        return (writeWideInteropBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeWideInteropBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readWideInteropBits decodes value from data starting at bit bitOffset, the payload

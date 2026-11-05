@@ -549,6 +549,59 @@ namespace Blockdemo
             return null;
         }
 
+        // PaddedRow's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool PaddedRowFixedCheckBody(PaddedRow value)
+        {
+            if (value == null) return true;
+            if (value.LabelLength < 0 || value.LabelLength > 15) return false;
+            if (value.Label != null && (!TableWire.TextWellFormed(value.Label.AsSpan(0, value.LabelLength)) || value.Label.AsSpan(0, value.LabelLength).IndexOf((byte)0) >= 0)) return false;
+            return true;
+        }
+
+        // PaddedFrame's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool PaddedFrameFixedCheckBody(PaddedFrame value)
+        {
+            if (value == null) return true;
+            if (value.RowsCount < 0 || value.RowsCount > 64) return false;
+            if (value.Rows != null)
+            {
+                for (int i = 0; i < value.RowsCount && i < value.Rows.Length; ++i)
+                {
+                    if (!PaddedRowFixedCheckBody(value.Rows[i])) return false;
+                }
+            }
+            if (value.BlobLength < 0 || value.BlobLength > 12) return false;
+            return true;
+        }
+
+        // PaddedRow's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool PaddedRowFixedStorageBody(PaddedRow value)
+        {
+            if (value == null) return true;
+            if (value.LabelLength < 0 || value.LabelLength > 15 || (value.Label != null && value.LabelLength > value.Label.Length)) return false;
+            return true;
+        }
+
+        // PaddedFrame's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool PaddedFrameFixedStorageBody(PaddedFrame value)
+        {
+            if (value == null) return true;
+            if (value.RowsCount < 0 || value.RowsCount > 64) return false;
+            if (value.Rows != null)
+            {
+                for (int i = 0; i < value.RowsCount && i < value.Rows.Length; ++i)
+                {
+                    if (!PaddedRowFixedStorageBody(value.Rows[i])) return false;
+                }
+            }
+            if (value.BlobLength < 0 || value.BlobLength > 12 || (value.Blob != null && value.BlobLength > value.Blob.Length)) return false;
+            return true;
+        }
+
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
         // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
         // past the enum's top value. Straight-line, after the run, over STORAGE,
@@ -972,6 +1025,10 @@ namespace Blockdemo
             long need = PaddedRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PaddedRowFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!PaddedRowFixedStorageBody(values[k])) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PaddedRowFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PaddedRowFixedHash);
@@ -4915,6 +4972,10 @@ namespace Blockdemo
             long need = PaddedFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PaddedFrameFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!PaddedFrameFixedStorageBody(values[k])) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PaddedFrameFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PaddedFrameFixedHash);

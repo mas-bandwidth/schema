@@ -606,6 +606,21 @@ static SCHEMA_UNUSED int blockdemo_table_wire_utf8( const uint8_t * p, uint64_t 
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int blockdemo_table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !blockdemo_table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t blockdemo_table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -2409,6 +2424,10 @@ static SCHEMA_UNUSED int64_t schema_blockdemo_table_integrity_seal_( uint8_t * b
 
 #endif /* SCHEMA_BLOCKDEMO_TABLE_PRIMITIVES */
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 #ifndef SCHEMA_BLOCKDEMO_TABLE_REFUSE_RUNTIME
 #define SCHEMA_BLOCKDEMO_TABLE_REFUSE_RUNTIME
 typedef int blockdemo_table_refuse_reason_t;
@@ -3753,6 +3772,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_measure( const blockdemo_re
 static SCHEMA_UNUSED int64_t blockdemo_render_camera_save( const blockdemo_render_camera_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_camera_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_camera_save_body( &w, value ) ) { return -1; }
@@ -4086,6 +4106,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_save_messages(const blockde
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_camera_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -4398,6 +4421,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_measure( const blockdemo_rend
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_save( const blockdemo_render_ship_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_ship_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_ship_save_body( &w, value ) ) { return -1; }
@@ -4888,6 +4912,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_save_messages(const blockdemo
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_ship_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5247,6 +5274,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_measure( const blockdemo_re
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_save( const blockdemo_render_turret_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_turret_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_turret_save_body( &w, value ) ) { return -1; }
@@ -5730,6 +5758,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_save_messages(const blockde
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_turret_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -6064,6 +6095,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_measure( const blockdemo_r
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_save( const blockdemo_render_missile_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_missile_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_missile_save_body( &w, value ) ) { return -1; }
@@ -6430,6 +6462,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_save_messages(const blockd
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_missile_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -6731,6 +6766,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_measure( const blockd
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save( const blockdemo_render_dynamic_prop_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_dynamic_prop_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_dynamic_prop_save_body( &w, value ) ) { return -1; }
@@ -7100,6 +7136,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save_messages(const b
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_dynamic_prop_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -7404,6 +7443,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_measure( const blockde
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save( const blockdemo_render_static_prop_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_static_prop_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_static_prop_save_body( &w, value ) ) { return -1; }
@@ -7804,6 +7844,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save_messages(const bl
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_static_prop_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -8121,6 +8164,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_measure( const block
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save( const blockdemo_render_cosmetic_prop_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_cosmetic_prop_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_cosmetic_prop_save_body( &w, value ) ) { return -1; }
@@ -8542,6 +8586,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save_messages(const 
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_cosmetic_prop_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -8861,6 +8908,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_measure( const blockdemo_ren
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_save( const blockdemo_render_laser_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_laser_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_laser_save_body( &w, value ) ) { return -1; }
@@ -9198,6 +9246,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_save_messages(const blockdem
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_laser_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -9491,6 +9542,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_measure( const blockdemo
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save( const blockdemo_render_explosion_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_explosion_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_explosion_save_body( &w, value ) ) { return -1; }
@@ -9881,6 +9933,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save_messages(const bloc
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_explosion_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -10671,6 +10726,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_measure( const blockdemo_ren
 static SCHEMA_UNUSED int64_t blockdemo_render_frame_save( const blockdemo_render_frame_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_frame_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_frame_save_body( &w, value ) ) { return -1; }
@@ -11297,6 +11353,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_save_messages(const blockdem
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_frame_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -11658,6 +11717,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_measure( const blockdemo_r
 static SCHEMA_UNUSED int64_t blockdemo_render_vector3_save( const blockdemo_render_vector3_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_vector3_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_vector3_save_body( &w, value ) ) { return -1; }
@@ -11921,6 +11981,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_save_messages(const blockd
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_vector3_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -12154,6 +12217,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_measure( const blockdem
 static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_save( const blockdemo_render_quaternion_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_render_quaternion_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_render_quaternion_save_body( &w, value ) ) { return -1; }
@@ -12472,6 +12536,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_save_messages(const blo
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_render_quaternion_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -13064,6 +13131,85 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     if ( (uint64_t) value->team > 4u ) { value->team = BLOCKDEMO_TEAM_NONE; (*clamped)++; }
 }
 
+/* RenderShip's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_fixed_write_check_( const blockdemo_render_ship_t * value )
+{
+    (void) value;
+    if ( (uint64_t) value->ship_type > 3u ) { return 0; } /* an enum ordinal outside its set */
+    if ( (uint64_t) value->team > 4u ) { return 0; } /* an enum ordinal outside its set */
+    return 1;
+}
+
+/* RenderTurret's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_fixed_write_check_( const blockdemo_render_turret_t * value )
+{
+    (void) value;
+    if ( (uint64_t) value->team > 4u ) { return 0; } /* an enum ordinal outside its set */
+    return 1;
+}
+
+/* RenderMissile's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_fixed_write_check_( const blockdemo_render_missile_t * value )
+{
+    (void) value;
+    if ( (uint64_t) value->missile_type > 2u ) { return 0; } /* an enum ordinal outside its set */
+    if ( (uint64_t) value->team > 4u ) { return 0; } /* an enum ordinal outside its set */
+    return 1;
+}
+
+/* RenderDynamicProp's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_fixed_write_check_( const blockdemo_render_dynamic_prop_t * value )
+{
+    (void) value;
+    if ( (uint64_t) value->prop_type > 3u ) { return 0; } /* an enum ordinal outside its set */
+    if ( (uint64_t) value->team > 4u ) { return 0; } /* an enum ordinal outside its set */
+    return 1;
+}
+
+/* RenderStaticProp's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_fixed_write_check_( const blockdemo_render_static_prop_t * value )
+{
+    (void) value;
+    if ( (uint64_t) value->prop_type > 3u ) { return 0; } /* an enum ordinal outside its set */
+    if ( (uint64_t) value->team > 4u ) { return 0; } /* an enum ordinal outside its set */
+    return 1;
+}
+
+/* RenderCosmeticProp's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_fixed_write_check_( const blockdemo_render_cosmetic_prop_t * value )
+{
+    (void) value;
+    if ( (uint64_t) value->prop_type > 3u ) { return 0; } /* an enum ordinal outside its set */
+    if ( (uint64_t) value->team > 4u ) { return 0; } /* an enum ordinal outside its set */
+    return 1;
+}
+
+/* RenderLaser's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_fixed_write_check_( const blockdemo_render_laser_t * value )
+{
+    (void) value;
+    if ( (uint64_t) value->laser_type > 2u ) { return 0; } /* an enum ordinal outside its set */
+    if ( (uint64_t) value->team > 4u ) { return 0; } /* an enum ordinal outside its set */
+    return 1;
+}
+
+/* RenderExplosion's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_fixed_write_check_( const blockdemo_render_explosion_t * value )
+{
+    (void) value;
+    if ( (uint64_t) value->explosion_type > 2u ) { return 0; } /* an enum ordinal outside its set */
+    if ( (uint64_t) value->team > 4u ) { return 0; } /* an enum ordinal outside its set */
+    return 1;
+}
+
 /* ---- RenderCamera, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -13505,6 +13651,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_save( const blockdemo_r
     {
         if ( !schema_blockdemo_render_ship_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_blockdemo_render_ship_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_ship_fixed_hash );
@@ -13828,6 +13975,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_save( const blockdemo
     {
         if ( !schema_blockdemo_render_turret_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_blockdemo_render_turret_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_turret_fixed_hash );
@@ -14156,6 +14304,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_save( const blockdem
     {
         if ( !schema_blockdemo_render_missile_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_blockdemo_render_missile_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_missile_fixed_hash );
@@ -14486,6 +14635,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_save( const blo
     {
         if ( !schema_blockdemo_render_dynamic_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_blockdemo_render_dynamic_prop_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_dynamic_prop_fixed_hash );
@@ -14816,6 +14966,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_save( const bloc
     {
         if ( !schema_blockdemo_render_static_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_blockdemo_render_static_prop_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_static_prop_fixed_hash );
@@ -15148,6 +15299,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_save( const bl
     {
         if ( !schema_blockdemo_render_cosmetic_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_blockdemo_render_cosmetic_prop_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_cosmetic_prop_fixed_hash );
@@ -15472,6 +15624,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_save( const blockdemo_
     {
         if ( !schema_blockdemo_render_laser_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_blockdemo_render_laser_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_laser_fixed_hash );
@@ -15800,6 +15953,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_save( const blockd
     {
         if ( !schema_blockdemo_render_explosion_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_blockdemo_render_explosion_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_explosion_fixed_hash );

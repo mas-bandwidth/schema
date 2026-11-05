@@ -2413,6 +2413,74 @@ conformance-negative-control-java-framing: build/conformance-harness build-confo
 		$(JAVA_FRAMING_CONTROL)/run-share node_diamond_chain
 test-java: conformance-java-framing
 
+# THE WRITE CONTRACT'S NEGATIVE CONTROL (docs/SPEC.md §5.1; the write-refusal
+# surface, testdata/conformance/tables/FORMAT.md). The variable writer checks
+# its contract in checkWrite, asserted under -ea; this control deletes ONE
+# check, the ranged-integer one on WeaponConfig.penetration, from a COPY of the
+# generated tabledemo class, compiles that copy ahead of the conformance
+# classpath and reruns the Java leg through a driver that runs the
+# write-refusal surfaces under -ea as the real one does. `write-refusal` must go RED on the two
+# out-of-range rows and on nothing else, and `wire` must stay green.
+JAVA_WREF_CONTROL := build/conformance-java-write-refusal-control
+.PHONY: conformance-negative-control-java-write-refusal
+conformance-negative-control-java-write-refusal: build/conformance-harness build-conformance-java
+	@rm -rf $(JAVA_WREF_CONTROL) && mkdir -p $(JAVA_WREF_CONTROL)/src $(JAVA_WREF_CONTROL)/classes
+	@grep -v 'if ((long) v.penetration < 0 || (long) v.penetration > 10) return false;' \
+		build/tables-generated-java/examples/WeaponConfigVariable.java > $(JAVA_WREF_CONTROL)/src/WeaponConfigVariable.java || true
+	@test "$$(($$(wc -l < build/tables-generated-java/examples/WeaponConfigVariable.java) - $$(wc -l < $(JAVA_WREF_CONTROL)/src/WeaponConfigVariable.java)))" = 1 || \
+		{ echo "NEGATIVE CONTROL: the ranged-integer check was not deleted exactly once"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_WREF_CONTROL)/classes $(JAVA_WREF_CONTROL)/src/WeaponConfigVariable.java
+	@printf '#!/bin/sh\nea=\ncase "$$2" in write-refusal*) ea=-ea ;; esac\nexec %s $$ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
+		"$(JAVA)" "$(CURDIR)/$(JAVA_WREF_CONTROL)" "$(CURDIR)" > $(JAVA_WREF_CONTROL)/driver
+	@chmod +x $(JAVA_WREF_CONTROL)/driver
+	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_WREF_CONTROL)" > $(JAVA_WREF_CONTROL)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(JAVA_WREF_CONTROL)/drivers.txt \
+			--work $(JAVA_WREF_CONTROL)/work > $(JAVA_WREF_CONTROL)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the ranged-integer check deleted left the Java leg green"; \
+		cat $(JAVA_WREF_CONTROL)/log; exit 1; \
+	fi
+	@grep -Eq '^write-refusal +FAIL' $(JAVA_WREF_CONTROL)/log || \
+		{ cat $(JAVA_WREF_CONTROL)/log; echo "NEGATIVE CONTROL FAILED: write-refusal did not go red"; exit 1; }
+	@grep -Eq '^wire +pass ' $(JAVA_WREF_CONTROL)/log || \
+		{ cat $(JAVA_WREF_CONTROL)/log; echo "NEGATIVE CONTROL FAILED: wire did not stay green"; exit 1; }
+	@if grep '^  java / ' $(JAVA_WREF_CONTROL)/log | grep -Ev '^  java / write-refusal: wref_range_(high|low):' >/dev/null; then \
+		cat $(JAVA_WREF_CONTROL)/log; echo "NEGATIVE CONTROL FAILED: a row other than the two out-of-range ones went red"; exit 1; \
+	fi
+	@grep -E '^write-refusal ' $(JAVA_WREF_CONTROL)/log
+	@grep '^  java / ' $(JAVA_WREF_CONTROL)/log
+	@echo "negative control: the ranged-integer check deleted turns java / write-refusal RED on the out-of-range rows, wire green"
+
+# THE FIXED AND MESSAGE WRITERS' NEGATIVE CONTROLS (docs/SPEC.md §5.1; the
+# write-refusal-fixed and write-refusal-message surfaces): one ranged-integer
+# check deleted from a COPY of a generated fixed class's checkWrite, which the
+# fixed form's save and the message form's measureMessages and saveMessages
+# assert over their batch. The named surface must go RED on its two
+# out-of-range rows alone, with wire (fixed) or message (message) green
+# (test/conformance/java/write-refusal-control).
+.PHONY: conformance-negative-control-java-write-refusal-fixed
+conformance-negative-control-java-write-refusal-fixed: build/conformance-harness build-conformance-java
+	sh test/conformance/java/write-refusal-control fixed "$(JAVA)" "$(JAVAC)"
+
+.PHONY: conformance-negative-control-java-write-refusal-message
+conformance-negative-control-java-write-refusal-message: build/conformance-harness build-conformance-java
+	sh test/conformance/java/write-refusal-control message "$(JAVA)" "$(JAVAC)"
+
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1: memory is not a value): without
+# -ea the leg must refuse the rows whose count or length overruns a fixed
+# array's storage (fref_count, fref_length, mref_length), in every build and
+# before the first byte (test/conformance/java/write-refusal-release). Its
+# control drops the bound from a copy of RootConfigFixed's save and requires
+# the gate red on fref_count and fref_length.
+.PHONY: write-refusal-storage-release-java
+write-refusal-storage-release-java: build/conformance-harness build-conformance-java
+	sh test/conformance/java/write-refusal-release gate "$(JAVA)" "$(JAVAC)"
+
+test-java: write-refusal-storage-release-java
+
+.PHONY: write-refusal-storage-release-java-negative-control
+write-refusal-storage-release-java-negative-control: build/conformance-harness build-conformance-java
+	sh test/conformance/java/write-refusal-release control "$(JAVA)" "$(JAVAC)"
+
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-java/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

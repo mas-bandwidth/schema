@@ -80,8 +80,9 @@ mod contracts {
         padded[..bytes.len()].copy_from_slice(bytes);
         decode(&mut ReadStream::new(&padded, bytes.len()), value).expect("read");
     }
-    // The writer's wstring contracts — a used length outside [0, N] and an
-    // interior null among the used units (SPEC §4.12) — are `debug_assert!`,
+    // The writer's wstring contracts — a used length outside [0, N], an
+    // interior null and an unpaired surrogate among the used units (SPEC
+    // §4.12, §5.1) — are `debug_assert!`,
     // the Rust idiom serialize.rs itself uses (src/stream.rs, `misuse_check!`).
     // They panic in a debug build and are compiled out of release, so this
     // helper skips the cases entirely there rather than weakening them. The
@@ -115,9 +116,25 @@ mod contracts {
             );
         }
         value.text[0] = 0xd800;
+        expect_assert(
+            || {
+                let mut probe = wide::WideSeven::default();
+                probe.text_length = 1;
+                probe.text[0] = 0xd800;
+                let _ = wide::write_wide_seven(
+                    &mut WriteStream::new(&mut [0u8; 256]),
+                    &probe,
+                );
+            },
+            "an unpaired surrogate within the used length asserts on write",
+        );
+        // the READ refuses the same unit in every build: its wire written by
+        // hand, the length and then the unit's 32-bit group (SPEC §4.12)
         let mut buffer = [0u8; 256];
         let mut w = WriteStream::new(&mut buffer);
-        wide::write_wide_seven(&mut w, &value).expect("writer leaves pairing to read");
+        let (mut length, mut group) = (1i32, 0xd800u32);
+        w.serialize_int(&mut length, 0, 7).expect("length");
+        w.serialize_bits(&mut group, 32).expect("unit");
         w.flush();
         let size = w.data().len();
         assert!(wide::read_wide_seven(&mut ReadStream::new(&buffer, size), &mut value).is_err());

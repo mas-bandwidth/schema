@@ -9,11 +9,6 @@
 // fills it.
 const SC = new DataView(new ArrayBuffer(8));
 
-// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
-// bundlers statically replace NODE_ENV, so production bundles tree-shake
-// the checked writers out. Existence-guarded for browsers without process.
-const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
-
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
 
@@ -69,8 +64,7 @@ function validText(bytes, length) {
 // ---- type ProbeHeader: the flat codec ----
 
 // WriteProbeHeaderFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold ProbeHeaderMaxBytes.
+// writer contract. The buffer behind view must hold ProbeHeaderMaxBytes.
 export function WriteProbeHeaderFlat(view, value) {
   let v = 0, lo = 0;
   lo = (171 | ((value.version & 0x7) << 8) | (0 << 11));
@@ -120,37 +114,10 @@ export function ReadProbeHeaderFlat(view, numBits, value) {
 
 // ---- type ProbeBits: the flat codec ----
 
-function writeProbeBitsFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  lo = ((value.small & 0x1ff));
-  SC.setBigUint64(0, value.boundary, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, (lo | (v << 9)) >>> 0, true);
-  lo = v >>> 23;
-  v = SC.getUint32(4, true) & 0x1;
-  lo = (lo | (v << 9)) >>> 0;
-  SC.setBigUint64(0, value.wide, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(4, (lo | (v << 10)) >>> 0, true);
-  lo = v >>> 22;
-  v = SC.getUint32(4, true);
-  view.setUint32(8, (lo | (v << 10)) >>> 0, true);
-  lo = v >>> 22;
-  v = (((value.sensor) >>> 0)) >>> 0;
-  view.setUint32(12, (lo | (v << 10)) >>> 0, true);
-  lo = v >>> 22;
-  SC.setBigUint64(0, value.nonce, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(16, (lo | (v << 10)) >>> 0, true);
-  lo = v >>> 22;
-  v = SC.getUint32(4, true);
-  view.setUint32(20, (lo | (v << 10)) >>> 0, true);
-  lo = v >>> 22;
-  view.setUint32(24, lo, true);
-  return 26;
-}
-
-function writeProbeBitsFlatChecked(view, value) {
+// WriteProbeBitsFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ProbeBitsMaxBytes.
+export function WriteProbeBitsFlat(view, value) {
   let v = 0, lo = 0;
   lo = ((value.small & 0x1ff));
   SC.setBigUint64(0, value.boundary, true);
@@ -182,11 +149,6 @@ function writeProbeBitsFlatChecked(view, value) {
   view.setUint32(24, lo, true);
   return 26;
 }
-
-// WriteProbeBitsFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeBitsMaxBytes.
-export const WriteProbeBitsFlat = PRODUCTION ? writeProbeBitsFlatProduction : writeProbeBitsFlatChecked;
 
 // ReadProbeBitsFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -231,86 +193,10 @@ export function ReadProbeBitsFlat(view, numBits, value) {
 
 // ---- type ProbeSample: the flat codec ----
 
-function writeProbeSampleFlatProduction(view, value) {
-  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.active ? 1 : 0));
-  x = Math.fround(value.orientation);
-  n = Math.fround(Math.fround(x - -180.0) / 360.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
-  if (v > 36000) { v = 36000; }
-  lo = (lo | (v << 1)) >>> 0;
-  v = (((value.rawDelta >>> 0) >>> 0)) >>> 0;
-  view.setUint32(0, (lo | (v << 17)) >>> 0, true);
-  lo = v >>> 15;
-  SC.setBigUint64(0, value.bigDelta, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(4, (lo | (v << 17)) >>> 0, true);
-  lo = v >>> 15;
-  v = SC.getUint32(4, true);
-  view.setUint32(8, (lo | (v << 17)) >>> 0, true);
-  lo = v >>> 15;
-  wi = 12;
-  sb = 17;
-  if (value.active) {
-    v = ((value.weapon & 0xf) | ((value.hasTarget ? 1 : 0) << 4)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 5;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (5 - sb);
-    }
-    if (value.hasTarget) {
-      v = (((value.targetId) & 0xffff)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 16;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (16 - sb);
-      }
-    }
-  } else {
-    v = (((value.idleTicks) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  v = (((((value.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  for (let i0 = 0; i0 < value.samplesCount; i0++) {
-    v = (((value.samples[i0]) & 0xffff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 16;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (16 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeProbeSampleFlatChecked(view, value) {
+// WriteProbeSampleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ProbeSampleMaxBytes.
+export function WriteProbeSampleFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   lo = ((value.active ? 1 : 0));
   x = Math.fround(value.orientation);
@@ -397,11 +283,6 @@ function writeProbeSampleFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteProbeSampleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeSampleMaxBytes.
-export const WriteProbeSampleFlat = PRODUCTION ? writeProbeSampleFlatProduction : writeProbeSampleFlatChecked;
 
 // ReadProbeSampleFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -507,8 +388,7 @@ export function ReadProbeSampleFlat(view, numBits, value) {
 // ---- type ProbeRing: the flat codec ----
 
 // WriteProbeRingFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold ProbeRingMaxBytes.
+// writer contract. The buffer behind view must hold ProbeRingMaxBytes.
 export function WriteProbeRingFlat(view, value) {
   let lo = 0;
   lo = (((value.radius) & 0xffff));
@@ -531,14 +411,10 @@ export function ReadProbeRingFlat(view, numBits, value) {
 
 // ---- type ProbeSlab: the flat codec ----
 
-function writeProbeSlabFlatProduction(view, value) {
-  let lo = 0;
-  lo = (((value.width) & 0x7f) | (((value.height) & 0xff) << 7));
-  view.setUint32(0, lo, true);
-  return 2;
-}
-
-function writeProbeSlabFlatChecked(view, value) {
+// WriteProbeSlabFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ProbeSlabMaxBytes.
+export function WriteProbeSlabFlat(view, value) {
   let lo = 0;
   if (!Number.isInteger(value.width) || value.width < 0 || value.width > 100) {
     return -1;
@@ -547,11 +423,6 @@ function writeProbeSlabFlatChecked(view, value) {
   view.setUint32(0, lo, true);
   return 2;
 }
-
-// WriteProbeSlabFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeSlabMaxBytes.
-export const WriteProbeSlabFlat = PRODUCTION ? writeProbeSlabFlatProduction : writeProbeSlabFlatChecked;
 
 // ReadProbeSlabFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -573,43 +444,10 @@ export function ReadProbeSlabFlat(view, numBits, value) {
 
 // ---- union ProbeShape: the flat codec ----
 
-function writeProbeShapeFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.type & 0x3));
-  sb = 2;
-  switch (value.type) {
-    case 1: {
-      v = (((value.ring.radius) & 0xffff)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 16;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (16 - sb);
-      }
-      break;
-    }
-    case 2: {
-      v = (((value.slab.width) & 0x7f) | (((value.slab.height) & 0xff) << 7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 15;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (15 - sb);
-      }
-      break;
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeProbeShapeFlatChecked(view, value) {
+// WriteProbeShapeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ProbeShapeMaxBytes.
+export function WriteProbeShapeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
@@ -650,11 +488,6 @@ function writeProbeShapeFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteProbeShapeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeShapeMaxBytes.
-export const WriteProbeShapeFlat = PRODUCTION ? writeProbeShapeFlatProduction : writeProbeShapeFlatChecked;
 
 // ReadProbeShapeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -713,125 +546,10 @@ export function ReadProbeShapeFlat(view, numBits, value) {
 
 // ---- type ProbeCollider: the flat codec ----
 
-function writeProbeColliderFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((value.armor) & 0xff) | ((value.shape.type & 0x3) << 8));
-  sb = 10;
-  switch (value.shape.type) {
-    case 1: {
-      v = (((value.shape.ring.radius) & 0xffff)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 16;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (16 - sb);
-      }
-      break;
-    }
-    case 2: {
-      v = (((value.shape.slab.width) & 0x7f) | (((value.shape.slab.height) & 0xff) << 7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 15;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (15 - sb);
-      }
-      break;
-    }
-  }
-  v = ((value.backup.type & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  switch (value.backup.type) {
-    case 1: {
-      v = (((value.backup.ring.radius) & 0xffff)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 16;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (16 - sb);
-      }
-      break;
-    }
-    case 2: {
-      v = (((value.backup.slab.width) & 0x7f) | (((value.backup.slab.height) & 0xff) << 7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 15;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (15 - sb);
-      }
-      break;
-    }
-  }
-  v = (((value.extrasCount) & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  for (let i0 = 0; i0 < value.extrasCount; i0++) {
-    const e0 = value.extras[i0];
-    v = ((e0.type & 0x3)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
-    }
-    switch (e0.type) {
-      case 1: {
-        v = (((e0.ring.radius) & 0xffff)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 16;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (16 - sb);
-        }
-        break;
-      }
-      case 2: {
-        v = (((e0.slab.width) & 0x7f) | (((e0.slab.height) & 0xff) << 7)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 15;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (15 - sb);
-        }
-        break;
-      }
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeProbeColliderFlatChecked(view, value) {
+// WriteProbeColliderFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ProbeColliderMaxBytes.
+export function WriteProbeColliderFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.shape.type) || value.shape.type < 0 || value.shape.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
@@ -969,11 +687,6 @@ function writeProbeColliderFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteProbeColliderFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeColliderMaxBytes.
-export const WriteProbeColliderFlat = PRODUCTION ? writeProbeColliderFlatProduction : writeProbeColliderFlatChecked;
 
 // ReadProbeColliderFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1159,15 +872,10 @@ export function ReadProbeColliderFlat(view, numBits, value) {
 
 // ---- type ProbeConfig: the flat codec ----
 
-function writeProbeConfigFlatProduction(view, value) {
-  let lo = 0;
-  view.setUint32(0, (((value.retries >>> 0) >>> 0)), true);
-  lo = ((value.preferred & 0xf));
-  view.setUint32(4, lo, true);
-  return 5;
-}
-
-function writeProbeConfigFlatChecked(view, value) {
+// WriteProbeConfigFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ProbeConfigMaxBytes.
+export function WriteProbeConfigFlat(view, value) {
   let lo = 0;
   if (!Number.isInteger(value.preferred) || value.preferred < 0 || value.preferred > 15) { // headroom above the wire range cannot ride
     return -1;
@@ -1177,11 +885,6 @@ function writeProbeConfigFlatChecked(view, value) {
   view.setUint32(4, lo, true);
   return 5;
 }
-
-// WriteProbeConfigFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeConfigMaxBytes.
-export const WriteProbeConfigFlat = PRODUCTION ? writeProbeConfigFlatProduction : writeProbeConfigFlatChecked;
 
 // ReadProbeConfigFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1201,138 +904,10 @@ export function ReadProbeConfigFlat(view, numBits, value) {
 
 // ---- type ProbeArray: the flat codec ----
 
-function writeProbeArrayFlatProduction(view, value) {
-  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
-  for (let i0 = 0; i0 < 2; i0++) {
-    const e0 = value.samples[i0];
-    v = ((e0.active ? 1 : 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    x = Math.fround(e0.orientation);
-    n = Math.fround(Math.fround(x - -180.0) / 360.0);
-    if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-    v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
-    if (v > 36000) { v = 36000; }
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 16;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (16 - sb);
-    }
-    v = (((e0.rawDelta >>> 0) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    SC.setBigUint64(0, e0.bigDelta, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    if (e0.active) {
-      v = ((e0.weapon & 0xf) | ((e0.hasTarget ? 1 : 0) << 4)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 5;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (5 - sb);
-      }
-      if (e0.hasTarget) {
-        v = (((e0.targetId) & 0xffff)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 16;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (16 - sb);
-        }
-      }
-    } else {
-      v = (((e0.idleTicks) >>> 0)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-    }
-    v = (((((e0.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 3;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (3 - sb);
-    }
-    for (let i1 = 0; i1 < e0.samplesCount; i1++) {
-      v = (((e0.samples[i1]) & 0xffff)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 16;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (16 - sb);
-      }
-    }
-  }
-  v = (((value.config.retries >>> 0) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.config.preferred & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeProbeArrayFlatChecked(view, value) {
+// WriteProbeArrayFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ProbeArrayMaxBytes.
+export function WriteProbeArrayFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
     const e0 = value.samples[i0];
@@ -1474,11 +1049,6 @@ function writeProbeArrayFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteProbeArrayFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeArrayMaxBytes.
-export const WriteProbeArrayFlat = PRODUCTION ? writeProbeArrayFlatProduction : writeProbeArrayFlatChecked;
 
 // ReadProbeArrayFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1624,8 +1194,7 @@ export function ReadProbeArrayFlat(view, numBits, value) {
 // ---- type Heartbeat: the flat codec ----
 
 // WriteHeartbeatFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold HeartbeatMaxBytes.
+// writer contract. The buffer behind view must hold HeartbeatMaxBytes.
 export function WriteHeartbeatFlat() {
   return 0;
 }
@@ -1638,17 +1207,10 @@ export function ReadHeartbeatFlat() {
 
 // ---- type Test: the flat codec ----
 
-function writeTestFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  lo = (((value.testA) & 0xffff) | (((value.testB) & 0x3ff) << 16));
-  v = (((value.testC) & 0x3ff) | (((value.testD) & 0x3ff) << 10)) >>> 0;
-  view.setUint32(0, (lo | (v << 26)) >>> 0, true);
-  lo = v >>> 6;
-  view.setUint32(4, lo, true);
-  return 6;
-}
-
-function writeTestFlatChecked(view, value) {
+// WriteTestFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold TestMaxBytes.
+export function WriteTestFlat(view, value) {
   let v = 0, lo = 0;
   if (!Number.isInteger(value.testB) || value.testB < 0 || value.testB > 1000) {
     return -1;
@@ -1666,11 +1228,6 @@ function writeTestFlatChecked(view, value) {
   view.setUint32(4, lo, true);
   return 6;
 }
-
-// WriteTestFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold TestMaxBytes.
-export const WriteTestFlat = PRODUCTION ? writeTestFlatProduction : writeTestFlatChecked;
 
 // ReadTestFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1703,42 +1260,10 @@ export function ReadTestFlat(view, numBits, value) {
 
 // ---- type Block: the flat codec ----
 
-function writeBlockFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((value.dataLength) & 0x7ff));
-  sb = 16;
-  {
-    let i0 = 0;
-    for (; i0 + 4 <= value.dataLength; i0 += 4) {
-      v = (value.data[i0] | (value.data[i0 + 1] << 8) | (value.data[i0 + 2] << 16) | (value.data[i0 + 3] << 24)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-    }
-    for (; i0 < value.dataLength; i0++) {
-      v = value.data[i0];
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 8;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (8 - sb);
-      }
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeBlockFlatChecked(view, value) {
+// WriteBlockFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold BlockMaxBytes.
+export function WriteBlockFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2000) { // the length guards the slice; out-of-contract writes are refused
     return -1;
@@ -1775,11 +1300,6 @@ function writeBlockFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteBlockFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold BlockMaxBytes.
-export const WriteBlockFlat = PRODUCTION ? writeBlockFlatProduction : writeBlockFlatChecked;
 
 // ReadBlockFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1822,42 +1342,10 @@ export function ReadBlockFlat(view, numBits, value) {
 
 // ---- type Chat: the flat codec ----
 
-function writeChatFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((value.textLength) & 0x1ff));
-  sb = 16;
-  {
-    let i0 = 0;
-    for (; i0 + 4 <= value.textLength; i0 += 4) {
-      v = (value.text[i0] | (value.text[i0 + 1] << 8) | (value.text[i0 + 2] << 16) | (value.text[i0 + 3] << 24)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-    }
-    for (; i0 < value.textLength; i0++) {
-      v = value.text[i0];
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 8;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (8 - sb);
-      }
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeChatFlatChecked(view, value) {
+// WriteChatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ChatMaxBytes.
+export function WriteChatFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 256) { // the length guards the slice; out-of-contract writes are refused
     return -1;
@@ -1894,11 +1382,6 @@ function writeChatFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteChatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ChatMaxBytes.
-export const WriteChatFlat = PRODUCTION ? writeChatFlatProduction : writeChatFlatChecked;
 
 // ReadChatFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1944,30 +1427,10 @@ export function ReadChatFlat(view, numBits, value) {
 
 // ---- type ProbeReport: the flat codec ----
 
-function writeProbeReportFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  lo = (171 | ((value.header.version & 0x7) << 8) | (0 << 11));
-  SC.setBigUint64(0, value.header.probeId, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  v = SC.getUint32(4, true);
-  view.setUint32(4, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  SC.setBigUint64(0, value.flags, true);
-  v = SC.getUint32(0, true) & 0xff;
-  lo = (lo | (v << 16)) >>> 0;
-  v = (((value.echo.testA) & 0xffff) | (((value.echo.testB) & 0x3ff) << 16)) >>> 0;
-  view.setUint32(8, (lo | (v << 24)) >>> 0, true);
-  lo = v >>> 8;
-  v = (((value.echo.testC) & 0x3ff) | (((value.echo.testD) & 0x3ff) << 10)) >>> 0;
-  view.setUint32(12, (lo | (v << 18)) >>> 0, true);
-  lo = v >>> 14;
-  view.setUint32(16, lo, true);
-  return 17;
-}
-
-function writeProbeReportFlatChecked(view, value) {
+// WriteProbeReportFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ProbeReportMaxBytes.
+export function WriteProbeReportFlat(view, value) {
   let v = 0, lo = 0;
   lo = (171 | ((value.header.version & 0x7) << 8) | (0 << 11));
   SC.setBigUint64(0, value.header.probeId, true);
@@ -2001,11 +1464,6 @@ function writeProbeReportFlatChecked(view, value) {
   view.setUint32(16, lo, true);
   return 17;
 }
-
-// WriteProbeReportFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeReportMaxBytes.
-export const WriteProbeReportFlat = PRODUCTION ? writeProbeReportFlatProduction : writeProbeReportFlatChecked;
 
 // ReadProbeReportFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -2066,228 +1524,11 @@ export function ReadProbeReportFlat(view, numBits, value) {
 
 // ---- type TestData: the flat codec ----
 
-function writeTestDataFlatProduction(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
-  view.setUint32(0, (((((value.a >>> 0) - 4294967196) >>> 0) & 0xff) | (((((value.b >>> 0) - 4294967196) >>> 0) & 0xff) << 8) | (((((value.c >>> 0) - 4294967196) >>> 0) & 0xff) << 16) | ((value.d & 0xff) << 24)), true);
-  lo = ((value.e & 0xff) | ((value.f & 0xff) << 8) | ((value.g ? 1 : 0) << 16) | (((value.itemsCount) & 0x1f) << 17));
-  wi = 4;
-  sb = 22;
-  for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    v = (((value.items[i0]) & 0xff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
-    }
-  }
-  x = value.floatValue;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = Math.fround(value.compressedFloatValue);
-  n = Math.fround(Math.fround(x - 0.0) / 10.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
-  if (v > 1000) { v = 1000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 10;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  SC.setFloat64(0, value.doubleValue, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.int8Value & 0xff) & 0xff) | (((value.int16Value & 0xffff) & 0xffff) << 8) | (((value.uint8Value) & 0xff) << 24)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.uint16Value) & 0xffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  v = (((value.uint32Value) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.uint64Value, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.int64Full, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.int64Range - -1000000000000n, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true) & 0x1ff;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  for (let i0 = 0; i0 < 17; i0++) {
-    v = (((value.fixedBytes[i0]) & 0xff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
-    }
-  }
-  v = (((value.textLength) & 0xff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  {
-    let i0 = 0;
-    for (; i0 + 4 <= value.textLength; i0 += 4) {
-      v = (value.text[i0] | (value.text[i0 + 1] << 8) | (value.text[i0 + 2] << 16) | (value.text[i0 + 3] << 24)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-    }
-    for (; i0 < value.textLength; i0++) {
-      v = value.text[i0];
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 8;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (8 - sb);
-      }
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeTestDataFlatChecked(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
+// WriteTestDataFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold TestDataMaxBytes.
+export function WriteTestDataFlat(view, value) {
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return -1;
   }
@@ -2318,18 +1559,12 @@ function writeTestDataFlatChecked(view, value) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
-  x = value.floatValue;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.floatValue);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2353,6 +1588,9 @@ function writeTestDataFlatChecked(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (10 - sb);
+  }
+  if (!Number.isFinite(value.doubleValue)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
   SC.setFloat64(0, value.doubleValue, true);
   v = SC.getUint32(0, true);
@@ -2527,11 +1765,6 @@ function writeTestDataFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteTestDataFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold TestDataMaxBytes.
-export const WriteTestDataFlat = PRODUCTION ? writeTestDataFlatProduction : writeTestDataFlatChecked;
 
 // ReadTestDataFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -2779,52 +2012,32 @@ export function ReadTestDataFlat(view, numBits, value) {
 
 // ---- type CompressedProbe: the flat codec ----
 
-function writeCompressedProbeFlatProduction(view, value) {
-  let v = 0, x = 0, n = 0, lo = 0;
-  x = Math.fround(value.boundary);
-  n = Math.fround(Math.fround(x - 0.0) / 10.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
-  if (v > 1000) { v = 1000; }
-  lo = v;
-  x = Math.fround(value.offset);
-  n = Math.fround(Math.fround(x - -5.0) / 10.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
-  if (v > 10000) { v = 10000; }
-  lo = (lo | (v << 10)) >>> 0;
-  view.setUint32(0, lo, true);
-  return 3;
-}
-
-function writeCompressedProbeFlatChecked(view, value) {
-  let v = 0, x = 0, n = 0, lo = 0;
-  x = Math.fround(value.boundary);
-  if (!Number.isFinite(x)) {
-    return -1;
-  }
-  n = Math.fround(Math.fround(x - 0.0) / 10.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
-  if (v > 1000) { v = 1000; }
-  lo = v;
-  x = Math.fround(value.offset);
-  if (!Number.isFinite(x)) {
-    return -1;
-  }
-  n = Math.fround(Math.fround(x - -5.0) / 10.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
-  if (v > 10000) { v = 10000; }
-  lo = (lo | (v << 10)) >>> 0;
-  view.setUint32(0, lo, true);
-  return 3;
-}
-
 // WriteCompressedProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold CompressedProbeMaxBytes.
-export const WriteCompressedProbeFlat = PRODUCTION ? writeCompressedProbeFlatProduction : writeCompressedProbeFlatChecked;
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold CompressedProbeMaxBytes.
+export function WriteCompressedProbeFlat(view, value) {
+  let v = 0, x = 0, n = 0, lo = 0;
+  x = Math.fround(value.boundary);
+  if (!Number.isFinite(x)) {
+    return -1;
+  }
+  n = Math.fround(Math.fround(x - 0.0) / 10.0);
+  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
+  v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  if (v > 1000) { v = 1000; }
+  lo = v;
+  x = Math.fround(value.offset);
+  if (!Number.isFinite(x)) {
+    return -1;
+  }
+  n = Math.fround(Math.fround(x - -5.0) / 10.0);
+  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
+  v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
+  if (v > 10000) { v = 10000; }
+  lo = (lo | (v << 10)) >>> 0;
+  view.setUint32(0, lo, true);
+  return 3;
+}
 
 // ReadCompressedProbeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.

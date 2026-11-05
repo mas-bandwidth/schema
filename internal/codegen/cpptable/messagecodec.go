@@ -20,6 +20,7 @@ package cpptable
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -288,6 +289,7 @@ func (g *tableGen) emitMessageTextPayload(f *ir.Field, entry ir.TableVocabularyE
 		}
 		sfx := g.msgEnter()
 		defer g.msgLeave()
+		g.emitTextAssert(f, value, count, ind, "a message write")
 		g.pf("%sw.put( (uint64_t) %s, %d );\n", ind, count, width)
 		g.pf("%sfor ( int32_t i%s = 0; i%s < %s; i%s++ ) { w.put( (uint64_t) (uint16_t) %s[i%s], 16 ); } // sixteen bits a unit, no align\n", ind, sfx, sfx, count, sfx, value, sfx)
 		return
@@ -298,6 +300,7 @@ func (g *tableGen) emitMessageTextPayload(f *ir.Field, entry ir.TableVocabularyE
 		g.pf("%sbits += (int64_t) %s * 8;\n", ind, count)
 		return
 	}
+	g.emitTextAssert(f, value, count, ind, "a message write")
 	g.pf("%sw.put( (uint64_t) %s, %d );\n", ind, count, width)
 	g.pf("%sw.align(); // a string or a bytes ALIGNS before its bytes\n", ind)
 	g.pf("%sw.putbytes( (const uint8_t *) %s, %s );\n", ind, value, count)
@@ -317,6 +320,12 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 		if pass == messagePassMeasure {
 			g.pf("%sbits += %d;\n", ind, width)
 		} else {
+			if shape.Min > 0 {
+				// THE COUNT IS A RANGED INTEGER over [min, max] (§3.3): the
+				// storage invariant holds the top, and this the bottom
+				g.wroteAssert = true
+				g.pf("%sschema_assert( ( %s ) >= %d ); // a message write keeps the declared bounds (SPEC.md §5.1)\n", ind, count, shape.Min)
+			}
 			g.pf("%sw.put( (uint64_t) ( %s ) - %d, %d );\n", ind, count, shape.Min, width)
 		}
 	}
@@ -337,11 +346,14 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 		width := ir.TableMessageBitsRequired(0, m)
 		if pass == messagePassMeasure {
 			g.pf("%s", loop)
+			g.pf("%s    if ( %s.value_length < 0 || %s.value_length > %d ) { return -1; } // storage invariant\n", ind, elem, elem, m)
 			g.pf("%s    bits += %d + TableAlignBits( at + bits ) + (int64_t) %s.value_length * 8;\n", ind, width, elem)
 			g.pf("%s}\n", ind)
 			return
 		}
 		g.pf("%s", loop)
+		g.pf("%s    if ( %s.value_length < 0 || %s.value_length > %d ) { return false; } // storage invariant\n", ind, elem, elem, m)
+		g.emitTextAssert(ir.TextListValue(f), elem+".value", elem+".value_length", ind+"    ", "a message write")
 		g.pf("%s    w.put( (uint64_t) %s.value_length, %d );\n", ind, elem, width)
 		g.pf("%s    w.align(); // a string payload ALIGNS before its bytes\n", ind)
 		g.pf("%s    w.putbytes( (const uint8_t *) %s.value, %s.value_length );\n", ind, elem, elem)
@@ -471,12 +483,43 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 			g.pf(" }\n")
 			return
 		}
+		g.emitMessageRangeAssert(f, expr, ind)
 		if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
 			g.pf("%sw.put( (uint64_t) ( %s ) - %s, %d );\n", ind, expr, msgBase(shape), width)
 			return
 		}
 		g.pf("%sw.put( (uint64_t) ( %s ), %d );\n", ind, expr, width)
 	}
+}
+
+// emitMessageRangeAssert is the WRITE CONTRACT on this form (docs/SPEC.md §5.1,
+// docs/SPEC-TABLES.md §22.6): a ranged integer off its min or max, or a bits(N)
+// value wider than N, is REFUSED, never masked into the field's width, wrapped
+// or clamped. The ends are the variable writer's (tableIntBounds), a | required
+// field's included, because this form refuses nothing of its own for one.
+// schema_assert, so NDEBUG removes it and a release write pays nothing. A
+// flags mask is no ranged integer and rides masked to its declared width on
+// purpose (§3.3), so it takes none.
+func (g *tableGen) emitMessageRangeAssert(f *ir.Field, expr, ind string) {
+	if f.HasFloatRange {
+		return
+	}
+	low, high, bits := tableIntBounds(f)
+	var conds []string
+	if low != "" {
+		conds = append(conds, fmt.Sprintf("( %s ) >= %s", expr, low))
+	}
+	if high != "" {
+		conds = append(conds, fmt.Sprintf("( %s ) <= %s", expr, high))
+	}
+	if bits != "" {
+		conds = append(conds, fmt.Sprintf("( %s ) <= %s", expr, bits))
+	}
+	if len(conds) == 0 {
+		return
+	}
+	g.wroteAssert = true
+	g.pf("%sschema_assert( %s ); // a message write keeps the declared bounds (SPEC.md §5.1)\n", ind, strings.Join(conds, " && "))
 }
 
 // emitMessagePayload writes ONE optional field's payload, which is the value
@@ -490,6 +533,7 @@ func (g *tableGen) emitMessagePayload(f *ir.Field, entry ir.TableVocabularyEntry
 		count := strconv.FormatInt(f.ArrayBound, 10)
 		if f.CountedOnWire() {
 			count = fmt.Sprintf("value.%s_count", f.Name)
+			g.pf("%sif ( %s < 0 || %s > %d ) { return %s; } // storage invariant\n", ind, count, count, f.ArrayBound, messageBad(pass))
 		}
 		g.emitMessageArray(f, entry, count, "value."+f.Name+"[%s]", ind, pass)
 	case tableScalarKind(f) == tkTable:

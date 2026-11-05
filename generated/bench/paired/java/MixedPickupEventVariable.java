@@ -205,10 +205,19 @@ public final class MixedPickupEventVariable {
         }
     }
 
+    // checkWrite is the write contract buildGraph asserts (-ea): false when
+    // a field of v holds a value its schema cannot (docs/SPEC.md §5.1).
+    static boolean checkWrite(Value v) {
+        if ((v.itemId >>> 10) != 0) return false;
+        if ((long) v.amount < 0 || (long) v.amount > 255) return false;
+        return true;
+    }
+
     public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
         if (v == null) {
             return true;
         }
+        assert checkWrite(v) : "write contract: MixedPickupEvent";
         return true;
     }
 
@@ -593,6 +602,7 @@ public final class MixedPickupEventVariable {
 
     public static byte[] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
+        graph.text = true;
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;

@@ -531,6 +531,29 @@ static class Program
         }
     }
 
+    // the message of the first Debug.Assert the action fires, or null
+    static string AssertMessage(Action action)
+    {
+        TraceListener[] saved = new TraceListener[Trace.Listeners.Count];
+        Trace.Listeners.CopyTo(saved, 0);
+        Trace.Listeners.Clear();
+        Trace.Listeners.Add(new ThrowingTraceListener());
+        try
+        {
+            action();
+            return null;
+        }
+        catch (WriterAssertFired fired)
+        {
+            return fired.Message;
+        }
+        finally
+        {
+            Trace.Listeners.Clear();
+            Trace.Listeners.AddRange(saved);
+        }
+    }
+
     static bool AssertFires(Action action)
     {
         TraceListener[] saved = new TraceListener[Trace.Listeners.Count];
@@ -600,6 +623,9 @@ static class Program
                   $"finite: a float32 read of {name} (0x{bits:X8}) is refused as non_finite_float, the field unwritten");
 #if DEBUG
             Check(AssertFires(() => WritesFloat(bits)), $"finite: a float32 write of {name} is refused by the writer's assert");
+            // the generated writer asks first, before the runtime's own assert
+            Check(AssertMessage(() => WritesFloat(bits)) == "write refused: a NaN or an infinity in a float",
+                  $"finite: a float32 write of {name} is refused by the generated writer's assert");
 #else
             // the writer's contract is a Debug.Assert, compiled out of a release
             // build with every other write-side check (SPEC §5)
@@ -620,6 +646,8 @@ static class Program
                   $"finite: a float64 read of {name} (0x{bits:X16}) is refused as non_finite_float, the field unwritten");
 #if DEBUG
             Check(AssertFires(() => WritesDouble(bits)), $"finite: a float64 write of {name} is refused by the writer's assert");
+            Check(AssertMessage(() => WritesDouble(bits)) == "write refused: a NaN or an infinity in a double",
+                  $"finite: a float64 write of {name} is refused by the generated writer's assert");
 #else
             Check(WritesDouble(bits), $"release: the float64 finite contract is compiled out for {name}");
 #endif
@@ -798,6 +826,26 @@ static class Program
             ReadStream rs = new ReadStream(wire);
             Check(ReadInputPacket(rs, ref output), "read InputPacket");
             Check(EqInputPacket(output, input), "InputPacket round-trips");
+        }
+
+        // ---- a count or a length past its storage: refused in EVERY build ----
+        {
+            // the count and the length index the value's own storage, so the
+            // writer refuses one outside its declared range with false, at the
+            // field and before any index past the buffer, in Debug and Release
+            // alike (docs/SPEC.md §5.1); this leg runs both configurations
+            InputPacket over = new InputPacket();
+            over.InputsCount = (int)MaxInputsPerPacket + 1;
+            Check(!WriteInputPacket(NewWriteStream(), ref over), "storage: an InputPacket count past its storage is refused");
+            over.InputsCount = -1;
+            Check(!WriteInputPacket(NewWriteStream(), ref over), "storage: a negative InputPacket count is refused");
+            over.InputsCount = (int)MaxInputsPerPacket;
+            Check(WriteInputPacket(NewWriteStream(), ref over), "storage: an InputPacket count at its bound is written");
+            Chat chat = new Chat();
+            chat.TextLength = (int)MaxChatLength + 1;
+            Check(!WriteChat(NewWriteStream(), ref chat), "storage: a Chat length past its storage is refused");
+            chat.TextLength = -1;
+            Check(!WriteChat(NewWriteStream(), ref chat), "storage: a negative Chat length is refused");
         }
 
         // ---- TestData: the vanilla library's own test type, deterministic values ----

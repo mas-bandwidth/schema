@@ -607,6 +607,21 @@ static SCHEMA_UNUSED int blockdemo_table_wire_utf8( const uint8_t * p, uint64_t 
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int blockdemo_table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !blockdemo_table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t blockdemo_table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -2410,6 +2425,10 @@ static SCHEMA_UNUSED int64_t schema_blockdemo_table_integrity_seal_( uint8_t * b
 
 #endif /* SCHEMA_BLOCKDEMO_TABLE_PRIMITIVES */
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 #ifndef SCHEMA_BLOCKDEMO_TABLE_REFUSE_RUNTIME
 #define SCHEMA_BLOCKDEMO_TABLE_REFUSE_RUNTIME
 typedef int blockdemo_table_refuse_reason_t;
@@ -3321,6 +3340,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
 static SCHEMA_UNUSED int schema_blockdemo_padded_row_wire_label_( blockdemo_table_writer_t * w, const blockdemo_padded_row_t * value )
 {
     if ( value->label_length < 0 || value->label_length > 15 ) { return 0; }
+    schema_assert( blockdemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     blockdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -3490,6 +3510,7 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_measure( const blockdemo_padde
 static SCHEMA_UNUSED int64_t blockdemo_padded_row_save( const blockdemo_padded_row_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_padded_row_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_padded_row_save_body( &w, value ) ) { return -1; }
@@ -3877,6 +3898,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_save_message_body(blockdemo_table_
  if(value->label_length != 0) {
   blockdemo_table_bit_put(w,9,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->label_length<0 || value->label_length>15) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( blockdemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
   blockdemo_table_bit_put(w,(uint64_t)value->label_length,4);
   blockdemo_table_bit_align_write(w);
   blockdemo_table_bit_putbytes(w,value->label,value->label_length);
@@ -3969,6 +3991,9 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_save_messages(const blockdemo_
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_padded_row_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -4362,6 +4387,7 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_measure( const blockdemo_pad
 static SCHEMA_UNUSED int64_t blockdemo_padded_frame_save( const blockdemo_padded_frame_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = blockdemo_padded_frame_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( buffer, capacity, &vocabulary );
     blockdemo_table_writer_put8( &w, 1 );
     if ( !blockdemo_padded_frame_save_body( &w, value ) ) { return -1; }
@@ -4648,6 +4674,9 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_save_messages(const blockdem
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=blockdemo_padded_frame_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -4927,6 +4956,59 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_
     }
 }
 
+/* PaddedRow's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_blockdemo_padded_row_fixed_fits_( const blockdemo_padded_row_t * value )
+{
+    (void) value;
+    if ( value->label_length < 0 || value->label_length > 15 ) { return 0; } /* the length indexes the storage (§3.4) */
+    return 1;
+}
+
+/* PaddedFrame's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_blockdemo_padded_frame_fixed_fits_( const blockdemo_padded_frame_t * value )
+{
+    (void) value;
+    if ( value->rows_count < 0 || value->rows_count > 64 ) { return 0; } /* the count indexes the storage (§3.4) */
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->rows_count; ++i )
+        {
+            if ( !schema_blockdemo_padded_row_fixed_fits_( &value->rows[i] ) ) { return 0; }
+        }
+    }
+    if ( value->blob_length < 0 || value->blob_length > 12 ) { return 0; } /* the length indexes the storage (§3.4) */
+    return 1;
+}
+
+/* PaddedRow's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_padded_row_fixed_write_check_( const blockdemo_padded_row_t * value )
+{
+    (void) value;
+    if ( value->label_length < 0 || value->label_length > 15 ) { return 0; } /* the declared length is the bound (§3.4) */
+    if ( !blockdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0; }
+    return 1;
+}
+
+/* PaddedFrame's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_padded_frame_fixed_write_check_( const blockdemo_padded_frame_t * value )
+{
+    (void) value;
+    if ( value->rows_count < 0 || value->rows_count > 64 ) { return 0; } /* the declared count is the bound (§3.4) */
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->rows_count; ++i )
+        {
+            if ( !schema_blockdemo_padded_row_fixed_write_check_( &value->rows[i] ) ) { return 0; }
+        }
+    }
+    if ( value->blob_length < 0 || value->blob_length > 12 ) { return 0; } /* the declared length is the bound (§3.4) */
+    return 1;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -5073,10 +5155,12 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_save( const blockdemo_pa
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_blockdemo_padded_row_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_padded_row_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_blockdemo_padded_row_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_padded_row_fixed_hash );
@@ -6113,10 +6197,12 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_save( const blockdemo_
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_blockdemo_padded_frame_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_padded_frame_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_blockdemo_padded_frame_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_padded_frame_fixed_hash );

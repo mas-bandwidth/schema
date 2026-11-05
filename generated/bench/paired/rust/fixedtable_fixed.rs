@@ -71,6 +71,29 @@ pub fn fixed_table_fixed_finite_body(value: &FixedTableRow) -> &'static str {
     ""
 }
 
+/// FixedTable's write contract (docs/SPEC.md §5.1): the first value its declaration
+/// does not admit, named <Owner>.<field>, or "" when every value is admitted.
+#[allow(unused_variables, clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn fixed_table_check_row(value: &FixedTableRow, fixed: bool) -> &'static str {
+    let why = bench_mixed_check_row(&value.value, fixed);
+    if !why.is_empty() {
+        return why;
+    }
+    ""
+}
+
+/// FixedTable's storage bound (docs/SPEC.md §5.1), every build: the first counted
+/// array or text whose count or length is outside 0..=its storage, named
+/// <Owner>.<field>, or "" when every one is inside.
+#[allow(clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn fixed_table_check_storage(value: &FixedTableRow) -> &'static str {
+    let why = bench_mixed_check_storage(&value.value);
+    if !why.is_empty() {
+        return why;
+    }
+    ""
+}
+
 // ---- FixedTable, the fixed form ----
 
 /// The body is the SAME SIZE for every value the type can hold, so a measure
@@ -303,15 +326,29 @@ pub const fn fixed_table_fixed_measure(count: usize) -> usize {
 }
 
 /// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or
-/// None when the buffer is smaller than fixed_table_fixed_measure says or a float
-/// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3).
+/// None when the buffer is smaller than fixed_table_fixed_measure says, a float
+/// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3),
+/// or a count or a length is outside the storage it indexes (docs/SPEC.md §5.1).
 pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Option<usize> {
     let need = fixed_table_fixed_measure(values.len());
     if buffer.len() < need {
         return None;
     }
+    // THE WRITE CONTRACT (docs/SPEC.md §5.1), debug builds only: the whole
+    // batch before the first byte, so a refusal writes nothing.
+    if cfg!(debug_assertions) {
+        for value in values {
+            let why = fixed_table_check_row(value, true);
+            debug_assert!(why.is_empty(), "{why}: a value its declaration does not admit, refused on write (docs/SPEC.md section 5.1)");
+        }
+    }
     // THE WRITER'S FINITE RULE (§3.3): a refusal writes no byte.
     if values.iter().any(|value| !fixed_table_fixed_finite_body(value).is_empty()) {
+        return None;
+    }
+    // THE WRITER'S OWN STORAGE (docs/SPEC.md §5.1), every build: a count or
+    // a length past the slots it indexes refuses the batch before any byte.
+    if values.iter().any(|value| !fixed_table_check_storage(value).is_empty()) {
         return None;
     }
     buffer[..TABLE_FIXED_HEADER_BYTES].fill(0); // the seven reserved bytes, and the rest of the header

@@ -205,10 +205,19 @@ public final class MixedStatVariable {
         }
     }
 
+    // checkWrite is the write contract buildGraph asserts (-ea): false when
+    // a field of v holds a value its schema cannot (docs/SPEC.md §5.1).
+    static boolean checkWrite(Value v) {
+        if ((v.statId >>> 8) != 0) return false;
+        if ((long) v.delta < -512 || (long) v.delta > 511) return false;
+        return true;
+    }
+
     public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
         if (v == null) {
             return true;
         }
+        assert checkWrite(v) : "write contract: MixedStat";
         return true;
     }
 
@@ -585,6 +594,7 @@ public final class MixedStatVariable {
 
     public static byte[] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
+        graph.text = true;
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;

@@ -1744,14 +1744,23 @@ Leg.eq("a clamp is not `malformed`", full_report.malformed, false)
 # the verdict is a REFUSAL BY NAME (§4.5 fix 11): `:text_ill_formed` refuses the
 # whole read without setting `malformed`.
 #
-# THE POISON IS WRITTEN THROUGH THE WRITER, because it can be: the write side's
-# bounds are the used length and the live count, and neither is a content rule.
+# THE POISON IS LAID OVER A WRITTEN RECORD, because the writer refuses text
+# that is not well-formed (docs/SPEC.md §5.1): the record is written twice
+# with placeholders of the same length, and the bytes go where the two differ.
 Leg.section("ill-formed text: refuses by name (:text_ill_formed)")
 
 poison = fn bytes ->
-  Tblfx1.FX1Fixed.fx_root_fixed_save([
-    %Tblfx1.FxRoot{keep: 1234, nested: %Tblfx1.FxNested{a: 7, b: 2}, label: bytes}
-  ])
+  save = fn label ->
+    Tblfx1.FX1Fixed.fx_root_fixed_save([
+      %Tblfx1.FxRoot{keep: 1234, nested: %Tblfx1.FxNested{a: 7, b: 2}, label: label}
+    ])
+  end
+
+  n = byte_size(bytes)
+  a = save.(:binary.copy("A", n))
+  b = save.(:binary.copy("B", n))
+  at = Enum.find(0..(byte_size(a) - 1), &(:binary.at(a, &1) != :binary.at(b, &1)))
+  binary_part(a, 0, at) <> bytes <> binary_part(a, at + n, byte_size(a) - at - n)
 end
 
 for {bytes, what} <- [

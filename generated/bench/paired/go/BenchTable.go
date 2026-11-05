@@ -1533,7 +1533,11 @@ type TableMessageWriter struct {
 	TableBitWriter
 	IndexBits int64
 	Clamped   int32
+	Reason    string
 }
+
+// Refuse is the writer's refusal of a value its declaration does not admit.
+func (w *TableMessageWriter) Refuse() bool { w.Reason = "invalid_value"; return false }
 
 const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16

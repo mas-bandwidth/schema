@@ -55,6 +55,18 @@ local f32Bits = function(v) {
   scratch.seek(0); scratch.writen(v.tofloat(), 'f');
   scratch.seek(0); return scratch.readn('i') & 0xffffffff;
 };
+// finiteF32 / finiteF64: the value stores as a finite float of that width,
+// the test FixedSave asks of the whole batch before it stores a byte
+_M.finiteF32 <- function(v) {
+  if (typeof v != "float" && typeof v != "integer") return false;
+  local bits = f32Bits(v);
+  return (bits & 0x7f800000) != 0x7f800000;
+};
+_M.finiteF64 <- function(v) {
+  if (typeof v != "float" && typeof v != "integer") return false;
+  local bits = castf2i(v.tofloat());
+  return (bits & 0x7ff0000000000000) != 0x7ff0000000000000;
+};
 _M.putF32 <- function(b, at, v) {
   local bits = f32Bits(v);
   if ((bits & 0x7f800000) == 0x7f800000) return false;
@@ -138,4 +150,68 @@ _M.wideUnits <- function(b, at, n) {
     } else if (u >= 0xDC00 && u <= 0xDFFF) return null;
   }
   return units;
+};
+
+// wideIllFormed reports whether wide-text storage is NOT the text its kind
+// says, the rule wideUnits reads by: a unit that is no integer in 1..0xFFFF, a
+// high surrogate not followed by a low one, or a low surrogate first.
+_M.wideIllFormed <- function(units) {
+  if (typeof units != "array") return true;
+  local n = units.len();
+  for (local i = 0; i < n; i++) {
+    local u = units[i];
+    if (typeof u != "integer" || u <= 0 || u > 0xFFFF) return true;
+    if (u >= 0xD800 && u <= 0xDBFF) {
+      if (i + 1 >= n || typeof units[i + 1] != "integer" || units[i + 1] < 0xDC00 || units[i + 1] > 0xDFFF) return true;
+      i++;
+    } else if (u >= 0xDC00 && u <= 0xDFFF) return true;
+  }
+  return false;
+};
+
+local u64Less = function(a, b) {
+  local MIN = 0x8000000000000000;
+  return (a ^ MIN) < (b ^ MIN);
+};
+local wideLess = function(a, b, signed) {
+  local MIN = 0x8000000000000000;
+  local ah = signed ? a[1] : a[1] ^ MIN, bh = signed ? b[1] : b[1] ^ MIN;
+  if (ah != bh) return ah < bh;
+  return u64Less(a[0], b[0]);
+};
+local widePairOf = function(v) {
+  if (typeof v == "array") return v;
+  return [v, v < 0 ? -1 : 0];
+};
+
+// intOk reports whether an integer is in its declared set: its storage width
+// in bytes (a 128-bit value is its [low, high] pair), its declared range lo..hi
+// (null for none) and bits(N)'s N (0 for none). The fixed writer refuses the
+// rest as invalid_value (docs/SPEC.md §5.1).
+_M.intOk <- function(val, width, signed, bits, lo, hi) {
+  if (width == 16) {
+    if (typeof val != "array" || val.len() != 2 || typeof val[0] != "integer" || typeof val[1] != "integer") return false;
+    if (lo == null || hi == null) return true;
+    local l = widePairOf(lo), h = widePairOf(hi);
+    return !wideLess(val, l, signed) && !wideLess(h, val, signed);
+  }
+  if (typeof val != "integer") return false;
+  if (width < 8) {
+    local n = width * 8;
+    if (signed) {
+      local half = 1 << (n - 1);
+      if (val < -half || val >= half) return false;
+    } else if ((val >>> n) != 0) {
+      return false;
+    }
+  }
+  if (lo != null && hi != null) {
+    if (signed) {
+      if (val < lo || val > hi) return false;
+    } else if (u64Less(val, lo) || u64Less(hi, val)) {
+      return false;
+    }
+  }
+  if (bits > 0 && bits < 64 && (val >>> bits) != 0) return false;
+  return true;
 };

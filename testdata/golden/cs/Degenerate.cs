@@ -4,6 +4,7 @@
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Serialize;
 
@@ -131,10 +132,12 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteVec2Batch(ref WriteBatch batch, ref Vec2 value)
         {
+            Debug.Assert(double.IsFinite(value.X), "write refused: a NaN or an infinity in a double");
             if (!batch.SerializeDouble(ref value.X))
             {
                 return false;
             }
+            Debug.Assert(double.IsFinite(value.Y), "write refused: a NaN or an infinity in a double");
             if (!batch.SerializeDouble(ref value.Y))
             {
                 return false;
@@ -192,6 +195,7 @@ namespace Example
         {
             for (int i = 0; i < 2; i++)
             {
+                Debug.Assert(double.IsFinite(value.Values[i]), "write refused: a NaN or an infinity in a double");
                 if (!batch.SerializeDouble(ref value.Values[i]))
                 {
                     return false;
@@ -470,6 +474,7 @@ namespace Example
         {
             for (int i = 0; i < 2; i++)
             {
+                Debug.Assert(double.IsFinite(value.Values[i]), "write refused: a NaN or an infinity in a double");
                 if (!batch.SerializeDouble(ref value.Values[i]))
                 {
                     return false;
@@ -536,6 +541,7 @@ namespace Example
         {
             for (int i = 0; i < 2; i++)
             {
+                Debug.Assert(double.IsFinite(value.A[i]), "write refused: a NaN or an infinity in a double");
                 if (!batch.SerializeDouble(ref value.A[i]))
                 {
                     return false;
@@ -543,6 +549,7 @@ namespace Example
             }
             for (int i = 0; i < 2; i++)
             {
+                Debug.Assert(double.IsFinite(value.B[i]), "write refused: a NaN or an infinity in a double");
                 if (!batch.SerializeDouble(ref value.B[i]))
                 {
                     return false;

@@ -1,0 +1,62 @@
+#!/bin/sh
+# THE C# STORAGE RELEASE GATE (make/cs.mk write-refusal-storage-release-cs).
+# A count or a length that indexes a fixed array's storage is refused in EVERY
+# build (docs/SPEC.md §5.1), so this builds the conformance driver in its
+# Release configuration, where every Debug.Assert is compiled away, runs the
+# harness with it, and requires the storage rows to answer `refused` and their
+# in-bound twins `wrote`. A debug-only value row must answer `wrote` here, which
+# is what proves the driver really is a release build. Run from the repository
+# root after build-conformance-cs; no tracked source or normal build is touched.
+#
+# usage: write-refusal-storage-release <dotnet> <dir> [<perl-sabotage> <witness-regex>]
+# With a sabotage, the driver builds against a COPY of the generated tree with
+# that edit applied (the negative control). Exit 1 is a storage row answering
+# wrong; exit 2 is a gate that could not run.
+set -eu
+dotnet=$1 dir=$2
+rm -rf "$dir" && mkdir -p "$dir"
+gen="$PWD/build/tables-generated-cs"
+if [ $# -ge 4 ]; then
+    cp -R build/tables-generated-cs "$dir/generated"
+    files=$(grep -rlE "$4" "$dir/generated" || true)
+    [ -n "$files" ] || { echo "STORAGE GATE: the sabotage matches no generated line"; exit 2; }
+    # shellcheck disable=SC2086
+    perl -pi -e "$3" $files
+    grep -rqF 'SABOTAGED' "$dir/generated" || { echo "STORAGE GATE: the sabotage did not apply"; exit 2; }
+    gen="$PWD/$dir/generated"
+fi
+"$dotnet" build test/conformance/cs -c Release --nologo -v quiet -p:TablesGeneratedDir="$gen" \
+    -p:CardsGeneratedDir="$gen/cards" -p:BaseIntermediateOutputPath="$PWD/$dir/obj/" \
+    -o "$dir/checker" > "$dir/build.log" 2>&1 || \
+    { cat "$dir/build.log"; echo "STORAGE GATE: the Release driver does not compile"; exit 2; }
+printf '#!/bin/sh\nexec %s %s/%s/checker/schemaconformance.dll "$@"\n' "$dotnet" "$PWD" "$dir" > "$dir/driver"
+chmod +x "$dir/driver"
+printf 'cs %s/%s/driver\n' "$PWD" "$dir" > "$dir/drivers.txt"
+# the release driver writes the debug-only value rows, so the run is red by
+# design; the verdict is the rows below
+build/conformance-harness run --drivers "$dir/drivers.txt" --work "$dir/work" > "$dir/log" 2>&1 || true
+out="$dir/work/out/cs"
+[ -d "$out" ] || { cat "$dir/log"; echo "STORAGE GATE: the harness wrote no answers"; exit 2; }
+answer() { if [ -f "$out/$1/$2" ]; then cat "$out/$1/$2"; else echo missing; fi; }
+[ "$(answer write-refusal wref_range_high)" = wrote ] || \
+    { echo "STORAGE GATE: wref_range_high answers $(answer write-refusal wref_range_high), not wrote: the driver is not a release build"; exit 2; }
+bad=0
+for row in write-refusal:wref_count:refused write-refusal:wref_count_ok:wrote \
+           write-refusal:wref_length:refused write-refusal:wref_length_ok:wrote \
+           write-refusal-fixed:fref_count:refused write-refusal-fixed:fref_count_ok:wrote \
+           write-refusal-fixed:fref_length:refused write-refusal-fixed:fref_length_ok:wrote \
+           write-refusal-message:mref_length:refused write-refusal-message:mref_length_ok:wrote; do
+    surface=${row%%:*} rest=${row#*:}
+    case=${rest%%:*} want=${rest#*:}
+    got=$(answer "$surface" "$case")
+    if [ "$got" = "$want" ]; then
+        echo "release $surface $case: $got"
+    else
+        echo "release $surface $case: $got, $want expected"; bad=1
+    fi
+done
+if [ $bad -ne 0 ]; then
+    grep -A3 -E 'driver exited' "$dir/log" || true
+    echo "STORAGE GATE FAILED: a storage row is not refused in the release build"; exit 1
+fi
+echo "write-refusal-storage-release-cs: pass"

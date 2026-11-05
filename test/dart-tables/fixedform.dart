@@ -1139,13 +1139,15 @@ void fxCase() {
 //     the C++ reference's `bounds_case`, test/tables/fixedform_main.cpp:1197).
 // ---------------------------------------------------------------------------
 //
-// A RANGED SCALAR holds a bound a caller can cross. The write side's own bounds
-// are DEBUG-ONLY by rule and a range is not one of them, so a caller CAN put an
-// out-of-range value on the wire; the READ side clamps it to the declared min
-// and max and counts each end once. This case writes its poison THROUGH THE
-// WRITER (never by poking bytes) and proves both ends on the identity plan, the
-// path this form reads through. The cross-version half is retired (§5.6): a
-// peer the lineage does not hold refuses by name before a plan exists.
+// A RANGED SCALAR holds a bound a caller can cross. The writer refuses an
+// out-of-range value where its asserts run (docs/SPEC.md §5.1) and trusts in a
+// release build, so a peer CAN put one on the wire; the READ side clamps it to
+// the declared min and max and counts each end once. Where the writer refuses,
+// this case requires the refusal and forges the poison at the body's offsets;
+// where it trusts, the poison goes through the writer. Both ends are proved on
+// the identity plan, the path this form reads through. The cross-version half
+// is retired (§5.6): a peer the lineage does not hold refuses by name before a
+// plan exists.
 //
 // THE NEGATIVE HALF is the in-range value in the same two fields: it lands
 // whole and moves no counter, so the two clamps the hostile record counts are
@@ -1161,10 +1163,39 @@ void rangedScalarClampCase() {
     one.nested.a = 111;
     one.nested.b = 222;
     final w = Uint8List(fx1.fxRootFixedMeasure(1));
-    check(
-      fx1.fxRootFixedSave(<fx1home.FxRoot>[one], 1, w) == w.length,
-      'RANGE: the out-of-range record saves',
-    );
+    var asserts = false;
+    assert(asserts = true);
+    if (asserts) {
+      var refused = false;
+      try {
+        fx1.fxRootFixedSave(<fx1home.FxRoot>[one], 1, w);
+      } on AssertionError {
+        refused = true;
+      }
+      check(refused, 'RANGE: the writer refuses the out-of-range record');
+      check(w.every((b) => b == 0), 'RANGE: a refused save stores nothing');
+      // the in-range ends, then the poison over them: renamed and gone sit
+      // at body offsets 6 and 10, behind keep (u32) and narrow (u16)
+      one.renamed = 1000;
+      one.gone = 0;
+      check(
+        fx1.fxRootFixedSave(<fx1home.FxRoot>[one], 1, w) == w.length,
+        'RANGE: the in-range ends save',
+      );
+      final body = ByteData.sublistView(w, fx1.fxRootFixedHeaderBytes + 8);
+      check(
+        body.getInt32(6, Endian.little) == 1000 &&
+            body.getInt32(10, Endian.little) == 0,
+        'RANGE: renamed and gone are where the forgery writes',
+      );
+      body.setInt32(6, 5000, Endian.little);
+      body.setInt32(10, -7, Endian.little);
+    } else {
+      check(
+        fx1.fxRootFixedSave(<fx1home.FxRoot>[one], 1, w) == w.length,
+        'RANGE: the out-of-range record saves',
+      );
+    }
 
     final back = <fx1home.FxRoot>[fx1home.FxRoot()];
     final r = fx1home.TableFixedReport();
@@ -2669,17 +2700,15 @@ void planPartitionCase() {
 }
 
 // ---------------------------------------------------------------------------
-// W5: THE WRITE-SIDE BOUND CHECKS ARE DEBUG ONLY
-// (docs/FIXED-FORM-ALGORITHM.md §3.1). "`count <= Max` and `length <= N` are a
-// caller contract; a release build removes them exactly as it removes
-// `assert`, pays nothing, and clamps nothing." A counted array's count and a
-// text field's length are the WRITER's own numbers, so the writer puts them on
-// the wire as the caller spelled them and does not clamp them the way a READER
-// must clamp a stranger's. The bound is therefore an `assert` — Dart's
-// debug-only idiom, compiled out of the AOT release twin exactly as `assert` is
-// — and this case holds that fact in BOTH configurations the gate runs: the
-// JIT checked twin (`dart --enable-asserts`, where the assert is live) and the
-// AOT release twin (where it is gone).
+// W5: THE WRITE-SIDE BOUND CHECKS (docs/FIXED-FORM-ALGORITHM.md §3.1,
+// docs/SPEC.md §5.1). `count <= Max` and `length <= N` are a caller contract,
+// and the writer clamps neither: it never repairs the caller's number the way
+// a READER must clamp a stranger's. In the checked twin (`dart
+// --enable-asserts`) the contract is an `assert` and fires BY NAME. A count
+// and a length also index the value's own storage, and memory is not a value,
+// so in the AOT release twin the bound is NOT gone: the save refuses with -1
+// before the first byte, throws nothing and leaves the caller's buffer as it
+// was. This case holds both configurations the gate runs.
 // ---------------------------------------------------------------------------
 
 // asserts on = the JIT checked twin; off = the AOT release twin.
@@ -2713,6 +2742,7 @@ void writeChecksDebugOnlyCase() {
   // debug-only character.
   final legal = fx1home.FxRoot();
   legal.marksCount = 4;
+  legal.label.fillRange(0, 8, 0x61);
   legal.labelLength = 8;
   final legalBuf = Uint8List(fx1.fxRootFixedMeasure(1));
   check(
@@ -2757,23 +2787,32 @@ void writeChecksDebugOnlyCase() {
       'W5: a length over N asserts BY NAME (debug only) — got $gotLength, want $wantLength',
     );
   } else {
-    // THE RELEASE TWIN: the bound is GONE and NOTHING is clamped. A count below
-    // zero rides the wire exactly as the caller spelled it and the writer
-    // reports success — the release writer trusts, it does not refuse, and it
-    // does not repair the caller's number either.
-    final under = fx1home.FxRoot();
-    under.marksCount = -1;
-    final buf = Uint8List(fx1.fxRootFixedMeasure(1));
-    check(
-      fx1.fxRootFixedSave(<fx1home.FxRoot>[under], 1, buf) == buf.length,
-      'W5 release: the removed bound does not refuse — the record writes',
-    );
-    final view = ByteData.sublistView(buf);
-    check(
-      view.getInt32(fx1.fxRootFixedHeaderBytes + 8 + 34, Endian.little) == -1,
-      'W5 release: and CLAMPS NOTHING — the out-of-range count is on the wire '
-      'exactly as the caller set it',
-    );
+    // THE RELEASE TWIN: the storage bound stays. A count below zero or over
+    // Max and a length over N are refused with -1, nothing is thrown, nothing
+    // is clamped, and the caller's buffer is exactly as it was.
+    final probes = <String, void Function(fx1home.FxRoot)>{
+      'a count below zero': (v) => v.marksCount = -1,
+      'a count over Max': (v) => v.marksCount = 5,
+      'a length over N': (v) => v.labelLength = 9,
+    };
+    probes.forEach((what, probe) {
+      final bad = fx1home.FxRoot();
+      probe(bad);
+      final buf = Uint8List(fx1.fxRootFixedMeasure(1));
+      buf.fillRange(0, buf.length, 0xA5);
+      var wrote = 0;
+      final outcome = writeOutcome(
+        () => wrote = fx1.fxRootFixedSave(<fx1home.FxRoot>[bad], 1, buf),
+      );
+      check(
+        outcome == 'none' && wrote == -1,
+        'W5 release: $what is refused with -1 — got $outcome, $wrote',
+      );
+      check(
+        buf.every((b) => b == 0xA5),
+        'W5 release: $what is refused before the first byte is stored',
+      );
+    });
   }
 }
 

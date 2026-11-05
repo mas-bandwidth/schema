@@ -45,7 +45,24 @@
 # `dart / forgery` and `dart / block-reason` on that row alone; `block` and `block-dump` read the two
 # valid images, which carry this build's pitch, and stay green.
 #
-# usage: negative-control <walk|zero|share|wire|block|absent> [dart]     (run from the repository root)
+# write-refusal: ONE write-contract check, the ranged-integer assert on
+# WeaponConfig.penetration (internal/codegen/darttable/writecheck.go), is
+# deleted from a COPY of the generated tabledemo library, and the driver is
+# compiled against that copy with --enable-asserts, the configuration the
+# write-refusal surface answers from. The matrix must go red on
+# `dart / write-refusal` on the two out-of-range rows alone, and `wire` and
+# every other surface stay green.
+#
+# write-refusal-fixed and write-refusal-message: the same, for the fixed and
+# message writers (docs/SPEC.md §5.1). ONE ranged-integer check is deleted from
+# a COPY of a generated <T>FixedCheckBody (internal/codegen/darttable/
+# fixedwritecheck.go), which the fixed form's save and the message form's
+# MeasureMessages and SaveMessages assert over their batch: WeaponConfig's
+# penetration for the fixed writer, StorePurchase's quantity for the message
+# writer. The matrix must go red on that surface on its two out-of-range rows
+# alone, and `wire`, `message` and every other surface stay green.
+#
+# usage: negative-control <walk|zero|share|wire|block|absent|write-refusal|write-refusal-fixed|write-refusal-message> [dart]     (run from the repository root)
 set -eu
 
 mode=${1:-walk}
@@ -59,10 +76,55 @@ case "$mode" in
     block) sabotage=table-dart-block-pitch; marker='SABOTAGED: the pitch check is gone' ;;
     framing) sabotage=table-dart-id-table-cap; marker='SABOTAGED: the 4096-entry id-table maximum is gone' ;;
     absent) ;;
+    write-refusal)
+        dir=examples lib=TabledemoWire.dart rows='wref_range_(high|low)'
+        check="  assert(v.penetration >= 0 && v.penetration <= 10, 'write contract: penetration');" ;;
+    write-refusal-fixed)
+        dir=examples lib=TabledemoFixed.dart rows='fref_range_(high|low)'
+        check="  if (!(value.penetration >= 0 && value.penetration <= 10)) return false;" ;;
+    write-refusal-message)
+        dir=backend lib=BackenddemoFixed.dart rows='mref_range_(high|low)'
+        check="  if (!(value.quantity >= 1 && value.quantity <= 99)) return false;" ;;
     *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
 out=build/conformance-dart-negative-$mode
 root=$(pwd)
+
+case "$mode" in write-refusal*)
+    rm -rf "$out"
+    mkdir -p "$out/build/tables-generated-dart/$dir" "$out/test/conformance/dart"
+    for d in "$root"/build/*; do
+        [ -e "$out/build/$(basename "$d")" ] || ln -s "$d" "$out/build/$(basename "$d")"
+    done
+    for d in "$root"/build/tables-generated-dart/*; do
+        [ -e "$out/build/tables-generated-dart/$(basename "$d")" ] || ln -s "$d" "$out/build/tables-generated-dart/$(basename "$d")"
+    done
+    cp "$root"/build/tables-generated-dart/$dir/*.dart "$out/build/tables-generated-dart/$dir/"
+    copy="$out/build/tables-generated-dart/$dir/$lib"
+    n=$(grep -cxF "$check" "$copy" || true)
+    [ "$n" = 1 ] || { echo "negative control: the ranged-integer check matched $n lines, want 1 — the emitter moved" >&2; exit 1; }
+    grep -vxF "$check" "$root/build/tables-generated-dart/$dir/$lib" > "$copy"
+    cp test/conformance/dart/main.dart "$out/test/conformance/dart/main.dart"
+    "$dart" compile exe --enable-asserts -o "$out/conformance-dart-asserts" "$out/test/conformance/dart/main.dart" >/dev/null
+    printf 'dart %s/%s/conformance-dart-asserts\n' "$root" "$out" > "$out/drivers.txt"
+    if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+        cat "$out/log"
+        echo "NEGATIVE CONTROL FAILED: $mode (the ranged-integer check deleted) left dart conformance green" >&2
+        exit 1
+    fi
+    grep -Eq "^$mode *FAIL " "$out/log" || { cat "$out/log"; echo "$mode did not go red" >&2; exit 1; }
+    for surface in wire message report framing json-read json-write json-hostile cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json; do
+        [ "$surface" = "$mode" ] && continue
+        grep -Eq "^$surface *pass " "$out/log" || { cat "$out/log"; echo "surface $surface did not stay green" >&2; exit 1; }
+    done
+    if grep '^  dart / ' "$out/log" | grep -Ev "^  dart / $mode: $rows:" >/dev/null; then
+        cat "$out/log"; echo "a row other than the two out-of-range ones went red" >&2; exit 1
+    fi
+    grep -E "^$mode *(pass|FAIL) " "$out/log"
+    grep '^  dart / ' "$out/log"
+    echo "Dart $mode negative control: the ranged-integer check deleted turns dart / $mode RED on the out-of-range rows, wire and message green"
+    exit 0
+esac
 
 if [ "$mode" = absent ]; then
     # PER-CASE ABSENT (docs/PORTING.md I4): the driver's every `<case>.absent`

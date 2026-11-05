@@ -1806,6 +1806,7 @@ static partial class Program
 
         TestWireContracts();
         TestFiniteFloats();
+        TestStorageRefusal();
         TestVocabularyDistinctness();
         TestLebWireContracts();
         TestRootPayloadSizes();

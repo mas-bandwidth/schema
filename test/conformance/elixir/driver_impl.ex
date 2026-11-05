@@ -331,7 +331,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
+  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -749,10 +749,388 @@ defmodule Driver do
     end
   end
 
+  # THE WRITE CONTRACT (docs/SPEC.md §5.1, testdata/conformance/tables/FORMAT.md):
+  # each row loads its wire as the root with the `wire` surface's load/2, sets
+  # the ONE field at the path, and writes through one writer: `write-refusal`
+  # the variable-form save/2, `write-refusal-fixed` the fixed form's
+  # <root>_fixed_save/1, `write-refusal-message` the message form's
+  # save_messages/2 and `write-refusal-json` the text writer to_json/2, each
+  # over a batch of one. The BEAM has no dormant assert, so the refusal is the
+  # writer's own in every build: {:error, :invalid_value} from save/2,
+  # save_messages/2 and to_json/2, and ArgumentError from the fixed writer.
+  #
+  # A value is a map, so the path is walked through the descriptors and the
+  # leaf set whatever the representation holds: an enum is its variant NAME and
+  # a union {arm name, payload}, so a raw ordinal or tag outside the set has no
+  # name and is set as the bare integer (a union as {tag, nil}), which the map
+  # holds and the writer must refuse. A narrow text is a binary and holds any
+  # bytes. A wide text is UTF-8 in the variable form's map, so its units are
+  # spelled as generalized UTF-8, an unpaired surrogate as its three-byte form,
+  # which a binary holds and the writer must refuse; in the fixed form it is
+  # the UTF-16 units themselves. A BEAM float holds no NaN and no infinity, so
+  # a `float` row is unrepresentable.
+  defp run("write-refusal", rows, outdir) do
+    for [name, unit, root, wire, path, kind, value] <- rows(rows, "write-refusal") do
+      {mod, desc, view, loaded} = wref_load(name, unit, root, wire)
+
+      verdict =
+        wref_verdict(fn ->
+          mutated = wref_set(mod, view, desc, loaded, wref_path(path), kind, value, :variable)
+
+          case mod.save(root, mutated) do
+            {:ok, _bytes} -> "wrote\n"
+            {:error, reason} when reason in [:invalid_value, :non_finite_float] -> "refused\n"
+            other -> raise "write-refusal #{name}: save answered #{inspect(other)}"
+          end
+        end)
+
+      write(outdir, name, verdict)
+    end
+  end
+
+  # the fixed form's FixedSave over a batch of one: the loaded map becomes the
+  # record the fixed writer destructures (atom keys, enum and union atoms, a
+  # wide text as its UTF-16 units), and the writer's ArgumentError is the
+  # refusal
+  defp run("write-refusal-fixed", rows, outdir) do
+    for [name, unit, root, wire, path, kind, value] <- rows(rows, "write-refusal-fixed") do
+      {mod, desc, view, loaded} = wref_load(name, unit, root, wire)
+      {fixed, save} = fixed_saver(unit, root)
+
+      verdict =
+        wref_verdict(fn ->
+          mutated = wref_set(mod, view, desc, loaded, wref_path(path), kind, value, :fixed)
+          record = fixed_record(unit, mod.descriptors(), view, desc, mutated)
+
+          try do
+            apply(fixed, save, [[record]])
+            "wrote\n"
+          rescue
+            ArgumentError -> "refused\n"
+          end
+        end)
+
+      write(outdir, name, verdict)
+    end
+  end
+
+  # the message form's SaveMessages over a batch of one, against the
+  # vocabulary the row's connection announces: the loaded map becomes one
+  # body, each field under the reference of its own entry
+  defp run("write-refusal-message", rows, outdir) do
+    connections =
+      Map.new(rows(rows, "connection"), fn [key, unit, _hash, announcement | _] ->
+        {key, {unit, announcement}}
+      end)
+
+    for [name, connection, root, wire, path, kind, value] <- rows(rows, "write-refusal-message") do
+      {unit, announcement} = Map.fetch!(connections, connection)
+      message = message_module(unit) || raise "write-refusal-message #{name}: no TableMessage"
+      {:ok, vocab} = message.announce_read(File.read!(announcement))
+      {mod, desc, view, loaded} = wref_load(name, unit, root, wire)
+
+      verdict =
+        wref_verdict(fn ->
+          mutated = wref_set(mod, view, desc, loaded, wref_path(path), kind, value, :variable)
+          body = message_body(mod.descriptors(), vocab, desc, mutated)
+
+          case message.save_messages(vocab, [body]) do
+            {:ok, _bytes} ->
+              "wrote\n"
+
+            {:error, reason} when reason in [:invalid_value, :non_finite_float] ->
+              "refused\n"
+
+            other ->
+              raise "write-refusal-message #{name}: save_messages answered #{inspect(other)}"
+          end
+        end)
+
+      write(outdir, name, verdict)
+    end
+  end
+
+  # the text writer: `wrote` only when the text was written AND spells the
+  # value's zero byte or unit as the escape \u0000 (docs/SPEC-TABLES.md §16.3)
+  defp run("write-refusal-json", rows, outdir) do
+    for [name, unit, root, wire, path, kind, value] <- rows(rows, "write-refusal-json") do
+      {mod, desc, view, loaded} = wref_load(name, unit, root, wire)
+
+      verdict =
+        wref_verdict(fn ->
+          mutated = wref_set(mod, view, desc, loaded, wref_path(path), kind, value, :variable)
+
+          case mod.to_json(root, mutated) do
+            {:ok, text} ->
+              if String.contains?(text, "\\u0000"), do: "wrote\n", else: "unescaped\n"
+
+            {:error, reason} when reason in [:invalid_value, :non_finite_float] ->
+              "refused\n"
+
+            other ->
+              raise "write-refusal-json #{name}: to_json answered #{inspect(other)}"
+          end
+        end)
+
+      write(outdir, name, verdict)
+    end
+  end
+
   defp run(surface, _rows, _outdir) do
     IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
     System.halt(2)
   end
+
+  defp wref_load(name, unit, root, wire) do
+    mod = table_module(unit) || raise "write-refusal #{name}: unit #{unit} has no codec"
+    {:ok, loaded, _report} = mod.load(root, File.read!(wire))
+    desc = Map.fetch!(mod.descriptors(), root)
+    view = Module.concat([Macro.camelize(unit_package(unit)), "UnitView"]).unit_view()
+    {mod, desc, view, loaded}
+  end
+
+  defp wref_verdict(write) do
+    write.()
+  catch
+    :unrepresentable -> "unrepresentable\n"
+  end
+
+  # a write-refusal path: dotted field names, each with an optional [i]
+  defp wref_path(path) do
+    for seg <- String.split(path, ".") do
+      case Regex.run(~r/^([A-Za-z0-9_]+)\[([0-9]+)\]$/, seg) do
+        [_, field, i] -> {field, String.to_integer(i)}
+        nil -> {seg, nil}
+      end
+    end
+  end
+
+  defp wref_set(mod, view, desc, value, [{name, index} | rest], kind, raw, form) do
+    f =
+      Enum.find(desc.fields, &(&1.name == name)) ||
+        raise "write-refusal: #{desc.name} has no field #{name}"
+
+    current = Map.get(value, name, f.default)
+    descs = mod.descriptors()
+
+    new =
+      case {index, rest} do
+        {nil, []} ->
+          wref_leaf(view, f, current, kind, raw, form)
+
+        {nil, _} ->
+          inner = Map.fetch!(descs, f.elem)
+          wref_set(mod, view, inner, current || %{}, rest, kind, raw, form)
+
+        {i, []} ->
+          List.replace_at(current, i, wref_leaf(view, f, Enum.at(current, i), kind, raw, form))
+
+        {i, _} ->
+          inner = Map.fetch!(descs, f.elem)
+          element = wref_set(mod, view, inner, Enum.at(current, i), rest, kind, raw, form)
+          List.replace_at(current, i, element)
+      end
+
+    Map.put(value, name, new)
+  end
+
+  defp wref_leaf(_view, _f, _current, "float", _raw, _form), do: throw(:unrepresentable)
+
+  defp wref_leaf(_view, _f, _current, "int", raw, _form), do: String.to_integer(raw)
+
+  defp wref_leaf(_view, _f, current, "count", raw, _form) do
+    n = String.to_integer(raw)
+    if n < 0, do: throw(:unrepresentable)
+    list = current || []
+
+    if n <= length(list),
+      do: Enum.take(list, n),
+      else: list ++ List.duplicate(hd(list), n - length(list))
+  end
+
+  defp wref_leaf(_view, %{t: :wstring}, _current, "length", raw, :fixed) do
+    n = String.to_integer(raw)
+    if n < 0, do: throw(:unrepresentable)
+    {:fixed_units, :binary.copy(<<?a, 0>>, n)}
+  end
+
+  defp wref_leaf(_view, _f, _current, "length", raw, _form) do
+    n = String.to_integer(raw)
+    if n < 0, do: throw(:unrepresentable)
+    String.duplicate("a", n)
+  end
+
+  defp wref_leaf(view, f, _current, "ordinal", raw, _form) do
+    n = String.to_integer(raw)
+    e = Enum.find(view.enums, &(&1.name == String.trim_trailing(f.type_name, "?")))
+
+    case Enum.find(e.variants, &(&1.value == n)) do
+      %{name: name} -> name
+      nil -> n
+    end
+  end
+
+  defp wref_leaf(view, f, _current, "tag", raw, _form) do
+    n = String.to_integer(raw)
+    u = Enum.find(view.unions, &(&1.name == f.elem))
+
+    case Enum.find(u.variants, &(&1.value == n)) do
+      %{value: 0} -> nil
+      %{name: name} -> {name, nil}
+      nil -> {n, nil}
+    end
+  end
+
+  defp wref_leaf(_view, _f, _current, "bytes", raw, _form), do: Base.decode16!(raw)
+
+  defp wref_leaf(_view, _f, _current, "units", raw, form) do
+    units = for <<u::binary-size(4) <- raw>>, do: String.to_integer(u, 16)
+
+    case form do
+      :fixed -> {:fixed_units, for(u <- units, into: <<>>, do: <<u::little-16>>)}
+      :variable -> wtf8(units, <<>>)
+    end
+  end
+
+  # UTF-16 units as generalized UTF-8: a pair as its code point, and a
+  # surrogate with no partner as the three bytes UTF-8 would give it were it a
+  # character, which well-formed UTF-8 never holds
+  defp wtf8([hi, lo | rest], acc) when hi in 0xD800..0xDBFF and lo in 0xDC00..0xDFFF do
+    c = 0x10000 + Bitwise.bsl(hi - 0xD800, 10) + (lo - 0xDC00)
+    wtf8(rest, <<acc::binary, c::utf8>>)
+  end
+
+  defp wtf8([u | rest], acc) when u in 0xD800..0xDFFF do
+    import Bitwise
+
+    wtf8(
+      rest,
+      <<acc::binary, 0xE0 ||| u >>> 12, 0x80 ||| (u >>> 6 &&& 0x3F), 0x80 ||| (u &&& 0x3F)>>
+    )
+  end
+
+  defp wtf8([u | rest], acc), do: wtf8(rest, <<acc::binary, u::utf8>>)
+  defp wtf8([], acc), do: acc
+
+  # the fixed form's save for a root: <root>_fixed_save/1 on whichever module of
+  # the unit's namespace exports it
+  defp fixed_saver(unit, root) do
+    want = String.to_atom(Macro.underscore(root) <> "_fixed_save")
+    ns = Atom.to_string(Module.concat([Macro.camelize(unit_package(unit))])) <> "."
+
+    Enum.find_value(modules(), fn mod ->
+      if String.starts_with?(Atom.to_string(mod), ns) and function_exported?(mod, want, 1),
+        do: {mod, want}
+    end) || raise "no Elixir module exports #{want}/1 for unit #{unit}"
+  end
+
+  # one variable-form map as the record the fixed writer destructures
+  defp fixed_record(unit, descs, view, desc, value) do
+    value = value || %{}
+
+    Map.new(desc.fields, fn f ->
+      v = Map.get(value, f.name, f.default)
+      {String.to_atom(f.name), fixed_value(unit, descs, view, f, v)}
+    end)
+  end
+
+  defp fixed_value(_unit, _descs, _view, _f, {:fixed_units, units}), do: units
+
+  defp fixed_value(unit, descs, view, %{t: :table} = f, v),
+    do: fixed_record(unit, descs, view, Map.fetch!(descs, f.elem), v)
+
+  defp fixed_value(unit, descs, view, %{t: :list, elem_kind: 13} = f, v),
+    do: Enum.map(v, &fixed_record(unit, descs, view, Map.fetch!(descs, f.elem), &1))
+
+  defp fixed_value(unit, _descs, _view, %{t: :list, elem_kind: 30} = f, v),
+    do: Enum.map(v, &fixed_enum(unit, f, &1))
+
+  defp fixed_value(unit, _descs, _view, %{t: :enum} = f, v), do: fixed_enum(unit, f, v)
+
+  defp fixed_value(_unit, _descs, _view, %{t: :wstring}, v) when is_binary(v),
+    do: :unicode.characters_to_binary(v, :utf8, {:utf16, :little})
+
+  defp fixed_value(_unit, _descs, _view, %{t: :union}, nil), do: nil
+
+  defp fixed_value(unit, descs, view, %{t: :union} = f, {arm, payload}) do
+    u = Enum.find(view.unions, &(&1.name == f.elem))
+
+    case Enum.find(u.variants, &(&1.name == arm)) do
+      nil ->
+        {arm, payload}
+
+      %{payload: type} ->
+        case Map.fetch(descs, type) do
+          {:ok, d} ->
+            {String.to_atom(Macro.underscore(arm)), fixed_record(unit, descs, view, d, payload)}
+
+          :error ->
+            {String.to_atom(Macro.underscore(arm)), payload}
+        end
+    end
+  end
+
+  defp fixed_value(_unit, _descs, _view, _f, v), do: v
+
+  # an enum NAME as the atom the fixed writer's to_int/1 takes; a bare ordinal
+  # outside the set stays the integer, which to_int/1 refuses
+  defp fixed_enum(_unit, _f, nil), do: :none
+
+  defp fixed_enum(unit, f, name) when is_binary(name) do
+    enum =
+      Module.concat([Macro.camelize(unit_package(unit)), String.trim_trailing(f.type_name, "?")])
+
+    {:ok, atom} = enum.from_int(Map.fetch!(f.ords, name))
+    atom
+  end
+
+  defp fixed_enum(_unit, _f, n), do: n
+
+  # one variable-form map as a message body: each field under the reference of
+  # the entry its id and kind name, an enum as the reference of its variant's
+  # name, and a raw ordinal outside the set as a reference past the
+  # vocabulary, which names nothing
+  defp message_body(descs, vocab, desc, value) do
+    value = value || %{}
+
+    for f <- desc.fields do
+      v = Map.get(value, f.name, f.default)
+      {message_ref(vocab, f.id, f.kind), message_value(descs, vocab, f, v)}
+    end
+  end
+
+  defp message_ref(vocab, id, kind) do
+    refs = Enum.with_index(vocab.entries, 1)
+
+    Enum.find_value(refs, fn {e, ref} -> if e.id == id and e.kind == kind, do: ref end) ||
+      Enum.find_value(refs, fn {e, ref} -> if e.id == id, do: ref end) ||
+      raise "the vocabulary announces no entry #{id}"
+  end
+
+  defp message_value(_descs, _vocab, %{t: :bool}, v), do: if(v, do: 1, else: 0)
+
+  defp message_value(_descs, vocab, %{t: :enum} = f, v), do: message_variant(vocab, f, v)
+
+  defp message_value(descs, vocab, %{t: :table} = f, v),
+    do: message_body(descs, vocab, Map.fetch!(descs, f.elem), v)
+
+  defp message_value(descs, vocab, %{t: :list, elem_kind: 13} = f, v),
+    do: Enum.map(v, &message_body(descs, vocab, Map.fetch!(descs, f.elem), &1))
+
+  defp message_value(_descs, vocab, %{t: :list, elem_kind: 30} = f, v),
+    do: Enum.map(v, &message_variant(vocab, f, &1))
+
+  defp message_value(_descs, _vocab, %{t: :bytes}, v), do: :binary.bin_to_list(v)
+
+  defp message_value(_descs, _vocab, _f, v), do: v
+
+  defp message_variant(_vocab, _f, nil), do: 0
+  defp message_variant(_vocab, _f, "None"), do: 0
+
+  defp message_variant(vocab, f, name) when is_binary(name),
+    do: message_ref(vocab, Map.fetch!(f.by_name, name), 0)
+
+  defp message_variant(vocab, _f, _ordinal), do: length(vocab.entries) + 1
 
   # ---- the VARIABLE FORM's surfaces (docs/SPEC-TABLES.md §3, §16) ----
 

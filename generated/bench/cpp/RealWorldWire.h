@@ -56,6 +56,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
 {
     serialize_assert( int32_t( value.f001_int ) >= int32_t( -805495 ) && int32_t( value.f001_int ) <= int32_t( 805495 ) );
     write_bits( stream, uint32_t( value.f001_int ) - uint32_t( -805495 ), 21 );
+    serialize_assert( value.f002_f64 - value.f002_f64 == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.f002_f64 );
     serialize_assert( int32_t( value.f003_int ) >= int32_t( -835897 ) && int32_t( value.f003_int ) <= int32_t( 835897 ) );
     write_bits( stream, uint32_t( value.f003_int ) - uint32_t( -835897 ), 21 );
@@ -67,15 +68,18 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, uint32_t( value.f005_uint ), 13 );
     serialize_assert( int32_t( value.f006_int ) >= int32_t( -1513 ) && int32_t( value.f006_int ) <= int32_t( 1513 ) );
     write_bits( stream, uint32_t( value.f006_int ) - uint32_t( -1513 ), 12 );
+    serialize_assert( value.f007_f32 - value.f007_f32 == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.f007_f32 );
     write_bits( stream, value.f008_u64, 64 );
     serialize_assert( int32_t( value.f009_int ) >= int32_t( -22 ) && int32_t( value.f009_int ) <= int32_t( 22 ) );
     write_bits( stream, uint32_t( value.f009_int ) - uint32_t( -22 ), 6 );
+    serialize_assert( value.f010_f32 - value.f010_f32 == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.f010_f32 );
     write_bits( stream, value.f011_bits, 10 );
     write_bool( stream, value.f012_bool );
     if ( value.f012_bool )
     {
+        serialize_assert( value.f013_f32 - value.f013_f32 == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
         write_float( stream, value.f013_f32 );
         serialize_assert( int32_t( value.f014_uint ) <= int32_t( 775 ) );
         write_bits( stream, uint32_t( value.f014_uint ), 10 );
@@ -90,14 +94,18 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     }
     serialize_assert( int32_t( value.f018_int ) >= int32_t( -834 ) && int32_t( value.f018_int ) <= int32_t( 834 ) );
     write_bits( stream, uint32_t( value.f018_int ) - uint32_t( -834 ), 11 );
+    serialize_assert( value.f019_f64 - value.f019_f64 == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.f019_f64 );
+    serialize_assert( value.f020_f32 - value.f020_f32 == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.f020_f32 );
     {
         uint32_t fixed_value = value.f021_ufixed;
         write_fixed( stream, fixed_value, 20, 12, 0, 25141 );
     }
+    serialize_assert( value.f022_f32 - value.f022_f32 == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.f022_f32 );
     write_bits( stream, value.f023_bits, 25 );
+    serialize_assert( value.f024_f32 - value.f024_f32 == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.f024_f32 );
     {
         int16_t fixed_value = value.f025_fixed;
@@ -110,6 +118,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     }
     write_bits( stream, value.f028_bits, 4 );
     write_bits( stream, value.f029_i64, 64 );
+    serialize_assert( value.f030_f32 - value.f030_f32 == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.f030_f32 );
     write_bits( stream, value.f031_bits, 1 );
     serialize_assert( int32_t( value.f032_int ) >= int32_t( -3 ) && int32_t( value.f032_int ) <= int32_t( 3 ) );
@@ -134,6 +143,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bool( stream, value.f043_bool );
     if ( value.f043_bool )
     {
+        serialize_assert( value.f044_f32 - value.f044_f32 == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
         write_float( stream, value.f044_f32 );
         write_bits( stream, value.f045_bits, 12 );
         serialize_assert( int32_t( value.f046_uint ) >= int32_t( 0 ) && int32_t( value.f046_uint ) <= int32_t( 76063 ) );
@@ -141,6 +151,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
         serialize_assert( int32_t( value.f047_int ) >= int32_t( -430976 ) && int32_t( value.f047_int ) <= int32_t( 430976 ) );
         write_bits( stream, uint32_t( value.f047_int ) - uint32_t( -430976 ), 20 );
     }
+    serialize_assert( value.f048_f64 - value.f048_f64 == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.f048_f64 );
     {
         uint16_t fixed_value = value.f049_ufixed;
@@ -152,6 +163,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
         write_bool( stream, value.f051_bool );
         serialize_assert( int32_t( value.f052_int ) >= int32_t( -57 ) && int32_t( value.f052_int ) <= int32_t( 57 ) );
         write_bits( stream, uint32_t( value.f052_int ) - uint32_t( -57 ), 7 );
+        serialize_assert( value.f053_f32 - value.f053_f32 == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
         write_float( stream, value.f053_f32 );
         serialize_assert( int32_t( value.f054_int ) >= int32_t( -35 ) && int32_t( value.f054_int ) <= int32_t( 35 ) );
         write_bits( stream, uint32_t( value.f054_int ) - uint32_t( -35 ), 7 );
@@ -161,7 +173,9 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, uint32_t( value.f056_int ) - uint32_t( -13 ), 5 );
     serialize_assert( int32_t( value.f057_int ) >= int32_t( -15 ) && int32_t( value.f057_int ) <= int32_t( 15 ) );
     write_bits( stream, uint32_t( value.f057_int ) - uint32_t( -15 ), 5 );
+    serialize_assert( value.f058_f32 - value.f058_f32 == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.f058_f32 );
+    serialize_assert( value.f059_f64 - value.f059_f64 == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.f059_f64 );
     write_bits( stream, value.f060_bits, 8 );
     {
@@ -226,6 +240,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, value.f085_bits, 21 );
     serialize_assert( int32_t( value.f086_uint ) <= int32_t( 399 ) );
     write_bits( stream, uint32_t( value.f086_uint ), 9 );
+    serialize_assert( value.f087_f64 - value.f087_f64 == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.f087_f64 );
     serialize_assert( int32_t( value.f088_int ) >= int32_t( -694 ) && int32_t( value.f088_int ) <= int32_t( 694 ) );
     write_bits( stream, uint32_t( value.f088_int ) - uint32_t( -694 ), 11 );

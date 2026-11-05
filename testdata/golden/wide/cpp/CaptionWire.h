@@ -54,6 +54,7 @@ namespace wide {
 
 SCHEMA_WRITE_INLINE bool WriteLine( serialize::WriteStream & stream, const Line & value )
 {
+    if ( value.text_length < 0 || value.text_length > 4 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
         serialize_assert( value.text[i] != 0 );

@@ -207,7 +207,17 @@ int main(void)
     value[3].bounded = serialize_int128_from_int64(2000);   /* past the max: clamped to 1000 */
     need = signed_wide_fixed_measure(4);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
-    CHECK(signed_wide_fixed_save(value, 4, file, (int64_t)sizeof(file)) == need);
+    {
+        /* THE WRITER REFUSES A VALUE OFF ITS DECLARATION (docs/SPEC.md §5.1),
+           so the clamp's input is stored by each record's own store over a
+           batch saved at the declared defaults, which are in range */
+        SignedWide lawful[4];
+        int64_t k;
+        for (k = 0; k < 4; k++) signed_wide_reset(&lawful[k]);
+        CHECK(signed_wide_fixed_save(lawful, 4, file, (int64_t)sizeof(file)) == need);
+        for (k = 0; k < 4; k++)
+            schema_probe_signed_wide_fixed_write_body_(file + kTableFixedHeaderBytes + 4 + (int64_t)sizeof(signed_wide_fixed_layout) + k * signed_wide_fixed_record_bytes + 8, &value[k]);
+    }
     {
         /* the NONZERO HIGH 64-BIT LIMB ON THE FIXED WIRE: record 2's wide
            field rides as its 16-byte storage image, low half first
@@ -318,7 +328,17 @@ int main(void)
     value[1].v = 4096;  /* one past the bound: the read-side pass clamps to 4095 */
     need = bits_value_fixed_measure(2);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
-    CHECK(bits_value_fixed_save(value, 2, file, (int64_t)sizeof(file)) == need);
+    {
+        /* THE WRITER REFUSES A VALUE OFF ITS DECLARATION (docs/SPEC.md §5.1),
+           so the clamp's input is stored by each record's own store over a
+           batch saved at the declared defaults, which are in range */
+        BitsValue lawful[2];
+        int64_t k;
+        for (k = 0; k < 2; k++) bits_value_reset(&lawful[k]);
+        CHECK(bits_value_fixed_save(lawful, 2, file, (int64_t)sizeof(file)) == need);
+        for (k = 0; k < 2; k++)
+            schema_probe_bits_value_fixed_write_body_(file + kTableFixedHeaderBytes + 4 + (int64_t)sizeof(bits_value_fixed_layout) + k * bits_value_fixed_record_bytes + 8, &value[k]);
+    }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
     n = bits_value_fixed_load_tolerant(loaded, 2, file, need, plan, 64, NULL, &report);
@@ -471,7 +491,17 @@ int main(void)
     value[4].v = -131072;  /* -2.0: clamped to the raw min -65536 */
     need = fixed_point_fixed_measure(5);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
-    CHECK(fixed_point_fixed_save(value, 5, file, (int64_t)sizeof(file)) == need);
+    {
+        /* THE WRITER REFUSES A VALUE OFF ITS DECLARATION (docs/SPEC.md §5.1),
+           so the clamp's input is stored by each record's own store over a
+           batch saved at the declared defaults, which are in range */
+        FixedPoint lawful[5];
+        int64_t k;
+        for (k = 0; k < 5; k++) fixed_point_reset(&lawful[k]);
+        CHECK(fixed_point_fixed_save(lawful, 5, file, (int64_t)sizeof(file)) == need);
+        for (k = 0; k < 5; k++)
+            schema_probe_fixed_point_fixed_write_body_(file + kTableFixedHeaderBytes + 4 + (int64_t)sizeof(fixed_point_fixed_layout) + k * fixed_point_fixed_record_bytes + 8, &value[k]);
+    }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
     n = fixed_point_fixed_load_tolerant(loaded, 5, file, need, plan, 64, NULL, &report);
@@ -522,7 +552,17 @@ int main(void)
     value[2].w = serialize_uint128_make(1, 1);  /* one past it: clamped to raw 2^64 */
     need = u_fixed_point_fixed_measure(3);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
-    CHECK(u_fixed_point_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
+    {
+        /* THE WRITER REFUSES A VALUE OFF ITS DECLARATION (docs/SPEC.md §5.1),
+           so the clamp's input is stored by each record's own store over a
+           batch saved at the declared defaults, which are in range */
+        UFixedPoint lawful[3];
+        int64_t k;
+        for (k = 0; k < 3; k++) u_fixed_point_reset(&lawful[k]);
+        CHECK(u_fixed_point_fixed_save(lawful, 3, file, (int64_t)sizeof(file)) == need);
+        for (k = 0; k < 3; k++)
+            schema_probe_u_fixed_point_fixed_write_body_(file + kTableFixedHeaderBytes + 4 + (int64_t)sizeof(u_fixed_point_fixed_layout) + k * u_fixed_point_fixed_record_bytes + 8, &value[k]);
+    }
     {
         /* the NONZERO HIGH 64-BIT LIMB ON THE FIXED WIRE: record 1's wide
            ufixed rides as its 16-byte raw scaled integer, low half first

@@ -196,7 +196,8 @@ if (mode == "list") {
   foreach (name in ["wire", "report", "framing", "json-read", "json-write", "json-hostile",
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
-                     "cook-write", "message", "retain", "retain-save"]) print(name + "\n");
+                     "cook-write", "message", "retain", "retain-save", "write-refusal",
+                     "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]) print(name + "\n");
   return;
 }
 
@@ -709,6 +710,204 @@ if (mode == "retain" || mode == "retain-save") {
     for (local i = 0; i < n; i++) if (again[i] != out[i]) throw name + ": the save is not repeatable";
     if (saves) writeBytes(outdir + "/" + name, out);
     else writeText(outdir + "/" + name, retained + "," + lost + "," + unknown + " " + saveLost + "\n");
+  }
+  return;
+}
+
+// THE WRITE CONTRACT (testdata/conformance/tables/FORMAT.md, `write-refusal`;
+// docs/SPEC.md §5.1): load the wire as the wire surface does, set the ONE
+// field at <path> by <kind>, and write it through one writer, a line kind and
+// a surface each: `write-refusal` the variable-form Save (a refusal is a null
+// save holding its reason on SaveReason), `write-refusal-fixed` FixedSave as a
+// batch of one (-1 holding FixedReason), `write-refusal-message` SaveMessages
+// as a batch of one, its <unit> column a connection whose announcement is read
+// first (-1 holding the report's reason), and `write-refusal-json` ToJson,
+// which `wrote` only when the text spells the value's zero as \u0000. A
+// nameless refusal throws. A derived line is
+// `<kind of line> <case> <unit> <root> <wire> <path> <kind> <value>`.
+if (mode == "write-refusal" || mode == "write-refusal-fixed" ||
+    mode == "write-refusal-message" || mode == "write-refusal-json") {
+  local connections = {};
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() >= 5 && f[0] == "connection") connections[f[1]] <- { unit = f[2], file = f[4] };
+  }
+  local hexByte = function(text, at) {
+    local v = 0;
+    for (local i = at; i < at + 2; i++) {
+      local c = text[i];
+      v = v * 16 + (c <= 57 ? c - 48 : (c >= 97 ? c - 87 : c - 55));
+    }
+    return v;
+  };
+  // a path segment: the field's schema name and its element index, or -1
+  local segment = function(text) {
+    local open = text.find("[");
+    if (open == null) return [text, -1];
+    return [text.slice(0, open), text.slice(open + 1, text.len() - 1).tointeger()];
+  };
+  local segments = function(path) {
+    local out = [];
+    local start = 0;
+    for (local i = 0; i <= path.len(); i++) {
+      if (i == path.len() || path[i] == 46) { out.append(segment(path.slice(start, i))); start = i + 1; }
+    }
+    return out;
+  };
+  local fieldNamed = function(c, name) {
+    foreach (fd in c.fields) if (fd.name == name) return fd;
+    throw "main.nut: " + c.name + " has no field " + name;
+  };
+  // walk to the last segment: [the instance holding it, its descriptor, its field]
+  local resolve = function(T, root, v, path) {
+    local segs = segments(path);
+    local c = T.Descriptors[root];
+    local inst = v;
+    for (local i = 0; i < segs.len() - 1; i++) {
+      local fd = fieldNamed(c, segs[i][0]);
+      local val = inst[fd.member];
+      if (segs[i][1] >= 0) {
+        val = val[segs[i][1]];
+        c = T.Descriptors[fd.elem.table];
+      } else if (fd.shape == "tab") {
+        c = T.Descriptors[fd.table];
+      } else {
+        throw "main.nut: " + path + " steps through " + fd.name + ", which holds no table";
+      }
+      inst = val;
+    }
+    local last = segs[segs.len() - 1];
+    return [inst, fieldNamed(c, last[0]), last[1]];
+  };
+  local inf = 1e308 * 10.0;
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 8 || f[0] != mode) continue;
+    local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4];
+    local path = f[5]; local kind = f[6]; local value = f[7];
+    local conn = null;
+    if (mode == "write-refusal-message") {
+      if (!(unit in connections)) throw cname + ": no connection " + unit;
+      conn = connections[unit];
+      unit = conn.unit;
+    }
+    if (!generated(unit)) { writeAbsent(cname); continue; }
+    local opened = openUnit(unit);
+    local T = opened[1];
+    local L = opened[0].require("schema_table_load");
+    local S = opened[0].require("schema_table_save");
+    local wire = readBytes(wirepath);
+    local load = function() {
+      local report = newReport();
+      local v = L.loadTolerant(T, root, wire, report);
+      if (v == null || report.refused) throw cname + ": load refused " + wirepath;
+      return v;
+    };
+    local v = load();
+    local at = resolve(T, root, v, path);
+    local inst = at[0], fd = at[1], index = at[2];
+    local set = function(x) {
+      if (index >= 0) inst[fd.member][index] = x;
+      else inst[fd.member] = x;
+    };
+    if (kind == "int") {
+      set(value.tointeger());
+    } else if (kind == "float") {
+      set(value == "nan" ? inf - inf : (value == "-inf" ? -inf : inf));
+    } else if (kind == "count") {
+      // a new element is a copy of element 0: element 0 of a fresh load, so
+      // no two slots share one instance
+      local n = value.tointeger();
+      local arr = inst[fd.member];
+      while (arr.len() > n) arr.pop();
+      while (arr.len() < n) {
+        local fresh = resolve(T, root, load(), path);
+        arr.append(fresh[0][fresh[1].member][0]);
+      }
+    } else if (kind == "length") {
+      local n = value.tointeger();
+      if (fd.shape == "str") {
+        local text = "";
+        for (local i = 0; i < n; i++) text += "a";
+        set(text);
+      } else if (fd.shape == "bytes") {
+        local b = blob(n);
+        for (local i = 0; i < n; i++) b[i] = 97;
+        set(b);
+      } else if (fd.shape == "wstr") {
+        local units = [];
+        for (local i = 0; i < n; i++) units.append(97);
+        set(units);
+      } else {
+        throw cname + ": " + path + " is no text";
+      }
+    } else if (kind == "ordinal") {
+      // an enum slot holds its variant's name, null for None (ordinal 0); an
+      // ordinal past the variants has no name, and the slot holds the bare
+      // integer, which the writer must refuse
+      local k = value.tointeger();
+      local variants = index >= 0 ? fd.elem.variants : fd.variants;
+      if (k == 0) set(null);
+      else set(k > 0 && k <= variants.len() ? variants[k - 1][0] : k);
+    } else if (kind == "tag") {
+      local t = value.tointeger();
+      local u = inst[fd.member];
+      if (index >= 0) u = u[index];
+      u.Type = t;
+      foreach (arm in T[fd.table + "Descriptor"].arms) {
+        if (arm.tag != t || arm.payload == null) continue;
+        local p = arm.payload;
+        u[p.member] = p.shape == "tab" ? T.Descriptors[p.table].make() : p.def;
+      }
+    } else if (kind == "bytes") {
+      // a narrow text's exact bytes: a string holds any byte, a bytes field
+      // is its blob
+      if (fd.shape == "str") {
+        local text = "";
+        for (local i = 0; i < value.len(); i += 2) text += hexByte(value, i).tochar();
+        set(text);
+      } else if (fd.shape == "bytes") {
+        local b = blob(value.len() / 2);
+        for (local i = 0; i < value.len(); i += 2) b[i / 2] = hexByte(value, i);
+        set(b);
+      } else {
+        throw cname + ": " + path + " is no narrow text";
+      }
+    } else if (kind == "units") {
+      if (fd.shape != "wstr") throw cname + ": " + path + " is no wide text";
+      local units = [];
+      for (local i = 0; i < value.len(); i += 4) units.append(hexByte(value, i) * 256 + hexByte(value, i + 2));
+      set(units);
+    } else {
+      throw cname + ": no write-refusal kind " + kind;
+    }
+    local refused = false;
+    if (mode == "write-refusal") {
+      if (S.save(T, root, v) == null) {
+        if (S.SaveReason == null) throw cname + ": save refused the value and named no reason";
+        refused = true;
+      }
+    } else if (mode == "write-refusal-fixed") {
+      if (!((root + "FixedSave") in T)) throw cname + ": " + root + " has no FixedSave";
+      if (T[root + "FixedSave"](blob(1 << 16), [v]) < 0) {
+        if (T.FixedReason == null) throw cname + ": FixedSave refused the value and named no reason";
+        refused = true;
+      }
+    } else if (mode == "write-refusal-message") {
+      local vocab = {};
+      local ar = {};
+      if (!T.AnnounceRead(vocab, readBytes(conn.file), ar)) throw cname + ": AnnounceRead refused: " + (("reason" in ar) ? ar.reason : "?");
+      local report = {};
+      if (T[root + "SaveMessages"]([v], blob(1 << 16), report) < 0) {
+        if (!("reason" in report) || report.reason == null) throw cname + ": SaveMessages refused the value and named no reason";
+        refused = true;
+      }
+    } else {
+      local text = T[root + "ToJson"](v);
+      if (text == null) refused = true;
+      else if (text.find("\\u0000") == null) throw cname + ": ToJson wrote the text without \\u0000";
+    }
+    writeText(outdir + "/" + cname, refused ? "refused\n" : "wrote\n");
   }
   return;
 }

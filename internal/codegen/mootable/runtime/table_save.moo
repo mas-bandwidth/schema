@@ -153,11 +153,13 @@ end
 -- ---- VALUES (docs/PORT-MOO.md, THE VALUE MAPPING) -------------------------
 
 -- the used bytes of a wstring(N) or bytes(N) value: its buffer and the length
--- beside it, in BYTES (a wstring's Length is in code units)
-local function used(v: any, slot: string, wide: boolean?): (buffer?, number)
+-- beside it, in BYTES (a wstring's Length is in code units), and whether that
+-- length is one the buffer holds. A negative length, or one past the buffer,
+-- is outside the value's contract, and the save refuses it (§5).
+local function used(v: any, slot: string, wide: boolean?): (buffer?, number, boolean)
 	local b = v[slot]
 	if type(b) ~= "buffer" then
-		return nil, 0
+		return nil, 0, true
 	end
 	local n = v[slot .. "Length"]
 	if type(n) ~= "number" then
@@ -166,10 +168,10 @@ local function used(v: any, slot: string, wide: boolean?): (buffer?, number)
 	if wide then
 		n *= 2
 	end
-	if n > buffer.len(b) or n < 0 then
-		n = buffer.len(b)
+	if n > buffer.len(b) or n < 0 or n ~= math.floor(n) then
+		return b, 0, false
 	end
-	return b, n
+	return b, n, true
 end
 
 local function equals_def(b: buffer?, n: number, def: string?): boolean
@@ -183,8 +185,23 @@ local function equals_def(b: buffer?, n: number, def: string?): boolean
 	return buffer.readstring(b, 0, n) == d
 end
 
+-- A COUNTED ARRAY'S COUNT IS IN [0, its bound] (§2.9): a count past the
+-- bound, negative or not an integer is outside the value's contract, and the
+-- save refuses it (§5) before any walk reads an element past storage.
+local function count_ok(fd: any, holder: any): boolean
+	if fd.array ~= "counted" then
+		return true
+	end
+	local c = holder[fd.slot .. "Count"]
+	if c == nil then
+		return true
+	end
+	return type(c) == "number" and c >= 0 and c <= fd.bound and c == math.floor(c)
+end
+
 -- the live count of an array: a list's length, a counted array's count beside
--- it, a fixed array's bound (§2.9)
+-- it, a fixed array's bound (§2.9). The walks iterate at most the bound; the
+-- writer refuses a count count_ok does not hold.
 local function live_count(fd: any, holder: any, val: any): number
 	if fd.array == "list" then
 		if type(val) == "buffer" then
@@ -483,12 +500,22 @@ local function enum_ref(c: any, e: any, val: any): number
 end
 
 -- one integer-shaped value at its kind's width (§2.11, §3)
+-- A VALUE OUTSIDE ITS DECLARED SET IS REFUSED IN EVERY BUILD (§4, §5): one
+-- its kind's width cannot hold, one off its declared range, and a bits(N)
+-- value past 2^N - 1, each named invalid_value.
 local function write_int(c: any, w: any, e: any, val: any, named: any): boolean
 	local x = V.toRaw(e, val)
 	if x == nil then
 		return refuse(c, "invalid_value", named)
 	end
-	w_raw_int(w, e.kw, e.signed == true, x)
+	local signed = e.signed == true
+	if e.lo ~= nil and e.hi ~= nil and (V.rawCmp(x, e.lo, e.kw, signed) < 0 or V.rawCmp(x, e.hi, e.kw, signed) > 0) then
+		return refuse(c, "invalid_value", named)
+	end
+	if e.bits ~= nil and e.bits < e.kw * 8 and V.rawCmp(x, V.bitsCap(e.bits, e.kw), e.kw, signed) > 0 then
+		return refuse(c, "invalid_value", named)
+	end
+	w_raw_int(w, e.kw, signed, x)
 	return true
 end
 
@@ -623,7 +650,7 @@ end
 -- a positional array body under kind 14: the element kind, the count, then
 -- the elements (§2.9, §3)
 local function write_array(c: any, fd: any, w: any, holder: any, val: any, count: number): boolean
-	if fd.bound ~= nil and fd.bound > 0 and fd.array ~= "list" and count > fd.bound then
+	if count < 0 or (fd.bound ~= nil and fd.bound > 0 and fd.array ~= "list" and count > fd.bound) then
 		return refuse(c, "invalid_value", fd)
 	end
 	header(c, w, fd.id, 14)
@@ -769,7 +796,10 @@ local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
 		w_leb(w, if not val then 0 else c.nodes.index[val])
 	elseif s == "str" and arm.wide then
-		local b, n = used(u, arm.slot, true)
+		local b, n, fits = used(u, arm.slot, true)
+		if not fits then
+			return refuse(c, "invalid_value", arm)
+		end
 		if b ~= nil and n > 0 then
 			if not V.wide(b, 0, n) or (arm.bound ~= nil and n // 2 > arm.bound) then
 				return refuse(c, "invalid_value", arm)
@@ -783,13 +813,19 @@ local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 		end
 		w_str(w, text)
 	elseif s == "bytes" then
-		local b, n = used(u, arm.slot, false)
+		local b, n, fits = used(u, arm.slot, false)
+		if not fits or (arm.bound ~= nil and arm.bound > 0 and n > arm.bound) then
+			return refuse(c, "invalid_value", arm)
+		end
 		w_u8(w, 6) -- bytes ride as an array of u8 (§2.5)
 		w_leb(w, n)
 		if b ~= nil and n > 0 then
 			w_buf(w, b, 0, n)
 		end
 	elseif s == "arr" then
+		if not count_ok(arm, u) then
+			return refuse(c, "invalid_value", arm)
+		end
 		local count = live_count(arm, u, val)
 		w_u8(w, arm.ek)
 		w_leb(w, count)
@@ -868,6 +904,9 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	-- holds. A required integer whose declared range excludes its stored
 	-- value has no wire value, and the save refuses, as Go's writer does.
 	local required = fd.required == true
+	if s == "arr" and not count_ok(fd, v) then
+		return refuse(c, "invalid_value", fd)
+	end
 	if required and s == "int" and fd.lo ~= nil then
 		local x = V.toRaw(fd, val)
 		if x ~= nil and (V.rawCmp(x, fd.lo, fd.kw, fd.signed == true) < 0 or V.rawCmp(x, fd.hi, fd.kw, fd.signed == true) > 0) then
@@ -915,8 +954,8 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		end
 		if s == "arr" or s == "bytes" then
 			if s == "bytes" then
-				local b, n = used(v, fd.slot, false)
-				if n > fd.bound then
+				local b, n, fits = used(v, fd.slot, false)
+				if not fits or n > fd.bound then
 					return refuse(c, "invalid_value", fd)
 				end
 				header(c, w, fd.id, 14)
@@ -943,8 +982,8 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		end
 		header(c, w, fd.id, fd.k)
 		if s == "str" and fd.wide then
-			local b, n = used(v, fd.slot, true)
-			if b ~= nil and (n // 2 > fd.bound or not V.wide(b, 0, n)) then
+			local b, n, fits = used(v, fd.slot, true)
+			if not fits or (b ~= nil and (n // 2 > fd.bound or not V.wide(b, 0, n))) then
 				return refuse(c, "invalid_value", fd)
 			end
 			w_leb(w, n)
@@ -965,7 +1004,10 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		return write_keyed(c, fd, w, val)
 	end
 	if s == "str" and fd.wide then
-		local b, n = used(v, fd.slot, true)
+		local b, n, fits = used(v, fd.slot, true)
+		if not fits then
+			return refuse(c, "invalid_value", fd)
+		end
 		if not required and n == 0 then
 			return true -- wide text takes no specified default
 		end
@@ -993,7 +1035,10 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		return true
 	end
 	if s == "bytes" then
-		local b, n = used(v, fd.slot, false)
+		local b, n, fits = used(v, fd.slot, false)
+		if not fits then
+			return refuse(c, "invalid_value", fd)
+		end
 		if not required and equals_def(b, n, fd.def) then
 			return true
 		end

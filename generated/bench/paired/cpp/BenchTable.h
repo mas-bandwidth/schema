@@ -1074,6 +1074,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -6027,51 +6044,61 @@ BENCH_TABLE_INLINE bool MixedEntitySaveBody( TableWriter & w, TableIds & ids, co
     if ( value.entity_id != 0 )
     {
         w.header( ids.ref_at( 11, 0x23fcfd6678e36712ull ), 7 ); // entity_id
+        schema_assert( value.entity_id <= 4095ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.entity_id ) );
     }
     if ( value.pos_x != 0 )
     {
         w.header( ids.ref_at( 65, 0xcb4b37357667310eull ), 4 ); // pos_x
+        schema_assert( value.pos_x >= -16383 && value.pos_x <= 16383 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.pos_x ) );
     }
     if ( value.pos_y != 0 )
     {
         w.header( ids.ref_at( 66, 0xcb4b3835766732c1ull ), 4 ); // pos_y
+        schema_assert( value.pos_y >= -16383 && value.pos_y <= 16383 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.pos_y ) );
     }
     if ( value.pos_z != 0 )
     {
         w.header( ids.ref_at( 64, 0xcb4b353576672da8ull ), 4 ); // pos_z
+        schema_assert( value.pos_z >= -16383 && value.pos_z <= 16383 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.pos_z ) );
     }
     if ( value.yaw != 0 )
     {
         w.header( ids.ref_at( 58, 0xb54d8e19798e16e8ull ), 7 ); // yaw
+        schema_assert( value.yaw <= 511ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.yaw ) );
     }
     if ( value.pitch != 0 )
     {
         w.header( ids.ref_at( 22, 0x53a9f665a90cc1b1ull ), 7 ); // pitch
+        schema_assert( value.pitch <= 511ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.pitch ) );
     }
     if ( value.vel_x != 0 )
     {
         w.header( ids.ref_at( 27, 0x6cede6b6eb60ee67ull ), 4 ); // vel_x
+        schema_assert( value.vel_x >= -2048 && value.vel_x <= 2047 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.vel_x ) );
     }
     if ( value.vel_y != 0 )
     {
         w.header( ids.ref_at( 26, 0x6cede5b6eb60ecb4ull ), 4 ); // vel_y
+        schema_assert( value.vel_y >= -2048 && value.vel_y <= 2047 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.vel_y ) );
     }
     if ( value.vel_z != 0 )
     {
         w.header( ids.ref_at( 28, 0x6cede8b6eb60f1cdull ), 4 ); // vel_z
+        schema_assert( value.vel_z >= -2048 && value.vel_z <= 2047 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.vel_z ) );
     }
     if ( value.health != 0 )
     {
         w.header( ids.ref_at( 37, 0x7f69d4b5288ba9cfull ), 4 ); // health
+        schema_assert( value.health >= 0 && value.health <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.health ) );
     }
     if ( value.weapon != MixedWeapon::None )
@@ -6101,8 +6128,13 @@ BENCH_TABLE_INLINE bool MixedEntitySaveBody( TableWriter & w, TableIds & ids, co
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedEntitySave( const MixedEntity & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = MixedEntityMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -6874,51 +6906,61 @@ inline bool MixedEntitySaveMessageBody( TableBitWriter & w, const MixedEntity & 
     if ( value.entity_id != 0 )
     {
         w.put( 31, kTableMessageRefBitsHere );
+        schema_assert( ( value.entity_id ) <= 4095ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.entity_id ), 12 );
     }
     if ( value.pos_x != 0 )
     {
         w.put( 32, kTableMessageRefBitsHere );
+        schema_assert( ( value.pos_x ) >= -16383 && ( value.pos_x ) <= 16383 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.pos_x ) - 18446744073709535233ull, 15 );
     }
     if ( value.pos_y != 0 )
     {
         w.put( 33, kTableMessageRefBitsHere );
+        schema_assert( ( value.pos_y ) >= -16383 && ( value.pos_y ) <= 16383 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.pos_y ) - 18446744073709535233ull, 15 );
     }
     if ( value.pos_z != 0 )
     {
         w.put( 34, kTableMessageRefBitsHere );
+        schema_assert( ( value.pos_z ) >= -16383 && ( value.pos_z ) <= 16383 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.pos_z ) - 18446744073709535233ull, 15 );
     }
     if ( value.yaw != 0 )
     {
         w.put( 35, kTableMessageRefBitsHere );
+        schema_assert( ( value.yaw ) <= 511ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.yaw ), 9 );
     }
     if ( value.pitch != 0 )
     {
         w.put( 36, kTableMessageRefBitsHere );
+        schema_assert( ( value.pitch ) <= 511ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.pitch ), 9 );
     }
     if ( value.vel_x != 0 )
     {
         w.put( 37, kTableMessageRefBitsHere );
+        schema_assert( ( value.vel_x ) >= -2048 && ( value.vel_x ) <= 2047 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.vel_x ) - 18446744073709549568ull, 12 );
     }
     if ( value.vel_y != 0 )
     {
         w.put( 38, kTableMessageRefBitsHere );
+        schema_assert( ( value.vel_y ) >= -2048 && ( value.vel_y ) <= 2047 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.vel_y ) - 18446744073709549568ull, 12 );
     }
     if ( value.vel_z != 0 )
     {
         w.put( 39, kTableMessageRefBitsHere );
+        schema_assert( ( value.vel_z ) >= -2048 && ( value.vel_z ) <= 2047 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.vel_z ) - 18446744073709549568ull, 12 );
     }
     if ( value.health != 0 )
     {
         w.put( 40, kTableMessageRefBitsHere );
+        schema_assert( ( value.health ) >= 0 && ( value.health ) <= 1000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.health ), 10 );
     }
     if ( value.weapon != MixedWeapon::None )
@@ -7560,10 +7602,14 @@ inline int64_t MixedEntityMeasureMessages( const MixedEntity * values, int64_t c
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedEntitySaveMessages( const MixedEntity * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = MixedEntityMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -7634,14 +7680,20 @@ BENCH_TABLE_INLINE bool MixedStatSaveBody( TableWriter & w, TableIds & ids, cons
     if ( value.delta != 0 )
     {
         w.header( ids.ref_at( 21, 0x52076675ec13a0c1ull ), 4 ); // delta
+        schema_assert( value.delta >= -512 && value.delta <= 511 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.delta ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedStatSave( const MixedStat & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = MixedStatMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -7899,6 +7951,7 @@ inline bool MixedStatSaveMessageBody( TableBitWriter & w, const MixedStat & valu
     if ( value.delta != 0 )
     {
         w.put( 52, kTableMessageRefBitsHere );
+        schema_assert( ( value.delta ) >= -512 && ( value.delta ) <= 511 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.delta ) - 18446744073709551104ull, 10 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -8033,10 +8086,14 @@ inline int64_t MixedStatMeasureMessages( const MixedStat * values, int64_t count
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedStatSaveMessages( const MixedStat * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = MixedStatMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -8104,16 +8161,19 @@ BENCH_TABLE_INLINE bool MixedHitEventSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.target_id != 0 )
     {
         w.header( ids.ref_at( 59, 0xb7bc9ac015a25050ull ), 7 ); // target_id
+        schema_assert( value.target_id <= 4095ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.target_id ) );
     }
     if ( value.damage != 0 )
     {
         w.header( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ), 4 ); // damage
+        schema_assert( value.damage >= 0 && value.damage <= 4095 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.damage ) );
     }
     if ( value.hit_kind != 0 )
     {
         w.header( ids.ref_at( 1, 0x01fbc365b059b925ull ), 4 ); // hit_kind
+        schema_assert( value.hit_kind >= 0 && value.hit_kind <= 7 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.hit_kind ) );
     }
     if ( value.crit != false )
@@ -8125,8 +8185,13 @@ BENCH_TABLE_INLINE bool MixedHitEventSaveBody( TableWriter & w, TableIds & ids, 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedHitEventSave( const MixedHitEvent & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = MixedHitEventMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -8470,16 +8535,19 @@ inline bool MixedHitEventSaveMessageBody( TableBitWriter & w, const MixedHitEven
     if ( value.target_id != 0 )
     {
         w.put( 45, kTableMessageRefBitsHere );
+        schema_assert( ( value.target_id ) <= 4095ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.target_id ), 12 );
     }
     if ( value.damage != 0 )
     {
         w.put( 46, kTableMessageRefBitsHere );
+        schema_assert( ( value.damage ) >= 0 && ( value.damage ) <= 4095 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.damage ), 12 );
     }
     if ( value.hit_kind != 0 )
     {
         w.put( 47, kTableMessageRefBitsHere );
+        schema_assert( ( value.hit_kind ) >= 0 && ( value.hit_kind ) <= 7 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.hit_kind ), 3 );
     }
     if ( value.crit != false )
@@ -8700,10 +8768,14 @@ inline int64_t MixedHitEventMeasureMessages( const MixedHitEvent * values, int64
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedHitEventSaveMessages( const MixedHitEvent * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = MixedHitEventMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -8769,19 +8841,26 @@ BENCH_TABLE_INLINE bool MixedChatEventSaveBody( TableWriter & w, TableIds & ids,
     if ( value.channel != 0 )
     {
         w.header( ids.ref_at( 54, 0xa5013e9ad5caeda4ull ), 4 ); // channel
+        schema_assert( value.channel >= 0 && value.channel <= 3 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.channel ) );
     }
     if ( value.speaker != 0 )
     {
         w.header( ids.ref_at( 76, 0xfbf1ac4d96ebd022ull ), 7 ); // speaker
+        schema_assert( value.speaker <= 4095ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.speaker ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedChatEventSave( const MixedChatEvent & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = MixedChatEventMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -9051,11 +9130,13 @@ inline bool MixedChatEventSaveMessageBody( TableBitWriter & w, const MixedChatEv
     if ( value.channel != 0 )
     {
         w.put( 29, kTableMessageRefBitsHere );
+        schema_assert( ( value.channel ) >= 0 && ( value.channel ) <= 3 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.channel ), 2 );
     }
     if ( value.speaker != 0 )
     {
         w.put( 30, kTableMessageRefBitsHere );
+        schema_assert( ( value.speaker ) <= 4095ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.speaker ), 12 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -9207,10 +9288,14 @@ inline int64_t MixedChatEventMeasureMessages( const MixedChatEvent * values, int
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedChatEventSaveMessages( const MixedChatEvent * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = MixedChatEventMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -9276,19 +9361,26 @@ BENCH_TABLE_INLINE bool MixedPickupEventSaveBody( TableWriter & w, TableIds & id
     if ( value.item_id != 0 )
     {
         w.header( ids.ref_at( 48, 0x9e7fd06d864fbd56ull ), 7 ); // item_id
+        schema_assert( value.item_id <= 1023ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.item_id ) );
     }
     if ( value.amount != 0 )
     {
         w.header( ids.ref_at( 39, 0x8113fe7ea2b16969ull ), 4 ); // amount
+        schema_assert( value.amount >= 0 && value.amount <= 255 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedPickupEventSave( const MixedPickupEvent & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = MixedPickupEventMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -9558,11 +9650,13 @@ inline bool MixedPickupEventSaveMessageBody( TableBitWriter & w, const MixedPick
     if ( value.item_id != 0 )
     {
         w.put( 49, kTableMessageRefBitsHere );
+        schema_assert( ( value.item_id ) <= 1023ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.item_id ), 10 );
     }
     if ( value.amount != 0 )
     {
         w.put( 50, kTableMessageRefBitsHere );
+        schema_assert( ( value.amount ) >= 0 && ( value.amount ) <= 255 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.amount ), 8 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -9714,10 +9808,14 @@ inline int64_t MixedPickupEventMeasureMessages( const MixedPickupEvent * values,
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t MixedPickupEventSaveMessages( const MixedPickupEvent * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = MixedPickupEventMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -9860,6 +9958,7 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
         }
     }
     if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.player_name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x13a62f542cf8e86eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.player_name_length ) ) + ( value.player_name_length ); } // player_name
     if ( value.payload_length < 0 || value.payload_length > 16 ) { return -1; } // storage invariant
     if ( value.payload_length > 0 )
@@ -9905,6 +10004,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.ack_sequence != 0 )
     {
         w.header( ids.ref_at( 4, 0x0dbe005c56697c3eull ), 4 ); // ack_sequence
+        schema_assert( value.ack_sequence >= 0 && value.ack_sequence <= 65535 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.ack_sequence ) );
     }
     if ( value.ack_bits != 0 )
@@ -9930,16 +10030,19 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.world_time != 0 )
     {
         w.header( ids.ref_at( 20, 0x3eee6b51be54fc85ull ), 5 ); // world_time
+        schema_assert( value.world_time >= -1000000000000ll && value.world_time <= 1000000000000ll ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.world_time ) );
     }
     if ( value.frame_tick != 0 )
     {
         w.header( ids.ref_at( 34, 0x7bbc035f7b6d0112ull ), 9 ); // frame_tick
+        schema_assert( value.frame_tick <= 281474976710655ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.frame_tick ) );
     }
     if ( value.server_time != 0 )
     {
         w.header( ids.ref_at( 18, 0x3c460475f9be69c6ull ), 22 ); // server_time
+        schema_assert( value.server_time >= 0 && value.server_time <= 16776960 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.server_time ) );
     }
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
@@ -10071,6 +10174,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
         }
     }
     if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.player_name_length > 0 )
     {
         w.header( ids.ref_at( 7, 0x13a62f542cf8e86eull ), 12 ); // player_name
@@ -10127,6 +10231,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.flux != 0 )
     {
         w.header( ids.ref_at( 68, 0xd61bdd7908af2642ull ), 18 ); // flux
+        schema_assert( value.flux >= serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) && value.flux <= serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ); // a write keeps the declared bounds (SPEC.md §5.1)
         {
             serialize::uint128_t raw_v = serialize::uint128_t( value.flux );
             w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) );
@@ -10135,11 +10240,13 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.ping != 0 )
     {
         w.header( ids.ref_at( 61, 0xbf30e00dc53307a9ull ), 26 ); // ping
+        schema_assert( value.ping <= 64000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.ping ) );
     }
     if ( value.crc_hint != 0 )
     {
         w.header( ids.ref_at( 23, 0x560d6527ccd8515full ), 8 ); // crc_hint
+        schema_assert( value.crc_hint <= 16777215ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.crc_hint ) );
     }
     if ( value.has_extra != true )
@@ -10150,19 +10257,26 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.extra != 0 )
     {
         w.header( ids.ref_at( 77, 0xfd29ee12a979cb69ull ), 4 ); // extra
+        schema_assert( value.extra >= 0 && value.extra <= 255 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.extra ) );
     }
     if ( value.idle_ticks != 0 )
     {
         w.header( ids.ref_at( 33, 0x78101ac0aa8cbcfeull ), 4 ); // idle_ticks
+        schema_assert( value.idle_ticks >= 0 && value.idle_ticks <= 15 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.idle_ticks ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t BenchMixedSave( const BenchMixed & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = BenchMixedMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11678,6 +11792,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.ack_sequence != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
+        schema_assert( ( value.ack_sequence ) >= 0 && ( value.ack_sequence ) <= 65535 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.ack_sequence ), 16 );
     }
     if ( value.ack_bits != 0 )
@@ -11703,22 +11818,26 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.world_time != 0 )
     {
         w.put( 7, kTableMessageRefBitsHere );
+        schema_assert( ( value.world_time ) >= -1000000000000ll && ( value.world_time ) <= 1000000000000ll ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.world_time ) - 18446743073709551616ull, 41 );
     }
     if ( value.frame_tick != 0 )
     {
         w.put( 8, kTableMessageRefBitsHere );
+        schema_assert( ( value.frame_tick ) <= 281474976710655ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.frame_tick ), 48 );
     }
     if ( value.server_time != 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
+        schema_assert( ( value.server_time ) >= 0 && ( value.server_time ) <= 16776960 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.server_time ), 24 );
     }
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
     if ( value.entities_count > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        schema_assert( ( value.entities_count ) >= 1 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.entities_count ) - 1, 3 );
         for ( int32_t i = 0; i < value.entities_count; i++ )
         {
@@ -11778,6 +11897,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.player_name_length > 0 )
     {
         w.put( 14, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.player_name_length, 4 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.player_name, value.player_name_length );
@@ -11833,11 +11953,13 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.ping != 0 )
     {
         w.put( 23, kTableMessageRefBitsHere );
+        schema_assert( ( value.ping ) <= 64000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.ping ), 16 );
     }
     if ( value.crc_hint != 0 )
     {
         w.put( 24, kTableMessageRefBitsHere );
+        schema_assert( ( value.crc_hint ) <= 16777215ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.crc_hint ), 24 );
     }
     if ( value.has_extra != true )
@@ -11848,11 +11970,13 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.extra != 0 )
     {
         w.put( 26, kTableMessageRefBitsHere );
+        schema_assert( ( value.extra ) >= 0 && ( value.extra ) <= 255 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.extra ), 8 );
     }
     if ( value.idle_ticks != 0 )
     {
         w.put( 27, kTableMessageRefBitsHere );
+        schema_assert( ( value.idle_ticks ) >= 0 && ( value.idle_ticks ) <= 15 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.idle_ticks ), 4 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -12923,10 +13047,14 @@ inline int64_t BenchMixedMeasureMessages( const BenchMixed * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t BenchMixedSaveMessages( const BenchMixed * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = BenchMixedMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -13458,6 +13586,145 @@ TABLE_FIXED_INLINE bool BenchMixedFixedFiniteBody( const BenchMixed & value )
     if ( !TableFloatFinite( value.recoil ) ) { return false; }
     if ( !TableFloatFinite( value.drift ) ) { return false; }
     return true;
+}
+
+// BenchMixed's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool BenchMixedFixedFits( const BenchMixed & value )
+{
+    (void) value;
+    if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // the count indexes the storage (§3.4)
+    if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; } // the count indexes the storage (§3.4)
+    if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // the length indexes the storage (§3.4)
+    if ( value.payload_length < 0 || value.payload_length > 16 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// MixedEntity's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool MixedEntityFixedWriteCheck( const MixedEntity & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(12) width clamp
+    bad |= (int) ( value.entity_id > 4095ull );
+    bad |= (int) ( value.pos_x < -16383 ) | (int) ( value.pos_x > 16383 );
+    bad |= (int) ( value.pos_y < -16383 ) | (int) ( value.pos_y > 16383 );
+    bad |= (int) ( value.pos_z < -16383 ) | (int) ( value.pos_z > 16383 );
+    // bits(9) width clamp
+    bad |= (int) ( value.yaw > 511ull );
+    // bits(9) width clamp
+    bad |= (int) ( value.pitch > 511ull );
+    bad |= (int) ( value.vel_x < -2048 ) | (int) ( value.vel_x > 2047 );
+    bad |= (int) ( value.vel_y < -2048 ) | (int) ( value.vel_y > 2047 );
+    bad |= (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
+    bad |= (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
+    bad |= (int) ( (uint64_t) value.weapon > 15u );
+    return bad == 0;
+}
+
+// MixedStat's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool MixedStatFixedWriteCheck( const MixedStat & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(8) width clamp
+    bad |= (int) ( value.stat_id > 255ull );
+    bad |= (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
+    return bad == 0;
+}
+
+// MixedHitEvent's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool MixedHitEventFixedWriteCheck( const MixedHitEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(12) width clamp
+    bad |= (int) ( value.target_id > 4095ull );
+    bad |= (int) ( value.damage < 0 ) | (int) ( value.damage > 4095 );
+    bad |= (int) ( value.hit_kind < 0 ) | (int) ( value.hit_kind > 7 );
+    return bad == 0;
+}
+
+// MixedChatEvent's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool MixedChatEventFixedWriteCheck( const MixedChatEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
+    // bits(12) width clamp
+    bad |= (int) ( value.speaker > 4095ull );
+    return bad == 0;
+}
+
+// MixedPickupEvent's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool MixedPickupEventFixedWriteCheck( const MixedPickupEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(10) width clamp
+    bad |= (int) ( value.item_id > 1023ull );
+    bad |= (int) ( value.amount < 0 ) | (int) ( value.amount > 255 );
+    return bad == 0;
+}
+
+// BenchMixed's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool BenchMixedFixedWriteCheck( const BenchMixed & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(16) width clamp
+    bad |= (int) ( value.sequence > 65535ull );
+    bad |= (int) ( value.ack_sequence < 0 ) | (int) ( value.ack_sequence > 65535 );
+    bad |= (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
+    // bits(48) width clamp
+    bad |= (int) ( value.frame_tick > 281474976710655ull );
+    bad |= (int) ( value.server_time < 0 ) | (int) ( value.server_time > 16776960 );
+    if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
+    {
+        if ( !MixedEntityFixedWriteCheck( value.entities[i] ) ) { return false; }
+    }
+    if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
+    {
+        if ( !MixedStatFixedWriteCheck( value.stats[i] ) ) { return false; }
+    }
+    if ( (uint64_t) value.game_event.type > 3u ) { return false; } // a union tag outside its arms
+    switch ( value.game_event.type )
+    {
+        case MixedEventType::Hit:
+        {
+            if ( !MixedHitEventFixedWriteCheck( value.game_event.hit ) ) { return false; }
+            break;
+        }
+        case MixedEventType::Chat:
+        {
+            if ( !MixedChatEventFixedWriteCheck( value.game_event.chat ) ) { return false; }
+            break;
+        }
+        case MixedEventType::Pickup:
+        {
+            if ( !MixedPickupEventFixedWriteCheck( value.game_event.pickup ) ) { return false; }
+            break;
+        }
+        default: break;
+    }
+    if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length );
+    if ( value.payload_length < 0 || value.payload_length > 16 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    bad |= (int) ( value.ping > 64000 );
+    // bits(24) width clamp
+    bad |= (int) ( value.crc_hint > 16777215ull );
+    bad |= (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
+    bad |= (int) ( value.idle_ticks < 0 ) | (int) ( value.idle_ticks > 15 );
+    return bad == 0;
 }
 
 // ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----

@@ -389,6 +389,54 @@ export function TableFixedTextOk(flavour, view, at, len) {
   return true;
 }
 
+// THE WRITER'S BOUNDS (docs/SPEC.md §5.1): a count, a length, an ordinal or a
+// tag the caller holds is an integer in [0, max], and anything else (past the
+// bound, negative, fractional, not a number) refuses the save.
+export function TableFixedCountHolds(n, max) {
+  return Number.isInteger(n) && n >= 0 && n <= max;
+}
+
+// THE WRITER'S TEXT RULE (docs/SPEC.md §5.1 row 8): the n used units of a's
+// storage are well-formed, UTF-8 bytes for a narrow text and paired UTF-16
+// code units for a wide one. A zero byte or unit is not this rule's.
+export function TableFixedTextWritable(wide, a, n) {
+  for (let i = 0; i < n; i++) {
+    const u = a[i];
+    if (wide) {
+      if (u >= 0xDC00 && u <= 0xDFFF) { return false; }
+      if (u >= 0xD800 && u <= 0xDBFF) {
+        const lo = a[++i];
+        if (!(i < n && lo >= 0xDC00 && lo <= 0xDFFF)) { return false; }
+      }
+      continue;
+    }
+    if (u < 0x80) { continue; }
+    let need, cp;
+    if ((u & 0xE0) === 0xC0) { need = 1; cp = u & 0x1F; }
+    else if ((u & 0xF0) === 0xE0) { need = 2; cp = u & 0x0F; }
+    else if ((u & 0xF8) === 0xF0) { need = 3; cp = u & 0x07; }
+    else { return false; }
+    if (i + need >= n) { return false; }
+    for (let k = 1; k <= need; k++) {
+      const b = a[i + k];
+      if ((b & 0xC0) !== 0x80) { return false; }
+      cp = (cp << 6) | (b & 0x3F);
+    }
+    const min = (need === 1) ? 0x80 : (need === 2) ? 0x800 : 0x10000;
+    if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) { return false; }
+    i += need;
+  }
+  return true;
+}
+
+// THE FIXED WRITER'S TEXT RULE (docs/SPEC.md §5.1): TableFixedTextWritable's,
+// and no zero byte or unit among the n used, since the fixed reader refuses one
+// as text_ill_formed and a writer never produces bytes its own reader refuses.
+export function TableFixedTextSavable(wide, a, n) {
+  for (let i = 0; i < n; i++) { if (a[i] === 0) { return false; } }
+  return TableFixedTextWritable(wide, a, n);
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed

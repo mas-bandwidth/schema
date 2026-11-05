@@ -17,10 +17,14 @@
 //
 // So every caller-error check this emitter puts on the write path — a ranged
 // integer, an enum's headroom, a flags mask above the wire width, a union
-// tag, a counted array's count, a string/bytes/wstring length, a wide
-// string's interior null, a degenerate fixed or int128 raw — is a
+// tag, a wide string's interior null, a degenerate fixed or int128 raw — is a
 // Debug.Assert, which is [Conditional("DEBUG")] and therefore gone from a
-// release build, call and arguments both. That is the idiom of the runtime
+// release build, call and arguments both. A counted array's count and a
+// string/bytes/wstring length are the exception: each indexes the value's own
+// storage, and a memory bound is never debug-only (docs/SPEC.md §5.1), so the
+// writer refuses one outside its declared range with `return false` in EVERY
+// build, at the field, before the field's first bit and before any index
+// (emitWriteStorageBound). That is the idiom of the runtime
 // this code calls: serialize.cs's WriteStream documents values, capacity,
 // lengths and float finiteness as "checked by Debug.Assert in debug builds
 // and not at all in release builds", and its raw bit writer masks silently
@@ -182,9 +186,10 @@ func (g *gen) emitBatchScope(writing bool, f *ir.Field, child, ind string) {
 	if f.Array == ir.ArrayCounted {
 		count = "value." + g.m(base+"Count")
 		if writing {
+			g.emitWriteStorageBound(count, fmt.Sprintf("%d", f.ArrayMin), bound,
+				" // the count guards the loop (§6.3): refused in every build", ind)
 			g.emitWriteFoldedRange(count, fmt.Sprintf("%d", f.ArrayMin), bound,
-				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), false, true, true,
-				" // the count guards the loop (§6.3); an out-of-contract count is caller error", ind)
+				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), false, false, false, "", ind)
 		} else {
 			g.call(ind, fmt.Sprintf("stream.SerializeInt(ref %s, %d, %s)", count, f.ArrayMin, bound),
 				" // the count guards the loop (§6.3)")
@@ -697,6 +702,15 @@ func (g *gen) emitWriteFoldedRange(expr, lo, hi string, min, max *big.Int, wide,
 	g.sf("%s}\n", ind)
 }
 
+// emitWriteStorageBound refuses, in every build, a count or a length outside
+// [lo, hi]: the value indexes the caller's storage, so this is a memory bound
+// and not a debug-only contract (docs/SPEC.md §5.1). It runs before the field's
+// first bit and before any element or unit is read, and the folded write that
+// follows it carries no assert of its own.
+func (g *gen) emitWriteStorageBound(expr, lo, hi, comment, ind string) {
+	g.sf("%sif (%s < %s || %s > %s)%s\n%s{\n%s    return false;\n%s}\n", ind, expr, lo, expr, hi, comment, ind, ind, ind)
+}
+
 // emitWriteFoldedInt is emitWriteFoldedRange for a ranged TInt field: it
 // derives the guard vacuousness from the field's storage type and renders the
 // bounds in that storage's comparison domain.
@@ -760,9 +774,10 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		}
 		if f.Array == ir.ArrayCounted {
 			count := "value." + g.m(base+"Count")
+			g.emitWriteStorageBound(count, fmt.Sprintf("%d", f.ArrayMin), bound,
+				" // the count guards the loop (§6.3): refused in every build", ind)
 			g.emitWriteFoldedRange(count, fmt.Sprintf("%d", f.ArrayMin), bound,
-				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), false, true, true,
-				" // the count guards the loop (§6.3); an out-of-contract count is caller error", ind)
+				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), false, false, false, "", ind)
 			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, count, ind)
 		} else {
 			// the SCHEMA bound, never the storage's Length: reassigned-short
@@ -886,8 +901,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.sf("%s}\n", ind)
 			return
 		}
+		// a NaN or an infinity in a plain float is caller error (SPEC §4.3)
+		g.writeAssert(ind, fmt.Sprintf("float.IsFinite(%s)", name), "write refused: a NaN or an infinity in a float", "")
 		g.call(ind, fmt.Sprintf("%s.SerializeFloat(ref %s)", g.rv(), name), "")
 	case ir.TFloat64:
+		g.writeAssert(ind, fmt.Sprintf("double.IsFinite(%s)", name), "write refused: a NaN or an infinity in a double", "")
 		g.call(ind, fmt.Sprintf("%s.SerializeDouble(ref %s)", g.rv(), name), "")
 	case ir.TWString:
 		g.emitWriteWString(f, name, ind)
@@ -899,9 +917,9 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// side rejects them (§4.7).
 		g.needsSystem = true
 		length := "value." + g.m(g.fieldBase(f)+"Length")
-		g.emitWriteFoldedRange(length, "0", g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false),
-			big.NewInt(0), big.NewInt(f.Type.Size), false, true, true,
-			" // the length guards the slice (§6.3); an out-of-contract length is caller error", ind)
+		size := g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false)
+		g.emitWriteStorageBound(length, "0", size, " // the length guards the slice (§6.3): refused in every build", ind)
+		g.emitWriteFoldedRange(length, "0", size, big.NewInt(0), big.NewInt(f.Type.Size), false, false, false, "", ind)
 		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s)", g.rv(), g.prefix(name, length)), "")
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {

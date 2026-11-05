@@ -38,6 +38,7 @@ namespace Tabledemo
         {
             TableFieldInfo[] fields = ArchiveConfigTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            System.Diagnostics.Debug.Assert(v.Count >= 0 && v.Count <= 100, "write refused: ArchiveConfig.count out of range");
             if (v.Count != 1 && !ids.Add(0xb1e5e28e4479a274ul)) return false;
             return true;
         }
@@ -148,7 +149,7 @@ namespace Tabledemo
                 info.Fields = new TableFieldInfo[]
                 {
                     new TableFieldInfo { Name = "root", Json = "root", TypeName = "RootConfig", Id = 0xa354fd1ff0c467c5, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RootConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.ArchiveConfig)o).Root; }, MessageSlot = 1, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1480, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ArchiveConfig)o; TableReset(value.Root); } },
-                    new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.ArchiveConfig)o).Count)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ArchiveConfig)o).Count = unchecked((int)(long)r); }, MessageSlot = 2, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x64ul)), Ordinal = 1, NativeOffset = 1480, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ArchiveConfig)o; value.Count = 1; }, DefaultRaw = unchecked((ulong)(long)(1)), ClampJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L) { r.Clamped++; v = 0L; } else if (v > 100L) { r.Clamped++; v = 100L; } return unchecked((ulong)v); }, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100) { r.Clamped++; v = 100; } return unchecked((ulong)(long)(v)); } },
+                    new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.ArchiveConfig)o).Count)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ArchiveConfig)o).Count = unchecked((int)(long)r); }, MessageSlot = 2, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x64ul)), Ordinal = 1, NativeOffset = 1480, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ArchiveConfig)o; value.Count = 1; }, DefaultRaw = unchecked((ulong)(long)(1)), ClampJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L) { r.Clamped++; v = 0L; } else if (v > 100L) { r.Clamped++; v = 100L; } return unchecked((ulong)v); }, WriteValidRaw = delegate (ulong raw) { int v = unchecked((int)(long)raw); return v >= 0 && v <= 100; }, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100) { r.Clamped++; v = 100; } return unchecked((ulong)(long)(v)); } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.ArchiveConfig)o); };
                 info.Doc = TableDocNone;
@@ -219,6 +220,25 @@ namespace Tabledemo
                 if (why != null) return why;
             }
             return null;
+        }
+
+        // ArchiveConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool ArchiveConfigFixedCheckBody(ArchiveConfig value)
+        {
+            if (value == null) return true;
+            if (!RootConfigFixedCheckBody(value.Root)) return false;
+            if (value.Count < 0 || value.Count > 100) return false;
+            return true;
+        }
+
+        // ArchiveConfig's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool ArchiveConfigFixedStorageBody(ArchiveConfig value)
+        {
+            if (value == null) return true;
+            if (!RootConfigFixedStorageBody(value.Root)) return false;
+            return true;
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -2095,6 +2115,10 @@ namespace Tabledemo
             long need = ArchiveConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (ArchiveConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!ArchiveConfigFixedStorageBody(values[k])) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ArchiveConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), ArchiveConfigFixedHash);

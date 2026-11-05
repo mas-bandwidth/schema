@@ -688,6 +688,118 @@ namespace Wide
             if (value == null) return;
         }
 
+        // Line's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool LineFixedCheckBody(Line value)
+        {
+            if (value == null) return true;
+            if (value.TextLength < 0 || value.TextLength > 4) return false;
+            if (value.Text != null && (!TableWire.UnitsWellFormed(value.Text.AsSpan(0, value.TextLength)) || value.Text.AsSpan(0, value.TextLength).IndexOf((char)0) >= 0)) return false;
+            return true;
+        }
+
+        // Caption's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool CaptionFixedCheckBody(Caption value)
+        {
+            if (value == null) return true;
+            if (value.TitleLength < 0 || value.TitleLength > 7) return false;
+            if (value.Title != null && (!TableWire.UnitsWellFormed(value.Title.AsSpan(0, value.TitleLength)) || value.Title.AsSpan(0, value.TitleLength).IndexOf((char)0) >= 0)) return false;
+            if (!LineFixedCheckBody(value.Line)) return false;
+            if (value.LinesCount < 0 || value.LinesCount > 3) return false;
+            if (value.Lines != null)
+            {
+                for (int i = 0; i < value.LinesCount && i < value.Lines.Length; ++i)
+                {
+                    if (!LineFixedCheckBody(value.Lines[i])) return false;
+                }
+            }
+            if (value.Body != null)
+            {
+                if ((ulong)value.Body.Type > 3) return false;
+                switch (value.Body.Type)
+                {
+                    case BodyType.Wide:
+                        {
+                            if (value.Body.WideLength < 0 || value.Body.WideLength > 4) return false;
+                            if (value.Body.Wide != null && (!TableWire.UnitsWellFormed(value.Body.Wide.AsSpan(0, value.Body.WideLength)) || value.Body.Wide.AsSpan(0, value.Body.WideLength).IndexOf((char)0) >= 0)) return false;
+                            break;
+                        }
+                    case BodyType.Narrow:
+                        {
+                            if (value.Body.NarrowLength < 0 || value.Body.NarrowLength > 4) return false;
+                            if (value.Body.Narrow != null && (!TableWire.TextWellFormed(value.Body.Narrow.AsSpan(0, value.Body.NarrowLength)) || value.Body.Narrow.AsSpan(0, value.Body.NarrowLength).IndexOf((byte)0) >= 0)) return false;
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            return true;
+        }
+
+        // Stamp's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool StampFixedCheckBody(Stamp value)
+        {
+            if (value == null) return true;
+            if (value.LabelLength < 0 || value.LabelLength > 4) return false;
+            if (value.Label != null && (!TableWire.UnitsWellFormed(value.Label.AsSpan(0, value.LabelLength)) || value.Label.AsSpan(0, value.LabelLength).IndexOf((char)0) >= 0)) return false;
+            return true;
+        }
+
+        // Line's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool LineFixedStorageBody(Line value)
+        {
+            if (value == null) return true;
+            if (value.TextLength < 0 || value.TextLength > 4 || (value.Text != null && value.TextLength > value.Text.Length)) return false;
+            return true;
+        }
+
+        // Caption's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool CaptionFixedStorageBody(Caption value)
+        {
+            if (value == null) return true;
+            if (value.TitleLength < 0 || value.TitleLength > 7 || (value.Title != null && value.TitleLength > value.Title.Length)) return false;
+            if (!LineFixedStorageBody(value.Line)) return false;
+            if (value.LinesCount < 0 || value.LinesCount > 3) return false;
+            if (value.Lines != null)
+            {
+                for (int i = 0; i < value.LinesCount && i < value.Lines.Length; ++i)
+                {
+                    if (!LineFixedStorageBody(value.Lines[i])) return false;
+                }
+            }
+            if (value.Body != null)
+            {
+                switch (value.Body.Type)
+                {
+                    case BodyType.Wide:
+                        {
+                            if (value.Body.WideLength < 0 || value.Body.WideLength > 4 || (value.Body.Wide != null && value.Body.WideLength > value.Body.Wide.Length)) return false;
+                            break;
+                        }
+                    case BodyType.Narrow:
+                        {
+                            if (value.Body.NarrowLength < 0 || value.Body.NarrowLength > 4 || (value.Body.Narrow != null && value.Body.NarrowLength > value.Body.Narrow.Length)) return false;
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            return true;
+        }
+
+        // Stamp's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool StampFixedStorageBody(Stamp value)
+        {
+            if (value == null) return true;
+            if (value.LabelLength < 0 || value.LabelLength > 4 || (value.Label != null && value.LabelLength > value.Label.Length)) return false;
+            return true;
+        }
+
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
         // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
         // past the enum's top value. Straight-line, after the run, over STORAGE,
@@ -1099,6 +1211,10 @@ namespace Wide
         {
             long need = CaptionFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (!CaptionFixedStorageBody(values[k])) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(CaptionFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), CaptionFixedHash);
@@ -1636,6 +1752,10 @@ namespace Wide
         {
             long need = StampFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (!StampFixedStorageBody(values[k])) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(StampFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), StampFixedHash);

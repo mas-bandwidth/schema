@@ -1274,6 +1274,393 @@ public final class Driver {
         return 0;
     }
 
+    // ---- the write-refusal surfaces (testdata/conformance/tables/FORMAT.md)
+    //
+    // <kind> <case> <unit> <root> <wire> <path> <kind> <value>: load the wire
+    // as the root with the variable form's load, set the ONE field the path
+    // names, and write the value through one writer: the variable form's save
+    // (write-refusal), the fixed form's save as a batch of one
+    // (write-refusal-fixed), the message form's measureMessages and
+    // saveMessages as a batch of one, the unit column naming the connection
+    // whose announcement is read first (write-refusal-message), or the text
+    // writer (write-refusal-json). The write contract is checked by asserts,
+    // so the driver script runs these surfaces under -ea; an AssertionError
+    // is the refusal, as is a null or -1 answer from an every-build refusal.
+    //
+    // The fixed and message writers take the fixed class's Value, which is a
+    // separate class from the variable one in this port: the loaded value is
+    // copied field by field into a fresh fixed Value before the field is set.
+    //
+    // A Java String is UTF-16, so the bytes of ill-formed narrow text (a
+    // `bytes` row) reach a String field as their closest representable form:
+    // each byte that is not part of a well-formed UTF-8 sequence becomes the
+    // lone surrogate U+DC00 + byte (61 FF 62 is "a\uDCFFb"), which has no UTF-8
+    // spelling. A fixed Value holds the bytes themselves.
+    private static int surfaceWriteRefusal(String surface, String out) throws IOException {
+        for (String[] f : kind(surface)) {
+            String verdict;
+            try {
+                String unit = f[2];
+                String[] conn = null;
+                if (surface.equals("write-refusal-message")) {
+                    conn = connectionNamed(f[2]);
+                    if (conn == null) return failInt(f[1] + ": missing connection " + f[2]);
+                    unit = conn[2];
+                }
+                String pkg = variableUnitPackage(unit);
+                VariableCodec codec = variableCodec(unit, f[3]);
+                if (codec == null) return failInt(f[1] + ": no variable codec for " + unit + " " + f[3]);
+                Object report = codec.report();
+                Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
+                if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                try {
+                    switch (surface) {
+                        case "write-refusal": {
+                            setPath(value, f[5], f[6], f[7]);
+                            verdict = codec.save(value) == null ? "refused" : "wrote";
+                            break;
+                        }
+                        case "write-refusal-json": {
+                            setPath(value, f[5], f[6], f[7]);
+                            byte[] text = codec.toJson(value);
+                            if (text == null) {
+                                verdict = "refused";
+                            } else if (new String(text, StandardCharsets.UTF_8).contains("\\u0000")) {
+                                verdict = "wrote";
+                            } else {
+                                verdict = "wrote-without-escape";
+                            }
+                            break;
+                        }
+                        case "write-refusal-fixed": {
+                            Class<?> fixed = Class.forName(pkg + "." + f[3] + "Fixed");
+                            Class<?> valueType = Class.forName(pkg + "." + f[3] + "Fixed$Value");
+                            Object fv = valueType.getConstructor().newInstance();
+                            toFixed(value, fv);
+                            setPath(fv, f[5], f[6], f[7]);
+                            Object values = java.lang.reflect.Array.newInstance(valueType, 1);
+                            java.lang.reflect.Array.set(values, 0, fv);
+                            int need = (int) fixed.getMethod("measure", int.class).invoke(null, 1);
+                            int wrote = (int) fixed.getMethod("save", values.getClass(), int.class, byte[].class)
+                                    .invoke(null, values, 1, new byte[need]);
+                            verdict = wrote < 0 ? "refused" : "wrote";
+                            break;
+                        }
+                        case "write-refusal-message": {
+                            MessageCodec mc = messageCodec(unit, f[3]);
+                            if (mc == null) return failInt(f[1] + ": no message codec for " + unit + " " + f[3]);
+                            Object vocab = mc.vocab();
+                            Object mreport = mc.report();
+                            if (!mc.announce(vocab, Files.readAllBytes(Paths.get(conn[4])), mreport)
+                                    || mc.flag(mreport, "malformed") || mc.flag(mreport, "refused")) {
+                                return failInt(f[1] + ": announceRead refused " + conn[4]);
+                            }
+                            Object fv = mc.valueType.getConstructor().newInstance();
+                            toFixed(value, fv);
+                            setPath(fv, f[5], f[6], f[7]);
+                            Object values = mc.newValues(1);
+                            java.lang.reflect.Array.set(values, 0, fv);
+                            int size = mc.measure(values, 1, mreport);
+                            if (size < 1 || mc.flag(mreport, "refused")) {
+                                verdict = "refused";
+                            } else {
+                                int wrote = mc.save(values, 1, new byte[size], mreport);
+                                verdict = wrote != size || mc.flag(mreport, "refused") ? "refused" : "wrote";
+                            }
+                            break;
+                        }
+                        default:
+                            return failInt(f[1] + ": no write-refusal surface " + surface);
+                    }
+                } catch (java.lang.reflect.InvocationTargetException thrown) {
+                    if (!(thrown.getCause() instanceof AssertionError)) throw thrown;
+                    verdict = "refused";
+                }
+            } catch (AssertionError contract) {
+                verdict = "refused";
+            } catch (ReflectiveOperationException | IllegalArgumentException failure) {
+                return failInt(f[1] + ": " + failure);
+            }
+            spill(out, f[1], verdict + "\n");
+        }
+        return 0;
+    }
+
+    // javaField is a schema field name's Java spelling: snake_case to lowerCamel.
+    private static String javaField(String name) {
+        StringBuilder b = new StringBuilder();
+        boolean up = false;
+        for (char c : name.toCharArray()) {
+            if (c == '_') { up = true; continue; }
+            b.append(up ? Character.toUpperCase(c) : c);
+            up = false;
+        }
+        return b.toString();
+    }
+
+    private static java.lang.reflect.Field field(Object holder, String name) throws NoSuchFieldException {
+        return holder.getClass().getField(name);
+    }
+
+    // setPath sets the one field at path (dotted names, [i] element indexes) by
+    // kind to value, on a variable Value or a fixed one.
+    private static void setPath(Object root, String path, String kind, String value) throws ReflectiveOperationException {
+        String[] segs = path.split("\\.");
+        Object holder = root;
+        for (int s = 0; s < segs.length - 1; s++) {
+            holder = element(holder, segs[s]);
+        }
+        String last = segs[segs.length - 1];
+        if (last.contains("[")) {
+            throw new NoSuchFieldException("no setter for an element at the end of " + path);
+        }
+        String name = javaField(last);
+        java.lang.reflect.Field fd = field(holder, name);
+        Object current = fd.get(holder);
+        switch (kind) {
+            case "int":
+            case "ordinal":
+                setNumber(fd, holder, Long.parseLong(value));
+                return;
+            case "float":
+                double d = value.equals("nan") ? Double.NaN : value.equals("inf") ? Double.POSITIVE_INFINITY
+                        : value.equals("-inf") ? Double.NEGATIVE_INFINITY : Double.parseDouble(value);
+                if (fd.getType() == float.class) fd.setFloat(holder, (float) d); else fd.setDouble(holder, d);
+                return;
+            case "count": {
+                int n = Integer.parseInt(value);
+                if (current instanceof List<?>) {
+                    @SuppressWarnings("unchecked") List<Object> list = (List<Object>) current;
+                    if (list.isEmpty()) throw new NoSuchFieldException(path + " has no element 0 to copy");
+                    Object first = list.get(0);
+                    while (list.size() > n) list.remove(list.size() - 1);
+                    while (list.size() < n) list.add(first);
+                    return;
+                }
+                java.lang.reflect.Field countField = field(holder, name + "Count");
+                int old = countField.getInt(holder);
+                Object[] slots = (Object[]) current;
+                for (int i = old; i < n && i < slots.length; i++) copyInto(slots[0], slots[i]);
+                // a count past storage is set as it is: the writer must refuse it
+                // before it reads past the array
+                countField.setInt(holder, n);
+                return;
+            }
+            case "length": {
+                int n = Integer.parseInt(value);
+                if (current instanceof String) {
+                    fd.set(holder, "a".repeat(n));
+                } else if (current instanceof byte[]) {
+                    byte[] b = (byte[]) current;
+                    java.util.Arrays.fill(b, 0, Math.min(n, b.length), (byte) 'a');
+                    field(holder, name + "Length").setInt(holder, n);
+                } else if (current instanceof char[] && (fd.getModifiers() & java.lang.reflect.Modifier.FINAL) == 0) {
+                    char[] c = new char[n];
+                    java.util.Arrays.fill(c, 'a');
+                    fd.set(holder, c);
+                } else if (current instanceof char[]) {
+                    char[] c = (char[]) current;
+                    java.util.Arrays.fill(c, 0, Math.min(n, c.length), 'a');
+                    field(holder, name + "Length").setInt(holder, n);
+                } else {
+                    throw new NoSuchFieldException(path + " is not text");
+                }
+                return;
+            }
+            case "bytes": {
+                byte[] raw = hex(value);
+                if (current instanceof String) {
+                    fd.set(holder, escapedString(raw));
+                } else if (current instanceof byte[]) {
+                    byte[] b = (byte[]) current;
+                    java.util.Arrays.fill(b, (byte) 0);
+                    System.arraycopy(raw, 0, b, 0, Math.min(raw.length, b.length));
+                    field(holder, name + "Length").setInt(holder, raw.length);
+                } else {
+                    throw new NoSuchFieldException(path + " is not narrow text");
+                }
+                return;
+            }
+            case "units": {
+                byte[] raw = hex(value);
+                char[] units = new char[raw.length / 2];
+                for (int i = 0; i < units.length; i++) units[i] = (char) (((raw[2 * i] & 0xff) << 8) | (raw[2 * i + 1] & 0xff));
+                if (!(current instanceof char[])) throw new NoSuchFieldException(path + " is not wide text");
+                if ((fd.getModifiers() & java.lang.reflect.Modifier.FINAL) == 0) {
+                    fd.set(holder, units);
+                } else {
+                    char[] c = (char[]) current;
+                    java.util.Arrays.fill(c, (char) 0);
+                    System.arraycopy(units, 0, c, 0, Math.min(units.length, c.length));
+                    field(holder, name + "Length").setInt(holder, units.length);
+                }
+                return;
+            }
+            case "tag": {
+                // a lawful tag takes its arm at the arm's declared defaults
+                Object fresh = current.getClass().getConstructor().newInstance();
+                int tag = Integer.parseInt(value);
+                if ((fd.getModifiers() & java.lang.reflect.Modifier.FINAL) == 0) {
+                    fd.set(holder, fresh);
+                } else {
+                    copyInto(fresh, current);
+                    fresh = current;
+                }
+                try {
+                    field(fresh, "tag").setInt(fresh, tag);
+                } catch (NoSuchFieldException fixedSpelling) {
+                    field(fresh, "type").setInt(fresh, tag);
+                }
+                return;
+            }
+            default:
+                throw new NoSuchFieldException("no setter for kind " + kind + " at " + path);
+        }
+    }
+
+    // element walks one path segment: a field, then an [i] element of a list or
+    // an array.
+    private static Object element(Object holder, String seg) throws ReflectiveOperationException {
+        int open = seg.indexOf('[');
+        String name = javaField(open < 0 ? seg : seg.substring(0, open));
+        Object v = field(holder, name).get(holder);
+        if (open < 0) return v;
+        int i = Integer.parseInt(seg.substring(open + 1, seg.length() - 1));
+        if (v instanceof List<?>) return ((List<?>) v).get(i);
+        return java.lang.reflect.Array.get(v, i);
+    }
+
+    private static void setNumber(java.lang.reflect.Field fd, Object holder, long n) throws IllegalAccessException {
+        Class<?> t = fd.getType();
+        if (t == byte.class) fd.setByte(holder, (byte) n);
+        else if (t == short.class) fd.setShort(holder, (short) n);
+        else if (t == int.class) fd.setInt(holder, (int) n);
+        else if (t == long.class) fd.setLong(holder, n);
+        else throw new IllegalArgumentException(fd.getName() + " is not an integer");
+    }
+
+    private static byte[] hex(String s) {
+        byte[] b = new byte[s.length() / 2];
+        for (int i = 0; i < b.length; i++) b[i] = (byte) Integer.parseInt(s.substring(2 * i, 2 * i + 2), 16);
+        return b;
+    }
+
+    // escapedString decodes UTF-8, landing each byte outside a well-formed
+    // sequence as the lone surrogate U+DC00 + byte.
+    private static String escapedString(byte[] b) {
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < b.length; ) {
+            int b0 = b[i] & 0xff;
+            int need = b0 < 0x80 ? 0 : (b0 & 0xe0) == 0xc0 ? 1 : (b0 & 0xf0) == 0xe0 ? 2 : (b0 & 0xf8) == 0xf0 ? 3 : -1;
+            int cp = need == 0 ? b0 : need == 1 ? b0 & 0x1f : need == 2 ? b0 & 0x0f : b0 & 0x07;
+            boolean ok = need >= 0 && i + need < b.length;
+            for (int k = 1; ok && k <= need; k++) {
+                int c = b[i + k] & 0xff;
+                if ((c & 0xc0) != 0x80) ok = false;
+                cp = (cp << 6) | (c & 0x3f);
+            }
+            int min = need == 1 ? 0x80 : need == 2 ? 0x800 : need == 3 ? 0x10000 : 0;
+            if (ok && (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff))) ok = false;
+            if (!ok) {
+                s.append((char) (0xdc00 | b0));
+                i++;
+                continue;
+            }
+            s.appendCodePoint(cp);
+            i += need + 1;
+        }
+        return s.toString();
+    }
+
+    private static boolean instanceField(java.lang.reflect.Field fd) {
+        return !java.lang.reflect.Modifier.isStatic(fd.getModifiers());
+    }
+
+    // toFixed copies a variable Value into a fixed Value of the same type: text
+    // into its buffer and used length, a list into its array and count, a
+    // nested value into the fixed one already allocated, a union's tag into
+    // its type.
+    private static void toFixed(Object src, Object dst) throws ReflectiveOperationException {
+        for (java.lang.reflect.Field sf : src.getClass().getFields()) {
+            if (!instanceField(sf)) continue;
+            Object sv = sf.get(src);
+            String name = sf.getName().equals("tag") ? "type" : sf.getName();
+            java.lang.reflect.Field df = field(dst, name);
+            if (sv instanceof String) {
+                byte[] b = ((String) sv).getBytes(StandardCharsets.UTF_8);
+                System.arraycopy(b, 0, (byte[]) df.get(dst), 0, b.length);
+                field(dst, name + "Length").setInt(dst, b.length);
+            } else if (sv instanceof char[] && df.getType() == char[].class) {
+                char[] c = (char[]) sv;
+                System.arraycopy(c, 0, (char[]) df.get(dst), 0, c.length);
+                field(dst, name + "Length").setInt(dst, c.length);
+            } else if (sv instanceof List<?>) {
+                List<?> list = (List<?>) sv;
+                Object arr = df.get(dst);
+                for (int i = 0; i < list.size(); i++) {
+                    Object e = list.get(i);
+                    Object slot = java.lang.reflect.Array.get(arr, i);
+                    if (e instanceof Number && !(slot instanceof Object[])) {
+                        setArrayNumber(arr, i, ((Number) e).longValue());
+                    } else if (e instanceof Boolean) {
+                        java.lang.reflect.Array.setBoolean(arr, i, (Boolean) e);
+                    } else if (e instanceof Float || e instanceof Double) {
+                        java.lang.reflect.Array.set(arr, i, e);
+                    } else {
+                        toFixed(e, slot);
+                    }
+                }
+                try {
+                    field(dst, name + "Count").setInt(dst, list.size());
+                } catch (NoSuchFieldException fixedArray) {
+                    // a fixed array has no count
+                }
+            } else if (df.getType() == float.class || df.getType() == double.class) {
+                if (df.getType() == float.class) df.setFloat(dst, ((Number) sv).floatValue());
+                else df.setDouble(dst, ((Number) sv).doubleValue());
+            } else if (sv instanceof Boolean) {
+                df.setBoolean(dst, (Boolean) sv);
+            } else if (sv instanceof Number) {
+                setNumber(df, dst, ((Number) sv).longValue());
+            } else if (sv != null) {
+                toFixed(sv, df.get(dst));
+            }
+        }
+    }
+
+    private static void setArrayNumber(Object arr, int i, long n) {
+        Class<?> t = arr.getClass().getComponentType();
+        if (t == byte.class) java.lang.reflect.Array.setByte(arr, i, (byte) n);
+        else if (t == short.class) java.lang.reflect.Array.setShort(arr, i, (short) n);
+        else if (t == int.class) java.lang.reflect.Array.setInt(arr, i, (int) n);
+        else if (t == long.class) java.lang.reflect.Array.setLong(arr, i, n);
+        else if (t == float.class) java.lang.reflect.Array.setFloat(arr, i, (float) n);
+        else if (t == double.class) java.lang.reflect.Array.setDouble(arr, i, (double) n);
+        else throw new IllegalArgumentException("not a numeric array: " + t);
+    }
+
+    // copyInto copies one fixed Value into another of the same class, through
+    // its allocated arrays and nested values.
+    private static void copyInto(Object src, Object dst) throws ReflectiveOperationException {
+        for (java.lang.reflect.Field fd : src.getClass().getFields()) {
+            if (!instanceField(fd)) continue;
+            Object sv = fd.get(src);
+            if (fd.getType().isPrimitive()) {
+                if ((fd.getModifiers() & java.lang.reflect.Modifier.FINAL) == 0) fd.set(dst, sv);
+            } else if (sv instanceof Object[]) {
+                Object[] s = (Object[]) sv;
+                Object[] d = (Object[]) fd.get(dst);
+                for (int i = 0; i < s.length; i++) copyInto(s[i], d[i]);
+            } else if (sv != null && sv.getClass().isArray()) {
+                Object d = fd.get(dst);
+                System.arraycopy(sv, 0, d, 0, java.lang.reflect.Array.getLength(sv));
+            } else if (sv != null) {
+                if ((fd.getModifiers() & java.lang.reflect.Modifier.FINAL) == 0) fd.set(dst, sv);
+                else copyInto(sv, fd.get(dst));
+            }
+        }
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -1289,7 +1676,8 @@ public final class Driver {
             System.out.print("wire\nreport\nframing\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\n"
                     + "retain\nretain-save\n"
                     + "block\nblock-foreign\n"
-                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
+                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n"
+                    + "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
             return 0;
         }
         if (args.length < 3) {
@@ -1317,6 +1705,11 @@ public final class Driver {
             case "cook-write": return surfaceCookWrite(out);
             case "cook-foreign": return surfaceCookForeign(out);
             case "cook-forgery": return surfaceCookForgery(out);
+            case "write-refusal":
+            case "write-refusal-fixed":
+            case "write-refusal-message":
+            case "write-refusal-json":
+                return surfaceWriteRefusal(surface, out);
             default: return 2;
         }
     }

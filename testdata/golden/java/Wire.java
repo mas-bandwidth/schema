@@ -545,12 +545,26 @@ public final class Wire {
         return true;
     }
 
+    // fitsProbeSample answers whether every count and length writeProbeSampleBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsProbeSample(ProbeSample value) {
+        if (value.samplesCount < 0 || value.samplesCount > 8) {
+            return false;
+        }
+        return true;
+    }
+
     // writeProbeSampleBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteProbeSample
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + PROBE_SAMPLE_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsProbeSample).
     public static int writeProbeSampleBits(ProbeSample value, byte[] data, int bitOffset) {
         assert checkWriteProbeSample(value, data, bitOffset);
+        if (!fitsProbeSample(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         long v;
@@ -602,8 +616,10 @@ public final class Wire {
 
     // writeProbeSample packs value into data from its start and returns the bytes written;
     // data must hold PROBE_SAMPLE_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeProbeSample(ProbeSample value, byte[] data) {
-        return (writeProbeSampleBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeProbeSampleBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readProbeSampleBits decodes value from data starting at bit bitOffset, the payload
@@ -1076,12 +1092,26 @@ public final class Wire {
         return true;
     }
 
+    // fitsProbeCollider answers whether every count and length writeProbeColliderBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsProbeCollider(ProbeCollider value) {
+        if (value.extrasCount < 0 || value.extrasCount > 2) {
+            return false;
+        }
+        return true;
+    }
+
     // writeProbeColliderBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteProbeCollider
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + PROBE_COLLIDER_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsProbeCollider).
     public static int writeProbeColliderBits(ProbeCollider value, byte[] data, int bitOffset) {
         assert checkWriteProbeCollider(value, data, bitOffset);
+        if (!fitsProbeCollider(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -1102,8 +1132,10 @@ public final class Wire {
 
     // writeProbeCollider packs value into data from its start and returns the bytes written;
     // data must hold PROBE_COLLIDER_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeProbeCollider(ProbeCollider value, byte[] data) {
-        return (writeProbeColliderBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeProbeColliderBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readProbeColliderBits decodes value from data starting at bit bitOffset, the payload
@@ -1301,12 +1333,28 @@ public final class Wire {
         return true;
     }
 
+    // fitsProbeArray answers whether every count and length writeProbeArrayBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsProbeArray(ProbeArray value) {
+        for (int j0 = 0; j0 < 2; j0++) {
+            if (value.samples[j0].samplesCount < 0 || value.samples[j0].samplesCount > 8) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // writeProbeArrayBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteProbeArray
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + PROBE_ARRAY_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsProbeArray).
     public static int writeProbeArrayBits(ProbeArray value, byte[] data, int bitOffset) {
         assert checkWriteProbeArray(value, data, bitOffset);
+        if (!fitsProbeArray(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         for (int i0 = 0; i0 < 2; i0++) {
             pos = writeProbeSampleBits(value.samples[i0], data, pos);
@@ -1317,8 +1365,10 @@ public final class Wire {
 
     // writeProbeArray packs value into data from its start and returns the bytes written;
     // data must hold PROBE_ARRAY_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeProbeArray(ProbeArray value, byte[] data) {
-        return (writeProbeArrayBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeProbeArrayBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readProbeArrayBits decodes value from data starting at bit bitOffset, the payload
@@ -1579,12 +1629,26 @@ public final class Wire {
         return true;
     }
 
+    // fitsBlock answers whether every count and length writeBlockBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsBlock(Block value) {
+        if (value.dataLength < 0 || value.dataLength > 2000) {
+            return false;
+        }
+        return true;
+    }
+
     // writeBlockBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteBlock
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + BLOCK_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsBlock).
     public static int writeBlockBits(Block value, byte[] data, int bitOffset) {
         assert checkWriteBlock(value, data, bitOffset);
+        if (!fitsBlock(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -1602,8 +1666,10 @@ public final class Wire {
 
     // writeBlock packs value into data from its start and returns the bytes written;
     // data must hold BLOCK_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeBlock(Block value, byte[] data) {
-        return (writeBlockBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeBlockBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readBlockBits decodes value from data starting at bit bitOffset, the payload
@@ -1685,12 +1751,26 @@ public final class Wire {
         return true;
     }
 
+    // fitsChat answers whether every count and length writeChatBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsChat(Chat value) {
+        if (value.textLength < 0 || value.textLength > 256) {
+            return false;
+        }
+        return true;
+    }
+
     // writeChatBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteChat
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + CHAT_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsChat).
     public static int writeChatBits(Chat value, byte[] data, int bitOffset) {
         assert checkWriteChat(value, data, bitOffset);
+        if (!fitsChat(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -1708,8 +1788,10 @@ public final class Wire {
 
     // writeChat packs value into data from its start and returns the bytes written;
     // data must hold CHAT_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeChat(Chat value, byte[] data) {
-        return (writeChatBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeChatBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readChatBits decodes value from data starting at bit bitOffset, the payload
@@ -2018,12 +2100,29 @@ public final class Wire {
         return true;
     }
 
+    // fitsTestData answers whether every count and length writeTestDataBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsTestData(TestData value) {
+        if (value.itemsCount < 0 || value.itemsCount > 16) {
+            return false;
+        }
+        if (value.textLength < 0 || value.textLength > 255) {
+            return false;
+        }
+        return true;
+    }
+
     // writeTestDataBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteTestData
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + TEST_DATA_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsTestData).
     public static int writeTestDataBits(TestData value, byte[] data, int bitOffset) {
         assert checkWriteTestData(value, data, bitOffset);
+        if (!fitsTestData(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         long v;
@@ -2124,8 +2223,10 @@ public final class Wire {
 
     // writeTestData packs value into data from its start and returns the bytes written;
     // data must hold TEST_DATA_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeTestData(TestData value, byte[] data) {
-        return (writeTestDataBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeTestDataBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readTestDataBits decodes value from data starting at bit bitOffset, the payload

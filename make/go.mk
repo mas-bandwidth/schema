@@ -719,6 +719,28 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 conformance-negative-control-go-framing: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control frame-cap
 
+# THE WRITE-REFUSAL SURFACE's own control: the generated Go variable writer's
+# ranged-int refusal is removed from a copy, and the write-refusal rows
+# wref_range_high and wref_range_low must go red while the wire surface stays
+# green.
+.PHONY: conformance-negative-control-go-write-refusal
+conformance-negative-control-go-write-refusal: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control write-refusal
+
+# THE FIXED AND MESSAGE WRITERS' controls, on the same rule: the generated
+# FixedSave's wide-text rule (Caption) and the generated SaveMessages's
+# ranged-int refusal (StorePurchase.quantity) are each removed from a copy, and
+# write-refusal-fixed (fref_wide_unpaired), or write-refusal-message
+# (mref_range_high, mref_range_low) with message green, must go red while the
+# wire surface stays green.
+.PHONY: conformance-negative-control-go-write-refusal-fixed
+conformance-negative-control-go-write-refusal-fixed: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control write-refusal-fixed
+
+.PHONY: conformance-negative-control-go-write-refusal-message
+conformance-negative-control-go-write-refusal-message: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control write-refusal-message
+
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
 # negative control, the forgery fuzzer plain and under -race, and the soak's

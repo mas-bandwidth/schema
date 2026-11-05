@@ -838,8 +838,9 @@ function pinShape(name, expectedBytes, mod, shape, inp) {
 // goldens AND against the runtime tier (the cross-tier equivalence gate:
 // bytes, fields and verdicts), both directions. The leg runs in BOTH runtime
 // modes (the Makefile's NODE_ENV pair), and both modes compare to the same
-// goldens — so the checked and production flat writers are held
-// byte-identical transitively, every run.
+// goldens. The flat tier has one writer for every build (docs/SPEC.md §5.1);
+// the runtime tier's checked/production fork is serialize.js's own, so its
+// refusals are asserted in checked runs.
 
 const CHECKED_MODE = process.env.NODE_ENV !== "production";
 
@@ -1039,10 +1040,8 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
   flatCross("flat defaultchoice", armDefaults, armDefaultsFlat, "DefaultChoice", choice, null);
   const rogue = new ex.ProbeShape();
   rogue.type = 3;
-  if (CHECKED_MODE) {
-    check(exFlat.WriteProbeShapeFlat(new DataView(new ArrayBuffer(64)), rogue) === -1,
-      "the checked flat writer refuses an out-of-set union tag (SPEC §4.8)");
-  }
+  check(exFlat.WriteProbeShapeFlat(new DataView(new ArrayBuffer(64)), rogue) === -1,
+    "the flat writer refuses an out-of-set union tag in every build (SPEC §4.8)");
   const tagOnly = new Uint8Array(8 + 8);
   tagOnly[0] = 3; // a two-bit tag of 3 is past the count
   check(!exFlat.ReadProbeShapeFlat(new DataView(tagOnly.buffer), 2, new ex.ProbeShape()),
@@ -1139,42 +1138,56 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
     "flat: an out-of-range count is refused before the loop");
 }
 
-// ---- checked-mode write refusals: verdict-identical across tiers ----
-// (production mode: the flat writer is the trusted-writer release shape and
-// these vectors are caller misuse by contract — asserted in checked runs
-// only, which the Makefile's mode pair guarantees happen)
-if (CHECKED_MODE) {
+// ---- write refusals: the flat writer refuses in every build ----
+// (docs/SPEC.md §5.1: JavaScript has no assert idiom, so the flat writer
+// refuses in production as in development. The runtime tier's verdict is
+// serialize.js's checked mode, asserted in checked runs only, which the
+// Makefile's mode pair guarantees happen.)
+{
   const fview = new DataView(new Uint8Array(4096).buffer);
+  const refusedBoth = (runtimeRefused, flatAnswer, what) => {
+    check(flatAnswer === -1, "the flat writer refuses " + what + " in every build");
+    if (CHECKED_MODE) { check(runtimeRefused(), "the runtime tier refuses " + what); }
+  };
 
   const bad = new ex.ShipCreate();
   bad.health = 5000; // above [0, MaxHealth]
-  const ws = newWriteStream();
-  check(!ex.WriteShipCreate(ws, bad) && exFlat.WriteShipCreateFlat(fview, bad) === -1,
-    "both tiers refuse an out-of-range ranged write");
+  refusedBoth(() => !ex.WriteShipCreate(newWriteStream(), bad), exFlat.WriteShipCreateFlat(fview, bad),
+    "an out-of-range ranged write");
 
   const bad2 = new ex.ProbeReport();
   bad2.flags = 1n << 9n;
-  const ws2 = newWriteStream();
-  check(!ex.WriteProbeReport(ws2, bad2) && exFlat.WriteProbeReportFlat(fview, bad2) === -1,
-    "both tiers refuse a mask bit above the flags wire width");
+  refusedBoth(() => !ex.WriteProbeReport(newWriteStream(), bad2), exFlat.WriteProbeReportFlat(fview, bad2),
+    "a mask bit above the flags wire width");
 
   const bad3 = new ex.Chat();
   bad3.textLength = 999; // above string(MaxChatLength)
-  const ws3 = newWriteStream();
-  check(!ex.WriteChat(ws3, bad3) && exFlat.WriteChatFlat(fview, bad3) === -1,
-    "both tiers refuse an out-of-range string length");
+  refusedBoth(() => !ex.WriteChat(newWriteStream(), bad3), exFlat.WriteChatFlat(fview, bad3),
+    "an out-of-range string length");
 
   const bad4 = new ex.InputPacket();
   bad4.inputsCount = 17; // above [0, MaxInputsPerPacket]
-  const ws4 = newWriteStream();
-  check(!ex.WriteInputPacket(ws4, bad4) && exFlat.WriteInputPacketFlat(fview, bad4) === -1,
-    "both tiers refuse an out-of-range array count");
+  refusedBoth(() => !ex.WriteInputPacket(newWriteStream(), bad4), exFlat.WriteInputPacketFlat(fview, bad4),
+    "an out-of-range array count");
 
   const bad5 = new ex.ShipCreate();
   bad5.shipType = 99; // enum headroom above the wire range
-  const ws5 = newWriteStream();
-  check(!ex.WriteShipCreate(ws5, bad5) && exFlat.WriteShipCreateFlat(fview, bad5) === -1,
-    "both tiers refuse enum headroom above the wire range");
+  refusedBoth(() => !ex.WriteShipCreate(newWriteStream(), bad5), exFlat.WriteShipCreateFlat(fview, bad5),
+    "enum headroom above the wire range");
+
+  // a NaN or an infinity in a plain float (SPEC §4.3), and a finite double
+  // past float32's range, which rounds to an infinity
+  for (const [what, x] of [["a NaN", NaN], ["an infinity", Infinity], ["a negative infinity", -Infinity]]) {
+    const vec = new ex.Vec3();
+    vec.y = x;
+    check(exFlat.WriteVec3Flat(fview, vec) === -1, "the flat writer refuses " + what + " in a float64 in every build");
+    const input = new ex.Input();
+    input.throttle = x;
+    check(exFlat.WriteInputFlat(fview, input) === -1, "the flat writer refuses " + what + " in a float32 in every build");
+  }
+  const past = new ex.Input();
+  past.yaw = 1e300;
+  check(exFlat.WriteInputFlat(fview, past) === -1, "the flat writer refuses a float32 past its range in every build");
 }
 
 // ---- FlagName / FlagNames: per-bit names and the set renderer ----
