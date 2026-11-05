@@ -385,9 +385,26 @@ func luauEvoSaveWriterDiffers(t *testing.T, what string, u *ir.Unit, root, scena
 	}
 }
 
+// luauEvoFileBodyControl holds the row's value/counter/re-save oracle green
+// on its real file and red on a body mutation with intact layout and record
+// hashes. A shared envelope refusal cannot stand in for this row's proof.
+func luauEvoFileBodyControl(t *testing.T, row string, good, bad []byte, proof func([]byte) error) {
+	t.Helper()
+	if bytes.Equal(good, bad) {
+		t.Fatalf("%s: the body mutation did not change the file", row)
+	}
+	if err := proof(good); err != nil {
+		t.Fatalf("%s: the unplanted file fails its row proof: %v", row, err)
+	}
+	if err := proof(bad); err == nil {
+		t.Fatalf("%s: the planted body passed its row's value/counter/re-save proof", row)
+	}
+}
+
 // TestLuauFixedProofGroupENegativeControl breaks each selected row two ways
 // with that row's own schema, records, lineage and reference bytes: a FILE
-// arm plants a file the real reader must refuse, and a WRITER arm plants a
+// arm plants a file the row's refusal or value/counter/re-save gate rejects,
+// and a WRITER arm plants a
 // mutation in the emitted fixed-form writer and requires its output to differ
 // from the row's reference. Each arm therefore reaches the row's real gate; a
 // proof that stopped exercising it would let these controls fail.
@@ -449,6 +466,27 @@ func TestLuauFixedProofGroupENegativeControl(t *testing.T) {
 			t.Fatalf("optional-values: %s", why)
 		}
 		luauEvoFileRefused(t, "optional-values header", u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, luauEvoCorruptHeader(good))
+		if eOwn.Record != 8+17 || len(good) < 17 {
+			t.Fatal("optional-values: the fixture no longer has a 17-byte body")
+		}
+		body := make([]byte, 17)
+		binary.LittleEndian.PutUint32(body[0:], 11)
+		binary.LittleEndian.PutUint32(body[4:], 22)
+		canonical := fixedproof.MakeFixedFile(eOwn.Wire, eOwn.Layout, body)
+		badBody := bytes.Clone(canonical)
+		// Presence stays false; only the absent Inner payload becomes nonzero.
+		binary.LittleEndian.PutUint32(badBody[len(badBody)-8:], 0x12345678)
+		proof := func(wire []byte) error {
+			n, reason, fields, saved, counters := r.LoadLineage(t, u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, wire, -1)
+			if n != 1 || counters != (fixedproof.LoadCounters{}) ||
+				fields["r0.plain.a"] != "11" || fields["r0.plain.b"] != "22" || fields["r0.opt_present"] != "false" ||
+				len(wire) < 17 || wire[len(wire)-9] != 0 || !bytes.Equal(wire[len(wire)-8:], make([]byte, 8)) ||
+				!bytes.Equal(saved, canonical) {
+				return fmt.Errorf("absent payload/value/re-save: n=%d reason=%q fields=%v counters=%v", n, reason, fields, counters)
+			}
+			return nil
+		}
+		luauEvoFileBodyControl(t, "optional-values", good, badBody, proof)
 		luauEvoSaveWriterDiffers(t, "optional-values", u, "T", "optional_absent_zeros")
 	}
 
@@ -488,6 +526,30 @@ func TestLuauFixedProofGroupENegativeControl(t *testing.T) {
 			t.Fatalf("live-extents: %s", why)
 		}
 		luauEvoFileRefused(t, "live-extents header", u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, luauEvoCorruptHeader(good))
+		if eOwn.Record != 8+13 || len(good) < 13 {
+			t.Fatal("live-extents: the fixture no longer has a 13-byte body")
+		}
+		live := bytes.Clone(good)
+		at := len(live) - 13
+		// The unused array slots and absent optional payload are opaque.
+		live[at+5], live[at+6], live[at+8] = 99, 99, 99
+		badBody := bytes.Clone(live)
+		binary.LittleEndian.PutUint32(badBody[at:], 2)
+		badBody[at+5] = 2 // make the newly live element a valid Small.Two
+		n, reason, fields, _, counters := r.LoadLineage(t, u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, badBody, -1)
+		if n != 1 || fields["r0.arr_count"] != "2" || fields["r0.arr[1]"] != "2" || counters != (fixedproof.LoadCounters{}) {
+			t.Fatalf("live-extents: the body plant did not reach the live-count/value path: n=%d reason=%q fields=%v counters=%v", n, reason, fields, counters)
+		}
+		proof := func(wire []byte) error {
+			n, reason, fields, saved, counters := r.LoadLineage(t, u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, wire, -1)
+			if n != 1 || fields["r0.arr_count"] != "1" || fields["r0.arr[0]"] != "1" ||
+				fields["r0.opt_present"] != "false" || fields["r0.tail"] != "77" ||
+				counters != (fixedproof.LoadCounters{}) || !bytes.Equal(saved, good) {
+				return fmt.Errorf("live extent/value/re-save: n=%d reason=%q fields=%v counters=%v", n, reason, fields, counters)
+			}
+			return nil
+		}
+		luauEvoFileBodyControl(t, "live-extents", live, badBody, proof)
 		luauEvoSaveWriterDiffers(t, "live-extents", u, "T", "live_extents_base")
 	}
 
@@ -524,6 +586,30 @@ func TestLuauFixedProofGroupENegativeControl(t *testing.T) {
 		bad := append([]byte(nil), file...)
 		bad[len(bad)-int(eOld.Record)] ^= 0x01
 		luauEvoFileRefused(t, "union-guards record hash", uNew, "T", lin, bad)
+		eNew, _ := fixedproof.LineageEntryOf(uNew, "T")
+		canonical := fixedproof.MakeFixedFile(eNew.Wire, eNew.Layout,
+			[]byte{1, 1, 0xf9, 0xff, 0xff, 0xff, 100, 0, 0, 0},
+			[]byte{2, 8, 3, 2, 1, 0, 200, 0, 0, 0})
+		badBody := bytes.Clone(file)
+		at := len(badBody) - int(eOld.Record) + 8
+		// Select the nested widened arm in record 1 as well as record 0.
+		copy(badBody[at:at+6], []byte{1, 1, 7, 0, 0, 0})
+		n, reason, fields, _, counters := r.LoadLineage(t, uNew, "T", lin, badBody, -1)
+		if n != 2 || fields["r1.outer.inner.x"] != "7" || counters != (fixedproof.LoadCounters{Widened: 2}) {
+			t.Fatalf("union-guards: the body plant did not reach both widening gates: n=%d reason=%q fields=%v counters=%v", n, reason, fields, counters)
+		}
+		want := map[string]string{
+			"r0.outer.type": "1", "r0.outer.inner.type": "1", "r0.outer.inner.x": "-7", "r0.tail": "100",
+			"r1.outer.type": "2", "r1.outer.plain": "16909064", "r1.tail": "200",
+		}
+		proof := func(wire []byte) error {
+			n, reason, fields, saved, counters := r.LoadLineage(t, uNew, "T", lin, wire, -1)
+			if n != 2 || counters != (fixedproof.LoadCounters{Widened: 1}) || !maps.Equal(fields, want) || !bytes.Equal(saved, canonical) {
+				return fmt.Errorf("nested union/value/counters/re-save: n=%d reason=%q fields=%v counters=%v", n, reason, fields, counters)
+			}
+			return nil
+		}
+		luauEvoFileBodyControl(t, "union-guards", file, badBody, proof)
 		luauEvoWriterDiffers(t, "union-guards", uNew, "T", lin, file)
 	}
 
@@ -548,6 +634,38 @@ func TestLuauFixedProofGroupENegativeControl(t *testing.T) {
 		bad := append([]byte(nil), idBytes...)
 		bad[len(bad)-int(eOwn.Record)] ^= 0x01
 		luauEvoFileRefused(t, "plan-execution record hash", u, "T", lin, bad)
+		eForged := eOwn
+		eForged.Wire ^= 1
+		planLin := map[string][]fixedproof.LineageEntry{"T": {eForged}}
+		planBytes := bytes.Clone(idBytes)
+		planBytes[8] ^= 1
+		for at := len(planBytes) - 2*int(eOwn.Record); at < len(planBytes); at += int(eOwn.Record) {
+			planBytes[at] ^= 1
+		}
+		badBody := bytes.Clone(planBytes)
+		binary.LittleEndian.PutUint32(badBody[len(badBody)-int(eOwn.Record)+8:], 43)
+		n, reason, fields, _, counters := r.LoadLineage(t, u, "T", planLin, badBody, -1)
+		if n != 2 || fields["r1.head"] != "43" || counters != (fixedproof.LoadCounters{}) {
+			t.Fatalf("plan-execution: the body plant did not execute the compiled plan: n=%d reason=%q fields=%v counters=%v", n, reason, fields, counters)
+		}
+		want := map[string]string{}
+		for i := 0; i < 2; i++ {
+			prefix := fmt.Sprintf("r%d.", i)
+			for key, value := range map[string]string{"head": "42", "opt_present": "true", "opt": "-99", "arr_count": "1", "arr[0]": "2", "ch.type": "2", "ch.s": `"hi"`} {
+				want[prefix+key] = value
+			}
+		}
+		proof := func(wire []byte) error {
+			n, reason, fields, saved, counters := r.LoadLineage(t, u, "T", planLin, wire, -1)
+			if n != 2 || counters != (fixedproof.LoadCounters{}) || !maps.Equal(fields, want) || !bytes.Equal(saved, idBytes) {
+				return fmt.Errorf("plan identity/value/re-save: n=%d reason=%q fields=%v counters=%v", n, reason, fields, counters)
+			}
+			return nil
+		}
+		if err := proof(idBytes); err != nil {
+			t.Fatalf("plan-execution identity: %v", err)
+		}
+		luauEvoFileBodyControl(t, "plan-execution", planBytes, badBody, proof)
 		if good := luauEvoWriterDiffers(t, "plan-execution", u, "T", lin, idBytes); !bytes.Equal(good, idBytes) {
 			t.Fatalf("plan-execution: the unplanted re-save is not the planted file")
 		}
