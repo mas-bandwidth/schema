@@ -53,6 +53,7 @@ func bindFixed[T, E, R any](unit, root string,
 		}
 	}
 	c.loadMeasure = nil // fixed storage is the typed row, not a variable region
+	c.variable = false
 	c.load = func(v any, wire []byte, rep *report) bool {
 		var rows [1]T
 		var inner R

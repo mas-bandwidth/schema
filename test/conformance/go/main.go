@@ -69,6 +69,9 @@ type report struct {
 type codec struct {
 	unit string
 	root string
+	// variable records the declaration's storage class, independently of
+	// whether the driver has a message implementation for it.
+	variable bool
 	// reset returns the value to its declared defaults and hands back the
 	// opaque handle the rest of the row takes
 	loadMeasure   func([]byte) int64

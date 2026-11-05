@@ -20,7 +20,7 @@ func regionRow[T, R, A, C any, O ~uint8](unit, root string,
 	snap func(*R) report,
 	measureReason ...func(*T, ...C) (int64, error),
 ) codec {
-	entry := codec{unit: unit, root: root, loadMeasure: loadMeasure,
+	entry := codec{unit: unit, root: root, variable: true, loadMeasure: loadMeasure,
 		cookMeasure: func(value any) int64 { return cookMeasure(value.(*regionValue[T]).root) },
 		cook: func(value any, buffer []byte, big bool) bool {
 			order := O(1)
