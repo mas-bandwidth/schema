@@ -42,9 +42,10 @@ func usage() {
 	fmt.Fprint(os.Stderr, `usage: harness <generate|run> [flags]
 
   generate   rewrite the generated half of testdata/conformance/tables:
-             the JSON text of every instance, and the read report of every
-             evolution case. Both come from the compiler's own engine, which
-             is a third implementation of the two forms.
+             the JSON text of every instance, the read report of every
+             evolution case, and the write-back wire of every readable
+             report, framing and hostile row. All come from the compiler's
+             own engine, which is a third implementation of the two forms.
 
   pin        rewrite the goldens a driver writes rather than the engine: the
              cook's canonical node dump, and the block forgery battery

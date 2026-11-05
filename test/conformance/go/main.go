@@ -261,12 +261,30 @@ func surfaceReport(lines []line, out string) error {
 			if text, err = appendValue(c, value, text, f[1]); err != nil {
 				return err
 			}
+			if err := spillSave(c, value, out, f[1]); err != nil {
+				return err
+			}
 		}
 		if err := spill(out, f[1], text); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// spillSave writes the canonical write-back wire of an accepted read beside
+// the answer: the whole value is the JSON text AND the wire, and a port that
+// decodes the right value but saves different bytes has not returned it.
+func spillSave(c *codec, value any, out, name string) error {
+	size := c.measure(value)
+	if size < 0 {
+		return fmt.Errorf("%s: measure refused the value", name)
+	}
+	buffer := make([]byte, size)
+	if c.save(value, buffer) != size {
+		return fmt.Errorf("%s: save did not write measure's answer", name)
+	}
+	return spill(out, name+".wire", buffer)
 }
 
 // appendValue is the value half of a `report`, `framing` and `json-hostile`
@@ -321,6 +339,11 @@ func surfaceFraming(lines []line, out string) error {
 		}
 		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
 		noValue := len(f) > 5 && f[5] == "no-value"
+		if !rep.refused && malformed == "false" {
+			if err := spillSave(c, value, out, f[1]); err != nil {
+				return err
+			}
+		}
 		if !rep.refused && !noValue {
 			if c.toJson == nil {
 				if err := spillAbsent(out, f[1]); err != nil {
@@ -540,6 +563,9 @@ func surfaceJsonHostile(lines []line, out string) error {
 		if ok && !rep.malformed {
 			answer = []byte(fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate))
 			if answer, err = appendValue(c, value, answer, f[1]); err != nil {
+				return err
+			}
+			if err := spillSave(c, value, out, f[1]); err != nil {
 				return err
 			}
 		}
