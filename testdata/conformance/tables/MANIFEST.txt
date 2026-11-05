@@ -1042,8 +1042,8 @@ report r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
 #
 # THE RT SET is the reader and the two newer builds: RT1 cannot name what RT2
 # and RT3 wrote, and every row below is one §6.6 owes. The wires are the same
-# pinned vectors test/tables/retain_main.cpp writes, and the counters are the
-# hand-authored expectation.
+# pinned vectors test/tables/retain_main.cpp writes. Every readable row also
+# names the canonical save wire its retained unknowns write back.
 #
 # `capacity` is `full`, a buffer the whole load fits in, or `short`, ONE BYTE
 # SHORT of the last record: a record's byte cost is the port's own, so the
@@ -1057,21 +1057,21 @@ unit tblrt3 test/tables/RT3.schema
 # THE ROUND TRIP AT DEPTH, and the two capacities. The first save is a pinned
 # byte string of its own: moving a field changes the order ids are first used
 # in, so the trailer is permuted and every reference moves with it.
-retain retain_round_trip   tblrt1 Node testdata/wire/tables/retain_rt2.bin        full  full 0
-retain retain_truncated    tblrt1 Node testdata/wire/tables/retain_rt2.bin        short full 0
-retain retain_ids_short    tblrt1 Node testdata/wire/tables/retain_rt2.bin        full  2 1
+retain retain_round_trip   tblrt1 Node testdata/wire/tables/retain_rt2.bin        full  full testdata/wire/tables/retain_rt1_save.bin
+retain retain_truncated    tblrt1 Node testdata/wire/tables/retain_rt2.bin        short full -
+retain retain_ids_short    tblrt1 Node testdata/wire/tables/retain_rt2.bin        full  2    testdata/wire/tables/retain_rt1_save_id_short.bin
 
-# THE FIVE EXCLUDED CLASSES a wire can carry to the unknown arm, one row each
-# and one retain_lost each, with `retained` unmoved. The NODE-INDEX class's row
+# THE FIVE EXCLUDED CLASSES a wire can carry to the unknown arm, one row each.
+# The NODE-INDEX class's row
 # is the RECURSIVE shape, which is the widest case it has: an unknown outer
 # table holding a nested pointer three bodies down. The SIXTH class, the
 # reserved node-table field, has no row, because it is excluded by construction
 # and a test cannot reach it.
-retain retain_node_index   tblrt1 Node testdata/wire/tables/retain_excluded_2.bin full  full 0
-retain retain_enum_variant tblrt1 Node testdata/wire/tables/retain_excluded_3.bin full  full 0
-retain retain_union_arm    tblrt1 Node testdata/wire/tables/retain_excluded_4.bin full  full 0
-retain retain_keyed_slot   tblrt1 Node testdata/wire/tables/retain_excluded_5.bin full  full 0
-retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin        full  full 0
+retain retain_node_index   tblrt1 Node testdata/wire/tables/retain_excluded_2.bin full  full testdata/wire/tables/retain_excluded_2_save.bin
+retain retain_enum_variant tblrt1 Node testdata/wire/tables/retain_excluded_3.bin full  full testdata/wire/tables/retain_excluded_3_save.bin
+retain retain_union_arm    tblrt1 Node testdata/wire/tables/retain_excluded_4.bin full  full testdata/wire/tables/retain_excluded_4_save.bin
+retain retain_keyed_slot   tblrt1 Node testdata/wire/tables/retain_excluded_5.bin full  full testdata/wire/tables/retain_excluded_5_save.bin
+retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin        full  full testdata/wire/tables/retain_rt3_save.bin
 
 
 # Unbounded arrays: existing C++ wire pins now shared by every port.

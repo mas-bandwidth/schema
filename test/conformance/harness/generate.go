@@ -31,6 +31,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -365,9 +366,28 @@ func retainValues(u *units, retains []RetainCase, jsonDir string) error {
 			return fmt.Errorf("retain %s: root %q names no table", rc.Name, rc.Root)
 		}
 		model := tabletext.NewModel(unit)
+		// THE CALLER'S TWO STORES, as test/conformance/README.md and the
+		// retaining read's own test apply them: `full` is roomy, `short` is one
+		// byte under what THIS engine's full load used, and `ids` is either the
+		// full bound or the row's count (§6.6).
+		const roomy = 1 << 20
+		ids := rc.Ids
+		if ids < 0 {
+			ids = roomy / 8
+		}
+		capacity := roomy
+		if rc.Short {
+			probe := &tablewire.Retain{Capacity: roomy, IdCapacity: roomy / 8}
+			var probeReport tabletext.Report
+			if ok, _ := strictDecodeRetain(model, model.New(root), wire, probe, &probeReport); !ok {
+				return fmt.Errorf("retain %s: full read failed: report=%+v", rc.Name, probeReport)
+			}
+			capacity = probe.Used() - 1
+		}
 		value := model.New(root)
+		store := &tablewire.Retain{Capacity: capacity, IdCapacity: ids}
 		var report tabletext.Report
-		if ok, _ := strictDecode(model, value, wire, &report); !ok {
+		if ok, _ := strictDecodeRetain(model, value, wire, store, &report); !ok {
 			return fmt.Errorf("retain %s: read failed: report=%+v", rc.Name, report)
 		}
 		valRel := rc.Value
@@ -381,6 +401,18 @@ func retainValues(u *units, retains []RetainCase, jsonDir string) error {
 		keep[filepath.Base(path)] = true
 		if err := writeValue(path, true, func() ([]byte, error) { return model.Write(value) }); err != nil {
 			return fmt.Errorf("retain %s: %w", rc.Name, err)
+		}
+		// THE SAVE IS THE CANONICAL WRITE-BACK of the retained unknown records,
+		// and every readable row owes it (§6.6, layer 3's read-then-write).
+		if rc.Saves != "" {
+			var saveReport tabletext.Report
+			saved, err := tablewire.EncodeRetain(model, value, store, &saveReport)
+			if err != nil {
+				return fmt.Errorf("retain %s: save: %w", rc.Name, err)
+			}
+			if err := writeFileAtomic(rc.Saves, saved); err != nil {
+				return err
+			}
 		}
 	}
 	if len(retains) == 0 {

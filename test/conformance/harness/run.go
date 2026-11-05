@@ -835,6 +835,9 @@ func normalizeReadAnswer(answer []byte) ([]byte, error) {
 		return nil, err
 	}
 	if c.Refused || c.Malformed {
+		if len(bytes.TrimSpace(value)) > 0 {
+			return nil, fmt.Errorf("refused answer carries trailing value bytes")
+		}
 		return []byte("refused\n"), nil
 	}
 	return append([]byte("read\n"), value...), nil
