@@ -15,6 +15,7 @@ import (
 // had an incompatible kind (SPEC-TABLES section 2.8). Compare reports and
 // complete values against the independent wire reader.
 func TestLobsterMapRepeatedKeyLastKindWins(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "lobster")
 	path := filepath.Join(t.TempDir(), "Probe.schema")
 	if err := os.WriteFile(path, []byte("package probe\ntable Root { entries map[uint32]int32 }\n"), 0o644); err != nil {
@@ -74,6 +75,7 @@ func TestLobsterMapRepeatedKeyLastKindWins(t *testing.T) {
 }
 
 func TestLobsterMapRepeatedKeySharedVector(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "lobster")
 	paths, err := filepath.Glob(filepath.Join(root, "tables/maps/*.schema"))
 	if err != nil || len(paths) == 0 {
