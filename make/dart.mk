@@ -269,7 +269,7 @@ tables-dart-standalone: build/tables-generated-dart/.stamp
 .PHONY: tables-dart-standalone-negative-control
 tables-dart-standalone-negative-control:
 	@rm -rf build/dart-standalone-nc && mkdir -p build/dart-standalone-nc
-	@sed 's|h.WriteString("import '"'"'dart:typed_data'"'"';\n\n")|h.WriteString("import '"'"'dart:typed_data'"'"';\nimport '"'"'package:collection/collection.dart'"'"'; // SABOTAGED\n\n")|' \
+	@sed 's|h.WriteString("import '"'"'dart:typed_data'"'"';\\n\\n")|h.WriteString("import '"'"'dart:typed_data'"'"';\\nimport '"'"'package:collection/collection.dart'"'"'; // SABOTAGED\\n\\n")|' \
 		internal/codegen/darttable/block.go > build/dart-standalone-nc/darttable.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-standalone-nc/darttable.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -522,8 +522,8 @@ DART_FUZZ_MUTANTS ?= 4000
 .PHONY: tables-dart-fuzz-negative-control
 tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-nc && mkdir -p build/dart-fuzz-nc
-	@sed -e 's|g.pf("      if (rows > extent - offsetOf) {\n        return (null, TableRefuseReason.badLayout);\n      }\n")|_ = field // SABOTAGED: the rows-inside-extent bound is gone|' \
-	     -e 's|g.pf("    if (padding > extent - used) {\n      return (null, TableRefuseReason.truncated);\n    }\n")|// SABOTAGED: the padding bound is gone|' \
+	@sed -e 's|g.pf("      if (rows > extent - offsetOf) {\\n        return (null, TableRefuseReason.badLayout);\\n      }\\n")|_ = field // SABOTAGED: the rows-inside-extent bound is gone|' \
+	     -e 's|g.pf("    if (padding > extent - used) {\\n      return (null, TableRefuseReason.truncated);\\n    }\\n")|// SABOTAGED: the padding bound is gone|' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -554,7 +554,7 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 .PHONY: tables-dart-fuzz-lead-negative-control
 tables-dart-fuzz-lead-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-lead-nc && mkdir -p build/dart-fuzz-lead-nc
-	@sed -e 's#g.pf("    if (base %% %d != 0) {\n      return (null, TableRefuseReason.unalignedBase);\n    }\n", ir.BlockAlign)#// SABOTAGED: the base-alignment check is gone#' \
+	@sed -e 's#g.pf("    if (base %% %d != 0) {\\n      return (null, TableRefuseReason.unalignedBase);\\n    }\\n", ir.BlockAlign)#// SABOTAGED: the base-alignment check is gone#' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-lead-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-lead-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -1646,7 +1646,7 @@ tables-dart-accessor-negative-control: build/cook-fuzz/.stamp
 .PHONY: tables-dart-slot-negative-control
 tables-dart-slot-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-agree-slot-nc && mkdir -p build/dart-agree-slot-nc
-	@sed -e 's|g.pf("        offset: %d,\n", fl.Offset)|g.pf("        offset: %d,\n", fl.Offset+slotMoved(record, f.Name))|' \
+	@sed -e 's|g.pf("        offset: %d,\\n", fl.Offset)|g.pf("        offset: %d,\\n", fl.Offset+slotMoved(record, f.Name))|' \
 		internal/codegen/darttable/cook.go > build/dart-agree-slot-nc/cook.go.txt
 	@grep -q 'slotMoved(record, f.Name)' build/dart-agree-slot-nc/cook.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing - the emitter moved"; exit 1; }
