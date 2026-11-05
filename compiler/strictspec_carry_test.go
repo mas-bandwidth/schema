@@ -1,10 +1,10 @@
 // THE STRICT-ONLY CARRY: ONE READ, AND A FIXED ROOT THAT REFUSES FORM `1`.
 //
-// This card carries two pull requests into one branch. #2790
-// (rowan/strict-only-spec) states the one-read rule in the spec pages and
+// This card carries two pull requests into one branch. #2790, the strict-only
+// spec, states the one-read rule in the spec pages and
 // lists it in docs/rulings.json as `strict-only-read` and
 // `refusal-verdict-only`, with the work list in docs/plans/strict-only.md.
-// #2789 (rowan/fixed-root-refuses-form1) states that a reader that expects a
+// #2789, the fixed-root form-1 refusal, states that a reader that expects a
 // fixed table refuses every other form, and lists it as
 // `fixed-root-refuses-form1`.
 //

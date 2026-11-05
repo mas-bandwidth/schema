@@ -776,7 +776,7 @@ func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
 }
 
 // RefuseNonFinite is every writer's refusal of a NaN or an infinity
-// (docs/SPEC-TABLES.md §3, §3.3; Glenn, 2026-10-27, "tables go finite-only
+// (docs/SPEC-TABLES.md §3, §3.3; the maintainer, 2026-10-27, "tables go finite-only
 // too, same rule as packets"): neither is a value of the type, so no form
 // carries one, and a compressed float refuses one rather than clamping it. A
 // float32 held in a float64 cell narrows by the ordinary conversion, which is

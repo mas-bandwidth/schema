@@ -208,10 +208,11 @@ func TestTheMasksWidth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// EIGHT BYTES IN A FILE: the header, the raw u64, the terminator, and the
-	// trailer's one entry and count
-	if want := 1 + 1 + 1 + 8 + 1 + 8 + 8; len(file) != want {
-		t.Errorf("a masked file is %d bytes, a raw u64 says %d", len(file), want)
+	// FORM 3 AT A FIXED ROOT: the sixteen-byte header, the layout behind its
+	// u32 length, the record's hash, and the eight-byte perks body
+	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(loadout))
+	if want := 16 + 4 + len(layout) + 8 + 8; len(file) != want || file[0] != 3 {
+		t.Errorf("a masked file is %d bytes (form byte %d), a fixed record says %d bytes of form 3", len(file), file[0], want)
 	}
 	back, ok, report, derr := decodeOne(t, model, "Masked", v, message)
 	if derr != nil || !ok || !report.Silent() || instU64(t, back, "perks") != 5 {

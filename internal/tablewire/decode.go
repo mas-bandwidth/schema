@@ -1267,7 +1267,7 @@ func (*CountRefusal) Error() string {
 }
 
 // NonFiniteRefusal is every read's refusal of a float whose bits are a NaN or
-// an infinity (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+// an infinity (docs/SPEC-TABLES.md §3.3; the maintainer, 2026-10-27, "tables go
 // finite-only too, same rule as packets"). Field names the field as
 // <Table>.<field> where the read knows it.
 type NonFiniteRefusal struct{ Field string }

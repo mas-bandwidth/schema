@@ -82,37 +82,29 @@ func TestVariableClassBeyondCardConstructsJava(t *testing.T) {
 
 // unitFromDir parses and checks every *.schema in dir into one unit, the way
 // `schema generate` reads a directory (docs/SPEC-TABLES.md §2: a unit is a
-// package, which may span files).
+// package, which may span files). A manifest unit line may also name one
+// .schema file, which is then the whole unit.
 func unitFromDir(t *testing.T, dir string) *ir.Unit {
 	t.Helper()
+	var names []string
 	if strings.HasSuffix(dir, ".schema") {
-		b, err := os.ReadFile(dir)
+		names = []string{filepath.Base(dir)}
+		dir = filepath.Dir(dir)
+	} else {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		f, perrs := parser.Parse(dir, b)
-		if len(perrs) > 0 {
-			t.Fatalf("parse %s: %v", dir, perrs[0])
+		for _, e := range entries {
+			names = append(names, e.Name())
 		}
-		name := filepath.Base(dir)
-		u, cerrs := check.Unit([]check.SourceFile{{
-			Path: dir, Name: name, Base: strings.TrimSuffix(name, ".schema"), Bytes: b, AST: f,
-		}})
-		if len(cerrs) > 0 {
-			t.Fatalf("check %s: %v", dir, cerrs[0])
-		}
-		return u
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
 	}
 	var sources []check.SourceFile
-	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".schema") {
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".schema") {
 			continue
 		}
-		p := filepath.Join(dir, e.Name())
+		p := filepath.Join(dir, name)
 		b, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
@@ -122,7 +114,7 @@ func unitFromDir(t *testing.T, dir string) *ir.Unit {
 			t.Fatalf("parse %s: %v", p, perrs[0])
 		}
 		sources = append(sources, check.SourceFile{
-			Path: p, Name: e.Name(), Base: strings.TrimSuffix(e.Name(), ".schema"), Bytes: b, AST: f,
+			Path: p, Name: name, Base: strings.TrimSuffix(name, ".schema"), Bytes: b, AST: f,
 		})
 	}
 	u, cerrs := check.Unit(sources)
