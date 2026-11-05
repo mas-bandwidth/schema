@@ -207,7 +207,9 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared {
+		// a row pinned as refused by its form is read through the declared
+		// unit: a fixed root refuses the form-1 file by its form byte
+		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared && !fc.Refused {
 			key := fc.Unit + "." + fc.Root
 			if variable[key] == nil {
 				variable[key] = framingVariableUnit(t, m, fc.Unit, fc.Root)
@@ -219,7 +221,7 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 		if def == nil {
 			t.Fatalf("%s: the unit declares no root %q", fc.Name, fc.Root)
 		}
-		if tablewire.FixedRoot(model, def) {
+		if !fc.Refused && tablewire.FixedRoot(model, def) {
 			t.Fatalf("%s: %s.%s still reads as a fixed root", fc.Name, fc.Unit, fc.Root)
 		}
 		inst := model.New(def)
