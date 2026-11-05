@@ -86,7 +86,6 @@ internal/codegen/elixirtable/fixedroadmap_t08_test.go
 internal/codegen/elixirtable/fixedroadmap_t09_test.go
 internal/codegen/elixirtable/fixedroadmap_t10_test.go
 internal/codegen/elixirtable/fixedversioning_test.go
-internal/codegen/elixirtable/keyed_test.go
 internal/codegen/elixirtable/messageform_announce_test.go
 internal/codegen/elixirtable/messageform_batch_test.go
 internal/codegen/elixirtable/messageform_conformance_test.go

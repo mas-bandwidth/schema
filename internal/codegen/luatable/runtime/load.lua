@@ -745,6 +745,7 @@ local function queue(ctx, holder, key, index, d, null)
     pending[n] = p
   end
   p.holder, p.key, p.index, p.d, p.null = holder, key, index, d, null
+  p.from = ctx.from
 end
 
 -- a repeat of a FIXED array that builds a fresh array from the one an
@@ -1847,14 +1848,17 @@ local function resolve(ctx, root, rootdesc)
   local good = ctx.good
   local seen_blob = nil
   local pending = ctx.pending
+  local ef, et, sink, ne = ctx.ef, ctx.et, ctx.sink, 0
   for i = 1, ctx.np do
     local p = pending[i]
     local d = p.d
     local value = nil
+    local edge = nil
     if good and p.index ~= 0 then
       if p.index == 1 then
         if d.shape == "pointer" and d.target == rootdesc.name then
           value = root
+          edge = 1
         else
           report.kindMismatch = report.kindMismatch + 1
         end
@@ -1893,6 +1897,7 @@ local function resolve(ctx, root, rootdesc)
             end
           elseif node.kind == "t" and node.codec.name == d.target then
             value = node.value
+            edge = p.index
           else
             report.kindMismatch = report.kindMismatch + 1
           end
@@ -1908,11 +1913,81 @@ local function resolve(ctx, root, rootdesc)
     -- not resolve is WRITTEN null rather than left alone, because an earlier
     -- occurrence of the same slot may already have resolved into it.
     if value == nil then value = p.null end
+    -- a stored pointer to a table node is an edge of the loaded graph (the
+    -- cycle check below); a slot of a discarded body is pointed at the sink
+    -- and stores nothing
+    if edge ~= nil and p.holder ~= sink then
+      ne = ne + 1
+      ef[ne], et[ne] = p.from, edge
+    end
     p.holder[p.key] = value
     -- the queue keeps its entries for the next load, and no value it named
     p.holder, p.d = nil, nil
   end
   ctx.np = 0
+  ctx.ne = ne
+end
+
+-- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; tablewire
+-- decodeState.cyclic). The vertices are the root (1) and every node record
+-- (k + 1); the edges are the pointers resolve stored, each from the node whose
+-- closure holds the slot. Each vertex is entered once: an edge to an OPEN
+-- vertex is a cycle, an edge to a CLOSED one a share that is not re-entered, so
+-- the check is linear. The adjacency, the marks and the explicit stack are
+-- arrays the loader state keeps and reuses (docs/PORTING.md M1): a load of a
+-- size the state has run before allocates nothing here.
+local function cyclic(ctx, nv)
+  local ne = ctx.ne
+  if ne == 0 then return false end
+  local start, adj, mark, sv, si = ctx.cy_start, ctx.cy_adj, ctx.cy_mark, ctx.cy_sv, ctx.cy_si
+  local ef, et = ctx.ef, ctx.et
+  for v = 1, nv + 1 do
+    start[v] = 0
+  end
+  for k = 1, ne do
+    local f = ef[k]
+    start[f] = start[f] + 1
+  end
+  local at = 1
+  for v = 1, nv + 1 do
+    local c = start[v]
+    start[v] = at
+    at = at + c
+  end
+  for v = 1, nv do
+    mark[v] = start[v]
+  end
+  for k = 1, ne do
+    local f = ef[k]
+    adj[mark[f]] = et[k]
+    mark[f] = mark[f] + 1
+  end
+  for v = 1, nv do
+    mark[v] = 0
+  end
+  for s = 1, nv do
+    if mark[s] == 0 then
+      local top = 1
+      sv[1], si[1], mark[s] = s, start[s], 1
+      while top > 0 do
+        local v, i = sv[top], si[top]
+        if i >= start[v + 1] then
+          mark[v] = 2
+          top = top - 1
+        else
+          si[top] = i + 1
+          local w = adj[i]
+          if mark[w] == 1 then return true end
+          if mark[w] == 0 then
+            mark[w] = 1
+            top = top + 1
+            sv[top], si[top] = w, start[w]
+          end
+        end
+      end
+    end
+  end
+  return false
 end
 
 -- THE LOADER STATE (docs/PORTING.md M1: the read path allocates nothing, and the
@@ -1939,6 +2014,15 @@ function L.NewState()
       report = nil,
       pending = {},
       np = 0,
+      from = 1,
+      ne = 0,
+      ef = {},
+      et = {},
+      cy_start = {},
+      cy_adj = {},
+      cy_mark = {},
+      cy_sv = {},
+      cy_si = {},
       nodes = NO_NODES,
       good = false,
       owner = nil,
@@ -1966,16 +2050,6 @@ local function release(ctx)
     end
   end
   ctx.report, ctx.nodes = nil, NO_NODES
-end
-
--- placed lists the records a load placed as the cycle check's vertices
--- (D.cyclic): every table node, reached from the root or not.
-local function placed(nodes)
-  local out = {}
-  for _, node in ipairs(nodes) do
-    if node.kind == "t" then out[#out + 1] = { desc = node.codec, v = node.value } end
-  end
-  return out
 end
 
 -- LoadTolerant loads a form-1 wire for table `name` of module T into a fresh
@@ -2078,8 +2152,11 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
       end
     end
     local rd = state.rd
-    for _, node in ipairs(ctx.nodes) do
-      if node.kind == "t" then read_body(T, ctx, node.codec, point(rd, bytes, node.at, node.lim), node.value, true) end
+    for i, node in ipairs(ctx.nodes) do
+      if node.kind == "t" then
+        ctx.from = i + 1
+        read_body(T, ctx, node.codec, point(rd, bytes, node.at, node.lim), node.value, true)
+      end
     end
   end
   local root
@@ -2088,6 +2165,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   else
     root = fresh(T, desc)
   end
+  ctx.from = 1
   local missingBefore = report.missingRequired or 0
   read_body(T, ctx, desc, point(state.rd, bytes, 1, o.lim), root, false)
   -- A COUNT PAST THE INT32 STORAGE CAP refuses the load (§2.9): the report
@@ -2123,10 +2201,8 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   end
   resolve(ctx, root, desc)
   -- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph the load
-  -- stored is checked once every index has resolved, over the root and every
-  -- record the load placed, a cycle among records the root never reaches
-  -- included (D.cyclic).
-  if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.malformed = true end
+  -- stored is checked once every index has resolved (cyclic, above).
+  if not report.malformed and cyclic(ctx, #ctx.nodes + 1) then report.malformed = true end
   release(ctx)
   if report.malformed then return nil end
   return root
@@ -2248,6 +2324,31 @@ local function arm_is_pointer(f)
   return false
 end
 
+-- measure_text places one unbounded text value's blob record in the region
+-- (docs/SPEC-TABLES.md §2.13.1; tablewire extentScan.unboundedText): eight-byte
+-- alignment, then `u32 length`, `u32 zero`, the bytes and one zero byte, padded
+-- to the region's alignment. The empty string takes no record.
+-- unbounded_text_elem is whether a list element is unbounded text: the
+-- element itself, or the one-field wrapper table a text list's element is
+-- described by (its `value`).
+local function unbounded_text_elem(T, e)
+  if e == nil then return false end
+  if e.shape == "string" then return e.unbounded == true end
+  if e.shape == "table" then
+    local st = T.Tables[e.target]
+    local v = st ~= nil and st.fields ~= nil and #st.fields == 1 and st.fields[1] or nil
+    return v ~= nil and v.shape == "string" and v.unbounded == true
+  end
+  return false
+end
+
+local function measure_text(scan, n)
+  if n == 0 then return true end
+  if n > 0xffffffff then return false end
+  scan.at = round_up(scan.at, 8) + round_up(9 + n, scan.align)
+  return true
+end
+
 local measure_record, measure_field, measure_union
 
 measure_record = function(T, ids, scan, desc, b, at, lim)
@@ -2268,6 +2369,10 @@ measure_record = function(T, ids, scan, desc, b, at, lim)
       else
         if not skip(r, kind) then return true end
       end
+    elseif kind == 12 and f.shape == "string" and f.unbounded then
+      local pat, plim = extent_body(r)
+      if pat == nil then return true end
+      if not measure_text(scan, plim - pat) then return false end
     elseif kind ~= 13 and kind ~= 14 and kind ~= 16 then
       if not skip(r, kind) then return true end
     else
@@ -2305,6 +2410,16 @@ measure_field = function(T, ids, scan, f, b, at, lim)
       if floor < 1 then floor = 1 end
       if count > (r.lim - r.at) // floor then return false end
       scan.at = round_up(scan.at, align) + count * size
+    end
+    if kind == 12 and f.shape == "array" and unbounded_text_elem(T, f.elem) then
+      local i = 0
+      while math.ult(i, count) and r.at < r.lim do
+        i = i + 1
+        local pat, plim = extent_body(r)
+        if pat == nil then return true end
+        if not measure_text(scan, plim - pat) then return false end
+      end
+      return true
     end
     if kind ~= 13 and kind ~= 15 then return true end
     local keyed = (f.shape == "array" and f.keyed ~= nil)
@@ -2380,7 +2495,7 @@ function L.LoadMeasure(T, name, bytes)
   if o == nil then return nil end
   local align = D.region_align(T, desc)
   local function size_of(st, b, at, lim)
-    local scan = { at = 0 }
+    local scan = { at = 0, align = align }
     if not measure_record(T, o.table, scan, st, b, at, lim) then return 0, false end
     return round_region(round_region(D.record_size(st), align) + scan.at, align), true
   end

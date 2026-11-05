@@ -11,7 +11,7 @@
 .PHONY: tables-goose-view tables-goose-view-negative-controls
 tables-goose-view:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go test -count=1 -timeout 600s ./internal/codegen/goosetable/ \
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable/ \
 		-run '^(TestGooseUnitViewCorpus|TestGooseUnitViewPacketStorage|TestGooseTagListNamesDoNotCollide|TestGooseEmptyDocIsOneDefinition)$$'
 
 # THE NEGATIVE CONTROLS (§8.7: a gate that cannot go red proves nothing): an
@@ -21,7 +21,7 @@ tables-goose-view:
 # listing red on the line it owns.
 tables-goose-view-negative-controls:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go test -count=1 -timeout 600s ./internal/codegen/goosetable/ -run '^TestGooseUnitViewNegativeControl$$' -v
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable/ -run '^TestGooseUnitViewNegativeControl$$' -v
 	@echo "goose view negative controls: five sabotages, each red on its own line"
 
 test-goose: tables-goose-view tables-goose-view-negative-controls

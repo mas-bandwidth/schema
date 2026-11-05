@@ -7,11 +7,14 @@
 #
 #   json-value-negative-control label   the writer never labels a shared node,
 #                                       so it writes the graph as a tree:
-#                                       json-write red; wire, json-read and
-#                                       json-hostile green
+#                                       json-write red, and json-hostile on
+#                                       shared-node-by-label, whose value is
+#                                       written too; wire and json-read green
 #   json-value-negative-control share   a reference reads null instead of the
-#                                       node its label defined: json-read red;
-#                                       wire, json-write and json-hostile green
+#                                       node its label defined: json-read red,
+#                                       and json-hostile on shared-node-by-label,
+#                                       whose value is compared too; wire and
+#                                       json-write green
 #   json-value-negative-control total   a text list's read never meets its
 #                                       total (§2.13), over featurewitnesses:
 #                                       json-hostile red; wire, json-read and
@@ -29,15 +32,15 @@ case "$mode" in
 label)
 	from='    if c.count[wire] <= 1 { return jw_rec(c, out, tab, c.nodes[n].val, depth); }'
 	to='    if c.count[wire] <= 1000000 { return jw_rec(c, out, tab, c.nodes[n].val, depth); }'
-	want="json-write "
-	green="wire json-read json-hostile"
+	want="json-hostile json-write "
+	green="wire json-read"
 	unit=graphdemo
 	;;
 share)
 	from='        jr_point(c, s, l.wire);'
 	to='        jr_null(c, s);'
-	want="json-read "
-	green="wire json-write json-hostile"
+	want="json-hostile json-read "
+	green="wire json-write"
 	unit=graphdemo
 	;;
 total)

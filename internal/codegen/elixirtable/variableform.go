@@ -3417,13 +3417,30 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp int_of(<<v::little-unsigned-128>>, 16, false), do: v
   defp int_of(_payload, _w, _signed), do: 0
 
-  defp clamp_int(v, %{min: lo, max: _hi}, report) when v < lo,
-    do: {lo, %{report | clamped: report.clamped + 1}}
+  defp clamp_int(v, %{min: lo, max: _hi} = f, report) when v < lo,
+    do: clamp_bits(lo, f, %{report | clamped: report.clamped + 1})
 
-  defp clamp_int(v, %{min: _lo, max: hi}, report) when v > hi,
-    do: {hi, %{report | clamped: report.clamped + 1}}
+  defp clamp_int(v, %{min: _lo, max: hi} = f, report) when v > hi,
+    do: clamp_bits(hi, f, %{report | clamped: report.clamped + 1})
+
+  # A bits(N) field rides as the narrowest unsigned kind that holds it, so its
+  # payload can carry a value above 2^N - 1; that value clamps to the top of
+  # the field, after the declared range (docs/SPEC-TABLES.md §4). The clamp is
+  # folded into the one tuple this function already returns: a second call to
+  # clamp_bits on the common path cost an allocation the ordinary meter sees.
+  defp clamp_int(v, %{bits: bits}, report) when is_integer(bits) and bits > 0 do
+    top = Bitwise.bsl(1, bits) - 1
+    if v > top, do: {top, %{report | clamped: report.clamped + 1}}, else: {v, report}
+  end
 
   defp clamp_int(v, _f, report), do: {v, report}
+
+  defp clamp_bits(v, %{bits: bits}, report) when is_integer(bits) and bits > 0 do
+    top = Bitwise.bsl(1, bits) - 1
+    if v > top, do: {top, %{report | clamped: report.clamped + 1}}, else: {v, report}
+  end
+
+  defp clamp_bits(v, _f, report), do: {v, report}
 
   defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
     do: clamp_int(v, %{min: lo, max: hi}, report)

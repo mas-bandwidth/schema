@@ -44,8 +44,8 @@ func TestLuaIntegrityVariableForm(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 
-	// THE GO ENGINE WRITES THE FILE: the reference encoder's bytes, then the
-	// §2.14 trailer the Go leg's generated save adds.
+	// THE GO ENGINE WRITES THE FILE: the reference encoder's bytes, which end
+	// in the §2.14 trailer for a declaring table.
 	model := tabletext.NewModel(u)
 	inst := model.New(model.Lookup("Ledger"))
 	var report tabletext.Report
@@ -56,17 +56,18 @@ func TestLuaIntegrityVariableForm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
-	goFile := make([]byte, len(body)+4)
-	copy(goFile, body)
-	binary.LittleEndian.PutUint32(goFile[len(body):], crc32.Checksum(body, crc32.MakeTable(crc32.Castagnoli)))
+	if len(body) < 4 || binary.LittleEndian.Uint32(body[len(body)-4:]) != crc32.Checksum(body[:len(body)-4], crc32.MakeTable(crc32.Castagnoli)) {
+		t.Fatalf("the engine's file carries no integrity trailer: %x", body)
+	}
+	goFile := body
 
 	// ONE FLIPPED BODY BYTE and a file with its trailer cut off.
 	flipped := append([]byte(nil), goFile...)
 	flipped[1] ^= 0x01
 	cut := append([]byte(nil), goFile[:len(goFile)-4]...)
 
-	// The trailer is outside the region measure, so the oracle measures the
-	// file without it.
+	// The trailer is outside the region measure; the oracle takes it off
+	// itself.
 	measure, whole, refused := tablewire.FileRegionMeasure(u, u.Tables["Ledger"], body)
 	if !whole || refused {
 		t.Fatalf("FileRegionMeasure refused the Go file: whole=%v refused=%v", whole, refused)

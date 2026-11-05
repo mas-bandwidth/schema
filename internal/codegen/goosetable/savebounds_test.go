@@ -32,12 +32,12 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -225,7 +225,7 @@ func saveBounds(t *testing.T, override map[string][]byte) (string, string, bool)
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command(goose, "run", "main.goose")
+	cmd := gooserun.Command(t, goose, "run", "main.goose")
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -242,6 +242,7 @@ var saveBoundsRefusals = map[string]string{
 }
 
 func TestGooseSaveSignedBounds(t *testing.T) {
+	slowtest.Gate(t, "goose")
 	t.Parallel()
 	out, stderr, ok := saveBounds(t, nil)
 	if !ok {
@@ -276,6 +277,7 @@ func TestGooseSaveSignedBounds(t *testing.T) {
 //   - em_copy without the copied length's bound: the cursor steps back past
 //     the record and the next read indexes the store below zero.
 func TestGooseSaveSignedBoundsNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "goose")
 	t.Parallel()
 	const bound = "    if c.vals[s].bits.hi != 0 || wire > (c.nodes.len + 1) as! u64 { refuse(c, SaveRefuseInvalidValue); return 0; }\n"
 	for _, ctl := range []struct {
