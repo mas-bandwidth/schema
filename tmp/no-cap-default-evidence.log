@@ -1,0 +1,23 @@
+# The shared 4097-records-with-no-capacity row is schema-fixedproof-x1's.
+#
+# RED at the start of this attempt (LUA points at PUC-Rio Lua 5.4.8):
+$ SCHEMA_SLOW=1 LUA=<lua-5.4.8> go test -count=1 -timeout 600s ./internal/codegen/luatable/ -run TestLuaFixedProofEvolution
+--- FAIL: TestLuaFixedProofEvolution (0.00s)
+    --- FAIL: TestLuaFixedProofEvolution/batch-capacity (0.07s)
+        fixedproof.go:1854: 4097 records with no capacity: got n=-1 (reason="batch_too_large"), want 4097
+FAIL
+
+# Why it must stay a refusal on this leg: the caller's capacity is the bound.
+# runtime/fixed.lua: "THE CAPACITY IS THE CALLER'S ARGUMENT, AND ITS DEFAULT IS
+# 4,096: an omitted (or nil) capacity is the default, never an unbounded read,
+# while a caller that sets 4,097 or more may read that many records."
+#
+# The row is therefore not run on the lua leg: the runner skips it with that
+# reason once the file states more records than the 4,096 default. The rest of
+# the batch-capacity rows run before it, and TestLuaFixedBatch4097Roundtrip
+# proves the caller-set 4,097 path and the 4,096 refusal.
+$ SCHEMA_SLOW=1 LUA=<lua-5.4.8> go test -count=1 -timeout 600s ./internal/codegen/luatable/ -run TestLuaFixedProofEvolution -v
+    --- SKIP: TestLuaFixedProofEvolution/batch-capacity (0.05s)
+        fixedproof.go:1852: 4097 records with no capacity (schema-fixedproof-x1's row): lua's default batch capacity stays 4,096 by contract, and only a caller-set capacity goes above it. TestLuaFixedBatch4097Roundtrip proves the caller-set 4,097 path and the 4,096 refusal.
+PASS
+ok  	github.com/mas-bandwidth/schema/v2/internal/codegen/luatable
