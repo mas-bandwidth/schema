@@ -317,7 +317,7 @@ func TestLuaCountCapRefusalNegativeControls(t *testing.T) {
 			editLoad(t, files, "      refuse_count(ctx)\n", "", 2)
 		}, reads(caps, "tolerant", "load", "strict", "retain")},
 		{"widened", func(files map[string][]byte) {
-			editLoad(t, files, "if not (fd.list and above(count, 0x7fffffff)) then report.widened = report.widened + 1 end", "report.widened = report.widened + 1", 1)
+			editLoad(t, files, "if not (fd.list and above(count, 0x7fffffff) and not crossed) then report.widened = report.widened + 1 end", "report.widened = report.widened + 1", 1)
 		}, reads([]string{"values_widened_over_cap"}, "tolerant", "load", "retain")},
 		{"restore", func(files map[string][]byte) {
 			editLoad(t, files, "      report[k] = held[i]\n", "", 1)

@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -302,7 +301,6 @@ func runUnitView(t *testing.T, files map[string][]byte, printer string) string {
 // TestLuaUnitViewCorpus holds UnitView() over all 50 units (15 VIEW_CORPUS +
 // 35 tables manifest) byte-for-byte against internal/viewlisting.
 func TestLuaUnitViewCorpus(t *testing.T) {
-	slowtest.Gate(t, "lua (it runs the unit view\x27s listing program)")
 	t.Parallel()
 	units := luaViewUnits(t)
 	listed := 0
@@ -337,7 +335,6 @@ func TestLuaUnitViewCorpus(t *testing.T) {
 // at a time in a copy of the generated text, and requires the gate RED on the
 // line that claim owns (docs/SPEC-TABLES.md §8.7).
 func TestLuaUnitViewNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "lua (it runs the unit view\x27s listing program)")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	load := func(t *testing.T, rel string) (*ir.Unit, map[string][]byte) {
@@ -429,7 +426,6 @@ func TestLuaUnitViewNegativeControl(t *testing.T) {
 // no json key), an unreached enum carries id 0 on every variant, a reached type
 // keeps its ids, and nothing outside the view module requires it (§8.4).
 func TestLuaUnitViewPacketStorage(t *testing.T) {
-	slowtest.Gate(t, "lua (it runs a probe over the unit view)")
 	t.Parallel()
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "Probe.schema")

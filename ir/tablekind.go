@@ -577,3 +577,96 @@ func TableKindWidens(kind, declared int) bool {
 	}
 	return false
 }
+
+// TableFixedWriterRange is one ranged integer leaf of a fixed table's root, as a
+// lineage entry carries it for the WRITER that entry names
+// (docs/FIXED-FORM-ALGORITHM.md §4.5): the field's name, its scalar kind, and
+// its declared bounds on the raw scale (a fixed-point's whole-unit bounds
+// shifted by F, TableRawRange).
+type TableFixedWriterRange struct {
+	Name   string
+	Kind   int
+	Lo, Hi int64
+}
+
+// TableFixedWriterRanges lists the ranged integer leaves of a fixed table's root
+// that a writer's bounds can hold on a cross-version read: a scalar or a fixed
+// array of an integer, bits or fixed-point kind, at most eight bytes wide,
+// whose raw bounds fit int64. A counted array, an optional and a keyed array
+// are left to the reader's own pass, as the C++ reference's
+// collectKnownRanges leaves them.
+func TableFixedWriterRanges(st *Struct) []TableFixedWriterRange {
+	if st == nil {
+		return nil
+	}
+	var out []TableFixedWriterRange
+	for _, f := range st.Fields {
+		if f == nil || f.Type.Optional || f.KeyEnum != "" {
+			continue
+		}
+		if f.Array != ArrayNone && f.Array != ArrayFixed {
+			continue
+		}
+		switch f.Type.Kind {
+		case TInt, TBits, TFixed:
+		default:
+			continue
+		}
+		if w := TableFixedStorageBytes(f.Type); w <= 0 || w > 8 {
+			continue
+		}
+		lo, hi, ok := TableRawRange(f)
+		if !ok || !lo.IsInt64() || !hi.IsInt64() {
+			continue
+		}
+		out = append(out, TableFixedWriterRange{Name: f.Name, Kind: TableScalarKind(f), Lo: lo.Int64(), Hi: hi.Int64()})
+	}
+	return out
+}
+
+// TableFixedWriterField resolves one writer range onto the READER's field of
+// the same name: a copy of the reader's field whose declared bounds are the
+// writer's, so a backend's own clamp emitter spells the writer's pass with
+// the reader's storage, arrays and literals. ok is false where the writer's
+// range cannot hold the reader's value: a different name, a different scalar
+// kind (and so a different width or scale), a shape TableFixedWriterRanges does
+// not carry, or a range the storage already holds.
+func TableFixedWriterField(f *Field, r TableFixedWriterRange) (*Field, bool) {
+	if f == nil || f.Name != r.Name || f.Type.Optional || f.KeyEnum != "" {
+		return nil, false
+	}
+	if f.Array != ArrayNone && f.Array != ArrayFixed {
+		return nil, false
+	}
+	switch f.Type.Kind {
+	case TInt, TBits, TFixed:
+	default:
+		return nil, false
+	}
+	kind := TableScalarKind(f)
+	if kind != r.Kind || r.Lo > r.Hi {
+		return nil, false
+	}
+	lo, hi := big.NewInt(r.Lo), big.NewInt(r.Hi)
+	// A RANGE THE STORAGE ALREADY HOLDS bounds nothing: neither end can fire,
+	// so the field carries no writer pass at all.
+	bits := uint(8 * TableFixedStorageBytes(f.Type))
+	one := big.NewInt(1)
+	smin, smax := big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, bits), one)
+	if TableKindSigned(kind) {
+		smax = new(big.Int).Sub(new(big.Int).Lsh(one, bits-1), one)
+		smin = new(big.Int).Neg(new(big.Int).Lsh(one, bits-1))
+	}
+	if lo.Cmp(smin) <= 0 && hi.Cmp(smax) >= 0 {
+		return nil, false
+	}
+	if f.Type.Kind == TFixed {
+		lo.Rsh(lo, uint(f.Type.FracBits))
+		hi.Rsh(hi, uint(f.Type.FracBits))
+	}
+	w := *f
+	w.HasIntRange, w.IntMin, w.IntMax = true, lo, hi
+	w.IntMinExpr, w.IntMaxExpr = nil, nil
+	w.HasFloatRange = false
+	return &w, true
+}

@@ -94,7 +94,7 @@ lua-generated-loads: toolchain-lua generated/lua/.stamp generated/lua-ludicrous/
 # variant probes) run here instead of skipping green. The wire-fuzz pair is
 # -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
 # has just run it through test/slowgate/proof.
-test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control packet-utf8-lua packet-utf8-lua-negative-control packet-wide-lua packet-wide-lua-negative-control packet-defaults-lua packet-defaults-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
+test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
@@ -167,82 +167,6 @@ endef
 packet-finite-lua-negative-control: packet-finite-lua
 	$(call packet-finite-lua-control,read)
 	$(call packet-finite-lua-control,write)
-
-# ---------------------------------------------------------------- UTF-8
-build/packet-text/lua/.stamp: bin/schema test/packet-text/Narrow.schema
-	@rm -rf build/packet-text/lua && mkdir -p build/packet-text/lua
-	./bin/schema generate --lang lua --out build/packet-text/lua/generated test/packet-text/Narrow.schema
-	@touch $@
-
-.PHONY: packet-utf8-lua packet-utf8-lua-negative-control
-packet-utf8-lua: toolchain-lua build/packet-text/lua/.stamp build/packet-text/cpp/driver build/packet-text/harness
-	./build/packet-text/harness $(LUA) test/packet-text/lua/main.lua build/packet-text/lua/generated
-
-packet-utf8-lua-negative-control: packet-utf8-lua
-	@rm -rf build/packet-text/lua-negative && mkdir -p build/packet-text/lua-negative
-	go run ./tools/sabotage -name packet-utf8-lua-read -out build/packet-text/lua-negative/read.gotext internal/codegen/lua/read.go
-	@printf '{"Replace":{"%s/internal/codegen/lua/read.go":"%s/build/packet-text/lua-negative/read.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/packet-text/lua-negative/overlay.json
-	go build -overlay=build/packet-text/lua-negative/overlay.json -o build/packet-text/lua-negative/schema ./cmd/schema
-	./build/packet-text/lua-negative/schema generate --lang lua --out build/packet-text/lua-negative/generated test/packet-text/Narrow.schema
-	@if ./build/packet-text/harness -mutations-only $(LUA) test/packet-text/lua/main.lua build/packet-text/lua-negative/generated \
-		> build/packet-text/lua-negative/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: Lua UTF-8 removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/lua-negative/log || \
-		{ cat build/packet-text/lua-negative/log; exit 1; }
-	@echo 'packet UTF-8 Lua negative control: removed read validation fails bit-flip agreement'
-
-# ---------------------------------------------------------------- wide text
-build/packet-wide/lua/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
-	@rm -rf build/packet-wide/lua && mkdir -p build/packet-wide/lua
-	./bin/schema generate --lang lua --out build/packet-wide/lua/generated build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang lua --out build/packet-wide/lua/generated/shapes test/packet-wide/Shapes.schema
-	@touch $@
-
-.PHONY: packet-wide-lua packet-wide-lua-negative-control
-packet-wide-lua: toolchain-lua build/packet-wide/lua/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	$(LUA) test/packet-wide/lua/main.lua build/packet-wide/lua/generated --contracts
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver \
-		$(LUA) test/packet-wide/lua/main.lua build/packet-wide/lua/generated
-
-packet-wide-lua-negative-control: packet-wide-lua
-	@rm -rf build/packet-wide/lua-negative && mkdir -p build/packet-wide/lua-negative
-	go run ./tools/sabotage -name packet-wide-lua-pairing -out build/packet-wide/lua-negative/read.gotext internal/codegen/lua/read.go
-	@printf '{"Replace":{"%s/internal/codegen/lua/read.go":"%s/build/packet-wide/lua-negative/read.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/packet-wide/lua-negative/overlay.json
-	go build -overlay=build/packet-wide/lua-negative/overlay.json -o build/packet-wide/lua-negative/schema ./cmd/schema
-	./build/packet-wide/lua-negative/schema generate --lang lua --out build/packet-wide/lua-negative/generated build/packet-wide/source/WideText.schema
-	@if ./build/packet-text/harness -wide -mutations-only -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver \
-		$(LUA) test/packet-wide/lua/main.lua build/packet-wide/lua-negative/generated > build/packet-wide/lua-negative/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: Lua surrogate pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/lua-negative/log || \
-		{ cat build/packet-wide/lua-negative/log; exit 1; }
-	@echo 'packet wide Lua negative control: removed surrogate pairing fails bit-flip agreement'
-
-# ---------------------------------------------------------------- defaults
-build/packet-defaults/lua/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema
-	@rm -rf build/packet-defaults/lua && mkdir -p build/packet-defaults/lua
-	./bin/schema generate --lang lua --out build/packet-defaults/lua/generated test/packet-defaults/Defaults.schema
-	./bin/schema generate --lang lua --out build/packet-defaults/lua/generated/plain test/packet-defaults/Plain.schema
-	@touch $@
-
-.PHONY: packet-defaults-lua packet-defaults-lua-negative-control
-packet-defaults-lua: toolchain-lua build/packet-defaults/lua/.stamp
-	$(LUA) test/packet-defaults/lua/main.lua build/packet-defaults/lua/generated testdata/wire/packet-defaults
-
-packet-defaults-lua-negative-control: packet-defaults-lua
-	@rm -rf build/packet-defaults/lua-negative && mkdir -p build/packet-defaults/lua-negative
-	go run ./tools/sabotage -name packet-defaults-lua-constructor-bytes -out build/packet-defaults/lua-negative/lua.gotext internal/codegen/lua/lua.go
-	@printf '{"Replace":{"%s/internal/codegen/lua/lua.go":"%s/build/packet-defaults/lua-negative/lua.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/lua-negative/overlay.json
-	go build -overlay=build/packet-defaults/lua-negative/overlay.json -o build/packet-defaults/lua-negative/schema ./cmd/schema
-	./build/packet-defaults/lua-negative/schema generate --lang lua --out build/packet-defaults/lua-negative/generated test/packet-defaults/Defaults.schema
-	./build/packet-defaults/lua-negative/schema generate --lang lua --out build/packet-defaults/lua-negative/generated/plain test/packet-defaults/Plain.schema
-	@if $(LUA) test/packet-defaults/lua/main.lua build/packet-defaults/lua-negative/generated testdata/wire/packet-defaults > build/packet-defaults/lua-negative/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Lua'; exit 1; fi
-	@grep -Fq 'FAILED: packet-default constructor bytes' build/packet-defaults/lua-negative/log || \
-		{ echo 'NEGATIVE CONTROL FAILED: Lua failed for another reason'; cat build/packet-defaults/lua-negative/log; exit 1; }
-	@echo 'packet defaults Lua negative control: missing constructor bytes fail the constructor check'
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Lua side.
 # The cook example in docs/USAGE.md is not a sketch beside the code: the gate

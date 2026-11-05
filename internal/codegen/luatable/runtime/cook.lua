@@ -185,28 +185,39 @@ local function placed_array(s, at, size, align)
   return start, count
 end
 
-local function companion(s, at, bound)
-  local n = i32(s.data, at)
-  if n < 0 or n > bound then return false end
-  return true
+-- THE UNBOUNDED-TEXT clause (docs/SPEC-TABLES.md §2.13.1, §7.4): a text slot
+-- holds an int64 self-relative delta to a blob record, `u32 length`, `u32
+-- zero`, the bytes and one zero byte, in the holder's own node extent at
+-- eight-byte alignment, or zero for the empty string. A non-null slot names a
+-- non-empty, terminated blob that overlaps no other array or blob in the node.
+local function text_blob(s, at)
+  local delta = u64(s.data, at)
+  if delta == 0 then return 0, 0 end
+  local start = array_extent(at, delta, 1, BLOB_HEADER, s.base, s.extent)
+  if start == nil or start % BLOB_ALIGN ~= 0 then return nil end
+  local length = u32(s.data, start)
+  if length <= 0 then return nil end
+  local finish
+  start, finish = array_extent(at, delta, 1, BLOB_HEADER + length + 1, s.base, s.extent)
+  if start == nil then return nil end
+  return start, length, finish
 end
 
 local function text_slot(s, at)
-  local delta = u64(s.data, at)
-  if delta == 0 then return true end
-  local start = array_extent(at, delta, BLOB_HEADER, 1, s.base, s.extent)
-  if start == nil or start % BLOB_ALIGN ~= 0 then return false end
-  local length = u32(s.data, start)
-  if length <= 0 then return false end
-  local need = BLOB_HEADER + length + 1
-  local finish
-  start, finish = array_extent(at, delta, need, 1, s.base, s.extent)
+  local start, length, finish = text_blob(s, at)
   if start == nil then return false end
-  if string.byte(s.data, start + BLOB_HEADER + length + 1) ~= 0 then return false end
+  if length == 0 then return true end
+  if s.data:byte(start + BLOB_HEADER + length + 1) ~= 0 then return false end
   for _, other in ipairs(s.arrays) do
     if start < other.finish and other.start < finish then return false end
   end
   s.arrays[#s.arrays + 1] = { start = start, finish = finish }
+  return true
+end
+
+local function companion(s, at, bound)
+  local n = i32(s.data, at)
+  if n < 0 or n > bound then return false end
   return true
 end
 
@@ -339,14 +350,9 @@ end
 local function used_bytes(s, key, _entry, at)
   at = at + key.at
   if key.unbounded then
-    local delta = u64(s.data, at)
-    if delta == 0 then return "" end
-    local start = array_extent(at, delta, BLOB_HEADER, 1, s.base, s.extent)
-    if start == nil then return "" end
-    local n = u32(s.data, start)
-    if n <= 0 then return "" end
-    if array_extent(at, delta, BLOB_HEADER + n + 1, 1, s.base, s.extent) == nil then return "" end
-    return string.sub(s.data, start + BLOB_HEADER + 1, start + BLOB_HEADER + n)
+    local start, length = text_blob(s, at)
+    if start == nil or length == 0 then return "" end
+    return string.sub(s.data, start + BLOB_HEADER + 1, start + BLOB_HEADER + length)
   end
   local n = i32(s.data, at + key.companion)
   if n < 0 then n = 0 end
@@ -415,10 +421,7 @@ field = function(s, at, f)
     end
     return true
   end
-  if shape == "string" and f.unbounded then
-    if f.optional and string.byte(s.data, at + 8 + 1) == 0 then return u64(s.data, at) == 0 end
-    return text_slot(s, at)
-  end
+  if shape == "string" and f.unbounded then return text_slot(s, at) end
   if shape == "string" or shape == "bytes" or shape == "wstring" then return companion(s, at + f.companion, f.bound) end
   return element(s, at, f)
 end

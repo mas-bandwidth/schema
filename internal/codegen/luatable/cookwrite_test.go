@@ -239,7 +239,7 @@ local cookwrite = require("cookwrite")
 local inputs = require("inputs")
 local hexline = require("hexline")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.LoadTolerant(T, "` + r.root + `", inputs.wire, report)
+local v = load.Load(T, "` + r.root + `", inputs.wire, report)
 for order = 1, 2 do
   local c = cookwrite.Cook(T, "` + r.root + `", v, nil, order)
   hexline(c or "")

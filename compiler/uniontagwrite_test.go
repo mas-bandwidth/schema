@@ -82,7 +82,10 @@ var tagRefusesEveryBuild = map[string][]string{
 	"goose": {"if value.Type > ShotTypeMax { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
 	// Lua's assert() is an ordinary call no build strips, so the writer
 	// refuses an out-of-set tag (returns false) in every build, as Go does.
-	"lua":      {`if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end`},
+	"lua": {`if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end`},
+	// moo's assert, Luau's, is a call no build removes, so the writer refuses
+	// (returns false) in every build, as Lua's does.
+	"moo":      {"if not isInt(value.Type, 0, 2) then -- the tag validates before it rides (SPEC §4.8)"},
 	"squirrel": {`if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;`},
 }
 

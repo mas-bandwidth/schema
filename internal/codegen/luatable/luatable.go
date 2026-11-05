@@ -816,11 +816,10 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 			// element or a map key with no length bound, stored as one blob
 			// slot. No `bound =` rides, so no reader clamps and no map key is
 			// dropped for its length.
-			s := "shape = \"string\", unbounded = true"
 			if withDefault {
-				s += ", default = " + lua.ByteString(f.DefBytes)
+				return "shape = \"string\", unbounded = true, default = \"\""
 			}
-			return s
+			return "shape = \"string\", unbounded = true"
 		}
 		s := fmt.Sprintf("shape = \"string\", bound = %d", t.Size)
 		if withDefault {
