@@ -272,7 +272,6 @@ table Holder { bases []?string(8) }
 `,
 		want: []string{
 			"tableJSONWriteTextElement", // text-list JSON writer seam
-			"tableTextClamped",          // text-list clamp name seam
 			"json_root_not_array",       // array-root read seam
 			"f.TextList == 0",           // string kind split for text lists
 		},

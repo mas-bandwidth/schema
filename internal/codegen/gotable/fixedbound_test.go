@@ -63,7 +63,7 @@ func TestRefuseByName(t *testing.T) {
 		if n := RootFixedLoad(got, data, plan, &r); n >= 0 || r.Reason != wantReason {
 			t.Fatalf("%s: n=%d reason=%q, want %q", name, n, r.Reason, wantReason)
 		}
-		if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0 || r.Malformed {
+		if r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 			t.Fatalf("%s: refusal moved a counter or marked malformed: %+v", name, r)
 		}
 		for i, b := range pdst {
@@ -139,7 +139,7 @@ func TestCountOverBoundCompiled(t *testing.T) {
 		if n >= 0 || r.Reason != wantReason {
 			t.Fatalf("%%s: n=%%d reason=%%q, want %%q", name, n, r.Reason, wantReason)
 		}
-		if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0 || r.Malformed {
+		if r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 			t.Fatalf("%%s: refusal moved a counter or marked malformed: %%+v", name, r)
 		}
 		for i, b := range pdst {
@@ -197,7 +197,7 @@ func TestLengthOverBoundCompiled(t *testing.T) {
 		if n >= 0 || r.Reason != wantReason {
 			t.Fatalf("%%s: n=%%d reason=%%q, want %%q", name, n, r.Reason, wantReason)
 		}
-		if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0 || r.Malformed {
+		if r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 			t.Fatalf("%%s: refusal moved a counter or marked malformed: %%+v", name, r)
 		}
 		for i, b := range pdst {

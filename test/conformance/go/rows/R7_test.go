@@ -89,8 +89,8 @@ func TestRowR7(t *testing.T) {
 	// The report a read that answers owes: every counter zero, no damage, no
 	// refusal, no layout hash carried.
 	clean := func(r *tblv1.TableReport) bool {
-		return r.Verdict == tblv1.TableOpenOk && !r.Malformed && r.Reason == "" &&
-			r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 &&
+		return r.Verdict == tblv1.TableOpenOk && !r.Refused() && r.Reason == "" &&
+			r.Unknown == 0 && r.Widened == 0 &&
 			r.LayoutHash == 0
 	}
 
@@ -174,8 +174,8 @@ func TestRowR7(t *testing.T) {
 	n2 := tblv1.CfgFixedLoad(out, lying, plan, &lr)
 	if given != uint64(tblv1.CfgFixedHash)^0xFFFFFFFFFFFFFFFF ||
 		n2 != -1 || lr.Verdict != tblv1.TableOpenRefused || lr.Reason != "layout_unknown" ||
-		lr.LayoutHash != given || lr.Malformed ||
-		lr.Unknown != 0 || lr.KindMismatch != 0 || lr.Widened != 0 || lr.Clamped != 0 {
+		lr.LayoutHash != given ||
+		lr.Unknown != 0 || lr.Widened != 0 {
 		t.Errorf("a header hash no lineage entry holds is not layout_unknown carrying THE FILE'S HASH and nothing else: n=%d report=%+v given=0x%x — no counter moves, nothing decodes",
 			n2, lr, given)
 	}

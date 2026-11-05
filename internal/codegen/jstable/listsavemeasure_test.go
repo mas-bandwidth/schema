@@ -52,11 +52,12 @@ func TestListSaveLoadMeasureCoversFramingJavaScript(t *testing.T) {
 
 	dm := tabletext.NewModel(u)
 	var drep tabletext.Report
-	if _, err := tablewire.Decode(dm, dm.New(dm.Lookup("Save")), wireData, &drep); err != nil {
+	dok, err := tablewire.Decode(dm, dm.New(dm.Lookup("Save")), wireData, &drep)
+	if err != nil && !tablewire.ReadRefusal(err) {
 		t.Fatal(err)
 	}
 	wantLoad := "ok"
-	if drep.Malformed {
+	if !dok {
 		wantLoad = "null"
 	}
 
@@ -110,6 +111,6 @@ writeFileSync(process.argv[2], m + "\n" + (v === null ? "null" : "ok") + "\n");
 		t.Fatalf("Save LoadMeasure: JS=%d, oracle FileRegionMeasure=%d", got, want)
 	}
 	if strings.TrimSpace(lines[1]) != wantLoad {
-		t.Fatalf("Save Load answered %q, the oracle %q (malformed=%v)", lines[1], wantLoad, drep.Malformed)
+		t.Fatalf("Save Load answered %q, the oracle %q (refused=%v)", lines[1], wantLoad, !dok)
 	}
 }

@@ -46,14 +46,14 @@ func TestRaggedTail(t *testing.T) {
 		got := []Point{{X: -1, Y: -1}}
 		r = TableReport{}
 		ragged := append(buf, make([]byte, extra)...)
-		if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || r != (TableReport{Malformed: true, Reason: "truncated"}) || got[0] != (Point{X: -1, Y: -1}) {
+		if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || r != (TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"}) || got[0] != (Point{X: -1, Y: -1}) {
 			t.Fatalf("extra=%d: n=%d report=%+v dest=%+v", extra, n, r, got[0])
 		}
 	}
 	got := []Point{{X: -1, Y: -1}}
 	r = TableReport{}
 	whole := append(buf, make([]byte, recordBytes)...)
-	if n := PointFixedLoad(got, whole, plan, &r); n != -1 || r.Verdict != TableOpenRefused || r.Reason != "batch_too_large" || r.Malformed {
+	if n := PointFixedLoad(got, whole, plan, &r); n != -1 || r.Verdict != TableOpenRefused || r.Reason != "batch_too_large" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("extra==recordBytes owes batch_too_large, not malformed: n=%d report=%+v", n, r)
 	}
 }

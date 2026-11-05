@@ -38,10 +38,11 @@ func TestStreamCountPastBodyClampsLikeGoJavaScript(t *testing.T) {
 
 	inst := m.New(m.Lookup("Feed"))
 	var rep tabletext.Report
-	if _, decErr := tablewire.Decode(m, inst, wire, &rep); decErr != nil {
+	ok, decErr := tablewire.Decode(m, inst, wire, &rep)
+	if decErr != nil && !tablewire.ReadRefusal(decErr) {
 		t.Fatal(decErr)
 	}
-	if !rep.Malformed {
+	if ok || !tablewire.ReadRefusal(decErr) {
 		t.Fatalf("the oracle does not read the vector as damage: %+v", rep)
 	}
 	const want = "loaded=false|malformed=true"

@@ -634,7 +634,7 @@ func testgenDamage(b *strings.Builder, st *ir.Struct, variable bool, samples []t
 	b.WriteString("\t\t\tt.Fatalf(\"base64 damage: %v, want base64_damaged\", err)\n\t\t}\n\t}\n")
 	fmt.Fprintf(b, "\tjsonText := make([]byte, %sToJSONMeasure(v))\n\tif %sToJSON(v, jsonText) != int64(len(jsonText)) {\n\t\tt.Fatal(\"ToJSON of the high sample\")\n\t}\n", n, n)
 	testgenFromJSONAt(b, "\t", n, variable, "jsonText[:len(jsonText)-2]", "", "jr")
-	b.WriteString("\tif ok || !jr.Malformed || !errors.Is(jr.Err(), TableRefuseMalformed) {\n\t\tt.Fatalf(\"a JSON document cut off inside its value: report %+v, want malformed\", jr)\n\t}\n}\n")
+	b.WriteString("\tif ok || !jr.Refused() || !errors.Is(jr.Err(), TableRefuseMalformed) {\n\t\tt.Fatalf(\"a JSON document cut off inside its value: report %+v, want malformed\", jr)\n\t}\n}\n")
 }
 
 // testgenSave writes the subtest's save closure: a value's wire and JSON text.

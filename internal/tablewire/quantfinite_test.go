@@ -37,7 +37,7 @@ func TestMessageQuantizedDecodeIsFinite(t *testing.T) {
 	hostile := bytes.Replace(own, declared, quantTriple(3*(1<<103), math.MaxFloat32, 1e36), 1)
 	var v tablewire.Vocabulary
 	var ar tabletext.Report
-	if err := v.AnnounceRead(hostile, &ar); err != nil || ar.Malformed {
+	if err := v.AnnounceRead(hostile, &ar); err != nil || ar.Refused {
 		t.Fatalf("the hostile announcement was refused: %v %+v", err, ar)
 	}
 
@@ -49,14 +49,12 @@ func TestMessageQuantizedDecodeIsFinite(t *testing.T) {
 	}
 	refusedAs(t, "message Edge.x top step", err, report, "Edge.x")
 
-	// the same body with a lower step
+	// the same body with a lower step: a finite value, and far past this
+	// reader's own [0, 1000], so the read refuses out_of_range (§4)
 	inst := m.New(m.Lookup("Edge"))
 	report = tabletext.Report{}
 	n, ok, err = tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, []byte{0x02, 0x00, 0xa1, 0x0a}, &v, &report)
-	if !ok || n != 1 || err != nil {
+	if ok || n != 0 || tablewire.RefusalReason(err) != tablewire.ReasonOutOfRange {
 		t.Fatalf("the step below the top answered %d %v %v %+v", n, ok, err, report)
-	}
-	if x := floatField(t, inst, "x").Cell.F; math.IsInf(x, 0) || math.IsNaN(x) || x <= 0 {
-		t.Errorf("the step below the top read %v", x)
 	}
 }

@@ -44,7 +44,7 @@ func (g *tableGen) emitReadWide(f *ir.Field, expr, rdr, kind, ind, onBad string)
 	if f.HasIntRange {
 		rlo, rhi, _ := ir.TableRawRange(f)
 		lo, hi := wideLiteral(rlo, f.Type.Signed), wideLiteral(rhi, f.Type.Signed)
-		g.pf("%s if v.Cmp(%s) < 0 { v = %s; r.Report.Clamped++ } else if v.Cmp(%s) > 0 { v = %s; r.Report.Clamped++ }\n", ind, lo, lo, hi, hi)
+		g.pf("%s if v.Cmp(%s) < 0 || v.Cmp(%s) > 0 { %s }\n", ind, lo, hi, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
 	}
 	g.pf("%s %s = v\n%s}\n", ind, expr, ind)
 }

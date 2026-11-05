@@ -213,7 +213,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 			}
 			return tableMessageRefuse(report, reason)
 		}
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		return false
 	}
 	versionCount, wordsCount := 0, 0
@@ -221,7 +221,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	for {
 		ref, ok := r.Leb()
 		if !ok {
-			report.Malformed = true
+			report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -229,31 +229,31 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		}
 		id, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			report.Malformed = true
+			report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		switch id {
 		case 0xfffffffffffffffe:
 			if kind != 9 || !r.Has(8) {
-				report.Malformed = true
+				report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			v.BuildVersion = r.Get64()
 			versionCount++
 		case 0xfffffffffffffffd:
 			if kind != 14 {
-				report.Malformed = true
+				report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			sub, ok := r.Body()
 			if !ok || !sub.Has(1) || sub.Get8() != 6 {
-				report.Malformed = true
+				report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			n, ok := sub.Leb()
 			if !ok || n > uint64(len(sub.Buffer)) || int64(n) != int64(len(sub.Buffer))-sub.Offset {
-				report.Malformed = true
+				report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			limit := v.MaxBytes
@@ -268,13 +268,13 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		default:
 			report.Unknown++
 			if !r.Skip(kind) {
-				report.Malformed = true
+				report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 	if versionCount != 1 || wordsCount != 1 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		return false
 	}
 	if v.Strict && v.BuildVersion != BuildVersion {
@@ -292,7 +292,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		began := src.Offset
 		e, ok := tableMessageEntryRead(&src)
 		if !ok || e.ID == 0xfffffffffffffffd || e.ID == 0xfffffffffffffffe || e.ID == 0xffffffffffffffff && nodeSeen {
-			report.Malformed = true
+			report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if e.ID == 0xffffffffffffffff {
@@ -309,7 +309,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 					}
 				}
 				if same {
-					report.Malformed = true
+					report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
 			}
@@ -323,7 +323,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	for i := range count {
 		e, ok := tableMessageEntryRead(&src)
 		if !ok {
-			report.Malformed = true
+			report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		v.Entries[i] = e

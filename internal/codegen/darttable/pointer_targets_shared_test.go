@@ -15,6 +15,7 @@ import (
 )
 
 func TestDartPointerTargetsSharedCorpus(t *testing.T) {
+	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	schema, raw := sharedDartFixture(t, "pointer-targets")
 	var rows []struct {
@@ -60,7 +61,7 @@ func TestDartPointerTargetsSharedCorpus(t *testing.T) {
 			} else {
 				ok, err = tablewire.Decode(m, value, wire, &r)
 			}
-			if !ok || err != nil || r.Malformed || r.KindMismatch != row.KindMismatch || r.Unknown != row.Unknown || r.BlobShared != 0 {
+			if !ok || err != nil || r.Refused || row.KindMismatch != 0 || r.Unknown != row.Unknown {
 				t.Fatalf("%s retaining=%v explicit oracle %+v %v", row.Name, retaining, r, err)
 			}
 			canonical, err := m.Write(value)

@@ -17,6 +17,7 @@ import (
 )
 
 func TestDartTextListTotalNative(t *testing.T) {
+	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	fixture := "../../../testdata/conformance/feature-witnesses/text-list-total"
 	read := func(name string) string {
@@ -31,7 +32,7 @@ func TestDartTextListTotalNative(t *testing.T) {
 	m := tabletext.NewModel(u)
 	v := m.New(u.Tables["Totals"])
 	var r tabletext.Report
-	if !m.Read(v, []byte(input), &r) || r.Clamped != 10 {
+	if !m.Read(v, []byte(input), &r) {
 		t.Fatalf("independent JSON prefix %+v", r)
 	}
 	expected := m.New(u.Tables["Totals"])

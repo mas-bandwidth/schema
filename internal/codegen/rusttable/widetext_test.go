@@ -215,25 +215,29 @@ func TestWideTextOnTheTableWireRust(t *testing.T) {
 		}
 		rinst := mm.New(mm.Lookup(readRoot))
 		var rrep tabletext.Report
-		if _, err := tablewire.Decode(mm, rinst, wire, &rrep); err != nil {
-			t.Fatalf("%s: the oracle refused the damaged wire: %v", dc.name, err)
+		ok, err := tablewire.Decode(mm, rinst, wire, &rrep)
+		if err != nil && !tablewire.ReadRefusal(err) {
+			t.Fatalf("%s: the oracle failed on the damaged wire: %v", dc.name, err)
 		}
-		if rrep == (tabletext.Report{}) {
-			t.Fatalf("%s: the oracle reads the damage clean, so the row pins nothing", dc.name)
-		}
-		saved, err := tablewire.Encode(mm, rinst)
-		if err != nil {
-			t.Fatalf("%s: the oracle did not re-encode what it read: %v", dc.name, err)
+		var saved []byte
+		if ok {
+			if rrep == (tabletext.Report{}) {
+				t.Fatalf("%s: the oracle reads the damage clean, so the row pins nothing", dc.name)
+			}
+			if saved, err = tablewire.Encode(mm, rinst); err != nil {
+				t.Fatalf("%s: the oracle did not re-encode what it read: %v", dc.name, err)
+			}
 		}
 		savedPath := filepath.Join(work, dc.name+".saved")
 		if err := os.WriteFile(savedPath, saved, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		want := fmt.Sprintf("REPORT %s %d,%d,%d,%d,%d,%v SAVED OK", dc.name, rrep.Unknown, rrep.KindMismatch, rrep.Widened, rrep.Clamped, rrep.Duplicate, rrep.Malformed)
-		if rrep.Malformed {
-			// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the leg
-			// owes the refusal, and no counter or saved byte is compared
-			want = "DISCARD " + dc.name + " true"
+		want := fmt.Sprintf("REPORT %s %d,%d,%d,%d,%d,%v SAVED OK", dc.name, rrep.Unknown, 0, rrep.Widened, 0, 0, false)
+		if !ok {
+			// THE ONE READ (docs/SPEC-TABLES.md §4, §6.5): the oracle refused,
+			// so the leg owes the refusal, and no counter or saved byte is
+			// compared
+			want = "REPORT " + dc.name + " REFUSED"
 		}
 		damage = append(damage, dCase{name: dc.name, root: readRoot, wire: wire, want: want})
 	}

@@ -1,7 +1,6 @@
 package tablewire
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"math"
 )
@@ -36,7 +35,7 @@ func FileRegionMeasure(u *ir.Unit, root *ir.Struct, data []byte) (bytes int64, w
 	if !ok {
 		return -1, true, true
 	}
-	payload, present, framed := nodeTableBytes(body, ids, &tabletext.Report{})
+	payload, present, framed := nodeTableBytes(body, ids)
 	if present && !framed {
 		return 0, false, false
 	}
