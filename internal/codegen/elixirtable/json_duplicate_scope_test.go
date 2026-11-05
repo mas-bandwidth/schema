@@ -113,7 +113,7 @@ end
 		if err != nil {
 			t.Fatalf("%s oracle writer: %v", row.name, err)
 		}
-		fmt.Fprintf(&probe, "Probe.row(%s, %t, %s, %%{unknown: %d, kind_mismatch: %d, clamped: %d, widened: %d, duplicate: %d, malformed: %t}, %s)\n", elixirString(row.text), ok, elixirString(string(json)+"\n"), report.Unknown, report.KindMismatch, report.Clamped, report.Widened, report.Duplicate, report.Malformed, elixirString(row.name))
+		fmt.Fprintf(&probe, "Probe.row(%s, %t, %s, %%{unknown: %d, kind_mismatch: %d, clamped: %d, widened: %d, duplicate: %d, malformed: %t}, %s)\n", elixirString(row.text), ok, elixirString(string(json)+"\n"), report.Unknown, 0, 0, report.Widened, 0, report.Refused, elixirString(row.name))
 	}
 	probe.WriteString(`
 # Present enum None and an absent optional are distinct cook storage states.

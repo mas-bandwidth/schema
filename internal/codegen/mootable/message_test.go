@@ -190,7 +190,7 @@ func TestMooMessageFormMatchesTheManifest(t *testing.T) {
 		if err != nil {
 			t.Fatalf("message %s: the Go engine refuses the batch: %v", row.name, err)
 		}
-		want := fmt.Sprintf("%d %d,%d,%d,%d,%d,%v", n, drep.Unknown, drep.KindMismatch, drep.Widened, drep.Clamped, drep.Duplicate, drep.Malformed)
+		want := fmt.Sprintf("%d %d,%d,%d,%d,%d,%v", n, drep.Unknown, 0, drep.Widened, 0, 0, drep.Refused)
 		if out["load"] != want {
 			t.Errorf("message %s: moo load %q, the Go engine %q", row.name, out["load"], want)
 			continue
@@ -570,7 +570,7 @@ func TestMooMessageFormEvolvesAsTheGoEngine(t *testing.T) {
 			ma := tabletext.NewModel(ua)
 			ia := ma.New(ua.Tables[c.root])
 			var ra tabletext.Report
-			if !ma.Read(ia, []byte(c.json), &ra) || ra.Malformed {
+			if !ma.Read(ia, []byte(c.json), &ra) || ra.Refused {
 				t.Fatalf("the Go engine does not read the writer's JSON: %+v", ra)
 			}
 			msg, err := tablewire.EncodeMessages(ma, []*tabletext.Instance{ia})
@@ -594,7 +594,7 @@ func TestMooMessageFormEvolvesAsTheGoEngine(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := fmt.Sprintf("load %d %d,%d,%d,%d,%d,%v\nfile %x", n, rb.Unknown, rb.KindMismatch, rb.Widened, rb.Clamped, rb.Duplicate, rb.Malformed, fileB)
+			want := fmt.Sprintf("load %d %d,%d,%d,%d,%d,%v\nfile %x", n, rb.Unknown, 0, rb.Widened, 0, 0, rb.Refused, fileB)
 			files, err := generate(ub)
 			if err != nil {
 				t.Fatal(err)

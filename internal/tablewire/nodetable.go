@@ -56,18 +56,13 @@ func (e *encoder) appendNodeTable(fields []byte, g *NodeGraph) ([]byte, error) {
 // nodeTableBytes gathers the node table out of a ROOT body: the one top-level
 // field under the reserved id.
 //
-// **The node table is whole or it is nothing**: numbering is positional, so a
+// **The node table is whole or the read refuses**: numbering is positional, so a
 // record that cannot be read cannot be dropped without renumbering every record
-// after it. A node-table field arriving under a kind other than `12`, or with a
-// length past the root body, makes the whole table malformed, every pointer in
-// the save reads null, and one event is counted. **The reserved id inside a
-// NESTED body is malformed** on the numbering's own rule, and that is the
-// caller's check (§3.1). Damage to the root body ELSEWHERE — a field of another
-// id the scan cannot skip, a missing terminator — is §4's framing damage on the
-// root body, not the table's: the scan stops there and what it has found is the
-// table, which `node_count` then has to match.
-func nodeTableBytes(data []byte, ids []uint64, report *tabletext.Report) (payload []byte, present bool, ok bool) {
-	r := &wireReader{buf: data, report: &tabletext.Report{}, ids: ids}
+// after it. A node-table field under a kind other than `12`, or with a length
+// past the root body, answers ok false. The reserved id inside a NESTED body is
+// damage, and that is the wire check's rule (§3.1).
+func nodeTableBytes(data []byte, ids []uint64) (payload []byte, present bool, ok bool) {
+	r := &wireReader{buf: data, report: &tabletext.Report{}, ids: ids, fail: &readFail{}}
 	for {
 		ref, next, good := readLeb(r.buf, r.off)
 		if !good {
@@ -88,7 +83,6 @@ func nodeTableBytes(data []byte, ids []uint64, report *tabletext.Report) (payloa
 		if id == ir.TableNodeWireId {
 			present = true
 			if kind != ir.TableKindString {
-				report.Malformed = true
 				return nil, present, false
 			}
 			n, after, good := readLeb(r.buf, r.off)

@@ -67,7 +67,7 @@ check(r.clamped==%d&&r.kindMismatch==%d,%q);
 check(hex(w.%sWireSave(v))==%q,%q);
 check(w.%sToJson(v)==%q,%q);
 }
-`, fn, tc.Input, r.Clamped, r.KindMismatch, tc.Name+" report", fn, hex.EncodeToString(wire), tc.Name+" wire", fn, string(text)+"\n", tc.Name+" JSON")
+`, fn, tc.Input, 0, 0, tc.Name+" report", fn, hex.EncodeToString(wire), tc.Name+" wire", fn, string(text)+"\n", tc.Name+" JSON")
 	}
 	body.WriteString("}\n")
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(body.String()), 0600); err != nil {

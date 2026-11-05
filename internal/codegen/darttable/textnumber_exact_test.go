@@ -150,7 +150,7 @@ func textNumberOracle(t *testing.T) []string {
 		if err != nil {
 			t.Fatalf("%s: the Go engine's wire: %v", text, err)
 		}
-		want = append(want, fmt.Sprintf("%s %s %x", strconv.Itoa(rep.Clamped), strconv.Itoa(rep.KindMismatch), wire))
+		want = append(want, fmt.Sprintf("%s %s %x", strconv.Itoa(0), strconv.Itoa(0), wire))
 	}
 	return want
 }

@@ -36,10 +36,10 @@ func TestEngineWireBoolPayloadNot0Or1(t *testing.T) {
 	// LOAD (docs/SPEC-TABLES.md §4): the read refuses and hands back the root
 	// at its declared defaults
 	ok, derr := tablewire.Decode(m, inst, wire, &report)
-	if ok || derr != nil {
+	if ok || tablewire.RefusalReason(derr) != tablewire.ReasonWireDamaged {
 		t.Fatalf("decode: ok=%v err=%v", ok, derr)
 	}
-	if !report.Malformed {
+	if !report.Refused {
 		t.Fatal("decode did not report malformed")
 	}
 	got, err := tablewire.Encode(m, inst)

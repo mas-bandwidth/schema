@@ -58,7 +58,7 @@ zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retain
 		dest := m.New(u.Tables[row.Reader])
 		r = tabletext.Report{}
 		ok, e := tablewire.Decode(m, dest, wire, &r)
-		if !ok || e != nil || int(r.KindMismatch) != row.KindMismatch || int(r.Unknown) != row.Unknown || r.Malformed {
+		if !ok || e != nil || int(r.Unknown) != row.Unknown || r.Refused {
 			t.Fatalf("%s SPEC3.1 oracle: %+v %v", row.Name, r, e)
 		}
 		canonical, e := m.Write(dest)
@@ -110,7 +110,7 @@ func TestNodeTableWrongKindElixir(t *testing.T) {
 	v := m.New(u.Tables["ArrayRoot"])
 	var r tabletext.Report
 	ok, e := tablewire.Decode(m, v, wire, &r)
-	if ok || e != nil || !r.Malformed {
+	if ok || !tablewire.ReadRefusal(e) {
 		t.Fatalf("reserved node kind oracle: %v %+v %v", ok, r, e)
 	}
 	p := fmt.Sprintf(`alias Featurewitnesses.Table,as: T

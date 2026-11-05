@@ -107,7 +107,7 @@ func TestJavaFixCountPastLengthRefused(t *testing.T) {
 		}
 		oracle := model.New(u.Tables[root])
 		oreport := new(tabletext.Report)
-		if _, err := tablewire.Decode(model, oracle, wire, oreport); err != nil || !oreport.Malformed {
+		if _, err := tablewire.Decode(model, oracle, wire, oreport); !tablewire.ReadRefusal(err) {
 			t.Fatalf("%s: oracle does not read the input as damaged: %v %+v", tc.name, err, oreport)
 		}
 		counts := strings.TrimPrefix(strings.SplitN(line, "|", 2)[0], "null ")

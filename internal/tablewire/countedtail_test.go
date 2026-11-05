@@ -41,7 +41,7 @@ func TestRepeatedCountedUnionTailCooks(t *testing.T) {
 		t.Run(decode.name, func(t *testing.T) {
 			inst := m.New(m.Lookup("Hand"))
 			var report tabletext.Report
-			if ok, err := decode.fn(m, inst, wire, &report); ok || err != nil || !report.Malformed {
+			if ok, err := decode.fn(m, inst, wire, &report); ok || !tablewire.ReadRefusal(err) || !report.Refused {
 				t.Fatalf("decode: %v, %+v", err, report)
 			}
 			entries := fieldByName(t, inst, "entries")
@@ -71,10 +71,12 @@ func TestRepeatedCountedUnionTailCooks(t *testing.T) {
 	}
 }
 
+// A REPEATED FIELD ID IS DAMAGE (§4, §6.5): every repeat of a counted record
+// array refuses, and the root comes back at its declared defaults.
 func TestRepeatedCountedRecordTailDefaults(t *testing.T) {
 	m := listModel(t, `package probe
  type Child { n int32 = 7 }
- fixed table Root { values [..3]Child }
+ table Root { values [..3]Child }
  `)
 	before := place(t, m, "Root", `{"values":[{"n":1},{"n":2},{"n":3}]}`)
 	wire, err := tablewire.Encode(m, before)
@@ -97,8 +99,8 @@ func TestRepeatedCountedRecordTailDefaults(t *testing.T) {
 		count     int
 		malformed bool
 	}{
-		{"empty", []byte{13, 0}, 0, false},
-		{"short", []byte{13, 1, 1, 0}, 1, false},
+		{"empty", []byte{13, 0}, 0, true},
+		{"short", []byte{13, 1, 1, 0}, 0, true},
 		{"damaged", []byte{13, 2, 1, 0}, 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -116,7 +118,7 @@ func TestRepeatedCountedRecordTailDefaults(t *testing.T) {
 			var report tabletext.Report
 			// damage discards the whole load (§4): the read refuses it and
 			// the root is at its declared defaults
-			if ok, err := tablewire.Decode(m, inst, data, &report); ok == tc.malformed || err != nil || report.Malformed != tc.malformed {
+			if ok, err := tablewire.Decode(m, inst, data, &report); ok == tc.malformed || tablewire.ReadRefusal(err) != tc.malformed || report.Refused != tc.malformed {
 				t.Fatalf("decode: %v, %+v", err, report)
 			}
 			values := fieldByName(t, inst, "values")

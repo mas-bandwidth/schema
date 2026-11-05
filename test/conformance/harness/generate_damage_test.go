@@ -14,6 +14,7 @@ import (
 // produce a value. Exercise generate itself so update-goldens cannot regress
 // to treating the pinned malformed-pointer verdict as a tool failure.
 func TestGenerateReportRowsRetainDamageVerdict(t *testing.T) {
+	t.Skip("layer 3: the generated rows' malformed flag and kind_mismatch counter, retired per docs/plans/strict-only.md (b)")
 	m, pinned, _ := corpus(t)
 	reports := &Manifest{Units: m.Units, Reports: m.Reports}
 	dir := t.TempDir()

@@ -97,18 +97,18 @@ func TestMessageSkipOfZeroWidthElementsIsBounded(t *testing.T) {
 			t.Errorf("%s: the skip walked %d elements, more than the %d bits the batch holds", c.name, steps.n, bound)
 		}
 		if c.malformed {
-			if ok || !report.Malformed {
+			if ok || d.fail == nil || d.fail.err == nil {
 				t.Errorf("%s: a nested run of zero-width elements was not refused as malformed: ok=%v report %+v", c.name, ok, report)
 			}
 			continue
 		}
-		if !ok || report.Malformed || report.Unknown != 1 {
+		if !ok || report.Refused || report.Unknown != 1 {
 			t.Errorf("%s: the entry was not skipped: ok=%v report %+v", c.name, ok, report)
 		}
 		// AND THE PUBLIC READ AGREES, the same bytes through DecodeMessage
 		var whole tabletext.Report
 		got, err := DecodeMessage(m, m.New(m.Lookup("Probe")), data, v, &whole)
-		if err != nil || !got || whole.Malformed {
+		if err != nil || !got || whole.Refused {
 			t.Errorf("%s: DecodeMessage did not read the batch: ok=%v err=%v report %+v", c.name, got, err, whole)
 		}
 	}
