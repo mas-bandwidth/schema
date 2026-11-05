@@ -58,6 +58,9 @@ type ReportCase struct {
 	Root  string
 	Wire  string
 	Value string
+	// Save is the canonical write-back wire of the value the read leaves.
+	// An accepted row owes it; a refused row has none.
+	Save string
 }
 
 // FramingCase is one hand-built framing vector (docs/LAYERS/1-framing.md): the
@@ -70,6 +73,9 @@ type FramingCase struct {
 	Wire    string
 	Refused bool
 	Value   string
+	// Save is the canonical write-back wire of the value an accepted row
+	// leaves. A refused row owes no value and no wire.
+	Save string
 }
 
 func (fc FramingCase) Verdict() string {
@@ -89,6 +95,9 @@ type Hostile struct {
 	Tree    string
 	Refused bool
 	Value   string
+	// Save is the canonical write-back wire of the value an accepted row
+	// leaves. A refused row owes no value and no wire.
+	Save string
 }
 
 // Verdict is the standard's verdict line for h, without a trailing newline.
@@ -125,6 +134,13 @@ func ReportValue(jsonDir, name string) string {
 // beside json/, which is the directory jsonDir names.
 func RetainValue(jsonDir, name string) string {
 	return filepath.Join(filepath.Dir(jsonDir), "retain-values", name+".json")
+}
+
+// SaveWire is where a readable report, framing or json-hostile row's canonical
+// write-back wire lives: in save-wire/ beside json/. It is the bytes the value
+// golden encodes to, so the read is held to the whole value in both forms.
+func SaveWire(jsonDir, name string) string {
+	return filepath.Join(filepath.Dir(jsonDir), "save-wire", name+".bin")
 }
 
 // Cook is one cooked image (docs/SPEC-TABLES.md §7) and the canonical node
@@ -458,13 +474,14 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			m.Reports = append(m.Reports, ReportCase{
 				Name: f[1], Unit: f[2], Root: f[3], Wire: f[4],
 				Value: ReportValue(jsonDir, f[1]),
+				Save:  SaveWire(jsonDir, f[1]),
 			})
 		case "framing":
 			// framing <case> <unit> <root> <wire> <read|refused> <value|->
 			if len(f) != 7 {
 				return nil, fmt.Errorf("%s: framing takes case, unit, root, wire, verdict, value file or -", where)
 			}
-			fc := FramingCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]}
+			fc := FramingCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Save: SaveWire(jsonDir, f[1])}
 			switch f[5] {
 			case "refused", "malformed":
 				fc.Refused = true
@@ -491,7 +508,7 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			if len(f) != 6 && len(f) != 8 {
 				return nil, fmt.Errorf("%s: json-hostile takes case, unit, root, tree, verdict", where)
 			}
-			h := Hostile{Name: f[1], Unit: f[2], Root: f[3], Tree: f[4]}
+			h := Hostile{Name: f[1], Unit: f[2], Root: f[3], Tree: f[4], Save: SaveWire(jsonDir, f[1])}
 			refused, _, err := parseManifestVerdict(f[5])
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", where, err)

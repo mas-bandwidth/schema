@@ -276,6 +276,12 @@ type expectation struct {
 	// COMPARED, not only the counters, because two legs can count the same
 	// events and land different values.
 	value string
+	// save is the canonical write-back wire a readable report, framing or
+	// json-hostile row owes in `<name>.wire`. The read must return the WHOLE
+	// value: the JSON text above and the wire bytes here, both the oracle's.
+	// nil means the row owes no wire (a refusal, or a surface that does not
+	// write one).
+	save []byte
 	// verdictOnly scores the first line alone: a json-hostile row's uncarried
 	// verdict is a port's behaviour before the ruling, and the value that
 	// behaviour leaves is not the standard's.
@@ -306,6 +312,29 @@ func hostileExpectation(h Hostile, lang string) expectation {
 		e.value = h.Value
 	}
 	return e
+}
+
+// attachHostileSaves fills each readable hostile row's canonical write-back
+// wire from the manifest. hostileExpectation stays without file I/O so callers
+// that need only the verdict and value keep their signature; a run needs the
+// wire too, and a missing golden is the corpus losing an expectation.
+func attachHostileSaves(m *Manifest, wants []expectation) error {
+	byName := make(map[string]Hostile, len(m.Hostiles))
+	for _, h := range m.Hostiles {
+		byName[h.Name] = h
+	}
+	for i := range wants {
+		h, ok := byName[wants[i].name]
+		if !ok || h.Refused {
+			continue
+		}
+		save, err := os.ReadFile(h.Save)
+		if err != nil {
+			return fmt.Errorf("%s: write-back wire: %w — run: make conformance-generate", h.Name, err)
+		}
+		wants[i].save = save
+	}
+	return nil
 }
 
 func expectations(m *Manifest, surface string, reports map[string]string, jsonDir string) ([]expectation, error) {
@@ -381,6 +410,11 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			e := expectation{name: r.Name, want: []byte(verdict + "\n"), damaged: verdict == "refused"}
 			if verdict == "read" {
 				e.value = r.Value
+				save, err := os.ReadFile(r.Save)
+				if err != nil {
+					return nil, fmt.Errorf("%s: write-back wire: %w — run: make conformance-generate", r.Name, err)
+				}
+				e.save = save
 			}
 			out = append(out, e)
 		}
@@ -394,7 +428,15 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 				}
 				want = append(want, text...)
 			}
-			out = append(out, expectation{name: fc.Name, want: want, damaged: fc.Refused})
+			e := expectation{name: fc.Name, want: want, damaged: fc.Refused}
+			if !fc.Refused {
+				save, err := os.ReadFile(fc.Save)
+				if err != nil {
+					return nil, fmt.Errorf("%s: write-back wire: %w — run: make conformance-generate", fc.Name, err)
+				}
+				e.save = save
+			}
+			out = append(out, e)
 		}
 	case "cook":
 		for _, c := range m.Cooks {
@@ -427,6 +469,11 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			e := expectation{name: h.Name, want: []byte(h.Verdict() + "\n")}
 			if !h.Refused {
 				e.value = h.Value
+				save, err := os.ReadFile(h.Save)
+				if err != nil {
+					return nil, fmt.Errorf("%s: write-back wire: %w — run: make conformance-generate", h.Name, err)
+				}
+				e.save = save
 			}
 			out = append(out, e)
 		}
@@ -586,6 +633,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			var exemptions []string
 			if s == "json-hostile" {
 				legWant, exemptions = hostileExpectations(m, d.lang)
+				if err := attachHostileSaves(m, legWant); err != nil {
+					return false, err
+				}
 			}
 			r := &result{total: len(legWant)}
 			results[d.lang][s] = r
@@ -780,6 +830,19 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		r.failures = append(r.failures, describeDiff(e.name, want, got))
 		r.mark(e.name, outcomeFail)
 		return
+	}
+	if e.save != nil {
+		save, err := os.ReadFile(filepath.Join(out, e.name+".wire"))
+		if err != nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote no canonical write-back wire", e.name))
+			r.mark(e.name, outcomeFail)
+			return
+		}
+		if !bytes.Equal(save, e.save) {
+			r.failures = append(r.failures, describeDiff(e.name+".wire", e.save, save))
+			r.mark(e.name, outcomeFail)
+			return
+		}
 	}
 	r.pass++
 	r.mark(e.name, outcomePass)

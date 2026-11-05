@@ -169,13 +169,13 @@ One process per surface, so a runtime starts once rather than once per case.
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
 | `message` | `message` | AnnounceRead the connection, LoadMessages the entire batch, then SaveMessages of every accepted body; an explicit refusal for a row whose message wire is `-` | the complete message golden, or refusal |
-| `report` | `report` | `read\n` followed by the complete ToJson value, or `refused\n` alone | `reports.txt`, then `report-values/<case>.json` for accepted reads |
-| `framing` | `framing` | the same one verdict and complete accepted value | the hand-authored verdict and value file |
+| `report` | `report` | `read\n` followed by the complete ToJson value and the canonical write-back wire as `<case>.wire`, or `refused\n` alone | `reports.txt`, then `report-values/<case>.json` and `save-wire/<case>.bin` for accepted reads |
+| `framing` | `framing` | the same one verdict, complete accepted value and canonical write-back wire | the hand-authored verdict and value file, and `save-wire/<case>.bin` |
 | `retain` | `retain` | LoadRetain at the row's capacities, then `read\n` and the complete known ToJson value, or `refused\n` | `retain-values/<case>.json` after acceptance |
 | `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES | the pinned save |
 | `json-read` | `instance` | the single text read of `json/<name>.json`, then Save of the accepted value | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
-| `json-hostile` | `json-hostile` | the single text read of `<tree>/<root>.json`, then `read\n` and the complete value, or `refused\n` alone | the standard verdict for every port, then `<tree>.value.json` on acceptance |
+| `json-hostile` | `json-hostile` | the single text read of `<tree>/<root>.json`, then `read\n`, the complete value and the canonical write-back wire as `<case>.wire`, or `refused\n` alone | the standard verdict for every port, then `<tree>.value.json` and `save-wire/<case>.bin` on acceptance |
 | `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
 | `cook-write` | `cook-write` | construct the recipe's value, Cook it in both byte orders as `<instance>` and `<instance>-be` | the tool's two cooked files from the same construction |
 | `cook-foreign` | `cook` | byte-swap the file's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
@@ -190,9 +190,13 @@ One process per surface, so a runtime starts once rather than once per case.
 
 **Every read has one outcome: acceptance or refusal.** Binary, message,
 retaining and text readers return the complete value or refuse the whole read.
-An accepted `report`, `framing`, `json-hostile` or `retain` row owes its complete
-canonical JSON value after `read\n`. Refused rows emit `refused\n` and no
-value. A message read and its write-back cover every body in the batch.
+An accepted `report`, `framing` or `json-hostile` row owes its complete canonical
+JSON value after `read\n` AND the canonical write-back wire in `<case>.wire`:
+the value is one value in two forms, and a leg that decodes the right JSON but
+saves different bytes has not returned it. `retain` owes its complete value and,
+where the row pins one, its retained save. Refused rows emit `refused\n` and no
+value and no wire. A message read and its write-back cover every body in the
+batch.
 
 The oracle generates `report-values/<case>.json`, `retain-values/<case>.json`
 and `<tree>.value.json`; framing values are authored from the rule. A leg with
@@ -217,9 +221,9 @@ binding a second strict entry before then would make those drivers demand a
 generated method their tree does not have, sitting beside the tolerant one the
 plan deletes. What the harness needs already exists in its one path: `report`,
 `framing`, `json-hostile` and `retain` read the whole value or refuse, then
-write the wire and the JSON/text forms back (`read\n` plus the complete value;
-`wire` saves; `json-write` writes the text), so read-then-write is the existing
-surface, not a new entry beside it.
+write the wire and the JSON/text forms back (`read\n` plus the complete value
+and `<case>.wire`; `wire` saves; `json-write` writes the text), so
+read-then-write is the existing surface, not a new entry beside it.
 
 Every port owes the same standard verdict. Legacy `carried-by` and `uncarried`
 metadata cannot permit an invalid acceptance. Counter-only and reason-only

@@ -252,6 +252,11 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		}); err != nil {
 			return fmt.Errorf("%s: %w", rc.Name, err)
 		}
+		if err := writeSaveWire(rc.Save, reads, func() ([]byte, error) {
+			return tablewire.Encode(model, value)
+		}); err != nil {
+			return fmt.Errorf("%s: write-back wire: %w", rc.Name, err)
+		}
 	}
 	sort.Strings(lines)
 	if len(m.Reports) > 0 {
@@ -333,6 +338,28 @@ func writeValue(path string, reads bool, text func() ([]byte, error)) error {
 		return fmt.Errorf("the engine's writer refused the value: %w", err)
 	}
 	body = oneText(body)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return writeFileAtomic(path, body)
+}
+
+// writeSaveWire writes the canonical write-back wire of an accepted read, and
+// removes a stale one when the row refuses: refusal owes no wire either.
+func writeSaveWire(path string, reads bool, encode func() ([]byte, error)) error {
+	if !reads {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	body, err := encode()
+	if err != nil {
+		return fmt.Errorf("the engine's writer refused the value: %w", err)
+	}
+	if len(body) == 0 {
+		return fmt.Errorf("the engine wrote no bytes")
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -505,6 +532,9 @@ func framingValues(u *units, framings []FramingCase, jsonDir string) error {
 			return fmt.Errorf("%s: the oracle answers %s and the row says %s", fc.Name, verdict, fc.Verdict())
 		}
 		if !reads {
+			if err := writeSaveWire(fc.Save, false, nil); err != nil {
+				return fmt.Errorf("%s: remove write-back wire: %w", fc.Name, err)
+			}
 			continue
 		}
 		if fc.Value == "" {
@@ -516,6 +546,11 @@ func framingValues(u *units, framings []FramingCase, jsonDir string) error {
 		}
 		if err := writeValue(out, true, func() ([]byte, error) { return model.Write(value) }); err != nil {
 			return fmt.Errorf("%s: %w", fc.Name, err)
+		}
+		if err := writeSaveWire(fc.Save, true, func() ([]byte, error) {
+			return tablewire.Encode(model, value)
+		}); err != nil {
+			return fmt.Errorf("%s: write-back wire: %w", fc.Name, err)
 		}
 		keep[filepath.Base(fc.Value)] = true
 		if dirRel == "" {
@@ -568,7 +603,15 @@ func hostileValue(u *units, h Hostile, jsonDir string) error {
 		return err
 	}
 	if h.Refused {
+		if err := writeSaveWire(h.Save, false, nil); err != nil {
+			return fmt.Errorf("%s: remove write-back wire: %w", h.Name, err)
+		}
 		return writeValue(out, false, nil)
+	}
+	if err := writeSaveWire(h.Save, true, func() ([]byte, error) {
+		return tablewire.Encode(model, value)
+	}); err != nil {
+		return fmt.Errorf("%s: write-back wire: %w", h.Name, err)
 	}
 	return writeValue(out, true, func() ([]byte, error) { return model.Write(value) })
 }
