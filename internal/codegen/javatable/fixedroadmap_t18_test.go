@@ -793,17 +793,29 @@ func t18R27(t *testing.T) {
 		}
 		want := t18Expect(m)
 		wantClamped := 0
-		reader := t18LoadUnit(t, tk.r.reader)
-		keys := make([]string, 0, len(want))
-		for k := range want {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			if bound, past := t18Bound(reader, m.Root, k, want[k]); past {
-				clampedKeys = append(clampedKeys, m.File+":"+k+"="+want[k])
-				want[k] = bound
-				wantClamped++
+		if len(m.Expect) != 0 {
+			// A shared cross-version vector states its own answer: what the
+			// reference's reader landed and counted from these bytes.
+			for k, v := range m.Expect {
+				if k == "clamped" {
+					wantClamped, _ = strconv.Atoi(v)
+					continue
+				}
+				want[k] = v
+			}
+		} else {
+			reader := t18LoadUnit(t, tk.r.reader)
+			keys := make([]string, 0, len(want))
+			for k := range want {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				if bound, past := t18Bound(reader, m.Root, k, want[k]); past {
+					clampedKeys = append(clampedKeys, m.File+":"+k+"="+want[k])
+					want[k] = bound
+					wantClamped++
+				}
 			}
 		}
 		if l.clamped != wantClamped {

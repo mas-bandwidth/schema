@@ -54,6 +54,7 @@ var countName = map[string]string{
 	"js":       "windowCount",
 	"lua":      "WindowCount",
 	"lobster":  "WindowCount",
+	"moo":      "WindowCount",
 	"rust":     "window_count",
 	"squirrel": "WindowCount",
 }
@@ -74,6 +75,7 @@ var bornAtMinimum = map[string]string{
 	"js":       "this.windowCount = 2;",
 	"lua":      "WindowCount = 2,",
 	"lobster":  "WindowCount: 2",
+	"moo":      "WindowCount = 2,",
 	"rust":     "window_count: 2,",
 	"squirrel": "this.WindowCount = 2;",
 }
@@ -95,7 +97,10 @@ var refusesEveryBuild = map[string][]string{
 	"goose": {"if value.WindowCount < 2 || value.WindowCount > 8 { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
 	// Lua's assert is a function call that no build removes, so the writer
 	// refuses (returns false) in every build, as Go's does.
-	"lua":      {"v.WindowCount < 2 or v.WindowCount > 8 then return false end"},
+	"lua": {"v.WindowCount < 2 or v.WindowCount > 8 then return false end"},
+	// moo's assert, Luau's, is a call no build removes, so the writer refuses
+	// (returns false) in every build, as Lua's does
+	"moo":      {"if not isInt(value.WindowCount, 2, 8) then"},
 	"squirrel": {`if (typeof value.WindowCount != "integer" || value.WindowCount < 2 || value.WindowCount > 8) return false;`},
 }
 
@@ -160,6 +165,7 @@ var assertToken = map[string][]string{
 	"go":     nil,         // the runtime returns an error, in every build
 	"goose":  {"assert("}, // the writer returns the refusal kind; an assert would abort, never compile out
 	"lua":    nil,         // assert() is always on; the writer returns false in every build
+	"moo":    nil,         // assert() is always on; the writer returns false in every build
 }
 
 // generatedText renders every file the target emits for the unit, joined, so a

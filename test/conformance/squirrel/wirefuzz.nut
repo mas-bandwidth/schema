@@ -262,7 +262,13 @@ for (;;) {
   putLE(r, report.clamped, 4);
   putLE(r, report.duplicate, 4);
   putU8(r, report.malformed ? 1 : 0);
-  putU8(r, report.refused ? 1 : 0);
+  // A builder's count refusal (count_over_extent_cap, docs/SPEC-TABLES.md
+  // §2.9) rides the completion and save-failure channel: the shared builder
+  // oracle answers it as a stopped builder with its ordinary report, so the
+  // refused byte carries every refusal but that one, as the Dart and
+  // JavaScript drivers send it.
+  local countRefused = ("reason" in report) && report.reason == "count_over_extent_cap";
+  putU8(r, report.refused && !countRefused ? 1 : 0);
   putLE(r, -1, 8);   // measure: no region (the header above)
   putLE(r, 0, 4);    // retained: no retention
   putLE(r, 0, 4);    // retain_lost

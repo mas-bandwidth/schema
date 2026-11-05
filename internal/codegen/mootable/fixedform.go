@@ -192,8 +192,10 @@ func emitFixedRoot(g *Gen, root *ir.Struct) {
 // integer field of the reader's root that the writer declared ranged at the
 // same storage width and scalar kind, the writer's raw bounds keyed by the
 // field's wire id — the fields, widths and kinds the C++ reference's known
-// ranges hold (internal/codegen/cpptable/lineage.go, collectKnownRanges). An
-// entry with no writer, or no such field, lays down nothing.
+// ranges hold (internal/codegen/cpptable/lineage.go, collectKnownRanges). A
+// ranged fixed array's range holds each element the same as a scalar; the
+// runtime lands it on the array's element node. An entry with no writer, or
+// no such field, lays down nothing.
 func writerRanges(g *Gen, reader, writer *ir.Struct) string {
 	if writer == nil {
 		return ""
