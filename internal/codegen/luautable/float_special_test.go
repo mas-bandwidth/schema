@@ -244,7 +244,7 @@ func TestLuauPlainFloatSpecialValues(t *testing.T) {
 				t.Fatalf("%s: the Go reader landed 0x%08X/0x%016X, want 0x%08X/0x%016X", c.name, a, b, c.b32, c.b64)
 			}
 			want = []string{
-				fmt.Sprintf("tol=%d,%d,%d,%d,%d,%d,%d", boolInt(rep.Malformed), boolInt(rep.Refused), rep.Unknown, rep.KindMismatch, rep.Clamped, rep.Widened, rep.Duplicate),
+				fmt.Sprintf("tol=%d,%d,%d,%d,%d,%d,%d", boolInt(rep.Refused), boolInt(rep.Refused), rep.Unknown, 0, 0, rep.Widened, 0),
 				fmt.Sprintf("bits=%08x,%08x,%08x", a, uint32(b>>32), uint32(b)),
 				"save=" + hex.EncodeToString(wire) + " measure=" + strconv.Itoa(len(wire)),
 				"strict=ok field=-",

@@ -331,6 +331,10 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 		t.Fatalf("fixed_max_depth: fixedruntime=%d != ir.TableFixedMaxDepth=%d", fixedMaxDepthRt, ir.TableFixedMaxDepth)
 	}
 	fixedRemapMax := extractRegexpUint(t, fixedRuntimeSrc, `const tableFixedRemapMax uint32 = (0x[0-9A-Fa-f]+|\d+)`, "fixed_remap_max")
+	binaryMaxDepth := extractRegexpUint(t, tableWireCheckSource, `const tableBinaryMaxDepth = (\d+)`, "binary_max_depth")
+	if binaryMaxDepth != uint64(ir.TableBinaryMaxDepth) {
+		t.Fatalf("binary_max_depth: the generated wire check=%d != ir.TableBinaryMaxDepth=%d", binaryMaxDepth, ir.TableBinaryMaxDepth)
+	}
 	retainWalkDepth := extractRegexpUint(t, goRetainRuntime, `const tableRetainWalkDepthMax = (\d+)`, "retain_walk_depth")
 	jsonMaxDepth := extractRegexpUint(t, jsonSrc, `tableJSONMaxDepth\s*=\s*(\d+)`, "json_max_depth")
 	textFormMaxDepth := extractRegexpUint(t, tableTextFormSource, `const tableTextFormMaxDepth = (\d+)`, "tableTextFormMaxDepth")
@@ -406,6 +410,7 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 		"fixed_max_depth":         uint64(ir.TableFixedMaxDepth),
 		"fixed_remap_max":         fixedRemapMax,
 		"retain_walk_depth":       retainWalkDepth,
+		"binary_max_depth":        binaryMaxDepth,
 		"json_max_depth":          jsonMaxDepth,
 		"message_skip_depth":      messageSkipDepth,
 		"cook_magic":              cookMagic,

@@ -22,7 +22,9 @@ func tableWireRuntime(u *ir.Unit) string {
 	res := fmt.Sprintf(`
 const tableIDCapacity = %d
 const tableIDBuckets = %d
-`, n, buckets) + source
+const tableWireBytesID uint64 = 0x%016x
+const tableWireStringID uint64 = 0x%016x
+`, n, buckets, ir.TableWireId("bytes"), ir.TableWireId("string")) + source + tableWireCheckSource
 	if len(ir.WideTextFields(u)) > 0 {
 		res += tableWStringSource + tableWStringWriteSource
 	}
@@ -391,7 +393,6 @@ func (r TableReader) EndsEarly() bool {
 
 func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
 	r := TableReader{Report:report}
-	if report != nil { report.NonFiniteFloat = "" } // this read's own refusal (docs/SPEC-TABLES.md §3.3)
 	if len(data) == 0 { return r, TableOpenDamaged }
 	if data[0] != 1 { return r, TableOpenRefused }
 	if len(data) < 9 { return r, TableOpenDamaged }

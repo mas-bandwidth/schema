@@ -77,7 +77,7 @@ check(hex(w.rootWireSave(v))==%q,'JSON wire%d');
 check(w.rootToJson(v)==%q,'canonical RFC3339 %d');
 final wire=w.rootWireSave(v);final wr=w.TableWireReport();final back=w.rootWireLoad(wire,wr);
 check(!wr.malformed&&!wr.refused&&back.at==v.at,'wire roundtrip%d');
-`, tc.Input, r.KindMismatch, i, hex.EncodeToString(wire), i, string(text)+"\n", i, i)
+`, tc.Input, 0, i, hex.EncodeToString(wire), i, string(text)+"\n", i, i)
 		if i == 3 || i == 13 || i == 14 {
 			key := "negative"
 			if i == 13 {

@@ -79,13 +79,13 @@ func loadFixAengine(m *tabletext.Model, def *ir.Struct, data []byte) (loadFixAco
 	inst := m.New(def)
 	var rep tabletext.Report
 	ok, derr := decode(m, inst, data, &rep)
-	c := loadFixAcounts{malformed: rep.Malformed || (derr == nil && !ok)}
+	c := loadFixAcounts{malformed: rep.Refused || (derr == nil && !ok)}
 	if !ref && derr == nil {
 		c.unknown = rep.Unknown
-		c.kindMismatch = rep.KindMismatch
+		c.kindMismatch = 0
 		c.widened = rep.Widened
-		c.clamped = rep.Clamped
-		c.duplicate = rep.Duplicate
+		c.clamped = 0
+		c.duplicate = 0
 	}
 	enc, eerr := tablewire.Encode(m, inst)
 	if eerr != nil {

@@ -120,7 +120,7 @@ func saveRetainGoReadsBack(t *testing.T, u *ir.Unit, wire []byte) []byte {
 	m := tabletext.NewModel(u)
 	v := m.New(m.Lookup("Root"))
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, v, wire, &report); !ok || err != nil || report.Malformed {
+	if ok, err := tablewire.Decode(m, v, wire, &report); !ok || err != nil || report.Refused {
 		t.Fatalf("the newer build could not read the saved wire: %v %v %+v", ok, err, report)
 	}
 	back, err := tablewire.Encode(m, v)
@@ -141,7 +141,7 @@ func TestLuauSaveRetainWritesWhatItKept(t *testing.T) {
 	wire := saveRetainWire(t, newUnit, `{"child":{"n":7,"extra":"node kept"},"ptr":{"n":9},"future":"root kept"}`)
 	var loadReport tabletext.Report
 	ok, err := tablewire.DecodeRetain(oldModel, oldValue, wire, keep, &loadReport)
-	if !ok || err != nil || loadReport.Malformed {
+	if !ok || err != nil || loadReport.Refused {
 		t.Fatalf("the oracle read failed: %v %v %+v", ok, err, loadReport)
 	}
 	if loadReport.Retained < 1 {

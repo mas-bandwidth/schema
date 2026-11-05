@@ -34,7 +34,7 @@ func TestRequiredKeyedArrayRoundTrips(t *testing.T){
 	var g RootBuilder
 	if !g.Init(){t.Fatal("init2")};defer g.Shutdown()
 	report=TableReport{}
-	if !RootLoadBuilderTolerant(&g,buf,&report)||report!=(TableReport{})||*g.GetRoot()!=*v{t.Fatalf("wire got %%+v want %%+v %%+v",*g.GetRoot(),*v,report)}
+	if !RootLoadBuilder(&g,buf,&report)||report!=(TableReport{})||*g.GetRoot()!=*v{t.Fatalf("wire got %%+v want %%+v %%+v",*g.GetRoot(),*v,report)}
 }
 `, text)
 	runGenerated(t, schema, gen)

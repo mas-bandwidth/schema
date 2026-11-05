@@ -53,7 +53,7 @@ func messageEntryLiteral(e ir.TableVocabularyEntry) string {
 // Everything they DO — the methods, the announcement, the batch codec — is the
 // optional form's, in tableMessageRuntime.
 func tableMessageCoreTypes() string {
-	return goMessageCoreTypes + "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Clamped int32 }\n"
+	return goMessageCoreTypes + "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Over int32 }\n"
 }
 
 const goMessageCoreTypes = `
@@ -189,16 +189,16 @@ func AnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  if report==nil {var ignored TableReport;report=&ignored};if v.Announced||v.Refused{return tableMessageRefuse(report,"second_announcement")};ok:=tableAnnounceRead(v,data,report);if !ok{v.Refused=true};return ok
 }
 func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
- r,verdict:=tableOpenFramed(data,report);if verdict!=TableOpenOk {if verdict==TableOpenRefused {reason:="newer_form";if len(data)>0&&data[0]==2 {reason="message_form_as_file"};return tableMessageRefuse(report,reason)};report.Malformed=true;return false}
+ r,verdict:=tableOpenFramed(data,report);if verdict!=TableOpenOk {if verdict==TableOpenRefused {reason:="newer_form";if len(data)>0&&data[0]==2 {reason="message_form_as_file"};return tableMessageRefuse(report,reason)};report.Refuse(TableRefuseWireDamaged,"");return false}
  versionCount,wordsCount:=0,0;var words []byte
- for {ref,ok:=r.Leb();if !ok{report.Malformed=true;return false};if ref==0 {break};id,ok:=r.Resolve(ref);if !ok||!r.Has(1){report.Malformed=true;return false};kind:=r.Get8();switch id {case 0xfffffffffffffffe:if kind!=9||!r.Has(8){report.Malformed=true;return false};v.BuildVersion=r.Get64();versionCount++
- case 0xfffffffffffffffd:if kind!=14{report.Malformed=true;return false};sub,ok:=r.Body();if !ok||!sub.Has(1)||sub.Get8()!=6{report.Malformed=true;return false};n,ok:=sub.Leb();if !ok||n>uint64(len(sub.Buffer))||int64(n)!=int64(len(sub.Buffer))-sub.Offset{report.Malformed=true;return false};limit:=v.MaxBytes;if limit==0{limit=64*1024};if int64(n)>limit{return tableMessageRefuse(report,"vocabulary_too_large")};words=sub.Buffer[sub.Offset:];wordsCount++
- default:report.Unknown++;if !r.Skip(kind){report.Malformed=true;return false}}
- };if versionCount!=1||wordsCount!=1{report.Malformed=true;return false}
+ for {ref,ok:=r.Leb();if !ok{report.Refuse(TableRefuseWireDamaged,"");return false};if ref==0 {break};id,ok:=r.Resolve(ref);if !ok||!r.Has(1){report.Refuse(TableRefuseWireDamaged,"");return false};kind:=r.Get8();switch id {case 0xfffffffffffffffe:if kind!=9||!r.Has(8){report.Refuse(TableRefuseWireDamaged,"");return false};v.BuildVersion=r.Get64();versionCount++
+ case 0xfffffffffffffffd:if kind!=14{report.Refuse(TableRefuseWireDamaged,"");return false};sub,ok:=r.Body();if !ok||!sub.Has(1)||sub.Get8()!=6{report.Refuse(TableRefuseWireDamaged,"");return false};n,ok:=sub.Leb();if !ok||n>uint64(len(sub.Buffer))||int64(n)!=int64(len(sub.Buffer))-sub.Offset{report.Refuse(TableRefuseWireDamaged,"");return false};limit:=v.MaxBytes;if limit==0{limit=64*1024};if int64(n)>limit{return tableMessageRefuse(report,"vocabulary_too_large")};words=sub.Buffer[sub.Offset:];wordsCount++
+ default:report.Unknown++;if !r.Skip(kind){report.Refuse(TableRefuseWireDamaged,"");return false}}
+ };if versionCount!=1||wordsCount!=1{report.Refuse(TableRefuseWireDamaged,"");return false}
  if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionRemote=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
- for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.ID==0xfffffffffffffffd||e.ID==0xfffffffffffffffe||e.ID==0xffffffffffffffff&&nodeSeen{report.Malformed=true;return false};if e.ID==0xffffffffffffffff{nodeSeen=true};for i := range count {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Malformed=true;return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
- src.Offset=0;for i := range count {e,ok:=tableMessageEntryRead(&src);if !ok{report.Malformed=true;return false};v.Entries[i]=e}
+ for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.ID==0xfffffffffffffffd||e.ID==0xfffffffffffffffe||e.ID==0xffffffffffffffff&&nodeSeen{report.Refuse(TableRefuseWireDamaged,"");return false};if e.ID==0xffffffffffffffff{nodeSeen=true};for i := range count {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Refuse(TableRefuseWireDamaged,"");return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
+ src.Offset=0;for i := range count {e,ok:=tableMessageEntryRead(&src);if !ok{report.Refuse(TableRefuseWireDamaged,"");return false};v.Entries[i]=e}
  v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};v.Announced=true;return true
 }
 // THE SHAPE IS THE DECLARED ONE, the bytes the announcement spells, and never
@@ -246,13 +246,17 @@ func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e Tab
 // Framing scans follow announced shapes; typed body reads diagnose reserved ids.
 func tableMessageSkipBody(r *TableBitReader,v *TableVocabulary,indexBits int64,depth int)bool {if depth>128{return false};for {ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};e,ok:=v.Entry(ref);if !ok||!tableMessageSkip(r,v,indexBits,e,depth){return false}}}
 // Numeric values are reconstructed at the announced storage width. Typed
-// readers then apply the existing exact file-domain clamps to these lanes.
+// readers then hold these lanes to the declared ranges, as the file read does.
 func tableMessageReadScalar(r *TableBitReader,s TableMessageShape,out *[16]byte)bool {lo,ok:=r.Get(min(s.Bits,64));if !ok{return false};hi:=uint64(0);if s.Bits>64 {hi,ok=r.Get(s.Bits-64);if !ok{return false}};if s.Packing==1 {sum:=lo+s.Base[0];carry:=uint64(0);if sum<lo{carry=1};lo=sum;hi+=s.Base[1]+carry};if s.Packing==2 {index:=min(uint32(lo),s.QCount);ratio:=float32(float32(index)/float32(s.QCount));scaled:=float32(ratio*s.QDelta);lo=uint64(math.Float32bits(float32(scaled+s.QMin)))};binary.LittleEndian.PutUint64(out[:],lo);binary.LittleEndian.PutUint64(out[8:],hi);return true}
-func tableMessageWriteScalar(w *TableBitWriter,clamped *int32,s TableMessageShape,lo,hi uint64) {
- if s.Packing==1 {borrow:=uint64(0);if lo<s.Base[0]{borrow=1};lo-=s.Base[0];hi-=s.Base[1]+borrow};if s.Packing==2 {value:=math.Float32frombits(uint32(lo));ratio:=float32((value-s.QMin)/s.QDelta);if !(ratio>=0){ratio=0;*clamped++}else if !(ratio<=1){ratio=1;*clamped++};scaled:=float32(ratio*float32(s.QCount));lo=uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))),s.QCount))};w.Put(lo,min(s.Bits,64));if s.Bits>64{w.Put(hi,s.Bits-64)}
+// A quantized float outside its range is a value the writer refuses
+// (docs/SPEC-TABLES.md §3.3): over counts it, and the save answers -1. So is a
+// ranged value whose offset from its base does not fit its bits, a flags bit
+// past the declared W among them: a writer never truncates (§5).
+func tableMessageWriteScalar(w *TableBitWriter,over *int32,s TableMessageShape,lo,hi uint64) {
+ if s.Packing==1 {borrow:=uint64(0);if lo<s.Base[0]{borrow=1};lo-=s.Base[0];hi-=s.Base[1]+borrow;if s.Kind>=18 {if s.Bits<64&&(hi!=0||lo>>uint(s.Bits)!=0)||s.Bits>=64&&s.Bits<128&&hi>>uint(s.Bits-64)!=0{*over++}}else if s.Bits<64&&lo>>uint(s.Bits)!=0{*over++}};if s.Packing==2 {value:=math.Float32frombits(uint32(lo));ratio:=float32((value-s.QMin)/s.QDelta);if !(ratio>=0){ratio=0;*over++}else if !(ratio<=1){ratio=1;*over++};scaled:=float32(ratio*float32(s.QCount));lo=uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))),s.QCount))};w.Put(lo,min(s.Bits,64));if s.Bits>64{w.Put(hi,s.Bits-64)}
 }
-func tableMessageBatchOpen(v *TableVocabulary,data []byte,report *TableReport)(TableMessageReader,int64) {r:=TableMessageReader{Vocabulary:v,Report:*report};r.Report.NonFiniteFloat="";defer func(){*report=r.Report}();if len(data)==0{r.Report.Malformed=true;return r,-1};if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1};if v==nil||!v.Announced {tableMessageRefuse(&r.Report,"no_vocabulary");return r,-1};if len(data)<2{r.Report.Malformed=true;return r,-1};r.Bits.Buffer=data[2:];return r,int64(data[1])+1}
-func tableMessageBatchClose(r *TableMessageReader)bool {if !r.Bits.Align()||r.Bits.Offset!=int64(len(r.Bits.Buffer))*8 {r.Report.Malformed=true;return false};return true}
+func tableMessageBatchOpen(v *TableVocabulary,data []byte,report *TableReport)(TableMessageReader,int64) {r:=TableMessageReader{Vocabulary:v,Report:*report};defer func(){*report=r.Report}();if len(data)==0{r.Report.Refuse(TableRefuseWireDamaged,"");return r,-1};if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1};if v==nil||!v.Announced {tableMessageRefuse(&r.Report,"no_vocabulary");return r,-1};if len(data)<2{r.Report.Refuse(TableRefuseWireDamaged,"");return r,-1};r.Bits.Buffer=data[2:];return r,int64(data[1])+1}
+func tableMessageBatchClose(r *TableMessageReader)bool {if !r.Bits.Align()||r.Bits.Offset!=int64(len(r.Bits.Buffer))*8 {r.Report.Refuse(TableRefuseWireDamaged,"");return false};return true}
 `
 
 // goMessageIntegrityRuntime is §2.14's message-form half (docs/SPEC-TABLES.md
@@ -276,13 +280,13 @@ func tableMessageIntegritySum(data []byte) uint32 {
 // is handed to tableMessageBatchOpen unchanged.
 func tableMessageBatchOpenSealed(v *TableVocabulary,data []byte,report *TableReport,sealed bool)(TableMessageReader,int64) {
  if !sealed { return tableMessageBatchOpen(v,data,report) }
- r:=TableMessageReader{Vocabulary:v,Report:*report};r.Report.NonFiniteFloat="";defer func(){*report=r.Report}()
- if len(data)==0{r.Report.Malformed=true;return r,-1}
+ r:=TableMessageReader{Vocabulary:v,Report:*report};defer func(){*report=r.Report}()
+ if len(data)==0{r.Report.Refuse(TableRefuseWireDamaged,"");return r,-1}
  if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1}
- if n:=len(data)-4; n<2 || binary.LittleEndian.Uint32(data[n:])!=tableMessageIntegritySum(data[:n]) {r.Report.Verdict=TableOpenDamaged;r.Report.Malformed=true;r.Report.Reason="integrity_mismatch";return r,-1}
+ if n:=len(data)-4; n<2 || binary.LittleEndian.Uint32(data[n:])!=tableMessageIntegritySum(data[:n]) {r.Report.Verdict=TableOpenDamaged;r.Report.Refuse(TableRefuseIntegrityMismatch,"");return r,-1}
  data=data[:len(data)-4]
  if v==nil||!v.Announced {tableMessageRefuse(&r.Report,"no_vocabulary");return r,-1}
- if len(data)<2{r.Report.Malformed=true;return r,-1}
+ if len(data)<2{r.Report.Refuse(TableRefuseWireDamaged,"");return r,-1}
  r.Bits.Buffer=data[2:];return r,int64(data[1])+1
 }
 `

@@ -122,13 +122,13 @@ func TestFixedRefusalErrKeepsItsName(t *testing.T) {
 	if !errors.Is(reused.Err(), TableRefuseLayoutUnknown) {
 		t.Fatalf("reuse seed Err()=%v, want TableRefuseLayoutUnknown", reused.Err())
 	}
-	if !RootLoadTolerant(&cleanVar, w, &reused) {
+	if !RootLoad(&cleanVar, w, &reused) {
 		t.Fatalf("clean variable reload failed: %+v", reused)
 	}
 	if err := reused.Err(); err != nil {
 		t.Fatalf("clean variable reload Err()=%v, want nil (report=%+v)", err, reused)
 	}
-	if RootLoadTolerant(&cleanVar, w[:len(w)-3], &reused) {
+	if RootLoad(&cleanVar, w[:len(w)-3], &reused) {
 		t.Fatalf("three-byte-cut variable reload succeeded: %+v", reused)
 	}
 	if err := reused.Err(); !errors.Is(err, TableRefuseWireDamaged) {

@@ -104,7 +104,7 @@ type retainedField struct {
 // WRITER's and not this build's, so it is the one depth on this path a file
 // can drive. A record past the cap is dropped on the same rule as any other
 // shape the walk cannot take. It bounds the recursion and nothing else.
-const retainDepthCap = 64
+const retainDepthCap = ir.TableBinaryMaxDepth
 
 // armKey names one union cell by the FIELD OCCURRENCE it belongs to rather than
 // by its address (docs/SPEC-TABLES.md §6.6, THE PATH): the field plus, for an
@@ -454,6 +454,10 @@ func (rs *resolver) walkPayload(c *cursor, kind uint8, depth int) {
 		armKind := c.buf[c.off]
 		c.off++
 		rs.u8(armKind)
+		// a union is a level when its arm is structural (docs/SPEC-TABLES.md §4)
+		if structuralKind(int(armKind)) {
+			depth++
+		}
 		rs.framed(c, armKind, depth)
 	case ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed:
 		rs.framed(c, kind, depth)
@@ -482,7 +486,12 @@ func (rs *resolver) framed(c *cursor, kind uint8, depth int) {
 	sub := &cursor{buf: c.buf[c.off : c.off+int(n)]}
 	c.off += int(n)
 	at := rs.mark()
-	rs.walkContent(sub, kind, depth+1)
+	// a framed table, array or keyed body is one level deeper; a scalar's or a
+	// union's frame adds none of its own (docs/SPEC-TABLES.md §4)
+	if kind == ir.TableKindTable || kind == ir.TableKindArray || kind == ir.TableKindKeyed {
+		depth++
+	}
+	rs.walkContent(sub, kind, depth)
 	rs.patch(at)
 }
 
@@ -621,7 +630,7 @@ func (rt *retainState) capture(inst *tabletext.Instance, id uint64, kind uint8, 
 	if rs.bad || c.off != len(c.buf) {
 		// THE WALK CAN MEET DAMAGE THE READ NEVER LOOKED AT, and its verdict
 		// changes nothing else: the record is dropped, one retain_lost counts,
-		// and `malformed` DOES NOT MOVE. The outer framing was sound, every
+		// and the verdict DOES NOT MOVE. The outer framing was sound, every
 		// sibling decoded, and the reader's own data is exactly what it would
 		// have been with retention off (§6.6).
 		rt.lost(report)
@@ -929,7 +938,7 @@ func DecodeRetain(m *tabletext.Model, inst *tabletext.Instance, data []byte, ret
 		return Decode(m, inst, data, report)
 	}
 	rt := newRetainState(m, retain)
-	return decodeWith(m, inst, data, report, rt, false)
+	return decodeWith(m, inst, data, report, rt)
 }
 
 // DecodeRegionRetain is DecodeRegion with the caller's retention store.
@@ -937,7 +946,7 @@ func DecodeRegionRetain(m *tabletext.Model, inst *tabletext.Instance, data []byt
 	if retain == nil {
 		return DecodeRegion(m, inst, data, report)
 	}
-	return decodeWith(m, inst, data, report, newRetainState(m, retain), true)
+	return decodeWith(m, inst, data, report, newRetainState(m, retain))
 }
 
 // EncodeRetain is [Encode] from the same tree, with the retained fields

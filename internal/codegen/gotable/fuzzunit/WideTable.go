@@ -217,7 +217,7 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -225,243 +225,132 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x39f7fcec8fcb623d: // label
 			if kind != 12 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.label")
 				return false
 			}
-			if !tableUTF8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Label[:])
-				value.LabelLength = 0
-				break
+			sub, ok := r.Body()
+			if !ok || !tableUTF8Valid(sub.Buffer) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 70000 {
-				keep = tableUTF8Clamp(sub.Buffer, 70000)
-				r.Report.Clamped++
+			if len(sub.Buffer) > 70000 {
+				r.Report.Refuse(TableRefuseLengthOverBound, "WideBlob.label")
+				return false
 			}
 			clear(value.Label[:])
-			copy(value.Label[:keep], sub.Buffer)
-			value.LabelLength = int32(keep)
+			copy(value.Label[:], sub.Buffer)
+			value.LabelLength = int32(len(sub.Buffer))
 		case 0xcfb8a9d063b5e9e5: // payload
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.payload")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 6 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 6 {
+					r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.payload")
+					return false
+				}
+				if count > 70000 {
+					r.Report.Refuse(TableRefuseLengthOverBound, "WideBlob.payload")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 70000 {
-						keep = 70000
-						r.Report.Clamped++
+					{
+						v := sub.Unsigned(elemKind)
+						value.Payload[i] = byte(v)
 					}
-					previous := value.PayloadLength
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Unsigned(elemKind)
-							value.Payload[i] = byte(v)
-						}
-						decoded = int32(i + 1)
-					}
-					if decoded < previous {
-						clear(value.Payload[decoded:previous])
-					}
-					value.PayloadLength = decoded
+				}
+				value.PayloadLength = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xe3b1ca6a3b48dddc: // samples
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.samples")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 7 {
-						if tableKindWidens(elemKind, 7) {
-							r.Report.Widened++
-						} else {
-							r.Report.KindMismatch++
-							break
-						}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 7 {
+					if !tableKindWidens(elemKind, 7) {
+						r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.samples")
+						return false
 					}
-					keep := count
-					if keep > 70000 {
-						keep = 70000
-						r.Report.Clamped++
+					r.Report.Widened++
+				}
+				if count > 70000 {
+					r.Report.Refuse(TableRefuseCountOverBound, "WideBlob.samples")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					previous := value.SamplesCount
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Unsigned(elemKind)
-							value.Samples[i] = uint16(v)
-						}
-						decoded = int32(i + 1)
+					{
+						v := sub.Unsigned(elemKind)
+						value.Samples[i] = uint16(v)
 					}
-					if decoded < previous {
-						clear(value.Samples[decoded:previous])
-					}
-					value.SamplesCount = decoded
+				}
+				value.SamplesCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// WideBlobLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts, with the report's counters counted onto the one
-// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
-// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
-// a form it does not carry. WideBlobLoad is the strict read; call this one by name.
-func WideBlobLoadTolerant(value *WideBlob, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message_form_as_file"
-		}
-	}
-	if verdict != TableOpenOk {
-		WideBlobReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	report.Malformed = false
-	if !WideBlobLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			WideBlobReset(value)
-			report.Malformed = report.Malformed || before.Malformed
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			WideBlobReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		if report.Malformed {
-			WideBlobReset(value)
-		}
-		report.Malformed = report.Malformed || before.Malformed
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		WideBlobReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	if report.Malformed {
-		WideBlobReset(value)
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	report.Malformed = before.Malformed
-	return true
-}
-
-// WideBlobLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever WideBlobReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. WideBlobLoadTolerant also reads past an evolution event.
+// WideBlobLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func WideBlobLoad(value *WideBlob, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -469,24 +358,21 @@ func WideBlobLoad(value *WideBlob, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
-	ok := WideBlobLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !WideBlobLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		WideBlobReset(value)
 		return false
 	}
 	return true
 }
 
-// WideBlobReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// WideBlobReadStrict is WideBlobLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func WideBlobReadStrict(wire []byte) (*WideBlob, error) {
 	value := &WideBlob{}
 	var report TableReport
-	ok := WideBlobLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !WideBlobLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -661,7 +547,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -669,155 +555,123 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x39f7fcec8fcb623d: // label
 			if kind != 12 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.label")
 				return false
 			}
-			if !tableUTF8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Label[:])
-				value.LabelLength = 0
-				break
+			sub, ok := r.Body()
+			if !ok || !tableUTF8Valid(sub.Buffer) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 70000 {
-				keep = tableUTF8Clamp(sub.Buffer, 70000)
-				r.Report.Clamped++
+			if len(sub.Buffer) > 70000 {
+				r.Report.Refuse(TableRefuseLengthOverBound, "WideBlob.label")
+				return false
 			}
 			clear(value.Label[:])
-			copy(value.Label[:keep], sub.Buffer)
-			value.LabelLength = int32(keep)
+			copy(value.Label[:], sub.Buffer)
+			value.LabelLength = int32(len(sub.Buffer))
 		case 0xcfb8a9d063b5e9e5: // payload
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.payload")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 6 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 6 {
+					r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.payload")
+					return false
+				}
+				r.Retain.discard(r.Path, true, 1)
+				if count > 70000 {
+					r.Report.Refuse(TableRefuseLengthOverBound, "WideBlob.payload")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					r.Retain.discard(r.Path, true, 1)
-					keep := count
-					if keep > 70000 {
-						keep = 70000
-						r.Report.Clamped++
+					{
+						v := sub.Unsigned(elemKind)
+						value.Payload[i] = byte(v)
 					}
-					previous := value.PayloadLength
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Unsigned(elemKind)
-							value.Payload[i] = byte(v)
-						}
-						decoded = int32(i + 1)
-					}
-					if decoded < previous {
-						clear(value.Payload[decoded:previous])
-					}
-					value.PayloadLength = decoded
+				}
+				value.PayloadLength = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xe3b1ca6a3b48dddc: // samples
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.samples")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 7 {
-						if tableKindWidens(elemKind, 7) {
-							r.Report.Widened++
-						} else {
-							r.Report.KindMismatch++
-							break
-						}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 7 {
+					if !tableKindWidens(elemKind, 7) {
+						r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.samples")
+						return false
 					}
-					r.Retain.discard(r.Path, true, 2)
-					keep := count
-					if keep > 70000 {
-						keep = 70000
-						r.Report.Clamped++
+					r.Report.Widened++
+				}
+				r.Retain.discard(r.Path, true, 2)
+				if count > 70000 {
+					r.Report.Refuse(TableRefuseCountOverBound, "WideBlob.samples")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					previous := value.SamplesCount
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Unsigned(elemKind)
-							value.Samples[i] = uint16(v)
-						}
-						decoded = int32(i + 1)
+					{
+						v := sub.Unsigned(elemKind)
+						value.Samples[i] = uint16(v)
 					}
-					if decoded < previous {
-						clear(value.Samples[decoded:previous])
-					}
-					value.SamplesCount = decoded
+				}
+				value.SamplesCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "WideBlob") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}

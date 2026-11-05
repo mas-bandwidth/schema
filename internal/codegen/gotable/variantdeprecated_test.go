@@ -124,7 +124,7 @@ func TestDeprecatedReadsDefaultAndWritersRefuse(t *testing.T) {
 	var v Root
 	var r TableReport
 	if !RootLoad(&v, wire, &r) { t.Fatalf("deprecated wire refused: %+v", r) }
-	if r.Unknown != 0 || r.Clamped != 0 || r.KindMismatch != 0 || r.Malformed {
+	if r.Unknown != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("deprecated wire counted an event: %+v", r)
 	}
 	if v.Ship != ShipScout || v.FleetCount != 1 || v.Fleet[0] != ShipNone {
@@ -135,7 +135,7 @@ func TestDeprecatedReadsDefaultAndWritersRefuse(t *testing.T) {
 	plan := make([]TableFixedEntry, 128)
 	r = TableReport{}
 	if n := RootFixedLoad(records[:], fixed, plan, &r); n != 1 { t.Fatalf("deprecated fixed: %d %+v", n, r) }
-	if r.Unknown != 0 || r.Clamped != 0 || r.KindMismatch != 0 || r.Malformed {
+	if r.Unknown != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("deprecated fixed counted an event: %+v", r)
 	}
 	if records[0].Ship != ShipScout || records[0].Fleet[0] != ShipNone {
@@ -150,7 +150,7 @@ func TestDeprecatedReadsDefaultAndWritersRefuse(t *testing.T) {
 	var decoded [1]Root
 	r = TableReport{}
 	if n, ok := RootLoadMessages(decoded[:], &vocab, message, &r); !ok || n != 1 { t.Fatalf("deprecated message: %d %v %+v", n, ok, r) }
-	if r.Unknown != 0 || r.Clamped != 0 || r.KindMismatch != 0 || r.Malformed {
+	if r.Unknown != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("deprecated message counted an event: %+v", r)
 	}
 	if decoded[0].Ship != ShipScout || decoded[0].Fleet[0] != ShipNone {
@@ -160,7 +160,7 @@ func TestDeprecatedReadsDefaultAndWritersRefuse(t *testing.T) {
 	var jv Root
 	r = TableReport{}
 	if !RootFromJSON(&jv, text, &r) { t.Fatalf("deprecated json refused: %+v", r) }
-	if r.Unknown != 0 || r.Clamped != 0 || r.KindMismatch != 0 || r.Malformed {
+	if r.Unknown != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("deprecated json counted an event: %+v", r)
 	}
 	if jv.Ship != ShipScout || jv.Fleet[0] != ShipNone {
@@ -212,7 +212,7 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 		if ok, err := tablewire.Decode(m, inst, wire, &report); !ok || err != nil {
 			t.Fatalf("oracle wire: %v %+v", err, report)
 		}
-		if report.Unknown != 0 || report.Clamped != 0 || report.KindMismatch != 0 || report.Malformed {
+		if report.Unknown != 0 || report.Refused {
 			t.Fatalf("oracle wire counted an event: %+v", report)
 		}
 		if inst.Fields[0].Cell.U != uint64(tabletext.EnumValue(u.Enums["Ship"], "Scout")) {
@@ -231,7 +231,7 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 		if !m.Read(inst, text, &report) {
 			t.Fatalf("oracle text: %+v", report)
 		}
-		if report.Unknown != 0 || report.Clamped != 0 || report.KindMismatch != 0 || report.Malformed {
+		if report.Unknown != 0 || report.Refused {
 			t.Fatalf("oracle text counted an event: %+v", report)
 		}
 		if inst.Fields[0].Cell.U != uint64(tabletext.EnumValue(u.Enums["Ship"], "Scout")) || inst.Fields[1].Elems[0].U != 0 {

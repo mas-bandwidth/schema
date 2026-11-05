@@ -50,6 +50,7 @@ type duplicateRow struct {
 // must count the same number and reach the same verdict (docs/SPEC-TABLES.md
 // §16.2, §4). One subtest per row, so a divergence names the case.
 func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
+	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
 	repo := filepath.Join("..", "..", "..")
@@ -103,13 +104,13 @@ func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
 		var report tabletext.Report
 		ok := model.Read(model.New(st), text, &report)
 		verdict := "read"
-		if !ok || report.Malformed {
+		if !ok || report.Refused {
 			verdict = "refused"
 		}
-		if report.Duplicate == 0 {
+		if report.Unknown == 0 {
 			t.Fatalf("%s: the manifest counts duplicate but the oracle counts none: %+v", fields[1], report)
 		}
-		rows = append(rows, duplicateRow{name: fields[1], root: fields[3], text: string(text), want: report.Duplicate, verdict: verdict})
+		rows = append(rows, duplicateRow{name: fields[1], root: fields[3], text: string(text), want: report.Unknown, verdict: verdict})
 	}
 	if err := scan.Err(); err != nil {
 		t.Fatal(err)
