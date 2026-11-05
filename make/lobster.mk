@@ -169,3 +169,9 @@ TOOLCHAIN_PINS_lobster := LOBSTER
 CONFORMANCE_LEGS  += $(call unless_skipped,lobster,build/conformance-lobster)
 BENCH_TABLES_LEGS += generated/bench/tables/lobster/.stamp
 GOLDENS_LEGS      += update-goldens-lobster
+
+# The complete reflection listing and its descriptor-ID negative control.
+# test-lobster already includes these tests through its package-wide command.
+.PHONY: tables-lobster-view
+tables-lobster-view: toolchain-lobster
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterUnitViewListing$$' -v

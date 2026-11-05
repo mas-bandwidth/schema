@@ -55,7 +55,7 @@ func TestLobsterDescriptors(t *testing.T) {
 		"tabletags":     "inspected",
 		"fielddoc":      "The mode field.",
 		"fieldtags":     "annotated",
-		"variants":      "2",
+		"variants":      "3",
 		"vartypecnt":    "1",
 		"deprecated":    "1",
 		"vardeprecated": "1",
