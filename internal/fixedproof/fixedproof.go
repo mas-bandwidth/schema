@@ -39,7 +39,12 @@ import (
 // bound.
 const HardMemoryLimitBytes = int64(2) << 30
 
-var memLimitMu sync.Mutex
+var (
+	memLimitMu                  sync.Mutex
+	memLimitDepth               int
+	memLimitPrevTarget          int64
+	memLimitRestoreAddressSpace func()
+)
 
 // SetMemoryCeiling sets a 2 GiB memory ceiling for the duration of t and
 // restores the previous limits in t.Cleanup. On Linux and macOS the ceiling is
@@ -48,16 +53,31 @@ var memLimitMu sync.Mutex
 // debug.SetMemoryLimit adds a matching Go GC target.
 func SetMemoryCeiling(t *testing.T) {
 	t.Helper()
+	t.Cleanup(acquireMemoryCeiling())
+}
+
+// acquireMemoryCeiling installs the process-wide ceiling and returns a release
+// function. The ceiling is process-global, so overlapping scopes share one
+// installation: the first saves the original limits and the last release
+// restores them.
+func acquireMemoryCeiling() (release func()) {
 	memLimitMu.Lock()
-	prevTarget := debug.SetMemoryLimit(HardMemoryLimitBytes)
-	restoreAddressSpace := setAddressSpaceLimit(uint64(HardMemoryLimitBytes))
+	memLimitDepth++
+	if memLimitDepth == 1 {
+		memLimitPrevTarget = debug.SetMemoryLimit(HardMemoryLimitBytes)
+		memLimitRestoreAddressSpace = setAddressSpaceLimit(uint64(HardMemoryLimitBytes))
+	}
 	memLimitMu.Unlock()
-	t.Cleanup(func() {
+	return func() {
 		memLimitMu.Lock()
-		restoreAddressSpace()
-		debug.SetMemoryLimit(prevTarget)
+		memLimitDepth--
+		if memLimitDepth == 0 {
+			memLimitRestoreAddressSpace()
+			memLimitRestoreAddressSpace = nil
+			debug.SetMemoryLimit(memLimitPrevTarget)
+		}
 		memLimitMu.Unlock()
-	})
+	}
 }
 
 // RowCase describes one of the 49 contract-independent fixed-table proof rows.

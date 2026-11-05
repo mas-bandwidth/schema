@@ -308,10 +308,42 @@ func stubValidLayout(b []byte) bool {
 	return true
 }
 
+// checkMemoryCeilingOverlap proves that an inner ceiling scope keeps the
+// process bounded after an overlapping outer scope releases, and that the
+// original limit returns only when the last scope exits.
+func checkMemoryCeilingOverlap(t *testing.T) {
+	t.Helper()
+	before, ok := addressSpaceLimit()
+	if !ok {
+		return
+	}
+	releaseOuter := acquireMemoryCeiling()
+	releaseInner := acquireMemoryCeiling()
+	releaseOuter()
+	active, ok := addressSpaceLimit()
+	if !ok {
+		releaseInner()
+		t.Fatal("cannot read RLIMIT_AS with an inner ceiling active")
+	}
+	if active > uint64(HardMemoryLimitBytes) {
+		releaseInner()
+		t.Fatalf("overlapping ceiling: after outer release with inner active RLIMIT_AS=%d, want <= %d", active, uint64(HardMemoryLimitBytes))
+	}
+	releaseInner()
+	restored, ok := addressSpaceLimit()
+	if !ok {
+		t.Fatal("cannot read RLIMIT_AS after the ceiling released")
+	}
+	if restored != before {
+		t.Fatalf("ceiling restored RLIMIT_AS to %d, want original %d", restored, before)
+	}
+}
+
 // TestEvolutionSuiteVerdictAndCallerCapacity drives the shared evolution,
 // layout, plan, lineage and file rows against a stub runner: no process, no
 // socket, no clock, and no target interpreter.
 func TestEvolutionSuiteVerdictAndCallerCapacity(t *testing.T) {
 	t.Parallel()
+	checkMemoryCeilingOverlap(t)
 	RunEvolutionSuite(t, "../..", stubEvoRunner{})
 }

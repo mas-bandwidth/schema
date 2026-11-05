@@ -4,6 +4,16 @@ package fixedproof
 
 import "syscall"
 
+// addressSpaceLimit reads the current soft address-space limit. It reports
+// false when the platform does not expose the limit.
+func addressSpaceLimit() (uint64, bool) {
+	var cur syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_AS, &cur); err != nil {
+		return 0, false
+	}
+	return cur.Cur, true
+}
+
 // setAddressSpaceLimit lowers the process soft address-space limit to limit
 // bytes. The kernel enforces the limit on this process and on every child it
 // spawns, so the native C++ oracle probes inherit the same ceiling. It returns
