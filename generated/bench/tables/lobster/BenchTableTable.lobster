@@ -374,6 +374,7 @@ let TableEntityCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 64,
     align: 8,
     record: 64,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -431,6 +432,7 @@ let TableStatCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 8,
     align: 4,
     record: 8,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -476,6 +478,7 @@ let TableMixedCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 1352,
     align: 8,
     record: 1352,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -547,6 +550,7 @@ let TableHitEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 16,
     align: 4,
     record: 16,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -594,6 +598,7 @@ let TableChatEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 8,
     align: 4,
     record: 8,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -639,6 +644,7 @@ let TablePickupEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 8,
     align: 4,
     record: 8,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -2033,7 +2039,7 @@ def TableEntityFixedLoadTolerant(values:[TableEntity], data_in:string, plan:[sch
         holes = TableEntityFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
-    if entry_count > length(plan):
+    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
@@ -2213,7 +2219,7 @@ def TableStatFixedLoadTolerant(values:[TableStat], data_in:string, plan:[schema_
         holes = TableStatFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
-    if entry_count > length(plan):
+    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
@@ -2409,7 +2415,7 @@ def TableHitEventFixedLoadTolerant(values:[TableHitEvent], data_in:string, plan:
         holes = TableHitEventFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
-    if entry_count > length(plan):
+    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
@@ -2589,7 +2595,7 @@ def TableChatEventFixedLoadTolerant(values:[TableChatEvent], data_in:string, pla
         holes = TableChatEventFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
-    if entry_count > length(plan):
+    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
@@ -2769,7 +2775,7 @@ def TablePickupEventFixedLoadTolerant(values:[TablePickupEvent], data_in:string,
         holes = TablePickupEventFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
-    if entry_count > length(plan):
+    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start

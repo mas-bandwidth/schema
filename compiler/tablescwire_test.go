@@ -231,7 +231,7 @@ int main(void)
 // landing nothing; the writer refuses the NaN, and a -0 rides by its bits.
 func TestCTableWireWidening(t *testing.T) {
 	u := unitFromSource(t, `package probe
-    fixed table Root {
+    table Root {
         low int32 = 1000 | min = 1000, max = 2000
         high int32 = -1000 | min = -2000, max = -1000
         positive uint64 = 1000 | min = 1000, max = 2000

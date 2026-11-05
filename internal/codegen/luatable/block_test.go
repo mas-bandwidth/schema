@@ -10,6 +10,7 @@ package luatable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -320,4 +321,98 @@ print("block-refusals-ok")
 		t.Fatal(err)
 	}
 	return luarun.Try(t, dir, "main.lua", map[string][]byte{"block": image})
+}
+
+// TestLuaBlockReadNegativeControlsFunctional plants one defect per gate into the emitted
+// block.lua and requires that gate to go red: a float read one bit off (the
+// dump), and the pitch, bound, and base-alignment checks removed.
+func TestLuaBlockReadNegativeControlsFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
+	for _, tc := range []struct {
+		name   string
+		anchor string
+		repl   string
+		mode   string
+	}{
+		{
+			name:   "dump",
+			anchor: "return string.format(\"0x%08x\", b)",
+			repl:   "return string.format(\"0x%08x\", b ~ 1)",
+			mode:   "dump",
+		},
+		{
+			name:   "pitch",
+			anchor: "if stride ~= row.size then return nil, \"bad_layout\" end",
+			repl:   "if false then return nil, \"bad_layout\" end",
+			mode:   "refusals",
+		},
+		{
+			name:   "bound",
+			anchor: "if count > fl.f.bound then return nil, \"bad_layout\" end",
+			repl:   "if false then return nil, \"bad_layout\" end",
+			mode:   "refusals",
+		},
+		{
+			name:   "unaligned",
+			anchor: "if base_offset % BLOCK_ALIGN ~= 0 then return nil, \"unaligned_base\" end",
+			repl:   "if false then return nil, \"unaligned_base\" end",
+			mode:   "refusals",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			patch := patchOnce(t, "block.lua", tc.anchor, tc.repl)
+			if tc.mode == "refusals" {
+				out, _, err := luaBlockRefusals(t, patch)
+				if err == nil && out == "block-refusals-ok\n" {
+					t.Fatalf("NEGATIVE CONTROL FAILED: %s left the block refusal battery green", tc.name)
+				}
+				return
+			}
+			repo := filepath.Join("..", "..", "..")
+			manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
+			units := manifestUnits(t, manifest)
+			rows := blockManifestRows(t, manifest)
+			row, ok := blockRow(rows, "block_render")
+			if !ok {
+				t.Fatal("the manifest has no block_render image")
+			}
+			var full []string
+			for _, p := range units[row.unit] {
+				full = append(full, filepath.Join(repo, p))
+			}
+			u := luarun.LoadUnit(t, full...)
+			files, err := Generate(u)
+			if err != nil {
+				t.Fatal(err)
+			}
+			patch(files)
+			dir := t.TempDir()
+			luarun.WriteFiles(t, dir, files)
+			image, err := os.ReadFile(filepath.Join(repo, row.wire))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := os.ReadFile(filepath.Join(repo, row.dump))
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := blockRoot(t, want)
+			probe := fmt.Sprintf(`local T = require(%q)
+local B = require("block")
+local inputs = require("inputs")
+local h, why = B.BlockOpen(T, %q, inputs.block, 0x%016x)
+assert(h ~= nil, "BlockOpen refused: " .. tostring(why))
+io.write(B.Dump(h))
+`, ModuleName(u), root, ir.BuildVersion(u))
+			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got := string(luarun.Run(t, dir, "main.lua", map[string][]byte{"block": image}))
+			if got == string(want) {
+				t.Fatalf("NEGATIVE CONTROL FAILED: %s left the block dump identical to Go", tc.name)
+			}
+		})
+	}
 }
