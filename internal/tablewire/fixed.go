@@ -6,10 +6,9 @@
 // nothing else. Glenn, 2026-11-03: "If we expect a fixed table, but it is not,
 // refuse." So Encode writes these bytes for every such root, and Decode refuses
 // a form-1 file there as previous_form with nothing decoded and no counter
-// moved (docs/rulings.json fixed-root-refuses-form1). Which roots carry the
-// form is [ir.TableFixedEmitted]'s answer, the one place it is computed; a
-// declared fixed table past one of §3.4's bounds carries no form 3 and keeps
-// the variable form's bytes.
+// moved (docs/rulings.json fixed-root-refuses-form1). The declaration fixes
+// the expected form even when the layout exceeds the emission limits:
+// unavailable fixed forms refuse instead of selecting form 1.
 //
 // The bytes are the C++ reference's <T>FixedSave of one record
 // (internal/codegen/cpptable/fixedform.go): the sixteen-byte header (form byte,
@@ -67,10 +66,9 @@ const (
 	FixedReasonIntegrityMismatch = "integrity_mismatch"
 )
 
-// FixedRoot reports whether a root is read and written as form 3: a declared
-// fixed table that carries the form ([ir.TableFixedEmitted]).
-func FixedRoot(m *tabletext.Model, st *ir.Struct) bool {
-	return st != nil && st.FixedDeclared && ir.TableFixedEmitted(m.Unit, st)
+// FixedRoot reports the declared wire class; layout admission cannot select form 1.
+func FixedRoot(_ *tabletext.Model, st *ir.Struct) bool {
+	return st != nil && st.FixedDeclared
 }
 
 // fixedLayout is one root's layout bytes and hash, the two things the header
@@ -83,6 +81,9 @@ func fixedLayout(st *ir.Struct) ([]byte, uint64) {
 // EncodeFixed is one record of a fixed root as a form-3 file: the bytes the
 // reference's <T>FixedSave writes for a batch of one.
 func EncodeFixed(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
+	if !ir.TableFixedEmitted(m.Unit, inst.Def) {
+		return nil, &FixedRefusal{Reason: FixedReasonLayoutUnsupported}
+	}
 	st := inst.Def
 	layout, hash := fixedLayout(st)
 	body := ir.TableFixedTypeBytes(st)
@@ -303,6 +304,9 @@ func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, repo
 	default:
 		report.Refused = true
 		return false, &FormRefusal{Form: data[0]}
+	}
+	if !ir.TableFixedEmitted(m.Unit, st) {
+		return refuse(FixedReasonLayoutUnsupported)
 	}
 	data, valid := integrityBody(st, data, 5)
 	if !valid {

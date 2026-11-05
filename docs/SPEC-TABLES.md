@@ -120,12 +120,13 @@ fixed table writes form `3`, the bytes `<T>FixedSave` writes, and so does
 status, not the rule above. `<T>FixedLoad` refuses form `1` as
 `previous_form` in every leg. Beside it, every leg still emits a form-`1`
 `<T>Save` for a declared fixed table and a `<T>Load` and `ReadStrict` that
-read form `1` there, `schema pack` writes form `1` for a fixed root, and the
-tool's engine (pack, unpack, cook, the text form) carries no form `3`, so the
-conformance corpus pins its fixed-root instances and reports as form `1`. A
+read form `1` there. The tool's engine now writes and reads form `3` at an
+admitted fixed root; the conformance corpus still pins its older fixed-root
+instances and reports as form `1` and awaits regeneration in its own layer. A
 declared fixed table past one of §3.4's bounds (a union in a regional unit, a
 record over 65536 bytes, depth past the walk bound, or the leaf cap) carries
-no form `3` at all, and its form `1` is outside the rule above. §3.4's
+no form `3` at all. A declared root above the record ceiling has no file
+form: its file save refuses, and its read refuses form `1`. §3.4's
 SELECTION owns the declaration's bounds and §15 names the work owed; neither
 is restated here.
 

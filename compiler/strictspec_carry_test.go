@@ -11,19 +11,26 @@
 // The rule in one line: every read returns the whole value or refuses the
 // whole load; the VERDICT is the only cross-language contract; reasons and
 // counters are per-language diagnostics and are never compared. So this pin
-// compares no reason name and no counter: it reads the pages and holds six
+// compares no cross-language reason or counter: it reads the pages and holds six
 // things — the three rulings are in docs/rulings.json, the plan is there, the
 // spec states the fixed-root refusal by name, SPEC-TABLES.md names no
 // `LoadTolerant` entry point as a live read, the forged writer-range rows
 // refuse the whole load rather than clamp, and a declared fixed root past the
-// ceiling has NO FILE FORM in the page.
+// ceiling has NO FILE FORM in the page and the engine. The behavioral pin
+// checks this engine's own diagnostic names.
 package compiler
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // ruling is the shape of the docs/rulings.json entry this pin reads: the id
@@ -185,15 +192,6 @@ func TestStrictSpecCarriesOneReadAndFixedRoot(t *testing.T) {
 		}
 	})
 
-	// The ceiling rule is the owner's, and the two carried pull requests answer
-	// it differently: #2790 (12e994ca4) says a declared fixed root past the
-	// 65536 ceiling HAS NO FILE FORM (its file save refuses rather than fall
-	// back to form `1`, and every read at its root refuses form `1`), while
-	// #2789's engine still falls back to the variable form. This pin holds the
-	// PAGE's rule as #2790 carries it and says nothing about the engine's
-	// fallback: the card that carries the two pull requests does not decide
-	// between them, and docs/plans/strict-only.md names the place they
-	// disagree.
 	t.Run("a declared fixed root past the ceiling has no file form", func(t *testing.T) {
 		t.Parallel()
 		page := readSpecTables(t)
@@ -217,6 +215,50 @@ func TestStrictSpecCarriesOneReadAndFixedRoot(t *testing.T) {
 			if strings.Contains(flat, stale) {
 				t.Errorf("docs/SPEC-TABLES.md states %q; the carried rule is that such a root has no file form", stale)
 			}
+		}
+	})
+
+	t.Run("fixed root ceiling behavior", func(t *testing.T) {
+		t.Parallel()
+		for _, body := range []int{65536, 65537} {
+			t.Run(fmt.Sprint(body), func(t *testing.T) {
+				t.Parallel()
+				u, err := unitFromText(fmt.Sprintf("package ceiling\nfixed table Root { payload bytes(%d) }\n", body-4))
+				if err != nil {
+					t.Fatal(err)
+				}
+				m := tabletext.NewModel(u)
+				st := m.Lookup("Root")
+				inst := m.New(st)
+				if body == 65536 {
+					wire, err := tablewire.Encode(m, inst)
+					if err != nil || len(wire) == 0 || wire[0] != 3 {
+						t.Fatalf("boundary save: %x %v", wire, err)
+					}
+					var report tabletext.Report
+					if ok, err := tablewire.Decode(m, m.New(st), wire, &report); !ok || err != nil {
+						t.Fatalf("boundary read: %v %v", ok, err)
+					}
+					return
+				}
+				if ir.TableFixedEmitted(u, st) {
+					t.Fatal("oversized fixture still emitted")
+				}
+				var report tabletext.Report
+				ok, err := tablewire.Decode(m, inst, []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}, &report)
+				var refusal *tablewire.FixedRefusal
+				if ok || !errors.As(err, &refusal) || refusal.Reason != "previous_form" || !report.Refused || report.Reason != "previous_form" {
+					t.Errorf("oversized fixed root must refuse form 1 as previous_form: ok=%v err=%v report=%+v", ok, err, report)
+				}
+				wire, err := tablewire.Encode(m, inst)
+				if !errors.As(err, &refusal) || refusal.Reason != "layout_unsupported" || len(wire) != 0 {
+					t.Errorf("oversized save must refuse layout_unsupported: bytes=%d err=%v", len(wire), err)
+				}
+				ok, err = tablewire.Decode(m, inst, []byte{3}, &report)
+				if ok || !errors.As(err, &refusal) || refusal.Reason != "layout_unsupported" {
+					t.Errorf("oversized form 3: ok=%v err=%v", ok, err)
+				}
+			})
 		}
 	})
 
