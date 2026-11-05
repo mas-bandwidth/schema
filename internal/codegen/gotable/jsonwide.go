@@ -92,20 +92,20 @@ func tableJSONReadWide(in *tableJSONIn,token []byte,storage unsafe.Pointer,f *Ta
  case point>40:
   saturated=true;if !negative {if signed {raw=signedMax}else{raw=unsignedMax}}else if signed {raw=signedMin}
  case point < -40:
-  in.report.KindMismatch++;return true
+  in.report.Refuse(TableRefuseKindMismatch,"");return true
  default:
     // §16.2: Q I.F has I+F=128 bits, so a nonzero digit past the 128th
     // decimal place is inexact (a shape error), never a truncation.
     var fd [128]byte;fn:=0
     for z:=point;z<0;z++ {if fn<128 {fd[fn]=0};fn++}
-    for k:=max(point,0)+start;k<end;k++ {if fn>=128 {if digit(k)!='0'{in.report.KindMismatch++;return true}}else{fd[fn]=digit(k)-'0';fn++}}
+    for k:=max(point,0)+start;k<end;k++ {if fn>=128 {if digit(k)!='0'{in.report.Refuse(TableRefuseKindMismatch,"");return true}}else{fd[fn]=digit(k)-'0';fn++}}
   var fraction tableJSONWide
   for range frac {
    carry:=byte(0)
    for k:=fn-1;k>=0;k-- {d:=fd[k]*2+carry;fd[k]=d%10;carry=d/10}
    fraction=fraction.shl(1);fraction[0]|=uint64(carry)
   }
-  for k := range fn {if fd[k]!=0 {in.report.KindMismatch++;return true}}
+  for k := range fn {if fd[k]!=0 {in.report.Refuse(TableRefuseKindMismatch,"");return true}}
   var whole tableJSONWide
   for k:=start;k<start+point && !saturated;k++ {d:=uint32(0);if k<end {d=uint32(digit(k)-'0')};if whole.mulAdd(10,d)!=0{saturated=true}}
   if !saturated && frac>0 && !whole.shr(128-frac).zero() {saturated=true}
@@ -118,10 +118,10 @@ func tableJSONReadWide(in *tableJSONIn,token []byte,storage unsafe.Pointer,f *Ta
    if saturated {raw=unsignedMax};if negative && !raw.zero() {raw=tableJSONWide{};saturated=true}
   }
  }
- if saturated {in.report.Clamped++}
+ if saturated {in.report.Refuse(TableRefuseOutOfRange,"")}
  if f.WideRange {
   lo,hi:=tableJSONWide(f.WideMin),tableJSONWide(f.WideMax)
-  if raw.cmp(lo,signed)<0 {raw=lo;in.report.Clamped++}else if raw.cmp(hi,signed)>0 {raw=hi;in.report.Clamped++}
+  if raw.cmp(lo,signed)<0 {raw=lo;in.report.Refuse(TableRefuseOutOfRange,"")}else if raw.cmp(hi,signed)>0 {raw=hi;in.report.Refuse(TableRefuseOutOfRange,"")}
  }
  tableJSONWideStore(storage,f.ElemSize,raw);return true
 }

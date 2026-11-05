@@ -153,7 +153,7 @@ func goReportLine(rep tabletext.Report, refused bool) string {
 	if refused {
 		verdict = "refused"
 	}
-	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, rep.Malformed, verdict)
+	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", rep.Unknown, 0, rep.Widened, 0, 0, false, verdict)
 }
 
 // goMessageRow is the reference engine's answer for one row

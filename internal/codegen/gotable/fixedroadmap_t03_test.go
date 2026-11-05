@@ -47,11 +47,11 @@ func t03GoTable(t *testing.T, u *ir.Unit, name string) *ir.Struct {
 	return st
 }
 
-// t03GoLoad is the emitted body of one `<T>FixedLoadTolerant(` up to its column-zero
+// t03GoLoad is the emitted body of one `<T>FixedLoad(` up to its column-zero
 // closing brace.
 func t03GoLoad(t *testing.T, src, name string) string {
 	t.Helper()
-	body := funcSource(src, "func "+name+"FixedLoadTolerant(")
+	body := funcSource(src, "func "+name+"FixedLoad(")
 	if body == "" {
 		t.Fatalf("the emitted module has no %sFixedLoad", name)
 	}
@@ -415,7 +415,7 @@ func t03GoR15(t *testing.T) {
 		t.Error("R15: an unknown field is dropped-and-counted per record on the read path")
 	}
 	t03GoHas(t, load, "report.Unknown += censusUnknown", "R15 unknown is the compile census, once per plan")
-	t03GoHas(t, load, "censusUnknown, censusKind = lane.Unknown, lane.KindMismatch", "R15 the census is the lane's, landed after the record loop")
+	t03GoHas(t, load, "censusUnknown = lane.Unknown", "R15 the census is the lane's, landed after the record loop")
 	// THE CLAMPS THAT REMAIN ARE THE WRITER'S BOUNDS, reached only over a
 	// locked entry — never a forward read of a stranger's layout.
 	runtime := tableFixedRuntime
@@ -512,9 +512,9 @@ fixed table Lineage
     a fixed(4, 4) | min = -4, max = 3
     b bits(12)
 }
-`)), "func LineageFixedClampBody(")
+`)), "func LineageFixedBoundsBody(")
 	if clamp == "" {
-		t.Fatal("C8: LineageFixedClampBody is not emitted")
+		t.Fatal("C8: LineageFixedBoundsBody is not emitted")
 	}
 	t03GoHas(t, clamp, "value.A < -64", "C8 the fixed-point floor shifted by F")
 	t03GoHas(t, clamp, "value.A > 48", "C8 the fixed-point ceiling shifted by F")

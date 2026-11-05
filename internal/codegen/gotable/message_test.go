@@ -131,7 +131,7 @@ func TestHostileAnnouncementBounded(t *testing.T) {
 	var out [1]Root
 	var loadRep TableReport
 	n, ok := RootLoadMessages(out[:], &vocab, batch, &loadRep)
-	if !ok || n != 1 || loadRep.Malformed {
+	if !ok || n != 1 || (loadRep.Refusal.Error() == "wire_damaged" || loadRep.Refusal.Error() == "malformed") {
 		t.Fatalf("RootLoadMessages failed: n=%d ok=%v rep=%+v", n, ok, loadRep)
 	}
 	if MessageSkipIterations != 0 {
@@ -171,7 +171,7 @@ func TestHostileAnnouncementBounded(t *testing.T) {
 
 	var loadRep2 TableReport
 	n2, ok2 := RootLoadMessages(out[:], &vocab2, batch, &loadRep2)
-	if ok2 || n2 != 0 || !loadRep2.Malformed {
+	if ok2 || n2 != 0 || !(loadRep2.Refusal.Error() == "wire_damaged" || loadRep2.Refusal.Error() == "malformed") {
 		t.Fatalf("expected nested zero-width element to be refused as malformed: n=%d ok=%v rep=%+v", n2, ok2, loadRep2)
 	}
 }
@@ -313,7 +313,7 @@ func TestTwoDeclaredShapesDeriveOneQuantization(t *testing.T) {
 	identical.Init(storage[:])
 	var identicalReport TableReport
 	same := append(quantized(0x2000, 0, 8, 1.0), quantized(0x2000, 0, 8, 1.0)...)
-	if AnnounceRead(&identical, announce(same), &identicalReport) || !identicalReport.Malformed {
+	if AnnounceRead(&identical, announce(same), &identicalReport) || !(identicalReport.Refusal.Error() == "wire_damaged" || identicalReport.Refusal.Error() == "malformed") {
 		t.Fatalf("two byte-identical entries were accepted: %+v", identicalReport)
 	}
 

@@ -53,7 +53,7 @@ table Root { known uint32
 		v := m.New(u.Tables["Root"])
 		store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
 		var r tabletext.Report
-		if ok, err := tablewire.DecodeRetain(m, v, wire, store, &r); !ok || err != nil || r.Malformed || r.Retained != 1-tc.lost || r.RetainLost != tc.lost {
+		if ok, err := tablewire.DecodeRetain(m, v, wire, store, &r); !ok || err != nil || r.Refused || r.Retained != 1-tc.lost || r.RetainLost != tc.lost {
 			t.Fatalf("%s neutral retain %+v %v", tc.name, r, err)
 		}
 		expected, err := tablewire.EncodeRetain(m, v, store, &tabletext.Report{})

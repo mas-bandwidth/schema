@@ -148,7 +148,7 @@ func TestSquirrelTableEmitsOnlyItsDeclaredForms(t *testing.T) {
 			inst := model.New(st)
 			var rep tabletext.Report
 			const jsonIn = `{"x":42,"rate":1.5,"items":[7,9]}`
-			if !model.Read(inst, []byte(jsonIn), &rep) || rep.Malformed {
+			if !model.Read(inst, []byte(jsonIn), &rep) || rep.Refused {
 				t.Fatalf("tabletext.Read: %+v", rep)
 			}
 			wantWireBytes, err := tablewire.Encode(model, inst)

@@ -91,7 +91,7 @@ func flipAll[T any](t *testing.T, name string, wire []byte,
 			if n, err := measureReason(bad); n >= 0 || !errors.Is(err, want) { t.Errorf("%s: byte %d ^ 0x%02x LoadMeasureReason = %d, %v, want -1, %v", name, i, x, n, err, want) }
 			if i == 0 { continue }
 			r = TableReport{}
-			if got := load(region, bad, &r); got != nil || !r.Malformed || r.Reason != "integrity_mismatch" || r.Verdict != TableOpenDamaged {
+			if got := load(region, bad, &r); got != nil || r.Err() != TableRefuseIntegrityMismatch || r.Reason != "integrity_mismatch" || r.Verdict != TableOpenDamaged {
 				t.Errorf("%s: byte %d ^ 0x%02x tolerant Load = %v, report %+v; want nil, malformed, integrity_mismatch", name, i, x, got != nil, r)
 			}
 			if !errors.Is(r.Err(), TableRefuseIntegrityMismatch) { t.Errorf("%s: byte %d ^ 0x%02x report.Err() = %v", name, i, x, r.Err()) }
@@ -125,8 +125,8 @@ func TestIntegrity(t *testing.T) {
 	if v := LedgerLoad(aligned(4096), lw, &r); v == nil || v.N != 1000 || r != (TableReport{Verdict: TableOpenOk}) { t.Fatalf("Ledger tolerant round trip: %+v", r) }
 	if v, err := BigReadStrict(bw); err != nil || v.N != 1000 { t.Fatalf("Big strict round trip: %v", err) }
 	// every single-bit flip and every 0xff of every byte is refused by name
-	silent := flipAll(t, "Ledger", lw, LedgerReadStrict, LedgerLoadText, LedgerLoadMeasureReason, LedgerLoadTolerant)
-	silent += flipAll(t, "Big", bw, BigReadStrict, BigLoadText, BigLoadMeasureReason, BigLoadTolerant)
+	silent := flipAll(t, "Ledger", lw, LedgerReadStrict, LedgerLoadText, LedgerLoadMeasureReason, LedgerLoad)
+	silent += flipAll(t, "Big", bw, BigReadStrict, BigLoadText, BigLoadMeasureReason, BigLoad)
 	if silent != 0 { t.Fatalf("%d silent wrong decodes", silent) }
 	// SHIFTED FRAMING, by name (§2.14): a length or a field reference changed
 	// so the bytes of one field are read into the next. Ledger's file is form

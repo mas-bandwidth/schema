@@ -93,10 +93,10 @@ func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
 	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, uint(bits)), one)
 }
 
-// tableClampEnds answers which ends of a declared min/max range a read can
-// actually clamp at. A bound sitting ON the storage width's limit is a
+// tableClampEnds answers which ends of a declared min/max range a stored value
+// can actually cross. A bound sitting ON the storage width's limit is a
 // comparison no stored value can satisfy, and the emitter drops it — the same
-// "this check cannot fire" test the bits(N) width clamp applies when N is the
+// "this check cannot fire" test the bits(N) width bound applies when N is the
 // storage width.
 func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
 	signed := ir.TableKindSigned(ir.TableScalarKind(f))

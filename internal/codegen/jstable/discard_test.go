@@ -96,7 +96,7 @@ func jsDiscardWire(t *testing.T, writer, reader *ir.Unit, root, text string) (cl
 	wire[at] = 37
 	rm := tabletext.NewModel(reader)
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(rm, rm.New(rm.Lookup(root)), wire, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.Decode(rm, rm.New(rm.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("%s: the engine does not read the vector as damage: ok=%v err=%v %+v", root, ok, err, report)
 	}
 	return clean, wire
@@ -454,7 +454,7 @@ table Node
 					try[i+2] = 0
 					inst := cm.New(cm.Lookup("Node"))
 					var rep tabletext.Report
-					if ok, err := tablewire.Decode(cm, inst, try, &rep); ok && err == nil && !rep.Malformed {
+					if ok, err := tablewire.Decode(cm, inst, try, &rep); ok && err == nil {
 						twin = try
 						break
 					}

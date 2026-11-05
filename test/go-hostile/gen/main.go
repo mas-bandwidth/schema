@@ -115,16 +115,16 @@ func generate(compiler, corpus, out, runtime string) error {
 		switch c.Carrier {
 		case "text":
 			if variable {
-				fmt.Fprintf(&dispatch, "var b %s.%sBuilder\nif !b.Init(){return \"error: builder init\"};defer b.Shutdown()\nok:=%s.%sFromJSONTolerant(&b,data,&r)\nif !ok||r.Malformed{return \"refuse damaged\"}\nif !b.Lock(){return \"error: builder lock\"};v:=b.AsConst()\n", a, t, a, t)
+				fmt.Fprintf(&dispatch, "var b %s.%sBuilder\nif !b.Init(){return \"error: builder init\"};defer b.Shutdown()\nok:=%s.%sFromJSON(&b,data,&r)\nif reason:=wireRefusal(ok,&r);reason!=\"\"{return reason}\nif !b.Lock(){return \"error: builder lock\"};v:=b.AsConst()\n", a, t, a, t)
 			} else {
-				fmt.Fprintf(&dispatch, "v:=new(%s.%s)\nok:=%s.%sFromJSONTolerant(v,data,&r)\nif !ok||r.Malformed{return \"refuse damaged\"}\n", a, t, a, t)
+				fmt.Fprintf(&dispatch, "v:=new(%s.%s)\nok:=%s.%sFromJSON(v,data,&r)\nif reason:=wireRefusal(ok,&r);reason!=\"\"{return reason}\n", a, t, a, t)
 			}
 			emitDigest(&dispatch, a, t)
 		case "wire":
 			if variable {
-				fmt.Fprintf(&dispatch, "n,err:=%s.%sLoadMeasureReason(data);if err!=nil{return measureRefusal(err)}\nif n<=0{return \"error: invalid region extent\"}\nraw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63\nv:=%s.%sLoadTolerant(raw[off:off+uintptr(n)],data,&r)\nif reason:=wireRefusal(v!=nil,&r);reason!=\"\"{return reason}\n", a, t, a, t)
+				fmt.Fprintf(&dispatch, "n,err:=%s.%sLoadMeasureReason(data);if err!=nil{return measureRefusal(err)}\nif n<=0{return \"error: invalid region extent\"}\nraw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63\nv:=%s.%sLoad(raw[off:off+uintptr(n)],data,&r)\nif reason:=wireRefusal(v!=nil,&r);reason!=\"\"{return reason}\n", a, t, a, t)
 			} else {
-				fmt.Fprintf(&dispatch, "v:=new(%s.%s)\nok:=%s.%sLoadTolerant(v,data,&r)\nif reason:=wireRefusal(ok,&r);reason!=\"\"{return reason}\n", a, t, a, t)
+				fmt.Fprintf(&dispatch, "v:=new(%s.%s)\nok:=%s.%sLoad(v,data,&r)\nif reason:=wireRefusal(ok,&r);reason!=\"\"{return reason}\n", a, t, a, t)
 			}
 			emitDigest(&dispatch, a, t)
 		case "announce", "announce_second", "announce_bytes", "announce_entries":
@@ -146,7 +146,7 @@ func generate(compiler, corpus, out, runtime string) error {
 			if c.Carrier == "message" {
 				fmt.Fprintf(&dispatch, "vocabulary=&%s.TableVocabulary{Entries:make([]%s.TableMessageEntry,4096)}\nannouncement:=make([]byte,%s.AnnounceMeasure());%s.Announce(announcement)\nif !%s.AnnounceRead(vocabulary,announcement,&r){return \"error: own announcement refused\"}\n", a, a, a, a, a)
 			}
-			fmt.Fprintf(&dispatch, "values:=make([]%s.%s,1)\nn,ok:=%s.%sLoadMessagesTolerant(values,vocabulary,data,&r)\nif reason:=wireRefusal(ok,&r);reason!=\"\"{return reason}\nif n!=1{return \"refuse damaged\"};v:=&values[0]\n", a, t, a, t)
+			fmt.Fprintf(&dispatch, "values:=make([]%s.%s,1)\nn,ok:=%s.%sLoadMessages(values,vocabulary,data,&r)\nif reason:=wireRefusal(ok,&r);reason!=\"\"{return reason}\nif n!=1{return \"refuse damaged\"};v:=&values[0]\n", a, t, a, t)
 			emitDigest(&dispatch, a, t)
 		default:
 			return fmt.Errorf("unsupported carrier %q", c.Carrier)

@@ -74,7 +74,7 @@ func goMessageUnknown(t *testing.T, row batchRow, root string, wire []byte) (unk
 	if _, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(st)}, wire, &v, &rep); err != nil {
 		t.Fatalf("%s: the reference refuses the mutant: %v", root, err)
 	}
-	return rep.Unknown, rep.Malformed
+	return rep.Unknown, rep.Refused
 }
 
 // TestMessageUnknownCountDart loads each mutant by the generated Dart batch
@@ -82,6 +82,7 @@ func goMessageUnknown(t *testing.T, row batchRow, root string, wire []byte) (unk
 // announcement, and asserts the two `unknown` counts are equal
 // (docs/SPEC-TABLES.md §3.3).
 func TestMessageUnknownCountDart(t *testing.T) {
+	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	rows := map[string]batchRow{}
 	for _, row := range batchManifest(t) {

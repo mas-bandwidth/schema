@@ -144,8 +144,8 @@ func TestRowR14(t *testing.T) {
 		var report tblp3.TableReport
 		scratch[0] = tblp3.Chain{}
 		got := tblp3.ChainFixedLoad(scratch[:], buf[:n], plan, &report)
-		if got != 1 || report.Malformed || report.Verdict != tblp3.TableOpenOk {
-			t.Fatalf("R14: valid file: n=%d malformed=%v verdict=%v reason=%q", got, report.Malformed, report.Verdict, report.Reason)
+		if got != 1 || report.Refused() || report.Verdict != tblp3.TableOpenOk {
+			t.Fatalf("R14: valid file: n=%d refused=%v verdict=%v reason=%q", got, report.Refused(), report.Verdict, report.Reason)
 		}
 		if !scratch[0].LinkPresent || scratch[0].Link.Value != 99 {
 			t.Fatalf("R14: wrong values: LinkPresent=%v Value=%d", scratch[0].LinkPresent, scratch[0].Link.Value)
