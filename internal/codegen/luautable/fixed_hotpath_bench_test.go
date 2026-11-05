@@ -1,5 +1,27 @@
 package luautable_test
 
+// THE QUIET-BENCH EVIDENCE, attempt 8 (linux x86-64, pinned Luau 0.741). This
+// is the committed form of the numbers the card report must carry: the exact
+// command, the host load before and during, and both before/after tables.
+//
+// Command:
+//   nice -n 19 go test -count=1 -timeout 600s -v \
+//     ./internal/codegen/luautable/ -run TestLuauFixedHotPathBenchEvidence
+// Load average (1m/5m/15m): before 11.56/10.37/20.10; during 8.11/9.66/19.50.
+//
+// fixed8 (signed-integers): the baseline fixture schema_fixed_before.luau
+// versus the current runtime, median ops/s across 8 paired samples,
+//   read:       before 293074 -> after 291685
+//   write:      before 273370 -> after 268638
+//   round_trip: before 137972 -> after 136321
+// The differences (-0.5%..-1.7%) sit inside the sample spreads (1.9%..11.9%)
+// on a loaded host, so the width dispatch is not measurably slower.
+//
+// fixed16 (signed-128 / unsigned-128): absolute ops/s, median of 8 runs; the
+// old half-width read is not a valid 16-byte baseline, so these stand alone,
+//   signed-128    read 539718  write 640055  round_trip 282824
+//   unsigned-128  read 538371  write 641073  round_trip 286368
+
 import (
 	"crypto/sha256"
 	"fmt"
