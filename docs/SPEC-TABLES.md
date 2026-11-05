@@ -8154,16 +8154,12 @@ Source: the v1.5 adoption, where adding one variable table to a unit silently
 dropped every fixed table's form-`3` surface and its fixed tables rode the
 ordinary table wire. That is the surprise the keyword exists to prevent.
 
-- **FOLLOW-ON, NAMED: A UNION IN A REGIONAL UNIT'S FIXED TABLE.** In a unit that
-  holds a variable table a union is stored as its overlay Row (a tag and one
-  payload extent, arms reached through accessors) and not as one member per
-  arm, so the Go leg's per-arm destinations do not exist there. Until the Go
-  leg lays a union's arms over the overlay, a fixed table whose closure holds a
-  union keeps form `1` in a regional unit, decided at compile time by a named
-  predicate (`fixedRowHoldsUnion`) and never at run time. The same table in a
-  unit with no variable table carries form `3` as before. **Go does not warn
-  today when this drops the form; that warning is a ruling to come, not this
-  card.**
+- **A UNION IN A REGIONAL UNIT'S FIXED TABLE.** In a unit that holds a
+  variable table a union is stored as its overlay Row (a tag and one payload
+  extent, arms reached through accessors) and not as one member per arm. The
+  Go leg lays each arm over the payload extent, at the offset the overlay
+  names, so a fixed table whose closure holds a union carries form `3` in a
+  regional unit as in a plain one, and writes the same bytes.
 
 ---
 
