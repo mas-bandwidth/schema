@@ -6937,24 +6937,32 @@ fi
 endef
 
 # THE SIBLING RUNTIMES AT THE PINS ABOVE. The pins are the single source: this
-# stages the same six checkouts CI clones, at the same tags, for a local bench.
-# deps names it as a prerequisite below, so every gate that already asks deps
-# for the Go sibling (test, test-go, slow-gate-coverage,
-# tables-go-sibling-runtime) also stages C/CS/RS/JS; a pin that only this file
-# reads would bind no checkout (internal/ci/mainreds_pins_test.go refuses that).
-# ci-full.yml's tags are held to what these resolve to. An existing sibling is
-# left alone; remove it to re-stage.
-.PHONY: serialize-siblings
-serialize-siblings:
-	@if ! test -e ../serialize; then $(call fetch-runtime,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),../serialize,C++); fi
-	@if ! test -e ../serialize.c; then $(call fetch-runtime,$(SERIALIZE_C_PIN),mas-bandwidth/serialize.c.git,https://github.com/mas-bandwidth/serialize.c.git,../serialize.c,C); fi
-	@if ! test -e ../serialize.cs; then $(call fetch-runtime,$(SERIALIZE_CS_PIN),mas-bandwidth/serialize.cs.git,https://github.com/mas-bandwidth/serialize.cs.git,../serialize.cs,CS); fi
-	@if ! test -e ../serialize.go; then $(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),../serialize.go,Go); fi
-	@if ! test -e ../serialize.rs; then $(call fetch-runtime,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust); fi
-	@if ! test -e ../serialize.js; then $(call fetch-runtime,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS); fi
+# stages the C/C++/CS/Rust/JS checkouts CI clones, at the same tags, for a local
+# bench. deps names it as a prerequisite below, after deps-go has staged the Go
+# runtime, because deps owns the Go checkout's staged placement and tag-commit
+# verification (internal/ci/serializefetch_test.go holds that): a direct clone
+# here would bypass them. A pin that only this file reads would bind no
+# checkout (internal/ci/mainreds_pins_test.go refuses that). ci-full.yml's tags
+# are held to what these resolve to. An existing sibling is left alone; remove
+# it to re-stage. When NOVA_MIRRORS names a mirror directory but not this
+# runtime, the sibling is left absent and named, never cloned from the network:
+# a bench that mirrors part of the fleet stays offline.
+define stage-sibling
+if test ! -e "$(4)"; then \
+	if test -n "$(NOVA_MIRRORS)" && ! test -d "$(NOVA_MIRRORS)/$(2)"; then \
+		echo "serialize-siblings: no mirror for $(2); $(4) stays absent"; \
+	else \
+		$(call fetch-runtime,$(1),$(2),$(3),$(4),$(5)); \
+	fi; \
+fi
+endef
 
-.PHONY: deps
-deps: serialize-siblings
+# DEPS-GO owns the Go sibling: it stages the checkout under a temporary name,
+# verifies the pinned tag's commit, and publishes it only after a placement
+# race check (internal/ci/serializefetch_test.go). Keeping it separate from
+# deps lets the sibling staging hang off deps without running first.
+.PHONY: deps-go
+deps-go:
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
 		actual=$$(git -C "$(SERIALIZE_GO)" describe --tags --exact-match 2>/dev/null || echo untagged); \
 		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \
@@ -6990,6 +6998,17 @@ deps: serialize-siblings
 		rm -rf "$$stage"; \
 	fi
 	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "make deps: serialize.go at '$(SERIALIZE_GO)' has no go.mod; refusing" >&2; exit 1; }
+
+.PHONY: serialize-siblings
+serialize-siblings: deps-go
+	@$(call stage-sibling,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),../serialize,C++)
+	@$(call stage-sibling,$(SERIALIZE_C_PIN),mas-bandwidth/serialize.c.git,https://github.com/mas-bandwidth/serialize.c.git,../serialize.c,C)
+	@$(call stage-sibling,$(SERIALIZE_CS_PIN),mas-bandwidth/serialize.cs.git,https://github.com/mas-bandwidth/serialize.cs.git,../serialize.cs,CS)
+	@$(call stage-sibling,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust)
+	@$(call stage-sibling,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS)
+
+.PHONY: deps
+deps: serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:
