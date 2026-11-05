@@ -245,8 +245,7 @@ that run past `L`, bytes left inside `L` after the count's elements and an `L`
 past the buffer each end the scan, and nothing resumes, so there is no INERT
 body and no read-on past damage. It is a model, not a codec: the reference, the
 kind byte and the element values are folded away and only offsets remain, which
-is what a layout model is for (Glenn, 2026-10-29: the bugs live in the mapping
-to memory).
+is what a layout model is for: the bugs live in the mapping to memory.
 
 ## The finite instance
 
@@ -400,10 +399,10 @@ switch TRUE and checks TypeOK plus `OneVerdict`.
 
 ## Running
 
-From this directory, on a bench (the Mac Studio):
+From this directory, on the Linux bench, with `/opt/tla/tla2tools.jar`:
 
 ```
-nice -n 19 java -Xmx6g -cp ~/rowan-working/sdk/tla/tla2tools.jar tlc2.TLC \
+nice -n 19 java -Xmx6g -cp /opt/tla/tla2tools.jar tlc2.TLC \
   -workers 4 -config MCReadOrder.cfg -metadir "$JOB/tlc-MCReadOrder" ReadOrder
 ```
 
@@ -463,7 +462,7 @@ under it — and not from offsets.
 ## Running
 
 ```
-nice -n 19 java -Xmx6g -cp ~/rowan-working/sdk/tla/tla2tools.jar tlc2.TLC \
+nice -n 19 java -Xmx6g -cp /opt/tla/tla2tools.jar tlc2.TLC \
   -workers 4 -config MCFixedLive.cfg -metadir "$JOB/tlc-MCFixedLive" FixedLive
 ```
 
