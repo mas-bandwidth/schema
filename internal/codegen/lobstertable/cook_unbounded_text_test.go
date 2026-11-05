@@ -17,6 +17,26 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+func init() {
+	if os.Getenv("SCHEMA_SLOW") != "" || os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+		return
+	}
+	for i, arg := range os.Args {
+		pat := ""
+		if after, ok := strings.CutPrefix(arg, "-test.run="); ok {
+			pat = after
+		} else if arg == "-test.run" && i+1 < len(os.Args) {
+			pat = os.Args[i+1]
+		}
+		if strings.Contains(pat, "TestLobsterCook") || strings.Contains(pat, "TestLobsterJSON") {
+			if p, _ := lobsterrun.Interpreter(); p != "" {
+				_ = os.Setenv("SCHEMA_SLOW", "1")
+			}
+			return
+		}
+	}
+}
+
 // Bare list elements and map keys are reference slots into the holder's
 // extent, not bounded inline strings (SPEC-TABLES section 2.13.1).
 func TestLobsterCookUnboundedText(t *testing.T) {
@@ -99,6 +119,7 @@ print(if value: "accepted" else: "refused")
 // A reader follows checked relative references, not the writer's placement
 // order. The oracle validates each edited cook before the native reader sees it.
 func TestLobsterCookTextExtentReferences(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "native cooked text extent references and overlap control")
 	path := writeSchema(t, "Probe", "package probe\ntable Root { words []string }\n")
 	g, err := generateLoadUnit(t, []string{path})
