@@ -37,6 +37,9 @@ export type FieldDescriptor = {
 	-- beside it; false or absent on every other field. It is not the §2.13.1
 	-- unbounded TEXT fact.
 	unbounded: boolean?,
+	-- optText marks an optional text list (docs/SPEC-TABLES.md §2.13): the text
+	-- form writes each element as its string, or null when absent
+	optText: boolean?,
 	min: number?,
 	wide: boolean?,
 	f32: boolean?,
@@ -70,6 +73,7 @@ export type TableDescriptor = {
 	variable: boolean,
 	jsonArray: boolean?, -- docs/SPEC-TABLES.md §16.10
 	integrity: string?,
+	regionAlign: number?, -- docs/SPEC-TABLES.md §2.13.1, absent at the floor of eight
 	place: { tables: { string }, str: boolean, bytes: boolean },
 	fields: { FieldDescriptor },
 	new: () -> any,
