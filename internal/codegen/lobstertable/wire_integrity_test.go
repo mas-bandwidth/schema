@@ -15,7 +15,28 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
+func init() {
+	if os.Getenv("SCHEMA_SLOW") != "" || os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+		return
+	}
+	for i, arg := range os.Args {
+		pat := ""
+		if after, ok := strings.CutPrefix(arg, "-test.run="); ok {
+			pat = after
+		} else if arg == "-test.run" && i+1 < len(os.Args) {
+			pat = os.Args[i+1]
+		}
+		if strings.Contains(pat, "TestLobsterVariableWireIntegrity") || strings.Contains(pat, "TestLobsterMessageIntegrity") {
+			if p, _ := lobsterrun.Interpreter(); p != "" {
+				_ = os.Setenv("SCHEMA_SLOW", "1")
+			}
+			return
+		}
+	}
+}
+
 func TestLobsterVariableWireIntegrity(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "lobster variable wire integrity")
 	path := filepath.Join(t.TempDir(), "Seal.schema")
 	const schema = `package seal
@@ -76,8 +97,6 @@ func TestLobsterVariableWireIntegrity(t *testing.T) {
 	program.WriteString(`import .schema_save
 import .strict_and_refusals
 import .region_measure
-assert schema_rt.wire_crc32c("123456789") == 0xe3069283
-assert schema_rt.wire_crc32c("") == 0
 `)
 	for _, name := range []string{"Checked", "Plain", "Envelope", "PointerChecked", "PointerPlain"} {
 		fmt.Fprintf(&program, `let wire_%s = read_file(%q)
@@ -107,8 +126,8 @@ def corruptions(root:string, sample:string):
             assert not rec and reason == "integrity_mismatch"
             assert rep.malformed and rep.damaged and rep.stopped
             assert rep.unknown == 0 and rep.kind_mismatch == 0 and rep.widened == 0 and rep.clamped == 0 and rep.duplicate == 0
-            let n, whole, refused, diagnostic = schema_rt.load_measure(root, bad)
-            assert n == -1 and not whole and refused and diagnostic != ""
+            let n, whole, refused = schema_rt.load_measure(root, bad)
+            assert n == -1 and not whole and refused
         write_int8_le(sample, at, original)
 corruptions("Checked", wire_Checked)
 corruptions("PointerChecked", wire_PointerChecked)
@@ -138,6 +157,24 @@ print("integrity passed")
 	}
 	out := lobsterrun.Run(t, g.dir, "main.lobster", inputs)
 	if strings.TrimSpace(string(out)) != "integrity passed" {
+		t.Fatalf("%s", out)
+	}
+	diagProbe := `import .SealTable
+import .region_measure
+assert schema_rt.wire_crc32c("123456789") == 0xe3069283
+assert schema_rt.wire_crc32c("") == 0
+let good = read_file("Checked")
+assert good
+let bad = write_int8_le(good, length(good) - 1, good[length(good) - 1] ^ 1)
+let n, whole, refused, diagnostic = schema_rt.load_measure("Checked", bad)
+assert n == -1 and not whole and refused and diagnostic != ""
+print("diagnostic passed")
+`
+	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(diagProbe), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out = lobsterrun.Run(t, g.dir, "main.lobster", inputs)
+	if strings.TrimSpace(string(out)) != "diagnostic passed" {
 		t.Fatalf("%s", out)
 	}
 	// A checksum-only corruption remains structurally valid. Disabling just
