@@ -41,7 +41,12 @@ export class TableBitWriter {
     this.Bits = 0;
     this.Measuring = measuring === true;
     this.Overflow = false;
+    this.Reason = null;
   }
+  // THE WRITER REFUSES A VALUE ITS DECLARATION DOES NOT ADMIT (docs/SPEC.md
+  // §5.1, docs/SPEC-TABLES.md §22.6): never masked, wrapped or clamped into
+  // its width. The body answers false and the batch verb names the reason.
+  Refuse() { this.Reason = "invalid_value"; return false; }
   Put(value, n) {
     if (n < 0 || n > 64) { this.Overflow = true; return; }
     if (n === 0) { return; }
@@ -475,6 +480,16 @@ func (g *fixedModule) emitMessageWriteField(f *ir.Field, ind string) {
 	mem := "value." + name
 	entry := ir.TableFieldEntry(f)
 	slot := messageSlot(g.unit, entry)
+	if !f.Type.Optional && f.KeyEnum == "" {
+		// a negative count or length would elide as empty: it is refused
+		// before the elision test, as one past the bound is
+		switch {
+		case f.Array == ir.ArrayCounted:
+			g.pf("%sif (!TableFixedCountHolds(%sCount, %d)) { return w.Refuse(); }\n", ind, mem, f.ArrayBound)
+		case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+			g.pf("%sif (!TableFixedCountHolds(%sLength, %d)) { return w.Refuse(); }\n", ind, mem, f.Type.Size)
+		}
+	}
 	ride := g.messageRides(f, mem, ind)
 	if ride == "true" {
 		// a field that always rides is a plain block: `if (true)` is a
@@ -491,9 +506,12 @@ func (g *fixedModule) emitMessageWriteField(f *ir.Field, ind string) {
 func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabularyEntry, mem, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString:
+		// a length past N and text that is not well-formed are refused
+		g.pf("%sif (!TableFixedCountHolds(%sLength, %d) || !TableFixedTextWritable(false, %s, %sLength)) { return w.Refuse(); }\n", ind, mem, f.Type.Size, mem, mem)
 		g.pf("%sw.Put(BigInt(%sLength), %d);\n", ind, mem, ir.TableMessageCountBits(entry.Shape))
 		g.pf("%sw.Raw(%s.subarray(0, %sLength));\n", ind, mem, mem)
 	case f.Type.Kind == ir.TWString:
+		g.pf("%sif (!TableFixedCountHolds(%sLength, %d) || !TableFixedTextWritable(true, %s, %sLength)) { return w.Refuse(); }\n", ind, mem, f.Type.Size, mem, mem)
 		g.pf("%sw.Put(BigInt(%sLength), %d);\n", ind, mem, ir.TableMessageCountBits(entry.Shape))
 		g.pf("%sfor (let i = 0; i < %sLength; i++) { w.Put(BigInt(%s[i]), 16); }\n", ind, mem, mem)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
@@ -517,6 +535,7 @@ func (g *fixedModule) emitMessageWriteArray(f *ir.Field, entry ir.TableVocabular
 	case f.Type.Kind == ir.TBytes:
 		countExpr = mem + "Length"
 		loopExpr = mem + "Length"
+		g.pf("%sif (!TableFixedCountHolds(%s, %d)) { return w.Refuse(); }\n", ind, countExpr, f.Type.Size)
 	case keyed:
 		// A KEYED BODY WRITES THE NUMBER OF PRESENT SLOTS AS ITS COUNT, then a
 		// key reference before each present element (§3.2): "the body carries
@@ -531,6 +550,8 @@ func (g *fixedModule) emitMessageWriteArray(f *ir.Field, entry ir.TableVocabular
 	default:
 		countExpr = mem + "Count"
 		loopExpr = mem + "Count"
+		// a count outside [min, max] is refused, never masked to its width
+		g.pf("%sif (!TableFixedCountHolds(%s, %d) || %s < %d) { return w.Refuse(); }\n", ind, countExpr, f.ArrayBound, countExpr, entry.Shape.Min)
 	}
 	g.pf("%sw.Put(BigInt(%s) - %dn, %d);\n", ind, countExpr, entry.Shape.Min, countBits)
 	if ir.TableMessageAligns(entry.Kind, entry.Shape) {
@@ -587,6 +608,20 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		return
 	}
 	if s.Packing == ir.TableMessageRanged {
+		// A RANGED INTEGER OFF ITS BOUNDS, OR A bits(N) VALUE PAST N, IS
+		// REFUSED (docs/SPEC.md §5.1 rows 1-2, docs/SPEC-TABLES.md §22.6): the
+		// offset can fit the width and still name a value past max, and below
+		// min it wraps. A flags value is masked to its width on purpose (§3.3).
+		if lo, hi, ok := ir.TableRawRange(f); ok && f.Type.Kind == ir.TInt {
+			if fixedIsBig(f.Type) {
+				g.pf("%sif (!(%s >= %s && %s <= %s)) { return w.Refuse(); }\n", ind, mem, jsIntLit(lo, true), mem, jsIntLit(hi, true))
+			} else {
+				g.pf("%sif (!Number.isInteger(%s) || %s < %s || %s > %s) { return w.Refuse(); }\n", ind, mem, mem, jsIntLit(lo, false), mem, jsIntLit(hi, false))
+			}
+		}
+		if maxv := fixedBitsMax(f); maxv != "" {
+			g.pf("%sif (!(%s >= 0 && %s <= %s)) { return w.Refuse(); }\n", ind, mem, mem, maxv)
+		}
 		g.pf("%sw.Put(%s - %s, %d);\n", ind, big, baseBigLit(s.Base), s.Bits)
 		return
 	}
@@ -606,7 +641,7 @@ func (g *fixedModule) emitMessageWriteEnum(f *ir.Field, mem, ind string) {
 		g.pf("%s    case %d: w.Put(%dn, TableMessageRefBitsHere); break;\n", ind, i+1, messageNameSlot(g.unit, ir.TableWireId(e.VariantWireName(i))))
 		_ = v
 	}
-	g.pf("%s    default: return false;\n%s  }\n%s}\n", ind, ind, ind)
+	g.pf("%s    default: return w.Refuse();\n%s  }\n%s}\n", ind, ind, ind)
 }
 
 func (g *fixedModule) emitMessageWriteUnion(f *ir.Field, mem, ind string) {
@@ -622,7 +657,7 @@ func (g *fixedModule) emitMessageWriteUnion(f *ir.Field, mem, ind string) {
 		}
 		g.pf("%s    break;\n%s  }\n", ind, ind)
 	}
-	g.pf("%s  default: return false;\n%s}\n", ind, ind)
+	g.pf("%s  default: return w.Refuse();\n%s}\n", ind, ind)
 }
 
 func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
@@ -908,7 +943,9 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, \"batch_too_large\"); return -1; }\n")
 	g.pf("  const w = new TableBitWriter(null, true);\n")
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { return -1; }\n", n)
+	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) {\n", n)
+	g.pf("      if (w.Reason !== null) { TableMessageRefuse(report, w.Reason); }\n")
+	g.pf("      return -1;\n    }\n")
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
@@ -920,13 +957,11 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 
 	g.pf("export function %sSaveMessages(values, buffer, report) {\n", n)
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
-	g.pf("  TableMessageResetReport(report);\n")
-	g.pf("  if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, \"batch_too_large\"); return -1; }\n")
-	if st.Integrity != "" {
-		g.pf("  if (buffer.length < 6) { return -1; }\n")
-	} else {
-		g.pf("  if (buffer.length < 2) { return -1; }\n")
-	}
+	g.pf("  // A REFUSED BATCH LEAVES THE BUFFER UNTOUCHED (docs/SPEC.md §5.1): the\n")
+	g.pf("  // whole batch is measured first, which checks every value and sizes the\n")
+	g.pf("  // text, so a refusal or a short buffer answers -1 before the first byte.\n")
+	g.pf("  const need = %sMeasureMessages(values, report);\n", n)
+	g.pf("  if (need < 0 || buffer.length < need) { return -1; }\n")
 	g.pf("  buffer[0] = 2;\n")
 	g.pf("  buffer[1] = values.length - 1;\n")
 	if st.Integrity != "" {
@@ -935,7 +970,9 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 		g.pf("  const w = new TableBitWriter(buffer.subarray(2), false);\n")
 	}
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { return -1; }\n", n)
+	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) {\n", n)
+	g.pf("      if (w.Reason !== null) { TableMessageRefuse(report, w.Reason); }\n")
+	g.pf("      return -1;\n    }\n")
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")

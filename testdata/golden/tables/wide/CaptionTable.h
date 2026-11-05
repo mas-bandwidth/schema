@@ -1108,6 +1108,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -1159,6 +1176,40 @@ inline bool TableUtf16Valid( const uint8_t * bytes, int64_t units )
         i++;
     }
     return true;
+}
+
+// A WRITE KEEPS PAIRED WIDE TEXT (docs/SPEC.md §5.1): a wide string a program
+// built holds no unpaired surrogate when a writer puts it on a wire. It reads
+// the storage's own units, and a zero unit is a whole code point the rule
+// admits.
+inline bool TableUtf16Paired( const char16_t * units, int64_t count )
+{
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const uint16_t unit = (uint16_t) units[i];
+        if ( unit >= 0xD800 && unit <= 0xDBFF )
+        {
+            if ( i + 1 >= count ) { return false; } // a high surrogate with no low half
+            const uint16_t low = (uint16_t) units[i + 1];
+            if ( low < 0xDC00 || low > 0xDFFF ) { return false; }
+            i++;
+            continue;
+        }
+        if ( unit >= 0xDC00 && unit <= 0xDFFF ) { return false; } // a low surrogate first
+    }
+    return true;
+}
+
+// A FIXED WRITE KEEPS THE FIXED READER'S WIDE TEXT (docs/SPEC.md §5.1): the
+// fixed reader refuses a zero unit as text_ill_formed, so the fixed writer's
+// contract holds the storage to the pairing rule above AND to no zero unit.
+inline bool TableUtf16FixedText( const char16_t * units, int64_t count )
+{
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( units[i] == 0 ) { return false; }
+    }
+    return TableUtf16Paired( units, count );
 }
 
 // A CLAMP CUTS AT A CODE UNIT BOUNDARY AND NEVER SPLITS A PAIR (§3, §16.2):
@@ -5194,6 +5245,7 @@ inline int64_t CaptionMeasureBody( TableIds & ids, const Caption & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.title_length < 0 || value.title_length > 7 ) { return -1; } // storage invariant
+    schema_assert( TableUtf16Paired( value.title, (int64_t) value.title_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.title_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0xda31296c0c1b6029ull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.title_length * 2 ) ) + ( (int64_t) value.title_length * 2 ); } // title
     {
         const int32_t mark_line = ids.count;
@@ -5266,6 +5318,7 @@ inline int64_t CaptionMeasure( const Caption & value )
 WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const Caption & value )
 {
     if ( value.title_length < 0 || value.title_length > 7 ) { return false; } // storage invariant
+    schema_assert( TableUtf16Paired( value.title, (int64_t) value.title_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.title_length > 0 )
     {
         w.header( ids.ref_at( 13, 0xda31296c0c1b6029ull ), 33 ); // title
@@ -5329,6 +5382,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
                 arm_payload += (int64_t) value.body.wide.value_length * 2; // the code units under the arm's L, which is a BYTE length (§3)
                 w.header( arm_ref, 33 ); w.putleb( (uint64_t) arm_payload ); // wide
                 if ( value.body.wide.value_length < 0 || value.body.wide.value_length > 4 ) { return false; } // storage invariant
+                schema_assert( TableUtf16Paired( value.body.wide.value, (int64_t) value.body.wide.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
                 for ( int32_t i = 0; i < value.body.wide.value_length; i++ ) { w.put16( (uint16_t) value.body.wide.value[i] ); } // two bytes each, little-endian
                 break;
             }
@@ -5340,6 +5394,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
                 arm_payload += value.body.narrow.value_length; // the string's bytes under the arm's L
                 w.header( arm_ref, 12 ); w.putleb( (uint64_t) arm_payload ); // narrow
                 if ( value.body.narrow.value_length < 0 || value.body.narrow.value_length > 4 ) { return false; } // storage invariant
+                schema_assert( TableUtf8WellFormed( (const uint8_t *) value.body.narrow.value, (uint64_t) value.body.narrow.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
                 w.raw( value.body.narrow.value, value.body.narrow.value_length );
                 break;
             }
@@ -5359,8 +5414,13 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t CaptionSave( const Caption & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = CaptionMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -5862,6 +5922,7 @@ inline bool CaptionSaveMessageBody( TableBitWriter & w, const Caption & value )
     if ( value.title_length > 0 )
     {
         w.put( 1, kTableMessageRefBitsHere );
+        schema_assert( TableUtf16Paired( value.title, (int64_t) value.title_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.title_length, 3 );
         for ( int32_t i = 0; i < value.title_length; i++ ) { w.put( (uint64_t) (uint16_t) value.title[i], 16 ); } // sixteen bits a unit, no align
     }
@@ -5893,6 +5954,7 @@ inline bool CaptionSaveMessageBody( TableBitWriter & w, const Caption & value )
             {
                 w.put( 8, kTableMessageRefBitsHere );
                 if ( value.body.wide.value_length < 0 || value.body.wide.value_length > 4 ) { return false; } // storage invariant
+                schema_assert( TableUtf16Paired( value.body.wide.value, (int64_t) value.body.wide.value_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
                 w.put( (uint64_t) value.body.wide.value_length, 3 );
                 for ( int32_t i_2 = 0; i_2 < value.body.wide.value_length; i_2++ ) { w.put( (uint64_t) (uint16_t) value.body.wide.value[i_2], 16 ); } // sixteen bits a unit, no align
                 break;
@@ -5901,6 +5963,7 @@ inline bool CaptionSaveMessageBody( TableBitWriter & w, const Caption & value )
             {
                 w.put( 9, kTableMessageRefBitsHere );
                 if ( value.body.narrow.value_length < 0 || value.body.narrow.value_length > 4 ) { return false; } // storage invariant
+                schema_assert( TableUtf8WellFormed( (const uint8_t *) value.body.narrow.value, (uint64_t) value.body.narrow.value_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
                 w.put( (uint64_t) value.body.narrow.value_length, 3 );
                 w.align(); // a string or a bytes ALIGNS before its bytes
                 w.putbytes( (const uint8_t *) value.body.narrow.value, value.body.narrow.value_length );
@@ -6204,10 +6267,14 @@ inline int64_t CaptionMeasureMessages( const Caption * values, int64_t count, Ta
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t CaptionSaveMessages( const Caption * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = CaptionMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -6256,6 +6323,7 @@ inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 4 ) { return -1; } // storage invariant
+    schema_assert( TableUtf16Paired( value.label, (int64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.label_length * 2 ) ) + ( (int64_t) value.label_length * 2 ); } // label
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 5, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     return bytes;
@@ -6272,6 +6340,7 @@ inline int64_t StampMeasure( const Stamp & value )
 WIDE_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Stamp & value )
 {
     if ( value.label_length < 0 || value.label_length > 4 ) { return false; } // storage invariant
+    schema_assert( TableUtf16Paired( value.label, (int64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 1, 0x39f7fcec8fcb623dull ), 33 ); // label
@@ -6287,8 +6356,13 @@ WIDE_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Sta
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t StampSave( const Stamp & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = StampMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -6547,6 +6621,7 @@ inline bool StampSaveMessageBody( TableBitWriter & w, const Stamp & value )
     if ( value.label_length > 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
+        schema_assert( TableUtf16Paired( value.label, (int64_t) value.label_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.label_length, 3 );
         for ( int32_t i = 0; i < value.label_length; i++ ) { w.put( (uint64_t) (uint16_t) value.label[i], 16 ); } // sixteen bits a unit, no align
     }
@@ -6692,10 +6767,14 @@ inline int64_t StampMeasureMessages( const Stamp * values, int64_t count, TableR
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t StampSaveMessages( const Stamp * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = StampMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -6744,6 +6823,7 @@ inline int64_t LineMeasureBody( TableIds & ids, const Line & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.text_length < 0 || value.text_length > 4 ) { return -1; } // storage invariant
+    schema_assert( TableUtf16Paired( value.text, (int64_t) value.text_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.text_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 14, 0xfa04f4ef1995407eull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.text_length * 2 ) ) + ( (int64_t) value.text_length * 2 ); } // text
     return bytes;
 }
@@ -6759,6 +6839,7 @@ inline int64_t LineMeasure( const Line & value )
 WIDE_TABLE_INLINE bool LineSaveBody( TableWriter & w, TableIds & ids, const Line & value )
 {
     if ( value.text_length < 0 || value.text_length > 4 ) { return false; } // storage invariant
+    schema_assert( TableUtf16Paired( value.text, (int64_t) value.text_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.text_length > 0 )
     {
         w.header( ids.ref_at( 14, 0xfa04f4ef1995407eull ), 33 ); // text
@@ -6769,8 +6850,13 @@ WIDE_TABLE_INLINE bool LineSaveBody( TableWriter & w, TableIds & ids, const Line
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t LineSave( const Line & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = LineMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -6986,6 +7072,7 @@ inline bool LineSaveMessageBody( TableBitWriter & w, const Line & value )
     if ( value.text_length > 0 )
     {
         w.put( 5, kTableMessageRefBitsHere );
+        schema_assert( TableUtf16Paired( value.text, (int64_t) value.text_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.text_length, 3 );
         for ( int32_t i = 0; i < value.text_length; i++ ) { w.put( (uint64_t) (uint16_t) value.text[i], 16 ); } // sixteen bits a unit, no align
     }
@@ -7088,10 +7175,14 @@ inline int64_t LineMeasureMessages( const Line * values, int64_t count, TableRep
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t LineSaveMessages( const Line * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = LineMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -7326,6 +7417,109 @@ inline void StampFixedClampBody( Stamp & value, int32_t & TABLE_CLAMP_RESTRICT c
     }
 }
 
+// Line's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool LineFixedFits( const Line & value )
+{
+    (void) value;
+    if ( value.text_length < 0 || value.text_length > 4 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// Caption's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool CaptionFixedFits( const Caption & value )
+{
+    (void) value;
+    if ( value.title_length < 0 || value.title_length > 7 ) { return false; } // the length indexes the storage (§3.4)
+    if ( !LineFixedFits( value.line ) ) { return false; }
+    if ( value.lines_count < 0 || value.lines_count > 3 ) { return false; } // the count indexes the storage (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.lines_count; ++i )
+    {
+        if ( !LineFixedFits( value.lines[i] ) ) { return false; }
+    }
+    switch ( value.body.type )
+    {
+        case BodyType::Wide:
+        {
+            if ( value.body.wide.value_length < 0 || value.body.wide.value_length > 4 ) { return false; } // the length indexes the storage (§3.4)
+            break;
+        }
+        case BodyType::Narrow:
+        {
+            if ( value.body.narrow.value_length < 0 || value.body.narrow.value_length > 4 ) { return false; } // the length indexes the storage (§3.4)
+            break;
+        }
+        default: break;
+    }
+    return true;
+}
+
+// Stamp's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool StampFixedFits( const Stamp & value )
+{
+    (void) value;
+    if ( value.label_length < 0 || value.label_length > 4 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// Line's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool LineFixedWriteCheck( const Line & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.text_length < 0 || value.text_length > 4 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf16FixedText( value.text, (int64_t) value.text_length );
+    return bad == 0;
+}
+
+// Caption's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool CaptionFixedWriteCheck( const Caption & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.title_length < 0 || value.title_length > 7 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf16FixedText( value.title, (int64_t) value.title_length );
+    if ( !LineFixedWriteCheck( value.line ) ) { return false; }
+    if ( value.lines_count < 0 || value.lines_count > 3 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.lines_count; ++i )
+    {
+        if ( !LineFixedWriteCheck( value.lines[i] ) ) { return false; }
+    }
+    if ( (uint64_t) value.body.type > 3u ) { return false; } // a union tag outside its arms
+    switch ( value.body.type )
+    {
+        case BodyType::Wide:
+        {
+            if ( value.body.wide.value_length < 0 || value.body.wide.value_length > 4 ) { return false; } // the declared length is the bound (§3.4)
+            bad |= (int) !TableUtf16FixedText( value.body.wide.value, (int64_t) value.body.wide.value_length );
+            break;
+        }
+        case BodyType::Narrow:
+        {
+            if ( value.body.narrow.value_length < 0 || value.body.narrow.value_length > 4 ) { return false; } // the declared length is the bound (§3.4)
+            bad |= (int) !TableUtf8Valid( (const uint8_t *) value.body.narrow.value, (uint64_t) value.body.narrow.value_length );
+            break;
+        }
+        default: break;
+    }
+    return bad == 0;
+}
+
+// Stamp's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool StampFixedWriteCheck( const Stamp & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.label_length < 0 || value.label_length > 4 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf16FixedText( value.label, (int64_t) value.label_length );
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -7507,6 +7701,8 @@ inline int64_t CaptionFixedSave( const Caption * values, int64_t count, uint8_t 
 {
     const int64_t need = CaptionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !CaptionFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( CaptionFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, CaptionFixedHash );
@@ -7861,6 +8057,8 @@ inline int64_t StampFixedSave( const Stamp * values, int64_t count, uint8_t * bu
 {
     const int64_t need = StampFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !StampFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( StampFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, StampFixedHash );

@@ -840,11 +840,20 @@ writeValue = function(f: any, n: Node, dx: number, v: any, extra: any, out: buff
 			buffer.writeu32(out, off + 4, v[2])
 		end
 	elseif s == "int" then
+		-- A VALUE OUTSIDE ITS DECLARED SET IS REFUSED (docs/SPEC.md §5.1): one
+		-- its storage cannot hold, one off its declared range, and a bits(N)
+		-- value past 2^N - 1
 		local x = V.toRaw(f, v)
 		if x == nil then
 			refuse("invalid_value", false, fieldName(named))
 		end
 		local signed = f.signed == true
+		if f.lo ~= nil and f.hi ~= nil and (V.rawCmp(x, f.lo, f.kw, signed) < 0 or V.rawCmp(x, f.hi, f.kw, signed) > 0) then
+			refuse("invalid_value", false, fieldName(named))
+		end
+		if f.bits ~= nil and f.bits < f.kw * 8 and V.rawCmp(x, V.bitsCap(f.bits, f.kw), f.kw, signed) > 0 then
+			refuse("invalid_value", false, fieldName(named))
+		end
 		if n.size >= 8 and type(x) == "number" then
 			x = V.widen(x, n.size, signed)
 		end

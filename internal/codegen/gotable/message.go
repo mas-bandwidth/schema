@@ -53,7 +53,7 @@ func messageEntryLiteral(e ir.TableVocabularyEntry) string {
 // Everything they DO — the methods, the announcement, the batch codec — is the
 // optional form's, in tableMessageRuntime.
 func tableMessageCoreTypes() string {
-	return goMessageCoreTypes + "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Clamped int32 }\n"
+	return goMessageCoreTypes + "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Clamped int32; Reason string }\n// Refuse is the writer's refusal of a value its declaration does not admit.\nfunc (w *TableMessageWriter) Refuse() bool { w.Reason = \"invalid_value\"; return false }\n"
 }
 
 const goMessageCoreTypes = `

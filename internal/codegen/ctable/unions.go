@@ -200,9 +200,11 @@ func (g *tableGen) wireBarePayload(f *ir.Field, expr, ind string) {
 		g.emitSequenceWrite(f, expr)
 	case f.Type.Kind == ir.TString && !f.Type.Blob():
 		g.pf("%sif ( %s_length < 0 || %s_length > %d ) { return 0; }\n", ind, expr, expr, f.Type.Size)
+		g.emitTextAssert(f, expr, expr+"_length", ind, "a write")
 		g.pf("%stable_writer_raw( w, %s, %s_length );\n", ind, expr, expr)
 	case f.Type.Kind == ir.TWString:
 		g.pf("%sif ( %s_length < 0 || %s_length > %d ) { return 0; }\n", ind, expr, expr, f.Type.Size)
+		g.emitTextAssert(f, expr, expr+"_length", ind, "a write")
 		g.pf("%s{ int32_t i; for ( i=0; i<%s_length; i++ ) { table_writer_put16( w, %s[i] ); } }\n", ind, expr, expr)
 	case f.Type.Kind == ir.TBytes && !f.Type.Blob():
 		g.pf("%sif ( %s_length < 0 || %s_length > %d ) { return 0; }\n", ind, expr, expr, f.Type.Size)

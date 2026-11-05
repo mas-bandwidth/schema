@@ -231,10 +231,26 @@ function TableVariableUtf8Decode(bytes) {
 // each, LITTLE-ENDIAN, under a byte length L that is twice the unit count
 // (internal/tablewire text.go wideUnits, wideBytes).
 
-// the units onto the wire, or false for a value past its N units: wide text is
-// never truncated on the way out (SPEC.md §4.12) — the save is refused (null)
+// whether a string's code units pair every surrogate: a JavaScript string can
+// hold a lone half, which is ill-formed text in both text kinds (docs/SPEC.md
+// §5.1 row 8), and the writer refuses it rather than spell it
+function TableVariableTextPaired(s) {
+  for (let i = 0; i < s.length; i++) {
+    const u = s.charCodeAt(i);
+    if (u >= 0xdc00 && u <= 0xdfff) { return false; }
+    if (u >= 0xd800 && u <= 0xdbff) {
+      const low = s.charCodeAt(++i);
+      if (!(low >= 0xdc00 && low <= 0xdfff)) { return false; }
+    }
+  }
+  return true;
+}
+
+// the units onto the wire, or false for a value past its N units or one holding
+// an unpaired surrogate: wide text is never truncated or repaired on the way
+// out (SPEC.md §4.12) — the save is refused (null)
 function TableVariableWideWrite(w, s, bound) {
-  if (s.length > bound) { return false; }
+  if (s.length > bound || !TableVariableTextPaired(s)) { return false; }
   for (let i = 0; i < s.length; i++) { const u = s.charCodeAt(i); w.u8(u & 0xff); w.u8(u >>> 8); }
   return true;
 }
@@ -908,6 +924,42 @@ function TableVariableFreeze(x) {
 // the live count of an array: a bounded array never writes past its bound
 function TableVariableCount(fd, val) { if (fd.fixed) { return fd.bound; } return fd.list ? val.length : Math.min(val.length, fd.bound); }
 
+// THE WRITE-SIDE BOUND (docs/USAGE.md "Writes are the caller's
+// responsibility"): the variable writer refuses, in every build and never by
+// clamping, a value the declaration cannot hold. The save answers null and
+// MeasureReason names it invalid_value.
+//
+// TableVariableScalarHolds is the scalar's test: an integer must be an
+// integer of its representation (a number, or a bigint for a wide one), inside
+// its declared min/max, inside its bits(N) width and inside its storage; a
+// ranged float must be inside its range (a NaN or an infinity is the finite
+// rule's refusal, TableVariableFiniteFloat, which names non_finite_float).
+function TableVariableScalarHolds(d, v) {
+  if (d.s === "float") {
+    if (d.lo === null || !Number.isFinite(v)) { return true; }
+    const x = d.f32 ? Math.fround(v) : v;
+    return x >= d.lo && x <= d.hi;
+  }
+  if (d.s !== "int") { return true; }
+  if (typeof v !== (d.big ? "bigint" : "number")) { return false; }
+  if (!d.big && !Number.isInteger(v)) { return false; }
+  if (d.lo !== null && (v < d.lo || v > d.hi)) { return false; }
+  if (d.bits > 0 && d.bits < 64 && v > d.bmax) { return false; }
+  return v >= d.dlo && v <= d.dhi;
+}
+
+// the count a writer puts on the wire, or -1 for a bounded or fixed array
+// holding more elements than its bound
+function TableVariableWriteCount(fd, val) {
+  if (!fd.list && val.length > fd.bound) { return -1; }
+  return TableVariableCount(fd, val);
+}
+
+// a string(N)'s UTF-8 bytes past N refuse the write, and so does a string s
+// holding an unpaired surrogate, which has no UTF-8 spelling; an unbounded
+// string's bound is -1
+function TableVariableTextHolds(fd, b, s) { return (fd.bound < 0 || b.length <= fd.bound) && TableVariableTextPaired(s); }
+
 // a field guarded by bool fields rides only when every guard holds (§2.4)
 function TableVariableGuardHolds(fd, v) {
   if (fd.g !== undefined) {
@@ -1112,10 +1164,12 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); }
       return true;
     case "int": case "flags":
+      if (!TableVariableScalarHolds(fd, val)) { return false; }
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); }
       return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
+      if (!TableVariableScalarHolds(fd, val)) { return false; }
       if (!TableVariableSameFloat(fd.f32, val, fd.def)) {
         TableVariableHeader(w, ids, fd, fd.k);
         TableVariableWriteFloat(w, fd.f32, val);
@@ -1125,6 +1179,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
       if (val !== fd.def) {
         const b = TableVariableUtf8Encode(val);
+        if (!TableVariableTextHolds(fd, b, val)) { return false; }
         TableVariableHeader(w, ids, fd, 12);
         w.leb(b.length);
         w.raw(b);
@@ -1135,13 +1190,14 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       // declared default, so the EMPTY text is what elides; L is a BYTE length,
       // twice the units, and a value past N units refuses the save
       if (val.length !== 0) {
-        if (val.length > fd.bound) { return false; }
+        if (val.length > fd.bound || !TableVariableTextPaired(val)) { return false; }
         TableVariableHeader(w, ids, fd, 33);
         w.leb(val.length * 2);
         TableVariableWideWrite(w, val, fd.bound);
       }
       return true;
     case "bytes":
+      if (val.length > fd.bound) { return false; }
       if (!TableVariableSameBytes(val, fd.def)) {
         // bytes ride as an array of u8 (§2.5): the body is the element kind,
         // the count and the bytes, and L is that body's length — the count's
@@ -1188,7 +1244,8 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
     }
     case "arr": {
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
-      const n = TableVariableCount(fd, val);
+      const n = TableVariableWriteCount(fd, val);
+      if (n < 0) { return false; }
       if (n === 0) { return true; }
       if (fd.fixed && fd.e.s !== "tab") {
         let allDef = true;
@@ -1221,8 +1278,13 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
   const e = fd.e;
   switch (e.s) {
     case "bool": w.u8(val ? 1 : 0); return true;
-    case "int": case "flags": TableVariableWriteInt(w, e.kw, val); return true;
-    case "float": return TableVariableWriteFloat(w, e.f32, val);
+    case "int": case "flags":
+      if (!TableVariableScalarHolds(e, val)) { return false; }
+      TableVariableWriteInt(w, e.kw, val);
+      return true;
+    case "float":
+      if (!TableVariableScalarHolds(e, val)) { return false; }
+      return TableVariableWriteFloat(w, e.f32, val);
     case "enum": {
       const vref = TableVariableEnumRef(e, ids, val);
       if (vref < 0) { return false; }
@@ -1274,8 +1336,10 @@ function TableVariableSave(c, v, retain, why) {
 // THE MEASURE'S REASON TWIN (Go's MeasureReason): [size, null] for a value
 // the wire carries, [-1, reason] for one it refuses — blob_shared for a blob
 // two slots name (§2.5), non_finite_float for a NaN or an infinity (§3.3),
-// invalid_value for any other value outside the
-// writer's contract (a data cycle, §3.1; an enum value no variant names, §5).
+// invalid_value for any other value outside the writer's contract (a data
+// cycle, §3.1; an enum value no variant names, §5; a union arm no union names;
+// a value off its declaration, TableVariableScalarHolds and the bounds beside
+// it).
 function TableVariableMeasureReason(c, v) {
   const why = { reason: null };
   const b = TableVariableSave(c, v, null, why);
@@ -2260,7 +2324,8 @@ function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
     if (ch === "]") { inp.p++; return true; }
     if (ch === "") { inp.bad = true; return false; }
     if (count >= bound || dropped) {
-      if (!dropped && count >= bound) { TableVariableTextListClamp(fd, report); }
+      // an element past [..N] counts, the total having dropped it or not (§2.13)
+      if (count >= bound) { TableVariableTextListClamp(fd, report); }
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else {
       const record = fd.e.c.make(), shape = inp.shape();
@@ -2396,7 +2461,7 @@ function TableVariableUnionEdges(u, val, out, everyGuard) {
 // and an all-default table included
 function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
   const val = v[fd.n];
-  if (!TableVariableRequiredValue(fd, val)) { return false; }
+  if (!TableVariableScalarHolds(fd, val)) { return false; }
   switch (fd.s) {
     case "keyed": return TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path);
     case "union":
@@ -2423,12 +2488,14 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
     case "str": {
       if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
       const b = TableVariableUtf8Encode(val);
+      if (!TableVariableTextHolds(fd, b, val)) { return false; }
       TableVariableHeader(w, ids, fd, 12);
       w.leb(b.length);
       w.raw(b);
       return true;
     }
     case "bytes": {
+      if (val.length > fd.bound) { return false; }
       TableVariableHeader(w, ids, fd, 14);
       const body = new TableVariableWriter();
       body.u8(6);
@@ -2457,7 +2524,8 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
     }
     case "arr": {
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
-      const n = TableVariableCount(fd, val);
+      const n = TableVariableWriteCount(fd, val);
+      if (n < 0) { return false; }
       w.leb(ids.ref(fd.id));
       w.u8(14);
       const body = new TableVariableWriter();
@@ -2568,13 +2636,26 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   const f = arm.f, x = val.value;
   switch (f.s) {
     case "bool": w.u8(x ? 1 : 0); return true;
-    case "int": case "flags": TableVariableWriteInt(w, f.kw, x); return true;
-    case "float": return TableVariableWriteFloat(w, f.f32, x);
-    case "str": w.raw(TableVariableUtf8Encode(x)); return true;
+    case "int": case "flags":
+      if (!TableVariableScalarHolds(f, x)) { return false; }
+      TableVariableWriteInt(w, f.kw, x);
+      return true;
+    case "float":
+      if (!TableVariableScalarHolds(f, x)) { return false; }
+      return TableVariableWriteFloat(w, f.f32, x);
+    case "str": {
+      const b = TableVariableUtf8Encode(x);
+      if (!TableVariableTextHolds(f, b, x)) { return false; }
+      w.raw(b);
+      return true;
+    }
     // AN ARM'S L IS THE WSTRING'S BYTE LENGTH (§3's arm payload table): the
     // units ride under it with no length of their own; past N units refuses
     case "wstr": return TableVariableWideWrite(w, x, f.bound);
-    case "bytes": w.u8(6); w.leb(x.length); w.raw(x); return true;
+    case "bytes":
+      if (x.length > f.bound) { return false; }
+      w.u8(6); w.leb(x.length); w.raw(x);
+      return true;
     case "enum": {
       const vref = TableVariableEnumRef(f, ids, x);
       if (vref < 0) { return false; }
@@ -2587,7 +2668,8 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
       w.leb(f.s === "sblob" && typeof x === "string" ? nodes.slot(val, "value") : nodes.index.get(x));
       return true;
     case "arr": {
-      const n = TableVariableCount(f, x);
+      const n = TableVariableWriteCount(f, x);
+      if (n < 0) { return false; }
       w.u8(f.ek);
       w.leb(n);
       for (let i = 0; i < n; i++) {

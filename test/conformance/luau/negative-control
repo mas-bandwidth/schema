@@ -19,6 +19,19 @@
 #           match) and nothing else; `json-write`, `wire` and `cook-write`
 #           green, so the break is the text walk's and the matrix localizes it
 #           (I11).
+#   write-refusal  schema_tables.luau's declared-range test (S.int_ok, the
+#           one integer test the variable and fixed writers share) is taken
+#           out: a ranged integer past its min or max is written instead of
+#           refused, so `luau / write-refusal` (wref_range_high,
+#           wref_range_low) and `luau / write-refusal-fixed` (fref_range_high,
+#           fref_range_low) go red and nothing else; `wire` and `json-read`
+#           green.
+#   write-refusal-fixed  schema_fixed.luau's integer check (checkLeaf's
+#           S.int_ok) is taken out: F.save stores a ranged integer past its
+#           bounds and a bits(6) value past six bits, so `luau /
+#           write-refusal-fixed` (fref_range_high, fref_range_low,
+#           fref_bits_wide) goes red and nothing else; `wire` and
+#           `write-refusal` green.
 #
 # main.luau finds its staged inputs and the generated units by paths relative
 # to itself (../../../build/...), so the sabotaged units run under a MIRROR of
@@ -29,7 +42,7 @@
 # harness's work directory sits under this control's own build directory, so
 # that one is linked too: the forgery lines name fixtures it wrote there.
 #
-# usage: test/conformance/luau/negative-control <report|walk|framing>
+# usage: test/conformance/luau/negative-control <report|walk|framing|cycle|write-refusal|write-refusal-fixed>
 set -eu
 
 mode=$1
@@ -53,6 +66,14 @@ cycle)
 framing)
 	source=internal/codegen/luautable/runtime/schema_load.luau
 	sed '/^	if count > ID_TABLE_BOUND then report.malformed = true; return nil end$/d' "$source" > "$out/runtime.luau"
+	;;
+write-refusal)
+	source=internal/codegen/luautable/runtime/schema_tables.luau
+	sed 's/^		if int_less(signed, x, lo) or int_less(signed, hi, x) then return false end$/		if false then return false end/' "$source" > "$out/runtime.luau"
+	;;
+write-refusal-fixed)
+	source=internal/codegen/luautable/runtime/schema_fixed.luau
+	sed 's/^		if not S.int_ok(f, v) then return invalid(f) end$/		if false then return invalid(f) end/' "$source" > "$out/runtime.luau"
 	;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -117,6 +138,8 @@ report) want="report retain " ; green="wire json-read retain-save" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
 cycle) want="framing " ; green="wire report" ;;
+write-refusal) want="write-refusal write-refusal-fixed " ; green="wire json-read" ;;
+write-refusal-fixed) want="write-refusal-fixed " ; green="wire write-refusal" ;;
 esac
 if [ "$red" != "$want" ]; then
 	echo "NEGATIVE CONTROL FAILED: the luau $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2

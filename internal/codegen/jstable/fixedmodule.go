@@ -220,8 +220,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		"TableFixedKnownLayout", "TableFixedDecodeLayout", "TableFixedSelect",
 		"TableFixedRefuseHash", "TableFixedLineagePlans")
 	g.needHome(st.Name+"FixedWriteBody", st.Name+"FixedDecode", st.Name, "Init"+st.Name)
-	finite := slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck)
-	if finite {
+	checked := slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck)
+	if checked {
 		g.needHome(st.Name + "FixedCheckBody")
 	}
 
@@ -357,9 +357,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("export function %sFixedSave(values, count, bytes) {\n", st.Name)
 	g.pf("  const need = %sFixedMeasure(count);\n", st.Name)
 	g.pf("  if (count < 0 || bytes === null || bytes.length < need) { return -1; }\n")
-	if finite {
-		g.pf("  // A NaN OR AN INFINITY IS REFUSED BEFORE A BYTE IS WRITTEN (docs/SPEC-TABLES.md\n")
-		g.pf("  // §3.3): no form carries one, so the save answers -1 and the buffer is untouched.\n")
+	if checked {
+		g.pf("  // A VALUE ITS DECLARATION DOES NOT ADMIT IS REFUSED BEFORE A BYTE IS WRITTEN\n")
+		g.pf("  // (docs/SPEC.md §5.1): the whole batch is checked first, so a refusal answers\n")
+		g.pf("  // -1 and the buffer is untouched.\n")
 		g.pf("  for (let k = 0; k < count; k++) { if (!%sFixedCheckBody(values[k])) { return -1; } }\n", st.Name)
 	}
 	g.pf("  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")

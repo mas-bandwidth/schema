@@ -12,6 +12,7 @@ package tabledemo
 
 import (
 	"math"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -19,17 +20,23 @@ func TeamConfigSaveMessageBody(w *TableMessageWriter, value *TeamConfig) bool {
 	{
 		if value.SpawnCount != 4 {
 			w.Put(98, TableMessageRefBitsHere)
+			if value.SpawnCount < 0 || value.SpawnCount > 64 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.SpawnCount), uint64(0))
 		}
 	}
 	{
 		if value.BannerLength < 0 || value.BannerLength > 16 {
-			return false
+			return w.Refuse()
 		}
 		if value.BannerLength > 0 {
 			w.Put(99, TableMessageRefBitsHere)
 			if value.BannerLength < 0 || value.BannerLength > 16 {
-				return false
+				return w.Refuse()
+			}
+			if !utf8.Valid(value.Banner[:value.BannerLength]) {
+				return w.Refuse()
 			}
 			w.Put(uint64(value.BannerLength), 5)
 			w.Raw(value.Banner[:value.BannerLength])
@@ -48,6 +55,9 @@ func TeamConfigMeasureMessages(values []*TeamConfig, report *TableReport) int64 
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !TeamConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -58,13 +68,7 @@ func TeamConfigMeasureMessages(values []*TeamConfig, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := TeamConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -72,6 +76,9 @@ func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableRe
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !TeamConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -287,6 +294,9 @@ func GunnerConfigMeasureMessages(values []*GunnerConfig, report *TableReport) in
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !GunnerConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -297,13 +307,7 @@ func GunnerConfigMeasureMessages(values []*GunnerConfig, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := GunnerConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -311,6 +315,9 @@ func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *Tab
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !GunnerConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -529,6 +536,9 @@ func TurretConfigMeasureMessages(values []*TurretConfig, report *TableReport) in
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !TurretConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -539,13 +549,7 @@ func TurretConfigMeasureMessages(values []*TurretConfig, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := TurretConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -553,6 +557,9 @@ func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *Tab
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !TurretConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -777,6 +784,7 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 			probe.Measuring = true
 			probe.Bits = 0
 			if !TurretConfigSaveMessageBody(&probe, &value.Turrets[i]) {
+				w.Reason = probe.Reason
 				return false
 			}
 			if probe.Bits > TableMessageRefBitsHere {
@@ -791,6 +799,7 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 				probe.Measuring = true
 				probe.Bits = 0
 				if !TurretConfigSaveMessageBody(&probe, &value.Turrets[i]) {
+					w.Reason = probe.Reason
 					return false
 				}
 				if probe.Bits > TableMessageRefBitsHere {
@@ -803,6 +812,7 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 				probe.Measuring = true
 				probe.Bits = 0
 				if !TurretConfigSaveMessageBody(&probe, &value.Turrets[i]) {
+					w.Reason = probe.Reason
 					return false
 				}
 				if !(probe.Bits > TableMessageRefBitsHere) {
@@ -810,7 +820,7 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 				}
 				id, named := Weapon(i + 1).TableEnumID()
 				if !named {
-					return false
+					return w.Refuse()
 				}
 				slot := tableMessageNameSlot(id)
 				if slot == 0 {
@@ -836,6 +846,9 @@ func HullConfigMeasureMessages(values []*HullConfig, report *TableReport) int64 
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !HullConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -846,13 +859,7 @@ func HullConfigMeasureMessages(values []*HullConfig, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := HullConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -860,6 +867,9 @@ func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableRe
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !HullConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -1096,6 +1106,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 			probe.Measuring = true
 			probe.Bits = 0
 			if !TeamConfigSaveMessageBody(&probe, &value.Teams[i]) {
+				w.Reason = probe.Reason
 				return false
 			}
 			if probe.Bits > TableMessageRefBitsHere {
@@ -1110,6 +1121,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 				probe.Measuring = true
 				probe.Bits = 0
 				if !TeamConfigSaveMessageBody(&probe, &value.Teams[i]) {
+					w.Reason = probe.Reason
 					return false
 				}
 				if probe.Bits > TableMessageRefBitsHere {
@@ -1122,6 +1134,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 				probe.Measuring = true
 				probe.Bits = 0
 				if !TeamConfigSaveMessageBody(&probe, &value.Teams[i]) {
+					w.Reason = probe.Reason
 					return false
 				}
 				if !(probe.Bits > TableMessageRefBitsHere) {
@@ -1129,7 +1142,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 				}
 				id, named := Team(i + 1).TableEnumID()
 				if !named {
-					return false
+					return w.Refuse()
 				}
 				slot := tableMessageNameSlot(id)
 				if slot == 0 {
@@ -1149,6 +1162,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 			probe.Measuring = true
 			probe.Bits = 0
 			if !HullConfigSaveMessageBody(&probe, &value.Hulls[i]) {
+				w.Reason = probe.Reason
 				return false
 			}
 			if probe.Bits > TableMessageRefBitsHere {
@@ -1163,6 +1177,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 				probe.Measuring = true
 				probe.Bits = 0
 				if !HullConfigSaveMessageBody(&probe, &value.Hulls[i]) {
+					w.Reason = probe.Reason
 					return false
 				}
 				if probe.Bits > TableMessageRefBitsHere {
@@ -1175,6 +1190,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 				probe.Measuring = true
 				probe.Bits = 0
 				if !HullConfigSaveMessageBody(&probe, &value.Hulls[i]) {
+					w.Reason = probe.Reason
 					return false
 				}
 				if !(probe.Bits > TableMessageRefBitsHere) {
@@ -1182,7 +1198,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 				}
 				id, named := Hull(i + 1).TableEnumID()
 				if !named {
-					return false
+					return w.Refuse()
 				}
 				slot := tableMessageNameSlot(id)
 				if slot == 0 {
@@ -1200,6 +1216,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 		probe.Measuring = true
 		probe.Bits = 0
 		if !ScoreBoardSaveMessageBody(&probe, &value.Scores) {
+			w.Reason = probe.Reason
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
@@ -1222,6 +1239,9 @@ func KeyedConfigMeasureMessages(values []*KeyedConfig, report *TableReport) int6
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !KeyedConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -1232,13 +1252,7 @@ func KeyedConfigMeasureMessages(values []*KeyedConfig, report *TableReport) int6
 	return 2 + w.Bits/8
 }
 func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := KeyedConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1246,6 +1260,9 @@ func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *Table
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !KeyedConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -1492,13 +1509,16 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 				}
 				id, named := Team(i + 1).TableEnumID()
 				if !named {
-					return false
+					return w.Refuse()
 				}
 				slot := tableMessageNameSlot(id)
 				if slot == 0 {
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
+				if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
+					return w.Refuse()
+				}
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 17, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PerTeam[i]), uint64(0))
 			}
 		}

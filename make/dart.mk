@@ -657,6 +657,13 @@ build/conformance-dart: build/tables-generated-dart/.stamp cards-dart-generate t
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
+# Its DEBUG twin, the same driver with asserts compiled in: the write-refusal
+# surface answers from it (test/conformance/dart/driver), because the variable
+# writer's write contract is checked by Dart asserts.
+build/conformance-dart-asserts: build/tables-generated-dart/.stamp cards-dart-generate test/conformance/dart/main.dart
+	@mkdir -p build
+	$(DART) compile exe --enable-asserts -o $@ test/conformance/dart/main.dart >/dev/null
+
 # THE FORM-1 COOK WRITER'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.6, §3, §7.6):
 # the cook-write rows of messagedemo (an ARRAY OF UNIONS at three depths) and
 # scalars (the WIDE KINDS as array elements) are carried by two pieces of
@@ -1379,7 +1386,7 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 TEST_LEGS         += test-dart
 TOOLCHAIN_LEGS    += dart
 TOOLCHAIN_PINS_dart := DART
-CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart)
+CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart build/conformance-dart-asserts)
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/dart/.stamp: bin/schema test/packet-text/Narrow.schema
 	./bin/schema generate --lang dart --out build/packet-text/dart test/packet-text/Narrow.schema
@@ -1714,6 +1721,43 @@ conformance-negative-control-dart-share: build/conformance-harness
 .PHONY: conformance-negative-control-dart-absent
 conformance-negative-control-dart-absent: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control absent "$(DART)"
+
+# THE WRITE CONTRACT'S (docs/SPEC.md §5.1): the ranged-integer assert out of a
+# copy of the generated tabledemo library, the driver compiled against it with
+# --enable-asserts, and `write-refusal` red on the two out-of-range rows alone,
+# `wire` green.
+.PHONY: conformance-negative-control-dart-write-refusal
+conformance-negative-control-dart-write-refusal: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/negative-control write-refusal "$(DART)"
+
+# THE FIXED AND MESSAGE WRITERS' WRITE-CONTRACT CONTROLS (docs/SPEC.md §5.1):
+# one ranged-integer check deleted from a copy of a generated <T>FixedCheckBody,
+# the driver AOT-compiled against it with --enable-asserts, and
+# `write-refusal-fixed` or `write-refusal-message` red on its two out-of-range
+# rows alone with wire and message green (test/conformance/dart/negative-control).
+.PHONY: conformance-negative-control-dart-write-refusal-fixed
+conformance-negative-control-dart-write-refusal-fixed: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/negative-control write-refusal-fixed "$(DART)"
+
+.PHONY: conformance-negative-control-dart-write-refusal-message
+conformance-negative-control-dart-write-refusal-message: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/negative-control write-refusal-message "$(DART)"
+
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1: memory is not a value): the
+# release AOT binary, no asserts, must refuse the rows whose count or length
+# overruns a fixed array's storage (fref_count, fref_length, mref_length), in
+# every build and before the first byte (test/conformance/dart/write-refusal-release).
+# Its control drops the bound from a copy of RootConfig's fixed save and
+# requires the gate red on fref_count and fref_length.
+.PHONY: write-refusal-storage-release-dart
+write-refusal-storage-release-dart: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/write-refusal-release gate "$(DART)"
+
+test-dart: write-refusal-storage-release-dart
+
+.PHONY: write-refusal-storage-release-dart-negative-control
+write-refusal-storage-release-dart-negative-control: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/write-refusal-release control "$(DART)"
 
 # THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
 # image block_pitch open, `forgery` red on that row alone.

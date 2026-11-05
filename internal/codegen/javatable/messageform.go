@@ -2423,6 +2423,16 @@ func (g *messageGen) emitLoadUnion(un *ir.Union, expr string, indent int) {
 
 // ---- root batch entry points ----------------------------------------------
 
+// emitBatchContract asserts the write contract over the whole batch before
+// anything is measured or stored (docs/SPEC.md §5.1): a ranged integer off its
+// bounds or a bits(N) value past N is refused rather than masked to the field's
+// width, and so is ill-formed text. Debug only, through `assert` (-ea); a flags
+// value is not in it, because this form masks a flags value to its declared
+// width on purpose (docs/SPEC-TABLES.md §3.3).
+func (g *messageGen) emitBatchContract(st *ir.Struct) {
+	g.pf("        assert %s.checkWriteBatch(values, count) : \"write contract: %s\";\n", fixedClass(st.Name), st.Name)
+}
+
 func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("    public static int measureMessages(%s[] values, TableVocabulary.Report report) {\n", valType)
 	g.pf("        return measureMessages(values, values == null ? 0 : values.length, report);\n")
@@ -2438,6 +2448,7 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            return -1;\n")
 	g.pf("        }\n")
 	g.pf("        if (values == null || count > values.length) { return -1; }\n")
+	g.emitBatchContract(st)
 	g.pf("        TableMessage.Writer w = new TableMessage.Writer(null, 2, true);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null || !saveMessageBody(w, values[i])) { return -1; }\n")
@@ -2470,6 +2481,7 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	} else {
 		g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 2) { return -1; }\n")
 	}
+	g.emitBatchContract(st)
 	g.pf("        TableMessage.Writer mw = new TableMessage.Writer(null, 2, true);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null || !saveMessageBody(mw, values[i])) { return -1; }\n")

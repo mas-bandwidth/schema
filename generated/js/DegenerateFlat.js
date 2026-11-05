@@ -14,11 +14,17 @@ export const FlatReadSlack = 8;
 
 // ---- type Vec2: the flat codec ----
 
-// WriteVec2Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold Vec2MaxBytes.
+// WriteVec2Flat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold Vec2MaxBytes.
 export function WriteVec2Flat(view, value) {
+  if (!Number.isFinite(value.x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(0, value.x, true);
+  if (!Number.isFinite(value.y)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(8, value.y, true);
   return 16;
 }
@@ -36,12 +42,15 @@ export function ReadVec2Flat(view, numBits, value) {
 
 // ---- type SpanF64: the flat codec ----
 
-// WriteSpanF64Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanF64MaxBytes.
+// WriteSpanF64Flat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold SpanF64MaxBytes.
 export function WriteSpanF64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.values[i0])) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
+    }
     SC.setFloat64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -100,8 +109,7 @@ export function ReadSpanF64Flat(view, numBits, value) {
 // ---- type SpanU64: the flat codec ----
 
 // WriteSpanU64Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanU64MaxBytes.
+// writer contract. The buffer behind view must hold SpanU64MaxBytes.
 export function WriteSpanU64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
@@ -165,8 +173,7 @@ export function ReadSpanU64Flat(view, numBits, value) {
 // ---- type SpanI64: the flat codec ----
 
 // WriteSpanI64Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanI64MaxBytes.
+// writer contract. The buffer behind view must hold SpanI64MaxBytes.
 export function WriteSpanI64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
@@ -230,8 +237,7 @@ export function ReadSpanI64Flat(view, numBits, value) {
 // ---- type SpanOne: the flat codec ----
 
 // WriteSpanOneFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanOneMaxBytes.
+// writer contract. The buffer behind view must hold SpanOneMaxBytes.
 export function WriteSpanOneFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 1; i0++) {
@@ -295,8 +301,7 @@ export function ReadSpanOneFlat(view, numBits, value) {
 // ---- type SpanChunk: the flat codec ----
 
 // WriteSpanChunkFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanChunkMaxBytes.
+// writer contract. The buffer behind view must hold SpanChunkMaxBytes.
 export function WriteSpanChunkFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 4; i0++) {
@@ -338,12 +343,15 @@ export function ReadSpanChunkFlat(view, numBits, value) {
 
 // ---- type SpanTail: the flat codec ----
 
-// WriteSpanTailFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanTailMaxBytes.
+// WriteSpanTailFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold SpanTailMaxBytes.
 export function WriteSpanTailFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.values[i0])) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
+    }
     SC.setFloat64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -417,12 +425,15 @@ export function ReadSpanTailFlat(view, numBits, value) {
 
 // ---- type SpanTwice: the flat codec ----
 
-// WriteSpanTwiceFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanTwiceMaxBytes.
+// WriteSpanTwiceFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold SpanTwiceMaxBytes.
 export function WriteSpanTwiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.a[i0])) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
+    }
     SC.setFloat64(0, value.a[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -444,6 +455,9 @@ export function WriteSpanTwiceFlat(view, value) {
     }
   }
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.b[i0])) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
+    }
     SC.setFloat64(0, value.b[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -521,8 +535,7 @@ export function ReadSpanTwiceFlat(view, numBits, value) {
 // ---- type Trio: the flat codec ----
 
 // WriteTrioFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold TrioMaxBytes.
+// writer contract. The buffer behind view must hold TrioMaxBytes.
 export function WriteTrioFlat(view, value) {
   let v = 0, lo = 0;
   lo = ((value.a & 0xfffff));
@@ -556,8 +569,7 @@ export function ReadTrioFlat(view, numBits, value) {
 // ---- type TrioSole: the flat codec ----
 
 // WriteTrioSoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold TrioSoleMaxBytes.
+// writer contract. The buffer behind view must hold TrioSoleMaxBytes.
 export function WriteTrioSoleFlat(view, value) {
   let v = 0, lo = 0;
   lo = ((value.inner.a & 0xfffff));
@@ -590,12 +602,21 @@ export function ReadTrioSoleFlat(view, numBits, value) {
 
 // ---- type Vec3Sole: the flat codec ----
 
-// WriteVec3SoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold Vec3SoleMaxBytes.
+// WriteVec3SoleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold Vec3SoleMaxBytes.
 export function WriteVec3SoleFlat(view, value) {
+  if (!Number.isFinite(value.v.x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(0, value.v.x, true);
+  if (!Number.isFinite(value.v.y)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(8, value.v.y, true);
+  if (!Number.isFinite(value.v.z)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(16, value.v.z, true);
   return 24;
 }
@@ -615,8 +636,7 @@ export function ReadVec3SoleFlat(view, numBits, value) {
 // ---- type TrioFirst: the flat codec ----
 
 // WriteTrioFirstFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold TrioFirstMaxBytes.
+// writer contract. The buffer behind view must hold TrioFirstMaxBytes.
 export function WriteTrioFirstFlat(view, value) {
   let v = 0, lo = 0;
   lo = ((value.inner.a & 0xfffff));
@@ -655,8 +675,7 @@ export function ReadTrioFirstFlat(view, numBits, value) {
 // ---- type TrioStraddle: the flat codec ----
 
 // WriteTrioStraddleFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold TrioStraddleMaxBytes.
+// writer contract. The buffer behind view must hold TrioStraddleMaxBytes.
 export function WriteTrioStraddleFlat(view, value) {
   let v = 0, lo = 0;
   SC.setBigUint64(0, value.pad0, true);

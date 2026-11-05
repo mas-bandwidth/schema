@@ -349,6 +349,82 @@ local defaultValue = function(fd, value, owner) {
   return value == fd.def;
 };
 
+// A VALUE OUTSIDE ITS DECLARED SET IS REFUSED, NEVER MASKED, WRAPPED OR
+// CLAMPED (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §22.6): a ranged integer off
+// its min or max, a bits(N) value past N, an integer its kind cannot hold, a
+// count or a length past its bound, an enum value naming no variant, a union
+// tag naming no arm, ill-formed text. The batch refuses as
+// invalid_value: <Owner>.<field>. A flags value is masked to its declared
+// width on purpose: bits a newer build appended are dropped by width (§3.3).
+local refuseValue = function(w) {
+  if (w.reason == null) w.reason = "invalid_value: " + (w.owner == null ? "" : w.owner + ".") + (w.field == null ? "" : w.field);
+  w.bad = true;
+};
+local u64Less = function(a, b) {
+  local MIN = 0x8000000000000000;
+  return (a ^ MIN) < (b ^ MIN);
+};
+local intFits = function(fd, val) {
+  // a 128-bit value is its [low, high] pair, which this form does not carry
+  if (fd.width == 16) return true;
+  if (typeof val != "integer") return false;
+  if (fd.width < 8) {
+    local n = fd.width * 8;
+    if (fd.signed) {
+      local half = 1 << (n - 1);
+      if (val < -half || val >= half) return false;
+    } else if ((val >>> n) != 0) {
+      return false;
+    }
+  }
+  if (fd.lo != null && fd.hi != null) {
+    if (fd.signed) {
+      if (val < fd.lo || val > fd.hi) return false;
+    } else if (u64Less(val, fd.lo) || u64Less(fd.hi, val)) {
+      return false;
+    }
+  }
+  if (fd.bits > 0 && fd.bits < 64 && (val >>> fd.bits) != 0) return false;
+  return true;
+};
+// a string's bytes are well-formed UTF-8: no overlong or surrogate sequence,
+// nothing past U+10FFFF, no truncated tail
+local utf8Ok = function(s) {
+  if (typeof s != "string") return false;
+  local n = s.len(), i = 0;
+  while (i < n) {
+    local c = s[i] & 0xff;
+    if (c < 0x80) { i++; continue; }
+    local k = 0;
+    if (c < 0xC2) return false;
+    if (c < 0xE0) k = 2;
+    else if (c < 0xF0) k = 3;
+    else if (c < 0xF5) k = 4;
+    else return false;
+    if (i + k > n) return false;
+    local c1 = s[i + 1] & 0xff;
+    if (c == 0xE0 && c1 < 0xA0) return false;
+    if (c == 0xED && c1 > 0x9F) return false;
+    if (c == 0xF0 && c1 < 0x90) return false;
+    if (c == 0xF4 && c1 > 0x8F) return false;
+    for (local j = 1; j < k; j++) if ((s[i + j] & 0xc0) != 0x80) return false;
+    i += k;
+  }
+  return true;
+};
+// wide text pairs every surrogate
+local widePaired = function(units) {
+  local n = units.len();
+  for (local i = 0; i < n; i++) {
+    local u = units[i];
+    if (u >= 0xD800 && u <= 0xDBFF) {
+      if (i + 1 >= n || units[i + 1] < 0xDC00 || units[i + 1] > 0xDFFF) return false;
+      i++;
+    } else if (u >= 0xDC00 && u <= 0xDFFF) return false;
+  }
+  return true;
+};
+
 local writeBody;
 local writePayload;
 local readBody;
@@ -361,9 +437,10 @@ local writeScalar = function(T, w, fd, value) {
   local kind = fd.kind, bits = numberBits(fd);
   if (kind == 1) { put(w, value ? 1 : 0, 1); return; }
   if (fd.shape == "enum") {
-    local ref = 0;
+    local ref = 0, named = false;
     if (value != null) foreach (p in fd.variants) {
       if (p[0] == value) {
+        named = true;
         if (p.len() > 2 && p[2]) {
           // A STRICT WRITE REFUSES A VALUE HOLDING A DEPRECATED VARIANT
           // (docs/SPEC-TABLES.md §2.15): the value is the caller's.
@@ -375,6 +452,7 @@ local writeScalar = function(T, w, fd, value) {
         break;
       }
     }
+    if (value != null && !named) { refuseValue(w); return; }
     put(w, ref, T.TableMessageRefBitsHere); return;
   }
   if (fd.shape == "float") {
@@ -400,6 +478,7 @@ local writeScalar = function(T, w, fd, value) {
     else put(w, castf2i(value), 64);
     return;
   }
+  if (fd.shape == "int" && !intFits(fd, value)) { refuseValue(w); return; }
   local raw = value;
   if (fd.shape == "int" && fd.lo != null) raw = value - fd.lo;
   put(w, raw, bits);
@@ -455,25 +534,31 @@ local readScalar = function(r, T, v, fd, shape) {
 writePayload = function(T, w, fd, value, depth) {
   if (depth > 128) { w.bad = true; return; }
   if (fd.shape == "str") {
-    local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound)); alignWrite(w);
+    local n = value.len(); if (n > fd.bound || !utf8Ok(value)) { refuseValue(w); return; } put(w, n, bitCount(fd.bound)); alignWrite(w);
     for (local i = 0; i < n; i++) put(w, value[i] & 0xff, 8); return;
   }
   if (fd.shape == "bytes") {
-    local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound)); alignWrite(w);
+    local n = value.len(); if (n > fd.bound) { refuseValue(w); return; } put(w, n, bitCount(fd.bound)); alignWrite(w);
     for (local i = 0; i < n; i++) put(w, value[i] & 0xff, 8); return;
   }
   if (fd.shape == "wstr") {
     // the length at bits_required(0, N), NO align, then sixteen bits a code
     // unit (§3.3); the used length is checked, the content is not (§3)
-    local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound));
-    foreach (u in value) { if (typeof u != "integer" || u < 0 || u > 0xFFFF) { w.bad = true; return; } put(w, u, 16); }
+    local n = value.len(); if (n > fd.bound) { refuseValue(w); return; }
+    foreach (u in value) if (typeof u != "integer" || u < 0 || u > 0xFFFF) { refuseValue(w); return; }
+    if (!widePaired(value)) { refuseValue(w); return; }
+    put(w, n, bitCount(fd.bound));
+    foreach (u in value) put(w, u, 16);
     return;
   }
   if (fd.shape == "tab") { writeBody(T, w, T.Descriptors[fd.table], value, depth + 1); return; }
   if (fd.shape == "union") {
     local ud = T[fd.table + "Descriptor"], arm = null;
     foreach (a in ud.arms) if (a.tag == value.Type) arm = a;
-    if (arm == null) { put(w, 0, T.TableMessageRefBitsHere); return; }
+    if (arm == null) {
+      if (value.Type != null && value.Type != 0) { refuseValue(w); return; }
+      put(w, 0, T.TableMessageRefBitsHere); return;
+    }
     local ref = findSlot(T, arm.id); put(w, ref, T.TableMessageRefBitsHere);
     if (arm.payload != null) writePayload(T, w, arm.payload, value[arm.member], depth + 1);
     return;
@@ -481,7 +566,7 @@ writePayload = function(T, w, fd, value, depth) {
   if (fd.shape == "arr") {
     // §3.3: kind 14 bytes count/alignment/raw octets; kind 16 count then key/element pairs.
     local n = value.len();
-    if (n < fd.min || n > fd.bound) { w.bad = true; return; }
+    if (n < fd.min || n > fd.bound) { refuseValue(w); return; }
     local keyed = (fd.keyvariants != null), present = 0;
     if (keyed) { for(local i=0;i<n;i++) if(!defaultValue(fd.elem,value[i],value)) present++; put(w,present,bitCount(fd.bound-fd.min)); }
     else if (fd.list || fd.counted || fd.elem.shape == "bytes") put(w, n - fd.min, bitCount(fd.bound - fd.min));
@@ -620,12 +705,20 @@ readBody = function(T, v, r, d, value, depth) {
   }
 };
 
-local writeBatch = function(T, root, values, out, measuring, report) {
+local writeBatch;
+writeBatch = function(T, root, values, out, measuring, report) {
   reset(report);
   if(values.len()<1)return refuse(report,"empty_batch");
   if(values.len()>256)return refuse(report,"batch_too_large");
   local d=T.Descriptors[root];
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
+  // A REFUSED BATCH WRITES NOTHING: the save walks the batch measuring first,
+  // so a value outside its set, and a batch the caller's buffer cannot hold,
+  // refuse before the first byte is stored
+  if(!measuring){
+    local m=writeBatch(T,root,values,null,true,report);if(m<0)return m;
+    if(typeof out!="blob"||m>out.len()){if(report!=null)report.refused<-true;return -1;}
+  }
   local w=newWriter(out,measuring);put(w,2,8);put(w,values.len()-1,8);
 
   foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null){report.malformed<-true;report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}}

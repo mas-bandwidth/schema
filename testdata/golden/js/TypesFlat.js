@@ -9,22 +9,26 @@
 // fills it.
 const SC = new DataView(new ArrayBuffer(8));
 
-// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
-// bundlers statically replace NODE_ENV, so production bundles tree-shake
-// the checked writers out. Existence-guarded for browsers without process.
-const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
-
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
 
 // ---- type Vec3: the flat codec ----
 
-// WriteVec3Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold Vec3MaxBytes.
+// WriteVec3Flat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold Vec3MaxBytes.
 export function WriteVec3Flat(view, value) {
+  if (!Number.isFinite(value.x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(0, value.x, true);
+  if (!Number.isFinite(value.y)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(8, value.y, true);
+  if (!Number.isFinite(value.z)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(16, value.z, true);
   return 24;
 }
@@ -43,13 +47,25 @@ export function ReadVec3Flat(view, numBits, value) {
 
 // ---- type Quat: the flat codec ----
 
-// WriteQuatFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold QuatMaxBytes.
+// WriteQuatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold QuatMaxBytes.
 export function WriteQuatFlat(view, value) {
+  if (!Number.isFinite(value.x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(0, value.x, true);
+  if (!Number.isFinite(value.y)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(8, value.y, true);
+  if (!Number.isFinite(value.z)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(16, value.z, true);
+  if (!Number.isFinite(value.w)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(24, value.w, true);
   return 32;
 }
@@ -69,14 +85,10 @@ export function ReadQuatFlat(view, numBits, value) {
 
 // ---- type Handle: the flat codec ----
 
-function writeHandleFlatProduction(view, value) {
-  let lo = 0;
-  lo = (((value.objectId) & 0x3fff) | (((value.objectSequence) & 0xff) << 14));
-  view.setUint32(0, lo, true);
-  return 3;
-}
-
-function writeHandleFlatChecked(view, value) {
+// WriteHandleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold HandleMaxBytes.
+export function WriteHandleFlat(view, value) {
   let lo = 0;
   if (!Number.isInteger(value.objectId) || value.objectId < 0 || value.objectId > 9999) {
     return -1;
@@ -85,11 +97,6 @@ function writeHandleFlatChecked(view, value) {
   view.setUint32(0, lo, true);
   return 3;
 }
-
-// WriteHandleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold HandleMaxBytes.
-export const WriteHandleFlat = PRODUCTION ? writeHandleFlatProduction : writeHandleFlatChecked;
 
 // ReadHandleFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -111,20 +118,10 @@ export function ReadHandleFlat(view, numBits, value) {
 
 // ---- type QuantizedPosition: the flat codec ----
 
-function writeQuantizedPositionFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  lo = (((((value.x >>> 0) - 4286578688) >>> 0) & 0x1ffffff));
-  v = (((((value.y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  view.setUint32(0, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  v = (((((value.z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  view.setUint32(4, (lo | (v << 18)) >>> 0, true);
-  lo = v >>> 14;
-  view.setUint32(8, lo, true);
-  return 10;
-}
-
-function writeQuantizedPositionFlatChecked(view, value) {
+// WriteQuantizedPositionFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold QuantizedPositionMaxBytes.
+export function WriteQuantizedPositionFlat(view, value) {
   let v = 0, lo = 0;
   if (!Number.isInteger(value.x) || value.x < -8388608 || value.x > 8388608) {
     return -1;
@@ -145,11 +142,6 @@ function writeQuantizedPositionFlatChecked(view, value) {
   view.setUint32(8, lo, true);
   return 10;
 }
-
-// WriteQuantizedPositionFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold QuantizedPositionMaxBytes.
-export const WriteQuantizedPositionFlat = PRODUCTION ? writeQuantizedPositionFlatProduction : writeQuantizedPositionFlatChecked;
 
 // ReadQuantizedPositionFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -181,20 +173,10 @@ export function ReadQuantizedPositionFlat(view, numBits, value) {
 
 // ---- type QuantizedVelocity: the flat codec ----
 
-function writeQuantizedVelocityFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  lo = (((((value.x >>> 0) - 4292870144) >>> 0) & 0x7fffff));
-  v = (((((value.y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  view.setUint32(0, (lo | (v << 23)) >>> 0, true);
-  lo = v >>> 9;
-  v = (((((value.z >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  view.setUint32(4, (lo | (v << 14)) >>> 0, true);
-  lo = v >>> 18;
-  view.setUint32(8, lo, true);
-  return 9;
-}
-
-function writeQuantizedVelocityFlatChecked(view, value) {
+// WriteQuantizedVelocityFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold QuantizedVelocityMaxBytes.
+export function WriteQuantizedVelocityFlat(view, value) {
   let v = 0, lo = 0;
   if (!Number.isInteger(value.x) || value.x < -2097152 || value.x > 2097152) {
     return -1;
@@ -215,11 +197,6 @@ function writeQuantizedVelocityFlatChecked(view, value) {
   view.setUint32(8, lo, true);
   return 9;
 }
-
-// WriteQuantizedVelocityFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold QuantizedVelocityMaxBytes.
-export const WriteQuantizedVelocityFlat = PRODUCTION ? writeQuantizedVelocityFlatProduction : writeQuantizedVelocityFlatChecked;
 
 // ReadQuantizedVelocityFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -251,17 +228,10 @@ export function ReadQuantizedVelocityFlat(view, numBits, value) {
 
 // ---- type QuantizedRotation: the flat codec ----
 
-function writeQuantizedRotationFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  lo = (((((value.x >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12));
-  v = (((((value.z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.w >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
-  view.setUint32(0, (lo | (v << 24)) >>> 0, true);
-  lo = v >>> 8;
-  view.setUint32(4, lo, true);
-  return 6;
-}
-
-function writeQuantizedRotationFlatChecked(view, value) {
+// WriteQuantizedRotationFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold QuantizedRotationMaxBytes.
+export function WriteQuantizedRotationFlat(view, value) {
   let v = 0, lo = 0;
   if (!Number.isInteger(value.x) || value.x < -1024 || value.x > 1024) {
     return -1;
@@ -282,11 +252,6 @@ function writeQuantizedRotationFlatChecked(view, value) {
   view.setUint32(4, lo, true);
   return 6;
 }
-
-// WriteQuantizedRotationFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold QuantizedRotationMaxBytes.
-export const WriteQuantizedRotationFlat = PRODUCTION ? writeQuantizedRotationFlatProduction : writeQuantizedRotationFlatChecked;
 
 // ReadQuantizedRotationFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -322,22 +287,46 @@ export function ReadQuantizedRotationFlat(view, numBits, value) {
 
 // ---- type RigidBody: the flat codec ----
 
-// WriteRigidBodyFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold RigidBodyMaxBytes.
+// WriteRigidBodyFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold RigidBodyMaxBytes.
 export function WriteRigidBodyFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isFinite(value.position.x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(0, value.position.x, true);
+  if (!Number.isFinite(value.position.y)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(8, value.position.y, true);
+  if (!Number.isFinite(value.position.z)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(16, value.position.z, true);
+  if (!Number.isFinite(value.orientation.x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(24, value.orientation.x, true);
+  if (!Number.isFinite(value.orientation.y)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(32, value.orientation.y, true);
+  if (!Number.isFinite(value.orientation.z)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(40, value.orientation.z, true);
+  if (!Number.isFinite(value.orientation.w)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   view.setFloat64(48, value.orientation.w, true);
   lo = ((value.atRest ? 1 : 0));
   wi = 56;
   sb = 1;
   if (!value.atRest) {
+    if (!Number.isFinite(value.linearVelocity.x)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
+    }
     SC.setFloat64(0, value.linearVelocity.x, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -356,6 +345,9 @@ export function WriteRigidBodyFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    if (!Number.isFinite(value.linearVelocity.y)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
     SC.setFloat64(0, value.linearVelocity.y, true);
     v = SC.getUint32(0, true);
@@ -376,6 +368,9 @@ export function WriteRigidBodyFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
+    if (!Number.isFinite(value.linearVelocity.z)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
+    }
     SC.setFloat64(0, value.linearVelocity.z, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -394,6 +389,9 @@ export function WriteRigidBodyFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    if (!Number.isFinite(value.angularVelocity.x)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
     SC.setFloat64(0, value.angularVelocity.x, true);
     v = SC.getUint32(0, true);
@@ -414,6 +412,9 @@ export function WriteRigidBodyFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
+    if (!Number.isFinite(value.angularVelocity.y)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
+    }
     SC.setFloat64(0, value.angularVelocity.y, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -432,6 +433,9 @@ export function WriteRigidBodyFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    if (!Number.isFinite(value.angularVelocity.z)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
     SC.setFloat64(0, value.angularVelocity.z, true);
     v = SC.getUint32(0, true);
@@ -596,76 +600,45 @@ export function ReadRigidBodyFlat(view, numBits, value) {
 
 // ---- type Input: the flat codec ----
 
-// WriteInputFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold InputMaxBytes.
+// WriteInputFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold InputMaxBytes.
 export function WriteInputFlat(view, value) {
-  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0;
-  let bg = 0n;
-  x = value.stickX;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  let v = 0, x = 0, lo = 0;
+  x = Math.fround(value.stickX);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(0, v, true);
-  x = value.stickY;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.stickY);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(4, v, true);
-  x = value.throttle;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.throttle);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(8, v, true);
-  x = value.yaw;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.yaw);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(12, v, true);
-  x = value.pitch;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.pitch);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(16, v, true);
   lo = ((value.fire ? 1 : 0) | ((value.altFire ? 1 : 0) << 1) | ((value.boost ? 1 : 0) << 2) | ((value.brake ? 1 : 0) << 3) | ((value.aim ? 1 : 0) << 4) | ((value.lockOn ? 1 : 0) << 5) | ((value.zoom ? 1 : 0) << 6) | ((value.ping ? 1 : 0) << 7));
   view.setUint32(20, lo, true);
@@ -746,148 +719,11 @@ export function ReadInputFlat(view, numBits, value) {
 
 // ---- type InputPacket: the flat codec ----
 
-function writeInputPacketFlatProduction(view, value) {
-  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
-  lo = (((value.synchronizeSequence) & 0xffff));
-  SC.setBigUint64(0, value.currentFrame, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  v = SC.getUint32(4, true);
-  view.setUint32(4, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  SC.setBigUint64(0, value.startFrame, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(8, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  v = SC.getUint32(4, true);
-  view.setUint32(12, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  lo = (lo | ((((value.inputsCount) & 0x1f)) << 16)) >>> 0;
-  wi = 16;
-  sb = 21;
-  for (let i0 = 0; i0 < value.inputsCount; i0++) {
-    const e0 = value.inputs[i0];
-    x = e0.stickX;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
-    }
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    x = e0.stickY;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
-    }
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    x = e0.throttle;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
-    }
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    x = e0.yaw;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
-    }
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    x = e0.pitch;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
-    }
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = ((e0.fire ? 1 : 0) | ((e0.altFire ? 1 : 0) << 1) | ((e0.boost ? 1 : 0) << 2) | ((e0.brake ? 1 : 0) << 3) | ((e0.aim ? 1 : 0) << 4) | ((e0.lockOn ? 1 : 0) << 5) | ((e0.zoom ? 1 : 0) << 6) | ((e0.ping ? 1 : 0) << 7)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeInputPacketFlatChecked(view, value) {
-  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
+// WriteInputPacketFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold InputPacketMaxBytes.
+export function WriteInputPacketFlat(view, value) {
+  let v = 0, x = 0, lo = 0, sb = 0, wi = 0;
   lo = (((value.synchronizeSequence) & 0xffff));
   SC.setBigUint64(0, value.currentFrame, true);
   v = SC.getUint32(0, true);
@@ -911,18 +747,12 @@ function writeInputPacketFlatChecked(view, value) {
   sb = 21;
   for (let i0 = 0; i0 < value.inputsCount; i0++) {
     const e0 = value.inputs[i0];
-    x = e0.stickX;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    x = Math.fround(e0.stickX);
+    if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -931,18 +761,12 @@ function writeInputPacketFlatChecked(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.stickY;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    x = Math.fround(e0.stickY);
+    if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -951,18 +775,12 @@ function writeInputPacketFlatChecked(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.throttle;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    x = Math.fround(e0.throttle);
+    if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -971,18 +789,12 @@ function writeInputPacketFlatChecked(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.yaw;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    x = Math.fround(e0.yaw);
+    if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -991,18 +803,12 @@ function writeInputPacketFlatChecked(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.pitch;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    x = Math.fround(e0.pitch);
+    if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1026,11 +832,6 @@ function writeInputPacketFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteInputPacketFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold InputPacketMaxBytes.
-export const WriteInputPacketFlat = PRODUCTION ? writeInputPacketFlatProduction : writeInputPacketFlatChecked;
 
 // ReadInputPacketFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1172,58 +973,10 @@ export function ReadInputPacketFlat(view, numBits, value) {
 
 // ---- type ShipCreate: the flat codec ----
 
-function writeShipCreateFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.shipType & 0x7) | (((((value.position.x >>> 0) - 4286578688) >>> 0) & 0x1ffffff) << 3));
-  v = (((((value.position.y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  view.setUint32(0, (lo | (v << 28)) >>> 0, true);
-  lo = v >>> 4;
-  v = (((((value.position.z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  view.setUint32(4, (lo | (v << 21)) >>> 0, true);
-  lo = v >>> 11;
-  v = (((((value.rotation.x >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.rotation.y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
-  view.setUint32(8, (lo | (v << 14)) >>> 0, true);
-  lo = v >>> 18;
-  lo = (lo | ((((((value.rotation.z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.rotation.w >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) << 6)) >>> 0;
-  v = (((((value.linearVelocity.x >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  view.setUint32(12, (lo | (v << 30)) >>> 0, true);
-  lo = v >>> 2;
-  v = (((((value.linearVelocity.y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  view.setUint32(16, (lo | (v << 21)) >>> 0, true);
-  lo = v >>> 11;
-  v = (((((value.linearVelocity.z >>> 0) - 4292870144) >>> 0) & 0x7fffff) | ((value.hasFlags ? 1 : 0) << 23)) >>> 0;
-  view.setUint32(20, (lo | (v << 12)) >>> 0, true);
-  lo = v >>> 20;
-  wi = 24;
-  sb = 4;
-  if (value.hasFlags) {
-    SC.setBigUint64(0, value.flags, true);
-    v = SC.getUint32(0, true) & 0xf;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 4;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (4 - sb);
-    }
-  }
-  v = ((value.team & 0x3) | (((value.health) & 0x3ff) << 2) | (((value.thrust) & 0x7f) << 12)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 19;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (19 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeShipCreateFlatChecked(view, value) {
+// WriteShipCreateFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ShipCreateMaxBytes.
+export function WriteShipCreateFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.shipType) || value.shipType < 0 || value.shipType > 5) { // headroom above the wire range cannot ride
     return -1;
@@ -1321,11 +1074,6 @@ function writeShipCreateFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteShipCreateFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ShipCreateMaxBytes.
-export const WriteShipCreateFlat = PRODUCTION ? writeShipCreateFlatProduction : writeShipCreateFlatChecked;
 
 // ReadShipCreateFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1444,14 +1192,10 @@ export function ReadShipCreateFlat(view, numBits, value) {
 
 // ---- type ExpressionProbe: the flat codec ----
 
-function writeExpressionProbeFlatProduction(view, value) {
-  let lo = 0;
-  lo = (((value.hardpointIndex) & 0x1f) | (((((value.spinRate >>> 0) - 1024) >>> 0) & 0x7ff) << 5));
-  view.setUint32(0, lo, true);
-  return 2;
-}
-
-function writeExpressionProbeFlatChecked(view, value) {
+// WriteExpressionProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ExpressionProbeMaxBytes.
+export function WriteExpressionProbeFlat(view, value) {
   let lo = 0;
   if (!Number.isInteger(value.hardpointIndex) || value.hardpointIndex < 0 || value.hardpointIndex > 31) {
     return -1;
@@ -1463,11 +1207,6 @@ function writeExpressionProbeFlatChecked(view, value) {
   view.setUint32(0, lo, true);
   return 2;
 }
-
-// WriteExpressionProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ExpressionProbeMaxBytes.
-export const WriteExpressionProbeFlat = PRODUCTION ? writeExpressionProbeFlatProduction : writeExpressionProbeFlatChecked;
 
 // ReadExpressionProbeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1489,37 +1228,10 @@ export function ReadExpressionProbeFlat(view, numBits, value) {
 
 // ---- type ExtremeProbe: the flat codec ----
 
-function writeExtremeProbeFlatProduction(view, value) {
-  let v = 0;
-  SC.setBigUint64(0, value.floorBound - -9223372036854775808n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(4, v, true);
-  SC.setBigUint64(0, value.doubledFloor - -9223372036854775808n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(8, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(12, v, true);
-  SC.setBigUint64(0, value.ceilingRange - 1n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(16, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(20, v, true);
-  SC.setBigUint64(0, value.floorDefault, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(24, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(28, v, true);
-  SC.setBigUint64(0, value.ceilingDefault, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(32, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(36, v, true);
-  return 40;
-}
-
-function writeExtremeProbeFlatChecked(view, value) {
+// WriteExtremeProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ExtremeProbeMaxBytes.
+export function WriteExtremeProbeFlat(view, value) {
   let v = 0;
   if (value.floorBound > 100n) {
     return -1;
@@ -1557,11 +1269,6 @@ function writeExtremeProbeFlatChecked(view, value) {
   view.setUint32(36, v, true);
   return 40;
 }
-
-// WriteExtremeProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ExtremeProbeMaxBytes.
-export const WriteExtremeProbeFlat = PRODUCTION ? writeExtremeProbeFlatProduction : writeExtremeProbeFlatChecked;
 
 // ReadExtremeProbeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1625,32 +1332,10 @@ export function ReadExtremeProbeFlat(view, numBits, value) {
 
 // ---- type ExtremeRow: the flat codec ----
 
-function writeExtremeRowFlatProduction(view, value) {
-  let v = 0;
-  SC.setBigUint64(0, value.clampedFloor - -9223372036854775808n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(4, v, true);
-  SC.setBigUint64(0, value.clampedCeiling - 1n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(8, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(12, v, true);
-  SC.setBigUint64(0, value.floorDef, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(16, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(20, v, true);
-  SC.setBigUint64(0, value.ceilingDef, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(24, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(28, v, true);
-  return 32;
-}
-
-function writeExtremeRowFlatChecked(view, value) {
+// WriteExtremeRowFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold ExtremeRowMaxBytes.
+export function WriteExtremeRowFlat(view, value) {
   let v = 0;
   if (value.clampedFloor > 100n) {
     return -1;
@@ -1680,11 +1365,6 @@ function writeExtremeRowFlatChecked(view, value) {
   view.setUint32(28, v, true);
   return 32;
 }
-
-// WriteExtremeRowFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ExtremeRowMaxBytes.
-export const WriteExtremeRowFlat = PRODUCTION ? writeExtremeRowFlatProduction : writeExtremeRowFlatChecked;
 
 // ReadExtremeRowFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.

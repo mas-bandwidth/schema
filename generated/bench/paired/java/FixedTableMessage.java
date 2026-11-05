@@ -98,6 +98,7 @@ public final class FixedTableMessage {
         if (values == null || count > values.length) {
             return -1;
         }
+        assert FixedTableFixed.checkWriteBatch(values, count) : "write contract: FixedTable";
         TableMessage.Writer w = new TableMessage.Writer(null, 2, true);
         for (int i = 0; i < count; i++) {
             if (values[i] == null || !saveMessageBody(w, values[i])) {
@@ -134,6 +135,7 @@ public final class FixedTableMessage {
         if (values == null || count > values.length || buffer == null || buffer.length < 2) {
             return -1;
         }
+        assert FixedTableFixed.checkWriteBatch(values, count) : "write contract: FixedTable";
         TableMessage.Writer mw = new TableMessage.Writer(null, 2, true);
         for (int i = 0; i < count; i++) {
             if (values[i] == null || !saveMessageBody(mw, values[i])) {

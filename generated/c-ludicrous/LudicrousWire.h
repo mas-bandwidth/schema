@@ -326,6 +326,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_ludicrous_state( 
     {
         return 0;
     }
+    if ( value->keys_count < 0 || value->keys_count > 4 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->keys_count >= 0 && value->keys_count <= 4 );
     if ( !serialize_write_int( stream, value->keys_count, 0, 4 ) )
     {

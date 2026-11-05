@@ -59,6 +59,14 @@
         "Doesn't have to be the same. Goose is a unique language, so it's natural the approach here could be different."
       ],
       "source": "Glenn, live in Rowan's session, answering whether Goose may prove cells that Go proves through its plan interpreter and its LoadMeasure (Goose fixed ordinals, union-guards and plan-execution; variable widening's measure half) through its own design: per-table straight-line code and no LoadMeasure. A port proves the same guarantees through its own fastest correct code paths; it is not required to reproduce another port's internal structure. The guarantees are still owed and still proved; this ruling makes nothing not-applicable."
+    },
+    {
+      "id": "write-refusal",
+      "date": "2026-11-03",
+      "quotes": [
+        "It is our intent to refuse the write of out of range values. In low level languages like C/C++ our intent is to do this at debug time for speed. Keep that behavior. In languages that do not have asserts it is OK to refuse in release build. Some mechanism for refusal of invalid values or write must exist."
+      ],
+      "source": "relayed by Rowan from the live session. Every leg refuses a value its declaration does not admit: a debug-only assert where the language's own idiom is one (C, C++, C#, Rust, Java, Dart), and a refusal in every build where it is not (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose). docs/SPEC.md §5.1 carries the per-leg table and the conformance surface write-refusal holds it. This ruling makes nothing not-applicable."
     }
   ]
 }

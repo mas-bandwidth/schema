@@ -930,6 +930,26 @@ namespace Blockhome
             if (!float.IsFinite(value.ReloadSeconds)) return "GunnerSettings.reload_seconds";
             return null;
         }
+
+        // GunnerSettings's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool GunnerSettingsFixedCheckBody(GunnerSettings value)
+        {
+            if (value == null) return true;
+            if (value.FiringGroupsCount < 0 || value.FiringGroupsCount > 32) return false;
+            if (value.MissileGroupsCount < 0 || value.MissileGroupsCount > 4) return false;
+            return true;
+        }
+
+        // GunnerSettings's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool GunnerSettingsFixedStorageBody(GunnerSettings value)
+        {
+            if (value == null) return true;
+            if (value.FiringGroupsCount < 0 || value.FiringGroupsCount > 32) return false;
+            if (value.MissileGroupsCount < 0 || value.MissileGroupsCount > 4) return false;
+            return true;
+        }
     }
 
 }

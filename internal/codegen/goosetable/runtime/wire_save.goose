@@ -150,6 +150,74 @@ fn refuse(c: SaveCtx&, code: i64) {
     if c.refusal == 0 { c.refusal = code; }
 }
 
+// ---- A VALUE OUTSIDE ITS DECLARED SET (docs/SPEC-TABLES.md §4, §5) ----
+//
+// Every build refuses it, named invalid_value: an integer its kind's width
+// cannot hold, one off its declared range, a bits(N) value past 2^N - 1, a
+// counted array's count past its bound or negative, a text, bytes or wide
+// text length past its bound or negative, a string that is not UTF-8, wide
+// text with an unpaired surrogate.
+
+// int_fits: integer v, written at kind `kind`, is in the set d declares. A
+// 128-bit or fixed-point kind holds its range on the raw scale (ir.TableRawRange).
+fn int_fits(v: Int128, d: const FieldDesc&, kind: u8) -> bool {
+    if kind_wide(kind) {
+        if !d.ranged { return true; }
+        var lo = d.lo;
+        var hi = d.hi;
+        if d.ibits != 0 || d.fbits != 0 {
+            lo = shl128(lo, d.fbits);
+            hi = shl128(hi, d.fbits);
+        }
+        return cmp128(v, d.signed, lo, d.signed) >= 0 && cmp128(v, d.signed, hi, d.signed) <= 0;
+    }
+    let w = kind_width(kind);
+    let u = v.lo;
+    let signed = kind_signed(kind);
+    if w < 8 {
+        let shift = (64 - w * 8) as! u64;
+        if signed {
+            if (((u << shift) as! i64) >> shift) != (u as! i64) { return false; }
+        } else if (u >> ((w * 8) as! u64)) != 0 {
+            return false;
+        }
+    }
+    if d.ranged {
+        if signed {
+            let x = u as! i64;
+            if x < (d.lo.lo as! i64) || x > (d.hi.lo as! i64) { return false; }
+        } else if u < d.lo.lo || u > d.hi.lo {
+            return false;
+        }
+    }
+    if d.bits > 0 && d.bits < w * 8 && (u >> (d.bits as! u64)) != 0 { return false; }
+    return true;
+}
+
+// text_fits: a present text, bytes or wide text value's length is within
+// its bound (bytes for text and bytes, code units for wide text), its view
+// within the input, and its text well-formed: UTF-8 for a string, paired
+// surrogates for wide text. An unbounded text takes any length.
+fn text_fits(c: SaveCtx&, s: i64, d: const FieldDesc&) -> bool {
+    if state_of(c, s) == ValAbsent { return true; }
+    let n = c.vals[s].len;
+    let off = c.vals[s].off;
+    if n < 0 || off < 0 || off + n > c.data.len { return false; }
+    if d.shape == ShapeText { return text_utf8_ok(c.data, off, n); }
+    let cap = if d.wide { d.bound * 2 } else { d.bound };
+    if n > cap { return false; }
+    if d.shape != ShapeStr { return true; }
+    if d.wide { return n % 2 == 0 && text_utf16_paired_le(c.data, off, n); }
+    return text_utf8_ok(c.data, off, n);
+}
+
+// count_fits: an array's count is in [0, its bound] for a counted array, and
+// not negative for a list.
+fn count_fits(count: i64, d: const FieldDesc&) -> bool {
+    if count < 0 { return false; }
+    return d.array != ArrayCounted || count <= d.bound;
+}
+
 // ---- the values ----
 
 // slot_of is field i of record `rec`: -1 for a record that has no slots, which
@@ -335,7 +403,9 @@ fn edges_value(c: SaveCtx&, s: i64, d: FieldDesc) {
         guard e else { return; }
         if e.shape != ShapePtr && e.shape != ShapeUnion && e.shape != ShapeTab { return; }
         let live = live_of(c, s, d);
+        if !count_fits(live, d) { refuse(c, SaveRefuseInvalidValue); return; }
         for k in live {
+            if k >= c.vals[s].count { break; }
             let es = c.vals[s].first + k;
             if e.shape == ShapePtr { visit(c, edge_of(c, es)); }
             else if e.shape == ShapeUnion { edges_arm(c, es, e.ref); }
@@ -437,12 +507,14 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
     if d.shape == ShapeStr && d.wide {
         // WIDE TEXT TAKES NO SPECIFIED DEFAULT: the empty value elides
         if state_of(c, s) == ValAbsent || c.vals[s].len == 0 { return; }
+        if !text_fits(c, s, d) { refuse(c, SaveRefuseInvalidValue); return; }
         header(c, d.id, KindWstring);
         put_leb(c, c.vals[s].len as! u64);
         put_view(c, c.vals[s].off, c.vals[s].len);
         return;
     }
     if d.shape == ShapeStr || d.shape == ShapeText {
+        if !text_fits(c, s, d) { refuse(c, SaveRefuseInvalidValue); return; }
         if is_default(c, s, d) { return; }
         header(c, d.id, KindString);
         put_leb(c, c.vals[s].len as! u64);
@@ -450,6 +522,7 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
         return;
     }
     if d.shape == ShapeBytes {
+        if !text_fits(c, s, d) { refuse(c, SaveRefuseInvalidValue); return; }
         if is_default(c, s, d) { return; }
         header(c, d.id, KindArray);
         let n = c.vals[s].len as! u64;
@@ -531,6 +604,7 @@ fn field_simple(c: SaveCtx&, s: i64, d: FieldDesc) {
         return;
     }
     if d.shape == ShapeBytes {
+        if !text_fits(c, s, d) { refuse(c, SaveRefuseInvalidValue); return; }
         header(c, d.id, KindArray);
         let n = (if s < 0 { 0 } else { c.vals[s].len }) as! u64;
         put_leb(c, 1 + (leb_size(n) as! u64) + n);
@@ -551,6 +625,7 @@ fn field_simple(c: SaveCtx&, s: i64, d: FieldDesc) {
 
 // put_text: a text value's L, then its bytes (kind 12, kind 33).
 fn put_text(c: SaveCtx&, s: i64, d: const FieldDesc&) {
+    if !text_fits(c, s, d) { refuse(c, SaveRefuseInvalidValue); return; }
     if state_of(c, s) == ValAbsent {
         let def = if d.has_def && !d.wide { d.def_s } else { "" };
         put_leb(c, def.len as! u64);
@@ -612,6 +687,10 @@ recursive fn put_value(c: SaveCtx&, s: i64, d: const FieldDesc&, kind: u8) {
         return;
     }
     let v = scalar_bits(c, s, d);
+    if d.shape == ShapeInt && !int_fits(v, d, kind) {
+        refuse(c, SaveRefuseInvalidValue);
+        return;
+    }
     if d.shape == ShapeFloat && float_special(v.lo, kind == KindF32) {
         // every writer refuses a NaN or an infinity (§3, §3.3)
         refuse(c, SaveRefuseNonFiniteFloat);
@@ -654,6 +733,7 @@ fn text_sum(c: SaveCtx&, s: i64, count: i64) -> i64 {
 }
 
 recursive fn array_body(c: SaveCtx&, s: i64, d: const FieldDesc&, count: i64) {
+    if !count_fits(count, d) { refuse(c, SaveRefuseInvalidValue); return; }
     let e = d.elem;
     guard e else { return; }
     let ek = if e.shape == ShapePtr { KindPointer } else { d.ek };
@@ -758,6 +838,7 @@ fn arm_payload(c: SaveCtx&, p: i64, a: FieldDesc) {
     }
     if a.shape == ShapePtr || a.shape == ShapeSBlob || a.shape == ShapeBBlob { put_leb(c, node_ref(c, p)); return; }
     if a.shape == ShapeStr || a.shape == ShapeText {
+        if !text_fits(c, p, a) { refuse(c, SaveRefuseInvalidValue); return; }
         if state_of(c, p) == ValAbsent {
             let def = if a.has_def && !a.wide { a.def_s } else { "" };
             for b in def { put(c, b); }
@@ -767,6 +848,7 @@ fn arm_payload(c: SaveCtx&, p: i64, a: FieldDesc) {
         return;
     }
     if a.shape == ShapeBytes {
+        if !text_fits(c, p, a) { refuse(c, SaveRefuseInvalidValue); return; }
         put(c, KindU8);
         let n = if state_of(c, p) == ValAbsent { 0 } else { c.vals[p].len };
         put_leb(c, n as! u64);

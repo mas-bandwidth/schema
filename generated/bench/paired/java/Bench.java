@@ -1822,12 +1822,35 @@ public final class Bench {
         return true;
     }
 
+    // fitsBenchMixed answers whether every count and length writeBenchMixedBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsBenchMixed(BenchMixed value) {
+        if (value.entitiesCount < 0 || value.entitiesCount > 8) {
+            return false;
+        }
+        if (value.statsCount < 0 || value.statsCount > 80) {
+            return false;
+        }
+        if (value.playerNameLength < 0 || value.playerNameLength > 15) {
+            return false;
+        }
+        if (value.payloadLength < 0 || value.payloadLength > 16) {
+            return false;
+        }
+        return true;
+    }
+
     // writeBenchMixedBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteBenchMixed
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + BENCH_MIXED_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsBenchMixed).
     public static int writeBenchMixedBits(BenchMixed value, byte[] data, int bitOffset) {
         assert checkWriteBenchMixed(value, data, bitOffset);
+        if (!fitsBenchMixed(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         long v;
@@ -1999,8 +2022,10 @@ public final class Bench {
 
     // writeBenchMixed packs value into data from its start and returns the bytes written;
     // data must hold BENCH_MIXED_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeBenchMixed(BenchMixed value, byte[] data) {
-        return (writeBenchMixedBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeBenchMixedBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readBenchMixedBits decodes value from data starting at bit bitOffset, the payload

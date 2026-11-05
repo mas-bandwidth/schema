@@ -524,19 +524,57 @@ namespace Probe
 
         static int[] ArmValues(Wide p) { return new int[] { %s }; }
 
+        sealed class WriteAssert : Exception { public WriteAssert(string m) : base(m) { } }
+        sealed class Throwing : System.Diagnostics.TraceListener
+        {
+            public override void Write(string m) { }
+            public override void WriteLine(string m) { }
+            public override void Fail(string m) { throw new WriteAssert(m); }
+            public override void Fail(string m, string d) { throw new WriteAssert(m); }
+        }
+
+        // whether FixedSave refuses the value through its write assert
+        static bool WriteRefused(Root w, byte[] buf)
+        {
+            var saved = new System.Diagnostics.TraceListener[System.Diagnostics.Trace.Listeners.Count];
+            System.Diagnostics.Trace.Listeners.CopyTo(saved, 0);
+            System.Diagnostics.Trace.Listeners.Clear();
+            System.Diagnostics.Trace.Listeners.Add(new Throwing());
+            try { Schema.RootFixedSave(w, buf); return false; }
+            catch (WriteAssert) { return true; }
+            finally { System.Diagnostics.Trace.Listeners.Clear(); System.Diagnostics.Trace.Listeners.AddRange(saved); }
+        }
+
         // One record written through the generated writer and read back. A tag
-        // that names an arm carries 1000+ordinal in that arm; a forged tag
-        // carries nothing. The endpoint read patches the file's hash and the record's
-        // hash to the older endpoint's, so the reader selects the compiled plan.
+        // that names an arm carries 1000+ordinal in that arm. A forged tag is
+        // refused by the writer (a debug build's assert), so its record is
+        // written with no arm and the tag is forged into the bytes after: Pick
+        // is the body's first field, its tag two bytes. The endpoint read
+        // patches the file's hash and the record's hash to the older
+        // endpoint's, so the reader selects the compiled plan.
         static string Once(ulong tag, bool arm, bool endpoint)
         {
             Root w = new Root();
             w.Seq = 41;
-            w.Pick.Type = (WideType)tag;
-            if (arm) { SetArm(w.Pick, (int)tag, 1000 + (int)tag); }
             byte[] buf = new byte[Schema.RootFixedMeasure(1)];
+            if (!arm)
+            {
+                w.Pick.Type = (WideType)tag;
+                if (!WriteRefused(w, buf)) { return "tag " + tag + ": the writer did not refuse a forged tag"; }
+                w.Pick.Type = (WideType)0;
+            }
+            else
+            {
+                w.Pick.Type = (WideType)tag;
+                SetArm(w.Pick, (int)tag, 1000 + (int)tag);
+            }
             long wrote = Schema.RootFixedSave(w, buf);
             if (wrote != buf.Length) { return "tag " + tag + ": wrote " + wrote + " of " + buf.Length; }
+            if (!arm)
+            {
+                uint forgeLayout = BinaryPrimitives.ReadUInt32LittleEndian(buf.AsSpan(Schema.TableFixedWire.HeaderBytes));
+                BinaryPrimitives.WriteUInt16LittleEndian(buf.AsSpan(Schema.TableFixedWire.HeaderBytes + 4 + (int)forgeLayout + 8), (ushort)tag);
+            }
             if (endpoint)
             {
                 ulong oldHash = Schema.RootFixedHash ^ 0x5a5a5a5aUL;

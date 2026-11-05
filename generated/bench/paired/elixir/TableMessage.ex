@@ -743,6 +743,8 @@ defmodule Bench.TableMessage do
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
+      check_bodies(vocab, values)
+
       case encode_bodies(vocab, values, {0, 0}) do
         {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
@@ -751,6 +753,8 @@ defmodule Bench.TableMessage do
   catch
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
     :non_finite_float -> {:error, :non_finite_float}
+    # and a value its declaration cannot hold (docs/SPEC.md §5.1)
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -764,6 +768,8 @@ defmodule Bench.TableMessage do
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
+      check_bodies(vocab, values)
+
       case encode_bodies(vocab, values, {0, 0}) do
         {:ok, bits} -> {:ok, frame_batch(n, bits)}
         :error -> {:error, :malformed}
@@ -771,6 +777,7 @@ defmodule Bench.TableMessage do
     end
   catch
     :non_finite_float -> {:error, :non_finite_float}
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -823,6 +830,76 @@ defmodule Bench.TableMessage do
   defp frame_batch(n, {acc, nbits}) do
     <<2, n - 1, int_to_bytes(acc, div(nbits + 7, 8))::binary>>
   end
+
+  # ---------------------------------------------------------------------------
+  # THE WRITE CONTRACT (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §3.3)
+  #
+  # Every value of the batch is checked before a bit is written, and one its
+  # declaration cannot hold refuses the whole batch as invalid_value: a ranged
+  # integer or a bits(N) off this build's declared bounds, an integer past its
+  # storage, a count or a length past the bound its entry announces, an enum
+  # value that names none of its enum's variants, and a string that is not
+  # well-formed UTF-8. Nothing is masked, wrapped or clamped into the width,
+  # with the one exception this form makes on purpose: a flags mask rides at
+  # its declared width, and bits a newer build appended are dropped by width.
+  # ---------------------------------------------------------------------------
+
+  defp check_bodies(vocab, values), do: Enum.each(values, &check_body(vocab, &1))
+
+  defp check_body(vocab, body) when is_list(body), do: Enum.each(body, &check_field(vocab, &1))
+  defp check_body(_vocab, _body), do: :ok
+
+  # a reference that names no entry is the encoder's to answer as malformed
+  defp check_field(vocab, {ref, value}) do
+    case entry_at(vocab, ref) do
+      {:ok, e} -> check_value(vocab, e.id, e.kind, e.shape, Map.get(e, :element), value)
+      :error -> :ok
+    end
+  end
+
+  defp check_field(_vocab, _field), do: :ok
+
+  defp check_value(_vocab, id, kind, %{packing: 1} = shape, _elem, value)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9],
+       do: bounded(id, kind, shape.base, shape.bits, value)
+
+  defp check_value(_vocab, _id, kind, %{packing: 0}, _elem, value) when kind in [2, 3, 4, 5] do
+    half = 1 <<< (kind_bits(kind) - 1)
+    if not is_integer(value) or value < -half or value >= half, do: throw(:invalid_value)
+  end
+
+  defp check_value(_vocab, _id, kind, %{packing: 0}, _elem, value) when kind in [6, 7, 8, 9] do
+    if not is_integer(value) or value < 0 or value >= 1 <<< kind_bits(kind),
+      do: throw(:invalid_value)
+  end
+
+  defp check_value(_vocab, _id, 12, shape, _elem, value) do
+    if not is_binary(value) or not String.valid?(value) or
+         (shape.max > 0 and byte_size(value) > shape.max),
+       do: throw(:invalid_value)
+  end
+
+  defp check_value(vocab, id, 14, shape, elem, value) when is_list(value) do
+    n = length(value)
+    if n < shape.min or (shape.max > 0 and n > shape.max), do: throw(:invalid_value)
+    Enum.each(value, &check_value(vocab, id, elem.kind, elem.shape, Map.get(elem, :element), &1))
+  end
+
+  defp check_value(vocab, _id, 13, _shape, _elem, value), do: check_body(vocab, value)
+  defp check_value(vocab, _id, 15, _shape, _elem, arm), do: check_field(vocab, arm)
+
+  # an enum value is the zero reference (None) or the reference of one of its
+  # enum's variant names
+  defp check_value(_vocab, _id, 30, _shape, _elem, 0), do: :ok
+
+  defp check_value(vocab, id, 30, _shape, _elem, ref) do
+    case entry_at(vocab, ref) do
+      {:ok, %{kind: 0, id: name}} when name < 0xFFFFFFFFFFFFFFFD -> variant_of(id, name)
+      _ -> throw(:invalid_value)
+    end
+  end
+
+  defp check_value(_vocab, _id, _kind, _shape, _elem, _value), do: :ok
 
   # ---------------------------------------------------------------------------
   # THE WRITER: one bit stream, low bit first (docs/SPEC-TABLES.md §3.3)
@@ -1293,4 +1370,95 @@ defmodule Bench.TableMessage do
     <<v::little-32>> = <<f::little-float-32>>
     if (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float), else: v
   end
+
+  # THIS BUILD'S DECLARED BOUNDS, by the entry a ranged integer or a bits(N)
+  # rides under: the announced shape carries the width and not the max.
+  defp bounded(11_217_918_740_121_906_691, 8, 0, 32, v), do: within(v, 0, 4_294_967_295)
+  defp bounded(11_421_076_348_858_252_630, 7, 0, 10, v), do: within(v, 0, 1023)
+  defp bounded(11_889_853_325_967_551_908, 4, 0, 2, v), do: within(v, 0, 3)
+  defp bounded(12_265_743_407_698_487_464, 7, 0, 16, v), do: within(v, 0, 65535)
+  defp bounded(12_638_187_200_555_641_996, 4, -100, 8, v), do: within(v, -100, 100)
+
+  defp bounded(12_638_189_399_578_898_418, 4, -1_000_000, 21, v),
+    do: within(v, -1_000_000, 1_000_000)
+
+  defp bounded(12_638_190_499_090_526_629, 4, 0, 16, v), do: within(v, 0, 65535)
+  defp bounded(13_064_254_334_136_358_632, 7, 0, 9, v), do: within(v, 0, 511)
+  defp bounded(13_239_627_154_349_772_880, 7, 0, 12, v), do: within(v, 0, 4095)
+  defp bounded(142_922_654_710_085_925, 4, 0, 3, v), do: within(v, 0, 7)
+  defp bounded(14_648_860_716_688_682_408, 4, -16383, 15, v), do: within(v, -16383, 16383)
+  defp bounded(14_648_862_915_711_938_830, 4, -16383, 15, v), do: within(v, -16383, 16383)
+  defp bounded(14_648_864_015_223_567_041, 4, -16383, 15, v), do: within(v, -16383, 16383)
+  defp bounded(16_258_529_720_045_598_449, 7, 0, 13, v), do: within(v, 0, 8191)
+  defp bounded(16_261_467_615_115_610_566, 8, 0, 23, v), do: within(v, 0, 8_388_607)
+  defp bounded(18_154_481_022_151_675_938, 7, 0, 12, v), do: within(v, 0, 4095)
+  defp bounded(18_242_373_529_561_058_153, 4, 0, 8, v), do: within(v, 0, 255)
+  defp bounded(18_413_925_958_330_693_025, 9, 0, 48, v), do: within(v, 0, 281_474_976_710_655)
+  defp bounded(18_416_744_006_633_230_143, 8, 0, 19, v), do: within(v, 0, 524_287)
+  defp bounded(18_416_752_802_726_255_831, 7, 0, 11, v), do: within(v, 0, 2047)
+  defp bounded(18_416_755_001_749_512_253, 7, 0, 13, v), do: within(v, 0, 8191)
+  defp bounded(18_418_697_838_796_182_640, 8, 0, 32, v), do: within(v, 0, 4_294_967_295)
+  defp bounded(18_419_692_896_819_524_370, 8, 0, 23, v), do: within(v, 0, 8_388_607)
+  defp bounded(2_593_226_102_015_223_570, 7, 0, 12, v), do: within(v, 0, 4095)
+
+  defp bounded(4_534_679_873_638_431_877, 5, -1_000_000_000_000, 41, v),
+    do: within(v, -1_000_000_000_000, 1_000_000_000_000)
+
+  defp bounded(5_910_805_692_604_981_441, 4, -512, 10, v), do: within(v, -512, 511)
+  defp bounded(6_028_620_492_700_434_865, 7, 0, 9, v), do: within(v, 0, 511)
+  defp bounded(619_389_017_892_461_216, 4, 0, 7, v), do: within(v, 0, 100)
+  defp bounded(619_390_117_404_089_427, 4, -600_000, 21, v), do: within(v, -600_000, 600_000)
+  defp bounded(619_397_813_985_486_904, 4, 0, 16, v), do: within(v, 0, 65535)
+  defp bounded(619_398_913_497_115_115, 4, -100, 8, v), do: within(v, -100, 100)
+  defp bounded(619_400_013_008_743_326, 4, 0, 2, v), do: within(v, 0, 3)
+
+  defp bounded(619_401_112_520_371_537, 4, -1_000_000, 21, v),
+    do: within(v, -1_000_000, 1_000_000)
+
+  defp bounded(619_402_212_031_999_748, 4, 0, 10, v), do: within(v, 0, 1000)
+  defp bounded(619_403_311_543_627_959, 4, -15, 5, v), do: within(v, -15, 15)
+  defp bounded(619_404_411_055_256_170, 4, 0, 8, v), do: within(v, 0, 255)
+  defp bounded(619_405_510_566_884_381, 4, -2048, 12, v), do: within(v, -2048, 2047)
+  defp bounded(6_200_723_483_573_899_615, 8, 0, 24, v), do: within(v, 0, 16_777_215)
+  defp bounded(623_186_731_055_545_110, 6, 0, 7, v), do: within(v, 0, 127)
+  defp bounded(623_191_129_102_057_954, 6, 0, 3, v), do: within(v, 0, 7)
+  defp bounded(7_849_182_299_372_448_948, 4, -2048, 12, v), do: within(v, -2048, 2047)
+  defp bounded(7_849_183_398_884_077_159, 4, -2048, 12, v), do: within(v, -2048, 2047)
+  defp bounded(7_849_185_597_907_333_581, 4, -2048, 12, v), do: within(v, -2048, 2047)
+  defp bounded(7_986_425_594_924_299_562, 6, 0, 7, v), do: within(v, 0, 127)
+
+  defp bounded(8_334_276_637_232_054_488, 9, 0, 64, v),
+    do: within(v, 0, 18_446_744_073_709_551_615)
+
+  defp bounded(8_651_444_298_976_115_966, 4, 0, 4, v), do: within(v, 0, 15)
+  defp bounded(8_916_005_070_914_257_170, 9, 0, 48, v), do: within(v, 0, 281_474_976_710_655)
+  defp bounded(9_179_190_079_975_030_720, 4, 0, 12, v), do: within(v, 0, 4095)
+  defp bounded(9_181_103_189_905_877_455, 4, 0, 10, v), do: within(v, 0, 1000)
+  defp bounded(9_271_633_933_780_238_181, 6, 0, 8, v), do: within(v, 0, 255)
+  defp bounded(9_301_057_475_299_076_457, 4, 0, 8, v), do: within(v, 0, 255)
+  defp bounded(990_229_364_654_832_702, 4, 0, 16, v), do: within(v, 0, 65535)
+  defp bounded(_id, _kind, _base, _bits, _v), do: :ok
+
+  defp within(v, lo, hi) when is_integer(v) and v >= lo and v <= hi, do: :ok
+  defp within(_v, _lo, _hi), do: throw(:invalid_value)
+
+  # THE VARIANTS AN ENUM ENTRY MAY NAME, by the entry's id and each variant
+  # name's id.
+  defp variant_of(11_580_461_223_051_554_305, 80_074_449_652_715_421), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 350_179_810_443_481_718), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 912_176_952_613_754_358), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 1_768_712_988_339_112_597), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 2_358_437_193_313_989_428), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 2_494_154_474_894_420_565), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 3_185_847_833_948_484_337), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 3_226_873_318_306_908_209), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 3_883_575_963_473_318_423), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 9_941_509_733_177_614_687), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 10_195_908_976_109_634_665), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 10_979_714_430_458_272_334), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 11_511_182_678_319_334_518), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 12_074_413_251_776_401_164), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, 15_694_215_446_957_619_222), do: :ok
+  defp variant_of(11_580_461_223_051_554_305, _name), do: throw(:invalid_value)
+  defp variant_of(_id, _name), do: :ok
 end

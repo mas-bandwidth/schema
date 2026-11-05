@@ -1000,7 +1000,6 @@ func (g *fixedGen) emitBodyConstant(st *ir.Struct, body int64) {
 // ---- the writer -----------------------------------------------------------
 
 func (g *fixedGen) emitWriteBody(st *ir.Struct) {
-	cls := fixedClass(st.Name)
 	g.pf("    /** %s's stores. The caller lays the template down first — the hash, then\n", st.Name)
 	g.pf("     *  zeros — which is also what zero-fills every byte of declared slack, so\n")
 	g.pf("     *  this is a straight line of byte-width stores at constant offsets and\n")
@@ -1013,38 +1012,7 @@ func (g *fixedGen) emitWriteBody(st *ir.Struct) {
 		off += fixedFieldBytes(f)
 	}
 	g.pf("    }\n\n")
-	g.emitCheckWrite(st, cls)
-}
-
-// emitCheckWrite is the writer's contract walk, called once through `assert` —
-// the packet codec's own predicate-extraction form. THE WRITE-SIDE CHECKS ARE
-// DEBUG ONLY: a release build compiles them out and the writer trusts, which
-// is the family rule everywhere.
-func (g *fixedGen) emitCheckWrite(st *ir.Struct, cls string) {
-	var lines []string
-	for _, f := range st.Fields {
-		name := javaName(f.Name)
-		switch {
-		case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) &&
-			f.Array == ir.ArrayNone && f.KeyEnum == "":
-			lines = append(lines, fmt.Sprintf("        assert v.%sLength >= 0 && v.%sLength <= %d;\n", name, name, f.Type.Size))
-		case f.Array == ir.ArrayCounted:
-			lines = append(lines, fmt.Sprintf("        assert v.%sCount >= %d && v.%sCount <= %d;\n",
-				name, f.ArrayMin, name, f.ArrayBound))
-		}
-	}
-	g.pf("    // checkWrite is writeBody's contract walk, called once through `assert`.\n")
-	g.pf("    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,\n")
-	g.pf("    // which is what makes a save one template and a straight line of stores.\n")
-	g.pf("    private static boolean checkWrite(Value v) {\n")
-	if len(lines) == 0 {
-		g.pf("        assert v != null;\n")
-	}
-	for _, l := range lines {
-		g.pf("%s", l)
-	}
-	g.pf("        return true;\n    }\n\n")
-	_ = cls
+	g.emitCheckWrite(st)
 }
 
 func (g *fixedGen) emitWriteField(f *ir.Field, off int64, buf, at, val string, indent int) {
@@ -1592,6 +1560,8 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	g.pf("                    break;\n                }\n")
 	g.pf("        }\n    }\n\n")
 
+	g.emitUnionCheckWrite(un)
+
 	g.pf("    /** the tag, then the selected arm; an unselected arm keeps what it held. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
 	g.owner = un.Name
@@ -1826,12 +1796,24 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        if (values == null || buffer == null || count < 0 || count > values.length) { return -1; }\n")
 	g.pf("        final int need = measure(count);\n")
 	g.pf("        if (need < 0 || buffer.length < need) { return -1; }\n")
+	// THE WRITE CONTRACT OVER THE WHOLE BATCH, before the first byte is
+	// stored (docs/SPEC.md §5.1): debug only, through `assert`.
+	g.pf("        assert checkWriteBatch(values, count, true) : \"write contract: %s\";\n", st.Name)
+	// A COUNT OR A LENGTH PAST ITS STORAGE IS REFUSED IN EVERY BUILD
+	// (docs/SPEC.md §5.1: memory is not a value), and A NaN OR AN INFINITY
+	// IS REFUSED BY THE WRITER (docs/SPEC-TABLES.md §3.3): every value is
+	// tested before the first byte is stored, so a refused save leaves the
+	// caller's buffer as it was.
+	var tests []string
+	if fixedHoldsStorage(st.Fields, map[string]bool{}) {
+		tests = append(tests, "!checkStorage(values[k])")
+	}
 	if fixedCarriesFloat(st.Fields, map[string]bool{}) {
-		// A NaN OR AN INFINITY IS REFUSED BY THE WRITER (docs/SPEC-TABLES.md
-		// §3.3): every value is tested before the first byte is stored, so a
-		// refused save leaves the caller's buffer as it was.
+		tests = append(tests, "!finite(values[k])")
+	}
+	if len(tests) > 0 {
 		g.pf("        for (int k = 0; k < count; k++) {\n")
-		g.pf("            if (!finite(values[k])) { return -1; }\n")
+		g.pf("            if (%s) { return -1; }\n", strings.Join(tests, " || "))
 		g.pf("        }\n")
 	}
 	g.pf("        int at = writeHeader(buffer);\n")

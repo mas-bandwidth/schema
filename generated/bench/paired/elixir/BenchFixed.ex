@@ -136,12 +136,12 @@ defmodule Bench.BenchFixed do
     } = value
 
     acc =
-      <<acc::binary, R.fits(v_entity_id, 32, false)::little-unsigned-32,
+      <<acc::binary, R.fits(v_entity_id, 12, false)::little-unsigned-32,
         R.ranged(v_pos_x, @r_mixed_entity_pos_x)::little-signed-32,
         R.ranged(v_pos_y, @r_mixed_entity_pos_y)::little-signed-32,
         R.ranged(v_pos_z, @r_mixed_entity_pos_z)::little-signed-32,
-        R.fits(v_yaw, 32, false)::little-unsigned-32,
-        R.fits(v_pitch, 32, false)::little-unsigned-32,
+        R.fits(v_yaw, 9, false)::little-unsigned-32,
+        R.fits(v_pitch, 9, false)::little-unsigned-32,
         R.ranged(v_vel_x, @r_mixed_entity_vel_x)::little-signed-32,
         R.ranged(v_vel_y, @r_mixed_entity_vel_y)::little-signed-32,
         R.ranged(v_vel_z, @r_mixed_entity_vel_z)::little-signed-32,
@@ -250,7 +250,7 @@ defmodule Bench.BenchFixed do
     %{stat_id: v_stat_id, delta: v_delta} = value
 
     acc =
-      <<acc::binary, R.fits(v_stat_id, 32, false)::little-unsigned-32,
+      <<acc::binary, R.fits(v_stat_id, 8, false)::little-unsigned-32,
         R.ranged(v_delta, @r_mixed_stat_delta)::little-signed-32>>
 
     acc
@@ -334,7 +334,7 @@ defmodule Bench.BenchFixed do
     %{target_id: v_target_id, damage: v_damage, hit_kind: v_hit_kind, crit: v_crit} = value
 
     acc =
-      <<acc::binary, R.fits(v_target_id, 32, false)::little-unsigned-32,
+      <<acc::binary, R.fits(v_target_id, 12, false)::little-unsigned-32,
         R.ranged(v_damage, @r_mixed_hit_event_damage)::little-signed-32,
         R.ranged(v_hit_kind, @r_mixed_hit_event_hit_kind)::little-signed-32,
         if(v_crit, do: 1, else: 0)::unsigned-8>>
@@ -464,7 +464,7 @@ defmodule Bench.BenchFixed do
 
     acc =
       <<acc::binary, R.ranged(v_channel, @r_mixed_chat_event_channel)::little-signed-32,
-        R.fits(v_speaker, 32, false)::little-unsigned-32>>
+        R.fits(v_speaker, 12, false)::little-unsigned-32>>
 
     acc
   end
@@ -548,7 +548,7 @@ defmodule Bench.BenchFixed do
     %{item_id: v_item_id, amount: v_amount} = value
 
     acc =
-      <<acc::binary, R.fits(v_item_id, 32, false)::little-unsigned-32,
+      <<acc::binary, R.fits(v_item_id, 10, false)::little-unsigned-32,
         R.ranged(v_amount, @r_mixed_pickup_event_amount)::little-signed-32>>
 
     acc
@@ -660,14 +660,14 @@ defmodule Bench.BenchFixed do
     } = value
 
     acc =
-      <<acc::binary, R.fits(v_sequence, 32, false)::little-unsigned-32,
+      <<acc::binary, R.fits(v_sequence, 16, false)::little-unsigned-32,
         R.ranged(v_ack_sequence, @r_bench_mixed_ack_sequence)::little-signed-32,
         R.fits(v_ack_bits, 32, false)::little-unsigned-32,
         R.fits(v_session_id, 64, false)::little-unsigned-64,
         R.fits(v_client_id, 32, false)::little-unsigned-32,
         R.ranged(v_nonce, @r_bench_mixed_nonce)::little-unsigned-64,
         R.ranged(v_world_time, @r_bench_mixed_world_time)::little-signed-64,
-        R.fits(v_frame_tick, 64, false)::little-unsigned-64,
+        R.fits(v_frame_tick, 48, false)::little-unsigned-64,
         R.ranged(v_server_time, @r_bench_mixed_server_time)::little-signed-32>>
 
     n_entities = R.count(v_entities, 1, 8)
@@ -688,7 +688,7 @@ defmodule Bench.BenchFixed do
 
     acc =
       <<acc::binary, 0::size((4 - n_loadout) * 1)-unit(8),
-        byte_size(v_player_name)::little-signed-32, v_player_name::binary,
+        byte_size(v_player_name)::little-signed-32, R.utf8_text(v_player_name)::binary,
         0::size(R.text_slack(v_player_name, 15))-unit(8), byte_size(v_payload)::little-signed-32,
         v_payload::binary, 0::size(R.text_slack(v_payload, 16))-unit(8),
         R.f32_bits(v_aim_x)::little-unsigned-32, R.f32_bits(v_aim_y)::little-unsigned-32,
@@ -697,7 +697,7 @@ defmodule Bench.BenchFixed do
         R.fits(v_wide_key, 128, false)::little-unsigned-128,
         R.ranged(v_flux, @r_bench_mixed_flux)::little-signed-128,
         R.ranged(v_ping, @r_bench_mixed_ping)::little-unsigned-16,
-        R.fits(v_crc_hint, 32, false)::little-unsigned-32,
+        R.fits(v_crc_hint, 24, false)::little-unsigned-32,
         if(v_has_extra, do: 1, else: 0)::unsigned-8,
         R.ranged(v_extra, @r_bench_mixed_extra)::little-signed-32,
         R.ranged(v_idle_ticks, @r_bench_mixed_idle_ticks)::little-signed-32>>

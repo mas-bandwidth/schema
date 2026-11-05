@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 #include <new>
 #include <atomic>
@@ -331,6 +332,78 @@ static void test_storage_invariants()
     weapon.effect.type = (tabledemo::EffectType) 9;
     CHECK( tabledemo::WeaponConfigMeasure( weapon ) == -1 );
     CHECK( tabledemo::WeaponConfigSave( weapon, buffer, sizeof( buffer ) ) == -1 );
+}
+
+// ---- a refused write writes nothing (docs/SPEC.md §5.1) ----
+//
+// Every writer that refuses in every build — a count or a length past its
+// storage, a NaN, a value that does not fit the capacity — refuses before its
+// first byte, so the caller's buffer is exactly what it handed over. The
+// buffer is POISONED, each writer is handed a value it refuses with an
+// earlier field (version_note) that a writer working front to back would
+// already have stored, and the poison must be intact. The release tier runs
+// this same file -O2 -DNDEBUG (build/cpp-release/tables), so it holds there
+// too; none of these refusals is an assert.
+
+static bool poison_intact( const uint8_t * buffer, size_t bytes )
+{
+    for ( size_t i = 0; i < bytes; i++ )
+    {
+        if ( buffer[i] != 0xA5 ) { return false; }
+    }
+    return true;
+}
+
+static void test_refusal_writes_nothing()
+{
+    static uint8_t buffer[16384];
+    static tabledemo::RootConfig root;
+    tabledemo::RootConfigReset( root );
+    memcpy( root.version_note, "abc", 3 );
+    root.version_note_length = 3;
+    root.weapons_count = 1;
+
+    // the baseline: each writer takes the value, so each refusal below is the
+    // one field changed
+    const int64_t need = tabledemo::RootConfigMeasure( root );
+    CHECK( need > 0 && tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) ) == need );
+    CHECK( tabledemo::RootConfigFixedSave( &root, 1, buffer, sizeof( buffer ) ) == tabledemo::RootConfigFixedMeasure( 1 ) );
+    const int64_t message_need = tabledemo::RootConfigMeasureMessages( &root, 1, nullptr );
+    CHECK( message_need > 0 && tabledemo::RootConfigSaveMessages( &root, 1, buffer, sizeof( buffer ), nullptr ) == message_need );
+
+    // a count past its storage
+    root.weapons_count = 9;
+    memset( buffer, 0xA5, sizeof( buffer ) );
+    CHECK( tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( poison_intact( buffer, sizeof( buffer ) ) );
+    memset( buffer, 0xA5, sizeof( buffer ) );
+    CHECK( tabledemo::RootConfigFixedSave( &root, 1, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( poison_intact( buffer, sizeof( buffer ) ) );
+    memset( buffer, 0xA5, sizeof( buffer ) );
+    CHECK( tabledemo::RootConfigSaveMessages( &root, 1, buffer, sizeof( buffer ), nullptr ) == -1 );
+    CHECK( poison_intact( buffer, sizeof( buffer ) ) );
+    root.weapons_count = 1;
+
+    // a NaN after the text
+    root.weapons[0].damage = std::numeric_limits<float>::quiet_NaN();
+    memset( buffer, 0xA5, sizeof( buffer ) );
+    CHECK( tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( poison_intact( buffer, sizeof( buffer ) ) );
+    memset( buffer, 0xA5, sizeof( buffer ) );
+    CHECK( tabledemo::RootConfigFixedSave( &root, 1, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( poison_intact( buffer, sizeof( buffer ) ) );
+    memset( buffer, 0xA5, sizeof( buffer ) );
+    CHECK( tabledemo::RootConfigSaveMessages( &root, 1, buffer, sizeof( buffer ), nullptr ) == -1 );
+    CHECK( poison_intact( buffer, sizeof( buffer ) ) );
+    root.weapons[0].damage = 21.0f;
+
+    // one byte short of what the value needs
+    memset( buffer, 0xA5, sizeof( buffer ) );
+    CHECK( tabledemo::RootConfigSave( root, buffer, need - 1 ) == -1 );
+    CHECK( poison_intact( buffer, sizeof( buffer ) ) );
+    memset( buffer, 0xA5, sizeof( buffer ) );
+    CHECK( tabledemo::RootConfigSaveMessages( &root, 1, buffer, message_need - 1, nullptr ) == -1 );
+    CHECK( poison_intact( buffer, sizeof( buffer ) ) );
 }
 
 // ---- bounded elements: a count the body length cannot cover never reads
@@ -9331,6 +9404,7 @@ int main()
     test_allocation_audit_can_go_red();
     test_exact_capacity();
     test_storage_invariants();
+    test_refusal_writes_nothing();
     test_bounded_elements();
     test_all_default();
     test_guard();

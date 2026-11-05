@@ -387,6 +387,54 @@ export function TableFixedTextOk(flavour, view, at, len) {
   return true;
 }
 
+// THE WRITER'S BOUNDS (docs/SPEC.md §5.1): a count, a length, an ordinal or a
+// tag the caller holds is an integer in [0, max], and anything else (past the
+// bound, negative, fractional, not a number) refuses the save.
+export function TableFixedCountHolds(n, max) {
+  return Number.isInteger(n) && n >= 0 && n <= max;
+}
+
+// THE WRITER'S TEXT RULE (docs/SPEC.md §5.1 row 8): the n used units of a's
+// storage are well-formed, UTF-8 bytes for a narrow text and paired UTF-16
+// code units for a wide one. A zero byte or unit is not this rule's.
+export function TableFixedTextWritable(wide, a, n) {
+  for (let i = 0; i < n; i++) {
+    const u = a[i];
+    if (wide) {
+      if (u >= 0xDC00 && u <= 0xDFFF) { return false; }
+      if (u >= 0xD800 && u <= 0xDBFF) {
+        const lo = a[++i];
+        if (!(i < n && lo >= 0xDC00 && lo <= 0xDFFF)) { return false; }
+      }
+      continue;
+    }
+    if (u < 0x80) { continue; }
+    let need, cp;
+    if ((u & 0xE0) === 0xC0) { need = 1; cp = u & 0x1F; }
+    else if ((u & 0xF0) === 0xE0) { need = 2; cp = u & 0x0F; }
+    else if ((u & 0xF8) === 0xF0) { need = 3; cp = u & 0x07; }
+    else { return false; }
+    if (i + need >= n) { return false; }
+    for (let k = 1; k <= need; k++) {
+      const b = a[i + k];
+      if ((b & 0xC0) !== 0x80) { return false; }
+      cp = (cp << 6) | (b & 0x3F);
+    }
+    const min = (need === 1) ? 0x80 : (need === 2) ? 0x800 : 0x10000;
+    if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) { return false; }
+    i += need;
+  }
+  return true;
+}
+
+// THE FIXED WRITER'S TEXT RULE (docs/SPEC.md §5.1): TableFixedTextWritable's,
+// and no zero byte or unit among the n used, since the fixed reader refuses one
+// as text_ill_formed and a writer never produces bytes its own reader refuses.
+export function TableFixedTextSavable(wide, a, n) {
+  for (let i = 0; i < n; i++) { if (a[i] === 0) { return false; } }
+  return TableFixedTextWritable(wide, a, n);
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -1865,7 +1913,12 @@ export class TableBitWriter {
     this.Bits = 0;
     this.Measuring = measuring === true;
     this.Overflow = false;
+    this.Reason = null;
   }
+  // THE WRITER REFUSES A VALUE ITS DECLARATION DOES NOT ADMIT (docs/SPEC.md
+  // §5.1, docs/SPEC-TABLES.md §22.6): never masked, wrapped or clamped into
+  // its width. The body answers false and the batch verb names the reason.
+  Refuse() { this.Reason = "invalid_value"; return false; }
   Put(value, n) {
     if (n < 0 || n > 64) { this.Overflow = true; return; }
     if (n === 0) { return; }
@@ -2137,6 +2190,22 @@ export function MixedEntityFixedWriteBody(view, at, value) {
   view.setUint8(at + 50, value.firing ? 1 : 0);
 }
 
+// MixedEntity's writer preflight: the write contract (docs/SPEC.md §5.1).
+export function MixedEntityFixedCheckBody(value) {
+  if (!(value.entityId >= 0 && value.entityId <= 4095)) { return false; }
+  if (!Number.isInteger(value.posX) || value.posX < -16383 || value.posX > 16383) { return false; }
+  if (!Number.isInteger(value.posY) || value.posY < -16383 || value.posY > 16383) { return false; }
+  if (!Number.isInteger(value.posZ) || value.posZ < -16383 || value.posZ > 16383) { return false; }
+  if (!(value.yaw >= 0 && value.yaw <= 511)) { return false; }
+  if (!(value.pitch >= 0 && value.pitch <= 511)) { return false; }
+  if (!Number.isInteger(value.velX) || value.velX < -2048 || value.velX > 2047) { return false; }
+  if (!Number.isInteger(value.velY) || value.velY < -2048 || value.velY > 2047) { return false; }
+  if (!Number.isInteger(value.velZ) || value.velZ < -2048 || value.velZ > 2047) { return false; }
+  if (!Number.isInteger(value.health) || value.health < 0 || value.health > 1000) { return false; }
+  if (!TableFixedCountHolds(Number(value.weapon), 15)) { return false; }
+  return true;
+}
+
 // MixedEntity's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedEntityFixedDecode(value, view, at, report) {
@@ -2174,6 +2243,13 @@ export function MixedStatFixedWriteBody(view, at, value) {
   view.setInt32(at + 4, value.delta, true);
 }
 
+// MixedStat's writer preflight: the write contract (docs/SPEC.md §5.1).
+export function MixedStatFixedCheckBody(value) {
+  if (!(value.statId >= 0 && value.statId <= 255)) { return false; }
+  if (!Number.isInteger(value.delta) || value.delta < -512 || value.delta > 511) { return false; }
+  return true;
+}
+
 // MixedStat's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedStatFixedDecode(value, view, at, report) {
@@ -2190,6 +2266,14 @@ export function MixedHitEventFixedWriteBody(view, at, value) {
   view.setInt32(at + 4, value.damage, true);
   view.setInt32(at + 8, value.hitKind, true);
   view.setUint8(at + 12, value.crit ? 1 : 0);
+}
+
+// MixedHitEvent's writer preflight: the write contract (docs/SPEC.md §5.1).
+export function MixedHitEventFixedCheckBody(value) {
+  if (!(value.targetId >= 0 && value.targetId <= 4095)) { return false; }
+  if (!Number.isInteger(value.damage) || value.damage < 0 || value.damage > 4095) { return false; }
+  if (!Number.isInteger(value.hitKind) || value.hitKind < 0 || value.hitKind > 7) { return false; }
+  return true;
 }
 
 // MixedHitEvent's loads, out of the reader's own image and into the value the
@@ -2211,6 +2295,13 @@ export function MixedChatEventFixedWriteBody(view, at, value) {
   view.setUint32(at + 4, value.speaker, true);
 }
 
+// MixedChatEvent's writer preflight: the write contract (docs/SPEC.md §5.1).
+export function MixedChatEventFixedCheckBody(value) {
+  if (!Number.isInteger(value.channel) || value.channel < 0 || value.channel > 3) { return false; }
+  if (!(value.speaker >= 0 && value.speaker <= 4095)) { return false; }
+  return true;
+}
+
 // MixedChatEvent's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedChatEventFixedDecode(value, view, at, report) {
@@ -2225,6 +2316,13 @@ export function MixedChatEventFixedDecode(value, view, at, report) {
 export function MixedPickupEventFixedWriteBody(view, at, value) {
   view.setUint32(at, value.itemId, true);
   view.setInt32(at + 4, value.amount, true);
+}
+
+// MixedPickupEvent's writer preflight: the write contract (docs/SPEC.md §5.1).
+export function MixedPickupEventFixedCheckBody(value) {
+  if (!(value.itemId >= 0 && value.itemId <= 1023)) { return false; }
+  if (!Number.isInteger(value.amount) || value.amount < 0 || value.amount > 255) { return false; }
+  return true;
 }
 
 // MixedPickupEvent's loads, out of the reader's own image and into the value the
@@ -2295,13 +2393,51 @@ export function BenchMixedFixedWriteBody(view, at, value) {
   view.setInt32(at + 1232, value.idleTicks, true);
 }
 
-// BenchMixed's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).
+// BenchMixed's writer preflight: the write contract (docs/SPEC.md §5.1).
 export function BenchMixedFixedCheckBody(value) {
+  if (!(value.sequence >= 0 && value.sequence <= 65535)) { return false; }
+  if (!Number.isInteger(value.ackSequence) || value.ackSequence < 0 || value.ackSequence > 65535) { return false; }
+  if (!(value.nonce >= 0n && value.nonce <= 18446744073709551615n)) { return false; }
+  if (!(value.worldTime >= -1000000000000n && value.worldTime <= 1000000000000n)) { return false; }
+  if (!(value.frameTick >= 0 && value.frameTick <= 281474976710655n)) { return false; }
+  if (!Number.isInteger(value.serverTime) || value.serverTime < 0 || value.serverTime > 16776960) { return false; }
+  if (!TableFixedCountHolds(value.entitiesCount, 8)) { return false; }
+  for (let i1 = 0; i1 < value.entitiesCount; i1++) {
+    if (!MixedEntityFixedCheckBody(value.entities[i1])) { return false; }
+  }
+  if (!TableFixedCountHolds(value.statsCount, 80)) { return false; }
+  for (let i1 = 0; i1 < value.statsCount; i1++) {
+    if (!MixedStatFixedCheckBody(value.stats[i1])) { return false; }
+  }
+  if (!TableFixedCountHolds(value.gameEvent.type, 3)) { return false; }
+  switch (value.gameEvent.type) {
+    case 1: {
+      if (!MixedHitEventFixedCheckBody(value.gameEvent.hit)) { return false; }
+      break;
+    }
+    case 2: {
+      if (!MixedChatEventFixedCheckBody(value.gameEvent.chat)) { return false; }
+      break;
+    }
+    case 3: {
+      if (!MixedPickupEventFixedCheckBody(value.gameEvent.pickup)) { return false; }
+      break;
+    }
+    default: break;
+  }
+  if (!TableFixedCountHolds(value.playerNameLength, 15)) { return false; }
+  if (!TableFixedTextSavable(false, value.playerName, value.playerNameLength)) { return false; }
+  if (!TableFixedCountHolds(value.payloadLength, 16)) { return false; }
   if (!Number.isFinite(Math.fround(value.aimX))) { return false; }
   if (!Number.isFinite(Math.fround(value.aimY))) { return false; }
   if (!Number.isFinite(Math.fround(value.aimZ))) { return false; }
   if (!Number.isFinite(Math.fround(value.recoil))) { return false; }
   if (!Number.isFinite(value.drift)) { return false; }
+  if (!(value.flux >= -1267650600228229401496703205376n && value.flux <= 1267650600228229401496703205376n)) { return false; }
+  if (!Number.isInteger(value.ping) || value.ping < 0 || value.ping > 64000) { return false; }
+  if (!(value.crcHint >= 0 && value.crcHint <= 16777215)) { return false; }
+  if (!Number.isInteger(value.extra) || value.extra < 0 || value.extra > 255) { return false; }
+  if (!Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 15) { return false; }
   return true;
 }
 
@@ -2489,7 +2625,7 @@ export function FixedTableFixedWriteBody(view, at, value) {
   BenchMixedFixedWriteBody(view, at, value.value);
 }
 
-// FixedTable's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).
+// FixedTable's writer preflight: the write contract (docs/SPEC.md §5.1).
 export function FixedTableFixedCheckBody(value) {
   if (!BenchMixedFixedCheckBody(value.value)) { return false; }
   return true;
@@ -2685,42 +2821,52 @@ export function FixedTableFixedDecode(value, view, at, report) {
 export function MixedEntitySaveMessageBody(w, value) {
   if (value.entityId !== 0) {
     w.Put(31n, TableMessageRefBitsHere);
+    if (!(value.entityId >= 0 && value.entityId <= 4095)) { return w.Refuse(); }
     w.Put(BigInt(value.entityId) - 0n, 12);
   }
   if (value.posX !== 0) {
     w.Put(32n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.posX) || value.posX < -16383 || value.posX > 16383) { return w.Refuse(); }
     w.Put(BigInt(value.posX) - -16383n, 15);
   }
   if (value.posY !== 0) {
     w.Put(33n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.posY) || value.posY < -16383 || value.posY > 16383) { return w.Refuse(); }
     w.Put(BigInt(value.posY) - -16383n, 15);
   }
   if (value.posZ !== 0) {
     w.Put(34n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.posZ) || value.posZ < -16383 || value.posZ > 16383) { return w.Refuse(); }
     w.Put(BigInt(value.posZ) - -16383n, 15);
   }
   if (value.yaw !== 0) {
     w.Put(35n, TableMessageRefBitsHere);
+    if (!(value.yaw >= 0 && value.yaw <= 511)) { return w.Refuse(); }
     w.Put(BigInt(value.yaw) - 0n, 9);
   }
   if (value.pitch !== 0) {
     w.Put(36n, TableMessageRefBitsHere);
+    if (!(value.pitch >= 0 && value.pitch <= 511)) { return w.Refuse(); }
     w.Put(BigInt(value.pitch) - 0n, 9);
   }
   if (value.velX !== 0) {
     w.Put(37n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.velX) || value.velX < -2048 || value.velX > 2047) { return w.Refuse(); }
     w.Put(BigInt(value.velX) - -2048n, 12);
   }
   if (value.velY !== 0) {
     w.Put(38n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.velY) || value.velY < -2048 || value.velY > 2047) { return w.Refuse(); }
     w.Put(BigInt(value.velY) - -2048n, 12);
   }
   if (value.velZ !== 0) {
     w.Put(39n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.velZ) || value.velZ < -2048 || value.velZ > 2047) { return w.Refuse(); }
     w.Put(BigInt(value.velZ) - -2048n, 12);
   }
   if (value.health !== 0) {
     w.Put(40n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.health) || value.health < 0 || value.health > 1000) { return w.Refuse(); }
     w.Put(BigInt(value.health) - 0n, 10);
   }
   if (value.weapon !== 0) {
@@ -2742,7 +2888,7 @@ export function MixedEntitySaveMessageBody(w, value) {
         case 13: w.Put(65n, TableMessageRefBitsHere); break;
         case 14: w.Put(66n, TableMessageRefBitsHere); break;
         case 15: w.Put(67n, TableMessageRefBitsHere); break;
-        default: return false;
+        default: return w.Refuse();
       }
     }
   }
@@ -2922,10 +3068,12 @@ export function MixedEntityLoadMessageBody(r, value) {
 export function MixedStatSaveMessageBody(w, value) {
   if (value.statId !== 0) {
     w.Put(51n, TableMessageRefBitsHere);
+    if (!(value.statId >= 0 && value.statId <= 255)) { return w.Refuse(); }
     w.Put(BigInt(value.statId) - 0n, 8);
   }
   if (value.delta !== 0) {
     w.Put(52n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.delta) || value.delta < -512 || value.delta > 511) { return w.Refuse(); }
     w.Put(BigInt(value.delta) - -512n, 10);
   }
   w.Put(0n, TableMessageRefBitsHere);
@@ -2973,14 +3121,17 @@ export function MixedStatLoadMessageBody(r, value) {
 export function MixedHitEventSaveMessageBody(w, value) {
   if (value.targetId !== 0) {
     w.Put(45n, TableMessageRefBitsHere);
+    if (!(value.targetId >= 0 && value.targetId <= 4095)) { return w.Refuse(); }
     w.Put(BigInt(value.targetId) - 0n, 12);
   }
   if (value.damage !== 0) {
     w.Put(46n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.damage) || value.damage < 0 || value.damage > 4095) { return w.Refuse(); }
     w.Put(BigInt(value.damage) - 0n, 12);
   }
   if (value.hitKind !== 0) {
     w.Put(47n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.hitKind) || value.hitKind < 0 || value.hitKind > 7) { return w.Refuse(); }
     w.Put(BigInt(value.hitKind) - 0n, 3);
   }
   if (value.crit !== false) {
@@ -3046,10 +3197,12 @@ export function MixedHitEventLoadMessageBody(r, value) {
 export function MixedChatEventSaveMessageBody(w, value) {
   if (value.channel !== 0) {
     w.Put(29n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.channel) || value.channel < 0 || value.channel > 3) { return w.Refuse(); }
     w.Put(BigInt(value.channel) - 0n, 2);
   }
   if (value.speaker !== 0) {
     w.Put(30n, TableMessageRefBitsHere);
+    if (!(value.speaker >= 0 && value.speaker <= 4095)) { return w.Refuse(); }
     w.Put(BigInt(value.speaker) - 0n, 12);
   }
   w.Put(0n, TableMessageRefBitsHere);
@@ -3097,10 +3250,12 @@ export function MixedChatEventLoadMessageBody(r, value) {
 export function MixedPickupEventSaveMessageBody(w, value) {
   if (value.itemId !== 0) {
     w.Put(49n, TableMessageRefBitsHere);
+    if (!(value.itemId >= 0 && value.itemId <= 1023)) { return w.Refuse(); }
     w.Put(BigInt(value.itemId) - 0n, 10);
   }
   if (value.amount !== 0) {
     w.Put(50n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.amount) || value.amount < 0 || value.amount > 255) { return w.Refuse(); }
     w.Put(BigInt(value.amount) - 0n, 8);
   }
   w.Put(0n, TableMessageRefBitsHere);
@@ -3148,10 +3303,12 @@ export function MixedPickupEventLoadMessageBody(r, value) {
 export function BenchMixedSaveMessageBody(w, value) {
   if (value.sequence !== 0) {
     w.Put(1n, TableMessageRefBitsHere);
+    if (!(value.sequence >= 0 && value.sequence <= 65535)) { return w.Refuse(); }
     w.Put(BigInt(value.sequence) - 0n, 16);
   }
   if (value.ackSequence !== 0) {
     w.Put(2n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.ackSequence) || value.ackSequence < 0 || value.ackSequence > 65535) { return w.Refuse(); }
     w.Put(BigInt(value.ackSequence) - 0n, 16);
   }
   if (value.ackBits !== 0) {
@@ -3168,29 +3325,36 @@ export function BenchMixedSaveMessageBody(w, value) {
   }
   if (value.nonce !== 0n) {
     w.Put(6n, TableMessageRefBitsHere);
+    if (!(value.nonce >= 0n && value.nonce <= 18446744073709551615n)) { return w.Refuse(); }
     w.Put(value.nonce - 0n, 64);
   }
   if (value.worldTime !== 0n) {
     w.Put(7n, TableMessageRefBitsHere);
+    if (!(value.worldTime >= -1000000000000n && value.worldTime <= 1000000000000n)) { return w.Refuse(); }
     w.Put(value.worldTime - -1000000000000n, 41);
   }
   if (value.frameTick !== 0n) {
     w.Put(8n, TableMessageRefBitsHere);
+    if (!(value.frameTick >= 0 && value.frameTick <= 281474976710655n)) { return w.Refuse(); }
     w.Put(value.frameTick - 0n, 48);
   }
   if (value.serverTime !== 0) {
     w.Put(9n, TableMessageRefBitsHere);
     w.Put(BigInt(value.serverTime) - 0n, 24);
   }
+  if (!TableFixedCountHolds(value.entitiesCount, 8)) { return w.Refuse(); }
   if (value.entitiesCount > 0) {
     w.Put(10n, TableMessageRefBitsHere);
+    if (!TableFixedCountHolds(value.entitiesCount, 8) || value.entitiesCount < 1) { return w.Refuse(); }
     w.Put(BigInt(value.entitiesCount) - 1n, 3);
     for (let i = 0; i < value.entitiesCount; i++) {
       if (!MixedEntitySaveMessageBody(w, value.entities[i])) { return false; }
     }
   }
+  if (!TableFixedCountHolds(value.statsCount, 80)) { return w.Refuse(); }
   if (value.statsCount > 0) {
     w.Put(11n, TableMessageRefBitsHere);
+    if (!TableFixedCountHolds(value.statsCount, 80) || value.statsCount < 0) { return w.Refuse(); }
     w.Put(BigInt(value.statsCount) - 0n, 7);
     for (let i = 0; i < value.statsCount; i++) {
       if (!MixedStatSaveMessageBody(w, value.stats[i])) { return false; }
@@ -3215,7 +3379,7 @@ export function BenchMixedSaveMessageBody(w, value) {
         if (!MixedPickupEventSaveMessageBody(w, value.gameEvent.pickup)) { return false; }
         break;
       }
-      default: return false;
+      default: return w.Refuse();
     }
   }
   let LoadoutAllDefault = true;
@@ -3228,13 +3392,17 @@ export function BenchMixedSaveMessageBody(w, value) {
       w.Put(BigInt(value.loadout[i]), 8);
     }
   }
+  if (!TableFixedCountHolds(value.playerNameLength, 15)) { return w.Refuse(); }
   if (value.playerNameLength > 0) {
     w.Put(14n, TableMessageRefBitsHere);
+    if (!TableFixedCountHolds(value.playerNameLength, 15) || !TableFixedTextWritable(false, value.playerName, value.playerNameLength)) { return w.Refuse(); }
     w.Put(BigInt(value.playerNameLength), 4);
     w.Raw(value.playerName.subarray(0, value.playerNameLength));
   }
+  if (!TableFixedCountHolds(value.payloadLength, 16)) { return w.Refuse(); }
   if (value.payloadLength > 0) {
     w.Put(15n, TableMessageRefBitsHere);
+    if (!TableFixedCountHolds(value.payloadLength, 16)) { return w.Refuse(); }
     w.Put(BigInt(value.payloadLength) - 0n, 5);
     w.Align();
     for (let i = 0; i < value.payloadLength; i++) {
@@ -3272,6 +3440,7 @@ export function BenchMixedSaveMessageBody(w, value) {
   }
   if (value.flux !== 0n) {
     w.Put(22n, TableMessageRefBitsHere);
+    if (!(value.flux >= -1267650600228229401496703205376n && value.flux <= 1267650600228229401496703205376n)) { return w.Refuse(); }
     w.Put(value.flux - -1267650600228229401496703205376n, 102);
   }
   if (value.ping !== 0) {
@@ -3280,6 +3449,7 @@ export function BenchMixedSaveMessageBody(w, value) {
   }
   if (value.crcHint !== 0) {
     w.Put(24n, TableMessageRefBitsHere);
+    if (!(value.crcHint >= 0 && value.crcHint <= 16777215)) { return w.Refuse(); }
     w.Put(BigInt(value.crcHint) - 0n, 24);
   }
   if (value.hasExtra !== true) {
@@ -3288,10 +3458,12 @@ export function BenchMixedSaveMessageBody(w, value) {
   }
   if (value.extra !== 0) {
     w.Put(26n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.extra) || value.extra < 0 || value.extra > 255) { return w.Refuse(); }
     w.Put(BigInt(value.extra) - 0n, 8);
   }
   if (value.idleTicks !== 0) {
     w.Put(27n, TableMessageRefBitsHere);
+    if (!Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 15) { return w.Refuse(); }
     w.Put(BigInt(value.idleTicks) - 0n, 4);
   }
   w.Put(0n, TableMessageRefBitsHere);

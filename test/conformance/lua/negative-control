@@ -26,8 +26,25 @@
 #           of being refused as malformed, so `lua / framing`
 #           (node_cycle_self, node_cycle_to_root, node_cycle_mid) goes red and
 #           nothing else; `wire` and `report` green.
+#   write-refusal  descriptor.lua's declared-range test (D.int_ok) is taken
+#           out: a ranged integer past its min or max is written instead of
+#           refused. D.int_ok is the one test the variable, fixed and message
+#           writers share, so `lua / write-refusal` (wref_range_high,
+#           wref_range_low), `lua / write-refusal-fixed` and
+#           `lua / write-refusal-message` go red and nothing else; `wire` and
+#           `json-read` green.
+#   write-refusal-fixed  fixed.lua's integer check (check_value's D.int_ok)
+#           is taken out: WriteFixed packs a ranged integer past its bounds and
+#           a bits(6) value past six bits, so `lua / write-refusal-fixed`
+#           (fref_range_high, fref_range_low, fref_bits_wide) goes red and
+#           nothing else; `wire` and `write-refusal` green.
+#   write-refusal-message  message.lua's integer check (write_scalar's
+#           int_ok) is taken out: SaveMessages masks a ranged integer to its
+#           width again, so `lua / write-refusal-message` (mref_range_high,
+#           mref_range_low, mref_element) goes red and nothing else; `message`
+#           and `write-refusal` green.
 #
-# usage: test/conformance/lua/negative-control <report|walk|framing|cycle>
+# usage: test/conformance/lua/negative-control <report|walk|framing|cycle|write-refusal|write-refusal-fixed|write-refusal-message>
 set -eu
 
 mode=$1
@@ -51,6 +68,18 @@ framing)
 cycle)
     source=internal/codegen/luatable/runtime/load.lua
     sed 's/^  if not report.malformed and D.number_nodes(T, desc, root, false) == nil then$/  if false then/' "$source" > "$out/runtime.lua"
+    ;;
+write-refusal)
+    source=internal/codegen/luatable/runtime/descriptor.lua
+    sed 's/^      if x < d.lo or x > d.hi then return false end$/      if false then return false end/' "$source" > "$out/runtime.lua"
+    ;;
+write-refusal-fixed)
+    source=internal/codegen/luatable/runtime/fixed.lua
+    sed 's/^    if not D.int_ok(d, v) then return "invalid_value: " .. where end$/    if false then return nil end/' "$source" > "$out/runtime.lua"
+    ;;
+write-refusal-message)
+    source=internal/codegen/luatable/runtime/message.lua
+    sed 's/^    if s == "int" and not int_ok(d, v) then return false end$/    if false then return false end/' "$source" > "$out/runtime.lua"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -89,6 +118,9 @@ report) want="framing report retain " ; green="wire json-read retain-save" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
 cycle)  want="framing " ; green="wire report" ;;
+write-refusal) want="write-refusal write-refusal-fixed write-refusal-message " ; green="wire json-read" ;;
+write-refusal-fixed) want="write-refusal-fixed " ; green="wire write-refusal" ;;
+write-refusal-message) want="write-refusal-message " ; green="message write-refusal" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2

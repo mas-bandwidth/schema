@@ -249,6 +249,7 @@ func (g *wireGen) emitUnionSave(un *ir.Union) {
 		g.pf("\t\t\t\tfinal ref = w.refFor(%s);\n", dartU64Literal(ir.TableWireId(arm.WireName())))
 		g.pf("\t\t\t\tfinal p = w.sub();\n")
 		if !arm.Void() {
+			g.pf("%s", writeCheckAsserts(arm.F, "v."+armMember(arm), "", "\t\t\t\t"))
 			g.emitPutPayload(arm.F, "v."+armMember(arm), "p", "\t\t\t\t")
 		}
 		g.pf("\t\t\t\tw.putLeb(ref);\n")

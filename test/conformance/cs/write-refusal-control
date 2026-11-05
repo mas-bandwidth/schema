@@ -1,0 +1,32 @@
+#!/bin/sh
+# A C# write-refusal negative control (make/cs.mk). Builds the Debug driver
+# against a COPY of the generated tree with ONE write check removed and
+# requires the named surface to go red while the surface that writes the same
+# form clean stays green. Run from the repository root after
+# build-conformance-cs; no tracked source or normal build is modified.
+#
+# usage: write-refusal-control <dotnet> <dir> <perl-sabotage> <witness-regex> <red-surface> <green-surface>
+set -eu
+dotnet=$1 dir=$2 sabotage=$3 witness=$4 red=$5 green=$6
+rm -rf "$dir" && mkdir -p "$dir"
+cp -R build/tables-generated-cs "$dir/generated"
+files=$(grep -rlE "$witness" "$dir/generated" || true)
+[ -n "$files" ] || { echo "NEGATIVE CONTROL: the sabotage matches no generated line"; exit 1; }
+# shellcheck disable=SC2086
+perl -pi -e "$sabotage" $files
+grep -rqF 'SABOTAGED' "$dir/generated" || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+"$dotnet" build test/conformance/cs --nologo -v quiet -p:TablesGeneratedDir="$PWD/$dir/generated" \
+    -p:CardsGeneratedDir="$PWD/$dir/generated/cards" -p:BaseIntermediateOutputPath="$PWD/$dir/obj/" \
+    -o "$dir/checker" > "$dir/build.log" 2>&1 || \
+    { cat "$dir/build.log"; echo "NEGATIVE CONTROL: the sabotaged driver does not compile"; exit 1; }
+printf '#!/bin/sh\nexec %s %s/%s/checker/schemaconformance.dll "$@"\n' "$dotnet" "$PWD" "$dir" > "$dir/driver"
+chmod +x "$dir/driver"
+printf 'cs %s/%s/driver\n' "$PWD" "$dir" > "$dir/drivers.txt"
+if build/conformance-harness run --drivers "$dir/drivers.txt" --work "$dir/work" > "$dir/log" 2>&1; then
+    cat "$dir/log"; echo "NEGATIVE CONTROL FAILED: the sabotaged writer left conformance green"; exit 1
+fi
+grep -E "^ *$red *FAIL" "$dir/log" || { cat "$dir/log"; echo "NEGATIVE CONTROL: $red did not go red"; exit 1; }
+grep -Eq "^ *$green *pass" "$dir/log" || { cat "$dir/log"; echo "NEGATIVE CONTROL: $green did not stay green"; exit 1; }
+if grep -Eq 'driver exited|driver wrote nothing' "$dir/log"; then
+    cat "$dir/log"; echo "NEGATIVE CONTROL: the sabotaged driver crashed rather than answering"; exit 1
+fi

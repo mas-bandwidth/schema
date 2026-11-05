@@ -1113,6 +1113,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -9544,6 +9561,7 @@ inline int64_t PatrolMeasureBody( const Ctx & ctx, const TableNumbering & number
     if ( !value.active )
     {
         if ( value.note_length < 0 || value.note_length > 8 ) { return -1; } // storage invariant
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.note, (uint64_t) value.note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
         if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
     }
     return bytes;
@@ -9581,6 +9599,7 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
         if ( value.target_id != 0 )
         {
             w.header( ids.ref_at( 103, 0xb7bc9ac015a25050ull ), 4 ); // target_id
+            schema_assert( value.target_id >= 0 && value.target_id <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
             w.put32( uint32_t( value.target_id ) );
         }
     }
@@ -9596,6 +9615,7 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
     if ( !value.active )
     {
         if ( value.note_length < 0 || value.note_length > 8 ) { return false; } // storage invariant
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.note, (uint64_t) value.note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
         if ( value.note_length > 0 )
         {
             w.header( ids.ref_at( 37, 0x3bf8fbbad1587cddull ), 12 ); // note
@@ -10742,6 +10762,7 @@ inline int64_t PatrolMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
     if ( !value.active )
     {
         if ( value.note_length < 0 || value.note_length > 8 ) { return -1; } // storage invariant
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.note, (uint64_t) value.note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
         if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -10780,6 +10801,7 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
         if ( value.target_id != 0 )
         {
             w.header( ids.ref_at( 103, 0xb7bc9ac015a25050ull ), 4 ); // target_id
+            schema_assert( value.target_id >= 0 && value.target_id <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
             w.put32( uint32_t( value.target_id ) );
         }
     }
@@ -10795,6 +10817,7 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
     if ( !value.active )
     {
         if ( value.note_length < 0 || value.note_length > 8 ) { return false; } // storage invariant
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.note, (uint64_t) value.note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
         if ( value.note_length > 0 )
         {
             w.header( ids.ref_at( 37, 0x3bf8fbbad1587cddull ), 12 ); // note

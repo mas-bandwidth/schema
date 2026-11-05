@@ -298,7 +298,9 @@ namespace Tabledemo
             if (BitConverter.SingleToUInt32Bits(v.Damage) != 0x41a80000u && !ids.Add(0x7f6308be8ab37fc0ul)) return false;
             if (!float.IsFinite(v.Speed)) return false;
             if (BitConverter.SingleToUInt32Bits(v.Speed) != 0x43fa0000u && !ids.Add(0x1733055702acb1d2ul)) return false;
+            System.Diagnostics.Debug.Assert(v.Penetration >= 0 && v.Penetration <= 10, "write refused: WeaponConfig.penetration out of range");
             if (v.Penetration != 1 && !ids.Add(0x4f31c5309e13e932ul)) return false;
+            System.Diagnostics.Debug.Assert(v.Channel <= 63, "write refused: WeaponConfig.channel out of range");
             if (v.Channel != 0 && !ids.Add(0xa5013e9ad5caeda4ul)) return false;
             if (v.Homing != false && !ids.Add(0xad6587bc602e3f59ul)) return false;
             if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
@@ -809,6 +811,7 @@ namespace Tabledemo
 
         public static bool AttachmentCollectTyped(Attachment v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert(v.Slot >= 0 && v.Slot <= 7, "write refused: Attachment.slot out of range");
             if (v.Slot != 0 && !ids.Add(0x6a771618f6fe31d1ul)) return false;
             if (!float.IsFinite(v.Power)) return false;
             if (BitConverter.SingleToUInt32Bits(v.Power) != 0x3f800000u && !ids.Add(0xeef9d1358ae7b4e6ul)) return false;
@@ -998,6 +1001,7 @@ namespace Tabledemo
 
         public static bool DebuffCollectTyped(Debuff v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert(v.Amount >= 0 && v.Amount <= 100, "write refused: Debuff.amount out of range");
             if (v.Amount != 0 && !ids.Add(0x8113fe7ea2b16969ul)) return false;
             return true;
         }
@@ -1144,8 +1148,8 @@ namespace Tabledemo
                 {
                     new TableFieldInfo { Name = "damage", Json = "damage", TypeName = "float32", Id = 0x7f6308be8ab37fc0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.", NumTags = 3, Tags = WeaponConfigTableTagsDamage, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.WeaponConfig)o).Damage)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.WeaponConfig)o).Damage = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 100, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.WeaponConfig)o; value.Damage = 21.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(21.0f)), NonFiniteField = "WeaponConfig.damage", NonFiniteReason = "non_finite_float: WeaponConfig.damage", ClampRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                     new TableFieldInfo { Name = "speed", Json = "speed", TypeName = "float32", Id = 0x1733055702acb1d2, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.WeaponConfig)o).Speed)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.WeaponConfig)o).Speed = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 102, Ordinal = 1, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.WeaponConfig)o; value.Speed = 500.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(500.0f)), NonFiniteField = "WeaponConfig.speed", NonFiniteReason = "non_finite_float: WeaponConfig.speed", ClampRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
-                    new TableFieldInfo { Name = "penetration", Json = "penetration", TypeName = "int32", Id = 0x4f31c5309e13e932, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 10.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.WeaponConfig)o).Penetration)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.WeaponConfig)o).Penetration = unchecked((int)(long)r); }, MessageSlot = 103, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xaul)), Ordinal = 2, NativeOffset = 8, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.WeaponConfig)o; value.Penetration = 1; }, DefaultRaw = unchecked((ulong)(long)(1)), ClampJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L) { r.Clamped++; v = 0L; } else if (v > 10L) { r.Clamped++; v = 10L; } return unchecked((ulong)v); }, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 10) { r.Clamped++; v = 10; } return unchecked((ulong)(long)(v)); } },
-                    new TableFieldInfo { Name = "channel", Json = "channel", TypeName = "bits(6)", Id = 0xa5013e9ad5caeda4, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 63.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.WeaponConfig)o).Channel; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.WeaponConfig)o).Channel = unchecked((uint)r); }, MessageSlot = 104, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x3ful)), Ordinal = 3, NativeOffset = 12, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.WeaponConfig)o; value.Channel = 0; }, DefaultRaw = (ulong)0, ClampJsonInteger = delegate (ulong raw, TableReport r) { if (raw > 63ul) { r.Clamped++; return 63ul; } return raw; }, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 63ul) { r.Clamped++; v = 63; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "penetration", Json = "penetration", TypeName = "int32", Id = 0x4f31c5309e13e932, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 10.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.WeaponConfig)o).Penetration)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.WeaponConfig)o).Penetration = unchecked((int)(long)r); }, MessageSlot = 103, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xaul)), Ordinal = 2, NativeOffset = 8, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.WeaponConfig)o; value.Penetration = 1; }, DefaultRaw = unchecked((ulong)(long)(1)), ClampJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L) { r.Clamped++; v = 0L; } else if (v > 10L) { r.Clamped++; v = 10L; } return unchecked((ulong)v); }, WriteValidRaw = delegate (ulong raw) { int v = unchecked((int)(long)raw); return v >= 0 && v <= 10; }, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 10) { r.Clamped++; v = 10; } return unchecked((ulong)(long)(v)); } },
+                    new TableFieldInfo { Name = "channel", Json = "channel", TypeName = "bits(6)", Id = 0xa5013e9ad5caeda4, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 63.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.WeaponConfig)o).Channel; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.WeaponConfig)o).Channel = unchecked((uint)r); }, MessageSlot = 104, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x3ful)), Ordinal = 3, NativeOffset = 12, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.WeaponConfig)o; value.Channel = 0; }, DefaultRaw = (ulong)0, ClampJsonInteger = delegate (ulong raw, TableReport r) { if (raw > 63ul) { r.Clamped++; return 63ul; } return raw; }, WriteValidRaw = delegate (ulong raw) { uint v = unchecked((uint)raw); return v <= 63; }, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 63ul) { r.Clamped++; v = 63; } return (ulong)v; } },
                     new TableFieldInfo { Name = "homing", Json = "homing", TypeName = "bool", Id = 0xad6587bc602e3f59, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return ((global::Tabledemo.WeaponConfig)o).Homing ? 1ul : 0ul; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.WeaponConfig)o).Homing = r != 0; }, MessageSlot = 105, Ordinal = 4, NativeOffset = 16, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.WeaponConfig)o; value.Homing = false; }, DefaultRaw = false ? 1ul : 0ul },
                     new TableFieldInfo { Name = "effect", Json = "effect", TypeName = "Effect", Id = 0x36c1c83b51f24394, Kind = 15, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 2, EnumName = delegate (ulong v) { switch (v) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, VariantId = delegate (ulong v) { switch (v) { case 0: return (ulong)0; case 1: return (ulong)0xffb5be9be2e469cc; case 2: return (ulong)0x13cdc5ede73d2fd7; default: return (ulong)0; } }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = new TableUnionInfo { GetTag = delegate (object o) { return (ulong)((global::Tabledemo.Effect)o).Type; }, Create = delegate { return new global::Tabledemo.Effect(); }, NativeTagSize = 1, NativeArmOffset = 4, SetTag = delegate (object o, ulong t) { ((global::Tabledemo.Effect)o).Type = unchecked((global::Tabledemo.EffectType)t); }, Arms = new TableUnionArmInfo[] { new TableUnionArmInfo(), new TableUnionArmInfo { MessageSlot = 128, Field = new TableFieldInfo { Name = "buff", Json = "buff", TypeName = "Buff", Id = 0xffb5be9be2e469cc, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return BuffTableType(); }, Arms = null, Doc = "A multiplier that rides while the effect is live.", NumTags = 1, Tags = new string[] { "positive" }, GetChild = delegate (object o, int i) { return ((global::Tabledemo.Effect)o).Buff; }, MessageSlot = 128, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.Effect)o; TableReset(value.Buff); } }, TableRef = delegate { return BuffTableType(); }, Payload = delegate (object o) { return ((global::Tabledemo.Effect)o).Buff; } }, new TableUnionArmInfo { MessageSlot = 129, Field = new TableFieldInfo { Name = "debuff", Json = "debuff", TypeName = "Debuff", Id = 0x13cdc5ede73d2fd7, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return DebuffTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.Effect)o).Debuff; }, MessageSlot = 129, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.Effect)o; TableReset(value.Debuff); } }, TableRef = delegate { return DebuffTableType(); }, Payload = delegate (object o) { return ((global::Tabledemo.Effect)o).Debuff; } } } }, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.WeaponConfig)o).Effect; }, MessageSlot = 106, Ordinal = 5, NativeOffset = 20, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.WeaponConfig)o; TableReset(value.Effect); } },
                 };
@@ -1273,7 +1277,7 @@ namespace Tabledemo
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "slot", Json = "slot", TypeName = "int32", Id = 0x6a771618f6fe31d1, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 7.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.Attachment)o).Slot)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.Attachment)o).Slot = unchecked((int)(long)r); }, MessageSlot = 3, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.Attachment)o; value.Slot = 0; }, DefaultRaw = unchecked((ulong)(long)(0)), ClampJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L) { r.Clamped++; v = 0L; } else if (v > 7L) { r.Clamped++; v = 7L; } return unchecked((ulong)v); }, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 7) { r.Clamped++; v = 7; } return unchecked((ulong)(long)(v)); } },
+                    new TableFieldInfo { Name = "slot", Json = "slot", TypeName = "int32", Id = 0x6a771618f6fe31d1, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 7.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.Attachment)o).Slot)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.Attachment)o).Slot = unchecked((int)(long)r); }, MessageSlot = 3, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.Attachment)o; value.Slot = 0; }, DefaultRaw = unchecked((ulong)(long)(0)), ClampJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L) { r.Clamped++; v = 0L; } else if (v > 7L) { r.Clamped++; v = 7L; } return unchecked((ulong)v); }, WriteValidRaw = delegate (ulong raw) { int v = unchecked((int)(long)raw); return v >= 0 && v <= 7; }, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 7) { r.Clamped++; v = 7; } return unchecked((ulong)(long)(v)); } },
                     new TableFieldInfo { Name = "power", Json = "power", TypeName = "float32", Id = 0xeef9d1358ae7b4e6, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.Attachment)o).Power)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.Attachment)o).Power = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 4, Ordinal = 1, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.Attachment)o; value.Power = 1.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(1.0f)), NonFiniteField = "Attachment.power", NonFiniteReason = "non_finite_float: Attachment.power", ClampRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.Attachment)o); };
@@ -1346,7 +1350,7 @@ namespace Tabledemo
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "amount", Json = "amount", TypeName = "int32", Id = 0x8113fe7ea2b16969, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.Debuff)o).Amount)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.Debuff)o).Amount = unchecked((int)(long)r); }, MessageSlot = 6, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x64ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.Debuff)o; value.Amount = 0; }, DefaultRaw = unchecked((ulong)(long)(0)), ClampJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L) { r.Clamped++; v = 0L; } else if (v > 100L) { r.Clamped++; v = 100L; } return unchecked((ulong)v); }, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100) { r.Clamped++; v = 100; } return unchecked((ulong)(long)(v)); } },
+                    new TableFieldInfo { Name = "amount", Json = "amount", TypeName = "int32", Id = 0x8113fe7ea2b16969, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.Debuff)o).Amount)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.Debuff)o).Amount = unchecked((int)(long)r); }, MessageSlot = 6, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x64ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.Debuff)o; value.Amount = 0; }, DefaultRaw = unchecked((ulong)(long)(0)), ClampJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L) { r.Clamped++; v = 0L; } else if (v > 100L) { r.Clamped++; v = 100L; } return unchecked((ulong)v); }, WriteValidRaw = delegate (ulong raw) { int v = unchecked((int)(long)raw); return v >= 0 && v <= 100; }, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100) { r.Clamped++; v = 100; } return unchecked((ulong)(long)(v)); } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.Debuff)o); };
                 info.Doc = TableDocNone;
@@ -1854,6 +1858,164 @@ namespace Tabledemo
                 }
             }
             return null;
+        }
+
+        // Debuff's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool DebuffFixedCheckBody(Debuff value)
+        {
+            if (value == null) return true;
+            if (value.Amount < 0 || value.Amount > 100) return false;
+            return true;
+        }
+
+        // WeaponConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool WeaponConfigFixedCheckBody(WeaponConfig value)
+        {
+            if (value == null) return true;
+            if (value.Penetration < 0 || value.Penetration > 10) return false;
+            if (value.Channel > 63) return false;
+            if (value.Effect != null)
+            {
+                if ((ulong)value.Effect.Type > 2) return false;
+                switch (value.Effect.Type)
+                {
+                    case EffectType.Debuff:
+                        {
+                            if (!DebuffFixedCheckBody(value.Effect.Debuff)) return false;
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            return true;
+        }
+
+        // Attachment's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool AttachmentFixedCheckBody(Attachment value)
+        {
+            if (value == null) return true;
+            if (value.Slot < 0 || value.Slot > 7) return false;
+            return true;
+        }
+
+        // LoadoutConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool LoadoutConfigFixedCheckBody(LoadoutConfig value)
+        {
+            if (value == null) return true;
+            if ((ulong)value.Grade > 3) return false;
+            if (value.GradesCount < 0 || value.GradesCount > 4) return false;
+            if (value.Grades != null)
+            {
+                for (int i = 0; i < value.GradesCount && i < value.Grades.Length; ++i)
+                {
+                    if ((ulong)value.Grades[i] > 3) return false;
+                }
+            }
+            if (value.Podium != null)
+            {
+                for (int i = 0; i < 3 && i < value.Podium.Length; ++i)
+                {
+                    if ((ulong)value.Podium[i] > 3) return false;
+                }
+            }
+            if (!WeaponConfigFixedCheckBody(value.Primary)) return false;
+            if (value.Backups != null)
+            {
+                for (int i = 0; i < 2 && i < value.Backups.Length; ++i)
+                {
+                    if (!WeaponConfigFixedCheckBody(value.Backups[i])) return false;
+                }
+            }
+            if (value.AttachmentsCount < 0 || value.AttachmentsCount > 8) return false;
+            if (value.Attachments != null)
+            {
+                for (int i = 0; i < value.AttachmentsCount && i < value.Attachments.Length; ++i)
+                {
+                    if (!AttachmentFixedCheckBody(value.Attachments[i])) return false;
+                }
+            }
+            return true;
+        }
+
+        // ProfileConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool ProfileConfigFixedCheckBody(ProfileConfig value)
+        {
+            if (value == null) return true;
+            if (value.NameLength < 0 || value.NameLength > 32) return false;
+            if (value.Name != null && (!TableWire.TextWellFormed(value.Name.AsSpan(0, value.NameLength)) || value.Name.AsSpan(0, value.NameLength).IndexOf((byte)0) >= 0)) return false;
+            if (value.IconLength < 0 || value.IconLength > 16) return false;
+            if (!LoadoutConfigFixedCheckBody(value.Loadout)) return false;
+            return true;
+        }
+
+        // RootConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RootConfigFixedCheckBody(RootConfig value)
+        {
+            if (value == null) return true;
+            if (value.VersionNoteLength < 0 || value.VersionNoteLength > 16) return false;
+            if (value.VersionNote != null && (!TableWire.TextWellFormed(value.VersionNote.AsSpan(0, value.VersionNoteLength)) || value.VersionNote.AsSpan(0, value.VersionNoteLength).IndexOf((byte)0) >= 0)) return false;
+            if (value.WeaponsCount < 0 || value.WeaponsCount > 8) return false;
+            if (value.Weapons != null)
+            {
+                for (int i = 0; i < value.WeaponsCount && i < value.Weapons.Length; ++i)
+                {
+                    if (!WeaponConfigFixedCheckBody(value.Weapons[i])) return false;
+                }
+            }
+            if (value.ProfilesCount < 0 || value.ProfilesCount > 4) return false;
+            if (value.Profiles != null)
+            {
+                for (int i = 0; i < value.ProfilesCount && i < value.Profiles.Length; ++i)
+                {
+                    if (!ProfileConfigFixedCheckBody(value.Profiles[i])) return false;
+                }
+            }
+            return true;
+        }
+
+        // LoadoutConfig's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool LoadoutConfigFixedStorageBody(LoadoutConfig value)
+        {
+            if (value == null) return true;
+            if (value.GradesCount < 0 || value.GradesCount > 4) return false;
+            if (value.AttachmentsCount < 0 || value.AttachmentsCount > 8) return false;
+            return true;
+        }
+
+        // ProfileConfig's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool ProfileConfigFixedStorageBody(ProfileConfig value)
+        {
+            if (value == null) return true;
+            if (value.NameLength < 0 || value.NameLength > 32 || (value.Name != null && value.NameLength > value.Name.Length)) return false;
+            if (value.IconLength < 0 || value.IconLength > 16 || (value.Icon != null && value.IconLength > value.Icon.Length)) return false;
+            if (!LoadoutConfigFixedStorageBody(value.Loadout)) return false;
+            return true;
+        }
+
+        // RootConfig's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool RootConfigFixedStorageBody(RootConfig value)
+        {
+            if (value == null) return true;
+            if (value.VersionNoteLength < 0 || value.VersionNoteLength > 16 || (value.VersionNote != null && value.VersionNoteLength > value.VersionNote.Length)) return false;
+            if (value.WeaponsCount < 0 || value.WeaponsCount > 8) return false;
+            if (value.ProfilesCount < 0 || value.ProfilesCount > 4) return false;
+            if (value.Profiles != null)
+            {
+                for (int i = 0; i < value.ProfilesCount && i < value.Profiles.Length; ++i)
+                {
+                    if (!ProfileConfigFixedStorageBody(value.Profiles[i])) return false;
+                }
+            }
+            return true;
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -3720,6 +3882,10 @@ namespace Tabledemo
             long need = RootConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RootConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!RootConfigFixedStorageBody(values[k])) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RootConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RootConfigFixedHash);
@@ -4313,6 +4479,9 @@ namespace Tabledemo
             long need = WeaponConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (WeaponConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(WeaponConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), WeaponConfigFixedHash);
@@ -5172,6 +5341,10 @@ namespace Tabledemo
             long need = LoadoutConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (LoadoutConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!LoadoutConfigFixedStorageBody(values[k])) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(LoadoutConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), LoadoutConfigFixedHash);
@@ -6133,6 +6306,10 @@ namespace Tabledemo
             long need = ProfileConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (ProfileConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!ProfileConfigFixedStorageBody(values[k])) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ProfileConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), ProfileConfigFixedHash);
