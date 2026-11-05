@@ -406,6 +406,9 @@ func Refused(err error) bool {
 	if _, form := errors.AsType[*FormRefusal](err); form {
 		return true
 	}
+	if _, fixed := errors.AsType[*FixedRefusal](err); fixed {
+		return true
+	}
 	_, message := errors.AsType[*MessageRefusal](err)
 	return message
 }

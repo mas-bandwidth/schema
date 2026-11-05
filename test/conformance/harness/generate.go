@@ -162,7 +162,11 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 				inst.Name, len(back), len(wire))
 		}
 
-		if err := writeFileAtomic(inst.JSON, text); err != nil {
+		out, err := outPath(jsonDir, inst.JSON)
+		if err != nil {
+			return err
+		}
+		if err := writeFileAtomic(out, text); err != nil {
 			return err
 		}
 		written[filepath.Base(inst.JSON)] = true
@@ -214,7 +218,14 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 			if !cookedReportClean(inst, report) {
 				return fmt.Errorf("%s: its own writer's bytes do not read clean: %+v", cw.Instance, report)
 			}
-			if err := writeFileAtomic(arm.path, cooked); err != nil {
+			out, err := outPath(jsonDir, arm.path)
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			if err := writeFileAtomic(out, cooked); err != nil {
 				return err
 			}
 		}
@@ -263,7 +274,11 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		}
 		lines = append(lines, fmt.Sprintf("%-18s %s", rc.Name, counts))
 		values[filepath.Base(rc.Value)] = true
-		if err := writeValue(rc.Value, ok && !counts.Malformed && !counts.Refused, func() ([]byte, error) {
+		valuePath, err := outPath(jsonDir, rc.Value)
+		if err != nil {
+			return err
+		}
+		if err := writeValue(valuePath, ok && !counts.Malformed && !counts.Refused, func() ([]byte, error) {
 			return model.Write(value)
 		}); err != nil {
 			return fmt.Errorf("%s: %w", rc.Name, err)
@@ -271,7 +286,11 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	}
 	sort.Strings(lines)
 	if len(m.Reports) > 0 {
-		if err := pruneValues(filepath.Dir(m.Reports[0].Value), values); err != nil {
+		valueDir, err := outPath(jsonDir, filepath.Dir(m.Reports[0].Value))
+		if err != nil {
+			return err
+		}
+		if err := pruneValues(valueDir, values); err != nil {
 			return err
 		}
 	}
@@ -281,7 +300,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	// read, because a row whose read is refused or damaged has no value to
 	// write back. And the canonical bytes are a FIXED POINT: read and written
 	// again they are themselves, or the oracle has two answers for one value.
-	if err := generateRewrites(u, m); err != nil {
+	if err := generateRewrites(u, m, jsonDir); err != nil {
 		return err
 	}
 
@@ -291,7 +310,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	// verdict must be the row's own standard verdict, or the row and the
 	// oracle disagree and the corpus cannot say which value is owed.
 	for _, h := range m.Hostiles {
-		if err := hostileValue(u, h); err != nil {
+		if err := hostileValue(u, h, jsonDir); err != nil {
 			return fmt.Errorf("%s: %w", h.Name, err)
 		}
 	}
@@ -366,7 +385,7 @@ func pruneValues(dir string, keep map[string]bool) error {
 
 // hostileValue reads one hostile tree's text with the oracle and writes the
 // value it leaves beside the tree.
-func hostileValue(u *units, h Hostile) error {
+func hostileValue(u *units, h Hostile, jsonDir string) error {
 	unit, err := u.get(h.Unit)
 	if err != nil {
 		return err
@@ -396,7 +415,11 @@ func hostileValue(u *units, h Hostile) error {
 	if verdict != h.Verdict() {
 		return fmt.Errorf("the oracle answers %s and the row says %s", verdict, h.Verdict())
 	}
-	return writeValue(h.Value, !h.Refused, func() ([]byte, error) { return model.Write(value) })
+	out, err := outPath(jsonDir, h.Value)
+	if err != nil {
+		return err
+	}
+	return writeValue(out, !h.Refused, func() ([]byte, error) { return model.Write(value) })
 }
 
 // readReports loads the generated expectations.
@@ -426,11 +449,15 @@ func readReports(path string) (map[string]Counts, error) {
 
 // generateRewrites writes every rewrite row's canonical bytes and removes a
 // canonical file no row names.
-func generateRewrites(u *units, m *Manifest) error {
+func generateRewrites(u *units, m *Manifest, jsonDir string) error {
 	keep := map[string]bool{}
 	dir := ""
 	for _, rw := range m.Rewrites {
-		dir = filepath.Dir(rw.Canonical)
+		out, err := outPath(jsonDir, rw.Canonical)
+		if err != nil {
+			return err
+		}
+		dir = filepath.Dir(out)
 		unit, err := u.get(rw.Unit)
 		if err != nil {
 			return err
@@ -453,7 +480,7 @@ func generateRewrites(u *units, m *Manifest) error {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-		if err := writeFileAtomic(rw.Canonical, canonical); err != nil {
+		if err := writeFileAtomic(out, canonical); err != nil {
 			return err
 		}
 		keep[filepath.Base(rw.Canonical)] = true
@@ -526,4 +553,26 @@ func checkHandText(c *compiler.Compiler, unit *ir.Unit, inst Instance, scratch s
 		return fmt.Errorf("%s: the hand-authored text packs to %d bytes that are not the instance's %d", inst.Name, len(back), len(wire))
 	}
 	return nil
+}
+
+// outPath is where generate writes one golden. The manifest names every golden
+// by its place in the corpus, under the directory that holds the corpus's text
+// directory, and generate writes the same relative path under the parent of
+// the jsonDir it was given. Over the corpus that is the golden's own place;
+// over a test's temporary jsonDir every byte lands in the temporary tree, and
+// nothing in the working tree moves.
+func outPath(jsonDir, canonical string) (string, error) {
+	base, err := filepath.Abs(filepath.Dir(defaultJSONDir))
+	if err != nil {
+		return "", err
+	}
+	abs, err := filepath.Abs(canonical)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(base, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s is outside the corpus directory %s", canonical, filepath.Dir(defaultJSONDir))
+	}
+	return filepath.Join(filepath.Dir(jsonDir), rel), nil
 }

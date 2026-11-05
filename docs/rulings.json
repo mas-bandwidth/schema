@@ -135,6 +135,26 @@
         "LoadMeasure and region sizes as compared numbers, including the wire fuzzer's EXACT-measure requirement",
         "the strict-reason surface's reason names, and every comparison of diagnostic text, field names or JSON error positions"
       ]
+    },
+    {
+      "id": "fixed-root-refuses-form1",
+      "date": "2026-11-03",
+      "quotes": [
+        "This is quite obvious. If we expect a fixed table, but it is not, refuse."
+      ],
+      "source": "relayed by Rowan from the live session, answering whether a reader at a declared fixed root reads a form-1 file (docs/SPEC-TABLES.md §3.4's \"THE READ SIDE STILL ACCEPTS BOTH\") or refuses it as previous_form (§2's \"NEITHER CLASS BORROWS THE OTHER'S FORM\"), two sentences written the same day. Every read at a fixed root that carries form 3 refuses form 1 as previous_form, and every write there writes form 3. This ruling makes nothing not-applicable.",
+      "earlier": [
+        {
+          "commit": "073c762a8358a976de705631e17586be1aa0eab6",
+          "date": "2026-09-09",
+          "message": "tables: THE FIRST BYTE — form 1 is the variable form, one header rule, and selection by the keyword"
+        },
+        {
+          "commit": "d6d7014c20d9acb25ce7c311bcecf064eff56e30",
+          "date": "2026-09-09",
+          "message": "docs: the three wires at the top of SPEC-TABLES (#824)"
+        }
+      ]
     }
   ]
 }
