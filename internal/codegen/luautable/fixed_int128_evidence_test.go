@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -198,8 +197,9 @@ func TestLuauFixedInt128HotPathMeasure(t *testing.T) {
 
 // _schemaFixedVariant returns the schema_fixed.luau content for a named
 // variant. The "after" variant is the current emitted runtime; the "before"
-// variant is the parent commit's runtime, which is exactly the change under
-// test (the +8 half reads) removed.
+// variant is the fixture testdata/schema_fixed_before.luau, the exact change
+// under test (the +8 half reads) removed, so the evidence does not depend on
+// any particular commit being present in the local history.
 // _repoRoot walks up from the test's working directory to the module root.
 func _repoRoot(t *testing.T) string {
 	t.Helper()
@@ -233,14 +233,13 @@ func _schemaFixedVariant(t *testing.T, tag string) string {
 	if tag != "before" {
 		t.Fatalf("unknown variant %q", tag)
 	}
-	gitPath := "internal/codegen/luautable/runtime/schema_fixed.luau"
-	cmd := exec.Command("git", "-C", root, "show", "cf181fb7b^:"+gitPath)
-	out, err := cmd.Output()
+	fixture := filepath.Join(root, "internal/codegen/luautable/testdata/schema_fixed_before.luau")
+	pre, err := os.ReadFile(fixture)
 	if err != nil {
-		t.Fatalf("read pre-change runtime (git show cf181fb7b^:%s): %v", gitPath, err)
+		t.Fatalf("read pre-change runtime fixture: %v", err)
 	}
-	if strings.TrimSpace(string(out)) == "" {
-		t.Fatal("pre-change runtime blob is empty")
+	if strings.TrimSpace(string(pre)) == "" {
+		t.Fatal("pre-change runtime fixture is empty")
 	}
-	return string(out)
+	return string(pre)
 }
