@@ -1587,6 +1587,7 @@ def map_key(body:Reader, k:FieldDescriptor, entry:Record) -> Value, bool, bool, 
         let kind = u8(scan)
         if id == map_key_id:
             if kind != want and widens(kind, want):
+                kind_bad = false
                 widened = true
                 if not scalar_at(scan, cell, k, want, kind):
                     return cell, false, kind_bad, widened
