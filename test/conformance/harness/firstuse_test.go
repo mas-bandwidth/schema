@@ -28,6 +28,9 @@ func TestTheIdTableIsFirstUseOrderAndNothingElse(t *testing.T) {
 			t.Errorf("%s: %v", inst.Name, err)
 			continue
 		}
+		if len(data) == 0 || data[0] != 1 {
+			continue // a declared fixed root writes form 3, which has no id table (§3.4)
+		}
 		f := frameWire(data)
 		if len(f.entries) == 0 {
 			continue // a wire that names no id at all: nothing to order

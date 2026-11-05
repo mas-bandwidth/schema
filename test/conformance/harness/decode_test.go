@@ -209,6 +209,9 @@ func TestReportRowsDecodeThroughTheEngine(t *testing.T) {
 		}
 		if sig, pinnedRow := pinnedPresence[rc.Name]; pinnedRow {
 			seen[rc.Name] = true
+			if want.Refused || want.Malformed {
+				continue // a refused row leaves no value, so it pins no presence
+			}
 			checkSignature(t, rc.Name, sig, optionalSignature(inst))
 		}
 	}

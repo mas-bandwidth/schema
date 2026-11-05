@@ -1362,7 +1362,10 @@ rewrite union_arm_zero_in_field tblr1 CfgVar testdata/wire/tables/framing/union_
 # the canonical bytes back. Fields out of declaration order with the id table
 # no longer in first-use order; the id table reversed and every reference
 # renumbered; and a field written twice, the earlier occurrence holding another
-# value, which the last occurrence overrides (§3).
+# value, which the last occurrence overrides (§3). These are form-1 grammar at
+# a declared fixed root, which the strict read refuses before a field
+# (docs/SPEC-TABLES.md §3.4, rulings strict-only-read), so a read that refuses
+# has no rewrite row (the surface test holds that).
 
 # THE WRITE-ALGORITHM EDGES (docs/SPEC-TABLES.md §22): one value per degree of
 # freedom a writer has, each a trap for one wrong implementation of it. Map keys

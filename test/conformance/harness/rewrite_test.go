@@ -76,31 +76,18 @@ func TestRewriteCanonicalBytesAreTheOraclesFixedPoint(t *testing.T) {
 	}
 }
 
-// A REWRITE ROW THAT CHANGES NOTHING TESTS NOTHING about canonicalization, so
-// the hand-built rows must be inputs that are NOT already canonical.
-func TestHandBuiltRewriteInputsAreNotCanonical(t *testing.T) {
+// A READ THAT REFUSES HAS NO REWRITE ROW (docs/SPEC-TABLES.md §22.7): the
+// hand-built non-canonical spellings are form-1 grammar at a declared fixed
+// root, which the strict read refuses before a field (§3.4), so the surface
+// must not name them and no leg is asked to write back a value no read leaves.
+func TestHandBuiltRefusedInputsHaveNoRewriteRow(t *testing.T) {
 	m, _, _ := corpus(t)
 	for _, name := range []string{"rewrite_fields_reversed", "rewrite_ids_reversed", "rewrite_field_twice"} {
-		var rw *RewriteCase
-		for i := range m.Rewrites {
-			if m.Rewrites[i].Name == name {
-				rw = &m.Rewrites[i]
+		for _, rw := range m.Rewrites {
+			if rw.Name == name {
+				t.Errorf("rewrite %s names a form-1 fixed-root input that the strict read refuses", name)
 			}
-		}
-		if rw == nil {
-			t.Errorf("the manifest names no rewrite row %s", name)
-			continue
-		}
-		input, err := os.ReadFile(rw.Wire)
-		if err != nil {
-			t.Fatal(err)
-		}
-		canonical, err := os.ReadFile(rw.Canonical)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if bytes.Equal(input, canonical) {
-			t.Errorf("%s: the input is already canonical, so the row holds no writer to anything", name)
 		}
 	}
 }
+

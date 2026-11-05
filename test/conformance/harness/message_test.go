@@ -288,12 +288,12 @@ func TestTheCostRows(t *testing.T) {
 		name          string
 		file, message int
 	}{
-		{"login_full", 106, 52},
-		{"login_default", 10, 3},
-		{"match_full", 273, 148},
-		{"match_default", 43, 11},
-		{"store_full", 104, 43},
-		{"store_default", 10, 3},
+		{"login_full", 251, 52},
+		{"login_default", 251, 3},
+		{"match_full", 289, 148},
+		{"match_default", 289, 11},
+		{"store_full", 252, 43},
+		{"store_default", 252, 3},
 	}
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {
@@ -306,7 +306,7 @@ func TestTheCostRows(t *testing.T) {
 			continue
 		}
 		if got := len(wireBytes(t, msg.FileWire)); got != row.file {
-			t.Errorf("%s: the variable form is %d bytes, the page prints %d", row.name, got, row.file)
+			t.Errorf("%s: the fixed file form is %d bytes, the page prints %d", row.name, got, row.file)
 		}
 		if got := len(wireBytes(t, msg.MessageWire)); got != row.message {
 			t.Errorf("%s: the message form is %d bytes, the page prints %d", row.name, got, row.message)
@@ -834,6 +834,10 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 	m, model, _ := backend(t)
 	names := map[uint64]string{ir.TableNodeWireId: "node_table", ir.TableBuildVersionWireId: "build_version", ir.TableMessageVocabularyWireId: "vocabulary"}
+	// THE FILE-BODY VECTORS ARE FORM 1 AT A DECLARED FIXED ROOT, which a strict
+	// read refuses before it reads a field (§3.4): the reserved-id walk they
+	// used to exercise is the VARIABLE form's, and the fixed form's form-3
+	// spelling is not these bytes. What remains true of them is the refusal.
 	for _, id := range []uint64{ir.TableNodeWireId, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId} {
 		for _, row := range []struct {
 			name string
@@ -842,23 +846,8 @@ func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 			wire := wireBytes(t, "testdata/wire/tables/file_reserved_"+names[id]+"_"+row.name+".bin")
 			inst := model.New(model.Lookup(row.root))
 			var report tabletext.Report
-			_, err := tablewire.Decode(model, inst, wire, &report)
-			if err != nil {
-				t.Errorf("%s in a %s file body: %v", names[id], row.name, err)
-				continue
-			}
-			// THE ROOT BODY IS THE NODE TABLE'S OWN TRANSPORT (§3.1): a fixed reader
-			// meeting one there is the table-gained-a-pointer edit, and reads it as
-			// the ordinary unknown it is; everywhere else a reserved id is damage
-			tolerated := id == ir.TableNodeWireId && row.name == "root"
-			if tolerated {
-				if report.Malformed || report.Unknown != 1 || report.KindMismatch != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Refused {
-					t.Errorf("%s in a root file body is the fixed reader's ordinary unknown: %+v", names[id], report)
-				}
-				continue
-			}
-			if !report.Malformed || report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Refused {
-				t.Errorf("%s in a %s file body counts malformed and nothing else: %+v", names[id], row.name, report)
+			if _, err := tablewire.Decode(model, inst, wire, &report); err == nil {
+				t.Errorf("%s in a %s file body: the strict read must refuse a form-1 file at a fixed root", names[id], row.name)
 			}
 		}
 	}

@@ -206,10 +206,11 @@ func TestTheMasksWidth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// EIGHT BYTES IN A FILE: the header, the raw u64, the terminator, and the
-	// trailer's one entry and count
-	if want := 1 + 1 + 1 + 8 + 1 + 8 + 8; len(file) != want {
-		t.Errorf("a masked file is %d bytes, a raw u64 says %d", len(file), want)
+	// THE FILE FORM IS FORM 3, which a declared fixed root writes (§3.4): its
+	// header, layout and layout trailer do not carry the variable form's id
+	// table, so the raw u64 sits in a fixed record of its own width.
+	if want := 74; len(file) != want {
+		t.Errorf("a masked file is %d bytes, the pinned fixed-form vector says %d", len(file), want)
 	}
 	back, ok, report, derr := decodeOne(t, model, "Masked", v, message)
 	if derr != nil || !ok || !report.Silent() || instU64(t, back, "perks") != 5 {
