@@ -1749,10 +1749,53 @@ func zeroLoad(t *testing.T, runner EvoRunner, u *ir.Unit, root string, lineage m
 // RunEvolutionSuite drives the 16 non-value fixed-table rows (fixed-file-roundtrip
 // and the 15 evolution/layout/plan/lineage/file rows) against runner.
 func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
-	SetMemoryCeiling(t)
+	runEvolutionSuite(t, repoRoot, runner, nil)
+}
+
+// RunEvolutionRows runs only the named shared proof rows. The default
+// RunEvolutionSuite still runs every row and retains its full-suite memory
+// ceiling. Selected rows keep the same assertions and controls as the full
+// suite; they omit unrelated rows and their resource requirements.
+func RunEvolutionRows(t *testing.T, repoRoot string, runner EvoRunner, rows ...string) {
+	t.Helper()
+	valid := map[string]bool{
+		"fixed-file-roundtrip": true, "file-envelope": true, "batch-capacity": true,
+		"plan-selection": true, "compiled-plans": true, "definition-hash": true,
+		"fixed-closure": true, "retirement": true, "retired-runtime": true,
+		"optional-values": true, "field-evolution": true, "live-extents": true,
+		"writing": true, "union-guards": true, "plan-execution": true,
+		"interoperability": true,
+	}
+	if len(rows) == 0 {
+		t.Fatal("RunEvolutionRows requires at least one row")
+	}
+	selected := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		if !valid[row] {
+			t.Fatalf("RunEvolutionRows: unknown row %q", row)
+		}
+		selected[row] = true
+	}
+	runEvolutionSuite(t, repoRoot, runner, selected)
+}
+
+// runRow registers one shared proof row when it is selected. A nil selection
+// means the full suite and registers every row; a selected-row run registers
+// only its rows, so unrelated rows report nothing rather than a skip.
+func runRow(t *testing.T, selected map[string]bool, name string, fn func(*testing.T)) {
+	if selected != nil && !selected[name] {
+		return
+	}
+	t.Run(name, fn)
+}
+
+func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected map[string]bool) {
+	if selected == nil {
+		SetMemoryCeiling(t)
+	}
 
 	// 34. fixed-file-roundtrip
-	t.Run("fixed-file-roundtrip", func(t *testing.T) {
+	runRow(t, selected, "fixed-file-roundtrip", func(t *testing.T) {
 		t.Parallel()
 		corpus, records := findFixedCorpus(t, repoRoot)
 		for _, v := range fixedCorpusVectors {
@@ -1778,7 +1821,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 35. file-envelope (F1, F2, F3, F4, F7, F8, F12)
-	t.Run("file-envelope", func(t *testing.T) {
+	runRow(t, selected, "file-envelope", func(t *testing.T) {
 		t.Parallel()
 		corpus, _ := findFixedCorpus(t, repoRoot)
 		oracle, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
@@ -1819,7 +1862,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 36. batch-capacity (F9)
-	t.Run("batch-capacity", func(t *testing.T) {
+	runRow(t, selected, "batch-capacity", func(t *testing.T) {
 		t.Parallel()
 		u := ParseCheckUnit(t, "package probe\nfixed table Point {\n    x int32 = 1\n    y int32 = 2\n}\n")
 		eOwn, _ := LineageEntryOf(u, "Point")
@@ -1857,7 +1900,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 37. plan-selection (R7, R8, R9, F10, R12)
-	t.Run("plan-selection", func(t *testing.T) {
+	runRow(t, selected, "plan-selection", func(t *testing.T) {
 		t.Parallel()
 		corpus, _ := findFixedCorpus(t, repoRoot)
 		oracle, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
@@ -1914,7 +1957,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 38. compiled-plans (R1, R2, R23, F11, R25, R26, W14)
-	t.Run("compiled-plans", func(t *testing.T) {
+	runRow(t, selected, "compiled-plans", func(t *testing.T) {
 		t.Parallel()
 		u1 := ParseCheckUnit(t, "package probe\nfixed table Lineage {\n    a uint16 = 1\n}\n")
 		u2 := ParseCheckUnit(t, "package probe\nfixed table Lineage {\n    a uint32 = 1\n    b int32 = 10\n}\n")
@@ -2030,7 +2073,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 39. definition-hash (R4, R5, W11, W12)
-	t.Run("definition-hash", func(t *testing.T) {
+	runRow(t, selected, "definition-hash", func(t *testing.T) {
 		t.Parallel()
 		const schema = "package probe\nfixed table T {\n    b bytes(6)\n    x int32 = 1 | min = -10, max = 10\n    f float32 = 0.0 | min = -1.0, max = 1.0, resolution = 0.25\n}\n"
 		u := ParseCheckUnit(t, schema)
@@ -2088,7 +2131,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 40. fixed-closure (F5, F6, R5, R6, R14, R16, R22)
-	t.Run("fixed-closure", func(t *testing.T) {
+	runRow(t, selected, "fixed-closure", func(t *testing.T) {
 		t.Parallel()
 
 		t.Run("R6", func(t *testing.T) {
@@ -2221,7 +2264,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 41. retirement (R3, R4)
-	t.Run("retirement", func(t *testing.T) {
+	runRow(t, selected, "retirement", func(t *testing.T) {
 		t.Parallel()
 		corpus, _ := findFixedCorpus(t, repoRoot)
 		older := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_floor.schema")
@@ -2259,7 +2302,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 42. retired-runtime (R10, R15)
-	t.Run("retired-runtime", func(t *testing.T) {
+	runRow(t, selected, "retired-runtime", func(t *testing.T) {
 		t.Parallel()
 		corpus, _ := findFixedCorpus(t, repoRoot)
 		for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
@@ -2283,7 +2326,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 43. optional-values (E5, W2)
-	t.Run("optional-values", func(t *testing.T) {
+	runRow(t, selected, "optional-values", func(t *testing.T) {
 		t.Parallel()
 		const types = "package probe\ntype Inner {\n    a int32 = 5\n    b int32 = 6\n}\n"
 		u := ParseCheckUnit(t, types+"fixed table T {\n    plain Inner\n    opt ?Inner\n}\n")
@@ -2316,7 +2359,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 44. field-evolution (E6, E8, R19)
-	t.Run("field-evolution", func(t *testing.T) {
+	runRow(t, selected, "field-evolution", func(t *testing.T) {
 		t.Parallel()
 		corpus, _ := findFixedCorpus(t, repoRoot)
 		manifest := readFixedManifest(t, corpus)
@@ -2378,7 +2421,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 45. live-extents (C14, W4, W9)
-	t.Run("live-extents", func(t *testing.T) {
+	runRow(t, selected, "live-extents", func(t *testing.T) {
 		t.Parallel()
 		u := ParseCheckUnit(t, "package probe\nenum Small { One, Two }\nfixed table T {\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n}\n")
 		file, why := runner.SaveCustom(t, u, "T", "live_extents_base")
@@ -2409,7 +2452,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 46. writing (W1, W3, W5, W8)
-	t.Run("writing", func(t *testing.T) {
+	runRow(t, selected, "writing", func(t *testing.T) {
 		t.Parallel()
 		u := ParseCheckUnit(t, "package probe\nunion Pick {\n    narrow uint8\n    wide uint64\n}\nfixed table T {\n    arr [..3]uint16\n    s string(4)\n    b bytes(4)\n    pick Pick\n}\n")
 		file, why := runner.SaveCustom(t, u, "T", "writing_slack_batch")
@@ -2437,7 +2480,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 47. union-guards (W7, W16, R28)
-	t.Run("union-guards", func(t *testing.T) {
+	runRow(t, selected, "union-guards", func(t *testing.T) {
 		t.Parallel()
 		const guardOld = "package probe\nunion Inner\n{\n    x int16\n    y int32\n}\nunion Outer\n{\n    inner Inner\n    plain int32\n}\nfixed table T\n{\n    outer Outer\n    tail int32 = 9\n}\n"
 		uOld := ParseCheckUnit(t, guardOld)
@@ -2467,7 +2510,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 48. plan-execution (W6, P1)
-	t.Run("plan-execution", func(t *testing.T) {
+	runRow(t, selected, "plan-execution", func(t *testing.T) {
 		t.Parallel()
 		const planSchema = "package probe\nenum Kind { A, B }\nunion Choice\n{\n    n int32\n    s string(4)\n}\nfixed table T\n{\n    head int32 = 1\n    opt ?int32\n    arr [..2]Kind\n    ch Choice\n}\n"
 		u := ParseCheckUnit(t, planSchema)
@@ -2504,7 +2547,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 	})
 
 	// 49. interoperability (W13, P2, R27)
-	t.Run("interoperability", func(t *testing.T) {
+	runRow(t, selected, "interoperability", func(t *testing.T) {
 		t.Parallel()
 		corpus, records := findFixedCorpus(t, repoRoot)
 		manifest := readFixedManifest(t, corpus)
