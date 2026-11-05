@@ -79,6 +79,11 @@ type Group struct {
 	// Squirrel is the pinned interpreter's version (make/squirrel.mk builds
 	// it with `make dist-squirrel`); the row's install step keys on it.
 	Squirrel string `json:"squirrel,omitempty"`
+	// Python says the row needs the Python leg's pins (make/python-toolchain.mk:
+	// the two CPython interpreters and mypy), which .github/actions/python
+	// restores or builds into dist/. Like moo it is a marker, "pin", and never a
+	// version: the versions and their sha256 live in make/python-toolchain.mk.
+	Python string `json:"python,omitempty"`
 	// ClangFormat says the row needs the pinned clang-format (make/c.mk's
 	// CLANG_FORMAT_PIN), which the row installs from PyPI as ci-fast's C and
 	// C++ legs do. Like dotnet it is a marker, "pin", and never a version: the
@@ -224,6 +229,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		Moo         string `json:"moo"`
 		Lobster     string `json:"lobster"`
 		Squirrel    string `json:"squirrel"`
+		Python      string `json:"python"`
 		ClangFormat string `json:"clang_format"`
 	}
 	if when != whenPullRequest && when != whenNightly {
@@ -249,6 +255,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			Moo:         g.Moo,
 			Lobster:     g.Lobster,
 			Squirrel:    g.Squirrel,
+			Python:      g.Python,
 			ClangFormat: g.ClangFormat,
 		})
 	}
