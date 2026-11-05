@@ -24,15 +24,25 @@
 -- cook is a byte-swap of every scalar, written once. A counted array writes
 -- all N slots; a dead slot carries what the value's storage carries (§7.2).
 --
--- A list rides in its holder's EXTENT (§2.9, §7.2): the node is its record,
--- rounded to the region's alignment floor, then the arrays of the lists it
--- holds by value, carved by one pre-order walk that measures and writes (the
--- same walk with the writing half switched off, so the two cannot drift).
+-- A list and a map ride in their holder's EXTENT (§2.8, §2.9, §7.2): the
+-- node is its record, rounded to the region's alignment floor, then the
+-- arrays of the lists and the entry arrays of the maps it holds by value,
+-- carved by one pre-order walk that measures and writes (the same walk with
+-- the writing half switched off, so the two cannot drift). A map's entries
+-- are written in ASCENDING KEY ORDER, the order the save numbers them in and
+-- a cook's Find searches (§2.8, §7.4).
+--
+-- An UNBOUNDED TEXT value or key (§2.13.1) rides in the same extent: a blob
+-- record (u32 length, u32 zero, the bytes, a zero byte) at eight-byte
+-- alignment, rounded to the region's alignment, carved where the walk meets
+-- its slot; the slot is the self-relative delta to it, and an empty string's
+-- slot is null.
 --
 -- A float whose bits are a NaN or an infinity is refused as non_finite_float
 -- naming the field (§3.3); a reference the numbering does not carry is
--- refused as unnumbered_reference, a data cycle as cycle, and a map-bearing
--- value as map_in_cook, as the tool refuses it (§7.2).
+-- refused as unnumbered_reference, a data cycle as cycle; a map whose keys
+-- repeat, and an absent or unguarded field, or a counted array's dead slot,
+-- that holds extent the walk does not reach, as invalid_value (§7.4, §7.6).
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
@@ -147,12 +157,21 @@ local unionExtent: { [string]: boolean } = {}
 local hasExtentRecord: any
 local hasExtentUnion: any
 
--- a by-value container beneath a field or an element: a nested record or a
--- union whose own storage holds a list
+-- an unbounded text (§2.13.1): a field or a `?` element's value (text), or a
+-- plain text list's element (str at bound 0, as table_cookread.moo reads it)
+local function unboundedText(e: any): boolean
+	return e.s == "text" or (e.s == "str" and not e.wide and (e.bound or 0) == 0)
+end
+
+-- a by-value container beneath a field or an element: a nested record, a
+-- union whose own storage holds a list, or an unbounded text's blob record
 local function fieldExtent(fd: any): boolean
 	local e = if fd.s == "arr" then fd.e else fd
 	if e == nil then
 		return false
+	end
+	if unboundedText(e) then
+		return true
 	end
 	if e.s == "tab" then
 		return hasExtentRecord(S.lookup(e.t))
@@ -286,6 +305,9 @@ writeElement = function(ctx: any, owner: string, fd: any, e: any, at: number, w:
 		return writeRecord(ctx, d, at, x or d.new())
 	elseif s == "union" then
 		return writeUnion(ctx, e.t, at, x)
+	elseif unboundedText(e) then
+		-- the slot is the extent carve's, written beside its blob record
+		return true
 	elseif s == "str" then
 		return writeText(ctx, owner, fd, e, at, x)
 	end
@@ -319,10 +341,11 @@ writeField = function(ctx: any, owner: string, fd: any, l: any, base: number, v:
 			return fail(ctx, "invalid_value", owner, fd)
 		end
 		if ctx.big then
+			-- each UTF-16 code unit is a scalar, its high byte first
 			for i = 0, n - 1 do
 				local u = buffer.readu16(src, i * 2)
-				buffer.writeu8(b, at + i * 2, u % 256)
-				buffer.writeu8(b, at + i * 2 + 1, u // 256)
+				buffer.writeu8(b, at + i * 2, u // 256)
+				buffer.writeu8(b, at + i * 2 + 1, u % 256)
 			end
 		elseif n > 0 then
 			buffer.copy(b, at, src, 0, n * 2)
@@ -346,11 +369,8 @@ writeField = function(ctx: any, owner: string, fd: any, l: any, base: number, v:
 		end
 		putUN(ctx, base + l.p[2], 4, n)
 	elseif s == "text" then
-		-- an unbounded text is a blob node no walk numbers (§2.13): only null rides
-		if v[slot] ~= nil then
-			return fail(ctx, "unnumbered_reference", owner, fd)
-		end
-		putNum64(ctx, at, 0)
+		-- the slot is the extent carve's, written beside its blob record
+		return true
 	elseif s == "sblob" or s == "bblob" or s == "ptr" then
 		return writeRef(ctx, owner, fd, at, v[slot])
 	elseif s == "tab" then
@@ -426,9 +446,35 @@ end
 local carveRecord: any
 local carveField: any
 
--- one by-value element or nested value: the lists below it
-local function carveElement(c: any, owner: string, e: any, at: number, x: any): boolean
-	if e.s == "tab" then
+-- one unbounded text (§2.13.1): its blob record at eight-byte alignment,
+-- rounded to the region's alignment, and the slot's self-relative delta to
+-- it; an empty string's slot is null and takes no extent
+local function carveText(c: any, owner: string, fd: any, at: number, x: any): boolean
+	if x == nil or x == "" then
+		return true
+	end
+	if type(x) ~= "string" then
+		return fail(c.ctx, "invalid_value", owner, fd)
+	end
+	local n = #x
+	c.at = align_up(c.at, 8)
+	local start = c.at
+	c.at += align_up(8 + n + 1, C.regionAlign())
+	if c.write then
+		local ctx = c.ctx
+		local blob = c.extentAt + start
+		putNum64(ctx, at, blob - at)
+		putUN(ctx, blob, 4, n)
+		buffer.writestring(ctx.b, blob + 8, x, n)
+	end
+	return true
+end
+
+-- one by-value element or nested value: the lists below it, or its blob record
+local function carveElement(c: any, owner: string, fd: any, e: any, at: number, x: any): boolean
+	if unboundedText(e) then
+		return carveText(c, owner, fd, at, x)
+	elseif e.s == "tab" then
 		local d = S.lookup(e.t)
 		return carveRecord(c, at, d, x or d.new())
 	elseif e.s == "union" then
@@ -447,6 +493,9 @@ local function carveElement(c: any, owner: string, e: any, at: number, x: any): 
 	return true
 end
 
+-- the int32 extent cap a list's or a map's count rides in (§2.2)
+local COUNT_CAP = 0x7FFFFFFF
+
 -- one unbounded array: its bytes first, at the element's alignment, the
 -- slot's sixteen bytes, then element by element in index order the arrays of
 -- any list an element holds by value
@@ -459,6 +508,9 @@ local function carveList(c: any, owner: string, fd: any, l: any, base: number, v
 		count = buffer.len(val)
 	elseif type(val) == "table" then
 		count = #val
+	end
+	if count > COUNT_CAP then
+		return fail(ctx, "invalid_value", owner, fd)
 	end
 	local size = l.elem
 	c.at = align_up(c.at, l.ealign)
@@ -479,7 +531,87 @@ local function carveList(c: any, owner: string, fd: any, l: any, base: number, v
 	end
 	if fieldExtent(fd) then
 		for i = 1, count do
-			if not carveElement(c, owner, fd.e, c.extentAt + start + (i - 1) * size, val[i]) then
+			if not carveElement(c, owner, fd, fd.e, c.extentAt + start + (i - 1) * size, val[i]) then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+-- a map's entries in ASCENDING KEY ORDER (§2.8), or nil and the refusal: a
+-- value that is not a list of entry records, and a key two entries carry,
+-- are outside the cook's contract, because a cook whose keys repeat is one
+-- Find cannot search (§7.4)
+local function mapEntries(ctx: any, owner: string, fd: any, val: any): { any }?
+	if val == nil then
+		return {}
+	end
+	if type(val) ~= "table" then
+		fail(ctx, "invalid_value", owner, fd)
+		return nil
+	end
+	if #val > COUNT_CAP then
+		fail(ctx, "invalid_value", owner, fd)
+		return nil
+	end
+	for _, ev in val do
+		if type(ev) ~= "table" then
+			fail(ctx, "invalid_value", owner, fd)
+			return nil
+		end
+	end
+	local entry = S.lookup(fd.t)
+	local keyfd: any = nil
+	for _, f in entry.fields do
+		if f.id == V.MapKeyId then
+			keyfd = f
+		end
+	end
+	local ok, order = pcall(Save.mapOrder, fd, val)
+	if not ok or keyfd == nil then
+		fail(ctx, "invalid_value", owner, fd)
+		return nil
+	end
+	for i = 2, #order do
+		if not Save.keyLess(keyfd, order[i - 1], order[i]) then
+			fail(ctx, "invalid_value", owner, fd)
+			return nil
+		end
+	end
+	return order
+end
+
+-- one map (§2.8): the entry array first, count entries at the entry's
+-- alignment in ascending key order, the slot's sixteen bytes, then entry by
+-- entry the arrays of any list or map an entry holds by value
+local function carveMap(c: any, owner: string, fd: any, l: any, base: number, v: any): boolean
+	local ctx = c.ctx
+	local at = base + l.p[1]
+	local order = mapEntries(ctx, owner, fd, v[fd.slot])
+	if order == nil then
+		return false
+	end
+	local d = S.lookup(fd.t)
+	local count = #order
+	local size = l.elem
+	c.at = align_up(c.at, l.ealign)
+	local start = c.at
+	c.at += count * size
+	if c.write then
+		local array = c.extentAt + start
+		-- an empty map's reference is null in every encoding (§2.8)
+		putNum64(ctx, at, if count > 0 then array - at else 0)
+		putUN(ctx, at + 8, 4, count)
+		for i = 1, count do
+			if not writeRecord(ctx, d, array + (i - 1) * size, order[i]) then
+				return false
+			end
+		end
+	end
+	if hasExtentRecord(d) then
+		for i = 1, count do
+			if not carveRecord(c, c.extentAt + start + (i - 1) * size, d, order[i]) then
 				return false
 			end
 		end
@@ -489,7 +621,7 @@ end
 
 carveField = function(c: any, owner: string, fd: any, l: any, base: number, v: any): boolean
 	if fd.s == "map" then
-		return fail(c.ctx, "map_in_cook", owner, fd)
+		return carveMap(c, owner, fd, l, base, v)
 	end
 	if isList(fd) then
 		return carveList(c, owner, fd, l, base, v)
@@ -500,7 +632,7 @@ carveField = function(c: any, owner: string, fd: any, l: any, base: number, v: a
 	local at = base + l.p[1]
 	local val = v[fd.slot]
 	if fd.s ~= "arr" then
-		return carveElement(c, owner, fd, at, val)
+		return carveElement(c, owner, fd, fd, at, val)
 	end
 	local n = fd.bound
 	local live = n
@@ -508,7 +640,7 @@ carveField = function(c: any, owner: string, fd: any, l: any, base: number, v: a
 		live = math.min(v[fd.slot .. "Count"] or 0, n)
 	end
 	for i = 1, live do
-		if not carveElement(c, owner, fd.e, at + (i - 1) * l.elem, val[i]) then
+		if not carveElement(c, owner, fd, fd.e, at + (i - 1) * l.elem, val[i]) then
 			return false
 		end
 	end
@@ -517,7 +649,7 @@ carveField = function(c: any, owner: string, fd: any, l: any, base: number, v: a
 	-- one names bytes the region will not hold
 	for i = live + 1, n do
 		local probe = { ctx = c.ctx, write = false, extentAt = 0, at = 0 }
-		if not carveElement(probe, owner, fd.e, 0, val[i]) then
+		if not carveElement(probe, owner, fd, fd.e, 0, val[i]) then
 			return false
 		end
 		if probe.at ~= 0 then
@@ -527,14 +659,28 @@ carveField = function(c: any, owner: string, fd: any, l: any, base: number, v: a
 	return true
 end
 
+-- one record's fields in declaration order. A field the save elides (an
+-- absent optional, a field under a false guard) is not reached: its slot
+-- stays zero, and storage in it that would take extent is refused (§2.3,
+-- §7.6), as the counted array's dead slot is
 carveRecord = function(c: any, at: number, d: any, v: any): boolean
 	if v == nil then
 		return true
 	end
 	local layout = C.layout(d.name)
 	for i, fd in d.fields do
-		if not carveField(c, d.name, fd, layout.fields[i], at, v) then
-			return false
+		if Save.guardHolds(fd, v) and (fd.present == nil or v[fd.present] == true) then
+			if not carveField(c, d.name, fd, layout.fields[i], at, v) then
+				return false
+			end
+		else
+			local probe = { ctx = c.ctx, write = false, extentAt = 0, at = 0 }
+			if not carveField(probe, d.name, fd, layout.fields[i], 0, v) then
+				return false
+			end
+			if probe.at ~= 0 then
+				return fail(c.ctx, "invalid_value", d.name, fd)
+			end
 		end
 	end
 	return true

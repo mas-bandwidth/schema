@@ -47,7 +47,7 @@ func tableRetainDepth(u *ir.Unit, closure map[string]bool) int {
 	}
 
 	fieldDepth = func(f *ir.Field, open map[string]bool) int {
-		if f.Type.Pointer {
+		if f.Type.Pointer || ir.TextListPlain(f) {
 			return 0 // a pointer target is a NODE and takes a first step of its own
 		}
 		if f.IsMap() {
@@ -1680,7 +1680,7 @@ func fieldHoldsBodies(f *ir.Field) bool {
 	if f.IsMap() {
 		return true
 	}
-	if f.Type.Kind != ir.TNamed {
+	if f.Type.Kind != ir.TNamed || ir.TextListPlain(f) {
 		return false
 	}
 	switch f.Type.Ref.(type) {

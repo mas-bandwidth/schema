@@ -25,6 +25,10 @@
 #   cook-order-word  the same for the cook's header word (§7): cook-forgery and
 #                cook-reason go red (cook_byte_order_*); cook-foreign stays
 #                green with every other surface
+#   cook-numbering  the region writer numbers a node every time an edge
+#                reaches it, not the first time only (§3.1, §7.6): cook-write
+#                goes red on every graph that shares a node or a blob; every
+#                read surface stays green
 #
 # usage: test/conformance/goose/negative-control-accel <mode>
 # The working directory is the repository root.
@@ -65,8 +69,15 @@ cook-order-word)
 	red="cook-forgery cook-reason"
 	green="cook cook-foreign cook-write block block-foreign block-dump forgery block-reason"
 	;;
+cook-numbering)
+	file=cook_write.goose
+	from='    if c.index[wire] != 0 { return; }'
+	to=''
+	red="cook-write"
+	green="cook cook-foreign cook-forgery cook-reason block block-foreign block-dump forgery block-reason"
+	;;
 *)
-	echo "usage: $0 cook-open|block-pitch|cook-order|block-order|cook-order-word" >&2
+	echo "usage: $0 cook-open|block-pitch|cook-order|block-order|cook-order-word|cook-numbering" >&2
 	exit 2
 	;;
 esac

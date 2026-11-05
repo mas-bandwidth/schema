@@ -19,7 +19,10 @@
 # conformance-negative-control-lua-framing  the id table's 4096-entry bound
 #                                        lifted (lua / framing red on
 #                                        frame_entries_4097, wire and report green)
-.PHONY: conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing
+# conformance-negative-control-lua-cycle  the cycle check taken out (lua /
+#                                        framing red on node_cycle_*, wire and
+#                                        report green)
+.PHONY: conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle
 conformance-negative-control-lua: build/conformance-harness
 	sh test/conformance/lua/negative-control report
 
@@ -27,3 +30,5 @@ conformance-negative-control-lua-walk: build/conformance-harness
 	sh test/conformance/lua/negative-control walk
 conformance-negative-control-lua-framing: build/conformance-harness
 	sh test/conformance/lua/negative-control framing
+conformance-negative-control-lua-cycle: build/conformance-harness
+	sh test/conformance/lua/negative-control cycle

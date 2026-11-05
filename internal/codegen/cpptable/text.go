@@ -690,8 +690,179 @@ inline std::string tableTextFormCanonFloat( const std::string & token, bool wide
     return std::string( buffer );
 }
 
+inline bool tableTextFormTimestampParse( const std::string & s, int64_t * out )
+{
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    int index = 0;              // 0..18 over "YYYY-MM-DDTHH:MM:SS"
+    int64_t fraction = 0;
+    int digits = 0;
+    int offset_sign = 0, offset_hour = 0, offset_minute = 0;
+    int phase = 0;              // 0 fixed, 1 after seconds, 2 fraction, 4 offset, 10 done
+    for ( size_t k = 0; k < s.size(); k++ )
+    {
+        const char c = s[k];
+        if ( (unsigned char) c == 0 || (unsigned char) c >= 0x80 ) { return false; }
+        if ( phase == 0 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( index == 4 || index == 7 )
+            {
+                if ( c != '-' ) { return false; }
+            }
+            else if ( index == 10 )
+            {
+                if ( c != 'T' && c != 't' ) { return false; }
+            }
+            else if ( index == 13 || index == 16 )
+            {
+                if ( c != ':' ) { return false; }
+            }
+            else
+            {
+                if ( digit < 0 ) { return false; }
+                if ( index < 4 ) { year = year * 10 + digit; }
+                else if ( index < 7 ) { month = month * 10 + digit; }
+                else if ( index < 10 ) { day = day * 10 + digit; }
+                else if ( index < 13 ) { hour = hour * 10 + digit; }
+                else if ( index < 16 ) { minute = minute * 10 + digit; }
+                else
+                {
+                    second = second * 10 + digit;
+                }
+            }
+            index++;
+            if ( index == 19 ) { phase = 1; }
+            continue;
+        }
+        if ( phase == 1 )
+        {
+            if ( c == '.' )
+            {
+                phase = 2;
+                continue;
+            }
+            if ( c == 'Z' || c == 'z' )
+            {
+                phase = 10;
+                continue;
+            }
+            if ( c == '+' || c == '-' )
+            {
+                offset_sign = c == '-' ? -1 : 1;
+                phase = 4;
+                continue;
+            }
+            return false;
+        }
+        if ( phase == 2 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit >= 0 )
+            {
+                if ( digits < 9 ) { fraction = fraction * 10 + digit; }
+                digits++;
+                continue;
+            }
+            if ( digits == 0 ) { return false; }
+            if ( c == 'Z' || c == 'z' )
+            {
+                phase = 10;
+                continue;
+            }
+            if ( c == '+' || c == '-' )
+            {
+                offset_sign = c == '-' ? -1 : 1;
+                phase = 4;
+                continue;
+            }
+            return false;
+        }
+        if ( phase == 4 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_hour = digit * 10;
+            phase = 5;
+            continue;
+        }
+        if ( phase == 5 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_hour += digit;
+            phase = 6;
+            continue;
+        }
+        if ( phase == 6 )
+        {
+            if ( c != ':' ) { return false; }
+            phase = 7;
+            continue;
+        }
+        if ( phase == 7 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_minute = digit * 10;
+            phase = 8;
+            continue;
+        }
+        if ( phase == 8 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_minute += digit;
+            phase = 10;
+            continue;
+        }
+        return false; // anything after the production
+    }
+    if ( phase != 10 ) { return false; }
+    if ( month < 1 || month > 12 ) { return false; }
+    if ( day < 1 || day > TableJsonTimestampMonthDays( year, month ) ) { return false; }
+    if ( hour > 23 || minute > 59 || second > 59 ) { return false; }
+    if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return false; }
+    for ( ; digits < 9; digits++ ) { fraction *= 10; }
+    const int64_t offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    const int64_t seconds = TableJsonTimestampDays( year, month, day ) * 86400 +
+        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+    const int64_t min_second = -9223372037LL;
+    const int64_t max_second = 9223372036LL;
+    const int64_t min_nanos = 145224192LL;
+    const int64_t max_nanos = 854775807LL;
+    if ( seconds < min_second || seconds > max_second ) { return false; }
+    if ( seconds == min_second && fraction < min_nanos ) { return false; }
+    if ( seconds == max_second && fraction > max_nanos ) { return false; }
+    const uint64_t total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
+    *out = (int64_t) total;
+    return true;
+}
+
 inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
+    if ( f->text_list != 0 )
+    {
+        if ( f->text_list == 2 && n.kind == 'z' )
+        {
+            out += "null";
+            tableTextFormCanon( spans, path, "null" );
+            return true;
+        }
+        if ( n.kind != '"' )
+        {
+            *why = "text_kind_mismatch";
+            return false;
+        }
+        const TableFieldInfo * val = &f->table->fields[0];
+        if ( !val->unbounded && val->array_bound != 0 && (int64_t) n.text.size() > val->array_bound )
+        {
+            *why = "text_bound";
+            return false;
+        }
+        TableTextFormJsonString( out, n.text );
+        tableTextFormCanon( spans, path, n.text );
+        return true;
+    }
     if ( f->optional && n.kind == 'z' )
     {
         out += "null";
@@ -722,7 +893,20 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             tableTextFormMark( spans, tableTextFormIndex( pp, 0 ), pair.items[0] );
             tableTextFormCanon( spans, tableTextFormIndex( pp, 0 ), pair.items[0].text );
             if ( i > 0 ) { out += ','; }
-            if ( key->kind == 12 ) { TableTextFormJsonString( out, pair.items[0].text ); }
+            if ( key->kind == 12 )
+            {
+                if ( pair.items[0].kind != '"' )
+                {
+                    *why = "text_kind_mismatch";
+                    return false;
+                }
+                if ( !key->unbounded && key->array_bound != 0 && (int64_t) pair.items[0].text.size() > key->array_bound )
+                {
+                    *why = "text_bound";
+                    return false;
+                }
+                TableTextFormJsonString( out, pair.items[0].text );
+            }
             else
             {
                 TableTextFormJsonString( out, pair.items[0].text );
@@ -749,13 +933,16 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             *why = "text_kind_mismatch";
             return false;
         }
+        TableFieldInfo element = *f;
+        element.is_array = false;
+        element.optional = false;
         out += '[';
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             if ( i > 0 ) { out += ','; }
             const std::string ip = tableTextFormIndex( path, i );
             tableTextFormMark( spans, ip, n.items[i] );
-            if ( !TableTextFormScalar( n.items[i], f, out, why, ip, spans ) ) { return false; }
+            if ( !TableTextFormScalar( n.items[i], &element, out, why, ip, spans ) ) { return false; }
         }
         out += ']';
         return true;
@@ -989,7 +1176,24 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         out += ']';
         return true;
     }
-    if ( f->kind == 12 || f->kind == 33 || f->kind == 36 )
+    if ( f->kind == 36 )
+    {
+        if ( n.kind != '"' )
+        {
+            *why = "text_kind_mismatch";
+            return false;
+        }
+        int64_t nanos = 0;
+        if ( !tableTextFormTimestampParse( n.text, &nanos ) )
+        {
+            *why = "text_timestamp";
+            return false;
+        }
+        TableTextFormJsonString( out, n.text );
+        tableTextFormCanon( spans, path, std::to_string( (long long) nanos ) );
+        return true;
+    }
+    if ( f->kind == 12 || f->kind == 33 )
     {
         if ( n.kind != '"' )
         {
@@ -998,7 +1202,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         }
         int64_t size = (int64_t) n.text.size();
         if ( f->kind == 33 ) { size = TableUtf16Length( n.text ); }
-        if ( f->array_bound != 0 && size > f->array_bound )
+        if ( !f->unbounded && f->array_bound != 0 && size > f->array_bound )
         {
             *why = "text_bound";
             return false;
@@ -1096,6 +1300,39 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
             tableTextFormCanon( spans, path, n.text );
             return true;
         }
+        if ( f->text_list != 0 )
+        {
+            if ( n.kind != '(' )
+            {
+                *why = "text_kind_mismatch";
+                return false;
+            }
+            if ( !f->unbounded_container && n.items.size() > (size_t) f->array_bound )
+            {
+                *why = "text_bound";
+                return false;
+            }
+            out += '[';
+            int64_t spent = 0;
+            for ( size_t i = 0; i < n.items.size(); i++ )
+            {
+                if ( i > 0 ) { out += ','; }
+                const std::string ip = tableTextFormIndex( path, i );
+                tableTextFormMark( spans, ip, n.items[i] );
+                if ( !TableTextFormScalar( n.items[i], f, out, why, ip, spans ) ) { return false; }
+                if ( n.items[i].kind == '"' )
+                {
+                    spent += (int64_t) n.items[i].text.size();
+                    if ( f->text_total > 0 && spent > f->text_total )
+                    {
+                        *why = "text_bound";
+                        return false;
+                    }
+                }
+            }
+            out += ']';
+            return true;
+        }
         if ( f->array_bound != 0 && f->key_name == NULL )
         {
             if ( n.kind != '(' )
@@ -1174,7 +1411,9 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         *why = "text_kind_mismatch";
         return false;
     }
-    out += '{';
+    const bool array_root = info->json_array && info->num_fields == 1;
+    if ( !array_root ) { out += '{'; }
+    bool wrote = false;
     std::vector<int32_t> seen;
     std::vector<size_t> seen_val;
     for ( size_t i = 0; i < n.items.size(); i += 2 )
@@ -1216,10 +1455,18 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         seen_val.push_back( i + 1 );
         const std::string fp = tableTextFormJoin( path, info->fields[found].json );
         tableTextFormMark( spans, fp, key );
-        if ( i > 0 ) { out += ','; }
-        TableTextFormJsonString( out, info->fields[found].json );
-        out += ':';
+        if ( !array_root )
+        {
+            if ( wrote ) { out += ','; }
+            TableTextFormJsonString( out, info->fields[found].json );
+            out += ':';
+        }
         if ( !TableTextFormField( n.items[i + 1], &info->fields[found], out, why, fp, spans ) ) { return false; }
+        wrote = true;
+    }
+    if ( array_root && !wrote )
+    {
+        out += "[]";
     }
     for ( int32_t j = 0; j < info->num_fields; j++ )
     {
@@ -1245,7 +1492,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
             return false;
         }
     }
-    out += '}';
+    if ( !array_root ) { out += '}'; }
     return true;
 }
 
@@ -1471,7 +1718,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 		g.pf("    if ( !TableTextFormToJson( text, bytes, %sTableType(), json, refusal ) ) { return false; }\n", st.Name)
 		g.pf("    TableReport report;\n")
 		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-		g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
+		g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 		g.pf("    return true;\n}\n\n")
 		g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %sBuilder & builder, const char ** refusal )\n{\n", st.Name, st.Name)
 		loadDoc("builder")
@@ -1485,7 +1732,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 		g.pf("    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }\n")
 		g.pf("    TableReport report;\n")
 		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-		g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
+		g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 		g.pf("    return true;\n}\n\n")
 		return
 	}
@@ -1494,7 +1741,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 	g.pf("    if ( !TableTextFormToJson( text, bytes, %sTableType(), json, refusal ) ) { return false; }\n", st.Name)
 	g.pf("    TableReport report;\n")
 	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-	g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
+	g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 	g.pf("    return true;\n}\n\n")
 	g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %s & value, const char ** refusal )\n{\n", st.Name, st.Name)
 	loadDoc("value")
@@ -1508,7 +1755,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 	g.pf("    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }\n")
 	g.pf("    TableReport report;\n")
 	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-	g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
+	g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 	g.pf("    return true;\n}\n\n")
 }
 

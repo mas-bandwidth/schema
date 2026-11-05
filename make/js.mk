@@ -1765,3 +1765,7 @@ tables-js-helper-closure: toolchain-js
 		-count=1 -timeout=0 -run '^TestJavaScriptVariableHelperClosure$$' ./internal/codegen/jstable/
 
 test-js: tables-js-helper-closure
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-js/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

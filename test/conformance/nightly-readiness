@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute original-nine (and Goose) acceptance gates; a report or carried finding is not a pass.
+"""Execute original-nine (and Goose and MOO) acceptance gates; a report or carried finding is not a pass.
 
 This entrypoint adds no wall-clock timeout. Native test execution uses -timeout=0;
 protocol deadlines and the existing negative controls' intended oracles stay intact.
@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 
-LANGUAGES = ("cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir", "goose")
+LANGUAGES = ("cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir", "goose", "moo")
 PACKAGES = {
     "cpp": ("cpp", "cpptable"), "c": ("c", "ctable"),
     "cs": ("csharp", "cstable"), "go": ("golang", "gotable"),
@@ -24,6 +24,7 @@ PACKAGES = {
     "js": ("js", "jstable"), "dart": ("dart", "darttable"),
     "elixir": ("elixir", "elixirtable"),
     "goose": ("goose", "goosetable"),
+    "moo": ("moo", "mootable"),
 }
 # The pinned Goose release, as internal/codegen/goose/gooserun.Dist names it.
 GOOSE_DIST = "dist/goose-v2026.2-linux-x64"
@@ -141,6 +142,8 @@ DRIVER_BUILD = {
     "js": "build/tables-generated-js/.stamp cards-js-generate",
     "dart": "build/conformance-dart", "elixir": "build/elixir-tables-ebin/.stamp",
     "goose": "build/conformance-goose-wirefuzz",
+    # the units, and the native host its one process runs under (make/moo-readiness.mk)
+    "moo": "moo-wire-fuzz-ready",
 }
 WIRE_CONTROLS = {
     "cpp": "tables-wire-fuzz-negative-control tables-wire-fuzz-retain-negative-control",
@@ -153,6 +156,7 @@ WIRE_CONTROLS = {
     "dart": "tables-dart-wire-fuzz-negative-control tables-dart-retain-negative-control",
     "elixir": "tables-elixir-wire-fuzz-refusal-negative-control tables-elixir-retain-negative-control",
     "goose": "tables-goose-wire-fuzz-negative-control",
+    "moo": "tables-moo-wire-fuzz-negative-control",
 }
 # The external fixed-form/packet executables complement the full native Go
 # packages. The workflow supplies the once-written C++ corpora before this step.
@@ -169,6 +173,7 @@ FIXED_GATES = {
     "goose": "tables-goose-versioning tables-goose-versioning-negative-control tables-goose-fixedform-negative-control "
              "tables-goose-message-form tables-goose-message-form-negative-control "
              "tables-goose-message-peer-negative-control",
+    "moo": "tables-moo-fixed tables-moo-message-form tables-moo-compiler-claims",
 }
 
 
@@ -186,7 +191,12 @@ def required_phases(lang):
                 "wire-driver-build", "wire-retain-controls", "packet-build", "packet-features"}
     for package in ("lockfile", *PACKAGES[lang], *(SHARED_PACKAGES if lang == "cpp" else ())):
         required |= {"native-list-" + package, "native-" + package}
-    if lang == "cpp":
+    if lang == "moo":
+        # MOO's packet programs are its package's probes (run_moo_packets):
+        # one interpreter, one mode per shape.
+        required |= {"packet-normal-0", "packet-ludicrous-0"}
+        required |= {"retain-moo-" + name for name in MOO_RETENTION_CONTROLS}
+    elif lang == "cpp":
         required.add("readiness-contracts")
         required |= {"packet-" + name for name in
                      ("schema_test", "schema_test_guard", "schema_test_wide",
@@ -489,6 +499,9 @@ def packet_result(text, random=False, compilation=False):
 
 
 def run_packets(runner, lang):
+    if lang == "moo":
+        run_moo_packets(runner)
+        return
     if lang == "cpp":
         binaries = ("schema_test", "schema_test_guard", "schema_test_wide",
                     "schema_test_random", "schema_test_ludicrous")
@@ -556,6 +569,63 @@ def run_packets(runner, lang):
         runner.make("packet-features", targets, makefile=makefile)
 
 
+# MOO's packet programs: the CLI has no io, so internal/codegen/moo's probes
+# generate each corpus, stage the goldens as moo source and run the pinned
+# interpreter on it. Each shape's probes run as their own phase and every one
+# must report a pass event.
+MOO_PACKET_PROBES = {
+    "normal": ("TestMooTypeWireWritesTheGoldens", "TestMooTypeWireReadsTheGoldens",
+               "TestMooTypeWireRefusesTruncation", "TestMooTypeWireRefusesHostileValues",
+               "TestMooTypeWireWriteRefusesOutOfContract"),
+    "ludicrous": ("TestMooLudicrousWire",),
+}
+
+
+def run_moo_packets(runner):
+    runner.make("packet-build", "moo-toolchain-ready build/schema-moo moo-packet-driver")
+    for label, tests in MOO_PACKET_PROBES.items():
+        runner.run("packet-" + label + "-0",
+                   ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
+                    "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/moo"],
+                   validate=lambda text, t=tests: native_result(text, list(t), "moo"))
+    runner.make("packet-features", " ".join("packet-" + feature + "-moo" + tail
+                                            for feature in ("defaults", "utf8", "wide", "finite")
+                                            for tail in ("", "-negative-control")))
+
+
+def moo_uncapped_makefile(runner, targets):
+    """The MOO gates' make recipes, with only Go's default suite cap removed.
+
+    Each recipe that runs go test is copied from make/moo*.mk with -timeout=0
+    added, and the copy overrides the recipe in a private makefile that
+    includes the real one. A recipe that already names a cap fails closed.
+    """
+    sources = {path: path.read_text() for path in sorted((runner.root / "make").glob("moo*.mk"))}
+    text, replaced = "include Makefile\n", {}
+    for target in targets.split():
+        found = [(path, match) for path, source in sources.items()
+                 for match in re.finditer(r"^" + re.escape(target) + r":[^\n]*\n((?:\t[^\n]*\n)+)",
+                                          source, re.MULTILINE)]
+        if len(found) != 1:
+            runner.missing("external-table-gates", "the reviewed MOO recipe is not unique: " + target)
+            return None
+        recipe = found[0][1][1]
+        if "go test " not in recipe:
+            continue
+        if re.search(r"-timeout[= ]", recipe):
+            runner.missing("external-table-gates", "the reviewed MOO recipe carries a suite cap: " + target)
+            return None
+        amended = recipe.replace("go test ", "go test -timeout=0 ")
+        text += target + ":\n" + amended
+        replaced[target] = {"source": str(found[0][0].relative_to(runner.root)),
+                            "source_sha256": hashlib.sha256(recipe.encode()).hexdigest(),
+                            "execution_sha256": hashlib.sha256(amended.encode()).hexdigest()}
+    makefile = runner.out / "Makefile.moo-uncapped"
+    makefile.write_text(text)
+    runner.out.joinpath("Makefile.moo-uncapped.json").write_text(json.dumps(replaced, indent=2) + "\n")
+    return makefile
+
+
 def goose_uncapped_makefile(runner, targets):
     """The Goose gates' make recipes, with only their outer go test suite cap removed.
 
@@ -594,6 +664,11 @@ def goose_uncapped_makefile(runner, targets):
 
 
 def run_external(runner, lang):
+    if lang == "moo":
+        makefile = moo_uncapped_makefile(runner, FIXED_GATES[lang])
+        if makefile is not None:
+            runner.make("external-table-gates", FIXED_GATES[lang], makefile=makefile)
+        return
     if lang == "goose":
         makefile = goose_uncapped_makefile(runner, FIXED_GATES[lang])
         if makefile is not None:
@@ -645,6 +720,10 @@ def driver_command(root, lang, builder=False):
         # test/conformance/goose/wirefuzzdispatch: one driver over every
         # unit's leg (make/goose-fuzz.mk, build/conformance-goose-wirefuzz)
         return "build/goose-wirefuzz-dispatch build/goose-wirefuzz-legs/legs"
+    if lang == "moo":
+        # one process over every unit (test/conformance/moo/wirefuzz.moo
+        # requires each unit from its own directory), so no dispatcher
+        return "test/conformance/moo/wirefuzz-driver"
     return "test/conformance/" + lang + "/driver wire-fuzz"
 
 
@@ -737,6 +816,14 @@ GOOSE_RETENTION_CONTROLS = {
 }
 
 
+# MOO's retention controls plant their sabotage in the emitted runtime
+# in-test (internal/codegen/mootable/retain_test.go) and must pass.
+MOO_RETENTION_CONTROLS = {
+    "save": ("TestMooRetainNegativeControl",),
+    "refusal": ("TestMooRetainRefusesWhatThePageRefuses",),
+}
+
+
 def run_controls(runner, lang):
     runner.make("wire-retain-controls", WIRE_CONTROLS[lang] + " N=0 SEED=1 JAVA_WIRE_FUZZ_N=0")
     if lang == "c":
@@ -762,12 +849,18 @@ def run_controls(runner, lang):
                        ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
                         "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/goosetable"],
                        validate=lambda text, t=tests: native_result(text, list(t), "goosetable"))
+    elif lang == "moo":
+        for name, tests in MOO_RETENTION_CONTROLS.items():
+            runner.run("retain-moo-" + name,
+                       ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
+                        "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/mootable"],
+                       validate=lambda text, t=tests: native_result(text, list(t), "mootable"))
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1 or argv[0] not in LANGUAGES:
-        print("usage: test/conformance/nightly-readiness <cpp|c|cs|go|rust|java|js|dart|elixir|goose>",
+        print("usage: test/conformance/nightly-readiness <cpp|c|cs|go|rust|java|js|dart|elixir|goose|moo>",
               file=sys.stderr)
         return 2
     lang = argv[0]
@@ -796,6 +889,11 @@ def main(argv=None):
         # where compiler.Carried("goose") has its registrations.
         prerequisites += " goose-toolchain-ready build/conformance-harness-goose"
         harness = "./build/conformance-harness-goose"
+    if lang == "moo":
+        # The pinned interpreter and analyzer, and a harness built with the
+        # target's tag, where compiler.Carried("moo") has its registrations.
+        prerequisites += " moo-toolchain-ready build/conformance-harness-moo"
+        harness = "./build/conformance-harness-moo"
     runner.make("prerequisites", prerequisites)
     runner.run("implementation", [harness, "implementation", "--lang", lang],
                validate=lambda text: implementation_result(text, lang))

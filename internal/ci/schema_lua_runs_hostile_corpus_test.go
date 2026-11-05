@@ -233,15 +233,22 @@ local function caseResult(c)
     if r.malformed or value == nil then return "refuse", "damaged", nil end
   elseif c[2] == "wire" then
     value = L.Load(T, c[4], payload, r)
+    -- A COUNT PAST THE INT32 STORAGE CAP is the port's count_over_extent_cap
+    -- (§2.9), which the corpus names count_refusal.
+    if r.reason == "count_over_extent_cap" then return "refuse", "count_refusal", nil end
+    if value == nil and (r.reason == "clamped" or r.reason == "kind_mismatch") then
+      -- THE CORPUS CARRIES THE TOLERANT ANSWER (docs/HOSTILE-CORPUS.md): a
+      -- strict refusal that names only a counter is a read the tolerant load
+      -- keeps, so its value is the one digested.
+      r = report()
+      value = L.LoadTolerant(T, c[4], payload, r)
+    end
     if r.refused > 0 then
       local form = #payload > 0 and payload:byte(1) or 0
       return "refuse", form == 2 and "message_form_as_file" or "newer_form", nil
     end
-    -- A LOAD THAT NAMED A STORAGE REFUSAL reports it: count_refusal is the
-    -- engine's CountRefusal (§2.9), not the unnamed damage the wire branch
-    -- otherwise reads. The strict read's other reasons (wire_damaged,
-    -- malformed, integrity_mismatch) stay the manifest's generic damaged.
-    if r.reason == "count_refusal" then return "refuse", r.reason, nil end
+    -- The strict read's other reasons (wire_damaged, malformed,
+    -- integrity_mismatch) stay the manifest's generic damaged.
     -- A NaN OR AN INFINITY is refused by every read, by name (docs/SPEC-TABLES.md
     -- §3.3): the strict load's reason is the corpus's non_finite_float.
     if r.reason == "non_finite_float" then return "refuse", r.reason, nil end
@@ -376,9 +383,6 @@ func luaHostileCarriedList(_ []luaHostileCase) map[string]luaHostileCarried {
 	out := map[string]luaHostileCarried{}
 	// The message reader has no caller storage bound.
 	out["message-batch-too-large"] = luaHostileCarried{"accept", "-", "schema-lua-message-honors-storage-bound-r"}
-	// Accepted by both, but the subnormal float's canonical text differs: a
-	// reader/writer spelling bug in the Lua float32 path.
-	out["conformance-num-float32-subnormal"] = luaHostileCarried{"accept", "-", "schema-lua-float32-subnormal-canonical-text-r"}
 	return out
 }
 

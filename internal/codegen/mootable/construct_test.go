@@ -1,9 +1,7 @@
 package mootable_test
 
 import (
-	"encoding/binary"
 	"fmt"
-	"hash/crc32"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,6 +35,10 @@ var constructCases = []constructCase{
 		"D", `{"s":"","b":"","n":0}`},
 	{"timestamp", "timestamp", "package probe\ntable Event\n{\n    id uint32\n    opened_at timestamp\n    closed_at timestamp\n}\n",
 		"Event", `{"id":7,"opened_at":"2026-10-28T12:34:56.789Z","closed_at":"1969-12-31T23:59:59Z"}`},
+	{"required_at_default", "required", "package probe\ntable Player\n{\n    name string(8) | required\n    n int32 | required\n    score int32\n}\n",
+		"Player", `{"name":"","n":0,"score":0}`},
+	{"required_set", "required", "package probe\ntable Player\n{\n    name string(8) | required\n    n int32 | required\n    score int32\n}\n",
+		"Player", `{"name":"ann","n":-3,"score":9}`},
 	{"forms", "forms", "package probe\ntable Pong | forms = \"wire\"\n{\n    id uint32\n    name string(16)\n}\n",
 		"Pong", `{"id":3,"name":"pong"}`},
 	{"integrity", "integrity", "package probe\ntable Ledger | integrity = \"crc32c\"\n{\n    id uint32\n    name string(32)\n}\n",
@@ -47,6 +49,8 @@ var constructCases = []constructCase{
 		"Bounded", `{"rules":["one","two"],"repos":["x",null]}`},
 	{"array_root", "array-root", "package probe\ntable Goal\n{\n    x int32\n}\ntable GoalList | json = \"array\"\n{\n    goals []Goal\n}\n",
 		"GoalList", `[{"x":1},{"x":-2}]`},
+	{"unbounded_text", "unbounded-text", "package probe\ntable Where\n{\n    receipts []string\n    running []?string\n    recent [..4]string\n    pending [..4]?string\n    rows map[string]int32\n}\n",
+		"Where", `{"receipts":["a line longer than any bound a schema would have invented for it","",""],"running":[null,"r"],"recent":["x","a second element longer than sixty-four bytes, which no cap clamps here"],"pending":["p",null],"rows":{"a key longer than eight bytes":1,"b":2}}`},
 	{"one_sided", "one-sided-range", "package probe\ntable OneSided\n{\n    a int64 | min = 0\n    b uint16 | max = 9\n}\n",
 		"OneSided", `{"a":12345678901,"b":9}`},
 	{"optional_variable", "optional-variable-closure", "package probe\ntable Inner\n{\n    text *string\n    n int32\n}\ntable Outer\n{\n    inner ?Inner\n    tail int32\n}\n",
@@ -82,14 +86,7 @@ func goOracleWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 	if err != nil {
 		t.Fatalf("the Go engine does not write it: %v", err)
 	}
-	if st.Integrity == "crc32c" {
-		// THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14): the CRC-32C of
-		// every byte before it, little-endian, which the engine's Encode
-		// leaves to the emitted writers; hash/crc32's Castagnoli table is the
-		// independent sum
-		wire = binary.LittleEndian.AppendUint32(wire, crc32.Checksum(wire, crc32.MakeTable(crc32.Castagnoli)))
-	}
-	return wire
+	return wire // a sealed root's trailer (docs/SPEC-TABLES.md §2.14) is the engine's own
 }
 
 func unitFromSource(t *testing.T, src string) *ir.Unit {

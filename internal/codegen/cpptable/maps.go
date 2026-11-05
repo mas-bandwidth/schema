@@ -108,7 +108,7 @@ func mapValueIsPair(f *ir.Field) bool {
 	if value.Array == ir.ArrayCounted {
 		return true
 	}
-	if value.Type.Pointer {
+	if value.Type.Pointer || value.Type.TextUnbounded() {
 		return false
 	}
 	switch value.Type.Kind {
@@ -343,7 +343,7 @@ template <typename Entry> struct TableMapCursor
 
 // heapsort: O( n log n ) once per map, no recursion, no allocation past the
 // pointer array the caller already paid for
-template <typename Entry> inline void TableMapSort( const Entry ** order, int32_t count )
+template <typename Entry> inline void TableMapSort( const TableArena & arena, const Entry ** order, int32_t count )
 {
     for ( int32_t start = count / 2 - 1; start >= 0; start-- )
     {
@@ -352,8 +352,8 @@ template <typename Entry> inline void TableMapSort( const Entry ** order, int32_
         {
             int32_t child = 2 * root + 1;
             if ( child >= count ) { break; }
-            if ( child + 1 < count && TableEntryOrder( *order[child], *order[child + 1] ) < 0 ) { child++; }
-            if ( TableEntryOrder( *order[root], *order[child] ) >= 0 ) { break; }
+            if ( child + 1 < count && TableEntryOrder( &arena, *order[child], *order[child + 1] ) < 0 ) { child++; }
+            if ( TableEntryOrder( &arena, *order[root], *order[child] ) >= 0 ) { break; }
             const Entry * swap = order[root]; order[root] = order[child]; order[child] = swap;
             root = child;
         }
@@ -366,8 +366,8 @@ template <typename Entry> inline void TableMapSort( const Entry ** order, int32_
         {
             int32_t child = 2 * root + 1;
             if ( child >= end ) { break; }
-            if ( child + 1 < end && TableEntryOrder( *order[child], *order[child + 1] ) < 0 ) { child++; }
-            if ( TableEntryOrder( *order[root], *order[child] ) >= 0 ) { break; }
+            if ( child + 1 < end && TableEntryOrder( &arena, *order[child], *order[child + 1] ) < 0 ) { child++; }
+            if ( TableEntryOrder( &arena, *order[root], *order[child] ) >= 0 ) { break; }
             const Entry * hold = order[root]; order[root] = order[child]; order[child] = hold;
             root = child;
         }
@@ -415,7 +415,7 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
         table_release( arena.allocator, order );
         return cursor;
     }
-    TableMapSort( order, map.count );
+    TableMapSort( arena, order, map.count );
     cursor.order = order;
     cursor.ok = true;
     return cursor;
@@ -508,7 +508,7 @@ inline Entry * TableMapScan( const TableArena & arena, const TableMap<Entry> & m
         for ( int32_t i = 0; i < segment->used; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
-            if ( TableEntryOrder( segment->entries[i], key ) == 0 ) { return segment->entries + i; }
+            if ( TableEntryOrder( &arena, segment->entries[i], key ) == 0 ) { return segment->entries + i; }
         }
         segment_ref = segment->next;
     }
@@ -531,7 +531,7 @@ inline bool TableMapErase( TableArena & arena, TableMap<Entry> & map, Key key )
         for ( int32_t i = 0; i < segment->used; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
-            if ( TableEntryOrder( segment->entries[i], key ) != 0 ) { continue; }
+            if ( TableEntryOrder( &arena, segment->entries[i], key ) != 0 ) { continue; }
             segment->dead[ i / 32 ] |= 1u << ( i % 32 );
             head->live--;
             head->dead++;
@@ -570,7 +570,7 @@ template <typename Entry> struct TableMapEach
                 return;
             }
         }
-        auto operator*() const { return TableEntryEach( segment->entries + index ); }
+        auto operator*() const { return TableEntryEach( arena, segment->entries + index ); }
         Iterator & operator++() { index++; Skip(); return *this; }
         // the end is a NULL segment at any index: the loop body then never sees a NULL segment
         bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
@@ -851,7 +851,14 @@ inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key k
     Entry * entry = TableMapAppend( worker, head, map );
     if ( entry == NULL ) { return NULL; }
     TableReset( *entry );
-    TableEntrySetKey( *entry, key );
+    if ( !TableEntrySetKey( worker, *entry, key ) )
+    {
+        TableMapSegment<Entry> * seg = (TableMapSegment<Entry> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+        seg->dead[ ( seg->used - 1 ) / 32 ] |= 1u << ( ( seg->used - 1 ) % 32 );
+        head->live--;
+        map.count--;
+        return NULL;
+    }
     return entry;
 }
 
@@ -882,6 +889,12 @@ inline uint64_t TableMapHash( const void * bytes, int32_t length )
     return hash;
 }
 inline uint64_t TableMapHash( uint64_t key ) { return TableMapHash( (const void *) &key, (int32_t) sizeof( key ) ); }
+inline uint64_t schema_table_map_hash_text_( const TableRef & ref )
+{
+    int32_t n = 0;
+    const char * s = schema_table_text_at_( ref, n );
+    return TableMapHash( (const void *) ( s != NULL ? s : "" ), n > 0 ? n : 0 );
+}
 
 // this runtime's own load factor, and no port reproduces it either: the next
 // power of two at or above twice the count, so a probe run stays short
@@ -918,32 +931,64 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 	g.pf("// The four overloads the map runtime's templates reach by argument-dependent\n")
 	g.pf("// lookup. Nothing outside this file names them.\n")
 	g.pf("static_assert( alignof( %s ) <= kTableAlign, \"a map entry's alignment must fit the arena's\" );\n", n)
-	if mapKeyIsString(f) {
+	if ir.MapKeyUnbounded(f) {
+		g.pf("static const int32_t k%sKeyBound = (int32_t) kTableBlobMaxLength;\n\n", n)
+		g.pf("inline int TableEntryOrder( const TableArena * arena, const %s & a, const %s & b )\n{\n", n, n)
+		g.pf("    int32_t alen = 0, blen = 0;\n")
+		g.pf("    const char * astr = ( arena != NULL ) ? schema_table_text_at_( *arena, a.key, alen ) : schema_table_text_at_( a.key, alen );\n")
+		g.pf("    const char * bstr = ( arena != NULL ) ? schema_table_text_at_( *arena, b.key, blen ) : schema_table_text_at_( b.key, blen );\n")
+		g.pf("    if ( astr == NULL ) { astr = \"\"; alen = 0; }\n")
+		g.pf("    if ( bstr == NULL ) { bstr = \"\"; blen = 0; }\n")
+		g.pf("    return TableKeyOrder( astr, alen, bstr, blen );\n}\n")
+		g.pf("inline int TableEntryOrder( const %s & a, const %s & b ) { return TableEntryOrder( (const TableArena *) NULL, a, b ); }\n", n, n)
+		g.pf("inline int TableEntryOrder( const TableArena * arena, const %s & entry, TableMapKeyRef key )\n{\n", n)
+		g.pf("    int32_t elen = 0;\n")
+		g.pf("    const char * estr = ( arena != NULL ) ? schema_table_text_at_( *arena, entry.key, elen ) : schema_table_text_at_( entry.key, elen );\n")
+		g.pf("    if ( estr == NULL ) { estr = \"\"; elen = 0; }\n")
+		g.pf("    return TableKeyOrder( estr, elen, key.data, key.length );\n}\n")
+		g.pf("inline int TableEntryOrder( const %s & entry, TableMapKeyRef key ) { return TableEntryOrder( (const TableArena *) NULL, entry, key ); }\n", n)
+		g.pf("inline int TableEntryOrder( const TableArena * arena, const %s & entry, const char * key )\n{\n", n)
+		g.pf("    return TableEntryOrder( arena, entry, TableMapKeyRef{ key, TableKeyLength( key, k%sKeyBound ) } );\n}\n", n)
+		g.pf("inline int TableEntryOrder( const %s & entry, const char * key ) { return TableEntryOrder( (const TableArena *) NULL, entry, key ); }\n", n)
+		g.pf("inline const char * TableEntryKey( const %s & entry ) { int32_t len = 0; const char * s = schema_table_text_at_( entry.key, len ); return s != NULL ? s : \"\"; }\n", n)
+		g.pf("inline const char * TableEntryKey( const TableArena * arena, const %s & entry ) { int32_t len = 0; const char * s = ( arena != NULL ) ? schema_table_text_at_( *arena, entry.key, len ) : schema_table_text_at_( entry.key, len ); return s != NULL ? s : \"\"; }\n", n)
+		g.pf("inline bool TableEntrySetKey( TableWorker & worker, %s & entry, TableMapKeyRef key )\n{\n", n)
+		g.pf("    return schema_table_text_store_( worker, entry.key, key.data, (int64_t) key.length );\n}\n")
+	} else if mapKeyIsString(f) {
 		bound := key.Type.Size
 		g.pf("static const int32_t k%sKeyBound = %d; // string(%d): the key's storage, and the length an insert refuses past\n\n", n, bound, bound)
 		g.pf("inline int TableEntryOrder( const %s & a, const %s & b )\n{\n", n, n)
 		g.pf("    return TableKeyOrder( a.key, a.key_length, b.key, b.key_length );\n}\n")
+		g.pf("inline int TableEntryOrder( const TableArena *, const %s & a, const %s & b ) { return TableEntryOrder( a, b ); }\n", n, n)
 		g.pf("// THE ORDER TAKES DATA AND A LENGTH (§2.8): a key holds any byte, U+0000\n")
 		g.pf("// included, so nothing here measures to the first NUL. The const char *\n")
 		g.pf("// overload beside it is the wrapper the public surface spells.\n")
 		g.pf("inline int TableEntryOrder( const %s & entry, TableMapKeyRef key )\n{\n", n)
 		g.pf("    return TableKeyOrder( entry.key, entry.key_length, key.data, key.length );\n}\n")
+		g.pf("inline int TableEntryOrder( const TableArena *, const %s & entry, TableMapKeyRef key ) { return TableEntryOrder( entry, key ); }\n", n)
 		g.pf("inline int TableEntryOrder( const %s & entry, const char * key )\n{\n", n)
 		g.pf("    return TableEntryOrder( entry, TableMapKeyRef{ key, TableKeyLength( key, k%sKeyBound ) } );\n}\n", n)
+		g.pf("inline int TableEntryOrder( const TableArena *, const %s & entry, const char * key ) { return TableEntryOrder( entry, key ); }\n", n)
 		g.pf("inline const char * TableEntryKey( const %s & entry ) { return entry.key; } // NUL-terminated, the storage's own bytes\n", n)
+		g.pf("inline const char * TableEntryKey( const TableArena *, const %s & entry ) { return entry.key; }\n", n)
 		g.pf("inline void TableEntrySetKey( %s & entry, TableMapKeyRef key )\n{\n", n)
 		g.pf("    memcpy( (void *) entry.key, (const void *) key.data, (size_t) key.length );\n")
 		g.pf("    entry.key[key.length] = 0; // NUL-terminated BESIDE its length, for a C call site\n")
 		g.pf("    entry.key_length = key.length;\n}\n")
+		g.pf("inline bool TableEntrySetKey( TableWorker &, %s & entry, TableMapKeyRef key ) { TableEntrySetKey( entry, key ); return true; }\n", n)
 	} else {
 		order := mapKeyOrderType(f)
 		typ, _ := g.cppFieldType(key.Type)
 		g.pf("\ninline int TableEntryOrder( const %s & a, const %s & b )\n{\n", n, n)
 		g.pf("    return TableKeyOrder( (%s) a.key, (%s) b.key ); // integers compare by VALUE, %s\n}\n", order, order, signedWord(key))
+		g.pf("inline int TableEntryOrder( const TableArena *, const %s & a, const %s & b ) { return TableEntryOrder( a, b ); }\n", n, n)
 		g.pf("inline int TableEntryOrder( const %s & entry, %s key )\n{\n", n, typ)
 		g.pf("    return TableKeyOrder( (%s) entry.key, (%s) key );\n}\n", order, order)
+		g.pf("inline int TableEntryOrder( const TableArena *, const %s & entry, %s key ) { return TableEntryOrder( entry, key ); }\n", n, typ)
 		g.pf("inline %s TableEntryKey( const %s & entry ) { return entry.key; }\n", typ, n)
+		g.pf("inline %s TableEntryKey( const TableArena *, const %s & entry ) { return entry.key; }\n", typ, n)
 		g.pf("inline void TableEntrySetKey( %s & entry, %s key ) { entry.key = key; }\n", n, typ)
+		g.pf("inline bool TableEntrySetKey( TableWorker &, %s & entry, %s key ) { entry.key = key; return true; }\n", n, typ)
 	}
 	// what a Find answers, and what an iteration yields beside the key
 	switch {
@@ -995,7 +1040,7 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 	}
 	// the builder's iteration proxy: the key beside the value, by value
 	g.pf("struct %sEach { %s key; decltype( TableEntryValue( (%s *) NULL ) ) value; };\n", n, g.mapKeyCallType(f), n)
-	g.pf("inline %sEach TableEntryEach( %s * entry ) { return %sEach{ TableEntryKey( *entry ), TableEntryValue( entry ) }; }\n", n, n, n)
+	g.pf("inline %sEach TableEntryEach( const TableArena * arena, %s * entry ) { return %sEach{ TableEntryKey( arena, *entry ), TableEntryValue( entry ) }; }\n", n, n, n)
 	// the value half an Insert resets before handing it back
 	// the parameter is named `value` because the field it resets is the
 	// entry's own `value`, which is what the reset emitter spells
@@ -1238,7 +1283,11 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 		g.pf("                if ( !TableUtf8Valid( r.buffer + r.offset, key_len ) ) { out.malformed = true; return out; }\n")
 		g.pf("                out.key = (const char *) ( r.buffer + r.offset );\n")
 		g.pf("                out.length = (int32_t) key_len;\n")
-		g.pf("                out.over = key_len > %d; // KEYS NEVER CLAMP: the entry is dropped whole\n", key.Type.Size)
+		if ir.MapKeyUnbounded(f) {
+			g.pf("                out.over = false;\n")
+		} else {
+			g.pf("                out.over = key_len > %d; // KEYS NEVER CLAMP: the entry is dropped whole\n", key.Type.Size)
+		}
 		g.pf("                r.offset += (int64_t) key_len;\n")
 		g.pf("                continue; // the LAST occurrence is the one §3 keeps\n")
 	} else {
@@ -1478,6 +1527,9 @@ func (g *tableGen) mapFindReturn(f *ir.Field) string {
 // mapIndexHash hashes one ENTRY's key, and mapIndexHashOfKey a bare one. Both
 // are this runtime's own and no port reproduces either.
 func (g *tableGen) mapIndexHash(f *ir.Field, entry string) string {
+	if ir.MapKeyUnbounded(f) {
+		return fmt.Sprintf("schema_table_map_hash_text_( %s.key )", entry)
+	}
 	if mapKeyIsString(f) {
 		return fmt.Sprintf("TableMapHash( (const void *) %s.key, %s.key_length )", entry, entry)
 	}

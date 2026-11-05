@@ -87,6 +87,7 @@
 #include "K2Table.h"
 #include "G1Table.h"
 #include "WidesTable.h"
+#include "FeaturesTable.h"
 
 struct Reply
 {
@@ -402,6 +403,8 @@ static const Codec codecs[] = {
     VARIABLE( "tblw1", tblw1, Fleet ),
     VARIABLE( "tblw2", tblw2, Fleet ),
     VARIABLE( "widelist", widelistdemo, Wide ),
+    VARIABLE( "featurewitnesses", featurewitnesses, Root ),
+    VARIABLE( "featurewitnesses", featurewitnesses, ArrayRoot ),
     // and the same roots under the MESSAGE form (docs/SPEC-TABLES.md §3.3),
     // one entry per message the corpus pins
     MESSAGE( "backenddemo", backenddemo, LoginRequest ),
@@ -441,6 +444,8 @@ static const Codec codecs[] = {
     RETAIN( "tblw1", tblw1, Fleet ),
     RETAIN( "tblw2", tblw2, Fleet ),
     RETAIN( "widelist", widelistdemo, Wide ),
+    RETAIN( "featurewitnesses", featurewitnesses, Root ),
+    RETAIN( "featurewitnesses", featurewitnesses, ArrayRoot ),
 };
 
 static bool read_exact( void * to, size_t n )

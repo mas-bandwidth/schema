@@ -205,16 +205,17 @@ network, no clock, no service.
 
 A collection count is an unsigned 64-bit number ([SPEC-TABLES.md](SPEC-TABLES.md) §3).
 A **map** (§2.8) or an **unbounded array** (§2.9) whose count is past the
-int32 storage cap is the engine's **CountRefusal** (`internal/tablewire/decode.go`,
-`decodenodes.go`): the tolerant load keeps nothing for the field and sets
-`report.reason = "count_refusal"`, and meeting the cap adds no malformed event
-or other counter. A count AT the cap decodes normally. The strict read
-(`L.Load`, §6.5) answers nil with `report.reason = "count_refusal"` rather
-than accepting the wire, because the engine's CountRefusal is the load's own
-result, not a report counter. The hostile-corpus runner's wire branch returns
-a report's named reason before it calls the answer `damaged`, so
-`wire-count-refusal` lands the manifest's `refuse/count_refusal`; damage that
-names no reason stays `damaged`.
+int32 storage cap refuses the builder load by name, `count_over_extent_cap`.
+Every builder read answers it the same way: `L.LoadTolerant`, the plain
+`L.Load`, `ReadStrict` and `LoadRetain` answer nil, `report.refused` is `1`,
+`report.reason` is `count_over_extent_cap`, `malformed` is not set and no
+counter moves. The walk runs to its end, so the load keeps the report as it
+stood at the first refusal and puts it back before it answers; nothing the walk
+met afterwards reaches the report. A non-finite float met before the refusal
+still outranks it (§3.3). A count AT the cap decodes normally. The strict reads
+name the refusal before they read `refused` as a form refusal. The shared
+hostile corpus names this refusal `count_refusal`, and the runner's wire branch
+maps the port's name to it.
 
 ## THE CALLER-OWNED LOAD, THE KEYED ACCESSOR, THE TYPED SAVE
 

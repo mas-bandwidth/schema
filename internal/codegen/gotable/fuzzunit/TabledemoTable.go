@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xd4efeefe07b82e50)
-const _ = uint64(0xd4efeefe07b82e50 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xa9a32f918d49425e)
+const _ = uint64(0xa9a32f918d49425e - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -2139,7 +2139,7 @@ func (a *TableArena) grab(bytes int64) (int64, int64) {
 type TableWorker struct {
 	Arena      *TableArena
 	front, end int64
-	refused    bool
+	refused    TableRefuseReason
 }
 
 func (w *TableWorker) Alloc(n int64) (unsafe.Pointer, TableRef) {
@@ -2734,12 +2734,8 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 			report.Malformed = true
 		} else {
 			report.Reason = "newer_form"
-			if len(wire) > 0 {
-				if wire[0] == 2 {
-					report.Reason = "message_form_as_file"
-				} else if wire[0] == 0 {
-					report.Reason = "previous_form"
-				}
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
 			}
 		}
 		return nil
@@ -2990,6 +2986,9 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		if !loaded && p != nil {
 			root.Reset(p)
 		}
+		if !loaded && report.Verdict == TableOpenOk && !report.Malformed && worker.refused == TableRefuseCountOverExtentCap && !tableNonFiniteRefused(report) {
+			report.Reason = TableRefuseCountOverExtentCap.Error()
+		}
 		report.Malformed = report.Malformed || pre
 	}()
 	r, verdict := tableOpenFramed(wire, report)
@@ -2999,12 +2998,8 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 			report.Malformed = true
 		} else {
 			report.Reason = "newer_form"
-			if len(wire) > 0 {
-				if wire[0] == 2 {
-					report.Reason = "message_form_as_file"
-				} else if wire[0] == 0 {
-					report.Reason = "previous_form"
-				}
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
 			}
 		}
 		return false
@@ -3013,7 +3008,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		report.Malformed = true
 		return false
 	}
-	worker.refused = false // mas-bandwidth/schema docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
+	worker.refused = TableRefuseOk // mas-bandwidth/schema docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
 	scan := tableNodeScanBegin(r)
 	for {
 		_, _, ok := scan.next()
@@ -3099,7 +3094,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 				if t := nodeType(id); t != nil {
 					body.Nodes = nodes
 					t.LoadBody(body, worker.Arena.At(int64(directory[k].Offset)))
-					if worker.refused {
+					if worker.refused != TableRefuseOk {
 						return false
 					}
 				}
@@ -3113,10 +3108,10 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	if tableNonFiniteRefused(report) {
 		return false
 	}
-	if ok && !worker.refused && !report.Malformed && !tableCycleCheck(p, root, worker.Arena, directory, nodeType) {
+	if ok && worker.refused == TableRefuseOk && !report.Malformed && !tableCycleCheck(p, root, worker.Arena, directory, nodeType) {
 		report.Malformed = true
 	}
-	return ok && !worker.refused && !report.Malformed // DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4)
+	return ok && worker.refused == TableRefuseOk && !report.Malformed // DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4)
 }
 
 func tableWireExtent(r *TableReader, t *TableTypeInfo, at *int64, nodes int64) TableRefuseReason {
@@ -4541,12 +4536,8 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 			report.Malformed = true
 		} else {
 			report.Reason = "newer_form"
-			if len(wire) > 0 {
-				if wire[0] == 2 {
-					report.Reason = "message_form_as_file"
-				} else if wire[0] == 0 {
-					report.Reason = "previous_form"
-				}
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
 			}
 		}
 		return nil

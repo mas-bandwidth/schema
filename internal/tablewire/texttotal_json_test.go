@@ -28,7 +28,7 @@ func TestTextTotalJSONCorpusAndWriterRefusal(t *testing.T) {
 	m := listModel(t, string(schema))
 	v := m.New(m.Lookup("Totals"))
 	var r tabletext.Report
-	if !m.Read(v, input, &r) || r.Clamped != 8 || r.Reason != "clamped: Totals.a" || r.Malformed {
+	if !m.Read(v, input, &r) || r.Clamped != 10 || r.Reason != "clamped: Totals.a" || r.Malformed {
 		t.Fatalf("JSON report: %+v", r)
 	}
 	got, err := m.Write(v)

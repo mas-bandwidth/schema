@@ -7,26 +7,54 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// TestLuauDriverListsItsSurfaces runs the Luau conformance driver's list from
-// the repository root (test/conformance/README.md, "Registering a language")
-// and holds it to the contract: `wire` and `report` are among the surfaces,
-// and every listed surface is one the conformance README names.
+// TestLuauDriverListsItsSurfaces runs the Luau conformance driver's list
+// (test/conformance/README.md, "Registering a language") and holds it to the
+// contract: `wire` and `report` are among the surfaces, and every listed
+// surface is one the conformance README names.
+//
+// The driver stages its manifest under build/conformance-luau/driver/ of the
+// directory it runs in, the directory a conformance run of the leg reads at
+// the same time. So the test runs the driver and main.luau from a copy rooted
+// in its own t.TempDir(), and holds that the staging landed there.
 func TestLuauDriverListsItsSurfaces(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter and the conformance driver")
 	root := repoRoot(t)
-	manifest := filepath.Join(t.TempDir(), "MANIFEST.txt")
+	luau, why := luaurun.Interpreter()
+	if luau == "" {
+		t.Fatalf("the Luau interpreter does not resolve: %s", why)
+	}
+	tree := t.TempDir()
+	leg := filepath.Join(tree, "test", "conformance", "luau")
+	if err := os.MkdirAll(leg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"driver", "main.luau"} {
+		src, err := os.ReadFile(filepath.Join(root, "test", "conformance", "luau", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(leg, name), src, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest := filepath.Join(tree, "MANIFEST.txt")
 	if err := os.WriteFile(manifest, []byte("# derived manifest\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(filepath.Join(root, "test", "conformance", "luau", "driver"), manifest, "list")
-	cmd.Dir = root
+	cmd := exec.Command(filepath.Join(leg, "driver"), manifest, "list")
+	cmd.Dir = tree
+	cmd.Env = append(os.Environ(), "LUAU="+luau)
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("the luau driver's list failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tree, "build", "conformance-luau", "driver", "manifest.luau")); err != nil {
+		t.Fatalf("the driver did not stage its manifest in the test's own tree: %v", err)
 	}
 	lines := strings.Fields(string(out))
 	seen := map[string]bool{}

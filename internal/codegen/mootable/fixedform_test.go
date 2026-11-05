@@ -406,7 +406,7 @@ type versionRow struct {
 	sameHash bool
 	widened  int // -1: at least one
 	unknown  int
-	noNewer  bool // the corpus carries no new_ file (the row's second column is its own test)
+	noNewer  bool // the corpus carries no new_ file: the newer writer's file is framed from its unit
 }
 
 var mooVersionRows = []versionRow{
@@ -561,13 +561,18 @@ func TestMooFixedVersioningOldRefusesNew(t *testing.T) {
 	for _, r := range mooVersionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
-			if r.noNewer {
-				t.Skipf("the corpus has no new_%s.bin", r.row)
-			}
 			older := readTestSchema(t, "VOLD_"+r.row)
 			rootName := rootOf(t, older)
 			g := fixedUnit(t, older, nil)
-			data := corpusFile(t, corpus, "new_"+r.row+".bin")
+			var data []byte
+			if r.noNewer {
+				// the reference writes no new_ file for this row: the newer
+				// writer's header is the compiler's own layout and hash, one
+				// zeroed record behind it, refused before any record is read
+				data = newerWriterFile(t, readTestSchema(t, "VNEW_"+r.row), rootName)
+			} else {
+				data = corpusFile(t, corpus, "new_"+r.row+".bin")
+			}
 			got := runFixedLoad(t, g, "VOLD_"+r.row+"Table", rootName, data)
 			if r.sameHash {
 				if !strings.HasPrefix(got.head, "ok ") {
@@ -581,6 +586,22 @@ func TestMooFixedVersioningOldRefusesNew(t *testing.T) {
 			}
 		})
 	}
+}
+
+// newerWriterFile is a form-3 file as the newer unit's writer frames it: its
+// own layout and hash, and one zeroed record.
+func newerWriterFile(t *testing.T, newer *ir.Unit, rootName string) []byte {
+	t.Helper()
+	e, ok := mootable.FixedLineageOf(newer, rootName)
+	if !ok {
+		t.Fatalf("no fixed root %s", rootName)
+	}
+	out := []byte{3, 0, 0, 0, 0, 0, 0, 0}
+	out = binary.LittleEndian.AppendUint64(out, e.Wire)
+	out = binary.LittleEndian.AppendUint32(out, uint32(len(e.Layout)))
+	out = append(out, e.Layout...)
+	out = binary.LittleEndian.AppendUint64(out, e.Wire)
+	return append(out, make([]byte, e.Record-8)...)
 }
 
 // TestMooFixedVersioningFloor: the floor is one number and the lineage one

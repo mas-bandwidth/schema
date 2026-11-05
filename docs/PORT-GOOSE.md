@@ -418,6 +418,32 @@ lowercase hex lines.**
   which builds `build/fixedform-corpus` and runs under
   `SCHEMA_REQUIRE_CORPUS=1`. A card that carries a surface adds it to `list`
   and answers it there.
+- **JSON and wire conversion** uses the generated `<T>ToLoaded` and
+  `<T>FromLoaded` functions for roots that already carry the typed JSON API.
+  `ToLoaded(v, TableUnit, data, vals)` appends a value tree and its text bytes
+  to the caller's stores and returns its root index; failure returns -1 and
+  restores both store lengths. `FromLoaded(v, TableUnit, data, vals, root)`
+  reads a successful load's value tree into a fresh typed record, retaining
+  declared defaults for absent fields. It returns false for a missing root
+  or a different root type. Neither conversion parses JSON or wire bytes:
+  `FromJson`/`ToJson` and the shared `load_table`/`save_table` own those forms.
+  The conformance driver's `json-read` and `json-write` surfaces compare both
+  paths with committed fixtures.
+- **The variable class of the text form** (pointer graphs and `&node`,
+  blobs, lists, maps, text lists, unbounded and wide text, timestamps, the
+  128-bit and fixed-point kinds, unions in arrays) has no typed record that
+  owns its storage, so it reads and writes the same FLAT VALUE TABLE its wire
+  form loads into and saves from: `runtime/json_value.goose`,
+  `json_load_table(TableUnit, TextUnit, root, text, data, vals, nodes, report)`
+  and `json_save_table(TableUnit, TextUnit, root, data, vals, nodes, at, out)`,
+  the port of the compiler's own engine (`internal/tabletext`) as
+  `wire_load.goose` is of `internal/tablewire`. The read appends decoded
+  text and blob bytes to `data` and places nodes in `nodes`; `save_table`
+  renumbers them. `TextUnit` (`<package>_json.goose`, `json_form.go`) carries
+  what the descriptors do not: a flags field's names, a text list's fields,
+  a timestamp array's elements and the tables declared without the json form.
+  The driver answers every root without a typed record through it, on all
+  three text surfaces.
 - **The wire-fuzz pipe** (one process, little-endian frames, a reply flushed
   per mutant) is a `goose build -O2` executable per unit
   (`test/conformance/goose/wirefuzz.goose`, make/goose-fuzz.mk) writing with
@@ -541,7 +567,7 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `goose.go`,
 | schema-goose-fixed-form-evolution | fixed tables: versioning, widening and every refusal by Go's name | `goosetable/fixedevolve.go`, its runtime file |
 | schema-goose-message-form | the message form, form byte 2, against its goldens | `goosetable/messageform.go`, `goosetable/runtime/message.goose` |
 | schema-goose-block-form | the block form: builder and reflective read (M7, I5) | `goosetable/block_form.go`, `goosetable/accel.go` (shared with the cook), `goosetable/runtime/block_form.goose`, `test/conformance/goose/accel.goose`, `make/goose-blockcook.mk` |
-| schema-goose-cook | the cooked form: Cook, CookMeasure and Open (M8) | `goosetable/cook_form.go`, `goosetable/cook_write.go`, `goosetable/runtime/cook_form.goose` |
+| schema-goose-cook | the cooked form: Cook, CookMeasure and Open (M8) | `goosetable/cook_form.go`, `goosetable/cook_write.go`, `goosetable/runtime/cook_form.goose`, `goosetable/runtime/cook_write.goose` (the region writer) |
 | schema-goose-json-form | the JSON text form and base64 text (I13) | `goosetable/json_form.go`, its runtime file, `compiler/carries_goose_json_form.go` |
 | schema-goose-text-form | the hand-editable text form (M9, M14) | `goosetable/text_form.go`, its runtime file |
 | schema-goose-conformance-leg | `main.goose`, `make conformance` and the hostile corpus (M4b, I2, I11, J2) | `test/conformance/goose/main.goose`, `make/goose-conformance.mk` |

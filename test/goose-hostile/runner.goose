@@ -6,16 +6,20 @@
 //
 // For every manifest case of that schema whose CARRIER this port reads, the
 // generated tolerant read is handed the raw input and the runner prints one
-// line: `<name> accept <saved wire hex>` or `<name> refuse <reason>`. The
+// line: `<name> accept <saved wire hex> <text hex>` or `<name> refuse
+// <reason>`, the text the value's canonical text (§16.1) without its last
+// newline, `-` for a root with no text form. The
 // reason is read off the engine's own report, never off the input: `damaged`
 // for a malformed read the engine did not refuse, `count_refusal`,
-// `non_finite_float`, and `refused` for a form refusal, which Goose's load
-// does not name further. A case whose carrier the port does not read yet is
-// `<name> absent <carrier>`. The make target holds the lines to the manifest.
+// `non_finite_float`, and a form refusal by the name the load's report gives
+// it (`message_form_as_file`, `newer_form`). A case whose carrier the port
+// does not read yet is `<name> absent <carrier>`. The make target holds the
+// lines to the manifest.
 import os;
 import .conformance_unit;
 import .wire_load;
 import .wire_save;
+import .json_value;
 
 fn hex(out: u8[>..]&, b: const u8[:]) {
     let digits = "0123456789abcdef";
@@ -63,7 +67,9 @@ fn main() {
         } else if report.count_refused {
             out.append(" refuse count_refusal\n");
         } else if report.refused {
-            out.append(" refuse refused\n");
+            out.append(" refuse ");
+            out.append(schema_rt::load_refusal_name(report.reason));
+            out.push('\n');
         } else if root < 0 || report.malformed || report.stopped {
             out.append(" refuse damaged\n");
         } else {
@@ -76,6 +82,14 @@ fn main() {
             } else {
                 out.append(" accept ");
                 hex(out, saved);
+                var canonical: u8[>..] = [];
+                let n = schema_rt::json_save_table(unit, conformance_text(), f[3], data, vals, nodes, root, canonical);
+                if n > 0 {
+                    out.push(' ');
+                    hex(out, canonical[0..n - 1]);
+                } else {
+                    out.append(" -");
+                }
                 out.push('\n');
             }
         }

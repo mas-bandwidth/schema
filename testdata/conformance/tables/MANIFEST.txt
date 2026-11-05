@@ -86,6 +86,18 @@ unit tblr2     test/tables/R2.schema
 instance root_full            tabledemo RootConfig    testdata/wire/tables/root_full.bin
 instance root_default         tabledemo RootConfig    testdata/wire/tables/root_default.bin
 instance profile_elide        tabledemo ProfileConfig testdata/wire/tables/profile_elide.bin
+instance text_escapes          tabledemo ProfileConfig testdata/wire/tables/text_escapes.bin
+instance text_escapes_raw      tabledemo ProfileConfig testdata/wire/tables/text_escapes_raw.bin
+instance text_float_exp        tabledemo ProfileConfig testdata/wire/tables/text_float_exp.bin
+instance text_float_small      tabledemo ProfileConfig testdata/wire/tables/text_float_small.bin
+instance text_float_misc       tabledemo ProfileConfig testdata/wire/tables/text_float_misc.bin
+instance text_float64_big      tabledemo ProfileConfig testdata/wire/tables/text_float64_big.bin
+instance text_float64_ties     tabledemo ProfileConfig testdata/wire/tables/text_float64_ties.bin
+instance text_negative_zero    tabledemo ProfileConfig testdata/wire/tables/text_negative_zero.bin
+instance text_uint64_two_to_63 tabledemo ProfileConfig testdata/wire/tables/text_uint64_two_to_63.bin
+instance text_icon_pad_one     tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_one.bin
+instance text_icon_pad_two     tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_two.bin
+instance text_icon_sixteen     tabledemo ProfileConfig testdata/wire/tables/text_icon_sixteen.bin
 instance loadout_full         tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin
 instance wide_blob            tabledemo WideBlob      testdata/wire/tables/wide_blob.bin
 instance archive              tabledemo ArchiveConfig testdata/wire/tables/archive.bin
@@ -442,6 +454,10 @@ cook-write message_transaction    testdata/conformance/tables/cook-write/message
 cook-write message_ping           testdata/conformance/tables/cook-write/message_ping.cook testdata/conformance/tables/cook-write/message_ping-be.cook
 cook-write message_save           testdata/conformance/tables/cook-write/message_save.cook testdata/conformance/tables/cook-write/message_save-be.cook
 cook-write message_empty          testdata/conformance/tables/cook-write/message_empty.cook testdata/conformance/tables/cook-write/message_empty-be.cook
+# feature_full carries non-empty unbounded text (SPEC-TABLES §2.13.1), a
+# `[]string` element and a `map[string]V` key, each a blob record in its
+# holder's extent
+cook-write feature_full           testdata/conformance/tables/cook-write/feature_full.cook testdata/conformance/tables/cook-write/feature_full-be.cook
 cook-write message_batch          testdata/conformance/tables/cook-write/message_batch.cook testdata/conformance/tables/cook-write/message_batch-be.cook
 cook-write message_arms           testdata/conformance/tables/cook-write/message_arms.cook testdata/conformance/tables/cook-write/message_arms-be.cook
 cook-write message_arm_edits      testdata/conformance/tables/cook-write/message_arm_edits.cook testdata/conformance/tables/cook-write/message_arm_edits-be.cook
@@ -719,6 +735,26 @@ json-hostile num-three-part               tabledemo RootConfig  testdata/conform
 json-hostile num-trailing-dot             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-trailing-dot             refused
 json-hostile num-trailing-plus            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-trailing-plus            refused
 json-hostile num-two-exponents            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-two-exponents            refused
+# THE SPELLINGS A VALUE ROW PINS (docs/SPEC-TABLES.md §16.1, §16.2, §16.3): each
+# reads clean, so the verdict is silent and the row holds every leg to the
+# oracle's VALUE — exponent-form tokens, the float32 minimum subnormal's
+# correctly rounded token, both zeros, both float maxima, the int64 and uint64
+# extremes at and past 2^63 and saturated past each 64-bit end, every escape
+# the writer spells, raw non-ASCII, and each base64 padding length.
+json-hostile num-exponent-forms         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-exponent-forms         0,0,0,0,0,false,read
+json-hostile num-float32-min-subnormal  tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-min-subnormal  0,0,0,0,0,false,read
+json-hostile num-negative-zero-floats   tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero-floats   0,0,0,0,0,false,read
+json-hostile num-float-max              tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float-max              0,0,0,0,0,false,read
+json-hostile num-int64-extremes         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int64-extremes         0,0,0,0,0,false,read
+json-hostile num-uint64-max             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-uint64-max             0,0,0,0,0,false,read
+json-hostile num-uint64-two-to-63       tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-uint64-two-to-63       0,0,0,0,0,false,read
+json-hostile num-int64-past-extremes    tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int64-past-extremes    0,0,0,3,0,false,read
+json-hostile str-writer-escapes         tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-writer-escapes         0,0,0,0,0,false,read
+json-hostile str-raw-non-ascii          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-raw-non-ascii          0,0,0,0,0,false,read
+json-hostile base64-padding-one         tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-padding-one         0,0,0,0,0,false,read
+json-hostile base64-padding-two         tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-padding-two         0,0,0,0,0,false,read
+json-hostile base64-padding-none        tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-padding-none        0,0,0,0,0,false,read
+json-hostile base64-sixteen             tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-sixteen             0,0,0,0,0,false,read
 json-hostile optional-present-empty       tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-present-empty       0,0,0,0,0,false,read
 json-hostile optional-wrong-shape         tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-wrong-shape         0,1,0,0,0,false,read
 json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-clamp-boundary           0,0,0,1,0,false,read
@@ -780,6 +816,23 @@ json-hostile trailing-commas              tabledemo RootConfig  testdata/conform
 json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
 json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,0,false,read
 json-hostile unknown-key                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/unknown-key                  1,0,0,0,0,false,read
+# A TEXT LIST'S TOTAL in the text (docs/SPEC-TABLES.md §2.13, §16.2), over the
+# witness root's `labels [..4]string(8) | total=8`: the read keeps the longest
+# prefix whose bytes are within the total and drops the element that would
+# carry the sum past it and every element after it, clamped counted ONCE for
+# the field. `past` drops "abc" at 9 bytes and the short "a" after it; `at`
+# holds exactly 8 bytes and reads clean (feature_full's "é" and "schema" are the
+# same boundary as an instance); `after-clamp` clamps its first element at M,
+# counted, and then the total drops "a", counted again.
+json-hostile text-total-past              featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-past              0,0,0,1,0,false,read
+json-hostile text-total-at                featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-at                0,0,0,0,0,false,read
+json-hostile text-total-after-clamp       featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-after-clamp       0,0,0,2,0,false,read
+# A COUNT PAST [..N] AND THE TOTAL, BOTH COUNTED (§2.13): five labels on the
+# [..4] list, where "abc" carries the sum to 9 and the total drops it and the
+# tail. The fifth element is past the count bound as well, and that clamp is
+# counted beside the total's, so the text and the wire (report
+# text_total_and_count, the same five labels) both answer two clamps.
+json-hostile text-total-and-count         featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-and-count         0,0,0,2,0,false,read
 
 # THE SHARING CONSTRUCT'S OWN EDGES (docs/SPEC-TABLES.md §16.7), over the
 # pointered root: `&node` is a LABEL — with fields after it, it defines a node
@@ -1068,6 +1121,12 @@ instance list_nested listdemo Sheet testdata/wire/tables/list_nested.bin
 instance list_of_maps listdemo Army testdata/wire/tables/list_of_maps.bin
 instance list_migrates listdemo Unbounded testdata/wire/tables/list_migrates.bin
 report list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin
+
+# THE SAME FIVE LABELS ON THE WIRE (§2.13), written by a build whose labels are
+# [..5]string(8) with no total: the reader clamps the count at 4 and the total
+# drops "abc" and what follows, two clamps, as json-hostile
+# text-total-and-count reads the same value from the text.
+report text_total_and_count featurewitnesses Root testdata/wire/tables/text_total_and_count.bin
 
 # Map storage and ordering pins shared by the reference and every port.
 unit mapdemo tables/maps

@@ -268,6 +268,16 @@ type expectation struct {
 	// the load is discarded whole, so the answer is scored on the refusal
 	// alone, the report line saying `malformed`, and nothing after it.
 	damaged bool
+	// value is the oracle's §16 text of the value the read leaves, a file
+	// whose bytes the answer owes after the verdict line in want. A `report`
+	// row and a `json-hostile` row that read owe it: THE DECODED VALUE IS
+	// COMPARED, not only the counters, because two legs can count the same
+	// events and land different values.
+	value string
+	// verdictOnly scores the first line alone: a json-hostile row's uncarried
+	// verdict is a port's behaviour before the ruling, and the value that
+	// behaviour leaves is not the standard's.
+	verdictOnly bool
 }
 
 // hostileExpectations is the answer each port owes the hostile battery: the
@@ -280,13 +290,28 @@ func hostileExpectations(m *Manifest, lang string) ([]expectation, []string) {
 	out := make([]expectation, 0, len(m.Hostiles))
 	var exemptions []string
 	for _, h := range m.Hostiles {
-		out = append(out, expectation{name: h.Name, want: []byte(h.VerdictFor(lang) + "\n")})
+		out = append(out, hostileExpectation(h, lang))
 		if !h.Carries(lang) && h.Uncarried != "" {
 			exemptions = append(exemptions, fmt.Sprintf("%s / json-hostile / %s: the row is carried by %s; %s keeps %s (docs/SPEC-TABLES.md §16.3)",
 				lang, h.Name, strings.Join(h.CarriedBy, ","), lang, h.Uncarried))
 		}
 	}
 	return out, exemptions
+}
+
+// hostileExpectation is one hostile row's answer for lang: the verdict it
+// owes, then the oracle's value when that verdict is the standard's read. A
+// port on the row's uncarried verdict is held to that verdict line alone.
+func hostileExpectation(h Hostile, lang string) expectation {
+	verdict := h.VerdictFor(lang)
+	e := expectation{name: h.Name, want: []byte(verdict + "\n")}
+	switch {
+	case verdict != h.Verdict():
+		e.verdictOnly = true
+	case !h.Refused:
+		e.value = h.Value
+	}
+	return e
 }
 
 func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDir string) ([]expectation, error) {
@@ -360,7 +385,11 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if !ok {
 				return nil, fmt.Errorf("reports.txt names no case %q — run: make conformance-generate", r.Name)
 			}
-			out = append(out, expectation{name: r.Name, want: []byte(c.String() + "\n"), damaged: c.Malformed})
+			e := expectation{name: r.Name, want: []byte(c.String() + "\n"), damaged: c.Malformed}
+			if !c.Malformed && !c.Refused {
+				e.value = r.Value
+			}
+			out = append(out, e)
 		}
 	case "framing":
 		// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the report line the
@@ -405,7 +434,11 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		}
 	case "json-hostile":
 		for _, h := range m.Hostiles {
-			out = append(out, expectation{name: h.Name, want: []byte(h.Verdict() + "\n")})
+			e := expectation{name: h.Name, want: []byte(h.Verdict() + "\n")}
+			if !h.Refused {
+				e.value = h.Value
+			}
+			out = append(out, e)
 		}
 	case "block":
 		for _, b := range m.Blocks {
@@ -754,13 +787,67 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		r.mark(e.name, outcomePass)
 		return
 	}
-	if !bytes.Equal(got, e.want) {
-		r.failures = append(r.failures, describeDiff(e.name, e.want, got))
+	want := e.want
+	if e.verdictOnly {
+		got = append([]byte(firstLine(got)), '\n')
+	}
+	if e.value != "" {
+		text, err := os.ReadFile(e.value)
+		if err != nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: the oracle's value golden: %v — run: make conformance-generate", e.name, err))
+			r.mark(e.name, outcomeFail)
+			return
+		}
+		want = append(append([]byte{}, e.want...), text...)
+		if _, err := os.Stat(answer + ".absent"); err == nil && bytes.Equal(got, e.want) {
+			// THE VALUE IS ABSENT, THE VERDICT IS NOT: a leg with no text
+			// writer for this root answers the report line alone beside
+			// `<case>.absent`. The line is held as before; the value counts
+			// as the missing feature it is.
+			r.missing++
+			r.mark(e.name, outcomeAbsent)
+			return
+		}
+		if firstLine(got) == firstLine(want) && !bytes.Equal(got, want) {
+			// the counters agree and the VALUE does not: say so, and where
+			r.failures = append(r.failures, describeValueDiff(e.name, e.want, text, got))
+			r.mark(e.name, outcomeFail)
+			return
+		}
+	}
+	if !bytes.Equal(got, want) {
+		r.failures = append(r.failures, describeDiff(e.name, want, got))
 		r.mark(e.name, outcomeFail)
 		return
 	}
 	r.pass++
 	r.mark(e.name, outcomePass)
+}
+
+// describeValueDiff names a value that differs under an agreeing verdict
+// line: the first byte of the value text that differs, and the line it sits
+// on in each text, because the line names the field.
+func describeValueDiff(name string, verdict, want, got []byte) string {
+	got = got[min(len(verdict), len(got)):]
+	at := 0
+	for at < len(want) && at < len(got) && want[at] == got[at] {
+		at++
+	}
+	return fmt.Sprintf("%s: the verdict agrees and the VALUE differs at text byte %d — expected %q, got %q",
+		name, at, lineAt(want, at), lineAt(got, at))
+}
+
+// lineAt is the line of text holding byte at, trimmed of its indentation.
+func lineAt(text []byte, at int) string {
+	if at > len(text) {
+		at = len(text)
+	}
+	start := bytes.LastIndexByte(text[:at], '\n') + 1
+	end := bytes.IndexByte(text[at:], '\n')
+	if end < 0 {
+		end = len(text) - at
+	}
+	return strings.TrimSpace(string(text[start : at+end]))
 }
 
 // answersDamage reports whether a leg's answer opens with a report line that

@@ -357,6 +357,8 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 				g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", base, pieces[1].Offset, name)
 			}
 		}
+	case f.Type.TextUnbounded():
+		g.pf("    table_cook_put( %s + %d, 0, 8, order ); // %s: the string's delta, filled by the extent writer\n", base, value.Offset, f.Name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		// the buffer, then the int32 used length beside it — two pieces, each
 		// aligned on its own, which is what the generated record declares

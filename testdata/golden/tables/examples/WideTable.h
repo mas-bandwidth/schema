@@ -471,6 +471,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -6207,32 +6210,41 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
         memcpy( &raw, dst + b.dst, b.width );
-        int64_t v = 0;
+        // THE COMPARISON IS IN THE FIELD'S OWN TYPE: signed for a signed kind,
+        // UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the
+        // max and never below the min. An unsigned kind's bounds are never
+        // negative, so they read as uint64 unchanged.
+        bool below = false;
+        bool above = false;
         if ( b.sgn != 0 )
         {
             const unsigned bits = (unsigned) b.width * 8u;
             const uint64_t top = 1ull << ( bits - 1 );
             if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-            v = (int64_t) raw;
+            below = (int64_t) raw < b.lo;
+            above = (int64_t) raw > b.hi;
         }
         else
         {
-            v = (int64_t) raw;
+            below = raw < (uint64_t) b.lo;
+            above = raw > (uint64_t) b.hi;
         }
-        int64_t landed = v;
-        if ( landed < b.lo )
+        uint64_t landed = 0;
+        if ( below )
         {
-            landed = b.lo;
+            landed = (uint64_t) b.lo;
             clamped++;
         }
-        else if ( landed > b.hi )
+        else if ( above )
         {
-            landed = b.hi;
+            landed = (uint64_t) b.hi;
             clamped++;
         }
-        if ( landed == v ) { continue; }
-        uint64_t out = (uint64_t) landed;
-        memcpy( dst + b.dst, &out, b.width );
+        else
+        {
+            continue;
+        }
+        memcpy( dst + b.dst, &landed, b.width );
     }
     if ( report != NULL ) { report->clamped += clamped; }
 }
@@ -10719,9 +10731,9 @@ inline const TableTypeInfo * WideBlobTableType();
 extern const TableTypeInfo WideBlobTableInfo;
 
 inline const TableFieldInfo WideBlobTableFields[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, label ), (uint32_t) sizeof( WideBlob::label ), (uint32_t) offsetof( WideBlob, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, true, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, payload ), (uint32_t) sizeof( WideBlob::payload[0] ), (uint32_t) offsetof( WideBlob, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, true, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, samples ), (uint32_t) sizeof( WideBlob::samples[0] ), (uint32_t) offsetof( WideBlob, samples_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, label ), (uint32_t) sizeof( WideBlob::label ), (uint32_t) offsetof( WideBlob, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, true, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, payload ), (uint32_t) sizeof( WideBlob::payload[0] ), (uint32_t) offsetof( WideBlob, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, true, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, samples ), (uint32_t) sizeof( WideBlob::samples[0] ), (uint32_t) offsetof( WideBlob, samples_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo WideBlobTableInfo = { "WideBlob", (uint32_t) sizeof( WideBlob ), 3, WideBlobTableFields, +[]( void * p ) { WideBlobReset( *(WideBlob *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * WideBlobTableType() { return &WideBlobTableInfo; }

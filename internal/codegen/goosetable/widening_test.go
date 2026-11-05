@@ -23,8 +23,8 @@ package goosetable_test
 //
 // The Go leg's TestMeasureRefusalReasons is LoadMeasure's (count_over_length,
 // count_over_extent_cap, wire_damaged, unknown_form on the measure); Goose
-// has no LoadMeasure (make/goose-fuzz.mk), and that half of the cell is not
-// claimed here.
+// has no LoadMeasure (make/goose-fuzz.mk), and the load's own reason for each
+// of those files is refusalreasons_test.go's.
 //
 // TestGooseWideningNegativeControl breaks the float rung of the ladder, the
 // LEB's tenth-byte clause and the map's once-per-map widened count, and

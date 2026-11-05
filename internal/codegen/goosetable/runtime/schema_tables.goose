@@ -88,6 +88,9 @@ struct FieldDesc {
                               // TableDocNone when there is none
     num_tags: i32,            // its tags (SPEC §4.2), in DECLARED order; 0 and an
     tags: const (const u8[:])[:], // empty list when there are none
+    text_total: i64,          // a text list's `| total = N` (docs/SPEC-TABLES.md
+                              // §2.13): the most bytes its elements hold in
+                              // all; 0 for none
 }
 
 // TableDesc is one table — or a packet type a table reaches by value, which

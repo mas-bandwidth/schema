@@ -519,10 +519,12 @@ fn surface_block_lead(lines: const u8[:][:], unit: const u8[:]) {
 }
 
 // surface_cook_write: THE COOK WRITE SIDE (docs/SPEC-TABLES.md §7.6). Each
-// instance of this unit is loaded from its wire, copied into its TYPED root
-// record, measured and cooked in both byte orders; the harness compares the
-// bytes against `schema cook`'s. A capacity one byte short must write
-// nothing. A root this unit has no typed writer for answers a named absence.
+// instance of this unit is loaded from its wire, then measured and cooked in
+// both byte orders — a fixed root through its TYPED record (the load copied
+// into it), any other root as a region straight from the loaded value; the
+// harness compares the bytes against `schema cook`'s. A capacity one byte
+// short must write nothing. A root this unit has no writer for answers a
+// named absence.
 fn surface_cook_write(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let c = words(line);
@@ -540,11 +542,15 @@ fn surface_cook_write(lines: const u8[:][:], unit: const u8[:]) {
                 write_stderr(str("driver: ", c[1], ": the cook input does not load\n"));
                 exit(1);
             }
-            let need = accel_cook_measure(f[3]);
-            if need < 0 {
-                absent_answer(c[1], "no-typed-cook-writer");
-                absent_answer(str(c[1], "-be"), "no-typed-cook-writer");
+            let need = accel_cook_measure(f[3], data, vals, nodes, root);
+            if need == -2 {
+                absent_answer(c[1], "no-cook-writer");
+                absent_answer(str(c[1], "-be"), "no-cook-writer");
                 break;
+            }
+            if need < 0 {
+                write_stderr(str("driver: ", c[1], ": the cook measure refused\n"));
+                exit(1);
             }
             var big = false;
             while true {
@@ -554,14 +560,14 @@ fn surface_cook_write(lines: const u8[:][:], unit: const u8[:]) {
                 var file: u8[>..] = [];
                 var i: i64 = 0;
                 while i < need { file.push(0xa5); i += 1; }
-                if accel_cook_write(f[3], data, vals, root, file[0..need - 1], big) {
+                if accel_cook_write(f[3], data, vals, nodes, root, file[0..need - 1], big) {
                     write_stderr(str("driver: ", name, ": a capacity one byte short cooked\n"));
                     exit(1);
                 }
                 for x in file {
                     if x != 0xa5 { write_stderr(str("driver: ", name, ": a capacity one byte short wrote bytes\n")); exit(1); }
                 }
-                if !accel_cook_write(f[3], data, vals, root, file, big) {
+                if !accel_cook_write(f[3], data, vals, nodes, root, file, big) {
                     write_stderr(str("driver: ", name, ": the cook write refused\n"));
                     exit(1);
                 }

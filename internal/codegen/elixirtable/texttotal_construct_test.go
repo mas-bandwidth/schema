@@ -50,7 +50,7 @@ for field<-["a","b","c","d"] do
  P.ok(T.cook_measure("Totals",bad)==-1,"total cook refusal "<>field)
 end
 wire=Base.decode16!(%q,case: :lower)
-for {result,count}<-[{T.load("Totals",wire),10},{T.from_json("Totals",%q),8}] do
+for {result,count}<-[{T.load("Totals",wire),10},{T.from_json("Totals",%q),10}] do
  {:ok,v,r}=result
  expected=%%{"a"=>["éé","a"],"b"=>[nil,"éé"],"c"=>["éé","a"],"d"=>[nil,"éé"]}
  actual=Map.new(expected,fn {key,_}->{key,Enum.map(v[key],& &1["value"])} end)

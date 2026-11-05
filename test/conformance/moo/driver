@@ -43,14 +43,16 @@ case "$surface" in
 esac
 # $MOO_DRIVER_STAGE (default build/conformance-moo-driver) holds the staged
 # source per surface: a run beside another (a negative control under make -j)
-# names its own, so no two runs stage into one directory.
+# names its own, so no two runs stage into one directory. main.moo is handed
+# the surface's stage as its third argument and reads nothing else staged.
+# It is repo-relative, as main.moo resolves it from the repository root.
 stage=${MOO_DRIVER_STAGE:-build/conformance-moo-driver}/$surface
 mkdir -p "$stage" || exit 1
 perl test/conformance/moo/stage.pl "$1" "$surface" "$stage" "$generated" || exit 1
 if [ "$surface" = list ]; then
-	exec "$moo" "$main" -a list "$generated"
+	exec "$moo" "$main" -a list "$generated" "$stage"
 fi
-"$moo" "$main" -a "$surface" "$generated" >"$stage/out"
+"$moo" "$main" -a "$surface" "$generated" "$stage" >"$stage/out"
 status=$?
 [ "$status" -eq 0 ] || exit "$status"
 # moo has no os.exit: a surface main.moo does not carry is the one line

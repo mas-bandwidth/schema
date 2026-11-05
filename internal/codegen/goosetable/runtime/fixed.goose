@@ -15,6 +15,7 @@
 // compiler is AGPL-3.0, its output is not.
 namespace schema_rt;
 
+import .schema_rt;
 import .schema_tables;
 
 // The fixed form's one form byte and the constant header (docs/SPEC-TABLES.md
@@ -37,6 +38,14 @@ let FixedRefuseNewerForm: i64 = 26;
 let FixedRefuseMessageFormAsFile: i64 = 27;
 let FixedRefuseLayoutUnknown: i64 = 28;
 let FixedRefuseLayoutMalformed: i64 = 31;
+let FixedRefuseLayoutCountMismatch: i64 = 32;
+let FixedRefuseLayoutKindUnknown: i64 = 33;
+let FixedRefuseLayoutKindInvalid: i64 = 34;
+let FixedRefuseLayoutSizeMismatch: i64 = 35;
+let FixedRefuseLayoutTreeUnclosed: i64 = 36;
+let FixedRefuseLayoutTooDeep: i64 = 37;
+let FixedRefuseLayoutRecordTooLarge: i64 = 38;
+let FixedRefusePlanTooLarge: i64 = 39;
 let FixedRefuseNoLayout: i64 = 40;
 let FixedRefuseBatchTooLarge: i64 = 41;
 let FixedRefuseTextIllFormed: i64 = 42;
@@ -56,7 +65,17 @@ fn fixed_refusal_name(code: i64) -> const u8[:] {
         26 => "newer_form",
         27 => "message_form_as_file",
         28 => "layout_unknown",
+        29 => "layout_unsupported",
+        30 => "layout_newer",
         31 => "layout_malformed",
+        32 => "layout_count_mismatch",
+        33 => "layout_kind_unknown",
+        34 => "layout_kind_invalid",
+        35 => "layout_size_mismatch",
+        36 => "layout_tree_unclosed",
+        37 => "layout_too_deep",
+        38 => "layout_record_too_large",
+        39 => "plan_too_large",
         40 => "no_layout",
         41 => "batch_too_large",
         42 => "text_ill_formed",
@@ -91,6 +110,16 @@ fn fixed_get(b: const u8[:], at: i64, w: i64) -> u64 {
         i += 1;
     }
     return r;
+}
+
+// fixed_lt_u128 and fixed_lt_i128 compare two 128-bit values across both
+// 64-bit lanes (docs/FIXED-FORM-ALGORITHM.md §4.6, 128-bit bounds).
+fn fixed_lt_u128(a: Int128, b: Int128) -> bool {
+    return a.hi < b.hi || (a.hi == b.hi && a.lo < b.lo);
+}
+
+fn fixed_lt_i128(a: Int128, b: Int128) -> bool {
+    return (a.hi as! i64) < (b.hi as! i64) || (a.hi == b.hi && a.lo < b.lo);
 }
 
 // fixed_i32 is a count or a length: the int32 its storage is
