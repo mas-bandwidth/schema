@@ -26,9 +26,9 @@ certificate.
 
 ## Commands
 
-The same harness was placed as `internal/tablewire/zz_engine_bench_test.go`
-in both trees (it is not committed; it uses only `compiler`, `tabletext` and
-`tablewire`) and run as:
+The harness is committed at `internal/tablewire/engine_bench_test.go`; it
+uses only `compiler`, `tabletext` and `tablewire`, so it was copied into a
+worktree of the staged tip unchanged and the two runs are comparable:
 
 ```
 nice -n 19 go test -count=1 -timeout 600s ./internal/tablewire/ \
