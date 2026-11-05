@@ -6938,9 +6938,12 @@ endef
 
 # THE SIBLING RUNTIMES AT THE PINS ABOVE. The pins are the single source: this
 # stages the same six checkouts CI clones, at the same tags, for a local bench.
-# Each pin is consumed here (internal/ci/mainreds_pins_test.go refuses a pin no
-# rule reads), and ci-full.yml's tags are held to what these resolve to. An
-# existing sibling is left alone; remove it to re-stage.
+# deps names it as a prerequisite below, so every gate that already asks deps
+# for the Go sibling (test, test-go, slow-gate-coverage,
+# tables-go-sibling-runtime) also stages C/CS/RS/JS; a pin that only this file
+# reads would bind no checkout (internal/ci/mainreds_pins_test.go refuses that).
+# ci-full.yml's tags are held to what these resolve to. An existing sibling is
+# left alone; remove it to re-stage.
 .PHONY: serialize-siblings
 serialize-siblings:
 	@if ! test -e ../serialize; then $(call fetch-runtime,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),../serialize,C++); fi
@@ -6951,7 +6954,7 @@ serialize-siblings:
 	@if ! test -e ../serialize.js; then $(call fetch-runtime,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS); fi
 
 .PHONY: deps
-deps:
+deps: serialize-siblings
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
 		actual=$$(git -C "$(SERIALIZE_GO)" describe --tags --exact-match 2>/dev/null || echo untagged); \
 		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \

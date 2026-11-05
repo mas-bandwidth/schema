@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -75,6 +76,14 @@ func TestMainRedsPinsMatchCIFull(t *testing.T) {
 			t.Errorf("%s is declared but never consumed by a make rule; a pin that only this test reads cannot bind a sibling checkout", pin.makeVar)
 		}
 	}
+	// A pin whose only reader is a target nothing invokes binds no checkout:
+	// the target is dead text and the loop above still passes. deps is the
+	// staging entry point the gates that need a sibling already name (test,
+	// test-go, slow-gate-coverage, tables-go-sibling-runtime), so the sibling
+	// staging has to hang off it or the C/CS/RS/JS pins are decorative.
+	if !slices.Contains(mainRedsPrerequisites(makeText, "deps"), "serialize-siblings") {
+		t.Errorf("serialize-siblings is not a prerequisite of deps, so no invoked target stages it and the C/CS/RS/JS pins bind no sibling checkout")
+	}
 
 	t.Run("a later assignment overrides the pin", func(t *testing.T) {
 		t.Parallel()
@@ -110,6 +119,19 @@ func TestMainRedsPinsMatchCIFull(t *testing.T) {
 			t.Fatalf("the included override resolved to ci-full.yml's pin %q, so the guard cannot see it", pins["SERIALIZE_GO_PIN"])
 		}
 	})
+}
+
+// mainRedsPrerequisites returns the literal prerequisites of target: the
+// whitespace-separated words between the first colon of each rule line and the
+// comment. The staging target is phony and writes its prerequisites literally,
+// so this is enough to tell an invoked rule from dead text.
+func mainRedsPrerequisites(text, target string) []string {
+	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(target) + `\s*:\s*([^#\n]*)`)
+	var out []string
+	for _, m := range re.FindAllStringSubmatch(text, -1) {
+		out = append(out, strings.Fields(m[1])...)
+	}
+	return out
 }
 
 // mainRedsWorkflowPins reads the top-level env pins ci-full.yml clones from.
