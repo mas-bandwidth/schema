@@ -1,0 +1,107 @@
+{
+  "ships": {
+    "😀": {
+      "name": "astral",
+      "health": 11
+    },
+    "｡": {
+      "name": "bmp high",
+      "health": 10
+    },
+    "é": {
+      "name": "two byte",
+      "health": 9
+    },
+    "~": {
+      "name": "tilde",
+      "health": 8
+    },
+    "b": {
+      "name": "b",
+      "health": 7
+    },
+    "abc": {
+      "name": "longer",
+      "health": 6
+    },
+    "ab": {
+      "name": "prefix",
+      "health": 5
+    },
+    "a": {
+      "name": "lower",
+      "health": 4
+    },
+    "Z": {
+      "name": "upper z",
+      "health": 3
+    },
+    "A": {
+      "name": "upper",
+      "health": 2
+    },
+    "": {
+      "name": "empty key",
+      "health": 1
+    }
+  },
+  "by_id": {
+    "4294967295": {
+      "&node": 1,
+      "name": "shared a",
+      "health": 50
+    },
+    "2147483648": {
+      "&node": 2,
+      "name": "shared b",
+      "health": 60
+    },
+    "2147483647": {
+      "name": "solo",
+      "health": 70
+    },
+    "1": {
+      "&node": 2
+    },
+    "0": {
+      "&node": 1
+    }
+  },
+  "flagship": {
+    "&node": 2
+  },
+  "loadouts": {
+    "kit": {
+      "255": {
+        "count": 255
+      },
+      "128": {
+        "count": 128
+      },
+      "127": {
+        "count": 127
+      },
+      "0": {
+        "count": 0
+      }
+    },
+    "": {}
+  },
+  "tiers": {
+    "32767": {
+      "count": 32767
+    },
+    "1": {
+      "count": 1
+    },
+    "0": {
+      "count": 0
+    },
+    "-1": {
+      "count": -1
+    },
+    "-32768": {
+      "count": -32768
+    }
+  }
+}

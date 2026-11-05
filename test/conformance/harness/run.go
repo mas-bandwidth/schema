@@ -22,7 +22,7 @@ import (
 )
 
 // surfaces, in the order the matrix prints them.
-var surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+var surfaces = []string{"wire", "rewrite", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"cook-reason", "block-reason"}
 
@@ -328,6 +328,16 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			}
 			out = append(out, expectation{name: i.Name, want: want})
 		}
+	case "rewrite":
+		// THE REWRITE ROWS (docs/SPEC-TABLES.md §22): the canonical bytes the
+		// oracle wrote for the value each read leaves
+		for _, rw := range m.Rewrites {
+			want, err := os.ReadFile(rw.Canonical)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w — run: make conformance-generate", rw.Name, err)
+			}
+			out = append(out, expectation{name: rw.Name, want: want})
+		}
 	case "message":
 		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): read the message
 		// against the connection's announced table and write it back. The
@@ -370,8 +380,8 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		}
 	case "json-write":
 		for _, i := range m.Instances {
-			if i.NoText {
-				continue // the form has no text for this one; no leg is asked for one
+			if i.NoText || i.HandText {
+				continue // no text for this one, or a hand-authored text no writer owes
 			}
 			want, err := os.ReadFile(i.JSON)
 			if err != nil {
@@ -559,6 +569,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err := deriveManifest(m, derived); err != nil {
 		return false, err
 	}
+	derivedRewrite := filepath.Join(work, "manifest-rewrite.txt")
+	if err := deriveRewriteManifest(m, derivedRewrite); err != nil {
+		return false, err
+	}
 
 	want := map[string][]expectation{}
 	for _, s := range surfaces {
@@ -613,7 +627,13 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			}
 			r := &result{total: len(legWant)}
 			results[d.lang][s] = r
-			if !listed[s] {
+			// THE REWRITE SURFACE IS THE WIRE SURFACE over the rewrite rows: a
+			// leg that loads and saves an instance loads and saves these
+			surface, manifest := s, derived
+			if s == "rewrite" {
+				surface, manifest = "wire", derivedRewrite
+			}
+			if !listed[surface] {
 				r.absent = true
 				for _, e := range legWant {
 					r.verdict(e.name, "absent")
@@ -630,7 +650,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			if err := os.MkdirAll(out, 0o755); err != nil {
 				return false, err
 			}
-			code, stderr, err := runDriver(d, derived, s, out)
+			code, stderr, err := runDriver(d, manifest, surface, out)
 			if err != nil {
 				return false, err
 			}
