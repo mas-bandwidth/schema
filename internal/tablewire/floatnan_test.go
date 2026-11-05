@@ -12,7 +12,7 @@ import (
 )
 
 // A FLOAT IS FINITE, AND THE ORACLE REFUSES ONE THAT IS NOT (docs/SPEC-TABLES.md
-// §3, §3.3; Glenn, 2026-10-27: "Tables go finite-only too, same rule as
+// §3, §3.3; the maintainer, 2026-10-27: "Tables go finite-only too, same rule as
 // packets. NaN/inf refused on write and read, -0 and subnormals kept").
 //
 // `internal/tablewire` is the compiler's own engine and the wire fuzzer's

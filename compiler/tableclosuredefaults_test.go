@@ -34,7 +34,7 @@ type Payload {
  leaf Leaf
  rows [1..2]Leaf
 }
-fixed table Root {
+table Root {
  payload Payload
  keyed [Key]uint8
 }

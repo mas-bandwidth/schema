@@ -102,7 +102,7 @@ writer's bound (a count of 7 where the old writer declared `[..4]`, an ordinal 5
 a tag past the old arm count, a scalar past the old range), read by the NEW reader whose own bound is
 wider: it REFUSES against the WRITER's bound carried by the plan — `count_over_bound` for the count,
 `out_of_range` for the ordinal, the tag and the scalar — and never lands a value the old writer could not
-have written (Glenn, 2026-11-03: a value outside the writer's range refuses; it never clamps). Named `<row>_hostile_case()`.
+have written (the maintainer, 2026-11-03: a value outside the writer's range refuses; it never clamps). Named `<row>_hostile_case()`.
 
 **The compressed-float rows take the same hostile pass**: the plan carries the WRITER's range for a
 compressed float as it does for every ranged kind, and the bounds pass refuses past it (FIXED-FORM-ALGORITHM
@@ -133,7 +133,7 @@ row whose subject is not a definition change but a place the reference and this 
 written the same way and they owe the same things: the schema pair or the forged file, the expected verdict,
 the value where it reads, and WHICH of the four ways apply — a `—` is a column the row cannot have rather than
 one nobody wrote. **The verdict is asserted, and where the row reads, the value written back**; counters and reason names
-are per-language diagnostics and are not asserted across legs. The reference and the dump are Johnny's; **every other leg builds the fixture from THIS TEXT
+are per-language diagnostics and are not asserted across legs. The reference and the dump come from the reference leg; **every other leg builds the fixture from THIS TEXT
 and the row's manifest line, never from `fixedform_dump.cpp`** (§5.9 #32, #37).
 
 | row | the pair / the forged file | the read | the verdict | the counters (diagnostic, not compared across legs) | the four ways |
@@ -269,7 +269,7 @@ have guessed:
 
 | row | the rule | the oracle | which legs |
 |---|---|---|---|
-| `union_unselected_arm` | after a read that RETURNS, an arm the landed tag did not select is **UNDEFINED**, one word for every target (schema#1157, Glenn: "as designed it is 'undefined'"); a union read defines the tag and the selected arm and nothing else. A consumer reads the selected arm only | `VOLD_/VNEW_union_append` as they stand, destination POISONED with `0x5A` on BOTH columns: `pick.type` and `pick.alpha` land the writer's, `seq` stands — and the probe **does not compare** `pick.beta` or `pick.gamma`, which is the row's whole content | every leg; no leg is red today, and the row exists to stop one being written |
+| `union_unselected_arm` | after a read that RETURNS, an arm the landed tag did not select is **UNDEFINED**, one word for every target (schema#1157, the maintainer: "as designed it is 'undefined'"); a union read defines the tag and the selected arm and nothing else. A consumer reads the selected arm only | `VOLD_/VNEW_union_append` as they stand, destination POISONED with `0x5A` on BOTH columns: `pick.type` and `pick.alpha` land the writer's, `seq` stands — and the probe **does not compare** `pick.beta` or `pick.gamma`, which is the row's whole content | every leg; no leg is red today, and the row exists to stop one being written |
 
 **IF GLENN REVERSES THIS**, the other expectation is written out so the reversal is one edit and not a
 re-derivation: *after a read that returns, every arm holds either the writer's value (selected) or the arm's

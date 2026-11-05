@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -148,5 +149,119 @@ func checkCookOrder(t *testing.T, caseName string, order int, lines []string, wa
 			}
 		}
 		t.Fatalf("%s: cook differs in length", name)
+	}
+}
+
+// TestLuaCookWriteNegativeControlsFunctional plants one defect per clause in
+// cookwrite.lua (byte order, wide byte order, shared node numbering, and header
+// attribution length) and requires the comparison against tablecook to go red.
+func TestLuaCookWriteNegativeControlsFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
+	repo := filepath.Join("..", "..", "..")
+	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
+	units := manifestUnits(t, manifest)
+	rows := map[string]manifestRow{}
+	for _, r := range manifestRows(t, manifest, "instance") {
+		rows[r.caseName] = r
+	}
+	for _, tc := range []struct {
+		name   string
+		row    string
+		file   string
+		anchor string
+		repl   string
+	}{
+		{
+			name:   "order",
+			row:    "root_full",
+			file:   "cookwrite.lua",
+			anchor: "ORD = order == 2 and \">\" or \"<\"",
+			repl:   "ORD = \"<\"",
+		},
+		{
+			name:   "wide_order",
+			row:    "scalars_full",
+			file:   "cookwrite.lua",
+			anchor: "if ORD == \">\" then le = le:reverse() end",
+			repl:   "if false then le = le:reverse() end",
+		},
+		{
+			name:   "shared",
+			row:    "graph_shared",
+			file:   "descriptor.lua",
+			anchor: "        if index[val] == nil then\n",
+			repl:   "        if true then\n",
+		},
+		{
+			name:   "attrib_length",
+			row:    "root_full",
+			file:   "cookwrite.lua",
+			anchor: "put_uint(w, 32, #l.entries * 16, 8)",
+			repl:   "put_uint(w, 32, #l.entries * 8, 8)",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r, ok := rows[tc.row]
+			if !ok {
+				t.Fatalf("missing manifest row %s", tc.row)
+			}
+			var paths []string
+			for _, p := range units[r.unit] {
+				paths = append(paths, filepath.Join(repo, p))
+			}
+			u := luarun.LoadUnit(t, paths...)
+			files, err := Generate(u)
+			if err != nil {
+				t.Fatal(err)
+			}
+			patchOnce(t, tc.file, tc.anchor, tc.repl)(files)
+			m := tabletext.NewModel(u)
+			wire, err := os.ReadFile(filepath.Join(repo, r.wire))
+			if err != nil {
+				t.Fatal(err)
+			}
+			inst := m.New(m.Lookup(r.root))
+			var report tabletext.Report
+			if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
+				t.Fatal(err)
+			}
+			little, err := tablecook.Cook(m, inst, tablecook.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			big, err := tablecook.Cook(m, inst, tablecook.Options{Big: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := t.TempDir()
+			luarun.WriteFiles(t, dir, files)
+			luarun.WriteHexProbe(t, dir)
+			probe := `local T = require("` + ModuleName(u) + `")
+local load = require("load")
+local cookwrite = require("cookwrite")
+local inputs = require("inputs")
+local hexline = require("hexline")
+local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local v = load.Load(T, "` + r.root + `", inputs.wire, report)
+for order = 1, 2 do
+  local c = cookwrite.Cook(T, "` + r.root + `", v, nil, order)
+  hexline(c or "")
+end
+`
+			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out := string(luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wire}))
+			lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+			if len(lines) == 2 {
+				got1, _ := hex.DecodeString(lines[0])
+				got2, _ := hex.DecodeString(lines[1])
+				if bytes.Equal(got1, little) && bytes.Equal(got2, big) {
+					t.Fatalf("NEGATIVE CONTROL FAILED: %s left both little and big cook outputs identical to tablecook", tc.name)
+				}
+			}
+		})
 	}
 }
