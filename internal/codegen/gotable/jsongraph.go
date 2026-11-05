@@ -26,7 +26,8 @@ func (g *tableJSONGraph) setLabel(key uint64,entry tableJSONLabel)bool {
 func (g *tableJSONGraph) close(){if g.memory!=nil{g.release(g.memory);g.memory=nil;g.labels=nil}}
 func tableJSONPointerAt(slot *int64) unsafe.Pointer { if *slot==0{return nil};return unsafe.Add(unsafe.Pointer(slot),*slot) }
 func tableJSONWritePointer(out *tableJSONOut,slot *int64,f *TableFieldInfo,depth int32) bool {
- if depth>tableJSONMaxDepth {return false};p:=tableJSONPointerAt(slot);if p==nil{out.text("null");return true};if out.graph==nil {return false}
+ p:=tableJSONPointerAt(slot);if p==nil{out.text("null");return true} // a null nests nothing: the cap counts containers (§16.14)
+ if depth>tableJSONMaxDepth {return false};if out.graph==nil {return false}
  if out.graph.node==nil{return false};entry:=out.graph.node(p);if entry==nil{return false}
  if f.Table==nil {if entry.refs>1{return false};size:=*(*uint32)(p);data:=unsafe.Slice((*byte)(unsafe.Add(p,8)),int(size));if f.TypeName=="bytes"{tableJSONWriteBase64(out,data)}else{tableJSONWriteString(out,data)};return true}
  if entry.refs<2{return tableJSONWriteValue(out,p,f.Table(),depth)}
@@ -42,8 +43,8 @@ func tableJSONReadLabel(in *tableJSONIn) (uint64,bool) {
 }
 func tableJSONReadPointer(in *tableJSONIn,slot *int64,f *TableFieldInfo,depth int32) bool {
  *slot=0
+ if in.peek()=='n'{return in.literal("null")} // a null nests nothing: the cap counts containers (§16.14)
  if depth>tableJSONMaxDepth{in.bad=true;return false}
- if in.peek()=='n'{return in.literal("null")}
  if in.graph==nil||in.graph.alloc==nil{in.bad=true;return false}
  if f.Table==nil{return tableJSONReadBlob(in,slot,f)}
  if in.peek()!='{'{in.bad=true;return false}

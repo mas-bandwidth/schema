@@ -182,7 +182,14 @@ func writeStorage(t *testing.T, name string, v *Root) {
 	}
 	n := RootToJSONMeasure(v)
 	if n < 0 {
-		t.Fatalf("%s: measure refused", name)
+		// measure and write refuse together: storage that is not text
+		if RootToJSON(v, make([]byte, 64)) != -1 {
+			t.Fatalf("%s: measure refused and write did not", name)
+		}
+		if err := os.WriteFile(dir+"/"+name+".json", []byte("refused\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return
 	}
 	out := make([]byte, n)
 	if RootToJSON(v, out) != n {
@@ -195,14 +202,12 @@ func writeStorage(t *testing.T, name string, v *Root) {
 
 func TestStorage(t *testing.T) {
 	fill := func(v *Root) {
-		v.S[0] = 0xff
-		v.S[1] = 0x00
-		v.S[2] = 0x1f
-		v.S[3] = 0x7f
-		v.SLength = 4
-		v.W[0] = 0xd800
-		v.W[1] = 0
-		v.WLength = 2
+		v.S[0] = 0x00
+		v.S[1] = 0x1f
+		v.S[2] = 0x7f
+		v.SLength = 3
+		v.W[0] = 0
+		v.WLength = 1
 		v.G = math.MaxFloat32
 		v.B[0] = 0x00
 		v.B[1] = 0xff
@@ -218,6 +223,17 @@ func TestStorage(t *testing.T) {
 	fill(&v1)
 	v1.F = math.Copysign(0, -1)
 	writeStorage(t, "out1", &v1)
+	// storage that is not text: ill-formed UTF-8, then an unpaired surrogate
+	var v2 Root
+	RootReset(&v2)
+	fill(&v2)
+	v2.S[0] = 0xff
+	writeStorage(t, "out2", &v2)
+	var v3 Root
+	RootReset(&v3)
+	fill(&v3)
+	v3.W[0] = 0xd800
+	writeStorage(t, "out3", &v3)
 }
 `
 
@@ -250,7 +266,8 @@ func runStorageStrict(t *testing.T, edit func(map[string][]byte)) string {
 // TestGoJsonWriterIsStrict holds the writers strict over every text the Go
 // side writes: the conformance corpus, the text differential's 200 random
 // instances (both the generated ToJSON and the engine's unpack text), and
-// storage built in code whose ill-formed bytes must land as U+FFFD.
+// storage built in code: text with every control spelling writes strict, and
+// ill-formed UTF-8 or an unpaired surrogate refuses the write (§16.14 W0).
 func TestGoJsonWriterIsStrict(t *testing.T) {
 	t.Parallel()
 
@@ -331,18 +348,25 @@ func TestGoJsonWriterIsStrict(t *testing.T) {
 			if err := strictJSON(data); err != nil {
 				t.Fatalf("%s not strict: %v\n%s", name, err, data)
 			}
-			if n := bytes.Count(data, []byte("\xef\xbf\xbd")); n != 2 {
-				t.Fatalf("%s: %d U+FFFD, want 2 (one for the bad byte, one for the unpaired surrogate)", name, n)
+			if bytes.Contains(data, []byte("\xef\xbf\xbd")) {
+				t.Fatalf("%s: a U+FFFD was written; nothing is replaced:\n%s", name, data)
 			}
-			// §16.3: each U+FFFD stands where its ill-formed input was: the
-			// 0xff byte opening s, the unpaired 0xd800 opening w.
 			for _, want := range []string{
-				"\"s\": \"\xef\xbf\xbd\\u0000\\u001f\x7f\"",
-				"\"w\": \"\xef\xbf\xbd\\u0000\"",
+				"\"s\": \"\\u0000\\u001f\x7f\"",
+				"\"w\": \"\\u0000\"",
 			} {
 				if !bytes.Contains(data, []byte(want)) {
 					t.Fatalf("%s: missing %q:\n%s", name, want, data)
 				}
+			}
+		}
+		for _, name := range []string{"out2", "out3"} {
+			data, err := os.ReadFile(filepath.Join(dir, name+".json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data) != "refused\n" {
+				t.Fatalf("%s: storage that is not text wrote a text; the writer refuses it:\n%s", name, data)
 			}
 		}
 		data, err := os.ReadFile(filepath.Join(dir, "out1.json"))
@@ -366,8 +390,8 @@ func TestGoJsonWriterIsStrict(t *testing.T) {
 
 // TestGoJsonWriterIsStrictNegativeControl has two halves: strictJSON refuses
 // each malformed text with its offence named, and a planted writer bug — the
-// U+FFFD replacement swapped for the raw byte — goes red on invalid UTF-8,
-// never on a compile error.
+// refusal swapped for the raw byte — goes red on invalid UTF-8, never on a
+// compile error.
 func TestGoJsonWriterIsStrictNegativeControl(t *testing.T) {
 	t.Parallel()
 
@@ -398,7 +422,7 @@ func TestGoJsonWriterIsStrictNegativeControl(t *testing.T) {
 	}
 
 	t.Run("sabotaged-writer", func(t *testing.T) {
-		anchor := "out.text(\"�\") // one per maximal subpart (mas-bandwidth/schema docs/SPEC-TABLES.md §16.3)"
+		anchor := "out.invalid = true // not text: the write refuses (§16.14 W0)"
 		dir := runStorageStrict(t, func(files map[string][]byte) {
 			total := 0
 			for _, data := range files {
@@ -409,7 +433,7 @@ func TestGoJsonWriterIsStrictNegativeControl(t *testing.T) {
 			}
 			patch(t, files, anchor, "out.put(c) /* SABOTAGED */")
 		})
-		data, err := os.ReadFile(filepath.Join(dir, "out0.json"))
+		data, err := os.ReadFile(filepath.Join(dir, "out2.json"))
 		if err != nil {
 			t.Fatal(err)
 		}
