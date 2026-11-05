@@ -6936,6 +6936,20 @@ else \
 fi
 endef
 
+# THE SIBLING RUNTIMES AT THE PINS ABOVE. The pins are the single source: this
+# stages the same six checkouts CI clones, at the same tags, for a local bench.
+# Each pin is consumed here (internal/ci/mainreds_pins_test.go refuses a pin no
+# rule reads), and ci-full.yml's tags are held to what these resolve to. An
+# existing sibling is left alone; remove it to re-stage.
+.PHONY: serialize-siblings
+serialize-siblings:
+	@if ! test -e ../serialize; then $(call fetch-runtime,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),../serialize,C++); fi
+	@if ! test -e ../serialize.c; then $(call fetch-runtime,$(SERIALIZE_C_PIN),mas-bandwidth/serialize.c.git,https://github.com/mas-bandwidth/serialize.c.git,../serialize.c,C); fi
+	@if ! test -e ../serialize.cs; then $(call fetch-runtime,$(SERIALIZE_CS_PIN),mas-bandwidth/serialize.cs.git,https://github.com/mas-bandwidth/serialize.cs.git,../serialize.cs,CS); fi
+	@if ! test -e ../serialize.go; then $(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),../serialize.go,Go); fi
+	@if ! test -e ../serialize.rs; then $(call fetch-runtime,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust); fi
+	@if ! test -e ../serialize.js; then $(call fetch-runtime,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS); fi
+
 .PHONY: deps
 deps:
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
