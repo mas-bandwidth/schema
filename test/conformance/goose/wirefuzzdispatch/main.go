@@ -151,11 +151,9 @@ func dispatch(in io.Reader, out io.Writer, start starter) (err error) {
 	var wg sync.WaitGroup
 	sendErr := make([]error, len(children))
 	for i, c := range children {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, sendErr[i] = c.in.Write(raw)
-		}()
+		})
 	}
 	answers := make([][]byte, len(children))
 	readErr := make([]error, len(children))

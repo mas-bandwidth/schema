@@ -1,4 +1,4 @@
-// VOLD_range_widen.schema — OLD: int32 | 0..100
+// VOLD_range_widen.schema — OLD: int32 | 0..100, [4]int32 | 0..100, uint64 | 10..1000
 //
 // One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
 // The OLD and the NEW file of this pair differ by EXACTLY the row named above,
@@ -12,5 +12,7 @@ fixed table RangeWiden
 {
     lead  uint32 = 1
     v     int32 = 0 | min = 0, max = 100
+    vals  [4]int32 | min = 0, max = 100
+    u     uint64 = 10 | min = 10, max = 1000
     trail uint32 = 2
 }
