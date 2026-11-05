@@ -23,15 +23,17 @@ const Lua Backend = 1 << 9
 // by the file that returns the table.
 var luaModuleKeys = map[string][]string{
 	"the unit's table module (<Package>Tables.lua)": {
-		"AnnounceRead", "Announcement", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "Fixed", "FixedEnums",
-		"FixedFields", "FixedUnions", "Keyed", "LoadMessages", "LoadMessagesTolerant", "MeasureMessages", "MessageBatchMax",
+		"AnnounceRead", "Announcement", "BlockForm", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "DocNone", "Fixed", "FixedEnums",
+		"FixedFields", "FixedLoad", "FixedMeasure", "FixedSave", "FixedUnions", "Keyed", "LoadMessages", "LoadMessagesTolerant", "MeasureMessages", "MessageBatchMax",
 		"MessageEntries", "MessageNodeId", "MessageRefBits", "MessageRoots", "MessageVersionId", "MessageVocabulary",
-		"MessageVocabularyId", "Package", "ReadFixed", "ReadFixedTolerant", "RegionAlign", "Registry", "SaveMessages",
+		"MessageVocabularyId", "NeedsBlockEligibility", "Package", "ReadFixed", "ReadFixedTolerant", "RegionAlign", "Registry", "SaveMessages",
 		"StringBlobTypeId", "Tables", "TypedBodies", "Unions", "WireIds", "WriteFixed",
 	},
-	"the unit's type view (<Package>View.lua)": {"Package", "ProtocolId", "Registry", "Tables", "Types"},
-	"block.lua":      {"BlockOpen", "ByteOrder", "Dump", "Layout", "Open"},
-	"blockbuild.lua": {"Begin", "BlockBytes", "BlockMaxBytes"},
+	"the unit's type view (<Package>View.lua)": {
+		"Constants", "DocNone", "Enums", "Flags", "Package", "ProtocolId", "Registry", "Tables", "Types", "Unions", "UnitView",
+	},
+	"block.lua":      {"BlockOpen", "ByteOrder", "Dump", "EligibilityGuard", "Layout", "Open"},
+	"blockbuild.lua": {"Begin", "BlockBytes", "BlockMaxBytes", "EligibilityGuard"},
 	"cook.lua":       {"Check", "Open"},
 	"cookwrite.lua":  {"Cook", "CookMeasure"},
 	"descriptor.lua": {
@@ -40,7 +42,7 @@ var luaModuleKeys = map[string][]string{
 		"pointer_reachable", "prepare", "record_size", "refuse_deprecated", "refuse_non_finite", "region_align",
 		"reset", "reset_elem", "seal",
 	},
-	"fixed.lua":         {"read", "write"},
+	"fixed.lua":         {"load", "measure", "read", "save", "write"},
 	"json.lua":          {"FromJson", "FromJsonTolerant", "ToJson"},
 	"load.lua":          {"Load", "LoadMeasure", "LoadTolerant", "NewState", "crc32c"},
 	"message.lua":       {"announceRead", "loadMessages", "measureMessages", "saveMessages"},

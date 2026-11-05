@@ -1321,6 +1321,7 @@ report previous_form_text_icon_pad_one tabledemo ProfileConfig testdata/wire/tab
 report previous_form_text_icon_pad_two tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_two.bin
 report previous_form_text_icon_sixteen tabledemo ProfileConfig testdata/wire/tables/text_icon_sixteen.bin
 report previous_form_loadout_full tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin
+report previous_form_wide_blob tabledemo WideBlob testdata/wire/tables/wide_blob.bin
 report previous_form_archive tabledemo ArchiveConfig testdata/wire/tables/archive.bin
 report previous_form_keyed_config tabledemo KeyedConfig testdata/wire/tables/keyed_config.bin
 report previous_form_keyed_default tabledemo KeyedConfig testdata/wire/tables/keyed_default.bin

@@ -8730,8 +8730,7 @@ diagnostic name, which is not normative and is never compared:
   since the writer, or a hostile value): a scalar outside the reader's
   declared `[min, max]`, a `bits(N)` value past `2^N − 1`. **A fixed field
   is judged on the RAW scale**: its declared bounds are whole units (SPEC.md
-  §4.6) and the wire carries units × 2^F, so the bounds are `[A << F,
-  B << F]`. A 128-bit integer is judged in 128 bits; a bare `uint128`
+  §4.6) and the wire carries units × 2^F, so the bounds are `[A << F, B << F]`. A 128-bit integer is judged in 128 bits; a bare `uint128`
   declares no range. The reader never clamps: a value it cannot hold refuses
   the load, naming the field (`out_of_range: <Table>.<field>`). In the
   variable form the reader's declared range is the only range it has, so
@@ -16112,8 +16111,7 @@ value, and a lone or out-of-order `\uD800`..`\uDFFF` escape refuses
 and `str-lone-trail-surrogate` and the hostile-corpus rows beside them pin.
 **The grammar is judged before the bound** (§6.5): an ill-formed byte at or
 past a field's bound spells no code point, so the read refuses `malformed`
-whatever the bound would have said (conformance row `json-hostile
-str-illformed-at-bound`).
+whatever the bound would have said (conformance row `json-hostile str-illformed-at-bound`).
 
 **THE WRITER REFUSES WHAT IS NOT TEXT, AND ESCAPES WHAT IS** (2026-11-03, the
 one read: consistently refuse). A NARROW field's interior ZERO BYTE is `U+0000`,

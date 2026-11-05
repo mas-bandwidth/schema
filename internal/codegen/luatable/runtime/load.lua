@@ -2250,6 +2250,14 @@ end
 
 local measure_record, measure_field, measure_union
 
+local function measure_unbounded_text(T, scan, n)
+  if n == 0 then return true end
+  if n < 0 or n > 0xffffffff then return false end
+  local align = T.RegionAlign or 8
+  scan.at = round_up(scan.at, 8) + round_region(9 + n, align)
+  return true
+end
+
 measure_record = function(T, ids, scan, desc, b, at, lim)
   local r = new_reader(b, at, lim)
   while true do
@@ -2269,7 +2277,13 @@ measure_record = function(T, ids, scan, desc, b, at, lim)
         if not skip(r, kind) then return true end
       end
     elseif kind ~= 13 and kind ~= 14 and kind ~= 16 then
-      if not skip(r, kind) then return true end
+      if kind == 12 and f.unbounded and f.shape == "string" then
+        local pat, plim = extent_body(r)
+        if pat == nil then return true end
+        if not measure_unbounded_text(T, scan, plim - pat) then return false end
+      elseif not skip(r, kind) then
+        return true
+      end
     else
       local pat, plim = extent_body(r)
       if pat == nil then return true end
@@ -2306,7 +2320,22 @@ measure_field = function(T, ids, scan, f, b, at, lim)
       if count > (r.lim - r.at) // floor then return false end
       scan.at = round_up(scan.at, align) + count * size
     end
-    if kind ~= 13 and kind ~= 15 then return true end
+    if kind ~= 13 and kind ~= 15 then
+      if kind == 12 and f.elem ~= nil and f.elem.shape == "table" then
+        local elem_st = T.Tables[f.elem.target]
+        local vf = elem_st and elem_st.fields and elem_st.fields[1]
+        if vf ~= nil and vf.unbounded and vf.shape == "string" then
+          local j = 0
+          while math.ult(j, count) and r.at < r.lim do
+            j = j + 1
+            local pat, plim = extent_body(r)
+            if pat == nil then return true end
+            if not measure_unbounded_text(T, scan, plim - pat) then return false end
+          end
+        end
+      end
+      return true
+    end
     local keyed = (f.shape == "array" and f.keyed ~= nil)
     local i = 0
     -- `count` is an UNSIGNED 64-bit number (docs/SPEC-TABLES.md §3): a huge
@@ -2333,6 +2362,7 @@ measure_field = function(T, ids, scan, f, b, at, lim)
     return true
   end
   if f.shape == "table" then return measure_record(T, ids, scan, T.Tables[f.target], b, at, lim) end
+  if f.shape == "string" and f.unbounded then return measure_unbounded_text(T, scan, lim - at) end
   return true
 end
 

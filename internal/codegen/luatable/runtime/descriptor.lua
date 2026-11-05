@@ -83,6 +83,15 @@ check_value = function(T, where, d, v, elem)
   elseif s == "union" then
     if type(v) ~= "table" or v.tag ~= 0 then return fail(where, "a union is born empty") end
     if T.Unions[d.target] == nil then return fail(where, "union " .. d.target .. " has no descriptor") end
+  elseif s == "wide" then
+    if type(v) ~= "table" or math.type(v.lo) ~= "integer" or math.type(v.hi) ~= "integer" then
+      return fail(where, "wide integer at its default")
+    end
+    if elem then
+      if v.lo ~= 0 or v.hi ~= 0 then return fail(where, "wide element is born zero") end
+    elseif v.lo ~= d.default.lo or v.hi ~= d.default.hi then
+      return fail(where, "wide integer at its default")
+    end
   else
     return fail(where, "unknown shape " .. tostring(s))
   end
@@ -861,7 +870,51 @@ function D.prepare(T)
   if T.Fixed ~= nil then require("fixed").prepare(T) end
 end
 
+-- A unit with a table that has no fixed block form needs the block runtime to
+-- refuse that name. The runtime's own bytes carry that test only where the
+-- generating unit needs it, so a shared output directory or Lua's
+-- package.loaded cache can hand mixed descriptors a guard-free copy. Install
+-- the eligibility clause on the loaded block modules here, once, and only for
+-- such a unit; an eligible unit's block calls stay guard-free.
+local function install_block_eligibility(T)
+  if T.BlockForm ~= true or T.NeedsBlockEligibility ~= true then return end
+  local B = require("block")
+  if B.EligibilityGuard then return end
+  local W = require("blockbuild")
+  local open, layout = B.BlockOpen, B.Layout
+  local maximum, begin = W.BlockMaxBytes, W.Begin
+  B.BlockOpen = function(T2, name, bytes, build_version, base_offset)
+    local bd = T2.Tables[name]
+    if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then
+      error("block: table " .. tostring(name) .. " does not carry block (docs/SPEC-TABLES.md §2.12)", 0)
+    end
+    if bd ~= nil and bd.block_eligible ~= true then return nil, "bad_layout" end
+    return open(T2, name, bytes, build_version, base_offset)
+  end
+  B.Open = B.BlockOpen
+  B.Layout = function(T2, name, projection, d)
+    d = d or T2.Tables[name]
+    if projection and d ~= nil and d.block_eligible ~= true then return nil, "bad_layout" end
+    return layout(T2, name, projection, d)
+  end
+  W.BlockMaxBytes = function(T2, root)
+    local desc = T2.Tables[root]
+    if desc == nil then return nil, "blockbuild: no table descriptor for " .. tostring(root) end
+    if desc.block_eligible ~= true then return nil, "bad_layout" end
+    return maximum(T2, root)
+  end
+  W.Begin = function(T2, root, counts)
+    local desc = T2.Tables[root]
+    if desc ~= nil and desc.forms ~= nil and desc.forms.block ~= true then
+      error("block: table " .. tostring(root) .. " does not carry block (docs/SPEC-TABLES.md §2.12)", 0)
+    end
+    if desc ~= nil and desc.block_eligible ~= true then return nil, "bad_layout" end
+    return begin(T2, root, counts)
+  end
+end
+
 function D.seal(T)
+  install_block_eligibility(T)
   D.prepare(T)
   local seen = {}
   for _, v in pairs(T) do
