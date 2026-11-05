@@ -1712,6 +1712,11 @@ func compareManifest(t *testing.T, what string, ml manifestLine, dump map[string
 		if widened, ok := widenedFloat32(want, got); ok {
 			want = widened
 		}
+		// the reference writes a boolean as 1 or 0; a reader may spell it
+		// true or false
+		if want == "1" && got == "true" || want == "0" && got == "false" {
+			got = want
+		}
 		if got != want {
 			t.Errorf("%s: %s landed %s, the reference wrote %s", what, k, got, want)
 		}
