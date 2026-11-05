@@ -68,7 +68,7 @@ static void fixed_strict()
            "strict clamped counts clamped and nothing else" );
     // the typed reason is gotable/refusal.go's TableReport.Err answer:
     // TableRefuseClamped for {"n":100} (strictdefault_test.go FromJson clamped).
-    check( cr.refuse_reason == TableRefuseReason::clamped,
+    check( cr.refuse_reason == TableRefuseReason::out_of_range,
            "strict clamped sets the clamped refusal reason" );
 
     // kind mismatch: refuse, reset, count kind_mismatch
@@ -157,7 +157,7 @@ static void variable_strict()
     check( cr.clamped == 1 && cr.kind_mismatch == 0 && !cr.malformed,
            "strict variable clamped counts clamped and nothing else" );
     // strictdefault_test.go's variable FromJson clamped row: TableRefuseClamped.
-    check( cr.refuse_reason == TableRefuseReason::clamped,
+    check( cr.refuse_reason == TableRefuseReason::out_of_range,
            "strict variable clamped sets the clamped refusal reason" );
     check( cb.GetRoot()->n == 1, "strict variable clamped resets root" );
 

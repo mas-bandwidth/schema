@@ -72,7 +72,7 @@ int main()
         Fix value; FixReset( value ); value.n = 9; value.m = 9;
         TableReport r{}; r.unknown = 5;
         CHECK( !FixLoad( value, wire, n, &r ) );
-        CHECK( r.unknown == 0 && r.clamped == 1 && r.refuse_reason == clamped );
+        CHECK( r.unknown == 0 && r.clamped == 1 && r.refuse_reason == out_of_range );
         CHECK( value.n == 1 && value.m == 2 ); // the declared defaults
         TableReport tr{};
         CHECK( FixLoadTolerant( value, wire, n, &tr ) );
@@ -115,7 +115,7 @@ int main()
         CHECK( r.refuse_reason == ok );
     }
     {
-        TableRefuseReason why = clamped;
+        TableRefuseReason why = out_of_range;
         const Var * root = VarReadStrict( clean, clean_n, &why );
         CHECK( root != NULL && root->n == 3 && root->req == 4 && why == ok );
     }
@@ -126,18 +126,18 @@ int main()
         const int64_t n = var_wire( 4, 100, wire );
         TableReport r{}; r.unknown = 5;
         CHECK( VarLoad( region, (int64_t) sizeof region, wire, n, &r ) == NULL );
-        CHECK( r.unknown == 0 && r.clamped == 1 && !r.malformed && r.refuse_reason == clamped );
+        CHECK( r.unknown == 0 && r.clamped == 1 && !r.malformed && r.refuse_reason == out_of_range );
         TableReport tr{};
         const Var * root = VarLoadTolerant( region, (int64_t) sizeof region, wire, n, &tr );
         CHECK( root != NULL && root->n == 10 && root->req == 4 && tr.clamped == 1 );
         VarBuilder b; TableReport br{};
         CHECK( !VarLoadBuilder( b, wire, n, &br ) );
-        CHECK( br.refuse_reason == clamped );
+        CHECK( br.refuse_reason == out_of_range );
         VarBuilder tb; TableReport tbr{};
         CHECK( VarLoadBuilderTolerant( tb, wire, n, &tbr ) );
         CHECK( tb.GetRoot() != NULL && tb.GetRoot()->n == 10 && tbr.clamped == 1 );
         TableRefuseReason why = ok;
-        CHECK( VarReadStrict( wire, n, &why ) == NULL && why == clamped );
+        CHECK( VarReadStrict( wire, n, &why ) == NULL && why == out_of_range );
     }
     // kind mismatch: the plain reads refuse with kind_mismatch, the tolerant
     // twins count it (strictDefaultVariableProbe, the "kind_mismatch" case).

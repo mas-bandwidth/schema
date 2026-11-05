@@ -560,7 +560,7 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
-// tableRefuseReasonLaterValues are the thirty-one values Go appended to the one
+// tableRefuseReasonLaterValues are the thirty-two values (Go's thirty-one, then the report-only missing_required) appended to the one
 // refusal vocabulary after data_cycle (docs/SPEC-TABLES.md §6.5, §11). They
 // are APPENDED and never renumbered, so every value before them keeps its
 // number and the two targets answer the same value for the same bytes. No
@@ -573,7 +573,7 @@ const tableRefuseReasonLaterValues = `
     allocation_failed,     // an allocation the codec asked for was refused (§7.6)
     wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
     malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
-    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    out_of_range,          // a value outside a range the read holds it to; the report counts it (§4, §6.5)
     kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
     base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
     base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
@@ -602,7 +602,8 @@ const tableRefuseReasonLaterValues = `
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    missing_required         // a record that lacks a | required field; the report names the fields (§2.3)
 `
 
 // tableRefuseReason is the ONE refusal vocabulary (docs/SPEC-TABLES.md §6.5,

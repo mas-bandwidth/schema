@@ -56,7 +56,7 @@ func cppRuntimeNames() []Name {
 			"batch_too_large", "count_over_bound", "layout_count_mismatch", "layout_kind_invalid",
 			"layout_kind_unknown", "layout_malformed", "layout_newer", "layout_record_too_large",
 			"layout_size_mismatch", "layout_too_deep", "layout_tree_unclosed", "layout_unknown", "layout_unsupported",
-			"length_over_bound", "no_layout", "plan_too_large", "text_ill_formed",
+			"length_over_bound", "missing_required", "no_layout", "plan_too_large", "text_ill_formed",
 		}},
 		{what: "an enum's wire identity helpers (docs/SPEC-TABLES.md §3)", names: []string{
 			"TableEnumNamed", "TableEnumRef", "TableEnumSlot",
