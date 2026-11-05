@@ -12,14 +12,15 @@ import (
 // TestLuaJSONKeyLiteralsLoad holds that a field's text key reaches the
 // generated table and view modules as a Lua string literal holding exactly the
 // key's bytes: a control character, a non-ASCII BMP character and a
-// supplementary-plane character each load, and the descriptor key equals the
+// supplementary-plane character, each with a code point Go spells as \u or \U
+// when quoting, load, and the descriptor key equals the
 // original key.
 func TestLuaJSONKeyLiteralsLoad(t *testing.T) {
 	t.Parallel()
 	keys := map[string]string{
-		"ctl": "a\x01b",
+		"ctl": "a\x01b\u0085",
 		"bmp": "café中",
-		"sup": "x\U0001F600y",
+		"sup": "x\U0001F600\U000E0001y",
 	}
 	schema := "package probe\n\ntable Keys\n{\n"
 	for _, name := range []string{"ctl", "bmp", "sup"} {
@@ -38,6 +39,13 @@ func TestLuaJSONKeyLiteralsLoad(t *testing.T) {
 	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
+	view, ok := ViewFile(u)
+	if !ok {
+		t.Fatal("no view module")
+	}
+	if err := os.WriteFile(filepath.Join(dir, ViewName(u)+".lua"), []byte(view), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	main := `local function keys(modname, collection)
   local M = require(modname)
   local out = {}
