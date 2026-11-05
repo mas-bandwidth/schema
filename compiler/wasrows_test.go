@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -81,7 +82,7 @@ func TestWasRowsCarriers(t *testing.T) {
 			}
 			continue
 		}
-		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "elixir" || target == "js" || target == "rust" || target == "java" || target == "lobster" || target == "lua" || target == "luau" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "elixir" || target == "js" || target == "rust" || target == "java" || target == "lobster" || target == "lua" || target == "luau" || target == "moo" {
 			if err != nil {
 				t.Fatalf("%s carries the was rows and refused: %v", target, err)
 			}
@@ -97,6 +98,10 @@ func TestWasRowsCarriers(t *testing.T) {
 				want := fmt.Sprintf("0x%016x", ir.TableWireId(old))
 				if target == "dart" {
 					want = fmt.Sprintf("%d", int64(ir.TableWireId(old)))
+				}
+				if target == "moo" {
+					// moo spells an id as its eight little-endian bytes
+					want = strings.Trim(mootable.IdLit(ir.TableWireId(old)), `"`)
 				}
 				if target == "luau" {
 					// Luau spells an id below 2^63 in decimal and the rest in

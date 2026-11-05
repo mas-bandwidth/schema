@@ -243,12 +243,20 @@ type fuzzRoot struct {
 // the plain one, and sends it the roster; it answers which roots it carries.
 func startFuzzLeg(t *testing.T, dir string, builder bool, roster []fuzzRoot) (*fuzzLeg, []bool) {
 	t.Helper()
-	sq := sqrun.Require(t)
 	repo, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := []string{filepath.Join(repo, "test", "conformance", "squirrel", "wirefuzz.nut")}
+	return startFuzzLegAt(t, dir, filepath.Join(repo, "test", "conformance", "squirrel", "wirefuzz.nut"), builder, roster)
+}
+
+// startFuzzLegAt is startFuzzLeg with the driver script named: a negative
+// control runs a planted copy of it.
+func startFuzzLegAt(t *testing.T, dir, driver string, builder bool, roster []fuzzRoot) (*fuzzLeg, []bool) {
+	t.Helper()
+	sq := sqrun.Require(t)
+	var err error
+	args := []string{driver}
 	if builder {
 		args = append(args, "builder")
 	}

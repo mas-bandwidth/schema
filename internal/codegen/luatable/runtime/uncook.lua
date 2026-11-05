@@ -93,7 +93,9 @@ local function present_offset(T, f)
   local at = f.at
   local s = f.shape
   local cur
-  if s == "string" then
+  if s == "string" and f.unbounded then
+    cur = at + 8 -- the blob slot (§2.13.1)
+  elseif s == "string" then
     cur = align_up(at + (f.bound or 0) + 1, 4) + 4
   elseif s == "wstring" then
     cur = align_up(at + ((f.bound or 0) + 1) * 2, 4) + 4
@@ -185,6 +187,17 @@ read_field = function(ctx, f, base)
         return nil, false
       end
       v = string.unpack("<d", ctx.data, at + 1)
+    end
+  elseif s == "string" and f.unbounded then
+    -- UNBOUNDED TEXT (§2.13.1): the slot's self-relative delta names a blob
+    -- record, `u32 length`, `u32 zero`, the bytes; a null slot is the empty
+    -- string
+    local delta = i64(ctx, at)
+    if delta == 0 then
+      v = ""
+    else
+      local blob = at + delta
+      v = string.sub(ctx.data, blob + 9, blob + 8 + u32(ctx, blob))
     end
   elseif s == "string" or s == "bytes" then
     local n = i32(ctx, at + f.companion)

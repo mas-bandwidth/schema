@@ -120,6 +120,7 @@ type manifestRow struct {
 	Records int64
 	Values  map[string]string
 	Forged  map[string]string
+	Expect  map[string]string // what the reference's reader landed from a forged file, `clamped` included
 }
 
 // readManifest is THE one reader of a manifest line's entries: it parses every
@@ -138,6 +139,7 @@ func readManifest(corpus string) (map[string]manifestRow, error) {
 		var r manifestRow
 		r.Values = map[string]string{}
 		r.Forged = map[string]string{}
+		r.Expect = map[string]string{}
 		// `values=` is the LAST entry of a line and its text may hold spaces
 		// (`r0.note="first build"`), so the line is cut there and never split
 		// on white space past it; the identity entries before it carry none.
@@ -160,6 +162,8 @@ func readManifest(corpus string) (map[string]manifestRow, error) {
 				r.Records, _ = strconv.ParseInt(v, 10, 64)
 			case "forged":
 				collectManifestPairs(v, r.Forged)
+			case "expect":
+				collectManifestPairs(v, r.Expect)
 			}
 		}
 		if hasVals {
@@ -692,12 +696,10 @@ type sideSpec struct {
 // lineageOf is the lock a test plays: every fixed root of every older unit, in
 // order, oldest first, with the first `retire` entries marked retired.
 //
-// Each entry also carries the WRITER's bounded leaves (ALGORITHM §4.6, bill
-// §12.5): the ranged scalars the older unit declared, on the raw scale — a
-// fixed-point's whole-unit bounds shifted by F — matched by the field's name.
-// The reference's collectKnownRanges hands its emitter the same facts from the
-// same endpoint schemas; a leg's bounds pass holds a compiled lane to the endpoint's
-// own bounds, so the entry is where they ride.
+// Each entry also carries the WRITER's ranged leaves, which FixedLineageOf
+// reads off the older unit (ir.TableFixedWriterRanges, docs/FIXED-FORM-ALGORITHM.md
+// §4.5): a leg's bounds pass holds a compiled lane to the endpoint's own
+// bounds, so the entry is where they ride.
 func lineageOf(t *testing.T, older []string, retire int) map[string][]FixedLineageEntry {
 	t.Helper()
 	out := map[string][]FixedLineageEntry{}
@@ -712,37 +714,8 @@ func lineageOf(t *testing.T, older []string, retire int) map[string][]FixedLinea
 			if e.Retired {
 				e.Reason = "retired by the test's lock"
 			}
-			e.Ranges = fixedWriterRanges(t, st)
 			out[st.Name] = append(out[st.Name], e)
 		}
-	}
-	return out
-}
-
-// fixedWriterRanges is the older unit's own ranged leaves, top level of the
-// root, on the RAW scale the wire carries (ir.TableRawRange shifts a
-// fixed-point's bounds by F). Bounds that do not fit an int64 bound nothing
-// and are skipped rather than clamped to a zero nobody declared. A FIXED
-// array's range bounds every element; a counted array's live count is a
-// run-time fact this static entry does not carry, so only the fixed shape
-// rides here (the scatter's own pass walks a counted array's live elements).
-func fixedWriterRanges(t *testing.T, st *ir.Struct) []FixedRangeSpec {
-	t.Helper()
-	var out []FixedRangeSpec
-	for _, f := range st.Fields {
-		if f.Array == ir.ArrayCounted || f.Type.Optional || f.KeyEnum != "" {
-			continue
-		}
-		switch f.Type.Kind {
-		case ir.TInt, ir.TBits, ir.TFixed:
-		default:
-			continue
-		}
-		lo, hi, ok := ir.TableRawRange(f)
-		if !ok || !lo.IsInt64() || !hi.IsInt64() {
-			continue
-		}
-		out = append(out, FixedRangeSpec{Name: f.Name, Lo: lo.Int64(), Hi: hi.Int64()})
 	}
 	return out
 }

@@ -22,13 +22,13 @@ var nonGoCarriers = map[string][]string{
 	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap, carryForms, carryIntegrity, carryRequired, carryTextList, carryTextListTotal, carryUnboundedText},
 	"dart": {carryOptionalVariableClosure},
 	"java": {carryOptionalVariableClosure, carryOneSidedRange, carryForms, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired, carryIntegrity, carryTextList, carryTextListTotal, carryUnboundedText},
-	"luau": {carryTimestamp, carryRequired, carryForms, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
+	"luau": {carryTimestamp, carryRequired, carryForms, carryIntegrity, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
 	// moo (behind schema_leg_moo; compiler/carries_moo.go): each proven by
 	// internal/codegen/mootable's TestMooTableConstructsMatchTheGoEngine, the
 	// text form's by its carries_test.go
 	"moo":      {carryTimestamp, carryRequired, carryForms, carryIntegrity, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
 	"lobster":  {carryOptionalVariableClosure, carryTimestamp, carryOneSidedRange, carryTextList, carryTextListTotal, carryUnboundedText, carryRequired, carryOptionalMap},
-	"squirrel": {carryTimestamp, carryTextList, carryArrayRoot, carryOptionalVariableClosure, carryRequired, carryOptionalMap, carryForms, carryIntegrity, carryOneSidedRange, carryUnboundedText}, // docs/SPEC-TABLES.md §2.3, §2.8, §2.11, §2.12, §2.13, §2.13.1, §2.14, §4.3, §16.2, §16.10
+	"squirrel": {carryTimestamp, carryTextList, carryTextListTotal, carryArrayRoot, carryOptionalVariableClosure, carryRequired, carryOptionalMap, carryForms, carryIntegrity, carryOneSidedRange, carryUnboundedText}, // docs/SPEC-TABLES.md §2.3, §2.8, §2.11, §2.12, §2.13, §2.13.1, §2.14, §4.3, §16.2, §16.10
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {

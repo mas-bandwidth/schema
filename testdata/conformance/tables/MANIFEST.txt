@@ -455,6 +455,10 @@ cook-write message_transaction    testdata/conformance/tables/cook-write/message
 cook-write message_ping           testdata/conformance/tables/cook-write/message_ping.cook testdata/conformance/tables/cook-write/message_ping-be.cook
 cook-write message_save           testdata/conformance/tables/cook-write/message_save.cook testdata/conformance/tables/cook-write/message_save-be.cook
 cook-write message_empty          testdata/conformance/tables/cook-write/message_empty.cook testdata/conformance/tables/cook-write/message_empty-be.cook
+# feature_full carries non-empty unbounded text (SPEC-TABLES §2.13.1), a
+# `[]string` element and a `map[string]V` key, each a blob record in its
+# holder's extent
+cook-write feature_full           testdata/conformance/tables/cook-write/feature_full.cook testdata/conformance/tables/cook-write/feature_full-be.cook
 cook-write message_batch          testdata/conformance/tables/cook-write/message_batch.cook testdata/conformance/tables/cook-write/message_batch-be.cook
 cook-write message_arms           testdata/conformance/tables/cook-write/message_arms.cook testdata/conformance/tables/cook-write/message_arms-be.cook
 cook-write message_arm_edits      testdata/conformance/tables/cook-write/message_arm_edits.cook testdata/conformance/tables/cook-write/message_arm_edits-be.cook

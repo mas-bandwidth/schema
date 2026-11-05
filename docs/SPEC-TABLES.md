@@ -13902,7 +13902,7 @@ in build version (§20.5).
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
-  FixedKnown  FixedFloor  FixedLineagePlans
+  FixedKnown  FixedFloor  FixedLineagePlans  FixedClampKnown
   ```
 
   The Go templates also use Add, Erase, Each, Insert, Find,
@@ -13911,8 +13911,9 @@ in build version (§20.5).
   §2.9 and §2.13), and Type is the union tag type (§2.6); none of these is
   emitted from the bare table name, so none is claimed here — a declaration
   spelling one is not a collision. The fixed-form image and hole names and the
-  maximum plan capacity are package-level Go data (§3.4), and GenPastBound is
-  the exported bound probe helper (§4).
+  maximum plan capacity are package-level Go data (§3.4), GenPastBound is
+  the exported bound probe helper (§4), and FixedClampKnown<i> is a Go tablesn pass holding a record read under lineage entry i to that writers ranges
+  (docs/FIXED-FORM-ALGORITHM.md §4.5).
 
   The last six of the `Fixed` rows are the READING TIER's, and they are the
   price a language with no struct layout pays for the same form. Where the
