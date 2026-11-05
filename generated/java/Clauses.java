@@ -142,12 +142,26 @@ public final class Clauses {
         return true;
     }
 
+    // fitsW13 answers whether every count and length writeW13Bits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsW13(W13 value) {
+        if (value.itemsCount < 0 || value.itemsCount > 12) {
+            return false;
+        }
+        return true;
+    }
+
     // writeW13Bits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteW13
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + W13_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsW13).
     public static int writeW13Bits(W13 value, byte[] data, int bitOffset) {
         assert checkWriteW13(value, data, bitOffset);
+        if (!fitsW13(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -163,8 +177,10 @@ public final class Clauses {
 
     // writeW13 packs value into data from its start and returns the bytes written;
     // data must hold W13_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeW13(W13 value, byte[] data) {
-        return (writeW13Bits(value, data, 0) + 7) >>> 3;
+        final int pos = writeW13Bits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readW13Bits decodes value from data starting at bit bitOffset, the payload
@@ -249,12 +265,26 @@ public final class Clauses {
         return true;
     }
 
+    // fitsW17 answers whether every count and length writeW17Bits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsW17(W17 value) {
+        if (value.itemsCount < 0 || value.itemsCount > 9) {
+            return false;
+        }
+        return true;
+    }
+
     // writeW17Bits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteW17
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + W17_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsW17).
     public static int writeW17Bits(W17 value, byte[] data, int bitOffset) {
         assert checkWriteW17(value, data, bitOffset);
+        if (!fitsW17(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -270,8 +300,10 @@ public final class Clauses {
 
     // writeW17 packs value into data from its start and returns the bytes written;
     // data must hold W17_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeW17(W17 value, byte[] data) {
-        return (writeW17Bits(value, data, 0) + 7) >>> 3;
+        final int pos = writeW17Bits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readW17Bits decodes value from data starting at bit bitOffset, the payload
@@ -356,12 +388,26 @@ public final class Clauses {
         return true;
     }
 
+    // fitsW26 answers whether every count and length writeW26Bits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsW26(W26 value) {
+        if (value.itemsCount < 0 || value.itemsCount > 6) {
+            return false;
+        }
+        return true;
+    }
+
     // writeW26Bits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteW26
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + W26_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsW26).
     public static int writeW26Bits(W26 value, byte[] data, int bitOffset) {
         assert checkWriteW26(value, data, bitOffset);
+        if (!fitsW26(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -377,8 +423,10 @@ public final class Clauses {
 
     // writeW26 packs value into data from its start and returns the bytes written;
     // data must hold W26_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeW26(W26 value, byte[] data) {
-        return (writeW26Bits(value, data, 0) + 7) >>> 3;
+        final int pos = writeW26Bits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readW26Bits decodes value from data starting at bit bitOffset, the payload
@@ -463,12 +511,26 @@ public final class Clauses {
         return true;
     }
 
+    // fitsW1 answers whether every count and length writeW1Bits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsW1(W1 value) {
+        if (value.itemsCount < 0 || value.itemsCount > 20) {
+            return false;
+        }
+        return true;
+    }
+
     // writeW1Bits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteW1
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + W1_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsW1).
     public static int writeW1Bits(W1 value, byte[] data, int bitOffset) {
         assert checkWriteW1(value, data, bitOffset);
+        if (!fitsW1(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -484,8 +546,10 @@ public final class Clauses {
 
     // writeW1 packs value into data from its start and returns the bytes written;
     // data must hold W1_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeW1(W1 value, byte[] data) {
-        return (writeW1Bits(value, data, 0) + 7) >>> 3;
+        final int pos = writeW1Bits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readW1Bits decodes value from data starting at bit bitOffset, the payload
@@ -570,12 +634,26 @@ public final class Clauses {
         return true;
     }
 
+    // fitsW52 answers whether every count and length writeW52Bits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsW52(W52 value) {
+        if (value.itemsCount < 0 || value.itemsCount > 3) {
+            return false;
+        }
+        return true;
+    }
+
     // writeW52Bits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteW52
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + W52_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsW52).
     public static int writeW52Bits(W52 value, byte[] data, int bitOffset) {
         assert checkWriteW52(value, data, bitOffset);
+        if (!fitsW52(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -593,8 +671,10 @@ public final class Clauses {
 
     // writeW52 packs value into data from its start and returns the bytes written;
     // data must hold W52_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeW52(W52 value, byte[] data) {
-        return (writeW52Bits(value, data, 0) + 7) >>> 3;
+        final int pos = writeW52Bits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readW52Bits decodes value from data starting at bit bitOffset, the payload
@@ -681,12 +761,26 @@ public final class Clauses {
         return true;
     }
 
+    // fitsW50 answers whether every count and length writeW50Bits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsW50(W50 value) {
+        if (value.itemsCount < 0 || value.itemsCount > 3) {
+            return false;
+        }
+        return true;
+    }
+
     // writeW50Bits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteW50
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + W50_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsW50).
     public static int writeW50Bits(W50 value, byte[] data, int bitOffset) {
         assert checkWriteW50(value, data, bitOffset);
+        if (!fitsW50(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -704,8 +798,10 @@ public final class Clauses {
 
     // writeW50 packs value into data from its start and returns the bytes written;
     // data must hold W50_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeW50(W50 value, byte[] data) {
-        return (writeW50Bits(value, data, 0) + 7) >>> 3;
+        final int pos = writeW50Bits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readW50Bits decodes value from data starting at bit bitOffset, the payload
@@ -980,12 +1076,26 @@ public final class Clauses {
         return true;
     }
 
+    // fitsArrTri3 answers whether every count and length writeArrTri3Bits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsArrTri3(ArrTri3 value) {
+        if (value.itemsCount < 0 || value.itemsCount > 10) {
+            return false;
+        }
+        return true;
+    }
+
     // writeArrTri3Bits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteArrTri3
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + ARR_TRI3_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsArrTri3).
     public static int writeArrTri3Bits(ArrTri3 value, byte[] data, int bitOffset) {
         assert checkWriteArrTri3(value, data, bitOffset);
+        if (!fitsArrTri3(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -1000,8 +1110,10 @@ public final class Clauses {
 
     // writeArrTri3 packs value into data from its start and returns the bytes written;
     // data must hold ARR_TRI3_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeArrTri3(ArrTri3 value, byte[] data) {
-        return (writeArrTri3Bits(value, data, 0) + 7) >>> 3;
+        final int pos = writeArrTri3Bits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readArrTri3Bits decodes value from data starting at bit bitOffset, the payload
@@ -1635,12 +1747,29 @@ public final class Clauses {
         return true;
     }
 
+    // fitsStrs answers whether every count and length writeStrsBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsStrs(Strs value) {
+        if (value.sLength < 0 || value.sLength > 8) {
+            return false;
+        }
+        if (value.bLength < 0 || value.bLength > 8) {
+            return false;
+        }
+        return true;
+    }
+
     // writeStrsBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteStrs
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + STRS_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsStrs).
     public static int writeStrsBits(Strs value, byte[] data, int bitOffset) {
         assert checkWriteStrs(value, data, bitOffset);
+        if (!fitsStrs(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -1674,8 +1803,10 @@ public final class Clauses {
 
     // writeStrs packs value into data from its start and returns the bytes written;
     // data must hold STRS_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeStrs(Strs value, byte[] data) {
-        return (writeStrsBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeStrsBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readStrsBits decodes value from data starting at bit bitOffset, the payload
@@ -1835,12 +1966,26 @@ public final class Clauses {
         return true;
     }
 
+    // fitsArrNested answers whether every count and length writeArrNestedBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsArrNested(ArrNested value) {
+        if (value.itemsCount < 0 || value.itemsCount > 4) {
+            return false;
+        }
+        return true;
+    }
+
     // writeArrNestedBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteArrNested
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + ARR_NESTED_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsArrNested).
     public static int writeArrNestedBits(ArrNested value, byte[] data, int bitOffset) {
         assert checkWriteArrNested(value, data, bitOffset);
+        if (!fitsArrNested(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -1861,8 +2006,10 @@ public final class Clauses {
 
     // writeArrNested packs value into data from its start and returns the bytes written;
     // data must hold ARR_NESTED_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeArrNested(ArrNested value, byte[] data) {
-        return (writeArrNestedBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeArrNestedBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readArrNestedBits decodes value from data starting at bit bitOffset, the payload

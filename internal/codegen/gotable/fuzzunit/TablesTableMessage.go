@@ -12,18 +12,22 @@ package tabledemo
 
 import (
 	"math"
+	"unicode/utf8"
 	"unsafe"
 )
 
 func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 	{
 		if value.VersionNoteLength < 0 || value.VersionNoteLength > 16 {
-			return false
+			return w.Refuse()
 		}
 		if value.VersionNoteLength > 0 {
 			w.Put(91, TableMessageRefBitsHere)
 			if value.VersionNoteLength < 0 || value.VersionNoteLength > 16 {
-				return false
+				return w.Refuse()
+			}
+			if !utf8.Valid(value.VersionNote[:value.VersionNoteLength]) {
+				return w.Refuse()
 			}
 			w.Put(uint64(value.VersionNoteLength), 5)
 			w.Raw(value.VersionNote[:value.VersionNoteLength])
@@ -31,12 +35,12 @@ func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 	}
 	{
 		if value.WeaponsCount < 0 || value.WeaponsCount > 8 {
-			return false
+			return w.Refuse()
 		}
 		if value.WeaponsCount > 0 {
 			w.Put(92, TableMessageRefBitsHere)
 			if value.WeaponsCount < 0 || value.WeaponsCount > 8 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.WeaponsCount)-0, 4)
 			for i := range int(value.WeaponsCount) {
@@ -48,12 +52,12 @@ func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 	}
 	{
 		if value.ProfilesCount < 0 || value.ProfilesCount > 4 {
-			return false
+			return w.Refuse()
 		}
 		if value.ProfilesCount > 0 {
 			w.Put(93, TableMessageRefBitsHere)
 			if value.ProfilesCount < 0 || value.ProfilesCount > 4 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.ProfilesCount)-0, 3)
 			for i := range int(value.ProfilesCount) {
@@ -76,6 +80,9 @@ func RootConfigMeasureMessages(values []*RootConfig, report *TableReport) int64 
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !RootConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -86,13 +93,7 @@ func RootConfigMeasureMessages(values []*RootConfig, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func RootConfigSaveMessages(values []*RootConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := RootConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -100,6 +101,9 @@ func RootConfigSaveMessages(values []*RootConfig, buffer []byte, report *TableRe
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !RootConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -372,12 +376,18 @@ func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) boo
 	{
 		if value.Penetration != 1 {
 			w.Put(103, TableMessageRefBitsHere)
+			if value.Penetration < 0 || value.Penetration > 10 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Penetration), uint64(0))
 		}
 	}
 	{
 		if value.Channel != 0 {
 			w.Put(104, TableMessageRefBitsHere)
+			if value.Channel > 63 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 1, Bits: 6, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Channel), uint64(0))
 		}
 	}
@@ -412,7 +422,7 @@ func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) boo
 					}
 				}
 			default:
-				return false
+				return w.Refuse()
 			}
 		}
 	}
@@ -429,6 +439,9 @@ func WeaponConfigMeasureMessages(values []*WeaponConfig, report *TableReport) in
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !WeaponConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -439,13 +452,7 @@ func WeaponConfigMeasureMessages(values []*WeaponConfig, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func WeaponConfigSaveMessages(values []*WeaponConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := WeaponConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -453,6 +460,9 @@ func WeaponConfigSaveMessages(values []*WeaponConfig, buffer []byte, report *Tab
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !WeaponConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -865,7 +875,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 			} else {
 				id, named := value.Grade.TableEnumID()
 				if !named {
-					return false
+					return w.Refuse()
 				}
 				slot := tableMessageNameSlot(id)
 				if slot == 0 {
@@ -877,12 +887,12 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 	}
 	{
 		if value.GradesCount < 0 || value.GradesCount > 4 {
-			return false
+			return w.Refuse()
 		}
 		if value.GradesCount > 0 {
 			w.Put(21, TableMessageRefBitsHere)
 			if value.GradesCount < 0 || value.GradesCount > 4 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.GradesCount)-0, 3)
 			for i := range int(value.GradesCount) {
@@ -891,7 +901,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 				} else {
 					id, named := value.Grades[i].TableEnumID()
 					if !named {
-						return false
+						return w.Refuse()
 					}
 					slot := tableMessageNameSlot(id)
 					if slot == 0 {
@@ -919,7 +929,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 				} else {
 					id, named := value.Podium[i].TableEnumID()
 					if !named {
-						return false
+						return w.Refuse()
 					}
 					slot := tableMessageNameSlot(id)
 					if slot == 0 {
@@ -941,6 +951,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 		probe.Measuring = true
 		probe.Bits = 0
 		if !WeaponConfigSaveMessageBody(&probe, &value.Primary) {
+			w.Reason = probe.Reason
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
@@ -963,12 +974,12 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 	}
 	{
 		if value.AttachmentsCount < 0 || value.AttachmentsCount > 8 {
-			return false
+			return w.Refuse()
 		}
 		if value.AttachmentsCount > 0 {
 			w.Put(26, TableMessageRefBitsHere)
 			if value.AttachmentsCount < 0 || value.AttachmentsCount > 8 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.AttachmentsCount)-0, 4)
 			for i := range int(value.AttachmentsCount) {
@@ -991,6 +1002,9 @@ func LoadoutConfigMeasureMessages(values []*LoadoutConfig, report *TableReport) 
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !LoadoutConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -1001,13 +1015,7 @@ func LoadoutConfigMeasureMessages(values []*LoadoutConfig, report *TableReport) 
 	return 2 + w.Bits/8
 }
 func LoadoutConfigSaveMessages(values []*LoadoutConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := LoadoutConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1015,6 +1023,9 @@ func LoadoutConfigSaveMessages(values []*LoadoutConfig, buffer []byte, report *T
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !LoadoutConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -1462,12 +1473,15 @@ func LoadoutConfigLoadMessagesTolerant(values []LoadoutConfig, vocabulary *Table
 func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) bool {
 	{
 		if value.NameLength < 0 || value.NameLength > 32 {
-			return false
+			return w.Refuse()
 		}
 		if value.NameLength > 0 {
 			w.Put(38, TableMessageRefBitsHere)
 			if value.NameLength < 0 || value.NameLength > 32 {
-				return false
+				return w.Refuse()
+			}
+			if !utf8.Valid(value.Name[:value.NameLength]) {
+				return w.Refuse()
 			}
 			w.Put(uint64(value.NameLength), 6)
 			w.Raw(value.Name[:value.NameLength])
@@ -1475,12 +1489,12 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 	}
 	{
 		if value.IconLength < 0 || value.IconLength > 16 {
-			return false
+			return w.Refuse()
 		}
 		if value.IconLength > 0 {
 			w.Put(39, TableMessageRefBitsHere)
 			if value.IconLength < 0 || value.IconLength > 16 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.IconLength)-0, 5)
 			w.Align()
@@ -1574,6 +1588,7 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 		probe.Measuring = true
 		probe.Bits = 0
 		if !LoadoutConfigSaveMessageBody(&probe, &value.Loadout) {
+			w.Reason = probe.Reason
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
@@ -1596,6 +1611,9 @@ func ProfileConfigMeasureMessages(values []*ProfileConfig, report *TableReport) 
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !ProfileConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -1606,13 +1624,7 @@ func ProfileConfigMeasureMessages(values []*ProfileConfig, report *TableReport) 
 	return 2 + w.Bits/8
 }
 func ProfileConfigSaveMessages(values []*ProfileConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := ProfileConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1620,6 +1632,9 @@ func ProfileConfigSaveMessages(values []*ProfileConfig, buffer []byte, report *T
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !ProfileConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -2227,6 +2242,9 @@ func AttachmentSaveMessageBody(w *TableMessageWriter, value *AttachmentRow) bool
 	{
 		if value.Slot != 0 {
 			w.Put(3, TableMessageRefBitsHere)
+			if value.Slot < 0 || value.Slot > 7 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 3, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Slot), uint64(0))
 		}
 	}
@@ -2435,6 +2453,9 @@ func DebuffSaveMessageBody(w *TableMessageWriter, value *DebuffRow) bool {
 	{
 		if value.Amount != 0 {
 			w.Put(6, TableMessageRefBitsHere)
+			if value.Amount < 0 || value.Amount > 100 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Amount), uint64(0))
 		}
 	}

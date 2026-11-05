@@ -433,6 +433,221 @@ function D.count_of(fd, v)
   return math.min(#v, fd.bound or 0)
 end
 
+-- THE WRITE CONTRACT (docs/SPEC-TABLES.md §3): a writer refuses, in every
+-- build, a value its field cannot carry, and writes nothing. The predicates
+-- below are the one test each writer and the naming walk share:
+--   D.int_ok    an integer within its width, its declared range and its
+--               bits(N); a 128-bit value within its declared range
+--   D.len_ok    a string(N), bytes(N) or wstring(N) of at most N units
+--   D.count_ok  a bounded or fixed array of at most its bound elements
+--   D.enum_ok   an enum value that names one of its variants
+--   D.tag_ok    a union value whose tag is 0 or one of its arms
+--   D.text_ok   a string's bytes well-formed UTF-8, a wstring's units free
+--               of an unpaired surrogate (D.utf8_ok, D.units_ok)
+-- A nil is the field's absence and passes every one.
+local function wide_less(signed, a, b)
+  if a.hi ~= b.hi then
+    if signed then return a.hi < b.hi end
+    return math.ult(a.hi, b.hi)
+  end
+  return math.ult(a.lo, b.lo)
+end
+
+function D.int_ok(d, x)
+  if x == nil then return true end
+  if d.shape == "wide" then
+    if type(x) ~= "table" or math.type(x.lo) ~= "integer" or math.type(x.hi) ~= "integer" then return false end
+    if d.lo ~= nil and d.hi ~= nil then
+      if wide_less(d.signed, x, d.lo) or wide_less(d.signed, d.hi, x) then return false end
+    end
+    return true
+  end
+  if math.type(x) ~= "integer" then
+    x = math.type(x) == "float" and math.tointeger(x) or nil
+    if x == nil then return false end
+  end
+  local w = d.width or 8
+  if w < 8 then
+    local top = 1 << (w * 8)
+    if d.signed then
+      if x < -(top >> 1) or x >= (top >> 1) then return false end
+    elseif x < 0 or x >= top then
+      return false
+    end
+  end
+  if d.lo ~= nil and d.hi ~= nil then
+    if d.signed then
+      if x < d.lo or x > d.hi then return false end
+    elseif math.ult(x, d.lo) or math.ult(d.hi, x) then
+      return false
+    end
+  end
+  if d.shape == "int" and d.bits ~= nil and d.bits > 0 and d.bits < 64 then
+    if math.ult((1 << d.bits) - 1, x) then return false end
+  end
+  return true
+end
+
+function D.len_ok(d, x)
+  if x == nil then return true end
+  local n = d.bound
+  return n == nil or n <= 0 or #x <= n
+end
+
+function D.count_ok(d, x)
+  if x == nil or d.list or d.keyed ~= nil or d.bound == nil then return true end
+  return #x <= d.bound
+end
+
+function D.enum_ok(d, x)
+  if x == nil or x == false then return true end
+  for _, var in ipairs(d.variants) do
+    if var[1] == x then return true end
+  end
+  return false
+end
+
+-- WELL-FORMED UTF-8 (docs/SPEC.md §5.1 row 8): no overlong form, no encoded
+-- surrogate, nothing past U+10FFFF and no cut sequence. It is spelled byte by
+-- byte rather than through utf8.len, whose answer for a surrogate differs
+-- between Lua 5.3 and 5.4. A zero byte is well-formed here; the writers that
+-- refuse one test it themselves.
+function D.utf8_ok(s)
+  local i, n = 1, #s
+  while i <= n do
+    local c = s:byte(i)
+    if c < 0x80 then
+      i = i + 1
+    elseif c >= 0xc2 and c <= 0xdf then
+      if i + 1 > n then return false end
+      local b1 = s:byte(i + 1)
+      if b1 < 0x80 or b1 > 0xbf then return false end
+      i = i + 2
+    elseif c >= 0xe0 and c <= 0xef then
+      if i + 2 > n then return false end
+      local b1, b2 = s:byte(i + 1), s:byte(i + 2)
+      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf then return false end
+      if c == 0xe0 and b1 < 0xa0 then return false end
+      if c == 0xed and b1 > 0x9f then return false end
+      i = i + 3
+    elseif c >= 0xf0 and c <= 0xf4 then
+      if i + 3 > n then return false end
+      local b1, b2, b3 = s:byte(i + 1), s:byte(i + 2), s:byte(i + 3)
+      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf or b3 < 0x80 or b3 > 0xbf then return false end
+      if c == 0xf0 and b1 < 0x90 then return false end
+      if c == 0xf4 and b1 > 0x8f then return false end
+      i = i + 4
+    else
+      return false
+    end
+  end
+  return true
+end
+
+-- UTF-16 units with every surrogate paired: a high unit followed by a low
+-- one, and no low unit alone.
+function D.units_ok(u)
+  local i, n = 1, #u
+  while i <= n do
+    local x = u[i]
+    if type(x) == "number" and x >= 0xd800 and x <= 0xdfff then
+      if x > 0xdbff then return false end
+      local lo = u[i + 1]
+      if type(lo) ~= "number" or lo < 0xdc00 or lo > 0xdfff then return false end
+      i = i + 2
+    else
+      i = i + 1
+    end
+  end
+  return true
+end
+
+function D.text_ok(d, x)
+  if x == nil then return true end
+  local s = d.shape
+  if s == "string" then return type(x) ~= "string" or D.utf8_ok(x) end
+  if s == "wstring" then return type(x) ~= "table" or D.units_ok(x) end
+  return true
+end
+
+function D.tag_ok(u, x)
+  if type(x) ~= "table" then return true end
+  local tag = x.tag or 0
+  return tag == 0 or u.arms[tag] ~= nil
+end
+
+-- THE NAMING WALK of the write contract: the cold path that names a refusal
+-- once a writer has refused, "invalid_value: <Owner>.<field>" for the first
+-- field in v (in the writer's own order, under the writer's own guard and
+-- presence rules) that fails one of the predicates above, or nil.
+local invalid_in
+
+local function invalid_value(T, d, val, where, seen)
+  if d == nil then return nil end
+  local s = d.shape
+  if s == "int" or s == "flags" or s == "wide" then
+    if not D.int_ok(d, val) then return where .. " holds an integer outside its declared range" end
+  elseif s == "string" or s == "bytes" or s == "wstring" then
+    if not D.len_ok(d, val) then return where .. " holds a length past its bound" end
+    if not D.text_ok(d, val) then return where .. " holds ill-formed text" end
+  elseif s == "enum" then
+    if not D.enum_ok(d, val) then return where .. " holds a value outside its enum" end
+  elseif s == "array" then
+    if type(val) ~= "table" then return nil end
+    if not D.count_ok(d, val) then return where .. " holds a count past its bound" end
+    local n = d.keyed ~= nil and (d.bound or 0) or #val
+    for i = 1, n do
+      local hit = invalid_value(T, d.elem, val[i], where, seen)
+      if hit then return hit end
+    end
+  elseif s == "map" then
+    if type(val) ~= "table" then return nil end
+    for k, x in pairs(val) do
+      local hit = invalid_value(T, d.key_field, k, where, seen) or invalid_value(T, d.value_field, x, where, seen)
+      if hit then return hit end
+    end
+  elseif s == "table" or s == "pointer" then
+    local desc = T.Tables[d.target]
+    if desc ~= nil and type(val) == "table" then return invalid_in(T, desc, val, seen) end
+  elseif s == "union" then
+    local u = T.Unions[d.target]
+    if u ~= nil and type(val) == "table" then
+      if not D.tag_ok(u, val) then return where .. " holds a tag outside its union" end
+      local arm = u.arms[val.tag or 0]
+      if arm ~= nil and arm.field ~= nil then
+        return invalid_value(T, arm.field, val[arm.slot], u.name .. "." .. arm.name, seen)
+      end
+    end
+  end
+  return nil
+end
+
+invalid_in = function(T, desc, v, seen)
+  if seen[v] then return nil end
+  seen[v] = true
+  for _, fd in ipairs(desc.fields) do
+    if D.guard_holds(fd, v) and (not fd.optional or v[fd.name .. "_present"]) then
+      local hit = invalid_value(T, fd, v[fd.name], desc.name .. "." .. fd.name, seen)
+      if hit then return hit end
+    end
+  end
+  return nil
+end
+
+function D.refuse_invalid(T, name, v)
+  local desc = T.Tables[name]
+  if desc == nil or type(v) ~= "table" then return nil end
+  local hit = invalid_in(T, desc, v, {})
+  if hit == nil then return nil end
+  return "invalid_value: " .. hit
+end
+
+-- D.refuse_write names a writer's refusal: a NaN or an infinity first
+-- (non_finite_float), then a value outside the write contract (invalid_value).
+function D.refuse_write(T, name, v)
+  return D.refuse_non_finite(T, name, v) or D.refuse_invalid(T, name, v)
+end
+
 local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 

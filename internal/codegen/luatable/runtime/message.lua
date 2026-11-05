@@ -559,19 +559,31 @@ variant_index = function(variants, id)
 end
 
 -- ---- the write side ----
+--
+-- THE WRITE CONTRACT (docs/SPEC.md §5.1): a value its declaration does not
+-- admit is refused, never masked to the field's width, wrapped or clamped. A
+-- ranged integer off its min/max, a bits(N) past N, a count past its bound or
+-- under its min, a length past its bound, an enum value that names no
+-- variant, a union tag that names no arm and ill-formed text each make the
+-- writer answer false, and the batch writes nothing. A flags value is masked
+-- to its declared width on purpose (§3.3: the bits a newer build appended are
+-- dropped by width), so flags are not refused.
 local write_value, write_body
+local int_ok, len_ok, count_ok, enum_ok, well_formed = D.int_ok, D.len_ok, D.count_ok, D.enum_ok, D.text_ok
 
 local function write_scalar(W, d, v)
   local s = d.shape
   if s == "bool" then
     W:put(v and 1 or 0, 1)
   elseif s == "int" or s == "flags" then
+    if s == "int" and not int_ok(d, v) then return false end
     local width, base = int_bits(d)
     if s == "flags" then
       width, base = d.bits, 0
     end
     W:put(v - base, width)
   elseif s == "wide" then
+    if not int_ok(d, v) then return false end
     local lo, hi = (v and v.lo) or 0, (v and v.hi) or 0
     local bits = 128
     if d.lo ~= nil and d.hi ~= nil then
@@ -601,9 +613,11 @@ write_value = function(W, T, f, holder, key, ctx)
   local s = f.shape
   local v = holder[key]
   if s == "string" or s == "bytes" then
+    if not len_ok(f, v) or not well_formed(f, v) then return false end
     W:put(#v, bits_range(0, f.bound))
     W:raw(v)
   elseif s == "wstring" then
+    if not len_ok(f, v) or not well_formed(f, v) then return false end
     W:put(#v, bits_range(0, f.bound))
     for i = 1, #v do
       W:put(v[i], 16)
@@ -611,6 +625,8 @@ write_value = function(W, T, f, holder, key, ctx)
   elseif s == "enum" then
     if v == nil then
       W:put(0, ctx.refBits)
+    elseif not enum_ok(f, v) then
+      return false
     else
       W:put(slot(T, variant_id(T, f, v)), ctx.refBits)
     end
@@ -621,6 +637,7 @@ write_value = function(W, T, f, holder, key, ctx)
     else
       local un = T.Unions[f.target]
       local arm = un.arms[tag]
+      if arm == nil then return false end
       W:put(slot(T, arm.id), ctx.refBits)
       if arm.field ~= nil and not write_value(W, T, arm.field, v, arm.slot, ctx) then return false end
     end
@@ -629,6 +646,7 @@ write_value = function(W, T, f, holder, key, ctx)
   elseif s == "array" then
     local d = f
     local n
+    if not count_ok(d, v) then return false end
     if d.fixed then
       n = d.bound
     elseif d.keyed then
@@ -639,6 +657,7 @@ write_value = function(W, T, f, holder, key, ctx)
       W:put(n - (d.min or 0), bits_range(d.min or 0, d.bound))
     else
       n = #v
+      if n < (d.min or 0) then return false end
       W:put(n - (d.min or 0), bits_range(d.min or 0, d.bound))
     end
     if d.elem_kind == 6 and d.elem.shape ~= "bytes" then W:align() end
@@ -1070,7 +1089,7 @@ function M.measureMessages(T, root, vocab, values)
   W:put(#values - 1, 8)
   for i = 1, #values do
     local ok, why = save_one(W, T, root, values[i], vocab)
-    if not ok then return -1, why or D.refuse_non_finite(T, root, values[i]) end
+    if not ok then return -1, why or D.refuse_write(T, root, values[i]) end
   end
   W:align()
   return (W.bits + 7) >> 3
@@ -1087,7 +1106,7 @@ function M.saveMessages(T, root, vocab, values)
   W:put(#values - 1, 8)
   for i = 1, #values do
     local ok, why = save_one(W, T, root, values[i], vocab)
-    if not ok then return nil, why or D.refuse_non_finite(T, root, values[i]) end
+    if not ok then return nil, why or D.refuse_write(T, root, values[i]) end
   end
   W:align()
   return W:result()

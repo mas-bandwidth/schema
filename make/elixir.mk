@@ -320,12 +320,24 @@ test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-
 #          foreign order: block-reason red; block green.
 #   mapsort (M19) the writer sorts a map's entries DESCENDING: wire red;
 #          report green.
+#   write-refusal (docs/SPEC.md §5.1) the save's ranged-integer check is gone,
+#          so a ranged int off its min or max is written: write-refusal red;
+#          wire green.
+#   write-refusal-fixed (docs/SPEC.md §5.1) the fixed writer's ranged-integer
+#          check is gone, so FixedSave writes a ranged int off its min or max:
+#          write-refusal-fixed red; wire green.
+#   write-refusal-message (docs/SPEC.md §5.1) the message writer's declared
+#          bounds check is gone, so SaveMessages writes a ranged int off its min
+#          or max: write-refusal-message red; message green.
 ELIXIR_CONFORMANCE_WALK_SED   := -e 's|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {not raw, report}|'
 ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    if Enum.any?(acc, fn n -> node_content(n) == c end) do|    if false and Enum.any?(acc, fn n -> node_content(n) == c end) do|'
 ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if n < 2 do$$|    if true or n < 2 do|'
 ELIXIR_CONFORMANCE_IDS_SED    := -e 's|        {ref, Map.put(ids, id, ref), \[id \| order\]}|        {ref, Map.put(ids, id, ref), order ++ [id]}|'
 ELIXIR_CONFORMANCE_ARM_SED    := -e 's| when byte_size(content) >= l and k == a.arm_kind ->| when byte_size(content) >= l ->|'
 ELIXIR_CONFORMANCE_MAPSORT_SED := -e 's~^    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)$$~    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end, :desc)~'
+ELIXIR_CONFORMANCE_WRITE_REFUSAL_SED := -e 's|^    if Map.has_key?(f, :min) and is_integer(v) and (v < f.min or v > f.max),$$|    if false and Map.has_key?(f, :min) and is_integer(v) and (v < f.min or v > f.max),|'
+ELIXIR_CONFORMANCE_WRITE_REFUSAL_FIXED_SED := -e 's|def ranged(value, {lo, hi}) when is_integer(value) and value >= lo and value <= hi, do: value|def ranged(value, {_lo, _hi}) when is_integer(value), do: value|'
+ELIXIR_CONFORMANCE_WRITE_REFUSAL_MESSAGE_SED := -e 's|defp within(v, lo, hi) when is_integer(v) and v >= lo and v <= hi, do: :ok|defp within(v, _lo, _hi) when is_integer(v), do: :ok|'
 ELIXIR_CONFORMANCE_ORDER_SED  := -e 's|magic == B.foreign_magic() -> {:error, :foreign_order}|false -> {:error, :foreign_order}|'
 
 # $(call ELIXIR_CONFORMANCE_CONTROL,dir,emitter,sedvar,red surfaces,green surfaces,what)
@@ -336,19 +348,21 @@ define ELIXIR_CONFORMANCE_CONTROL
 		cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) left the Elixir leg green"; exit 1; \
 	fi
 	@for s in $(4); do \
-		grep -qE "^$$s +FAIL" $(1)/log || { cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) did not red $$s"; exit 1; }; \
+		grep -qE "^$$s *FAIL" $(1)/log || { cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) did not red $$s"; exit 1; }; \
 	done
 	@for s in $(5); do \
-		grep -qE "^$$s +pass" $(1)/log || { cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) also broke $$s, which never runs the sabotaged code"; exit 1; }; \
+		grep -qE "^$$s *pass" $(1)/log || { cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) also broke $$s, which never runs the sabotaged code"; exit 1; }; \
 	done
-	@grep -E '^[a-z-]+ +(FAIL|pass)' $(1)/log
+	@grep -E '^[a-z-]+ *(FAIL|pass)' $(1)/log
 	@echo "elixir conformance negative control: $(6) reds [$(4)] and leaves [$(5)] green"
 endef
 
 .PHONY: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
 	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
 	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order \
-	conformance-negative-control-elixir-mapsort
+	conformance-negative-control-elixir-mapsort conformance-negative-control-elixir-write-refusal \
+	conformance-negative-control-elixir-write-refusal-fixed \
+	conformance-negative-control-elixir-write-refusal-message
 conformance-negative-control-elixir-walk: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-walk,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_WALK_SED,json-read,json-write wire,a text reader that negates every bool)
 
@@ -370,10 +384,21 @@ conformance-negative-control-elixir-order: build/conformance-harness
 conformance-negative-control-elixir-mapsort: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-mapsort,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_MAPSORT_SED,wire,report,a map writer that sorts its entries descending)
 
+conformance-negative-control-elixir-write-refusal: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-write-refusal,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_WRITE_REFUSAL_SED,write-refusal,wire,a save that writes a ranged int off its min or max)
+
+conformance-negative-control-elixir-write-refusal-fixed: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-write-refusal-fixed,internal/codegen/elixirtable/fixedruntime.go,ELIXIR_CONFORMANCE_WRITE_REFUSAL_FIXED_SED,write-refusal-fixed,wire,a FixedSave that writes a ranged int off its min or max)
+
+conformance-negative-control-elixir-write-refusal-message: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-write-refusal-message,internal/codegen/elixirtable/messageform.go,ELIXIR_CONFORMANCE_WRITE_REFUSAL_MESSAGE_SED,write-refusal-message,message,a SaveMessages that writes a ranged int off its min or max)
+
 test-elixir: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
 	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
 	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order \
-	conformance-negative-control-elixir-mapsort
+	conformance-negative-control-elixir-mapsort conformance-negative-control-elixir-write-refusal \
+	conformance-negative-control-elixir-write-refusal-fixed \
+	conformance-negative-control-elixir-write-refusal-message
 
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
@@ -398,13 +423,16 @@ build/conformance/manifest.txt: build/conformance-harness build-conformance-elix
 # controls do and what makes a control independent of the thing it tests: the
 # gate has to FIND a defect in generated code. The sabotage is checked to have
 # APPLIED, because a sed that silently matched nothing is a green light and not
-# a control.
+# a control. The overlay names the emitter by the Go module's root, which is
+# the path go build resolves, and not by make's CURDIR, which can reach the same
+# tree through a symlink.
 define ELIXIR_SABOTAGED_BUILD
 	@rm -rf $(1) && mkdir -p $(1)
 	@sed $($(3)) $(2) > $(1)/sabotaged.go.txt
 	@cmp -s $(2) $(1)/sabotaged.go.txt && \
 		{ echo "NEGATIVE CONTROL: the sabotage of $(2) did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/$(2)":"%s/$(1)/sabotaged.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > $(1)/overlay.json
+	@root="$$(dirname "$$(go env GOMOD)")"; \
+		printf '{"Replace":{"%s/$(2)":"%s/$(1)/sabotaged.go.txt"}}\n' "$$root" "$(CURDIR)" > $(1)/overlay.json
 	go build -overlay $(1)/overlay.json -o $(1)/schema ./cmd/schema
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \

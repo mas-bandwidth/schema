@@ -55,7 +55,10 @@ namespace Wide
 
         public static bool WriteLine(WriteStream stream, Line value)
         {
-            Debug.Assert(value.TextLength >= 0 && value.TextLength <= 4, "value.TextLength out of range [0, 4]");
+            if (value.TextLength < 0 || value.TextLength > 4) // the length guards the units (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 3))

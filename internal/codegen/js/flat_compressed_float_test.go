@@ -19,8 +19,9 @@ import (
 // even: without the clamp the writer emits maxInt + 1 for a legal top-of-range
 // value, which the generated reader then refuses (8388609) or which overflows
 // the 24-bit field (16777215). The pure half reads the emitted text; the gated
-// half writes the top value and reads it back through node, byte-comparing the
-// wire against the C++ reference's clamp to the step count.
+// half writes the top value and reads it back through node, under the default
+// NODE_ENV and under production, byte-comparing the wire against the C++
+// reference's clamp to the step count.
 func TestJsFlatCompressedFloatClampsTheTopOfRange(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -36,8 +37,8 @@ func TestJsFlatCompressedFloatClampsTheTopOfRange(t *testing.T) {
 			t.Parallel()
 			flat := generateProbeFlat(t, tc.max)
 			want := fmt.Sprintf("if (v > %d) { v = %d; }", tc.maxInt, tc.maxInt)
-			if n := strings.Count(flat, want); n != 2 {
-				t.Fatalf("both writer variants must clamp to the step count; found %d of %q", n, want)
+			if n := strings.Count(flat, want); n != 1 {
+				t.Fatalf("the one writer must clamp to the step count; found %d of %q", n, want)
 			}
 		})
 	}

@@ -155,12 +155,26 @@ public final class ArmDefaults {
         return true;
     }
 
+    // fitsDefaultArm answers whether every count and length writeDefaultArmBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsDefaultArm(DefaultArm value) {
+        if (value.entriesCount < 0 || value.entriesCount > 2) {
+            return false;
+        }
+        return true;
+    }
+
     // writeDefaultArmBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteDefaultArm
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + DEFAULT_ARM_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsDefaultArm).
     public static int writeDefaultArmBits(DefaultArm value, byte[] data, int bitOffset) {
         assert checkWriteDefaultArm(value, data, bitOffset);
+        if (!fitsDefaultArm(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -179,8 +193,10 @@ public final class ArmDefaults {
 
     // writeDefaultArm packs value into data from its start and returns the bytes written;
     // data must hold DEFAULT_ARM_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeDefaultArm(DefaultArm value, byte[] data) {
-        return (writeDefaultArmBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeDefaultArmBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readDefaultArmBits decodes value from data starting at bit bitOffset, the payload
@@ -294,12 +310,37 @@ public final class ArmDefaults {
         return true;
     }
 
+    // fitsDefaultChoice answers whether every count and length writeDefaultChoiceBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsDefaultChoice(DefaultChoice value) {
+        switch (value.type) {
+            case 1:
+                if (value.first.entriesCount < 0 || value.first.entriesCount > 2) {
+                    return false;
+                }
+                break;
+            case 2:
+                if (value.second.entriesCount < 0 || value.second.entriesCount > 2) {
+                    return false;
+                }
+                break;
+            default:
+                break;
+        }
+        return true;
+    }
+
     // writeDefaultChoiceBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteDefaultChoice
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + DEFAULT_CHOICE_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsDefaultChoice).
     public static int writeDefaultChoiceBits(DefaultChoice value, byte[] data, int bitOffset) {
         assert checkWriteDefaultChoice(value, data, bitOffset);
+        if (!fitsDefaultChoice(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -319,8 +360,10 @@ public final class ArmDefaults {
 
     // writeDefaultChoice packs value into data from its start and returns the bytes written;
     // data must hold DEFAULT_CHOICE_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeDefaultChoice(DefaultChoice value, byte[] data) {
-        return (writeDefaultChoiceBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeDefaultChoiceBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readDefaultChoiceBits decodes value from data starting at bit bitOffset, the payload
@@ -401,13 +444,39 @@ public final class ArmDefaults {
         return true;
     }
 
+    // fitsDefaultChoicePacket answers whether every count and length writeDefaultChoicePacketBits
+    // indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsDefaultChoicePacket(DefaultChoicePacket value) {
+        switch (value.choice.type) {
+            case 1:
+                if (value.choice.first.entriesCount < 0 || value.choice.first.entriesCount > 2) {
+                    return false;
+                }
+                break;
+            case 2:
+                if (value.choice.second.entriesCount < 0 || value.choice.second.entriesCount > 2) {
+                    return false;
+                }
+                break;
+            default:
+                break;
+        }
+        return true;
+    }
+
     // writeDefaultChoicePacketBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteDefaultChoicePacket
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + DEFAULT_CHOICE_PACKET_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsDefaultChoicePacket).
     public static int writeDefaultChoicePacketBits(
             DefaultChoicePacket value, byte[] data, int bitOffset) {
         assert checkWriteDefaultChoicePacket(value, data, bitOffset);
+        if (!fitsDefaultChoicePacket(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         pos = writeDefaultChoiceBits(value.choice, data, pos);
         return pos;
@@ -415,8 +484,10 @@ public final class ArmDefaults {
 
     // writeDefaultChoicePacket packs value into data from its start and returns the bytes written;
     // data must hold DEFAULT_CHOICE_PACKET_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeDefaultChoicePacket(DefaultChoicePacket value, byte[] data) {
-        return (writeDefaultChoicePacketBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeDefaultChoicePacketBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readDefaultChoicePacketBits decodes value from data starting at bit bitOffset, the payload
@@ -482,12 +553,29 @@ public final class ArmDefaults {
         return true;
     }
 
+    // fitsDefaultBulkArm answers whether every count and length writeDefaultBulkArmBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsDefaultBulkArm(DefaultBulkArm value) {
+        if (value.payload.entriesCount < 0 || value.payload.entriesCount > 2) {
+            return false;
+        }
+        if (value.dataLength < 0 || value.dataLength > 2) {
+            return false;
+        }
+        return true;
+    }
+
     // writeDefaultBulkArmBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteDefaultBulkArm
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + DEFAULT_BULK_ARM_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsDefaultBulkArm).
     public static int writeDefaultBulkArmBits(DefaultBulkArm value, byte[] data, int bitOffset) {
         assert checkWriteDefaultBulkArm(value, data, bitOffset);
+        if (!fitsDefaultBulkArm(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         pos = writeDefaultArmBits(value.payload, data, pos);
@@ -506,8 +594,10 @@ public final class ArmDefaults {
 
     // writeDefaultBulkArm packs value into data from its start and returns the bytes written;
     // data must hold DEFAULT_BULK_ARM_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeDefaultBulkArm(DefaultBulkArm value, byte[] data) {
-        return (writeDefaultBulkArmBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeDefaultBulkArmBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readDefaultBulkArmBits decodes value from data starting at bit bitOffset, the payload
@@ -621,13 +711,46 @@ public final class ArmDefaults {
         return true;
     }
 
+    // fitsDefaultBulkChoice answers whether every count and length writeDefaultBulkChoiceBits
+    // indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsDefaultBulkChoice(DefaultBulkChoice value) {
+        switch (value.type) {
+            case 1:
+                if (value.first.payload.entriesCount < 0 || value.first.payload.entriesCount > 2) {
+                    return false;
+                }
+                if (value.first.dataLength < 0 || value.first.dataLength > 2) {
+                    return false;
+                }
+                break;
+            case 2:
+                if (value.second.payload.entriesCount < 0
+                        || value.second.payload.entriesCount > 2) {
+                    return false;
+                }
+                if (value.second.dataLength < 0 || value.second.dataLength > 2) {
+                    return false;
+                }
+                break;
+            default:
+                break;
+        }
+        return true;
+    }
+
     // writeDefaultBulkChoiceBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteDefaultBulkChoice
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + DEFAULT_BULK_CHOICE_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsDefaultBulkChoice).
     public static int writeDefaultBulkChoiceBits(
             DefaultBulkChoice value, byte[] data, int bitOffset) {
         assert checkWriteDefaultBulkChoice(value, data, bitOffset);
+        if (!fitsDefaultBulkChoice(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -647,8 +770,10 @@ public final class ArmDefaults {
 
     // writeDefaultBulkChoice packs value into data from its start and returns the bytes written;
     // data must hold DEFAULT_BULK_CHOICE_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeDefaultBulkChoice(DefaultBulkChoice value, byte[] data) {
-        return (writeDefaultBulkChoiceBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeDefaultBulkChoiceBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readDefaultBulkChoiceBits decodes value from data starting at bit bitOffset, the payload

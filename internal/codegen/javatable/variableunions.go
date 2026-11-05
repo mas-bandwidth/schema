@@ -94,7 +94,11 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		}
 	}
 	b.WriteString("    }\n")
-	b.WriteString("    static boolean buildGraph(TableVariable.NodeGraph g,Value v){if(v==null)return false;switch(v.tag){case 0:return true;\n")
+	if writeVariableUnionCheck(&b, un, mem) {
+		fmt.Fprintf(&b, "    static boolean buildGraph(TableVariable.NodeGraph g,Value v){if(v==null)return false;assert checkWrite(v) : \"write contract: %s\";switch(v.tag){case 0:return true;\n", un.Name)
+	} else {
+		b.WriteString("    static boolean buildGraph(TableVariable.NodeGraph g,Value v){if(v==null)return false;switch(v.tag){case 0:return true;\n")
+	}
 	for i, arm := range un.Variants {
 		fmt.Fprintf(&b, "        case %d:{\n", i+1)
 		if !arm.Void() {

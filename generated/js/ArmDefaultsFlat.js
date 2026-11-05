@@ -11,11 +11,10 @@
 // remains the diagnostic and reference surface — re-read a failing buffer
 // through it to learn WHICH operation failed and why.
 //
-// Write<Name>Flat(view, value) -> bytes written, or -1 when the checked
-// writer refuses an out-of-contract value (the production writer trusts
-// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at
-// module load). Read<Name>Flat(view, numBits, value) -> bool, the family
-// read verdict; reader obligations ride in every mode.
+// Write<Name>Flat(view, value) -> bytes written, or -1 when the writer
+// refuses an out-of-contract value, in every build (docs/SPEC.md §5.1:
+// NODE_ENV selects nothing). Read<Name>Flat(view, numBits, value) -> bool,
+// the family read verdict; reader obligations ride in every mode.
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
@@ -23,57 +22,15 @@
 // unconditionally; copy exactly-sized receive buffers into a persistent
 // MaxBytes + 8 scratch first.
 
-// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
-// bundlers statically replace NODE_ENV, so production bundles tree-shake
-// the checked writers out. Existence-guarded for browsers without process.
-const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
-
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
 
 // ---- type DefaultArm: the flat codec ----
 
-function writeDefaultArmFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((value.entriesCount) & 0x3));
-  sb = 2;
-  for (let i0 = 0; i0 < value.entriesCount; i0++) {
-    const e0 = value.entries[i0];
-    v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = ((e0.preferred & 0xf)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 4;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (4 - sb);
-    }
-  }
-  v = (((value.marker) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeDefaultArmFlatChecked(view, value) {
+// WriteDefaultArmFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold DefaultArmMaxBytes.
+export function WriteDefaultArmFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.entriesCount) || value.entriesCount < 0 || value.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
@@ -121,11 +78,6 @@ function writeDefaultArmFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteDefaultArmFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold DefaultArmMaxBytes.
-export const WriteDefaultArmFlat = PRODUCTION ? writeDefaultArmFlatProduction : writeDefaultArmFlatChecked;
 
 // ReadDefaultArmFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -178,103 +130,10 @@ export function ReadDefaultArmFlat(view, numBits, value) {
 
 // ---- union DefaultChoice: the flat codec ----
 
-function writeDefaultChoiceFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.type & 0x3));
-  sb = 2;
-  switch (value.type) {
-    case 1: {
-      v = (((value.first.entriesCount) & 0x3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 2;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (2 - sb);
-      }
-      for (let i0 = 0; i0 < value.first.entriesCount; i0++) {
-        const e0 = value.first.entries[i0];
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
-      }
-      v = (((value.first.marker) & 0x7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 3;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (3 - sb);
-      }
-      break;
-    }
-    case 2: {
-      v = (((value.second.entriesCount) & 0x3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 2;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (2 - sb);
-      }
-      for (let i0 = 0; i0 < value.second.entriesCount; i0++) {
-        const e0 = value.second.entries[i0];
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
-      }
-      v = (((value.second.marker) & 0x7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 3;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (3 - sb);
-      }
-      break;
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeDefaultChoiceFlatChecked(view, value) {
+// WriteDefaultChoiceFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold DefaultChoiceMaxBytes.
+export function WriteDefaultChoiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
@@ -390,11 +249,6 @@ function writeDefaultChoiceFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteDefaultChoiceFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold DefaultChoiceMaxBytes.
-export const WriteDefaultChoiceFlat = PRODUCTION ? writeDefaultChoiceFlatProduction : writeDefaultChoiceFlatChecked;
 
 // ReadDefaultChoiceFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -531,103 +385,10 @@ export function ReadDefaultChoiceFlat(view, numBits, value) {
 
 // ---- type DefaultChoicePacket: the flat codec ----
 
-function writeDefaultChoicePacketFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.choice.type & 0x3));
-  sb = 2;
-  switch (value.choice.type) {
-    case 1: {
-      v = (((value.choice.first.entriesCount) & 0x3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 2;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (2 - sb);
-      }
-      for (let i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
-        const e0 = value.choice.first.entries[i0];
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
-      }
-      v = (((value.choice.first.marker) & 0x7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 3;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (3 - sb);
-      }
-      break;
-    }
-    case 2: {
-      v = (((value.choice.second.entriesCount) & 0x3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 2;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (2 - sb);
-      }
-      for (let i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
-        const e0 = value.choice.second.entries[i0];
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
-      }
-      v = (((value.choice.second.marker) & 0x7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 3;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (3 - sb);
-      }
-      break;
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeDefaultChoicePacketFlatChecked(view, value) {
+// WriteDefaultChoicePacketFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold DefaultChoicePacketMaxBytes.
+export function WriteDefaultChoicePacketFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.choice.type) || value.choice.type < 0 || value.choice.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
@@ -743,11 +504,6 @@ function writeDefaultChoicePacketFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteDefaultChoicePacketFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold DefaultChoicePacketMaxBytes.
-export const WriteDefaultChoicePacketFlat = PRODUCTION ? writeDefaultChoicePacketFlatProduction : writeDefaultChoicePacketFlatChecked;
 
 // ReadDefaultChoicePacketFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -884,79 +640,10 @@ export function ReadDefaultChoicePacketFlat(view, numBits, value) {
 
 // ---- type DefaultBulkArm: the flat codec ----
 
-function writeDefaultBulkArmFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((value.payload.entriesCount) & 0x3));
-  sb = 2;
-  for (let i0 = 0; i0 < value.payload.entriesCount; i0++) {
-    const e0 = value.payload.entries[i0];
-    v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = ((e0.preferred & 0xf)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 4;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (4 - sb);
-    }
-  }
-  v = (((value.payload.marker) & 0x7) | (((value.dataLength) & 0x3) << 3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  {
-    let i0 = 0;
-    for (; i0 + 4 <= value.dataLength; i0 += 4) {
-      v = (value.data[i0] | (value.data[i0 + 1] << 8) | (value.data[i0 + 2] << 16) | (value.data[i0 + 3] << 24)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-    }
-    for (; i0 < value.dataLength; i0++) {
-      v = value.data[i0];
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 8;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (8 - sb);
-      }
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeDefaultBulkArmFlatChecked(view, value) {
+// WriteDefaultBulkArmFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold DefaultBulkArmMaxBytes.
+export function WriteDefaultBulkArmFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.payload.entriesCount) || value.payload.entriesCount < 0 || value.payload.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
@@ -1039,11 +726,6 @@ function writeDefaultBulkArmFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteDefaultBulkArmFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold DefaultBulkArmMaxBytes.
-export const WriteDefaultBulkArmFlat = PRODUCTION ? writeDefaultBulkArmFlatProduction : writeDefaultBulkArmFlatChecked;
 
 // ReadDefaultBulkArmFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1129,167 +811,10 @@ export function ReadDefaultBulkArmFlat(view, numBits, value) {
 
 // ---- union DefaultBulkChoice: the flat codec ----
 
-function writeDefaultBulkChoiceFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.type & 0x3));
-  sb = 2;
-  switch (value.type) {
-    case 1: {
-      v = (((value.first.payload.entriesCount) & 0x3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 2;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (2 - sb);
-      }
-      for (let i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
-        const e0 = value.first.payload.entries[i0];
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
-      }
-      v = (((value.first.payload.marker) & 0x7) | (((value.first.dataLength) & 0x3) << 3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 5;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (5 - sb);
-      }
-      sb = (sb + 7) & -8;
-      if (sb === 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        lo = 0;
-        sb = 0;
-      }
-      {
-        let i0 = 0;
-        for (; i0 + 4 <= value.first.dataLength; i0 += 4) {
-          v = (value.first.data[i0] | (value.first.data[i0 + 1] << 8) | (value.first.data[i0 + 2] << 16) | (value.first.data[i0 + 3] << 24)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 32;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (32 - sb);
-          }
-        }
-        for (; i0 < value.first.dataLength; i0++) {
-          v = value.first.data[i0];
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 8;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (8 - sb);
-          }
-        }
-      }
-      break;
-    }
-    case 2: {
-      v = (((value.second.payload.entriesCount) & 0x3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 2;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (2 - sb);
-      }
-      for (let i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
-        const e0 = value.second.payload.entries[i0];
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
-      }
-      v = (((value.second.payload.marker) & 0x7) | (((value.second.dataLength) & 0x3) << 3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 5;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (5 - sb);
-      }
-      sb = (sb + 7) & -8;
-      if (sb === 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        lo = 0;
-        sb = 0;
-      }
-      {
-        let i0 = 0;
-        for (; i0 + 4 <= value.second.dataLength; i0 += 4) {
-          v = (value.second.data[i0] | (value.second.data[i0 + 1] << 8) | (value.second.data[i0 + 2] << 16) | (value.second.data[i0 + 3] << 24)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 32;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (32 - sb);
-          }
-        }
-        for (; i0 < value.second.dataLength; i0++) {
-          v = value.second.data[i0];
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 8;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (8 - sb);
-          }
-        }
-      }
-      break;
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeDefaultBulkChoiceFlatChecked(view, value) {
+// WriteDefaultBulkChoiceFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold DefaultBulkChoiceMaxBytes.
+export function WriteDefaultBulkChoiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
@@ -1475,11 +1000,6 @@ function writeDefaultBulkChoiceFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteDefaultBulkChoiceFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold DefaultBulkChoiceMaxBytes.
-export const WriteDefaultBulkChoiceFlat = PRODUCTION ? writeDefaultBulkChoiceFlatProduction : writeDefaultBulkChoiceFlatChecked;
 
 // ReadDefaultBulkChoiceFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.

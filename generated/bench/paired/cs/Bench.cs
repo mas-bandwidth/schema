@@ -284,14 +284,17 @@ namespace Bench
                     return false;
                 }
             }
+            Debug.Assert(float.IsFinite(value.X), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.X))
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.Y), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.Y))
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.Z), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.Z))
             {
                 return false;
@@ -1395,7 +1398,10 @@ namespace Bench
             {
                 return false;
             }
-            Debug.Assert(value.EntitiesCount >= 1 && value.EntitiesCount <= 8, "value.EntitiesCount out of range [1, 8]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.EntitiesCount < 1 || value.EntitiesCount > 8) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.EntitiesCount) - (uint)(1);
                 if (!stream.SerializeBits(ref offsetValue, 3))
@@ -1421,7 +1427,10 @@ namespace Bench
                     return false;
                 }
             }
-            Debug.Assert(value.StatsCount >= 0 && value.StatsCount <= 80, "value.StatsCount out of range [0, 80]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.StatsCount < 0 || value.StatsCount > 80) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.StatsCount);
                 if (!stream.SerializeBits(ref offsetValue, 7))
@@ -1467,7 +1476,10 @@ namespace Bench
                     }
                 }
             }
-            Debug.Assert(value.PlayerNameLength >= 0 && value.PlayerNameLength <= 15, "value.PlayerNameLength out of range [0, 15]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
+            if (value.PlayerNameLength < 0 || value.PlayerNameLength > 15) // the length guards the slice (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.PlayerNameLength);
                 if (!stream.SerializeBits(ref offsetValue, 4))
@@ -1479,7 +1491,10 @@ namespace Bench
             {
                 return false;
             }
-            Debug.Assert(value.PayloadLength >= 0 && value.PayloadLength <= 16, "value.PayloadLength out of range [0, 16]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
+            if (value.PayloadLength < 0 || value.PayloadLength > 16) // the length guards the slice (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.PayloadLength);
                 if (!stream.SerializeBits(ref offsetValue, 5))
@@ -1512,10 +1527,12 @@ namespace Bench
                     return false;
                 }
             }
+            Debug.Assert(float.IsFinite(value.Recoil), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.Recoil))
             {
                 return false;
             }
+            Debug.Assert(double.IsFinite(value.Drift), "write refused: a NaN or an infinity in a double");
             if (!stream.SerializeDouble(ref value.Drift))
             {
                 return false;

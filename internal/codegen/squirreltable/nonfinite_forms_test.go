@@ -400,6 +400,8 @@ var nfFormsSabotages = []struct {
 		{"  if ((bits & 0x7ff0000000000000) == 0x7ff0000000000000) return null;\n  return casti2f(bits);", "  return casti2f(bits);"},
 	}, []string{"fixed-read"}},
 	{"fixed-write", "schema_table_fixed.nut", [][2]string{
+		{"  local bits = f32Bits(v);\n  return (bits & 0x7f800000) != 0x7f800000;", "  return true;"},
+		{"  local bits = castf2i(v.tofloat());\n  return (bits & 0x7ff0000000000000) != 0x7ff0000000000000;", "  return true;"},
 		{"  if ((bits & 0x7f800000) == 0x7f800000) return false;\n  _M.put(b, at, 4, bits);", "  _M.put(b, at, 4, bits);"},
 		{"  if ((bits & 0x7ff0000000000000) == 0x7ff0000000000000) return false;\n  _M.put(b, at, 8, bits);", "  _M.put(b, at, 8, bits);"},
 	}, []string{"fixed-write", "write-both"}},

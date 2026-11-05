@@ -31,6 +31,14 @@
 //
 // THE LAYOUT is what form 1 called the vocabulary block. It is neither §7's
 // cooked block nor §19's block form.
+// THE READ-SIDE BOUNDS ARE HELD HERE BY RECORDS WRITTEN PAST THEM (docs/SPEC.md
+// §5.1): a case that clamps needs a value its declaration does not admit on the
+// wire, and a debug FixedSave refuses such a record at its assert. These cases
+// write those records on purpose, so this file routes the generated writers'
+// schema_assert, the hook a caller defines before the headers (docs/USAGE.md),
+// to nothing.
+#define schema_assert( condition ) ( (void) 0 )
+
 #include <cstdint>
 #include <cstdio>
 #include <cstring>

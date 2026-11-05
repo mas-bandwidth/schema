@@ -14,6 +14,13 @@
 //
 // It writes and says nothing else, so a port's leg can diff the files without
 // parsing a word of output.
+//
+// IT WRITES PAST THE WRITE CONTRACT ON PURPOSE (docs/SPEC.md §5.1): a row may
+// hold a value its own declaration does not admit, for a reader to clamp, and a
+// debug FixedSave refuses such a record at its assert. The oracle is a forger by
+// design, so it routes the generated writers' schema_assert, the hook a caller
+// defines before the headers (docs/USAGE.md), to nothing.
+#define schema_assert( condition ) ( (void) 0 )
 #include <cstdint>
 #include <cstdio>
 #include <cstring>

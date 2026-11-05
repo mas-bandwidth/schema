@@ -697,9 +697,13 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 		g.pf("    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte\n}\n\n")
 	}
 
+	g.pf("// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save\n")
+	g.pf("// makes in every build — a count or a length past its storage, a NaN, a tag or\n")
+	g.pf("// an enum outside its set — the measure makes first, and a batch that does\n")
+	g.pf("// not fit is refused there too, so the caller's buffer is untouched on -1.\n")
 	g.pf("inline int64_t %sSaveMessages( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )\n{\n", n, n)
-	g.pf("    if ( values == NULL || count < 1 ) { return -1; }\n")
-	g.pf("    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }\n")
+	g.pf("    const int64_t need = %sMeasureMessages( values, count, report ); // the batch is asked whole before the first byte\n", n)
+	g.pf("    if ( need < 0 || capacity < need ) { return -1; }\n")
 	g.pf("    TableMessageBatch batch;\n")
 	if st.Integrity != "" {
 		g.pf("    if ( capacity < 4 || !TableMessageBatchBegin( batch, buffer, capacity - 4, count ) ) { return -1; }\n")

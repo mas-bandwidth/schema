@@ -22,7 +22,20 @@
 # conformance-negative-control-lua-cycle  the cycle check taken out (lua /
 #                                        framing red on node_cycle_*, wire and
 #                                        report green)
-.PHONY: conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle
+# conformance-negative-control-lua-write-refusal  the writers' shared
+#                                        declared-range test taken out (lua /
+#                                        write-refusal red on wref_range_*, and
+#                                        the fixed and message surfaces with it;
+#                                        wire and json-read green)
+# conformance-negative-control-lua-write-refusal-fixed  WriteFixed's integer
+#                                        check taken out (lua /
+#                                        write-refusal-fixed red, wire and
+#                                        write-refusal green)
+# conformance-negative-control-lua-write-refusal-message  SaveMessages'
+#                                        integer check taken out (lua /
+#                                        write-refusal-message red, message and
+#                                        write-refusal green)
+.PHONY: conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle conformance-negative-control-lua-write-refusal conformance-negative-control-lua-write-refusal-fixed conformance-negative-control-lua-write-refusal-message
 conformance-negative-control-lua: build/conformance-harness
 	sh test/conformance/lua/negative-control report
 
@@ -32,3 +45,9 @@ conformance-negative-control-lua-framing: build/conformance-harness
 	sh test/conformance/lua/negative-control framing
 conformance-negative-control-lua-cycle: build/conformance-harness
 	sh test/conformance/lua/negative-control cycle
+conformance-negative-control-lua-write-refusal: build/conformance-harness
+	sh test/conformance/lua/negative-control write-refusal
+conformance-negative-control-lua-write-refusal-fixed: build/conformance-harness
+	sh test/conformance/lua/negative-control write-refusal-fixed
+conformance-negative-control-lua-write-refusal-message: build/conformance-harness
+	sh test/conformance/lua/negative-control write-refusal-message

@@ -1155,6 +1155,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -1206,6 +1223,40 @@ inline bool TableUtf16Valid( const uint8_t * bytes, int64_t units )
         i++;
     }
     return true;
+}
+
+// A WRITE KEEPS PAIRED WIDE TEXT (docs/SPEC.md §5.1): a wide string a program
+// built holds no unpaired surrogate when a writer puts it on a wire. It reads
+// the storage's own units, and a zero unit is a whole code point the rule
+// admits.
+inline bool TableUtf16Paired( const char16_t * units, int64_t count )
+{
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const uint16_t unit = (uint16_t) units[i];
+        if ( unit >= 0xD800 && unit <= 0xDBFF )
+        {
+            if ( i + 1 >= count ) { return false; } // a high surrogate with no low half
+            const uint16_t low = (uint16_t) units[i + 1];
+            if ( low < 0xDC00 || low > 0xDFFF ) { return false; }
+            i++;
+            continue;
+        }
+        if ( unit >= 0xDC00 && unit <= 0xDFFF ) { return false; } // a low surrogate first
+    }
+    return true;
+}
+
+// A FIXED WRITE KEEPS THE FIXED READER'S WIDE TEXT (docs/SPEC.md §5.1): the
+// fixed reader refuses a zero unit as text_ill_formed, so the fixed writer's
+// contract holds the storage to the pairing rule above AND to no zero unit.
+inline bool TableUtf16FixedText( const char16_t * units, int64_t count )
+{
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( units[i] == 0 ) { return false; }
+    }
+    return TableUtf16Paired( units, count );
 }
 
 // A CLAMP CUTS AT A CODE UNIT BOUNDARY AND NEVER SPLITS A PAIR (§3, §16.2):
@@ -10708,8 +10759,10 @@ inline int64_t TextNamesEntryMeasureBody( TableIds & ids, const TextNamesEntry &
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     if ( value.value_length < 0 || value.value_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.value, (uint64_t) value.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.value_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + TableLebBytes( (uint64_t) ( value.value_length ) ) + ( value.value_length ); } // value
     return bytes;
 }
@@ -10717,6 +10770,7 @@ inline int64_t TextNamesEntryMeasureBody( TableIds & ids, const TextNamesEntry &
 MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBody( TableWriter & w, TableIds & ids, const TextNamesEntry & value )
 {
     if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -10724,6 +10778,7 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBody( TableWriter & w, TableIds & id
         w.raw( value.key, value.key_length );
     }
     if ( value.value_length < 0 || value.value_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.value, (uint64_t) value.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.value_length > 0 )
     {
         w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 12 ); // value
@@ -10859,6 +10914,7 @@ inline int64_t TextWideEntryMeasureBody( TableIds & ids, const TextWideEntry & v
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 2; } // key
     if ( value.value_length < 0 || value.value_length > 6 ) { return -1; } // storage invariant
+    schema_assert( TableUtf16Paired( value.value, (int64_t) value.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.value_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.value_length * 2 ) ) + ( (int64_t) value.value_length * 2 ); } // value
     return bytes;
 }
@@ -10871,6 +10927,7 @@ MAPDEMO_TABLE_INLINE bool TextWideEntrySaveBody( TableWriter & w, TableIds & ids
         w.put16( uint16_t( value.key ) );
     }
     if ( value.value_length < 0 || value.value_length > 6 ) { return false; } // storage invariant
+    schema_assert( TableUtf16Paired( value.value, (int64_t) value.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.value_length > 0 )
     {
         w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 33 ); // value
@@ -13221,8 +13278,10 @@ inline int64_t TextNamesEntryMeasureBodyRetain( TableRetainIds & ids, const Text
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     if ( value.value_length < 0 || value.value_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.value, (uint64_t) value.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.value_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + TableLebBytes( (uint64_t) ( value.value_length ) ) + ( value.value_length ); } // value
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -13231,6 +13290,7 @@ inline int64_t TextNamesEntryMeasureBodyRetain( TableRetainIds & ids, const Text
 MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const TextNamesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -13238,6 +13298,7 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBodyRetain( TableWriter & w, TableRe
         w.raw( value.key, value.key_length );
     }
     if ( value.value_length < 0 || value.value_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.value, (uint64_t) value.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.value_length > 0 )
     {
         w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 12 ); // value
@@ -13379,6 +13440,7 @@ inline int64_t TextWideEntryMeasureBodyRetain( TableRetainIds & ids, const TextW
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 2; } // key
     if ( value.value_length < 0 || value.value_length > 6 ) { return -1; } // storage invariant
+    schema_assert( TableUtf16Paired( value.value, (int64_t) value.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.value_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.value_length * 2 ) ) + ( (int64_t) value.value_length * 2 ); } // value
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -13392,6 +13454,7 @@ MAPDEMO_TABLE_INLINE bool TextWideEntrySaveBodyRetain( TableWriter & w, TableRet
         w.put16( uint16_t( value.key ) );
     }
     if ( value.value_length < 0 || value.value_length > 6 ) { return false; } // storage invariant
+    schema_assert( TableUtf16Paired( value.value, (int64_t) value.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.value_length > 0 )
     {
         w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 33 ); // value

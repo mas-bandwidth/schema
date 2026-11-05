@@ -219,8 +219,8 @@ for _, c in ipairs(writers) do
     local mm, mmwhy = T.MeasureMessages("Root", vocab, { v })
     check(id .. "message-measure", mm == -1 and mmwhy == named, mmwhy)
     check(id .. "message-save", T.SaveMessages("Root", vocab, { v }) == nil, "message save wrote")
-    local fok, ferr = pcall(T.WriteFixed, "Root", v)
-    check(id .. "fixed", not fok and ferr == "non_finite_float", ferr)
+    local fw, ferr = T.WriteFixed("Root", v)
+    check(id .. "fixed", fw == nil and ferr == "non_finite_float", ferr)
     local cm, cwhy = cookwrite.CookMeasure(T, "Root", v)
     check(id .. "cook-measure", cm == -1 and cwhy == named, cwhy)
     local cw, cwwhy = cookwrite.Cook(T, "Root", v)
@@ -235,8 +235,8 @@ do
   v.a = 1e300
   local w, why = save.Save(T, "Root", v)
   check("write:f32_overflow:a:save", w == nil and why == "non_finite_float: Root.a", why)
-  local fok = pcall(T.WriteFixed, "Root", v)
-  check("write:f32_overflow:a:fixed", not fok, "fixed wrote")
+  local fw, ferr = T.WriteFixed("Root", v)
+  check("write:f32_overflow:a:fixed", fw == nil and ferr == "non_finite_float", "fixed wrote")
 end
 do
   local h = T.NewHolder()

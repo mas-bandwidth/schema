@@ -418,6 +418,9 @@ func (g *gen) resetFn() {
 func (g *gen) emitWriteFunction(name, low string, items []ir.Item) {
 	g.usesTypeData = true
 	g.resetFn()
+	g.emitFitsItems(items, "value", "  ")
+	fits := g.fn.String()
+	g.resetFn()
 	g.emitWriteItems(items, "value", "  ")
 	g.chunkFlush("  ")
 	body := g.fn.String()
@@ -425,9 +428,14 @@ func (g *gen) emitWriteFunction(name, low string, items []ir.Item) {
 	g.bpf("// write%s packs value into view — the trusted writer (contracts asserted,\n", name)
 	g.bpf("// compiled out without --enable-asserts). The buffer behind view must hold\n")
 	g.bpf("// %sMaxBytes. Returns the bytes written.\n", low)
+	if fits != "" {
+		g.bpf("// A count or a length past its storage is refused before the first byte\n")
+		g.bpf("// is stored: asserted, and -1 without --enable-asserts.\n")
+	}
 	g.emitSignature("int", "write"+name, []string{name + " value", "ByteData view"})
 	g.bpf("  assert(view.lengthInBytes %% 8 == 0);\n")
 	g.bpf("  assert(view.lengthInBytes >= %sMaxBytes);\n", low)
+	g.body.WriteString(fits)
 	g.bpf("  var scratch = 0;\n")
 	g.bpf("  var scratchBits = 0;\n")
 	g.bpf("  var wordIndex = 0;\n")
@@ -523,6 +531,149 @@ func (g *gen) emitInitFunction(name string, fields []*ir.Field) {
 }
 
 // ---- write emission ----
+
+// ---- the storage bound (docs/SPEC.md §5.1: memory is not a value) ----
+
+// holdsStorageItems reports whether a scope holds, anywhere in its closure
+// by value, a counted array's count or a text's length: a number the writer
+// indexes the value's own storage with.
+func holdsStorageItems(items []ir.Item) bool {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			if holdsStorageField(item.F) {
+				return true
+			}
+		case *ir.Branch:
+			if holdsStorageItems(item.Then) || holdsStorageItems(item.Else) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func holdsStorageField(f *ir.Field) bool {
+	if f.Array == ir.ArrayCounted {
+		return true
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes, ir.TWString:
+		return true
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return holdsStorageItems(ref.Items)
+		case *ir.Union:
+			for _, vr := range ref.Variants {
+				if !vr.Void() && holdsStorageItems(vr.Ref.Items) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitFitsItems is the writer's EVERY-BUILD bound on the numbers that index
+// the value's own storage, inlined at the top of the write as the write
+// inlines its nested types: every count and length the write would walk
+// inside [0, N]. The checked build asserts it as a contract; the release
+// build answers -1 before the first byte is stored rather than throwing a
+// RangeError mid-write.
+func (g *gen) emitFitsItems(items []ir.Item, path, ind string) {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			if holdsStorageField(item.F) {
+				g.emitFitsField(item.F, path, ind)
+			}
+		case *ir.Branch:
+			if !holdsStorageItems(item.Then) && !holdsStorageItems(item.Else) {
+				continue
+			}
+			neg := ""
+			if item.Neg {
+				neg = "!"
+			}
+			g.pf("%sif (%s%s.%s) {\n", ind, neg, path, dartName(item.Cond))
+			g.emitFitsItems(item.Then, path, ind+"  ")
+			if item.Else != nil && holdsStorageItems(item.Else) {
+				g.pf("%s} else {\n", ind)
+				g.emitFitsItems(item.Else, path, ind+"  ")
+			}
+			g.pf("%s}\n", ind)
+		}
+	}
+}
+
+func (g *gen) emitFitsField(f *ir.Field, path, ind string) {
+	name := path + "." + dartName(f.Name)
+	if f.Name == "" {
+		name = path // the standalone union functions' self item
+	}
+	elem := f.Type.Kind == ir.TNamed && holdsStorageField(&ir.Field{Type: f.Type})
+	loop := func(bound string) {
+		iv := fmt.Sprintf("j%d", g.loopDepth)
+		g.loopDepth++
+		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, bound, iv)
+		g.emitFitsScalar(f, fmt.Sprintf("%s[%s]", name, iv), ind+"  ")
+		g.pf("%s}\n", ind)
+		g.loopDepth--
+	}
+	switch f.Array {
+	case ir.ArrayFixed:
+		if elem {
+			loop(fmt.Sprintf("%d", f.ArrayBound))
+		}
+	case ir.ArrayCounted:
+		count := name + "Count"
+		g.emitFitsBound(count, f.ArrayBound, ind)
+		if elem {
+			loop(count)
+		}
+	default:
+		g.emitFitsScalar(f, name, ind)
+	}
+}
+
+// emitFitsBound refuses expr outside [0, n]: the contract's assert fires in
+// the checked build, as every other writer contract does, and the release
+// build answers -1. The condition wraps the way dart format wraps it past
+// eighty columns.
+func (g *gen) emitFitsBound(expr string, n int64, ind string) {
+	lo, hi := expr+" < 0", fmt.Sprintf("%s > %d", expr, n)
+	if one := ind + "if (" + lo + " || " + hi + ") {"; len(one) <= 80 {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%sif (%s ||\n%s    %s) {\n", ind, lo, ind, hi)
+	}
+	g.pf("%s  assert(false, 'write contract: storage');\n", ind)
+	g.pf("%s  return -1;\n%s}\n", ind, ind)
+}
+
+func (g *gen) emitFitsScalar(f *ir.Field, name, ind string) {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes, ir.TWString:
+		length := name + "Length"
+		g.emitFitsBound(length, f.Type.Size, ind)
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.emitFitsItems(ref.Items, name, ind)
+		case *ir.Union:
+			g.pf("%sswitch (%s.type) {\n", ind, name)
+			for _, vr := range ref.Variants {
+				if vr.Void() || !holdsStorageItems(vr.Ref.Items) {
+					continue
+				}
+				g.pf("%s  case %s:\n", ind, g.armTag(ref, vr))
+				g.emitFitsItems(vr.Ref.Items, name+"."+dartName(vr.Name), ind+"    ")
+			}
+			g.pf("%s}\n", ind)
+		}
+	}
+}
 
 func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 	for _, item := range items {

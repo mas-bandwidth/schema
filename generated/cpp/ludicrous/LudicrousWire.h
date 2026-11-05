@@ -195,6 +195,7 @@ SCHEMA_WRITE_INLINE bool WriteLudicrousState( serialize::WriteStream & stream, c
     write_bits( stream, uint32_t( value.mode ), 2 );
     schema_write_object( stream, WriteFixedProbe, value.probe );
     schema_write_object( stream, WriteWideProbe, value.wide );
+    if ( value.keys_count < 0 || value.keys_count > 4 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     serialize_assert( int32_t( value.keys_count ) >= int32_t( 0 ) && int32_t( value.keys_count ) <= int32_t( 4 ) );
     write_bits( stream, uint32_t( value.keys_count ), 3 );
     for ( int32_t i = 0; i < value.keys_count; i++ )

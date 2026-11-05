@@ -3,13 +3,15 @@ package luautable_test
 // The Luau text writer is STRICT about the values it is handed
 // (docs/SPEC-TABLES.md §16.3): a value the strict text reader would refuse —
 // an integer off its declared range or width, a non-finite float, a string
-// that is not well-formed UTF-8 or holds U+0000, a string past its bound, a
-// count past its bound — must be refused rather than written as a text that
-// reads back differently. The expected verdict and name are computed in this
-// test from schema-go's own text engine (internal/tabletext), never typed by
-// hand: the offending text is read by the engine and its report must name a
-// refusal, or (for a value no JSON text can spell, a non-finite float) the
-// engine's writer must refuse the instance.
+// that is not well-formed UTF-8, a string past its bound, a count past its
+// bound — must be refused rather than written as a text that reads back
+// differently. A zero byte or unit is the one exception: §16.3 has the writer
+// spell it \u0000, and the zero-written rows hold that spelling. The expected
+// verdict and name are computed in this test from schema-go's own text engine
+// (internal/tabletext), never typed by hand: the offending text is read by
+// the engine and its report must name a refusal, or (for a value no JSON
+// text can spell, a non-finite float) the engine's writer must refuse the
+// instance.
 //
 // Every clean value still writes the engine's bytes.
 
@@ -180,6 +182,23 @@ if text == nil then print(report.reason or "clamped") else print("wrote") end
 `
 }
 
+// zeroWrittenProbe builds the value, applies one mutation, and prints
+// "zero" when ToJson writes a text holding the escape \u0000, "wrote" when it
+// writes one without it, or the refusal's name.
+func zeroWrittenProbe(g *generatedUnit, mutation string) string {
+	return jsonModules(g) + `
+local json = require("./schema_json")
+local St = require("./schema_tables")
+local v = St.lookup("Root").new()
+` + mutation + `
+local report = {}
+local text = json.ToJson("Root", v, report)
+if text == nil then print(report.reason or "clamped")
+elseif string.find(buffer.tostring(text), "\\u0000", 1, true) then print("zero")
+else print("wrote") end
+`
+}
+
 func TestLuauJsonWriterIsStrict(t *testing.T) {
 	t.Parallel()
 	u, g := strictWriterUnit(t)
@@ -267,21 +286,9 @@ func TestLuauJsonWriterIsStrict(t *testing.T) {
 				nil,
 			},
 			{
-				"string-holds-zero",
-				"{\"s\": \"a\\u0000b\"}",
-				"v.S = buffer.fromstring(\"a\" .. string.char(0) .. \"b\"); v.SLength = 3",
-				nil,
-			},
-			{
 				"string-past-bound",
 				`{"s": "123456789"}`,
 				"v.S = buffer.fromstring(\"123456789\"); v.SLength = 9",
-				nil,
-			},
-			{
-				"wstring-holds-zero",
-				`{"w": "\u0000"}`,
-				"v.W = buffer.fromstring(string.char(0, 0)); v.WLength = 1",
 				nil,
 			},
 			{
@@ -317,6 +324,26 @@ func TestLuauJsonWriterIsStrict(t *testing.T) {
 				want := strictGoToken(name)
 				if out != want {
 					t.Fatalf("Luau ToJson refused as %q, want Go's name %q (%q)", out, want, name)
+				}
+			})
+		}
+	})
+
+	// docs/SPEC-TABLES.md §16.3: the text writer spells a zero byte or unit
+	// \u0000 and refuses only ill-formed text, so each row is written and its
+	// text holds the escape.
+	t.Run("zero-written", func(t *testing.T) {
+		rows := []struct{ name, mutate string }{
+			{"string-holds-zero", "v.S = buffer.fromstring(\"a\" .. string.char(0) .. \"b\"); v.SLength = 3"},
+			{"wstring-holds-zero", "v.W = buffer.fromstring(string.char(0x61, 0, 0, 0, 0x62, 0)); v.WLength = 3"},
+		}
+		for _, row := range rows {
+			t.Run(row.name, func(t *testing.T) {
+				if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(zeroWrittenProbe(g, row.mutate)), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", nil))); out != "zero" {
+					t.Fatalf("Luau ToJson answered %q for a zero, want the text written with \\u0000", out)
 				}
 			})
 		}

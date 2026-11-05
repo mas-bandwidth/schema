@@ -44,8 +44,17 @@ const tableRegionWriteSource = `
             int count = value.Count(f);
             return count >= 0 && count <= f.ArrayBound && TextValid(value.Buffer(f).Slice(0,count));
         }
+        if (!f.IsArray && f.Kind == 33)
+        {
+            int count = value.Count(f);
+            if (count < 0 || count > f.ArrayBound) { return false; }
+            System.Diagnostics.Debug.Assert(UnitsWellFormed(value.Chars(f).Slice(0,count)), "write refused: a wide text holding an unpaired surrogate");
+            return true;
+        }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(value.Raw(f, i))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(value.Wide(f, i))) { return false; }
+        System.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(value.Raw(f, i)), "write refused: an integer outside its declared range");
+        System.Diagnostics.Debug.Assert(f.WriteValidWide == null || f.WriteValidWide(value.Wide(f, i)), "write refused: an integer outside its declared range");
         // a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md §3.3)
         if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, value.Raw(f, i)); }
         if (f.Kind == 13) { return RegionCollect(value.Child(f, i), f.Table, ref ids); }

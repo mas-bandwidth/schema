@@ -18,6 +18,7 @@ package squirreltable
 import (
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -60,6 +61,7 @@ func fixedTable(m *Module, st *ir.Struct) {
 		// A NON-TABLE TYPE REACHED FROM A FIXED ROOT still needs its body
 		// helpers: the root's FixedWriteBody/FixedDecodeBody call them by name.
 		emitFixedWriteBody(m, st)
+		emitFixedCheckBody(m, st)
 		emitFixedDecodeBody(m, st)
 		return
 	}
@@ -90,6 +92,7 @@ func fixedTable(m *Module, st *ir.Struct) {
 	emitFixedDeprecatedCheck(m, st)
 	emitFixedRead(m, st, w, strict)
 	emitFixedWriteBody(m, st)
+	emitFixedCheckBody(m, st)
 	emitFixedDecodeBody(m, st)
 }
 
@@ -267,6 +270,14 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedSave <- function(out, recs) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	m.Printf("  _M.FixedField <- null;\n")
+	// THE WHOLE BATCH IS CHECKED BEFORE THE FIRST BYTE IS STORED
+	// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/SPEC.md §5.1): a refused batch
+	// leaves the buffer untouched.
+	m.Printf("  for (local k = 0; k < recs.len(); k++) {\n")
+	m.Printf("    local why = _M.%sFixedDeprecated(recs[k]);\n", st.Name)
+	m.Printf("    if (why == null) why = _M.%sFixedCheckBody(recs[k]);\n", st.Name)
+	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
+	m.Printf("  }\n")
 	m.Printf("  local b = out;\n")
 	m.Printf("  b.seek(0);\n")
 	m.Printf("  b.writen(%d, 'b');\n", fixedFormByte)
@@ -279,12 +290,10 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	// body writer fills, with no per-byte loop
 	m.Printf("  local zero = blob(_M.%sFixedRecord - 8);\n", st.Name)
 	m.Printf("  for (local k = 0; k < recs.len(); k++) {\n")
-	m.Printf("    local why = _M.%sFixedDeprecated(recs[k]);\n", st.Name)
-	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("    b.writen(h & 0xFFFFFFFF, 'i'); b.writen((h >> 32) & 0xFFFFFFFF, 'i');\n")
 	m.Printf("    local start = b.tell();\n")
 	m.Printf("    b.writeblob(zero);\n")
-	m.Printf("    why = _M.%sFixedWriteBody(b, start, recs[k]);\n", st.Name)
+	m.Printf("    local why = _M.%sFixedWriteBody(b, start, recs[k]);\n", st.Name)
 	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("  }\n")
 	if st.Integrity != "" {
@@ -405,6 +414,131 @@ func emitFixedWriteBody(m *Module, st *ir.Struct) {
 	// (docs/SPEC-TABLES.md §3.3, §3.4)
 	m.Printf("  return null;\n")
 	m.Printf("};\n\n")
+}
+
+// emitFixedCheckBody emits <T>FixedCheckBody, the WRITE side's contract
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/SPEC.md §5.1): the walk the writer
+// makes, over the same live extent, answering the first value outside its
+// declared set — a ranged or bits(N) integer off its bounds, a count or text
+// length past its bound, an enum value naming no variant, a union tag past its
+// arms, ill-formed text, a NaN or an infinity — with its reason and the field
+// on FixedField, and null when every value is lawful. FixedSave asks it of the
+// whole batch before the first byte is stored, in every build.
+func emitFixedCheckBody(m *Module, st *ir.Struct) {
+	m.Printf("_M.%sFixedCheckBody <- function(v) {\n", st.Name)
+	for _, f := range st.Fields {
+		fixedEmitCheckField(m, f, "v."+squirrel.Member(f), "  ", 0)
+	}
+	m.Printf("  return null;\n};\n\n")
+}
+
+// fixedRefuse is the statement that refuses f as invalid_value.
+func fixedRefuse(m *Module, f *ir.Field) string {
+	return fmt.Sprintf("{ _M.FixedField <- %s; return \"invalid_value\"; }", squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
+}
+
+func fixedEmitCheckField(m *Module, f *ir.Field, expr, ind string, depth int) {
+	if f.Type.Optional {
+		m.Printf("%sif (%sPresent) {\n", ind, expr)
+		fixedEmitCheckPayload(m, f, expr, ind+"  ", depth)
+		m.Printf("%s}\n", ind)
+		return
+	}
+	fixedEmitCheckPayload(m, f, expr, ind, depth)
+}
+
+func fixedEmitCheckPayload(m *Module, f *ir.Field, expr, ind string, depth int) {
+	iv := fmt.Sprintf("i%d", depth)
+	loop := func(count string) {
+		m.Printf("%sfor (local %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+		fixedEmitCheckElement(m, f, expr+"["+iv+"]", ind+"  ", depth+1)
+		m.Printf("%s}\n", ind)
+	}
+	switch {
+	case f.KeyEnum != "":
+		loop(fmt.Sprint(f.KeyEnumRef.Max))
+	case f.Array == ir.ArrayFixed:
+		loop(fmt.Sprint(f.ArrayBound))
+	case f.Array == ir.ArrayCounted:
+		// the count is the array's own length, and past the bound the store
+		// would run into the next field
+		m.Printf("%sif (%s.len() > %d) %s\n", ind, expr, f.ArrayBound, fixedRefuse(m, f))
+		loop(expr + ".len()")
+	case fixedIsText(f):
+		fixedEmitCheckText(m, f, expr, ind)
+	default:
+		fixedEmitCheckElement(m, f, expr, ind, depth)
+	}
+}
+
+// fixedEmitCheckText holds a text's length to its bound and its units to the
+// text its kind says: UTF-8 with no zero byte for a string, paired surrogates
+// and no zero unit for wide text, the rule the fixed reader refuses
+// (docs/FIXED-FORM-ALGORITHM.md §4.5).
+func fixedEmitCheckText(m *Module, f *ir.Field, expr, ind string) {
+	m.Printf("%sif (%s.len() > %d) %s\n", ind, expr, f.Type.Size, fixedRefuse(m, f))
+	switch f.Type.Kind {
+	case ir.TString:
+		m.Printf("%sif (_rt_fixed.textIllFormed(%s, 0, %s.len())) %s\n", ind, expr, expr, fixedRefuse(m, f))
+	case ir.TWString:
+		m.Printf("%sif (_rt_fixed.wideIllFormed(%s)) %s\n", ind, expr, fixedRefuse(m, f))
+	}
+}
+
+func fixedEmitCheckElement(m *Module, f *ir.Field, expr, ind string, depth int) {
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			m.Printf("%s{\n%s  local why = _M.%sFixedCheckBody(%s);\n%s  if (why != null) return why;\n%s}\n", ind, ind, r.Name, expr, ind, ind)
+			return
+		case *ir.Union:
+			m.Printf("%sif (typeof %s.Type != \"integer\" || %s.Type < 0 || %s.Type > %d) %s\n", ind, expr, expr, expr, r.Max, fixedRefuse(m, f))
+			for i, v := range r.Variants {
+				if v.F == nil {
+					continue
+				}
+				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
+				arm := expr + "." + ir.GoExportName(v.Name)
+				if fixedIsText(v.F) {
+					fixedEmitCheckText(m, v.F, arm, ind+"  ")
+				} else {
+					fixedEmitCheckElement(m, v.F, arm, ind+"  ", depth)
+				}
+				m.Printf("%s}\n", ind)
+			}
+			return
+		case *ir.Enum:
+			// an enum's storage is its variant NAME, null for None
+			conds := []string{expr + " != null"}
+			for _, v := range r.Variants {
+				conds = append(conds, expr+" != "+squirrel.StringLit([]byte(v)))
+			}
+			m.Printf("%sif (%s) %s\n", ind, strings.Join(conds, " && "), fixedRefuse(m, f))
+			return
+		}
+	}
+	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		finite := "finiteF64"
+		if f.Type.Kind == ir.TFloat32 {
+			finite = "finiteF32"
+		}
+		m.Printf("%sif (!_rt_fixed.%s(%s)) { _M.FixedField <- %s; return \"non_finite_float\"; }\n",
+			ind, finite, expr, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
+		return
+	}
+	if f.Type.Kind != ir.TInt && f.Type.Kind != ir.TFixed && f.Type.Kind != ir.TBits {
+		return
+	}
+	lo, hi := "null", "null"
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		lo, hi = intLit(f, rlo), intLit(f, rhi)
+	}
+	bits := 0
+	if f.Type.Kind == ir.TBits {
+		bits = f.Type.Width
+	}
+	signed := f.Type.Signed && f.Type.Kind != ir.TBits
+	m.Printf("%sif (!_rt_fixed.intOk(%s, %d, %v, %d, %s, %s)) %s\n", ind, expr, fixedStorageBytes(f.Type), signed, bits, lo, hi, fixedRefuse(m, f))
 }
 
 func fixedEmitWriteField(m *Module, f *ir.Field, at int64, expr, ind string) {
@@ -554,6 +688,12 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 		}
 		m.Printf("%sif (!_rt_fixed.%s(b, at + %s, %s)) { _M.FixedField <- %s; return \"non_finite_float\"; }\n",
 			ind, put, off, expr, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
+		return
+	}
+	if f.Type.Kind == ir.TBool {
+		// a bool stores as the byte 1 or 0, from a bool or the byte the
+		// reader decoded
+		m.Printf("%s_rt_fixed.put(b, at + %s, 1, %s ? 1 : 0);\n", ind, off, expr)
 		return
 	}
 	m.Printf("%s_rt_fixed.put(b, at + %s, %d, %s);\n", ind, off, fixedStorageBytes(f.Type), expr)

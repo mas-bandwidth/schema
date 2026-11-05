@@ -167,6 +167,9 @@ func wireUnitFiles(t *testing.T, key string, paths []string, override map[string
 	glue.WriteString("fn conformance_json_read(root: const u8[:], text: const u8[:], data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&) -> i64 { return -1; }\n")
 	glue.WriteString("fn conformance_json_write(root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], at: i64, out: u8[>..]&) -> i64 { return -1; }\n")
 	glue.WriteString("fn conformance_json_verdict(root: const u8[:], text: const u8[:], out: u8[>..]&) {}\n")
+	// the write contract's typed writers (the shell driver writes one arm per
+	// fixed root); these gates drive no write-refusal row
+	glue.WriteString("fn conformance_wref(form: const u8[:], name: const u8[:], root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], at: i64, announce: const u8[:]) -> i64 { return -9; }\n")
 	files["conformance_unit.goose"] = []byte(glue.String())
 	main, err := os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "main.goose"))
 	if err != nil {

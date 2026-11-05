@@ -228,6 +228,7 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	if st.Integrity != "" {
 		g.emitIntegrityMember(st, blobmask)
 	} else {
+		check := g.textWriteCheckBody(st)
 		g.pf("func %sLoadMeasure(wire []byte) int64 { n,_,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);return n }\n", n, n, n, blobmask)
 		g.pf("func %sLoadMeasureReason(wire []byte)(int64,error){size,_,_,reason:=tableRegionMeasureReason(wire,%sTableType(),%sTableType().NodeType,%d);return size,tableRefuseError(reason)}\n", n, n, n, blobmask)
 		// THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED (docs/SPEC-TABLES.md §6.5).
@@ -235,7 +236,7 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 		g.pf("func %sLoadTolerant(region,wire []byte,report *TableReport) *%s { return (*%s)(tableRegionLoad(region,wire,%sTableType(),%sTableType().NodeType,%d,report)) }\n", n, typ, typ, n, n, blobmask)
 		g.pf("func %sMeasure(value *%s,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);return tableRegionSave(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator) }\n", n, typ, n)
 		g.pf("func %sMeasureReason(value *%s,context ...TableWriteContext)(int64,error){arena,allocator:=tableWriteOptions(context);size,reason:=tableRegionSaveReason(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator);return size,tableRefuseError(reason)}\n", n, typ, n)
-		g.pf("func %sSave(value *%s,buffer []byte,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);return tableRegionSave(unsafe.Pointer(value),%sTableType(),buffer,false,arena,allocator) }\n", n, typ, n)
+		g.pf("func %sSave(value *%s,buffer []byte,context ...TableWriteContext) int64 {%sarena,allocator:=tableWriteOptions(context);return tableRegionSave(unsafe.Pointer(value),%sTableType(),buffer,false,arena,allocator) }\n", n, typ, check, n)
 		g.pf("// %sLoadBuilderTolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): it reads the value into\n// the builder, with the counters counted onto the report passed; damage answers false with the builder's\n// root at its defaults (docs/SPEC-TABLES.md §4).\n", n)
 		g.pf("func %sLoadBuilderTolerant(b *%sBuilder,wire []byte,report *TableReport) bool {return tableBuilderLoad(unsafe.Pointer(b.GetRoot()),b.root,&b.Main,wire,%sTableType(),%sTableType().NodeType,%d,report)}\n", n, n, n, n, blobmask)
 	}

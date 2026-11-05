@@ -221,10 +221,27 @@ public final class BenchIntsVariable {
         }
     }
 
+    // checkWrite is the write contract buildGraph asserts (-ea): false when
+    // a field of v holds a value its schema cannot (docs/SPEC.md §5.1).
+    static boolean checkWrite(Value v) {
+        if ((long) v.f0 < -100 || (long) v.f0 > 100) return false;
+        if ((long) v.f1 < 0 || (long) v.f1 > 65535) return false;
+        if ((long) v.f2 < -1000000 || (long) v.f2 > 1000000) return false;
+        if ((long) v.f3 < 0 || (long) v.f3 > 3) return false;
+        if ((long) v.f4 < -15 || (long) v.f4 > 15) return false;
+        if ((long) v.f5 < 0 || (long) v.f5 > 1000) return false;
+        if ((long) v.f6 < -2048 || (long) v.f6 > 2047) return false;
+        if ((long) v.f7 < 0 || (long) v.f7 > 255) return false;
+        if ((long) v.f8 < -600000 || (long) v.f8 > 600000) return false;
+        if ((long) v.f9 < 0 || (long) v.f9 > 100) return false;
+        return true;
+    }
+
     public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
         if (v == null) {
             return true;
         }
+        assert checkWrite(v) : "write contract: BenchInts";
         return true;
     }
 
@@ -965,6 +982,7 @@ public final class BenchIntsVariable {
 
     public static byte[] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
+        graph.text = true;
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;

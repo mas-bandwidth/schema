@@ -95,10 +95,12 @@ what the language specifies, in a way that weakens a check.
   buffer; how that buffer arrived is not its concern.
 - **Confidentiality.** schema does no encryption. The wire is plaintext bits by
   design; encrypt at the transport layer.
-- **Write-side validation.** Writes are the caller's responsibility and this is
-  documented ([FAQ](FAQ.md), [USAGE.md](USAGE.md)). A program that writes an
-  out-of-range value is buggy, but that is not a vulnerability in schema — the
-  guarantee is on reads.
+- **Write-side validation.** Every writer refuses a value its declaration does
+  not admit, in debug where the language's idiom is a debug-only assert and in
+  every build where it has none ([SPEC.md](SPEC.md) §5.1). A program that
+  writes an out-of-range value from a release build of an assert language is
+  buggy, but that is not a vulnerability in schema — the guarantee is on
+  reads.
 
 ## What we do to find these ourselves
 

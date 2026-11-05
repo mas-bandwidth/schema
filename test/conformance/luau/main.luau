@@ -34,7 +34,8 @@ local GENERATED = "build/conformance-luau"
 local SURFACES = {
 	"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
-	"cook-forgery", "cook-reason", "block-reason",
+	"cook-forgery", "cook-reason", "block-reason", "write-refusal", "write-refusal-fixed",
+	"write-refusal-message", "write-refusal-json",
 }
 local listed: { [string]: boolean } = {}
 for _, s in SURFACES do
@@ -225,6 +226,221 @@ local function surfaceWire(lines: { { string } })
 			end
 		end
 	end
+end
+
+-- THE WRITE-REFUSAL surface (testdata/conformance/tables/FORMAT.md): the wire
+-- loaded as its root, ONE field set by the row's kind, then save, the same
+-- entry the wire surface uses. The save answers nil and a NAMED reason when
+-- the write contract refuses (docs/SPEC-TABLES.md §3); a nameless nil is a
+-- driver failure. A line is `write-refusal <case> <unit> <root> <wire> <path>
+-- <kind> <value>`.
+--
+-- The path walks the value by the descriptors: `name` is the field whose
+-- name it is (its slot holds it), `name[i]` element i of that array (0-based
+-- in the path, 1-based in Luau). The kinds set the leaf in the value's own
+-- representation (docs/PORT-LUAU.md, THE TYPE MAPPING):
+--   int      a number, an integer or a { lo, hi } pair by the field's domain
+--   count    a counted array's <Slot>Count (past the bound it is set alone,
+--            and storage is untouched); a new element copies element 1
+--   length   a string's <Slot>Length, its buffer holding that many "a" units
+--            (past the bound the Length is set alone)
+--   ordinal  the enum's ordinal itself, the number the slot holds
+--   tag      { Type = k }, a table arm holding its record's declared
+--            defaults (the descriptor's new)
+--   float    nan is 0/0, inf and -inf are +-math.huge
+--   bytes    a narrow text's exact bytes, from hex: its buffer and Length
+--   units    a wide text's exact UTF-16 units, four hex digits each: its
+--            buffer (two bytes a unit, little-endian) and Length in units
+local function deepCopy(x: any): any
+	if typeof(x) == "buffer" then
+		local b = buffer.create(buffer.len(x))
+		buffer.copy(b, 0, x, 0, buffer.len(x))
+		return b
+	end
+	if typeof(x) ~= "table" then return x end
+	local out = {}
+	for k, v in x do out[k] = deepCopy(v) end
+	return out
+end
+
+local function fieldNamed(d: any, name: string): any
+	if d == nil then return nil end
+	for _, fd in d.fields do
+		if fd.name == name then return fd end
+	end
+	return nil
+end
+
+local function writeRefusalSet(u: any, root: string, v: any, path: string, what: string, value: string)
+	local d = u.S.lookup(root)
+	local holder: any, key: any, fd: any, owner: any = nil, nil, nil, nil
+	local cur = v
+	for step in string.gmatch(path, "[^.]+") do
+		local name, index = string.match(step, "^([%w_]+)%[(%d+)%]$")
+		if name == nil then name = step end
+		fd = fieldNamed(d, name :: string)
+		if fd == nil then error("write-refusal: no field " .. tostring(name) .. " in " .. tostring(d and d.name)) end
+		owner, holder, key = cur, cur, fd.slot
+		if index ~= nil then
+			holder, key = cur[fd.slot], (tonumber(index) :: number) + 1
+			fd = fd.e
+		end
+		cur = holder[key]
+		d = if fd.s == "tab" then u.S.lookup(fd.t) else nil
+	end
+	local n = tonumber(value)
+	if what == "int" then
+		local x: any = n
+		if fd.dom == "integer" then
+			x = integer.create(n :: number)
+		elseif fd.dom == "int128" then
+			x = { lo = integer.create(n :: number), hi = if (n :: number) < 0 then -1i else 0i }
+		end
+		holder[key] = x
+	elseif what == "count" then
+		local c = n :: number
+		local arr = holder[key]
+		if fd.array == "counted" then
+			local was = owner[fd.slot .. "Count"] or 0
+			for i = was + 1, math.min(c, fd.bound) do arr[i] = deepCopy(arr[1]) end
+			owner[fd.slot .. "Count"] = c
+		else
+			for i = #arr + 1, c do arr[i] = deepCopy(arr[1]) end
+			for i = #arr, c + 1, -1 do arr[i] = nil end
+		end
+	elseif what == "length" then
+		local c = n :: number
+		local unit = if fd.wide then 2 else 1
+		if c <= fd.bound then
+			local old = holder[key]
+			local size = math.max(if typeof(old) == "buffer" then buffer.len(old) else 0, c * unit)
+			local b = buffer.create(size)
+			for i = 0, c - 1 do
+				if unit == 2 then buffer.writeu16(b, i * 2, 0x61) else buffer.writeu8(b, i, 0x61) end
+			end
+			holder[key] = b
+		end
+		owner[fd.slot .. "Length"] = c
+	elseif what == "ordinal" then
+		holder[key] = n
+	elseif what == "tag" then
+		local un = u.S.lookup(fd.t)
+		local arm = un.arms[n :: number]
+		local x: any = { Type = n }
+		if arm ~= nil and arm.s == "tab" then x[arm.slot] = u.S.lookup(arm.t).new() end
+		holder[key] = x
+	elseif what == "bytes" then
+		local s = string.gsub(value, "%x%x", function(h: string): string
+			return string.char(tonumber(h, 16) :: number)
+		end)
+		holder[key] = buffer.fromstring(s)
+		owner[fd.slot .. "Length"] = #s
+	elseif what == "units" then
+		local units = {}
+		for h in string.gmatch(value, "%x%x%x%x") do
+			units[#units + 1] = tonumber(h, 16) :: number
+		end
+		local b = buffer.create(#units * 2)
+		for i, x in units do
+			buffer.writeu16(b, (i - 1) * 2, x)
+		end
+		holder[key] = b
+		owner[fd.slot .. "Length"] = #units
+	elseif what == "float" then
+		if value == "nan" then
+			holder[key] = 0 / 0
+		elseif value == "inf" then
+			holder[key] = math.huge
+		elseif value == "-inf" then
+			holder[key] = -math.huge
+		else
+			holder[key] = n
+		end
+	else
+		error("write-refusal: unknown kind " .. what)
+	end
+end
+
+-- each write-refusal line kind saves through its own writer: the row's unit
+-- loaded and the field set as above, then `save(u, root, v)` answers the
+-- written bytes or text, or nil and a NAMED refusal ({ name = ... }), or
+-- false and the reason the leg cannot answer the case (it is absent). `wrote`
+-- is a written result `accept` holds (the JSON rows: the zero spelled
+-- \u0000).
+local function writeRefusalRows(lines: { { string } }, lineKind: string, save: (any, string, any) -> (any, any), accept: ((buffer) -> boolean)?)
+	for _, f in kind(lines, lineKind) do
+		local u = unit(f[3])
+		if u == nil or rootOf(u, f[4]) == nil then
+			say(f[2], nil)
+		else
+			local v = u.load.loadTolerant(f[4], file(f[5]), report())
+			if v == nil then
+				error("load refused " .. f[5])
+			end
+			writeRefusalSet(u, f[4], v, f[6], f[7], f[8])
+			local saved, why = save(u, f[4], v)
+			if saved == false then
+				print(f[2] .. " absent " .. tostring(why))
+			elseif saved == nil then
+				if why == nil or why.name == nil or why.name == "" then
+					error(f[2] .. ": " .. lineKind .. " refused without a name")
+				end
+				sayText(f[2], "refused\n")
+			elseif accept == nil or accept(saved) then
+				sayText(f[2], "wrote\n")
+			else
+				error(f[2] .. ": the writer wrote a text that does not spell the zero as \\u0000")
+			end
+		end
+	end
+end
+
+local function surfaceWriteRefusal(lines: { { string } })
+	writeRefusalRows(lines, "write-refusal", function(u: any, root: string, v: any): (any, any)
+		return u.save.save(u.S.lookup(root), v)
+	end)
+end
+
+-- write-refusal-fixed: the one value through the fixed form's F.save as a
+-- batch of one, under the root's own layout (docs/SPEC-TABLES.md §3.4)
+local function surfaceWriteRefusalFixed(lines: { { string } })
+	writeRefusalRows(lines, "write-refusal-fixed", function(u: any, root: string, v: any): (any, any)
+		local F = optional(u, "schema_fixed")
+		local fixed = nil
+		for _, m in u.modules do
+			if type(m) == "table" and m[root .. "FixedHash"] ~= nil then
+				fixed = { hash = m[root .. "FixedHash"], recordBytes = m[root .. "FixedRecordBytes"], layout = m[root .. "FixedLayout"] }
+			end
+		end
+		if F == nil or fixed == nil then
+			return false, "variable table: " .. root .. " carries no fixed form (SPEC-TABLES §3.4)"
+		end
+		return F.save(u.S.lookup(root), fixed, { v })
+	end)
+end
+
+-- write-refusal-message: the Luau SaveMessages writes the bodies a load
+-- found, bit for bit, and has no value encoder, so no value set in storage
+-- reaches it: every row is absent, named.
+local function surfaceWriteRefusalMessage(lines: { { string } })
+	for _, f in kind(lines, "write-refusal-message") do
+		print(f[2] .. " absent no value encoder: the Luau SaveMessages carries encoded bodies (SPEC.md §5.1)")
+	end
+end
+
+-- write-refusal-json: the one value through ToJson (§16.3: a zero byte or
+-- unit is written \u0000)
+local function surfaceWriteRefusalJson(lines: { { string } })
+	writeRefusalRows(lines, "write-refusal-json", function(u: any, root: string, v: any): (any, any)
+		local r = report()
+		local text = u.json.ToJson(root, v, r)
+		if text == nil then
+			return nil, { name = if r.reason ~= "" then r.reason else "refused" }
+		end
+		return text
+	end, function(text: buffer): boolean
+		return string.find(buffer.tostring(text), "\\u0000", 1, true) ~= nil
+	end)
 end
 
 -- The value half of a report and json-hostile answer (test/conformance/README.md):
@@ -1065,4 +1281,12 @@ elseif surface == "cook-reason" then
 	surfaceForgery(lines, "cook", true)
 elseif surface == "block-reason" then
 	surfaceForgery(lines, "block", true)
+elseif surface == "write-refusal" then
+	surfaceWriteRefusal(lines)
+elseif surface == "write-refusal-fixed" then
+	surfaceWriteRefusalFixed(lines)
+elseif surface == "write-refusal-message" then
+	surfaceWriteRefusalMessage(lines)
+elseif surface == "write-refusal-json" then
+	surfaceWriteRefusalJson(lines)
 end

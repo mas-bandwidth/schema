@@ -105,38 +105,7 @@ end
 -- (docs/SPEC-TABLES.md §2.13, §3), as a string(N) field's is; Go's Save
 -- refuses a value that breaks it.
 local function text_ok(s)
-  local i, n = 1, #s
-  while i <= n do
-    local c = s:byte(i)
-    if c == 0 then return false end
-    if c < 0x80 then
-      i = i + 1
-    elseif c >= 0xc2 and c <= 0xdf then
-      if i + 1 > n then return false end
-      local b1 = s:byte(i + 1)
-      if b1 < 0x80 or b1 > 0xbf then return false end
-      i = i + 2
-    elseif c >= 0xe0 and c <= 0xef then
-      if i + 2 > n then return false end
-      local b1, b2 = s:byte(i + 1), s:byte(i + 2)
-      if b1 == nil or b2 == nil then return false end
-      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf then return false end
-      if c == 0xe0 and b1 < 0xa0 then return false end
-      if c == 0xed and b1 > 0x9f then return false end
-      i = i + 3
-    elseif c >= 0xf0 and c <= 0xf4 then
-      if i + 3 > n then return false end
-      local b1, b2, b3 = s:byte(i + 1), s:byte(i + 2), s:byte(i + 3)
-      if b1 == nil or b2 == nil or b3 == nil then return false end
-      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf or b3 < 0x80 or b3 > 0xbf then return false end
-      if c == 0xf0 and b1 < 0x90 then return false end
-      if c == 0xf4 and b1 > 0x8f then return false end
-      i = i + 4
-    else
-      return false
-    end
-  end
-  return true
+  return not s:find("\0", 1, true) and D.utf8_ok(s)
 end
 
 -- THE NODE NUMBERING (§3.1, internal/tablewire/nodes.go) is the one pointer
@@ -144,6 +113,7 @@ end
 -- the retaining save, the cook's layout and the JSON text form. A shared blob
 -- refuses the save by name (blob_shared, §2.5, §16.7).
 local guard_holds, count_of, map_entries = D.guard_holds, D.count_of, D.map_entries
+local int_ok, len_ok, count_ok, well_formed = D.int_ok, D.len_ok, D.count_ok, D.text_ok
 
 local function number_nodes(T, desc, root)
   return D.number_nodes(T, desc, root, true)
@@ -250,6 +220,7 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
     if not val then return true, false end
     w_u8(w, 1)
   elseif s == "int" or s == "flags" then
+    if not int_ok(e, val) then return false end
     if (val or 0) == 0 then return true, false end
     w_int(w, e.width, e.signed, val or 0)
   elseif s == "float" then
@@ -259,9 +230,13 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
     if not w_float(w, e.f32, val) then return false end
   elseif s == "string" then
     if val == nil or #val == 0 then return true, false end
+    if not len_ok(e, val) then return false end
+    if not well_formed(e, val) then return false end
     w_raw(w, val)
   elseif s == "wstring" then
     if val == nil or #val == 0 then return true, false end
+    if not len_ok(e, val) then return false end
+    if not well_formed(e, val) then return false end
     for i = 1, #val do
       w_raw(w, string.pack("<I2", val[i]))
     end
@@ -313,6 +288,7 @@ write_field = function(T, ids, nodes, fd, v, w)
       w_u8(w, x and 1 or 0)
     end
   elseif s == "int" or s == "flags" then
+    if not int_ok(fd, x) then return false end
     if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, fd.kind)
@@ -323,6 +299,7 @@ write_field = function(T, ids, nodes, fd, v, w)
     -- half then the high one, two's complement (docs/SPEC-TABLES.md §3 kinds
     -- 18/19 and 20-29; docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS,
     -- FIXED-POINT).
+    if not int_ok(fd, x) then return false end
     if (fd.optional or fd.required) or not at_default(fd, v) then
       local q = x or { lo = 0, hi = 0 }
       w_leb(w, id_ref(ids, fd.id))
@@ -337,6 +314,8 @@ write_field = function(T, ids, nodes, fd, v, w)
       if not w_float(w, fd.f32, x) then return false end
     end
   elseif s == "string" then
+    if not len_ok(fd, x) then return false end
+    if not well_formed(fd, x) then return false end
     if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, 12)
@@ -346,6 +325,8 @@ write_field = function(T, ids, nodes, fd, v, w)
   elseif s == "wstring" then
     -- WIDE TEXT (§2.13, gotable write.go TWString): its UTF-16 code units,
     -- little-endian, L their byte count; it rides when it holds a unit
+    if not len_ok(fd, x) then return false end
+    if not well_formed(fd, x) then return false end
     if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, fd.kind)
@@ -355,6 +336,8 @@ write_field = function(T, ids, nodes, fd, v, w)
       end
     end
   elseif s == "bytes" then
+    if not len_ok(fd, x) then return false end
+    if not well_formed(fd, x) then return false end
     if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, 14)
@@ -458,6 +441,7 @@ write_field = function(T, ids, nodes, fd, v, w)
       w_leb(w, outer.n)
       w_raw(w, table.concat(outer.parts))
     else
+      if not count_ok(fd, x) then return false end
       if not fd.required and not fd.optional and at_default(fd, v) then return true end
       local n = count_of(fd, x)
       -- A TEXT LIST (docs/SPEC-TABLES.md §2.13): its storage is an array of
@@ -539,8 +523,10 @@ write_element = function(T, ids, nodes, e, val, body)
   if s == "bool" then
     w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then
+    if not int_ok(e, val) then return false end
     w_int(body, e.width, e.signed, val or 0)
   elseif s == "wide" then
+    if not int_ok(e, val) then return false end
     local q = val or { lo = 0, hi = 0 }
     w_raw(body, string.pack("<i8", q.lo))
     w_raw(body, string.pack("<i8", q.hi))
@@ -572,10 +558,14 @@ write_element = function(T, ids, nodes, e, val, body)
     if not write_union(T, ids, nodes, u, val, body) then return false end
   elseif s == "string" then
     val = val or ""
+    if not len_ok(e, val) then return false end
+    if not well_formed(e, val) then return false end
     w_leb(body, #val)
     w_raw(body, val)
   elseif s == "wstring" then
     val = val or {}
+    if not len_ok(e, val) then return false end
+    if not well_formed(e, val) then return false end
     local parts = {}
     for i = 1, #val do
       parts[#parts + 1] = string.pack("<I2", val[i])
@@ -584,6 +574,8 @@ write_element = function(T, ids, nodes, e, val, body)
     w_raw(body, table.concat(parts))
   elseif s == "bytes" then
     val = val or ""
+    if not len_ok(e, val) then return false end
+    if not well_formed(e, val) then return false end
     w_leb(body, #val)
     w_raw(body, val)
   else
@@ -645,20 +637,28 @@ write_union_at = function(T, ids, nodes, f, val, body)
   if s == "bool" then
     w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then
+    if not int_ok(f, val) then return false end
     w_int(body, f.width, f.signed, val or 0)
   elseif s == "wide" then
+    if not int_ok(f, val) then return false end
     local q = val or { lo = 0, hi = 0 }
     w_raw(body, string.pack("<i8", q.lo))
     w_raw(body, string.pack("<i8", q.hi))
   elseif s == "float" then
     if not w_float(body, f.f32, val) then return false end
   elseif s == "string" then
+    if not len_ok(f, val) then return false end
+    if not well_formed(f, val) then return false end
     w_raw(body, val)
   elseif s == "wstring" then
+    if not len_ok(f, val) then return false end
+    if not well_formed(f, val) then return false end
     for i = 1, #val do
       w_raw(body, string.pack("<I2", val[i]))
     end
   elseif s == "bytes" then
+    if not len_ok(f, val) then return false end
+    if not well_formed(f, val) then return false end
     w_u8(body, 6)
     w_leb(body, #val)
     w_raw(body, val)
@@ -683,6 +683,7 @@ write_union_at = function(T, ids, nodes, f, val, body)
     local inner = T.Unions[f.target]
     if not write_union(T, ids, nodes, inner, val, body) then return false end
   elseif s == "array" then
+    if not count_ok(f, val) then return false end
     local n = count_of(f, val)
     w_u8(body, f.elem_kind)
     w_leb(body, n)
@@ -707,7 +708,8 @@ end
 -- THE SAVE (docs/SPEC-TABLES.md §3, §3.1): the form byte, the root's fields,
 -- the node table LAST in the root body under the reserved id at kind 12, the
 -- terminator, then the id table and its count. A data cycle or a value with no
--- wire identity refuses the save (nil). It is the walk S.Save drives by the
+-- wire identity refuses the save (nil), and so does a value the write contract
+-- refuses (D.refuse_write names it: non_finite_float or invalid_value). It is the walk S.Save drives by the
 -- descriptors alone and S.SaveTyped drives through the unit's typed bodies
 -- (docs/PORTING.md M22); the numbering, the node table, the id table and the
 -- trailer are this one function either way.
@@ -724,10 +726,10 @@ local function save_with(T, name, v, typed)
   w_u8(idx, 1)
   local root = typed and typed[name]
   if root ~= nil then
-    if not root(ids, nodes, v, idx) then return nil, D.refuse_non_finite(T, name, v) end
+    if not root(ids, nodes, v, idx) then return nil, D.refuse_write(T, name, v) end
   else
     for _, fd in ipairs(desc.fields) do
-      if not write_field(T, ids, nodes, fd, v, idx) then return nil, D.refuse_non_finite(T, name, v) end
+      if not write_field(T, ids, nodes, fd, v, idx) then return nil, D.refuse_write(T, name, v) end
     end
   end
   if #nodes.list > 0 then
@@ -742,7 +744,7 @@ local function save_with(T, name, v, typed)
         w_raw(sub, n.body)
       else
         local body = W()
-        if not write_body(T, ids, nodes, n.codec, n.v, body) then return nil, D.refuse_non_finite(T, name, v) end
+        if not write_body(T, ids, nodes, n.codec, n.v, body) then return nil, D.refuse_write(T, name, v) end
         w_leb(sub, body.n)
         w_raw(sub, table.concat(body.parts))
       end
@@ -792,6 +794,7 @@ S.Typed = {
   same_float = same_float,
   id_ref = id_ref,
   field = write_field,
+  utf8_ok = D.utf8_ok,
   -- a field header, the reference to its id then its kind byte: one call, and
   -- one string when the reference is under 128
   head = function(w, ids, id, kind)

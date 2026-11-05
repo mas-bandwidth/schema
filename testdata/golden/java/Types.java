@@ -1247,12 +1247,26 @@ public final class Types {
         return true;
     }
 
+    // fitsInputPacket answers whether every count and length writeInputPacketBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsInputPacket(InputPacket value) {
+        if (value.inputsCount < 0 || value.inputsCount > 16) {
+            return false;
+        }
+        return true;
+    }
+
     // writeInputPacketBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteInputPacket
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + INPUT_PACKET_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsInputPacket).
     public static int writeInputPacketBits(InputPacket value, byte[] data, int bitOffset) {
         assert checkWriteInputPacket(value, data, bitOffset);
+        if (!fitsInputPacket(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -1277,8 +1291,10 @@ public final class Types {
 
     // writeInputPacket packs value into data from its start and returns the bytes written;
     // data must hold INPUT_PACKET_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeInputPacket(InputPacket value, byte[] data) {
-        return (writeInputPacketBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeInputPacketBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readInputPacketBits decodes value from data starting at bit bitOffset, the payload
