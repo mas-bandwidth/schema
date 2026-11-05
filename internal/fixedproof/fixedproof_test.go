@@ -3,6 +3,7 @@ package fixedproof
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -87,6 +88,37 @@ func (s stubEvoRunner) LoadLineage(t *testing.T, u *ir.Unit, root string, lineag
 		}
 	}
 	return n, reason, fields, resaved, counters
+}
+
+func (s stubEvoRunner) CheckLineage(_ *testing.T, u *ir.Unit, root string, lineage map[string][]LineageEntry) string {
+	entries := append([]LineageEntry(nil), lineage[root]...)
+	if eOwn, ok := LineageEntryOf(u, root); ok {
+		hasOwn := false
+		for _, e := range entries {
+			if e.Wire == eOwn.Wire {
+				hasOwn = true
+				break
+			}
+		}
+		if !hasOwn {
+			entries = append(entries, eOwn)
+		}
+	}
+	for i, e := range entries {
+		if len(e.Layout) < 4 {
+			return fmt.Sprintf("entry %d has no layout", i)
+		}
+		if count := int(binary.LittleEndian.Uint32(e.Layout[:4])); count > ir.TableFixedLeafCap {
+			return fmt.Sprintf("entry %d is past the plan bound", i)
+		}
+		if !stubValidLayout(e.Layout) {
+			return fmt.Sprintf("entry %d layout is malformed", i)
+		}
+		if e.Record <= 8 || e.Record > ir.TableFixedRecordMaxBytes+8 {
+			return fmt.Sprintf("entry %d record is out of bounds", i)
+		}
+	}
+	return ""
 }
 
 func (s stubEvoRunner) loadLineage(_ *testing.T, u *ir.Unit, root string, lineage map[string][]LineageEntry, wireBytes []byte, cap int) (int, string, map[string]string, []byte) {

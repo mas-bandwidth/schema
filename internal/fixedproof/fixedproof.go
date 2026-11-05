@@ -42,15 +42,20 @@ const HardMemoryLimitBytes = int64(2) << 30
 var memLimitMu sync.Mutex
 
 // SetMemoryCeiling sets a 2 GiB memory ceiling for the duration of t and
-// restores the previous limit in t.Cleanup.
+// restores the previous limits in t.Cleanup. On Linux and macOS the ceiling is
+// the kernel's RLIMIT_AS soft limit, which the test process and every child it
+// spawns inherit, so the native C++ oracle probes are bounded too.
+// debug.SetMemoryLimit adds a matching Go GC target.
 func SetMemoryCeiling(t *testing.T) {
 	t.Helper()
 	memLimitMu.Lock()
-	prev := debug.SetMemoryLimit(HardMemoryLimitBytes)
+	prevTarget := debug.SetMemoryLimit(HardMemoryLimitBytes)
+	restoreAddressSpace := setAddressSpaceLimit(uint64(HardMemoryLimitBytes))
 	memLimitMu.Unlock()
 	t.Cleanup(func() {
 		memLimitMu.Lock()
-		debug.SetMemoryLimit(prev)
+		restoreAddressSpace()
+		debug.SetMemoryLimit(prevTarget)
 		memLimitMu.Unlock()
 	})
 }
@@ -122,6 +127,12 @@ type EvoRunner interface {
 	//   - counters: the load's unknown/kind-mismatch/clamped/widened/duplicate
 	//     counts, stale-reset on entry as the fixed-form report is
 	LoadLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]LineageEntry, wireBytes []byte, cap int) (count int, reason string, fields map[string]string, resaved []byte, counters LoadCounters)
+	// CheckLineage compiles the whole lineage for root, including the unit's
+	// own layout, without loading a file, and returns a target-neutral verdict:
+	// "" when every entry compiles, or a non-empty diagnostic when any entry is
+	// refused. It names no language-specific reason and checks entries that no
+	// file selects.
+	CheckLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]LineageEntry) string
 	// SaveCustom runs a custom record-construction and FixedSave scenario for
 	// rows like optional-values, writing, fixed-closure, compiled-plans (W14),
 	// and batch-capacity. The shared scenarios are:
@@ -1844,7 +1855,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		}
 
 		layoutLen := int(binary.LittleEndian.Uint32(oracle[16:20]))
-		for i := 20; i < 20+layoutLen; i += 17 {
+		for i := 20; i < 20+layoutLen; i++ {
 			moved := bytes.Clone(oracle)
 			moved[i] ^= 0x5a
 			if n, reason, _, _ := zeroLoad(t, runner, u, "FxRoot", lin, moved, -1); n != -1 {
@@ -1944,10 +1955,14 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		if n, r, _, _ := zeroLoad(t, runner, u3, "Lineage", lin, MakeFixedFile(0x123456789abcdef0, e3.Layout, make([]byte, 16)), -1); n != -1 {
 			t.Errorf("unknown: got n=%d r=%q, want -1 (refused)", n, r)
 		}
-		// R26: every lawful entry and the own layout compile, and the over-bound
-		// entry refuses on its own file; the lawful lineage loads clean.
-		if n, r, _, _, _ := runner.LoadLineage(t, u3, "Lineage", map[string][]LineageEntry{"Lineage": {e1, e2}}, v2, -1); n != 2 {
-			t.Errorf("R26 lawful lineage: got n=%d r=%q, want 2", n, r)
+		// R26: a whole-lineage compile checks every handed entry, including the
+		// unit's own layout, so a lineage holding the over-bound entry refuses as
+		// a whole while the lawful lineage compiles clean.
+		if v := runner.CheckLineage(t, u3, "Lineage", lin); v == "" {
+			t.Errorf("R26 over-bound lineage: compiled clean, want a refusal")
+		}
+		if v := runner.CheckLineage(t, u3, "Lineage", map[string][]LineageEntry{"Lineage": {e1, e2}}); v != "" {
+			t.Errorf("R26 lawful lineage including own layout: refused: %s", v)
 		}
 		if n, r, _, _ := zeroLoad(t, runner, u3, "Lineage", lin, MakeFixedFile(e3.Wire, e3.Layout, make([]byte, 15)), -1); n != -1 {
 			t.Errorf("truncated own layout: got n=%d r=%q, want -1 (refused)", n, r)
