@@ -113,6 +113,8 @@ func ArchiveConfigSave(value *ArchiveConfig, buffer []byte) int64 {
 
 func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 	ArchiveConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -130,8 +132,24 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -190,7 +208,7 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
+			if !tableWireSkipValue(r, kind) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -341,6 +359,8 @@ func ArchiveConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ArchiveConfi
 
 func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) bool {
 	ArchiveConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -359,8 +379,24 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}

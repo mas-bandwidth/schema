@@ -159,6 +159,8 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 
 func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 	PatrolReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -175,6 +177,22 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 		if !ok || !r.Has(1) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
+		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
@@ -315,7 +333,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
+			if !tableWireSkipValue(r, kind) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -483,6 +501,8 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 
 func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 	PatrolReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -500,6 +520,22 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 		if !ok || !r.Has(1) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
+		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {

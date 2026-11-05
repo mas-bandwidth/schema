@@ -255,6 +255,8 @@ func TeamConfigSave(value *TeamConfig, buffer []byte) int64 {
 
 func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 	TeamConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -272,8 +274,24 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -332,7 +350,7 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 			value.BannerLength = int32(len(sub.Buffer))
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
+			if !tableWireSkipValue(r, kind) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -466,6 +484,8 @@ func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) boo
 
 func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 	TeamConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -484,8 +504,24 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -642,6 +678,8 @@ func GunnerConfigSave(value *GunnerConfig, buffer []byte) int64 {
 
 func GunnerConfigLoadBody(r *TableReader, value *GunnerConfig) bool {
 	GunnerConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -659,8 +697,24 @@ func GunnerConfigLoadBody(r *TableReader, value *GunnerConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -704,7 +758,7 @@ func GunnerConfigLoadBody(r *TableReader, value *GunnerConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
+			if !tableWireSkipValue(r, kind) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -800,6 +854,8 @@ func GunnerConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *GunnerConfig)
 
 func GunnerConfigLoadBodyRetain(r *TableRetainReader, value *GunnerConfig) bool {
 	GunnerConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -818,8 +874,24 @@ func GunnerConfigLoadBodyRetain(r *TableRetainReader, value *GunnerConfig) bool 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -987,6 +1059,8 @@ func TurretConfigSave(value *TurretConfig, buffer []byte) int64 {
 
 func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 	TurretConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -1004,8 +1078,24 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1070,7 +1160,7 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 			value.GunnerPresent = true
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
+			if !tableWireSkipValue(r, kind) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -1234,6 +1324,8 @@ func TurretConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TurretConfig)
 
 func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool {
 	TurretConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -1252,8 +1344,24 @@ func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1624,6 +1732,8 @@ func HullConfigSave(value *HullConfig, buffer []byte) int64 {
 
 func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 	HullConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -1641,8 +1751,24 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1708,11 +1834,29 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "HullConfig.turrets")
 					return false
 				}
+				var keySeen [64]byte
+				var keySeenHigh map[uint64]struct{}
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
+					}
+					if keyRef < 512 {
+						if keySeen[keyRef>>3]&(byte(1)<<(keyRef&7)) != 0 {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeen[keyRef>>3] |= byte(1) << (keyRef & 7)
+					} else {
+						if keySeenHigh == nil {
+							keySeenHigh = make(map[uint64]struct{})
+						}
+						if _, dup := keySeenHigh[keyRef]; dup {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeenHigh[keyRef] = struct{}{}
 					}
 					key, ok := sub.Resolve(keyRef)
 					if !ok {
@@ -1744,7 +1888,7 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
+			if !tableWireSkipValue(r, kind) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -2088,6 +2232,8 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 
 func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 	HullConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -2106,8 +2252,24 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -2173,11 +2335,29 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "HullConfig.turrets")
 					return false
 				}
+				var keySeen [64]byte
+				var keySeenHigh map[uint64]struct{}
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
+					}
+					if keyRef < 512 {
+						if keySeen[keyRef>>3]&(byte(1)<<(keyRef&7)) != 0 {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeen[keyRef>>3] |= byte(1) << (keyRef & 7)
+					} else {
+						if keySeenHigh == nil {
+							keySeenHigh = make(map[uint64]struct{})
+						}
+						if _, dup := keySeenHigh[keyRef]; dup {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeenHigh[keyRef] = struct{}{}
 					}
 					key, ok := sub.Resolve(keyRef)
 					if !ok {
@@ -2734,6 +2914,8 @@ func KeyedConfigSave(value *KeyedConfig, buffer []byte) int64 {
 
 func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 	KeyedConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -2751,8 +2933,24 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -2778,11 +2976,29 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "KeyedConfig.teams")
 					return false
 				}
+				var keySeen [64]byte
+				var keySeenHigh map[uint64]struct{}
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
+					}
+					if keyRef < 512 {
+						if keySeen[keyRef>>3]&(byte(1)<<(keyRef&7)) != 0 {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeen[keyRef>>3] |= byte(1) << (keyRef & 7)
+					} else {
+						if keySeenHigh == nil {
+							keySeenHigh = make(map[uint64]struct{})
+						}
+						if _, dup := keySeenHigh[keyRef]; dup {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeenHigh[keyRef] = struct{}{}
 					}
 					key, ok := sub.Resolve(keyRef)
 					if !ok {
@@ -2833,11 +3049,29 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "KeyedConfig.hulls")
 					return false
 				}
+				var keySeen [64]byte
+				var keySeenHigh map[uint64]struct{}
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
+					}
+					if keyRef < 512 {
+						if keySeen[keyRef>>3]&(byte(1)<<(keyRef&7)) != 0 {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeen[keyRef>>3] |= byte(1) << (keyRef & 7)
+					} else {
+						if keySeenHigh == nil {
+							keySeenHigh = make(map[uint64]struct{})
+						}
+						if _, dup := keySeenHigh[keyRef]; dup {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeenHigh[keyRef] = struct{}{}
 					}
 					key, ok := sub.Resolve(keyRef)
 					if !ok {
@@ -2886,7 +3120,7 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
+			if !tableWireSkipValue(r, kind) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -3524,6 +3758,8 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 
 func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 	KeyedConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -3542,8 +3778,24 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -3569,11 +3821,29 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "KeyedConfig.teams")
 					return false
 				}
+				var keySeen [64]byte
+				var keySeenHigh map[uint64]struct{}
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
+					}
+					if keyRef < 512 {
+						if keySeen[keyRef>>3]&(byte(1)<<(keyRef&7)) != 0 {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeen[keyRef>>3] |= byte(1) << (keyRef & 7)
+					} else {
+						if keySeenHigh == nil {
+							keySeenHigh = make(map[uint64]struct{})
+						}
+						if _, dup := keySeenHigh[keyRef]; dup {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeenHigh[keyRef] = struct{}{}
 					}
 					key, ok := sub.Resolve(keyRef)
 					if !ok {
@@ -3628,11 +3898,29 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "KeyedConfig.hulls")
 					return false
 				}
+				var keySeen [64]byte
+				var keySeenHigh map[uint64]struct{}
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
+					}
+					if keyRef < 512 {
+						if keySeen[keyRef>>3]&(byte(1)<<(keyRef&7)) != 0 {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeen[keyRef>>3] |= byte(1) << (keyRef & 7)
+					} else {
+						if keySeenHigh == nil {
+							keySeenHigh = make(map[uint64]struct{})
+						}
+						if _, dup := keySeenHigh[keyRef]; dup {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeenHigh[keyRef] = struct{}{}
 					}
 					key, ok := sub.Resolve(keyRef)
 					if !ok {
@@ -3973,6 +4261,8 @@ func ScoreBoardSave(value *ScoreBoardRow, buffer []byte) int64 {
 
 func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 	ScoreBoardReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -3990,8 +4280,24 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -4020,11 +4326,29 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 					}
 					r.Report.Widened++
 				}
+				var keySeen [64]byte
+				var keySeenHigh map[uint64]struct{}
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
+					}
+					if keyRef < 512 {
+						if keySeen[keyRef>>3]&(byte(1)<<(keyRef&7)) != 0 {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeen[keyRef>>3] |= byte(1) << (keyRef & 7)
+					} else {
+						if keySeenHigh == nil {
+							keySeenHigh = make(map[uint64]struct{})
+						}
+						if _, dup := keySeenHigh[keyRef]; dup {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeenHigh[keyRef] = struct{}{}
 					}
 					key, ok := sub.Resolve(keyRef)
 					if !ok {
@@ -4066,7 +4390,7 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
+			if !tableWireSkipValue(r, kind) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -4346,6 +4670,8 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 
 func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 	ScoreBoardReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -4364,8 +4690,24 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -4394,11 +4736,29 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 					}
 					r.Report.Widened++
 				}
+				var keySeen [64]byte
+				var keySeenHigh map[uint64]struct{}
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
+					}
+					if keyRef < 512 {
+						if keySeen[keyRef>>3]&(byte(1)<<(keyRef&7)) != 0 {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeen[keyRef>>3] |= byte(1) << (keyRef & 7)
+					} else {
+						if keySeenHigh == nil {
+							keySeenHigh = make(map[uint64]struct{})
+						}
+						if _, dup := keySeenHigh[keyRef]; dup {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						keySeenHigh[keyRef] = struct{}{}
 					}
 					key, ok := sub.Resolve(keyRef)
 					if !ok {
