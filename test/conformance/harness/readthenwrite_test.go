@@ -393,6 +393,29 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 				t.Errorf("%s: refused row with partial value %q did not fail: pass=%d failures=%v", surface, partial, r.pass, r.failures)
 			}
 		}
+		// The verdict line is not the whole answer: a refused row that also
+		// leaves a nonempty write-back wire beside it has returned a partial
+		// value in its other form, and fails on every surface.
+		rowPath := filepath.Join(dir, "row")
+		if err := os.WriteFile(rowPath, []byte("refused\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		clean := &result{total: 1}
+		scoreAnswer("go", surface, dir, expectation{name: "row", want: []byte("refused\n")}, Instance{}, clean)
+		if clean.pass != 1 || len(clean.failures) != 0 {
+			t.Errorf("%s: a clean refusal did not pass: pass=%d failures=%v", surface, clean.pass, clean.failures)
+		}
+		if err := os.WriteFile(rowPath+".wire", []byte{0x00, 0x02, 0x34, 0x56}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		r := &result{total: 1}
+		scoreAnswer("go", surface, dir, expectation{name: "row", want: []byte("refused\n")}, Instance{}, r)
+		if r.pass != 0 || len(r.failures) == 0 || slices.Contains(r.failures, "") {
+			t.Errorf("%s: refused row with a value-bearing .wire sidecar did not fail: pass=%d failures=%v", surface, r.pass, r.failures)
+		}
+		if err := os.Remove(rowPath + ".wire"); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// 5. A leg that omits or corrupts the canonical write-back wire fails,
