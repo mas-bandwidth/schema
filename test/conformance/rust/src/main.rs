@@ -897,6 +897,11 @@ macro_rules! with_root {
                 use mapdemo::{trails_from_json_bytes as $from_json, trails_load as $load, trails_save_checked as $save, trails_to_json_checked as $to_json};
                 Some($body)
             }
+            ("mapdemo", "EdgeRow") => {
+                #[allow(unused_imports)]
+                use mapdemo::{edge_row_from_json_bytes as $from_json, edge_row_load as $load, edge_row_save_checked as $save, edge_row_to_json_checked as $to_json};
+                Some($body)
+            }
             ("mapdemo", "Runs") => {
                 #[allow(unused_imports)]
                 use mapdemo::{runs_from_json_bytes as $from_json, runs_load as $load, runs_save_checked as $save, runs_to_json_checked as $to_json};

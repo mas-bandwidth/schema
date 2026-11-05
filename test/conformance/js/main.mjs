@@ -686,6 +686,8 @@ const wireRows = [
   ["mapdemo", "Slots", "maps/MapdemoVariable.js"],
   ["mapdemo", "Spans", "maps/MapdemoVariable.js"],
   ["mapdemo", "Trails", "maps/MapdemoVariable.js"],
+  // uint64 keys across 2^63 and string keys past 127 bytes (§2.8, §22.2.1)
+  ["mapdemo", "EdgeRow", "maps/MapdemoVariable.js"],
   // fixed(W, F) / ufixed(W, F) and int128 / uint128 as the raw integer at the
   // declared width (§3, §15), and the evolved type reading them (§4)
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
@@ -732,6 +734,11 @@ const wireRows = [
   // a pointer under a false guard and inside an absent optional over a
   // variable closure is no edge (§2.3, §3.1)
   ["tblg1", "Guarded", "g1/Tblg1Variable.js"],
+  // the readers the framing rows name, read and written back by the rewrite
+  // surface (docs/SPEC-TABLES.md §22.7): a list node holding the node table,
+  // and a squad whose map header crosses its own length
+  ["graphdemo", "ListNode", "pointers/GraphdemoVariable.js"],
+  ["listdemo", "Squad", "lists/ListdemoVariable.js"],
 ];
 
 // fuzzUnits binds the roster units no text surface names (tbla2, tblk1,

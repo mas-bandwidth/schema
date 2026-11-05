@@ -468,7 +468,9 @@ func TestPopulatedFeatureWitnessesCoverEveryRequiredConstruct(t *testing.T) {
 	}
 	m := &Manifest{Units: manifest.Units}
 	for _, inst := range manifest.Instances {
-		if inst.Unit == "featurewitnesses" {
+		// the two witnesses are the feature_ instances; the write algorithm's
+		// edge vectors share the unit and witness no construct of their own
+		if inst.Unit == "featurewitnesses" && strings.HasPrefix(inst.Name, "feature_") {
 			m.Instances = append(m.Instances, inst)
 		}
 	}

@@ -15,6 +15,10 @@ import (
 type bitWriter struct {
 	b []byte
 	n int // bits written
+	// over is set when a value did not fit the width it was put at, or a
+	// caller found it outside its domain: the encoder refuses the whole batch
+	// as invalid_value rather than write a value masked to its low bits
+	over bool
 }
 
 func (w *bitWriter) bits() int { return w.n }
@@ -30,11 +34,17 @@ func (w *bitWriter) truncate(n int) {
 	}
 }
 
-// put writes the low `n` bits of v, low bit first. n must be between zero
-// and 64: a wider put would write zeros past bit 63, so it panics instead.
+// put writes v in `n` bits, low bit first. n must be between zero and 64: a
+// wider put would write zeros past bit 63, so it panics instead. A value with
+// a bit set at or above n does not fit, and it marks the writer over rather
+// than lose its high bits: a caller that means two's complement at a width
+// (a bare signed integer, a mask) checks the value and masks it itself.
 func (w *bitWriter) put(v uint64, n int) {
 	if n < 0 || n > 64 {
 		panic(fmt.Sprintf("tablewire: put width %d is outside [0,64]", n))
+	}
+	if n < 64 && v>>uint(n) != 0 {
+		w.over = true
 	}
 	for i := range n {
 		if w.n%8 == 0 {
@@ -50,6 +60,9 @@ func (w *bitWriter) put(v uint64, n int) {
 // putBig writes the low `n` bits of a wide value, which is what a 128-bit
 // kind's ranged offset takes.
 func (w *bitWriter) putBig(v *big.Int, n int) {
+	if v.Sign() < 0 || v.BitLen() > n {
+		w.over = true
+	}
 	for i := range n {
 		w.put(uint64(v.Bit(i)), 1)
 	}

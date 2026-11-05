@@ -473,15 +473,16 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range roots {
 		fixedCollectTypes(st, seen, &order)
 	}
+	image := fixedDefaultImages(order)
 	for _, st := range order {
 		g.emitFixedLeafWalk(st)
 		g.emitFixedWriteBody(st, false)
-		if fixedHasDeprecatedField(st) {
+		if image[st.Name] {
 			g.emitFixedWriteBody(st, true)
 		}
 	}
 	for _, st := range order {
-		if fixedHasDeprecatedField(st) {
+		if image[st.Name] {
 			g.emitFixedDefaultImage(st)
 		}
 	}
@@ -775,6 +776,34 @@ func (g *tableGen) emitFixedArmLoop(f *ir.Field, src, dst, count string, tabs in
 	g.pf("%s}\n", ind)
 }
 
+// fixedDefaultImages names the types whose default image a writer copies: a
+// type holding a deprecated field (its slot takes the image's bytes), and the
+// type of a deprecated union arm, which writes the arm's whole default image
+// (docs/SPEC-TABLES.md §3.4, §22.6).
+func fixedDefaultImages(order []*ir.Struct) map[string]bool {
+	out := map[string]bool{}
+	for _, st := range order {
+		if fixedHasDeprecatedField(st) {
+			out[st.Name] = true
+		}
+		for _, f := range st.Fields {
+			un, isUnion := f.Type.Ref.(*ir.Union)
+			if f.Type.Kind != ir.TNamed || !isUnion {
+				continue
+			}
+			for _, v := range un.Variants {
+				if v.F == nil || !v.F.Deprecated {
+					continue
+				}
+				if arm, isStruct := v.F.Type.Ref.(*ir.Struct); v.F.Type.Kind == ir.TNamed && isStruct {
+					out[arm.Name] = true
+				}
+			}
+		}
+	}
+	return out
+}
+
 func fixedHasDeprecatedField(st *ir.Struct) bool {
 	for _, f := range st.Fields {
 		if f.Deprecated {
@@ -1002,8 +1031,23 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, dest, arm string, depth,
 	f := v.F
 	ind := strings.Repeat("\t", tabs)
 	if f.Deprecated && !defaultMode {
+		// A DEPRECATED ARM CARRIES ITS DEFAULT IMAGE, whatever the value holds
+		// (docs/SPEC-TABLES.md §3.4, §22.6), for every shape. An arm takes no
+		// specified default and zero-establishes, so a by-value table or type
+		// is its type's own default body, and every other shape is the
+		// template's zeros, which is its default image
 		if raw, size, ok := fixedDeprecatedDefault(f); ok {
 			g.emitFixedWriteConst(ind, dest, size, raw)
+			return
+		}
+		st, isStruct := f.Type.Ref.(*ir.Struct)
+		switch {
+		case f.Type.Kind == ir.TNamed && isStruct && f.Array == ir.ArrayNone:
+			g.pf("%scopy(%s, %sFixedDefaultBody)\n", ind, dest, st.Name)
+		case f.Type.Kind == ir.TNamed && isStruct && f.Array == ir.ArrayFixed:
+			loop := fixedLoopVar(depth)
+			g.pf("%sfor %s := range int64(%d) {\n%s\tcopy(%s[%s*%d:], %sFixedDefaultBody)\n%s}\n",
+				ind, loop, f.ArrayBound, ind, dest, loop, fixedElementBytes(f), st.Name, ind)
 		}
 		return
 	}

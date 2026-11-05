@@ -868,6 +868,8 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return mapdemo.textWireSave(mapdemo.textWireLoad(wire));
     case 'mapdemo Trails':
       return mapdemo.trailsWireSave(mapdemo.trailsWireLoad(wire));
+    case 'mapdemo EdgeRow':
+      return mapdemo.edgeRowWireSave(mapdemo.edgeRowWireLoad(wire));
     case 'messagedemo ToolMessage':
       return messagedemo.toolMessageWireSave(messagedemo.toolMessageWireLoad(wire));
     case 'scalars SimState':
@@ -918,6 +920,22 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return tabledemo.profileConfigWireSave(tabledemo.profileConfigWireLoad(wire));
     case 'tabledemo RootConfig':
       return tabledemo.rootConfigWireSave(tabledemo.rootConfigWireLoad(wire));
+    // the readers the rewrite rows name (docs/SPEC-TABLES.md §22.7): a
+    // build reading a wire another build wrote, and writing it back
+    case 'tbla2 Root':
+      return tbla2.rootWireSave(tbla2.rootWireLoad(wire));
+    case 'tblk1 Root':
+      return tblk1.rootWireSave(tblk1.rootWireLoad(wire));
+    case 'tblk2 Root':
+      return tblk2.rootWireSave(tblk2.rootWireLoad(wire));
+    case 'tblp2 Chain':
+      return tblp2.chainWireSave(tblp2.chainWireLoad(wire));
+    case 'tblscalars2 SimState':
+      return scalardemo2.simStateWireSave(scalardemo2.simStateWireLoad(wire));
+    case 'graphdemo ListNode':
+      return graphdemo.listNodeWireSave(graphdemo.listNodeWireLoad(wire));
+    case 'listdemo Squad':
+      return listdemo.squadWireSave(listdemo.squadWireLoad(wire));
   }
   return null;
 }
@@ -969,6 +987,8 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       return mapdemo.textWireSave(mapdemo.textFromJson(text));
     case 'mapdemo Trails':
       return mapdemo.trailsWireSave(mapdemo.trailsFromJson(text));
+    case 'mapdemo EdgeRow':
+      return mapdemo.edgeRowWireSave(mapdemo.edgeRowFromJson(text));
     case 'messagedemo ToolMessage':
       return messagedemo.toolMessageWireSave(messagedemo.toolMessageFromJson(text));
     case 'scalars SimState':
@@ -1088,6 +1108,8 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       return mapdemo.textToJson(mapdemo.textWireLoad(wire));
     case 'mapdemo Trails':
       return mapdemo.trailsToJson(mapdemo.trailsWireLoad(wire));
+    case 'mapdemo EdgeRow':
+      return mapdemo.edgeRowToJson(mapdemo.edgeRowWireLoad(wire));
     case 'messagedemo ToolMessage':
       return messagedemo.toolMessageToJson(messagedemo.toolMessageWireLoad(wire));
     case 'scalars SimState':
