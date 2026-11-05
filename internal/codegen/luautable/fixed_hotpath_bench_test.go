@@ -70,16 +70,19 @@ func TestLuauFixedHotPathBenchEvidence(t *testing.T) {
 		}
 		row := luauFixedRowFor(t, id)
 		g, mod := luauFixedUnit(t, u)
-		samples := make([]float64, 0, pairs)
+		samples := make(map[string][]float64, 3)
 		for i := 0; i < pairs; i++ {
 			m := fixedHotPathMeasure(t, g, mod, tc, row.check, cpp, iters, id)
-			samples = append(samples, m["round_trip"])
+			for _, mode := range []string{"read", "write", "round_trip"} {
+				elapsed := m[mode]
+				samples[mode] = append(samples[mode], elapsed)
+				t.Logf("fixed16 %s run=%d %s seconds=%.6f ops/s=%.0f", id, i+1, mode, elapsed, float64(iters)/elapsed)
+			}
 		}
-		for i, elapsed := range samples {
-			t.Logf("fixed16 %s run=%d round_trip seconds=%.6f ops/s=%.0f", id, i+1, elapsed, float64(iters)/elapsed)
+		for _, mode := range []string{"read", "write", "round_trip"} {
+			median, min, max, spread := fixedHotPathStats(samples[mode], iters)
+			t.Logf("fixed16 %s %s absolute ops/s, all %d runs: median=%.0f min=%.0f max=%.0f spread=%.2f%%", id, mode, pairs, median, min, max, spread)
 		}
-		median, min, max, spread := fixedHotPathStats(samples, iters)
-		t.Logf("fixed16 %s round_trip absolute ops/s, all %d runs: median=%.0f min=%.0f max=%.0f spread=%.2f%%", id, pairs, median, min, max, spread)
 	}
 }
 
