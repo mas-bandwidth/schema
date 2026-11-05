@@ -59,7 +59,7 @@ func buildUnknownFieldsWire(ids []uint64, refAll bool) []byte {
 }
 
 // goTableOracle runs the generated Go reader (gotable) on wire and answers its
-// one line: PacketLoadMeasure(wire), the report's Malformed, and whether
+// one line: PacketLoadMeasure(wire), the report's Refused verdict, and whether
 // PacketLoad(region, wire, &report) returned a value. gotable's tableOpen is
 // the Go leg that enforces the format-wide 4096-entry id-table bound; the
 // tablewire trailer carries no such cap, so this is the oracle for (a).
@@ -98,7 +98,7 @@ func main() {
 	}
 	var report p.TableReport
 	value := p.PacketLoad(nil, wire, &report)
-	fmt.Printf("measure=%d malformed=%t loaded=%t", p.PacketLoadMeasure(wire), report.Malformed, value != nil)
+	fmt.Printf("measure=%d refused=%t loaded=%t", p.PacketLoadMeasure(wire), report.Refused(), value != nil)
 }
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(main), 0o600); err != nil {
@@ -262,8 +262,8 @@ func TestRustIdTableReaderContract(t *testing.T) {
 	}
 
 	// (a) through the Go oracle: gotable's PacketLoadMeasure answers -1 and
-	// PacketLoad answers no value with report.Malformed set (pinned literal).
-	const want4097 = "measure=-1 malformed=true loaded=false"
+	// PacketLoad answers no value with report.Refused() set (pinned literal).
+	const want4097 = "measure=-1 refused=true loaded=false"
 	if got := goTableOracle(t, u, wire4097); got != want4097 {
 		t.Fatalf("4097-distinct: gotable oracle = %q, want %q", got, want4097)
 	}
