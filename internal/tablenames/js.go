@@ -27,7 +27,10 @@ func init() {
 		// They are spelled at column zero of the home module, so a schema
 		// declaration of the same name is a second binding.
 		Name{Name: "TableAnnounceRead", What: "read one announcement into a direction's vocabulary (§3.3)"},
+		Name{Name: "TableFixedCountHolds", What: "whether every counted array's count and text's length holds its storage bound"},
 		Name{Name: "TableFixedTextOk", What: "whether the used text is well-formed: UTF-8, or paired UTF-16 with no zero unit"},
+		Name{Name: "TableFixedTextSavable", What: "whether the used text is well-formed and holds no zero byte or unit"},
+		Name{Name: "TableFixedTextWritable", What: "whether the used text is well-formed for the message writer"},
 		Name{Name: "TableMessageAnnouncement", What: "the unit's announcement bytes, a compile-time constant (§3.3)"},
 		Name{Name: "TableMessageBatchReader", What: "a reader over one message-form batch"},
 		Name{Name: "TableMessageDoubleWords", What: "the uint64 view of TableMessageFloat64's buffer"},
@@ -385,6 +388,7 @@ func init() {
 		Name{Name: "TableVariableTextListRead", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableTextListValid", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableTextMap", What: "the JavaScript variable-form runtime module"},
+		Name{Name: "TableVariableTextPaired", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableTextPointer", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableTextScalar", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableTextUnion", What: "the JavaScript variable-form runtime module"},
