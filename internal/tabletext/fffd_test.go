@@ -2,16 +2,17 @@ package tabletext_test
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-// TestTextFffdPerMaximalSubpart pins docs/SPEC-TABLES.md §16.3 (Definition
-// D93b): the tabletext writer replaces ill-formed UTF-8 in narrow string
-// storage with one U+FFFD per maximal subpart, while the reader keeps refusing
-// every ill-formed UTF-8 sequence with string_not_utf8 and Malformed.
+// TestTextFffdPerMaximalSubpart pins docs/SPEC-TABLES.md §16.3: the reader
+// refuses every ill-formed UTF-8 sequence with string_not_utf8 (Definition
+// D93b's maximal subparts are the cases), and the writer handed the same bytes
+// in storage built in code refuses them invalid_value, replacing nothing.
 func TestTextFffdPerMaximalSubpart(t *testing.T) {
 	t.Parallel()
 	m := utf8RefusalModel(t)
@@ -45,11 +46,11 @@ func TestTextFffdPerMaximalSubpart(t *testing.T) {
 			if ok {
 				t.Fatalf("reader %s: Read accepted ill-formed UTF-8", tc.name)
 			}
-			if !rep.Malformed || !strings.HasPrefix(rep.Reason, "string_not_utf8") {
+			if !rep.Refused || !strings.HasPrefix(rep.Reason, "string_not_utf8") {
 				t.Fatalf("reader %s: report = %+v, want Malformed with string_not_utf8", tc.name, rep)
 			}
 		} else {
-			if !ok || rep.Malformed {
+			if !ok || rep.Refused {
 				t.Fatalf("reader %s: Read refused well-formed UTF-8: %+v", tc.name, rep)
 			}
 			fv, _ := inst.FieldByKey("s")
@@ -59,12 +60,20 @@ func TestTextFffdPerMaximalSubpart(t *testing.T) {
 		}
 	}
 
-	// Writer half: storage built in code writes one U+FFFD per maximal subpart.
+	// Writer half: storage built in code holding ill-formed text is refused
+	// invalid_value, and well-formed text writes unchanged.
 	for _, tc := range cases {
 		inst := m.New(root)
 		fv, _ := inst.FieldByKey("s")
 		fv.Cell.Str = append([]byte(nil), tc.raw...)
 		out, err := m.Write(inst)
+		if tc.illFormed {
+			var iv *tabletext.InvalidValue
+			if !errors.As(err, &iv) || out != nil {
+				t.Fatalf("writer %s: Write answered %q %v, want an invalid_value refusal", tc.name, out, err)
+			}
+			continue
+		}
 		if err != nil {
 			t.Fatalf("writer %s: Write: %v", tc.name, err)
 		}

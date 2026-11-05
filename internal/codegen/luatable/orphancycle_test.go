@@ -46,10 +46,9 @@ local plainOK = (vl ~= nil and not rl.malformed and (rl.refused or 0) == 0)
 local strictOK = (oks and vs ~= nil)
 local retainOK = (vr ~= nil and not rr.malformed and (rr.refused or 0) == 0)
 
-print(string.format("accepted=%s plain=%s strict=%s retain=%s malformed=%s u=%d k=%d w=%d c=%d d=%d b=%d",
+print(string.format("accepted=%s plain=%s strict=%s retain=%s malformed=%s u=%d w=%d",
   tostring(accepted), tostring(plainOK), tostring(strictOK), tostring(retainOK),
-  tostring(rt.malformed), rt.unknown, rt.kindMismatch, rt.widened, rt.clamped,
-  rt.duplicate, rt.blobShared or 0))
+  tostring(rt.malformed), rt.unknown, rt.widened))
 `
 
 type orphanCycleSpec struct {
@@ -103,21 +102,20 @@ func goEngineVerdictAndCounts(t *testing.T, u *ir.Unit, root string, wire []byte
 	m := tabletext.NewModel(u)
 	var rep tabletext.Report
 	ok, err := tablewire.Decode(m, m.New(def), wire, &rep)
-	if err != nil && !tablewire.Refused(err) {
+	if err != nil && !tablewire.Refused(err) && !tablewire.ReadRefusal(err) {
 		t.Fatalf("engine Decode(%s): %v", root, err)
 	}
 	var rrep tabletext.Report
 	rok, rerr := tablewire.DecodeRegion(m, m.New(def), wire, &rrep)
-	if rerr != nil && !tablewire.Refused(rerr) {
+	if rerr != nil && !tablewire.Refused(rerr) && !tablewire.ReadRefusal(rerr) {
 		t.Fatalf("engine DecodeRegion(%s): %v", root, rerr)
 	}
-	decOK := ok && !rep.Malformed && !tablewire.Refused(err)
-	regOK := rok && !rrep.Malformed && !tablewire.Refused(rerr)
-	if decOK != regOK || rep.Malformed != rrep.Malformed {
+	decOK := ok && !rep.Refused && !tablewire.Refused(err)
+	regOK := rok && !rrep.Refused && !tablewire.Refused(rerr)
+	if decOK != regOK || rep.Refused != rrep.Refused {
 		t.Fatalf("engine Decode and DecodeRegion disagree on %s: decode=(%v,%+v) region=(%v,%+v)", root, decOK, rep, regOK, rrep)
 	}
-	return decOK, fmt.Sprintf("malformed=%t u=%d k=%d w=%d c=%d d=%d b=%d",
-		rep.Malformed, rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, rep.BlobShared)
+	return decOK, fmt.Sprintf("malformed=%t u=%d w=%d", rep.Refused, rep.Unknown, rep.Widened)
 }
 
 func TestLuaOrphanCycleAndReplacedMapEntryVectors(t *testing.T) {

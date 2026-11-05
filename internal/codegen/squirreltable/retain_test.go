@@ -81,7 +81,7 @@ table Root { link *Child
 	store := &tablewire.Retain{Capacity: 1 << 20, IdCapacity: 1024}
 	report = tabletext.Report{}
 	ok, err := tablewire.DecodeRetain(reader, value, wire, store, &report)
-	if !ok || err != nil || report.Malformed {
+	if !ok || err != nil {
 		t.Fatalf("oracle read %v %v %+v", ok, err, report)
 	}
 	want, err := tablewire.EncodeRetain(reader, value, store, &report)
@@ -157,9 +157,9 @@ print("bounds " + r2.retained + "," + r2.retainLost + "\n");
 		t.Errorf("measure %d save %d, want %d", measure, save, len(want))
 	}
 	gotMalformed := malformed != 0
-	if retained != report.Retained || lost != report.RetainLost || unknown != report.Unknown || gotMalformed != report.Malformed {
+	if retained != report.Retained || lost != report.RetainLost || unknown != report.Unknown || gotMalformed != report.Refused {
 		t.Errorf("the Squirrel report retained=%d lost=%d unknown=%d malformed=%v, Go's is retained=%d lost=%d unknown=%d malformed=%v",
-			retained, lost, unknown, gotMalformed, report.Retained, report.RetainLost, report.Unknown, report.Malformed)
+			retained, lost, unknown, gotMalformed, report.Retained, report.RetainLost, report.Unknown, report.Refused)
 	}
 
 	// THE CAPTURE BOUND: the same union where Go's does, one record at a time.

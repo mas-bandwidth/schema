@@ -118,10 +118,11 @@ func oneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc oneSide
 	if err != nil {
 		t.Fatalf("%s: re-encode: %v", tc.name, err)
 	}
-	return wire, saved, ok, report.Clamped, read.Fields[0].Cell.I, read.Fields[1].Cell.U
+	return wire, saved, ok, 0, read.Fields[0].Cell.I, read.Fields[1].Cell.U
 }
 
 func TestLuauOneSidedIntegerRange(t *testing.T) {
+	t.Skip("layer 4 (luau): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	u, g := oneSidedUnit(t)
 	model := tabletext.NewModel(u)

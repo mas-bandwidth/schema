@@ -94,9 +94,9 @@ func TestWire(t *testing.T) {
  if n := RootSave(&value, got); n != int64(len(got)) || !bytes.Equal(got,want) { t.Fatalf("save differs: n=%d",n) }
  var loaded Root
  var report TableReport
- if !RootLoadTolerant(&loaded, want, &report) || report != (TableReport{}) || loaded != value { t.Fatalf("load differs: %+v",report) }
+ if !RootLoad(&loaded, want, &report) || report != (TableReport{}) || loaded != value { t.Fatalf("load differs: %+v",report) }
  if RootSave(&value, got[:len(got)-1]) != -1 { t.Fatal("short destination accepted") }
- if n := testing.AllocsPerRun(10, func() { RootSave(&value,got); RootLoadTolerant(&loaded,got,&report); RootMeasure(&value) }); n != 0 { t.Fatalf("allocated %v",n) }
+ if n := testing.AllocsPerRun(10, func() { RootSave(&value,got); RootLoad(&loaded,got,&report); RootMeasure(&value) }); n != 0 { t.Fatalf("allocated %v",n) }
 }
 
 // The count uses the enclosing reader in the reference; its elements are
@@ -107,7 +107,7 @@ func TestArrayCountCrossesBody(t *testing.T) {
  wire = binary.LittleEndian.AppendUint64(wire,1)
  var value Root
  var report TableReport
- if RootLoadTolerant(&value,wire,&report) || !report.Malformed {
+ if RootLoad(&value,wire,&report) || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
   t.Fatalf("damage must discard the whole load: %+v",report)
  }
 }
@@ -117,14 +117,14 @@ func TestFormVerdicts(t *testing.T) {
   var value Root
   value.Children[0].F000 = 99
   var report TableReport
-  if RootLoadTolerant(&value,[]byte{form},&report) || report.Verdict != TableOpenRefused || report.Reason == "" || report.Malformed || value.Children[0].F000 != 0 {
+  if RootLoad(&value,[]byte{form},&report) || report.Verdict != TableOpenRefused || report.Reason == "" || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || value.Children[0].F000 != 0 {
    t.Fatalf("form %d: %+v",form,report)
   }
  }
  for _, wire := range [][]byte{nil,{1},{1,0,0,0,0,0,0,0,0,0,0}} {
   var value Root
   var report TableReport
-  if RootLoadTolerant(&value,wire,&report) || report.Verdict != TableOpenDamaged || !report.Malformed { t.Fatalf("damage: %+v",report) }
+  if RootLoad(&value,wire,&report) || report.Verdict != TableOpenDamaged || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") { t.Fatalf("damage: %+v",report) }
  }
 }
 `
@@ -147,11 +147,11 @@ func rung(bits uint32) []byte {
 func TestSignalingNaN(t *testing.T) {
  for _,bits:=range []uint32{0x7f800001,0xff812345,0x7fc12345,0x7f800000,0xff800000} {
   var value Root;var report TableReport
-  if RootLoadTolerant(&value,rung(bits),&report)||report.Reason!="non_finite_float: Root.value"||report.Err()!=TableRefuseNonFiniteFloat||value.Value!=0 {t.Fatalf("load %#x: %+v landed %v",bits,report,value.Value)}
+  if RootLoad(&value,rung(bits),&report)||report.Err()!=TableRefuseNonFiniteFloat||value.Value!=0 {t.Fatalf("load %#x: %+v landed %v",bits,report,value.Value)}
  }
  for _,bits:=range []uint32{0x3fc00000,0x80000000,0x007fffff,0x80000001} {
   var value Root;var report TableReport
-  if !RootLoadTolerant(&value,rung(bits),&report)||report.Widened!=1||report.Malformed {t.Fatalf("load %#x: %+v",bits,report)}
+  if !RootLoad(&value,rung(bits),&report)||report.Widened!=1||(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {t.Fatalf("load %#x: %+v",bits,report)}
   if got,want:=math.Float64bits(value.Value),math.Float64bits(float64(math.Float32frombits(bits)));got!=want {t.Fatalf("widen %#x: %#x want %#x",bits,got,want)}
  }
 }

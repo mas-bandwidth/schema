@@ -1,10 +1,8 @@
 // TestSpecBlobPastSizeCapRefusesTheWire pins docs/SPEC-TABLES.md §3.1's blob
-// record and the size cap. The page said a blob past the cap was counted
-// malformed with each slot reading null and the root reading on; Go refuses the
-// whole wire instead (internal/codegen/gotable/regions.go:329 answers -2, so
-// the tolerant load at :340 returns nil), so the section must state that and
-// stop stating the stale sentence. The page is found the same way
-// compiler/docs_test.go finds it: from this package's directory.
+// record and the size cap: a blob past the cap refuses the whole wire, the
+// load returning nothing, and the section must not state the retired sentence
+// that counted it malformed with each slot reading null. The page is found the
+// same way compiler/docs_test.go finds it: from this package's directory.
 package compiler
 
 import (
@@ -44,7 +42,7 @@ func TestSpecBlobPastSizeCapRefusesTheWire(t *testing.T) {
 		"2^32 - 1",
 		"blob_over_size_cap",
 		"-2",
-		"both the strict and the tolerant load return nothing",
+		"the load refuses the same reason and returns nothing",
 	}
 	stales := []string{
 		"§11's derived-size cap",

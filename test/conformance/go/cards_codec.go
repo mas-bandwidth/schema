@@ -10,14 +10,14 @@ import "cards"
 func init() {
 	codecTable = append(codecTable,
 		regionRow("cards", "Card",
-			cards.CardLoadMeasure, cards.CardLoadTolerant, cards.CardMeasure, cards.CardSave,
+			cards.CardLoadMeasure, cards.CardLoad, cards.CardMeasure, cards.CardSave,
 			func(text []byte, r *cards.TableReport) (*cards.Card, []byte, bool) {
 				var b cards.CardBuilder
 				if !b.Init() {
 					return nil, nil, false
 				}
 				defer b.Shutdown()
-				ok := cards.CardFromJSONTolerant(&b, text, r)
+				ok := cards.CardFromJSON(&b, text, r)
 				if !b.Lock() {
 					return nil, nil, false
 				}
@@ -25,6 +25,6 @@ func init() {
 			},
 			cards.CardToJSONMeasure, cards.CardToJSON, cards.CardCookMeasure, cards.CardCookFrom,
 			func(r *cards.TableReport) report {
-				return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == cards.TableOpenRefused || r.NonFiniteFloat != ""}
+				return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 			}))
 }

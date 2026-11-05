@@ -5,6 +5,9 @@ const Go Backend = 1 << 3
 
 func init() {
 	define(Go,
+		Name{Name: "tableJSONUnknownRepeat", What: "repeated decoded unknown JSON key refusal"},
+		Name{Name: "tableRetainArmLevels", What: "retained union nesting validation"},
+		Name{Name: "tableRetainFrameLevels", What: "retained framing nesting validation"},
 		Name{Name: "tableCycleCheck", What: "linear stored-graph cycle validation"},
 		Name{Name: "tableCycleEdges", What: "linear stored-graph cycle validation"},
 		Name{Name: "tableCycleType", What: "linear stored-graph cycle validation"},
@@ -119,8 +122,6 @@ func init() {
 		Name{Name: "tableRegionCount", What: "unclamped authoring storage count"},
 		Name{Name: "tableExtentFieldEmpty", What: "unreached container refusal"},
 		Name{Name: "TableList", What: "unbounded container storage, framing and descriptor walks"},
-		Name{Name: "TableClampedField", What: "text lists and the array root (docs/SPEC-TABLES.md §2.13, §16.10)"},
-		Name{Name: "tableTextClamped", What: "text lists and the array root (docs/SPEC-TABLES.md §2.13, §16.10)"},
 		Name{Name: "tableJSONTextBytes", What: "a text list's total (docs/SPEC-TABLES.md §2.13)"},
 		Name{Name: "tableJSONTextTotalKeep", What: "a text list's total (docs/SPEC-TABLES.md §2.13)"},
 		Name{Name: "tableJSONWriteTextElement", What: "text lists and the array root (docs/SPEC-TABLES.md §2.13, §16.10)"},
@@ -135,7 +136,6 @@ func init() {
 		Name{Name: "tableTextExtentAdd", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
 		Name{Name: "tableTextExtentValue", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
 		Name{Name: "tableMapStoreKeyed", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
-		Name{Name: "tableTextMalformed", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
 		Name{Name: "tableJSONReadText", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
 		Name{Name: "TableExtentCarve", What: "unbounded container storage, framing and descriptor walks"},
 		Name{Name: "tableContainer", What: "unbounded container storage, framing and descriptor walks"},
@@ -210,7 +210,6 @@ func init() {
 		Name{Name: "tableStringTypeID", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableUtf16Valid", What: "wide text conversion"},
 		Name{Name: "tableUtf16UnitsValid", What: "wide text: the writer's check of the caller's own UTF-16 units (docs/FIXED-FORM-ALGORITHM.md §3.1)"},
-		Name{Name: "tableUtf16Clamp", What: "wide text conversion"},
 		Name{Name: "tableJSONWriteWString", What: "wide text conversion"},
 		Name{Name: "tableJSONWriteStringBody", What: "wide text conversion"},
 
@@ -237,6 +236,15 @@ func init() {
 		Name{Name: "TableOpenBodyStopped", What: "the form-1 wire runtime"},
 		Name{Name: "tableKindBytes", What: "the form-1 wire runtime"},
 		Name{Name: "tableOpen", What: "the form-1 wire runtime"},
+		Name{Name: "tableOpenChecked", What: "the form-1 wire runtime: open after the wire-alone check (docs/SPEC-TABLES.md §4)"},
+		Name{Name: "tableOpenAnswer", What: "the form-1 wire runtime: the open's refusal as a report reason"},
+		Name{Name: "tableRefused", What: "the form-1 wire runtime: a refused load names nothing (docs/SPEC-TABLES.md §4)"},
+		Name{Name: "tableWireVerify", What: "the wire-alone check over a file, with the caller's scratch for the node graph (docs/SPEC-TABLES.md §4)"},
+		Name{Name: "tableWireCheck", What: "the wire-alone check over every byte of a file (docs/SPEC-TABLES.md §4, §6.5)"},
+		Name{Name: "tableBinaryMaxDepth", What: "the binary nesting bound the wire-alone check holds (docs/SPEC-TABLES.md §4, binary_max_depth)"},
+		Name{Name: "tableWireUtf16Valid", What: "the wire-alone check: a wide string's code units pair (docs/SPEC-TABLES.md §4)"},
+		Name{Name: "tableWireBytesID", What: "the wire-alone check: the bytes kind's field id"},
+		Name{Name: "tableWireStringID", What: "the wire-alone check: the string kind's field id"},
 		Name{Name: "tableOpenFramed", What: "the form-1 wire runtime"},
 		Name{Name: "tableKindWidens", What: "the form-1 wire runtime"},
 		Name{Name: "tableUTF8Valid", What: "the form-1 wire runtime"},
@@ -381,7 +389,9 @@ func init() {
 		Name{Name: "TableRefuseAllocationFailed", What: "typed file and authoring refusal reasons"},
 		Name{Name: "TableRefuseWireDamaged", What: "damage while measuring a table file, separate from accelerator refusal clauses"},
 		Name{Name: "TableRefuseMalformed", What: "strict read refusal of a malformed table file (docs/SPEC-TABLES.md §6.5)"},
-		Name{Name: "TableRefuseClamped", What: "strict read refusal of a clamped table value (docs/SPEC-TABLES.md §6.5)"},
+		Name{Name: "TableRefuseOutOfRange", What: "read refusal of a table value past its declared domain (docs/SPEC-TABLES.md §4, §6.5)"},
+		Name{Name: "TableOutOfRange", What: "read refusal of a table value past its declared domain, naming the field (docs/SPEC-TABLES.md §4, §6.5)"},
+		Name{Name: "TableRefuseMissingRequired", What: "read refusal of a record lacking a | required field (docs/SPEC-TABLES.md §2.3)"},
 		Name{Name: "TableRefuseKindMismatch", What: "strict read refusal of a kind-mismatched table field (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableMissingRequired", What: "strict read refusal of a record lacking a | required field, naming it (docs/SPEC-TABLES.md §2.3)"},
 		Name{Name: "tableTruncatedMalformed", What: "strict read refusal of a short fixed file: malformed by class, truncated by name (docs/SPEC-TABLES.md §3.4, §6.5)"},
@@ -398,8 +408,6 @@ func init() {
 		Name{Name: "tableIntegrityHolds", What: "the integrity trailer's CRC-32C comparison, both forms (docs/SPEC-TABLES.md §2.14, §3.4)"},
 		Name{Name: "tableIntegritySeal", What: "the integrity trailer's append on write (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "TableRefuseNonFiniteFloat", What: "every read's and every writer's refusal of a NaN or an infinity in a float32/float64 (docs/SPEC-TABLES.md §3.3)"},
-		Name{Name: "tableNonFiniteFloat", What: "names a float32/float64 whose bits a read found to be a NaN or an infinity (docs/SPEC-TABLES.md §3.3)"},
-		Name{Name: "tableNonFiniteRefused", What: "a load's refusal of a non-finite float, naming it in Reason (docs/SPEC-TABLES.md §3.3)"},
 		Name{Name: "tableRetainedFloatName", What: "names a retained unknown float a read refused as non-finite (docs/SPEC-TABLES.md §3.3, §6.6)"},
 		Name{Name: "tableRefuseError", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableRegionSaveReason", What: "typed file and authoring refusal reasons"},
@@ -495,12 +503,12 @@ func init() {
 		Name{Name: "tableFixedRefuseHash", What: "the fixed form: a refusal that carries the file's hash and nothing else (§5.3)"},
 		Name{Name: "tableFixedSelect", What: "the fixed form: the header's hash selects a known layout, or refuses (§5.3)"},
 		// THE TEXT CONTENT REFUSALS (docs/SPEC-TABLES.md §4.12): the fixed form's
-		// three named checks over a text payload's USED units — the bounds pass
-		// counts a forged ordinal or union arm, and the text pass names the two
-		// content refusals for a narrow and a wide payload.
-		Name{Name: "tableFixedForgedBounds", What: "the fixed form's BOUNDS pass: count a forged ordinal or union arm"},
+		// named checks over a text payload's USED units, for a narrow and a wide
+		// payload.
 		Name{Name: "tableFixedTextIllFormed", What: "the fixed form: whether a text payload's USED units are well-formed (docs/SPEC-TABLES.md §4.12)"},
 		Name{Name: "tableFixedTextRefusal", What: "the fixed form: the text CONTENT refusal as a pre-scan of the plan's text entries (§4.12)"},
+		Name{Name: "tableFixedPresent", What: "the fixed form: the plan entry mark for an optional's present byte (§3.4, THE SLACK RULE)"},
+		Name{Name: "tableFixedDead", What: "the fixed form: whether a source offset lies in slack the pre-scan found (§3.4, THE SLACK RULE)"},
 		// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (docs/FIXED-FORM-ALGORITHM.md
 		// §5.3): one string constant per fixed-load refusal name, used by the
 		// emitted <T>FixedLoad in place of a literal so an adopter's

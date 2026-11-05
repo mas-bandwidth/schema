@@ -18,7 +18,7 @@ func TestFieldAndElementFileZeroNamesTheField(t *testing.T) {
 	if m.ReadValue(field(t, inst, "t"), []byte(`"a\u0000b"`), &r) {
 		t.Fatal("ReadValue accepted a zero in text")
 	}
-	if !r.Malformed || r.Reason != "text_holds_zero: Root.t" {
+	if !r.Refused || r.Reason != "text_holds_zero: Root.t" {
 		t.Fatalf("ReadValue report %+v, want Malformed with Reason text_holds_zero: Root.t", r)
 	}
 
@@ -26,7 +26,7 @@ func TestFieldAndElementFileZeroNamesTheField(t *testing.T) {
 	if m.ReadElement(field(t, inst, "list"), 0, []byte(`"a\u0000b"`), &er) {
 		t.Fatal("ReadElement accepted a zero in text")
 	}
-	if !er.Malformed || er.Reason != "text_holds_zero: Root.list" {
+	if !er.Refused || er.Reason != "text_holds_zero: Root.list" {
 		t.Fatalf("ReadElement report %+v, want Malformed with Reason text_holds_zero: Root.list", er)
 	}
 

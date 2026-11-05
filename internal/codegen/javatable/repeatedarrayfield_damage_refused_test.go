@@ -46,7 +46,7 @@ func TestJavaFixRepeatedArrayFieldDamageRefused(t *testing.T) {
 			}
 			u := unitFromDir(t, filepath.Join(repo, tc.unit))
 			oracle := goOracleLoadout(t, u, tc.root, wire)
-			if !oracle.report.Malformed {
+			if !oracle.report.Refused {
 				t.Fatalf("oracle did not report malformed; this mutant does not pin the cause")
 			}
 			if leg := javaLoadout(t, u, tc.root, wire); !leg.report.malformed {

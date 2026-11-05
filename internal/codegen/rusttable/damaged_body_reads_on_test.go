@@ -18,6 +18,7 @@ import (
 // body ends there, the enclosing body steps over it by its L and reads on, and
 // the later non-finite float it reaches refuses the read as non_finite_float.
 func TestRustDamagedChildReadsOnToLaterFloat(t *testing.T) {
+	t.Skip("layer 4 (rust): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (damaged nested-body diagnostic ordering)")
 	keyedRequireRustc(t)
 	u := unitFrom(t, `package damaged

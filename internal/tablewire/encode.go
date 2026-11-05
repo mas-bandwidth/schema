@@ -24,6 +24,16 @@ import (
 // that order. No magic, no content hash, no protocol id, no length prefix
 // around the whole.
 func Encode(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
+	// A WRITER REFUSES A VALUE OUTSIDE ITS DECLARATION (docs/SPEC-TABLES.md
+	// §5): it never clamps and never truncates (tabletext.CheckValue).
+	if err := m.CheckFileValue(inst); err != nil {
+		return nil, err
+	}
+	if FixedRoot(m, inst.Def) {
+		// A FIXED ROOT IS WRITTEN AS FORM 3 (docs/SPEC-TABLES.md §3.4): the
+		// bytes the reference's <T>FixedSave writes, never form 1
+		return EncodeFixed(m, inst)
+	}
 	out, _, err := encodeWith(m, inst, nil)
 	return out, err
 }
