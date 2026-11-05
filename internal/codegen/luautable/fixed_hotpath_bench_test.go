@@ -1,27 +1,29 @@
 package luautable_test
 
-// THE QUIET-BENCH EVIDENCE (linux x86-64, pinned Luau 0.741). This is the
-// committed form of the numbers the card report must carry: the exact command,
-// the host load before and during (the accepted quiet hetzner1 run), and both
+// THE QUIET-BENCH EVIDENCE (linux x86-64, 16 cores, pinned Luau 0.741, live
+// C++ fixed-form oracle). The committed form of the numbers the card report
+// carries: the exact command, the host load before and during, and both
 // before/after tables.
 //
-// Command:
-//   nice -n 19 go test -count=1 -timeout 600s -v \
-//     ./internal/codegen/luautable/ -run TestLuauFixedHotPathBenchEvidence
-// Load average (1m): before 1.50; during, peak 1.09.
+// Command (SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1):
+//   benchslot -- go test -count=1 -v -timeout 600s \
+//     ./internal/codegen/luautable/ -run '^TestLuauFixedHotPathBenchEvidence$'
+// Load average (1m/5m/15m): before 2.83/2.64/2.00 (other work, under half the
+// cores); during, sampled every 5 s, 2.27..2.83.
 //
 // fixed8 (signed-integers): the baseline fixture schema_fixed_before.luau
-// versus the current runtime, median ops/s across 8 paired samples,
-//   read:       before 293074 -> after 291685
-//   write:      before 273370 -> after 268638
-//   round_trip: before 137972 -> after 136321
-// The differences (-0.5%..-1.7%) are well within noise, so the width dispatch
-// is not measurably slower.
+// (sha256 60ed6ecb, the runtime before the width-16 change) versus the
+// current runtime, median ops/s across 8 interleaved pairs [min, max],
+//   read:       before 302934 [284236, 305780] -> after 302176 [294934, 305036]  -0.25%
+//   write:      before 278679 [268607, 283862] -> after 279521 [263393, 283164]  +0.30%
+//   round_trip: before 142885 [132555, 145379] -> after 141854 [136107, 144163]  -0.72%
+// Every delta is inside the 3.3-9.0% spread of either side, so the width
+// dispatch is not measurably slower.
 //
 // fixed16 (signed-128 / unsigned-128): absolute ops/s, median of 8 runs; the
 // old half-width read is not a valid 16-byte baseline, so these stand alone,
-//   signed-128    read 539718  write 640055  round_trip 282824
-//   unsigned-128  read 538371  write 641073  round_trip 286368
+//   signed-128    read 556309  write 656667  round_trip 283064
+//   unsigned-128  read 530599  write 656135  round_trip 289657
 
 import (
 	"crypto/sha256"
