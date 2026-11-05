@@ -169,7 +169,7 @@ func TestSquirrelCarriesWideTableKinds(t *testing.T) {
 		}
 		val := model.New(st)
 		var rep tabletext.Report
-		if ok, err := tablewire.DecodeFileForm(model, val, wireBytes, &rep); err != nil || !ok || rep.Malformed || rep.Refused {
+		if ok, err := tablewire.Decode(model, val, wireBytes, &rep); err != nil || !ok || rep.Malformed || rep.Refused {
 			t.Fatalf("%s: tablewire.Decode failed (ok=%v err=%v report=%+v)", in.name, ok, err, rep)
 		}
 		jsonBytes, err := model.Write(val)

@@ -202,7 +202,7 @@ func TestTheMasksWidth(t *testing.T) {
 	if want := 1 + (8+2*v.RefBits()+3+7)/8; len(message) != want {
 		t.Errorf("a masked message is %d bytes, three bits at the mask says %d", len(message), want)
 	}
-	file, err := fileEncode(model, masked)
+	file, err := tablewire.Encode(model, masked)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,13 +219,13 @@ func TestTheMasksWidth(t *testing.T) {
 	// A BIT ABOVE W SURVIVES A FILE ROUND TRIP AND NOT A MESSAGE ONE
 	appended := model.New(loadout)
 	setU64(t, appended, "perks", (1<<3)|1)
-	fileWire, err := fileEncode(model, appended)
+	fileWire, err := tablewire.Encode(model, appended)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fromFile := model.New(loadout)
 	var fileReport tabletext.Report
-	if ok, err := fileDecode(model, fromFile, fileWire, &fileReport); err != nil || !ok || fileReport.Malformed {
+	if ok, err := tablewire.Decode(model, fromFile, fileWire, &fileReport); err != nil || !ok || fileReport.Malformed {
 		t.Fatalf("the file with the appended bit did not read: %v %+v", err, fileReport)
 	}
 	if instU64(t, fromFile, "perks") != (1<<3)|1 {

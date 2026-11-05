@@ -55,7 +55,7 @@ func TestCookWriteFixturesAreTheToolsBytes(t *testing.T) {
 				{cw.Little, false, "little-endian"},
 				{cw.Big, true, "big-endian"},
 			} {
-				cooked, _, report, err := fileCook(u.c, unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
+				cooked, _, report, err := u.c.Cook(unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
 				if err != nil {
 					t.Errorf("%s: cook: %v", arm.name, err)
 					continue

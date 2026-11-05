@@ -113,12 +113,12 @@ func issue710Wire(body []byte, ids ...uint64) []byte {
 
 func TestIssue710TableRecovery(t *testing.T) {
 	src := `package p
- fixed table Text { label string(32) = "untitled"; past int32 }
- fixed table Element { value int32 = 7 }
- fixed table Rows { items [..2]Element; past int32 }
+ table Text { label string(32) = "untitled"; past int32 }
+ table Element { value int32 = 7 }
+ table Rows { items [..2]Element; past int32 }
  table Mapping { items map[uint32]Element; past int32 }
  enum Key { First, Second }
- fixed table Keyed { items [Key]Element; past int32 }
+ table Keyed { items [Key]Element; past int32 }
  `
 	// The grammar terminates fields by newlines rather than semicolons.
 	u := unitFromSource(t, strings.ReplaceAll(src, "; ", "\n"))
@@ -156,7 +156,7 @@ func TestIssue710TableRecovery(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			v := m.New(u.Tables[tc.root])
 			var r tabletext.Report
-			ok, err := tablewire.DecodeFileForm(m, v, tc.wire, &r)
+			ok, err := tablewire.Decode(m, v, tc.wire, &r)
 			if ok || err != nil || !r.Malformed {
 				t.Fatalf("damage must discard the whole load: ok=%v err=%v report=%+v", ok, err, r)
 			}

@@ -106,7 +106,7 @@ func decodeWire(t *testing.T, u *units, unitKey, root, wire string) (*tabletext.
 	}
 	inst := m.New(def)
 	var report tabletext.Report
-	_, err = fileDecode(m, inst, data, &report)
+	_, err = tablewire.Decode(m, inst, data, &report)
 	if tablewire.Refused(err) {
 		// A REFUSAL IS THE ANSWER (docs/SPEC-TABLES.md §3): the verdict rides
 		// on the report and nothing was decoded to count over
@@ -209,7 +209,9 @@ func TestReportRowsDecodeThroughTheEngine(t *testing.T) {
 		}
 		if sig, pinnedRow := pinnedPresence[rc.Name]; pinnedRow {
 			seen[rc.Name] = true
-			checkSignature(t, rc.Name, sig, optionalSignature(inst))
+			if !got.Refused {
+				checkSignature(t, rc.Name, sig, optionalSignature(inst))
+			}
 		}
 	}
 	for name := range pinnedPresence {

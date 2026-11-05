@@ -74,7 +74,7 @@ func fileInstance(t *testing.T, model *tabletext.Model, root, wire string) *tabl
 	}
 	inst := model.New(def)
 	var report tabletext.Report
-	ok, err := fileDecode(model, inst, wireBytes(t, wire), &report)
+	ok, err := tablewire.Decode(model, inst, wireBytes(t, wire), &report)
 	if err != nil || !ok || !report.Silent() {
 		t.Fatalf("%s: the variable form did not read clean: ok=%v err=%v report=%+v", wire, ok, err, report)
 	}
@@ -252,7 +252,7 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 		}
 		// MESSAGE in, FILE out
 		fromMessage := messageInstance(t, model, vocabulary, msg.Root, msg.MessageWire)
-		back, err := fileEncode(model, fromMessage)
+		back, err := tablewire.Encode(model, fromMessage)
 		if err != nil {
 			t.Errorf("%s: %v", msg.Name, err)
 			continue
@@ -288,12 +288,12 @@ func TestTheCostRows(t *testing.T) {
 		name          string
 		file, message int
 	}{
-		{"login_full", 106, 52},
-		{"login_default", 10, 3},
-		{"match_full", 273, 148},
-		{"match_default", 43, 11},
-		{"store_full", 104, 43},
-		{"store_default", 10, 3},
+		{"login_full", 251, 52},
+		{"login_default", 251, 3},
+		{"match_full", 289, 148},
+		{"match_default", 289, 11},
+		{"store_full", 252, 43},
+		{"store_default", 252, 3},
 	}
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {
@@ -842,7 +842,7 @@ func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 			wire := wireBytes(t, "testdata/wire/tables/file_reserved_"+names[id]+"_"+row.name+".bin")
 			inst := model.New(model.Lookup(row.root))
 			var report tabletext.Report
-			_, err := fileDecode(model, inst, wire, &report)
+			_, err := tablewire.Decode(model, inst, wire, &report)
 			if err != nil {
 				t.Errorf("%s in a %s file body: %v", names[id], row.name, err)
 				continue

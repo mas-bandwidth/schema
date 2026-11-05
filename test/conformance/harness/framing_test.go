@@ -105,7 +105,7 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 		}
 		inst := model.New(def)
 		var report tabletext.Report
-		_, err = fileDecode(model, inst, data, &report)
+		_, err = tablewire.Decode(model, inst, data, &report)
 		if err != nil && !tablewire.Refused(err) {
 			t.Errorf("%s: the engine errored: %v", fc.Name, err)
 			continue

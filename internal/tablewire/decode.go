@@ -34,7 +34,7 @@ func (e *FormRefusal) Error() string {
 // `malformed` in the report means the instance holds its declared defaults
 // and nothing the walk read.
 func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
-	return decodeWith(m, inst, data, report, nil, false, false)
+	return decodeWith(m, inst, data, report, nil, false)
 }
 
 // DecodeRegion models a load into a region sized by FileRegionMeasure. A
@@ -43,14 +43,14 @@ func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *t
 // cap then empties that collection and reports damage; a builder instead
 // refuses its partial value. The caller must honor a framing refusal first.
 func DecodeRegion(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
-	return decodeWith(m, inst, data, report, nil, true, false)
+	return decodeWith(m, inst, data, report, nil, true)
 }
 
 // decodeWith is Decode with RETENTION's state threaded through it
 // (docs/SPEC-TABLES.md §6.6). `rt` is nil for every plain read, and the three
 // names are ADDITIVE: nothing below reads a byte differently, counts an event
 // differently or places a value differently because retention is on.
-func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, region, fileForm bool) (bool, error) {
+func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, region bool) (bool, error) {
 	// A NON-FINITE FLOAT IS THIS READ'S OWN REFUSAL (docs/SPEC-TABLES.md
 	// §3.3): a name an earlier read left on a reused report neither refuses
 	// this one nor is lost by it.
@@ -59,7 +59,7 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 	priorMalformed := report.Malformed
 	missingBefore := report.MissingRequired
 	report.Malformed = false
-	ok, err := decodeWalk(m, inst, data, report, rt, region, fileForm)
+	ok, err := decodeWalk(m, inst, data, report, rt, region)
 	if report.MissingRequired != missingBefore {
 		m.Clear(inst)
 		if rt != nil {
@@ -93,8 +93,8 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 	return ok, err
 }
 
-func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, region, fileForm bool) (bool, error) {
-	if !fileForm && FixedRoot(m, inst.Def) {
+func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, region bool) (bool, error) {
+	if FixedRoot(m, inst.Def) {
 		// A READER THAT EXPECTS A FIXED TABLE REFUSES EVERY OTHER FORM, BY
 		// NAME (docs/SPEC-TABLES.md §3.4): form 3 is read, and a form-1 file
 		// is previous_form with nothing decoded
