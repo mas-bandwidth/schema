@@ -74,7 +74,16 @@ func t06C7(t *testing.T) {
 	if !strings.Contains(body, "value.v = 0;") || !strings.Contains(body, "value.v = 200;") {
 		t.Errorf("C7 the clamp assigns the DECLARED ends, not a storage bound")
 	}
-	if got := strings.Count(body, "report.clamped++"); got != 2 {
+	// v's own clamp: from its read to the next field's (the pair also carries
+	// vals and u for the writer's-range vectors, each with its own clamps)
+	v := body
+	if i := strings.Index(v, "value.v = view."); i >= 0 {
+		v = v[i:]
+	}
+	if i := strings.Index(v, "value.vals"); i >= 0 {
+		v = v[:i]
+	}
+	if got := strings.Count(v, "report.clamped++"); got != 2 {
 		t.Errorf("C7 a range with two live ends counts exactly two clamps, got %d", got)
 	}
 }

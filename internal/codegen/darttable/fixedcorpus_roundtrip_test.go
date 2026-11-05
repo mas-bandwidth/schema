@@ -7,7 +7,7 @@ package darttable
 // §3.1: the write is a template and a store, and the cell stores what the
 // record held; docs/SPEC-TABLES.md §3: no float is canonicalised).
 //
-// FOUR FILES ARE NOT IDENTITY ROWS, AND EACH SAYS WHY BY CITATION. Their bytes
+// FIVE FILES ARE NOT IDENTITY ROWS, AND EACH SAYS WHY BY CITATION. Their bytes
 // hold a value the reader's own declaration does not, so the standard asks the
 // read to CLAMP it, or the file was written by an OLDER writer whose layout the
 // rewrite (always in the reader's own layout) does not restore. For those the
@@ -34,6 +34,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -333,6 +334,74 @@ func fixedCorpusForgedAim(t *testing.T, corpus, file string) (int, uint32) {
 	}
 	t.Fatalf("the manifest carries no forged aim for %s", file)
 	return 0, 0
+}
+
+// The shared writer's-range vectors (internal/fixedvector.WriterRange): an
+// OLD writer's bytes with one ranged cell forged past that writer's range,
+// inside the NEW reader's. It clamps to the WRITER's range and counts once;
+// the manifest's `expect=` says what lands, and the rewrite is in the
+// reader's own layout.
+func init() {
+	for _, vec := range fixedvector.WriterRange {
+		fixedCorpusContracts[vec.File] = fixedCorpusContract{
+			reader: "VNEW_" + vec.Row, older: []string{"VOLD_" + vec.Row}, clamped: 1,
+			cite: "docs/FIXED-FORM-ALGORITHM.md §4.5 (a ranged value, scalar or fixed-array element, clamps to the writer's range for its lineage entry, compared in its own type)",
+			expect: func(t *testing.T, corpus string, old []byte) []byte {
+				return fixedCorpusWriterRangeHostile(t, corpus, vec, old)
+			},
+		}
+	}
+}
+
+// fixedCorpusWriterRangeHostile is the rewrite of a writer's-range vector:
+// the OLD file restamped with the NEW reader's layout and hash (the header's
+// hash, the layout bytes, each record's hash), and the forged cell set to
+// what the manifest's `expect=` says lands. The clamp count the contract row
+// asserts is checked against `expect=` here too.
+func fixedCorpusWriterRangeHostile(t *testing.T, corpus string, vec fixedvector.Vector, old []byte) []byte {
+	t.Helper()
+	want, err := fixedvector.Read(corpus, vec.File)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want.Clamped != 1 {
+		t.Fatalf("the contract row counts 1 clamp and the manifest's expect= %d", want.Clamped)
+	}
+	landed, err := want.Int(want.ForgedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := versionRoot(t, versionSchema(t, "VNEW_"+vec.Row))
+	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+	hash := ir.TableFixedLayoutHash(layout, st)
+	head := int(ir.TableFixedHeaderBytes)
+	if len(old) < head+4 || int(binary.LittleEndian.Uint32(old[head:])) != len(layout) {
+		t.Fatalf("%s: the old layout is not the new one's length %d", vec.File, len(layout))
+	}
+	out := slices.Clone(old)
+	binary.LittleEndian.PutUint64(out[8:], hash)
+	copy(out[head+4:], layout)
+	record := 8 + int(fixedTypeBytes(st))
+	first := head + 4 + len(layout)
+	if (len(out)-first)%record != 0 {
+		t.Fatalf("%s: %d record bytes are not whole %d-byte records", vec.File, len(out)-first, record)
+	}
+	for at := first; at < len(out); at += record {
+		binary.LittleEndian.PutUint64(out[at:], hash)
+	}
+	field := strings.TrimPrefix(want.ForgedPath, "r0.")
+	field, _, _ = strings.Cut(field, "[")
+	width := ir.TableFixedStorageBytes(fixedCorpusField(t, "VNEW_"+vec.Row, field).Type)
+	at := int(want.ForgedAt)
+	switch width {
+	case 4:
+		binary.LittleEndian.PutUint32(out[at:], uint32(landed))
+	case 8:
+		binary.LittleEndian.PutUint64(out[at:], uint64(landed))
+	default:
+		t.Fatalf("%s: the forged %s is %d bytes wide", vec.File, field, width)
+	}
+	return out
 }
 
 // fixedCorpusNewWithAim is the reference's NEW-generation file — the reader's

@@ -32,6 +32,12 @@
 -- are written in ASCENDING KEY ORDER, the order the save numbers them in and
 -- a cook's Find searches (§2.8, §7.4).
 --
+-- An UNBOUNDED TEXT value or key (§2.13.1) rides in the same extent: a blob
+-- record (u32 length, u32 zero, the bytes, a zero byte) at eight-byte
+-- alignment, rounded to the region's alignment, carved where the walk meets
+-- its slot; the slot is the self-relative delta to it, and an empty string's
+-- slot is null.
+--
 -- A float whose bits are a NaN or an infinity is refused as non_finite_float
 -- naming the field (§3.3); a reference the numbering does not carry is
 -- refused as unnumbered_reference, a data cycle as cycle; a map whose keys
@@ -151,12 +157,21 @@ local unionExtent: { [string]: boolean } = {}
 local hasExtentRecord: any
 local hasExtentUnion: any
 
--- a by-value container beneath a field or an element: a nested record or a
--- union whose own storage holds a list
+-- an unbounded text (§2.13.1): a field or a `?` element's value (text), or a
+-- plain text list's element (str at bound 0, as table_cookread.moo reads it)
+local function unboundedText(e: any): boolean
+	return e.s == "text" or (e.s == "str" and not e.wide and (e.bound or 0) == 0)
+end
+
+-- a by-value container beneath a field or an element: a nested record, a
+-- union whose own storage holds a list, or an unbounded text's blob record
 local function fieldExtent(fd: any): boolean
 	local e = if fd.s == "arr" then fd.e else fd
 	if e == nil then
 		return false
+	end
+	if unboundedText(e) then
+		return true
 	end
 	if e.s == "tab" then
 		return hasExtentRecord(S.lookup(e.t))
@@ -290,6 +305,9 @@ writeElement = function(ctx: any, owner: string, fd: any, e: any, at: number, w:
 		return writeRecord(ctx, d, at, x or d.new())
 	elseif s == "union" then
 		return writeUnion(ctx, e.t, at, x)
+	elseif unboundedText(e) then
+		-- the slot is the extent carve's, written beside its blob record
+		return true
 	elseif s == "str" then
 		return writeText(ctx, owner, fd, e, at, x)
 	end
@@ -351,11 +369,8 @@ writeField = function(ctx: any, owner: string, fd: any, l: any, base: number, v:
 		end
 		putUN(ctx, base + l.p[2], 4, n)
 	elseif s == "text" then
-		-- an unbounded text is a blob node no walk numbers (§2.13): only null rides
-		if v[slot] ~= nil then
-			return fail(ctx, "unnumbered_reference", owner, fd)
-		end
-		putNum64(ctx, at, 0)
+		-- the slot is the extent carve's, written beside its blob record
+		return true
 	elseif s == "sblob" or s == "bblob" or s == "ptr" then
 		return writeRef(ctx, owner, fd, at, v[slot])
 	elseif s == "tab" then
@@ -431,9 +446,35 @@ end
 local carveRecord: any
 local carveField: any
 
--- one by-value element or nested value: the lists below it
-local function carveElement(c: any, owner: string, e: any, at: number, x: any): boolean
-	if e.s == "tab" then
+-- one unbounded text (§2.13.1): its blob record at eight-byte alignment,
+-- rounded to the region's alignment, and the slot's self-relative delta to
+-- it; an empty string's slot is null and takes no extent
+local function carveText(c: any, owner: string, fd: any, at: number, x: any): boolean
+	if x == nil or x == "" then
+		return true
+	end
+	if type(x) ~= "string" then
+		return fail(c.ctx, "invalid_value", owner, fd)
+	end
+	local n = #x
+	c.at = align_up(c.at, 8)
+	local start = c.at
+	c.at += align_up(8 + n + 1, C.regionAlign())
+	if c.write then
+		local ctx = c.ctx
+		local blob = c.extentAt + start
+		putNum64(ctx, at, blob - at)
+		putUN(ctx, blob, 4, n)
+		buffer.writestring(ctx.b, blob + 8, x, n)
+	end
+	return true
+end
+
+-- one by-value element or nested value: the lists below it, or its blob record
+local function carveElement(c: any, owner: string, fd: any, e: any, at: number, x: any): boolean
+	if unboundedText(e) then
+		return carveText(c, owner, fd, at, x)
+	elseif e.s == "tab" then
 		local d = S.lookup(e.t)
 		return carveRecord(c, at, d, x or d.new())
 	elseif e.s == "union" then
@@ -490,7 +531,7 @@ local function carveList(c: any, owner: string, fd: any, l: any, base: number, v
 	end
 	if fieldExtent(fd) then
 		for i = 1, count do
-			if not carveElement(c, owner, fd.e, c.extentAt + start + (i - 1) * size, val[i]) then
+			if not carveElement(c, owner, fd, fd.e, c.extentAt + start + (i - 1) * size, val[i]) then
 				return false
 			end
 		end
@@ -591,7 +632,7 @@ carveField = function(c: any, owner: string, fd: any, l: any, base: number, v: a
 	local at = base + l.p[1]
 	local val = v[fd.slot]
 	if fd.s ~= "arr" then
-		return carveElement(c, owner, fd, at, val)
+		return carveElement(c, owner, fd, fd, at, val)
 	end
 	local n = fd.bound
 	local live = n
@@ -599,7 +640,7 @@ carveField = function(c: any, owner: string, fd: any, l: any, base: number, v: a
 		live = math.min(v[fd.slot .. "Count"] or 0, n)
 	end
 	for i = 1, live do
-		if not carveElement(c, owner, fd.e, at + (i - 1) * l.elem, val[i]) then
+		if not carveElement(c, owner, fd, fd.e, at + (i - 1) * l.elem, val[i]) then
 			return false
 		end
 	end
@@ -608,7 +649,7 @@ carveField = function(c: any, owner: string, fd: any, l: any, base: number, v: a
 	-- one names bytes the region will not hold
 	for i = live + 1, n do
 		local probe = { ctx = c.ctx, write = false, extentAt = 0, at = 0 }
-		if not carveElement(probe, owner, fd.e, 0, val[i]) then
+		if not carveElement(probe, owner, fd, fd.e, 0, val[i]) then
 			return false
 		end
 		if probe.at ~= 0 then

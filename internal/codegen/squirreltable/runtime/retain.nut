@@ -51,7 +51,9 @@ local cleb = function(c) {
     else v = v | ((x & 0x7f) << shift);
     if ((x & 0x80) == 0) {
       if (i > 0 && x == 0) { c.bad = true; c.at = start; return 0; }
-      return v;
+      // load.nut's leb rule: every value at or past 2^62 is the sentinel, so
+      // a cursor plus a length is bounded and never wraps
+      return v >= 0x4000000000000000 ? 0x4000000000000000 : v;
     }
     shift += 7;
   }
