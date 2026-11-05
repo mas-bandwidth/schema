@@ -17,7 +17,7 @@ import (
 // disagreement is what the wire fuzz found (tables-go-wire-fuzz).
 func TestTimestampKindIsSkippedAtEightBytes(t *testing.T) {
 	t.Parallel()
-	m := model(t)
+	m := formOneModel(t)
 	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {

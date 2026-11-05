@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/big"
 	"os"
+	"strings"
 	"testing"
 	"unicode/utf16"
 
@@ -173,6 +174,15 @@ func covModel(t *testing.T, src string) *tabletext.Model {
 		t.Fatalf("check: %v", cerrs[0])
 	}
 	return tabletext.NewModel(u)
+}
+
+// covVariableTwin is a unit's VARIABLE TWIN: the same source with every
+// `fixed table` declared a variable `table`, which is where the variable form's
+// grammar is tested (§3). A declared fixed root is form 3's and refuses form 1
+// as previous_form (§3.4).
+func covVariableTwin(t *testing.T, src string) *tabletext.Model {
+	t.Helper()
+	return covModel(t, strings.ReplaceAll(src, "fixed table", "table"))
 }
 
 func covPlace(t *testing.T, m *tabletext.Model, table, text string) *tabletext.Instance {
@@ -616,18 +626,22 @@ func TestScalarKindsBothForms(t *testing.T) {
 	t.Parallel()
 	m := covModel(t, covScalarUnit)
 	src := covPlace(t, m, "Scalars", covScalarText)
-	root := m.Lookup("Scalars")
-	wire, err := Encode(m, src)
+	// THE FILE HALF IS THE VARIABLE FORM'S, so it reads at a variable root of
+	// the same shape: a declared fixed root is form 3's (§3.4)
+	fm := covVariableTwin(t, covScalarUnit)
+	froot := fm.Lookup("Scalars")
+	wire, err := Encode(fm, covPlace(t, fm, "Scalars", covScalarText))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if size, whole, refused := FileRegionMeasure(m.Unit, root, wire); !whole || refused || size <= 0 {
+	if size, whole, refused := FileRegionMeasure(fm.Unit, froot, wire); !whole || refused || size <= 0 {
 		t.Fatalf("FileRegionMeasure = %d, %v, %v", size, whole, refused)
 	}
 	var fileReport tabletext.Report
-	if ok, err := Decode(m, m.New(root), wire, &fileReport); !ok || err != nil || !fileReport.Silent() {
+	if ok, err := Decode(fm, fm.New(froot), wire, &fileReport); !ok || err != nil || !fileReport.Silent() {
 		t.Fatalf("file decode: %v %v %+v", ok, err, fileReport)
 	}
+	root := m.Lookup("Scalars")
 	var vocabulary Vocabulary
 	var announced tabletext.Report
 	if err := vocabulary.AnnounceRead(Announce(m.Unit), &announced); err != nil {
@@ -813,6 +827,9 @@ func TestRangeClampsBothForms(t *testing.T) {
 	t.Parallel()
 	sender := covModel(t, covRangeSender)
 	reader := covModel(t, covRangeReader)
+	// THE FILE HALF IS THE VARIABLE FORM'S, at variable roots of the same shapes
+	fileSender := covVariableTwin(t, covRangeSender)
+	fileReader := covVariableTwin(t, covRangeReader)
 	var vocabulary Vocabulary
 	var announced tabletext.Report
 	if err := vocabulary.AnnounceRead(Announce(sender.Unit), &announced); err != nil {
@@ -824,13 +841,13 @@ func TestRangeClampsBothForms(t *testing.T) {
 		`{"si":100,"ui":1,"sv":9,"bi":15,"f":0.5}`,
 	} {
 		src := covPlace(t, sender, "Root", text)
-		wire, err := Encode(sender, src)
+		wire, err := Encode(fileSender, covPlace(t, fileSender, "Root", text))
 		if err != nil {
 			t.Fatal(err)
 		}
 		var fileReport tabletext.Report
-		fileValue := reader.New(root)
-		if ok, err := Decode(reader, fileValue, wire, &fileReport); !ok || err != nil || fileReport.Clamped == 0 {
+		fileValue := fileReader.New(fileReader.Lookup("Root"))
+		if ok, err := Decode(fileReader, fileValue, wire, &fileReport); !ok || err != nil || fileReport.Clamped == 0 {
 			t.Fatalf("%s: file: %v %v %+v", text, ok, err, fileReport)
 		}
 		batch, err := EncodeMessage(sender, src)
