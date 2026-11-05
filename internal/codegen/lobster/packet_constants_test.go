@@ -11,24 +11,32 @@ import (
 // inferred from their use in a field bound or a golden packet.
 func TestLobsterPacketConstants(t *testing.T) {
 	t.Parallel()
-	if out := runPacketConstants(t, false); out != "constants ok\n" {
+	if out := runPacketConstants(t, ""); out != "constants ok\n" {
 		t.Fatalf("constant values: %q", out)
 	}
 }
 
 func TestLobsterPacketConstantsNegativeControl(t *testing.T) {
 	t.Parallel()
-	if out := runPacketConstants(t, true); out != "constant HalfTurn mismatch\n" {
-		t.Fatalf("mutated constant: %q", out)
+	for _, name := range []string{"HalfTurn", "MaxPositionUnits", "NumTeams"} {
+		t.Run(name, func(t *testing.T) {
+			if out := runPacketConstants(t, name); out != "constant "+name+" mismatch\n" {
+				t.Fatalf("mutated constant: %q", out)
+			}
+		})
 	}
 }
 
-func runPacketConstants(t *testing.T, sabotage bool) string {
+func runPacketConstants(t *testing.T, sabotage string) string {
 	t.Helper()
 	files := generateExamples(t)
-	if sabotage {
-		src := string(files["Wire.lobster"])
-		const anchor = "let HalfTurn = "
+	if sabotage != "" {
+		file := "Constants.lobster"
+		if sabotage == "HalfTurn" {
+			file = "Wire.lobster"
+		}
+		src := string(files[file])
+		anchor := "let " + sabotage + " = "
 		if strings.Count(src, anchor) != 1 {
 			t.Fatal("HalfTurn constant anchor must occur once")
 		}
@@ -37,7 +45,11 @@ func runPacketConstants(t *testing.T, sabotage bool) string {
 		if end < 0 {
 			t.Fatal("HalfTurn declaration has no newline")
 		}
-		files["Wire.lobster"] = []byte(src[:start] + "let HalfTurn = 181.0" + src[start+end:])
+		replacement := "0"
+		if sabotage == "HalfTurn" {
+			replacement = "181.0"
+		}
+		files[file] = []byte(src[:start] + anchor + replacement + src[start+end:])
 	}
 	dir := t.TempDir()
 	writeAll(t, dir, files)
