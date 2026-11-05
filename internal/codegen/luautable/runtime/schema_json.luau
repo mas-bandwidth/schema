@@ -1224,6 +1224,20 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
       literal(inp, "null")
       placed = placed + 1
       out[placed] = false
+    elseif fd.opt_text and (vs == 'z' or vs == 's') then
+      -- AN OPTIONAL TEXT LIST (docs/SPEC-TABLES.md §2.13, §16.2): an element
+      -- is a string, or null for an absent one, held as its element record
+      placed = placed + 1
+      local rec = zero_elem(T, fd.elem)
+      out[placed] = rec
+      local vf = T.Tables[fd.elem.target].fields[1]
+      if vs == 'z' then
+        literal(inp, "null")
+        rec[vf.name .. "_present"] = false
+      else
+        if not read_value(T, vf, inp, rec, vf.name, depth + 1, graph, report, false) then return false end
+        rec[vf.name .. "_present"] = true
+      end
     elseif vs ~= eshape then
       report.kindMismatch = report.kindMismatch + 1
       if not skip_value(inp, depth + 1, graph) then return false end
@@ -2424,6 +2438,19 @@ write_array = function(T: any, fd: any, val: any, depth: number, g: any, w: any)
     line(w, depth + 1)
     local x = val[i]
     if x == nil then x = zero_elem(T, fd.elem) end
+    if fd.opt_text then
+      -- AN OPTIONAL TEXT LIST (docs/SPEC-TABLES.md §2.13, §16.2): a present
+      -- element is its string and an absent one is null
+      local vf = T.Tables[fd.elem.target].fields[1]
+      if not x[vf.name .. "_present"] then
+        raw(w, "null")
+      else
+        local text = x[vf.name] or ""
+        if not narrow_text_ok(text, vf.bound or -1) then return false end
+        write_string(w, text)
+      end
+      continue
+    end
     if not write_value(T, fd.elem, x, depth + 1, g, w, true) then return false end
   end
   line(w, depth)
@@ -2585,7 +2612,8 @@ local function core_to(T: any, name: string, v: any): string?
   if g == nil then return nil end
   local w = W()
   if not write_table(T, desc, v, 0, g, w) then return nil end
-  if not desc.jsonArray then w.parts[#w.parts + 1] = "\n" end
+  -- every root's text ends in one newline, the array root's too (§16.10)
+  w.parts[#w.parts + 1] = "\n"
   return table.concat(w.parts)
 end
 
@@ -2678,7 +2706,10 @@ adapt_field = function(fd: any, owner: any): any
     if fd.fbits ~= nil then o.fixed_units = true end
     end
   elseif s == "float" then o.shape = "float"; o.f32 = fd.f32; o.lo = fd.lo; o.hi = fd.hi; o.res = fd.res
-  elseif s == "str" then o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
+  elseif s == "str" then
+    o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
+    -- an unbounded text list element rides as str with no bound (§2.13.1)
+    if not fd.wide and (fd.bound or 0) == 0 then o.bound = -1 end
   elseif s == "text" then o.shape = "string"; o.bound = -1
   elseif s == "bytes" then o.shape = "bytes"; o.bound = fd.bound
   elseif s == "enum" then
@@ -2698,6 +2729,7 @@ adapt_field = function(fd: any, owner: any): any
     o.keyed = fd.array == "keyed" and fd.keyvs or nil
     o.elem_kind = fd.ek
     o.str_elem = fd.e ~= nil and (fd.e.s == "str")
+    o.opt_text = fd.optText == true
     o.wide_elem = fd.e ~= nil and fd.e.wide == true
     if o.elem.shape == "int" then
       local names = flag_names(owner, fd)
@@ -2838,6 +2870,12 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
       local xi = x[i]
       if xi == nil and e.shape ~= "table" and e.shape ~= "union" and e.shape ~= "array" and e.shape ~= "map" then
         xi = zero_elem(A, e)
+      end
+      if e.shape == "string" and not e.wide then
+        -- a text list element is its bytes at their own length: it has no
+        -- Length companion to say where padding would end (§2.13)
+        out[i] = from_string(xi or "")
+        continue
       end
       out[i] = conv_to_lua(e, xi, A, memo)
     end

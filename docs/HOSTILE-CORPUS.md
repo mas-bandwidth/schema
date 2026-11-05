@@ -153,7 +153,7 @@ seed fails on every push and pull request.
 cited source must still exist in the checkout as a regular file, and every leaf
 file in the seed/vector trees below must be cited by the manifest, so a new fuzz
 crash or conformance vector cannot silently fall out of the corpus. The source
-trees are walked recursively and provenance cites the actual vector file (for a
+trees are walked recursively and provenance cites the actual vector file, and its expected-value golden where it has one (for a
 conformance vector, the case directory's `*.json`, not the directory itself), so
 the 131 `json-hostile` case subdirectories are inventoried too.
 

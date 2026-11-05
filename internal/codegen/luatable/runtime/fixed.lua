@@ -15,6 +15,7 @@ local F = {}
 
 local formByte = 3
 local maxRecordBytes = 65536
+local maxPlanEntries = 4096
 
 -- A FLOAT IN THE FIXED FORM IS FINITE (docs/SPEC-TABLES.md §3.3, §3.4): the
 -- record carries the bit pattern of a finite value, -0 and the subnormals
@@ -379,6 +380,9 @@ local function layout_tree(layout)
   if #layout < 4 then return nil end
   local count = string.unpack("<I4", layout, 1)
   if count == 0 or #layout ~= 4 + 17 * count then return nil end
+  if count > maxPlanEntries then
+    return { refusal = "plan_too_large", kind = 13, size = 0, children = {} }
+  end
   local i = 0
   local function parse()
     i = i + 1
@@ -470,7 +474,7 @@ end
 -- a field the older layout does not carry keeps its declared default, and a
 -- field both carry is read at the older size (docs/FIXED-FORM-ALGORITHM.md
 -- §5.2's PLAN: the writer's sizes, never the reader's).
-local function decode_old_table(T, name, node, buf, pos)
+local function decode_old_table(T, name, node, buf, pos, rep)
   local desc = T.Tables[name]
   if desc == nil then error("fixed: no descriptor for table " .. tostring(name)) end
   local v = T["New" .. name]()
@@ -495,26 +499,28 @@ local function decode_old_table(T, name, node, buf, pos)
           local present = buf:byte(cpos) ~= 0
           v[f.name .. "_present"] = present
           if present and child.children[1] ~= nil and compat_old(f, child.children[1]) then
-            v[f.name] = decode_old_value(T, f, child.children[1], buf, cpos + 1)
+            v[f.name] = decode_old_value(T, f, child.children[1], buf, cpos + 1, rep)
           end
         elseif compat_old(f, child) then
           -- THE PRESENT COMPANION THE READER GAINED IS TRUE for an old T (§5.9
           -- #40): the writer sent the value, so the ?T this reader declares is
           -- present.
           v[f.name .. "_present"] = true
-          v[f.name] = decode_old_value(T, f, child, buf, cpos)
+          v[f.name] = decode_old_value(T, f, child, buf, cpos, rep)
         end
       elseif compat_old(f, child) then
-        v[f.name] = decode_old_value(T, f, child, buf, cpos)
+        v[f.name] = decode_old_value(T, f, child, buf, cpos, rep)
       end
     end
   end
   return v
 end
 
-decode_old_value = function(T, d, node, buf, pos)
+decode_old_value = function(T, d, node, buf, pos, rep)
   local s = d.shape
   if s == "int" then
+    local w = d.timestamp and 8 or (d.bits and (d.bits <= 32 and 4 or 8) or d.width)
+    if rep and node.size < w then rep.widened = rep.widened + 1 end
     local signed = (node.kind >= 2 and node.kind <= 5) or d.timestamp
     return unpack_int(buf, pos, node.size, signed)
   elseif s == "wide" then
@@ -524,6 +530,8 @@ decode_old_value = function(T, d, node, buf, pos)
   elseif s == "float" then
     -- an older writer's float32 widens into a float64 field by the ordinary
     -- conversion, exact for every finite float32 (§3.3)
+    local w = d.f32 and 4 or 8
+    if rep and node.size < w then rep.widened = rep.widened + 1 end
     return (unpack_float(node.size == 4 or node.kind == 10, buf, pos))
   elseif s == "string" or s == "bytes" then
     local n = string.unpack("<i4", buf, pos)
@@ -543,6 +551,8 @@ decode_old_value = function(T, d, node, buf, pos)
     check_wstring(t)
     return t
   elseif s == "enum" then
+    local w = T.FixedEnums[d.enum] or 4
+    if rep and node.size < w then rep.widened = rep.widened + 1 end
     local raw = unpack_int(buf, pos, node.size, false)
     local var = raw ~= 0 and d.variants[raw] or nil
     if var ~= nil then
@@ -554,7 +564,7 @@ decode_old_value = function(T, d, node, buf, pos)
   elseif s == "flags" then
     return unpack_int(buf, pos, node.size, false)
   elseif s == "table" then
-    return decode_old_table(T, d.target, node, buf, pos)
+    return decode_old_table(T, d.target, node, buf, pos, rep)
   elseif s == "union" then
     local nArms = #node.children
     local w = (nArms <= 255 and 1) or (nArms <= 65535 and 2) or 4
@@ -565,7 +575,7 @@ decode_old_value = function(T, d, node, buf, pos)
       local armNode = node.children[tag]
       local arm = T.Unions[d.target].arms[tag]
       if armNode ~= nil and arm ~= nil and arm.field ~= nil and compat_old(arm.field, armNode) then
-        v[arm.slot] = decode_old_value(T, arm.field, armNode, buf, pos + w)
+        v[arm.slot] = decode_old_value(T, arm.field, armNode, buf, pos + w, rep)
       end
     end
     return v
@@ -581,7 +591,7 @@ decode_old_value = function(T, d, node, buf, pos)
     if node.kind == 16 or d.fixed then
       local n = es > 0 and math.floor(node.size / es) or 0
       for i = 1, n do
-        local ev = decode_old_value(T, d.elem, elem, buf, pos + (i - 1) * es)
+        local ev = decode_old_value(T, d.elem, elem, buf, pos + (i - 1) * es, rep)
         if ev == nil and d.elem.shape == "enum" then ev = false end
         t[i] = ev
       end
@@ -591,7 +601,7 @@ decode_old_value = function(T, d, node, buf, pos)
     local cap = es > 0 and math.floor((node.size - 4) / es) or 0
     if n < 0 or n > cap then error("count_over_bound") end
     for i = 1, n do
-      local ev = decode_old_value(T, d.elem, elem, buf, pos + 4 + (i - 1) * es)
+      local ev = decode_old_value(T, d.elem, elem, buf, pos + 4 + (i - 1) * es, rep)
       if ev == nil and d.elem.shape == "enum" then ev = false end
       t[i] = ev
     end
@@ -817,20 +827,21 @@ function F.load(T, name, buf, strict, cap)
   if recSize <= 8 or rest % recSize ~= 0 then error("truncated", 0) end
   local nRec = rest // recSize
   if cap ~= nil and nRec > cap then error("batch_too_large", 0) end
+  local rep = (entry ~= nil and entry.hash ~= fixed.hash) and { widened = 0 } or nil
   local out = {}
   for k = 1, nRec do
     local at = 21 + layoutLen + (k - 1) * recSize
     if string.unpack("<I8", buf, at) ~= hash then error("no_layout", 0) end
     local v
-    if entry ~= nil and entry.hash ~= fixed.hash then
-      v = decode_old_table(T, name, entry.tree, buf, at + 8)
+    if rep ~= nil then
+      v = decode_old_table(T, name, entry.tree, buf, at + 8, rep)
     else
       v = decode_table(T, name, buf, at + 8, rootSize)
     end
     if strict then strict_value(T, { shape = "table", target = name }, v) end
     out[k] = v
   end
-  return out, hash, layout
+  return out, hash, layout, rep and rep.widened or 0
 end
 
 -- F.prepare builds, once, every derived fact the fixed form reads from a

@@ -1,21 +1,38 @@
-package luatable
+package luatable_test
 
 import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+func init() {
+	if os.Getenv("LUA") != "" {
+		return
+	}
+	dist := filepath.Join("..", "..", "..", "dist", "lua-"+luarun.PinnedVersion, "src", "lua")
+	if _, err := os.Stat(dist); err == nil {
+		return
+	}
+	if p, err := exec.LookPath("lua"); err == nil {
+		_ = os.Setenv("LUA", p)
+	}
+}
 
 // TestLuaFixedProofSuiteValues runs all 49 contract-independent fixed-table
 // rows through the shared fixedproof value suite against the live C++ oracle.
 func TestLuaFixedProofSuiteValues(t *testing.T) {
+	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
 	fixedproof.RunValueSuite(t, luaFixedProofRunner{})
 }
@@ -24,6 +41,7 @@ func TestLuaFixedProofSuiteValues(t *testing.T) {
 // and the writer negative control across all 49 rows under a hard 2 GiB memory
 // ceiling.
 func TestLuaFixedProofSuiteNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
 	fixedproof.RunNegativeControlSuite(t, luaFixedProofRunner{})
 }
@@ -32,6 +50,7 @@ func TestLuaFixedProofSuiteNegativeControl(t *testing.T) {
 // (fixed-file-roundtrip and the 15 evolution/layout/plan/lineage/file rows)
 // through the shared fixedproof evolution suite.
 func TestLuaFixedProofEvolution(t *testing.T) {
+	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	fixedproof.RunEvolutionSuite(t, repo, luaFixedProofRunner{})
@@ -41,9 +60,10 @@ func TestLuaFixedProofEvolution(t *testing.T) {
 // back without an internal 4096 cap, and refuse only when the caller supplies a
 // smaller capacity.
 func TestLuaFixedBatch4097Roundtrip(t *testing.T) {
+	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table Point {\n    x int32 = 1\n    y int32 = 2\n}\n")
-	files, err := Generate(u)
+	files, err := luatable.Generate(u)
 	if err != nil {
 		t.Fatalf("luatable.Generate: %v", err)
 	}
@@ -69,7 +89,7 @@ assert(back[4097].x == 4097 and back[4097].y == -4097, "record 4097 mismatch")
 local ok, err = pcall(function() return T.FixedLoad("Point", wire, 4096) end)
 assert(not ok, "expected refusal for 4097 records into cap=4096, got ok")
 print("OK 4097")
-`, ModuleName(u))
+`, luatable.ModuleName(u))
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -85,13 +105,13 @@ func (luaFixedProofRunner) Name() string { return "lua" }
 
 func (luaFixedProofRunner) Save(t *testing.T, tc fixedproof.RowCase, u *ir.Unit) []byte {
 	t.Helper()
-	files, err := Generate(u)
+	files, err := luatable.Generate(u)
 	if err != nil {
 		t.Fatalf("%s: luatable.Generate: %v", tc.ID, err)
 	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
-	mod := ModuleName(u)
+	mod := luatable.ModuleName(u)
 	setup := luaSetupFor(tc.ID)
 	script := fmt.Sprintf(`local T = require(%[1]q)
 local r = {}
@@ -119,13 +139,13 @@ f:close()
 
 func (luaFixedProofRunner) LoadAndResave(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, wireBytes []byte) ([]byte, error) {
 	t.Helper()
-	files, err := Generate(u)
+	files, err := luatable.Generate(u)
 	if err != nil {
 		return nil, err
 	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
-	mod := ModuleName(u)
+	mod := luatable.ModuleName(u)
 	check := luaCheckFor(tc.ID)
 	script := fmt.Sprintf(`local T = require(%[1]q)
 local I = require("inputs")
@@ -149,14 +169,14 @@ f:close()
 
 func (luaFixedProofRunner) SaveMutated(t *testing.T, tc fixedproof.RowCase, u *ir.Unit) ([]byte, error) {
 	t.Helper()
-	files, err := Generate(u)
+	files, err := luatable.Generate(u)
 	if err != nil {
 		return nil, err
 	}
 	files["fixed.lua"] = patchLuaFixedWriterForMutation(t, tc.ID, files["fixed.lua"])
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
-	mod := ModuleName(u)
+	mod := luatable.ModuleName(u)
 	setup := luaSetupFor(tc.ID)
 	script := fmt.Sprintf(`local T = require(%[1]q)
 local r = {}
@@ -190,40 +210,90 @@ func patchLuaFixedWriterForMutation(t *testing.T, id string, runtime []byte) []b
 	return []byte(strings.Replace(s, anchor, repl, 1))
 }
 
-func (luaFixedProofRunner) LoadLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry, wireBytes []byte, cap int) (int, string, map[string]string, []byte) {
+func toLuaLineage(lineage map[string][]fixedproof.LineageEntry) map[string][]luatable.FixedLineageEntry {
+	if len(lineage) == 0 {
+		return nil
+	}
+	lmap := map[string][]luatable.FixedLineageEntry{}
+	for k, entries := range lineage {
+		for _, e := range entries {
+			lmap[k] = append(lmap[k], luatable.FixedLineageEntry{
+				Wire:    e.Wire,
+				Layout:  e.Layout,
+				Record:  e.Record,
+				Retired: e.Retired,
+				Reason:  e.Reason,
+			})
+		}
+	}
+	return lmap
+}
+
+func (luaFixedProofRunner) CheckLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry) string {
+	t.Helper()
+	files, err := luatable.GenerateLineage(u, toLuaLineage(lineage))
+	if err != nil {
+		t.Fatalf("luatable.GenerateLineage: %v", err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	mod := luatable.ModuleName(u)
+	script := fmt.Sprintf(`local T = require(%[1]q)
+local fixed = T.Fixed[%[2]q]
+if fixed == nil then
+  print("REFUSED no_fixed_root")
+  os.exit(0)
+end
+for _, entry in ipairs(fixed.known or {}) do
+  if not entry.tree then
+    print("REFUSED layout_malformed")
+    os.exit(0)
+  end
+  if entry.tree.refusal then
+    print("REFUSED " .. tostring(entry.tree.refusal))
+    os.exit(0)
+  end
+  if entry.tree.size <= 0 or entry.tree.size > 65536 or entry.record ~= 8 + entry.tree.size then
+    print("REFUSED layout_record_too_large")
+    os.exit(0)
+  end
+end
+print("OK")
+`, mod, root)
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", nil)))
+	if after, ok := strings.CutPrefix(out, "REFUSED "); ok {
+		return strings.TrimSpace(after)
+	}
+	return ""
+}
+
+func (luaFixedProofRunner) LoadLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry, wireBytes []byte, cap int) (int, string, map[string]string, []byte, fixedproof.LoadCounters) {
 	t.Helper()
 	var files map[string][]byte
 	var err error
-	if len(lineage) > 0 {
-		lmap := map[string][]FixedLineageEntry{}
-		for k, entries := range lineage {
-			for _, e := range entries {
-				lmap[k] = append(lmap[k], FixedLineageEntry{
-					Wire:    e.Wire,
-					Layout:  e.Layout,
-					Record:  e.Record,
-					Retired: e.Retired,
-					Reason:  e.Reason,
-				})
-			}
-		}
-		files, err = GenerateLineage(u, lmap)
+	if lmap := toLuaLineage(lineage); lmap != nil {
+		files, err = luatable.GenerateLineage(u, lmap)
 	} else {
-		files, err = Generate(u)
+		files, err = luatable.Generate(u)
 	}
 	if err != nil {
 		t.Fatalf("luatable.Generate: %v", err)
 	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
-	mod := ModuleName(u)
+	mod := luatable.ModuleName(u)
 	capArg := "nil"
 	if cap >= 0 {
 		capArg = fmt.Sprintf("%d", cap)
 	}
+	presentBool := root == "T" || root == "Outer"
 	script := fmt.Sprintf(`local T = require(%[1]q)
 local I = require("inputs")
-local ok, rows = pcall(function() return T.FixedLoad(%[2]q, I.wire, %[3]s) end)
+local present_bool = %[4]v
+local ok, rows, _, _, widened = pcall(function() return T.FixedLoad(%[2]q, I.wire, %[3]s) end)
 if not ok then
   local msg = tostring(rows)
   local colon = msg:match(": ([^:]+)$")
@@ -231,28 +301,104 @@ if not ok then
   print("REFUSED " .. msg)
   os.exit(0)
 end
-print("OK " .. tostring(#rows))
-local function dump_fields(prefix, tbl)
-  for k, v in pairs(tbl) do
-    local key = prefix .. "." .. tostring(k)
-    local vt = type(v)
-    if vt == "number" or vt == "boolean" or vt == "string" then
-      print("FIELD " .. key .. "=" .. tostring(v))
-    elseif vt == "table" then
-      dump_fields(key, v)
+print(string.format("OK %%d %%d", #rows, widened or 0))
+local dump_record, dump_value
+dump_value = function(d, v, p)
+  local s = d.shape
+  if s == "int" then
+    if not d.signed and d.width == 8 then
+      print("FIELD " .. p .. "=" .. string.format("%%u", v or 0))
+    else
+      print("FIELD " .. p .. "=" .. string.format("%%d", v or 0))
+    end
+  elseif s == "bool" then
+    print("FIELD " .. p .. "=" .. (v and "1" or "0"))
+  elseif s == "float" then
+    if d.f32 then
+      print("FIELD " .. p .. "=" .. string.format("0x%%08X", string.unpack("<I4", string.pack("<f", v or 0.0))))
+    else
+      print("FIELD " .. p .. "=" .. string.format("0x%%016X", string.unpack("<I8", string.pack("<d", v or 0.0))))
+    end
+  elseif s == "string" then
+    local str = v or ""
+    print("FIELD " .. p .. "=\"" .. str .. "\"")
+    print("FIELD " .. p .. "_length=" .. tostring(#str))
+  elseif s == "wstring" then
+    local arr = v or {}
+    print("FIELD " .. p .. "_length=" .. tostring(#arr))
+  elseif s == "bytes" then
+    local bs = v or ""
+    print("FIELD " .. p .. "_length=" .. tostring(#bs))
+    for idx = 1, #bs do
+      print("FIELD " .. p .. "[" .. tostring(idx - 1) .. "]=" .. tostring(string.byte(bs, idx)))
+    end
+  elseif s == "enum" then
+    local ord = 0
+    if v ~= nil and v ~= false then
+      for idx, var in ipairs(d.variants) do
+        if var[1] == v then ord = idx; break end
+      end
+    end
+    print("FIELD " .. p .. "=" .. tostring(ord))
+  elseif s == "flags" then
+    print("FIELD " .. p .. "=" .. string.format("%%u", v or 0))
+  elseif s == "table" then
+    dump_record(d.target, v, p)
+  elseif s == "union" then
+    local tag = (v and v.tag) or 0
+    print("FIELD " .. p .. ".type=" .. tostring(tag))
+    local un = T.Unions[d.target]
+    if tag > 0 and un ~= nil and un.arms[tag] ~= nil then
+      local arm = un.arms[tag]
+      if arm.field ~= nil then
+        dump_value(arm.field, v[arm.slot], p .. "." .. arm.slot)
+      end
+    end
+  elseif s == "array" then
+    local arr = v or {}
+    if d.fixed or d.keyed then
+      local n = d.bound or #d.keyed
+      for idx = 1, n do
+        dump_value(d.elem, arr[idx], p .. "[" .. tostring(idx - 1) .. "]")
+      end
+    else
+      print("FIELD " .. p .. "_count=" .. tostring(#arr))
+      for idx = 1, #arr do
+        dump_value(d.elem, arr[idx], p .. "[" .. tostring(idx - 1) .. "]")
+      end
+    end
+  end
+end
+dump_record = function(name, rec, prefix)
+  local desc = T.Tables[name]
+  if desc == nil or rec == nil then return end
+  for _, f in ipairs(desc.fields) do
+    local p = prefix .. "." .. f.name
+    if f.optional then
+      local pres = rec[f.name .. "_present"] == true
+      if present_bool then
+        print("FIELD " .. p .. "_present=" .. tostring(pres))
+      else
+        print("FIELD " .. p .. "_present=" .. (pres and "1" or "0"))
+      end
+      if pres then
+        dump_value(f, rec[f.name], p)
+      end
+    else
+      dump_value(f, rec[f.name], p)
     end
   end
 end
 for idx, r in ipairs(rows) do
   if idx <= 8 and type(r) == "table" then
-    dump_fields("r" .. tostring(idx - 1), r)
+    dump_record(%[2]q, r, "r" .. tostring(idx - 1))
   end
 end
 local re = T.FixedSave(%[2]q, rows)
 local f = io.open("resaved.bin", "wb")
 f:write(re)
 f:close()
-`, mod, root, capArg)
+`, mod, root, capArg, presentBool)
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -260,12 +406,13 @@ f:close()
 	fields := map[string]string{}
 	count := -1
 	reason := ""
+	var counters fixedproof.LoadCounters
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		if after, ok := strings.CutPrefix(line, "REFUSED "); ok {
-			return -1, strings.TrimSpace(after), fields, nil
+			return -1, strings.TrimSpace(after), fields, nil, fixedproof.LoadCounters{}
 		}
 		if after, ok := strings.CutPrefix(line, "OK "); ok {
-			fmt.Sscanf(after, "%d", &count)
+			fmt.Sscanf(after, "%d %d", &count, &counters.Widened)
 			reason = "ok"
 		} else if after, ok := strings.CutPrefix(line, "FIELD "); ok {
 			if k, v, ok := strings.Cut(after, "="); ok {
@@ -277,52 +424,91 @@ f:close()
 	if count >= 0 {
 		resaved, _ = os.ReadFile(filepath.Join(dir, "resaved.bin"))
 	}
-	return count, reason, fields, resaved
+	return count, reason, fields, resaved, counters
 }
 
 func (luaFixedProofRunner) SaveCustom(t *testing.T, u *ir.Unit, root string, scenario string) ([]byte, string) {
 	t.Helper()
-	files, err := Generate(u)
+	files, err := luatable.Generate(u)
 	if err != nil {
 		t.Fatalf("luatable.Generate: %v", err)
 	}
+	if scenario == "writing_slack_unzeroed" {
+		const anchor = "  parts[#parts + 1] = zeros(size - used)\n"
+		const planted = "  parts[#parts + 1] = string.rep(\"\\xaa\", size - used)\n"
+		s := string(files["fixed.lua"])
+		if strings.Count(s, anchor) != 1 {
+			t.Fatal("slack anchor not found in fixed.lua")
+		}
+		files["fixed.lua"] = []byte(strings.Replace(s, anchor, planted, 1))
+	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
-	mod := ModuleName(u)
+	mod := luatable.ModuleName(u)
 	var body string
 	switch scenario {
 	case "optional_absent_zeros":
 		body = fmt.Sprintf(`local r = { T.New%[1]s() }
-r[1].plain.a = 1; r[1].plain.b = 2
+r[1].plain.a = 11; r[1].plain.b = 22
 r[1].opt_present = false
-r[1].opt.a = 0x77777777; r[1].opt.b = 0x66666666
-local wire = T.FixedSave(%[1]q, r)
-local f = io.open("out.bin", "wb"); f:write(wire); f:close()
-print("OK")
+r[1].opt.a = 0x12345678; r[1].opt.b = 0x23456789
 `, root)
 	case "live_extents_base":
 		body = fmt.Sprintf(`local r = { T.New%[1]s() }
 r[1].arr = { "One" }
 r[1].opt_present = false
 r[1].tail = 77
-local wire = T.FixedSave(%[1]q, r)
-local f = io.open("out.bin", "wb"); f:write(wire); f:close()
-print("OK")
 `, root)
-	case "writing_slack_zeros":
+	case "writing_slack_batch", "writing_slack_unzeroed":
+		body = fmt.Sprintf(`local r = { T.New%[1]s(), T.New%[1]s() }
+r[2].arr = { 0x1122 }
+r[2].s = "A"
+r[2].b = "\x42"
+r[2].pick = { tag = 1, narrow = 7 }
+`, root)
+	case "writing_overcount":
 		body = fmt.Sprintf(`local r = { T.New%[1]s() }
-r[1].arr = { 0x1122 }
-r[1].s = "A"
-r[1].b = "\x42"
-r[1].pick = { tag = 1, narrow = 7 }
-local wire = T.FixedSave(%[1]q, r)
-local f = io.open("out.bin", "wb"); f:write(wire); f:close()
-print("OK")
+r[1].arr = { 1, 2, 3, 4 }
+`, root)
+	case "closure_small_42":
+		body = fmt.Sprintf(`local r = { T.New%[1]s() }
+r[1].x = 42
+`, root)
+	case "outer_nested":
+		body = fmt.Sprintf(`local r = { T.New%[1]s() }
+r[1].head = 7
+r[1].inner.a = 11; r[1].inner.b = "one"
+r[1].items[1].a = 10; r[1].items[1].b = "hi"
+r[1].items[2].a = 33; r[1].items[2].b = "six"
+r[1].maybe_present = true
+r[1].maybe.a = 44; r[1].maybe.b = "hi"
+r[1].tail = 9
+`, root)
+	case "w14_writer_offsets":
+		body = fmt.Sprintf(`local r = { T.New%[1]s() }
+r[1].a = 0xA1
+r[1].b = 0x0B0B0B0B
+r[1].inner.p = 0x1E1E1E1E
+r[1].inner.q = 0x2E2E
+r[1].opt_present = true
+r[1].opt = 0x0D0D0D0D
+r[1].arr = { 0x3E3E, 0x4E4E }
+r[1].s = "seven"
+r[1].tail = 0x7A7A7A7A
 `, root)
 	default:
 		t.Fatalf("unknown SaveCustom scenario %q", scenario)
 	}
-	script := fmt.Sprintf("local T = require(%q)\n%s", mod, body)
+	script := fmt.Sprintf(`local T = require(%[1]q)
+%[2]s
+local ok, wire = pcall(function() return T.FixedSave(%[3]q, r) end)
+if not ok then
+  print("REFUSED " .. tostring(wire))
+  os.exit(0)
+end
+local f = io.open("out.bin", "wb"); f:write(wire); f:close()
+print("OK")
+`, mod, body, root)
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +525,7 @@ print("OK")
 
 func (luaFixedProofRunner) HasFixedRoot(t *testing.T, u *ir.Unit, root string) bool {
 	t.Helper()
-	for _, st := range fixedRoots(u) {
+	for _, st := range ir.TableFixedFormRoots(u) {
 		if st.Name == root {
 			return true
 		}
