@@ -20,7 +20,9 @@ import (
 // (docs/SPEC-TABLES.md §3.4): its file save refuses and a read at that root
 // refuses form 1. Such an instance cannot stay a positive input, so its
 // instance row is retired and its historical bytes become a refusal row like
-// every other form-1 file at a fixed root, named in the ledger.
+// every other form-1 file at a fixed root, named in the ledger. Every
+// cook-write row that reaches the instance is retired with it, since a save
+// with no file form has no cooked bytes to pin, and its two cooked files go.
 //
 // A framing vector is a form-1 file. At a declared fixed root the rule
 // answers it by its form byte before any framing is read (docs/rulings.json
@@ -34,7 +36,7 @@ func migrateFixed(m *Manifest, manifest, jsonDir string) error {
 	}
 	lines := strings.Split(string(body), "\n")
 	retired := map[int]bool{}
-	var moves []string
+	var moves, cooked []string
 	for _, inst := range m.Instances {
 		unit, err := u.get(inst.Unit)
 		if err != nil {
@@ -60,6 +62,14 @@ func migrateFixed(m *Manifest, manifest, jsonDir string) error {
 				f := strings.Fields(line)
 				if len(f) >= 5 && f[0] == "instance" && f[1] == inst.Name {
 					retired[i] = true
+				}
+				if len(f) == 4 && f[0] == "cook-write" && f[1] == inst.Name {
+					retired[i] = true
+				}
+			}
+			for _, cw := range m.CookWrites {
+				if cw.Instance == inst.Name {
+					cooked = append(cooked, cw.Little, cw.Big)
 				}
 			}
 			refusal := "previous_form_" + inst.Name
@@ -131,6 +141,11 @@ func migrateFixed(m *Manifest, manifest, jsonDir string) error {
 	}
 	if err := pruneFramingValues(framingValues); err != nil {
 		return err
+	}
+	for _, path := range cooked {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
 	}
 	if len(moves) == 0 {
 		return nil
