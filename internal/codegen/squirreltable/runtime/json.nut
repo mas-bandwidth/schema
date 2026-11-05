@@ -52,29 +52,10 @@ local bytesToString = function(bs) {
   return join(parts);
 };
 
-// A BLOB IS FILLED AND READ THROUGH ITS STREAM METHODS, never through [] or
-// typeof: those are the blob class's _set, _get and _typeof metamethods, and
-// Squirrel refuses to grow its value stack inside a metamethod call, so a
-// walk that touched a blob that way at the depth where the stack runs out
-// would fail on a legal value nested to the cap (newIn says more). A method
-// call is an ordinary call, where growth is allowed.
 local bytesToBlob = function(bs) {
-  local b = blob(0);
-  for (local i = 0; i < bs.len(); i++) b.writen(bs[i] & 0xff, 'b');
-  b.seek(0);
+  local b = blob(bs.len());
+  for (local i = 0; i < bs.len(); i++) b[i] = bs[i] & 0xff;
   return b;
-};
-
-// a blob's bytes as an array of byte values; the blob's cursor is left where
-// it was
-local blobBytes = function(b) {
-  local at = b.tell();
-  local n = b.len();
-  local a = array(n);
-  b.seek(0);
-  for (local i = 0; i < n; i++) a[i] = b.readn('b');
-  b.seek(at);
-  return a;
 };
 
 local ult = function(a, b) { return (a ^ MIN) < (b ^ MIN); };
@@ -238,9 +219,8 @@ local parseF32 = function(tok) {
   return [widenF32(r[0]), true];
 };
 
-// the first %.*g that reads back the same value at the field's own width
-// (docs/SPEC-TABLES.md §16.14, W12; write.go writeFloat): 6..9 digits for a
-// float32, 15..17 for a float64.
+// the shortest %.*g that reads back the same value at the field's own width
+// (write.go writeFloat): 6..9 digits for a float32, 15..17 for a float64.
 // A non-finite value has no JSON spelling: null, and the writer refuses.
 local floatText = function(v, single) {
   if (!isFinite(v)) return null;
@@ -251,12 +231,10 @@ local floatText = function(v, single) {
   for (local digits = low; ; digits++) {
     local text = formatG(v, digits);
     if (digits >= high) return text;
+    local back = tokenFloat(text);
     if (single) {
-      // ONE correctly rounded conversion, as the reader lands it
-      // (docs/SPEC-TABLES.md §16.14, W12): the double narrowed alone rounds
-      // twice
-      if (parseF32(text)[0] == v) return text;
-    } else if (tokenFloat(text) == v) {
+      if (widenF32(narrowF32(back, 0)[0]) == v) return text;
+    } else if (back == v) {
       return text;
     }
   }
@@ -733,7 +711,6 @@ local elemZero = function(T, e) {
 
 local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 local b64Text = function(data) {
-  if (type(data) == "instance") data = blobBytes(data);
   local out = ["\""];
   local i = 0, n = data.len();
   for (; n - i >= 3; i += 3) {
@@ -776,18 +753,17 @@ local utf8Sequence = function(s, i) {
 };
 
 local HEX = "0123456789abcdef";
+local FFFD = format("%c%c%c", 0xef, 0xbf, 0xbd);
 
-// ONE JSON STRING from bytes (write.go writeString): the escapes and a control
-// byte as \u00XX. A byte that is not part of a well-formed sequence is not
-// text: the answer is null and the write refuses (invalid_value, §16.3,
-// §16.14 W0), so nothing is replaced.
+// ONE JSON STRING from bytes (write.go writeString): the escapes, a control
+// byte as \u00XX, and a byte that is not part of a well-formed sequence as
+// U+FFFD, so the text is always valid UTF-8 (§16.3)
 local jsonString = function(s) {
-  local isStr = type(s) == "string";
-  if (!isStr && type(s) == "instance") s = blobBytes(s);
   local out = ["\""];
   local run = 0;
   local n = s.len();
   local i = 0;
+  local isStr = typeof s == "string";
   local flush = function(to) {
     if (to > run) {
       if (isStr) out.append(s.slice(run, to));
@@ -807,9 +783,8 @@ local jsonString = function(s) {
     else if (c < 0x20) esc = "\\u00" + CH[HEX[c >> 4]] + CH[HEX[c & 0xf]];
     else if (c >= 0x80) {
       local w = utf8Sequence(s, i);
-      if (w < 0) return null;
-      i += w;
-      continue;
+      if (w < 0) esc = FFFD;
+      else { i += w; continue; }
     }
     if (esc != null) {
       flush(i);
@@ -827,10 +802,10 @@ local jsonString = function(s) {
 
 // WIDE TEXT IN THE TEXT (docs/SPEC-TABLES.md §16.2): the code units
 // TRANSCODED at the boundary into one JSON string. A well-formed pair is its
-// astral code point, and a zero unit writes `\u0000` through jsonString.
-// Storage built in code holding an unpaired surrogate is not text: null, and
-// the write refuses (invalid_value, §16.3, §16.14 W0). A slot that is not a
-// code unit, an integer in [0, 0xFFFF], has no text spelling either: null.
+// astral code point; storage built in code holding an unpaired surrogate
+// writes it as U+FFFD (§16.3's maximal-subpart rule, one per unit), and a zero
+// unit writes `\u0000` through jsonString. A slot that is not a code unit, an
+// integer in [0, 0xFFFF], has no text spelling: null, and the write refuses.
 local wideJsonString = function(units) {
   if (typeof units != "array") return null;
   local bs = [];
@@ -844,7 +819,7 @@ local wideJsonString = function(units) {
       code = 0x10000 + ((u - 0xD800) << 10) + (units[i + 1] - 0xDC00);
       i++;
     } else if (u >= 0xD800 && u <= 0xDFFF) {
-      return null;
+      code = 0xFFFD;
     }
     if (code < 0x80) bs.append(code);
     else if (code < 0x800) bs.extend([0xc0 | (code >> 6), 0x80 | (code & 0x3f)]);
@@ -1002,15 +977,6 @@ countNode = function(T, c, node, g) {
 
 local writeValue, writeFields, writePointer, writeField, writeScalar, writeMap;
 
-// ONE TEXT VALUE FROM STORAGE, narrow or wide: storage that is not text
-// refuses the whole write with the reason invalid_value (§16.3, §16.14 W0)
-local writeStored = function(s, wide, g, out) {
-  local t = wide ? wideJsonString(s) : jsonString(s);
-  if (t == null) { g.reason = "invalid_value"; return false; }
-  out.append(t);
-  return true;
-};
-
 // one instance's object, every field in declaration order, defaults included,
 // a present optional only (write.go writeValue, writeFields)
 writeValue = function(T, c, v, depth, g, out) {
@@ -1085,9 +1051,7 @@ writeMap = function(T, d, val, depth, g, out) {
   for (local i = 0; i < n; i++) {
     local ent = val[order[i]];
     if (i > 0) out.append(",");
-    out.append(indent(depth + 1));
-    if (!writeStored(mapKeyText(kd, ent[kd.member]), false, g, out)) return false;
-    out.append(": ");
+    out.append(indent(depth + 1) + jsonString(mapKeyText(kd, ent[kd.member])) + ": ");
     if (vd.optional && !ent[vd.member + "Present"]) { out.append("null"); continue; }
     if (!writeField(T, vd, ent[vd.member], depth + 1, g, out)) return false;
   }
@@ -1098,7 +1062,7 @@ writeMap = function(T, d, val, depth, g, out) {
 // A TEXT LIST's text form (§2.13, §16.2): a plain array of strings, absent
 // `?string` elements as null. The storage is the generated element record;
 // textlist 1 is the plain spelling and 2 the optional one.
-local writeTextArray = function(T, d, val, depth, g, out) {
+local writeTextArray = function(T, d, val, depth, out) {
   local n = writeCount(d, val);
   if (n == 0) { out.append("[]"); return true; }
   // A TEXT LIST'S TOTAL (§2.13): ToJson refuses a value whose elements hold
@@ -1118,7 +1082,7 @@ local writeTextArray = function(T, d, val, depth, g, out) {
     out.append(indent(depth + 1));
     local rec = elemAt(T, d.elem, val, i);
     if (d.textlist == 2 && (rec == null || !rec.ValuePresent)) { out.append("null"); continue; }
-    if (!writeStored(rec == null ? "" : rec.Value, false, g, out)) return false;
+    out.append(jsonString(rec == null ? "" : rec.Value));
   }
   out.append(indent(depth) + "]");
   return true;
@@ -1128,17 +1092,23 @@ writeField = function(T, d, val, depth, g, out) {
   switch (d.shape) {
     case "sblob":
       if (val == null) { out.append("null"); return true; }
-      return writeStored(val, false, g, out);
+      out.append(jsonString(val));
+      return true;
     case "bblob":
       if (val == null) { out.append("null"); return true; }
       out.append(b64Text(val));
       return true;
-    case "str": return writeStored(val, false, g, out);
-    case "wstr": return writeStored(val, true, g, out);
+    case "str": out.append(jsonString(val)); return true;
+    case "wstr": {
+      local w = wideJsonString(val);
+      if (w == null) return false;
+      out.append(w);
+      return true;
+    }
     case "bytes": out.append(b64Text(val)); return true;
     case "map": return writeMap(T, d, val, depth, g, out);
     case "arr": {
-      if (d.textlist != 0) return writeTextArray(T, d, val, depth, g, out);
+      if (d.textlist != 0) return writeTextArray(T, d, val, depth, out);
       local e = d.elem;
       if (isKeyed(d)) {
         // an enum-keyed array is an OBJECT keyed by variant name, every slot
@@ -1161,7 +1131,7 @@ writeField = function(T, d, val, depth, g, out) {
         if (i > 0) out.append(",");
         out.append(indent(depth + 1));
         local x = elemAt(T, e, val, i);
-        if (e.shape == "str") { if (!writeStored(x, false, g, out)) return false; continue; }
+        if (e.shape == "str") { out.append(jsonString(x)); continue; }
         if (e.shape == "sblob" || e.shape == "bblob") {
           if (!writeField(T, e, x, depth + 1, g, out)) return false;
           continue;
@@ -1240,8 +1210,13 @@ writeScalar = function(T, d, val, depth, g, out) {
       out.append(t);
       return true;
     }
-    case "str": return writeStored(val, false, g, out);
-    case "wstr": return writeStored(val, true, g, out);
+    case "str": out.append(jsonString(val)); return true;
+    case "wstr": {
+      local w = wideJsonString(val);
+      if (w == null) return false;
+      out.append(w);
+      return true;
+    }
   }
   if (d.kind == 36) { out.append(jsonString(timestampText(val))); return true; }
   if (wideKind(d.kind)) {
@@ -1263,10 +1238,7 @@ local writeText = function(T, rootName, value) {
     return null;
   }
   local out = [];
-  if (!writeValue(T, c, value, 0, g, out)) {
-    _M.ToJsonReason <- g.reason;
-    return null;
-  }
+  if (!writeValue(T, c, value, 0, g, out)) return null;
   // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1)
   out.append("\n");
   return join(out);
@@ -1284,24 +1256,14 @@ _M.ToJsonMeasure <- function(T, rootName, value) {
 // THE READ HALF (internal/tabletext read.go)
 // =============================================================================
 
-// THE TEXT IS READ FROM AN ARRAY OF BYTE VALUES, never indexed as a blob. A
-// blob's [] is its class's _get metamethod, and Squirrel refuses to grow its
-// value stack inside a metamethod call ("cannot resize stack while in a
-// metamethod"): a frame reserves only MIN_STACK_OVERHEAD (15) slots past its
-// top, while a metamethod call pushes its 2 arguments and then needs those 15
-// past them. A byte read at the depth where the stack runs out would refuse a
-// legal text nested to the cap (graph_chain_text, 128 deep); an array's [] is
-// a VM instruction, so the walk only grows the stack on its own calls, where
-// growth is allowed.
 local newIn = function(text, report, graph) {
-  local n = text.len();
-  local t = array(n);
-  if (typeof text == "string") {
-    for (local i = 0; i < n; i++) t[i] = text[i] & 0xff;
-  } else {
-    for (local i = 0; i < n; i++) t[i] = text[i];
+  local t = text;
+  if (typeof t == "string") {
+    local b = blob(t.len());
+    for (local i = 0; i < t.len(); i++) b[i] = t[i] & 0xff;
+    t = b;
   }
-  return { t = t, n = n, p = 0, bad = false, report = report, graph = graph };
+  return { t = t, n = t.len(), p = 0, bad = false, report = report, graph = graph };
 };
 
 // whitespace and comments: accepted on read, never written (§16.2); an

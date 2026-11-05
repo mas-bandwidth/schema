@@ -217,9 +217,6 @@ struct Codec
     bool ( *cook )( const void *, void *, uint64_t, int );
     void * ( *make )();
     void ( *reset )( void * );
-    // puts a json-write-refusal line's damage into a loaded value (FORMAT.md,
-    // `json-write-refusal`): false when the root has no such text field
-    bool ( *damage )( void *, const std::string &, bool );
 };
 
 template <typename T>
@@ -233,37 +230,6 @@ static void copy_report( const T & from, Report * to )
     to->malformed = from.malformed;
     to->refused = from.refused;
     to->blob_shared = from.blob_shared;
-}
-
-// DAMAGE THE WRITER MUST REFUSE (docs/SPEC-TABLES.md §16.14 W0), put into a
-// fixed root's top-level text field in code, because no read delivers it: the
-// bytes 61 FF 62 in a narrow field, the units 0061 D800 0062 in a wide one.
-// The field is found by name in the root's descriptor and reached by its
-// offset and its used-length companion.
-template <typename Info>
-static bool damage_text( const Info * info, void * value, const std::string & field, bool wide )
-{
-    for ( int32_t i = 0; i < info->num_fields; i++ )
-    {
-        const auto & f = info->fields[i];
-        if ( field != f.name ) continue;
-        if ( !f.counted || f.count_offset == 0xffffffffu || f.array_bound < 3 ) return false;
-        uint8_t * base = (uint8_t *) value;
-        if ( wide )
-        {
-            const char16_t units[3] = { 0x0061, 0xD800, 0x0062 };
-            memcpy( base + f.offset, units, sizeof( units ) );
-        }
-        else
-        {
-            const uint8_t bytes[3] = { 0x61, 0xFF, 0x62 };
-            memcpy( base + f.offset, bytes, sizeof( bytes ) );
-        }
-        const int32_t length = 3;
-        memcpy( base + f.count_offset, &length, sizeof( length ) );
-        return true;
-    }
-    return false;
 }
 
 template <typename T>
@@ -310,10 +276,7 @@ struct Erase
                                    big ? ns::TableByteOrder::Big                               \
                                        : ns::TableByteOrder::Little );                         \
         },                                                                                     \
-        Erase<ns::type>::make, Erase<ns::type>::reset,                                         \
-        []( void * v, const std::string & field, bool wide ) {                                 \
-            return damage_text( ns::type##TableType(), v, field, wide );                       \
-        }                                                                                      \
+        Erase<ns::type>::make, Erase<ns::type>::reset                                          \
     }
 
 static const Codec codecs[] = {
@@ -382,9 +345,6 @@ struct VarCodec
     bool ( *cook )( const void *, void *, uint64_t, int );
     bool ( *json_read )( const char *, int64_t, Report *, std::vector<uint8_t> & );
     bool ( *to_json )( const void *, std::vector<char> & );
-    // the two raw calls the json-write-refusal rows hold apart
-    int64_t ( *to_json_measure )( const void * );
-    int64_t ( *to_json_into )( const void *, char *, int64_t );
 };
 
 #define VARCODEC( unit_key, ns, type )                                                         \
@@ -426,10 +386,6 @@ struct VarCodec
             text.assign( (size_t) size + 1, 0 );                                                \
             text.resize( (size_t) size );                                                       \
             return ns::type##ToJson( (const ns::type *) v, text.data(), size ) == size;          \
-        },                                                                                     \
-        []( const void * v ) { return ns::type##ToJsonMeasure( (const ns::type *) v ); },       \
-        []( const void * v, char * t, int64_t n ) {                                             \
-            return ns::type##ToJson( (const ns::type *) v, t, n );                              \
         }                                                                                      \
     }
 
@@ -1265,65 +1221,6 @@ static int surface_json_write( const std::string & out )
         std::vector<char> text( (size_t) size + 1 );
         if ( codec->to_json( value, text.data(), size ) != size ) return 1;
         if ( !spill( out, f[1] + ".json", text.data(), (size_t) size ) ) return 1;
-    }
-    // THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14 W0): the wire,
-    // then the line's damage put into storage in code, then ToJsonMeasure; a
-    // refusal there must be ToJson's answer too, and the case is `refused`
-    for ( size_t i = 0; i < manifest_lines.size(); i++ )
-    {
-        const std::vector<std::string> & f = manifest_lines[i].field;
-        if ( f[0] != "json-write-refusal" ) continue;
-        if ( f.size() < 6 ) { fprintf( stderr, "driver: a json-write-refusal line is <case> <unit> <root> <wire> <damage>\n" ); return 1; }
-        std::vector<uint8_t> wire;
-        if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
-        const std::string & damage = f[5];
-        const size_t colon = damage.find( ':' );
-        const std::string kind = damage.substr( 0, colon );
-        const std::string field = colon == std::string::npos ? std::string() : damage.substr( colon + 1 );
-        if ( kind != "none" && kind != "narrow" && kind != "wide" ) { fprintf( stderr, "driver: %s: unknown damage %s\n", f[1].c_str(), damage.c_str() ); return 1; }
-        std::string answer = "refused\n";
-        const VarCodec * variable = find_var_codec( f[2], f[3] );
-        if ( variable != NULL )
-        {
-            if ( kind != "none" ) { fprintf( stderr, "driver: %s: damage %s on a variable root\n", f[1].c_str(), damage.c_str() ); return 1; }
-            std::vector<uint8_t> region;
-            Report report;
-            const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
-            if ( root == NULL ) { fprintf( stderr, "driver: %s: load refused %s\n", f[1].c_str(), f[4].c_str() ); return 1; }
-            if ( variable->to_json_measure( root ) >= 0 )
-            {
-                std::vector<char> text;
-                if ( !variable->to_json( root, text ) ) { fprintf( stderr, "driver: %s: ToJson did not write ToJsonMeasure's answer\n", f[1].c_str() ); return 1; }
-                answer.assign( text.data(), text.size() );
-            }
-            else
-            {
-                std::vector<char> sink( (size_t) 1 << 16 );
-                if ( variable->to_json_into( root, sink.data(), (int64_t) sink.size() ) != -1 ) { fprintf( stderr, "driver: %s: ToJsonMeasure refused and ToJson wrote\n", f[1].c_str() ); return 1; }
-            }
-            if ( !spill( out, f[1] + ".json", answer.data(), answer.size() ) ) return 1;
-            continue;
-        }
-        const Codec * codec = find_codec( f[2], f[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
-        void * value = codec->make();
-        codec->reset( value );
-        Report report;
-        if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) { fprintf( stderr, "driver: %s: load refused %s\n", f[1].c_str(), f[4].c_str() ); return 1; }
-        if ( kind != "none" && !codec->damage( value, field, kind == "wide" ) ) { fprintf( stderr, "driver: %s: damage %s names no text field of %s\n", f[1].c_str(), damage.c_str(), f[3].c_str() ); return 1; }
-        const int64_t size = codec->to_json_measure( value );
-        if ( size >= 0 )
-        {
-            std::vector<char> text( (size_t) size + 1 );
-            if ( codec->to_json( value, text.data(), size ) != size ) { fprintf( stderr, "driver: %s: ToJson did not write ToJsonMeasure's answer\n", f[1].c_str() ); return 1; }
-            answer.assign( text.data(), (size_t) size );
-        }
-        else
-        {
-            std::vector<char> sink( (size_t) 1 << 16 );
-            if ( codec->to_json( value, sink.data(), (int64_t) sink.size() ) != -1 ) { fprintf( stderr, "driver: %s: ToJsonMeasure refused and ToJson wrote\n", f[1].c_str() ); return 1; }
-        }
-        if ( !spill( out, f[1] + ".json", answer.data(), answer.size() ) ) return 1;
     }
     return 0;
 }
