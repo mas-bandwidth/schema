@@ -8,10 +8,16 @@ package luatable
 // unknown, widened and duplicate ALONE read clean.
 // internal/codegen/gotable/refusal.go (TableReport.Err) is the oracle.
 //
-// THE VERDICT IS WHAT IS PINNED, NOT THE REASON (Glenn's ruling: a refusal's
-// reason is a per-language diagnostic). Lua refuses exactly the wires Go
-// refuses and reads exactly the wires Go reads; the name each gives a refusal
-// may differ.
+// THE FORGED WIRES PIN THE REASON; THE MANIFEST'S REAL WIRES PIN THE VERDICT.
+// A forged wire is built to earn one reason the table states, so both Go and
+// Lua must name that reason exactly (docs/SPEC-TABLES.md §11's member table).
+// A manifest row is a real damaged wire whose reason may be the leg's own
+// diagnostic: Lua's variable load names tbla2/a2_arm_length_off_width
+// malformed where Go's TableReport.Err names it wire_damaged, the same split
+// the fixed form already records for a truncated file
+// (internal/codegen/luatable/fixedmessagestrict_test.go). Those rows are held
+// to the verdict ("read" or "refused") and nothing weaker: Lua must refuse
+// exactly the wires Go refuses and read exactly the wires Go reads.
 
 import (
 	"encoding/binary"
@@ -387,17 +393,25 @@ func strictGroups(t *testing.T) []*strictGroup {
 	return out
 }
 
-// strictVerdictMismatches holds one group's Lua verdicts to Go's, and each
-// forged wire's Go verdict to the one it was forged for; it answers one line
-// per disagreement. accept is strictLuaAnswers' sabotage.
+// strictVerdictMismatches holds one group's Lua answers to Go's: a forged
+// wire's reason must equal the one it was forged for on both sides, and a
+// manifest row's verdict must equal Go's. It answers one line per
+// disagreement. accept is strictLuaAnswers' sabotage.
 func strictVerdictMismatches(t *testing.T, g *strictGroup, goAns map[string]string, accept string) []string {
 	t.Helper()
 	luaAns := strictLuaAnswers(t, g.unit, g.cases, accept)
 	var bad []string
 	for _, c := range g.cases {
-		if c.want != "" && strictVerdict(goAns[c.label]) != strictVerdict(c.want) {
-			bad = append(bad, fmt.Sprintf("%s/%s root %s: Go %s it (%q), the forged wire pins %s (%q)\n    wire %s",
-				g.name, c.label, c.root, strictVerdict(goAns[c.label]), goAns[c.label], strictVerdict(c.want), c.want, hex.EncodeToString(c.wire)))
+		if c.want != "" {
+			if goAns[c.label] != c.want {
+				bad = append(bad, fmt.Sprintf("%s/%s root %s: Go says %q, the forged wire pins %q\n    wire %s",
+					g.name, c.label, c.root, goAns[c.label], c.want, hex.EncodeToString(c.wire)))
+			}
+			if luaAns[c.label] != c.want {
+				bad = append(bad, fmt.Sprintf("%s/%s root %s: Lua says %q, the forged wire pins %q\n    wire %s",
+					g.name, c.label, c.root, luaAns[c.label], c.want, hex.EncodeToString(c.wire)))
+			}
+			continue
 		}
 		if strictVerdict(luaAns[c.label]) != strictVerdict(goAns[c.label]) {
 			bad = append(bad, fmt.Sprintf("%s/%s root %s: Lua %s it (%q), Go %s it (%q)\n    wire %s",
