@@ -7,6 +7,7 @@ import (
 )
 
 func TestLobsterRuntimePackageBindingScan(t *testing.T) {
+	t.Parallel()
 	source := `// let comment_name = 1
 class Holder:
     field_name:int
@@ -39,12 +40,13 @@ def sample(argument:int, generic, callback:fun(nested:int)):
 }
 
 func TestLobsterRuntimePackageBindingRefusal(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"report", "cell", "rec", "w", "v", "r", "s"} {
 		if err := checkRuntimePackageName(&ir.Unit{Package: name, Tables: map[string]*ir.Struct{"Root": {}}}); err == nil {
 			t.Errorf("runtime package %s accepted", name)
 		}
 	}
-	if err := checkRuntimePackageName(&ir.Unit{Package: "stella_registry_probe"}); err != nil {
+	if err := checkRuntimePackageName(&ir.Unit{Package: "custom_registry_probe"}); err != nil {
 		t.Fatal(err)
 	}
 }
