@@ -384,17 +384,19 @@ fixed table T {
 One program constructs 200 records set off their defaults, saves them once,
 then runs 2,000 load-then-save round trips over that wire (400,000 record round
 trips), timing the loop with `seconds_elapsed()` under the pinned v2026.8
-default JIT with no compiler flags. The two arms were run alternately in one
-sitting, median of seven runs, on a Linux/x86-64 fleet host: **before
-213,439 µs, after 211,248 µs** — the change is 1.0% FASTER, not slower. For
-this schema the emitted before/after code differs only in the plan-capacity
-clause and the leaf-walk local names; the optional-array and array-union-arm
-decode loops are not emitted before because those tables were refused or did
+default JIT with no compiler flags, both arms under `nice -n 19`. The two arms
+were run alternately in one sitting, median of seven runs, on a Linux/x86-64
+fleet host: **before 216,966 µs, after 214,416 µs** — the change is 1.2%
+FASTER, not slower. For this schema the emitted before/after code differs
+only in the plan-capacity clause and the leaf-walk local names; the
+optional-array and array-union-arm decode loops are not emitted before
+because those tables were refused or did
 not compile.
 
 The new paths were measured the same way, after only, median of five runs
-(200 records, 2,000 round trips): optional-arrays 105,991 µs (265 ns/record)
-and array union arms 161,186 µs (403 ns/record). Those loops run only when the
+(200 records, 2,000 round trips, `nice -n 19`): optional-arrays 105,253 µs
+(263 ns/record) and array union arms 159,692 µs (399 ns/record). Those loops
+run only when the
 schema declares the shape, so they add nothing to a fixed table that does not.
 The byte verdict is the qualification's: the shared fixed-proof suite holds
 every row to the live C++ oracle's bytes in both directions, and the writer
