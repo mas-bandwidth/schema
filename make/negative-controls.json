@@ -1695,6 +1695,8 @@
         "tables-squirrel-release-negative-control",
         "packet-finite-squirrel-negative-control",
         "packet-wide-squirrel-negative-control",
+        "packet-utf8-squirrel-negative-control",
+        "packet-defaults-squirrel-negative-control",
         "tables-squirrel-finite-float-negative-control",
         "tables-squirrel-float-parity-negative-control",
         "schema-squirrel-all-port-differential-negative-control",
@@ -1728,6 +1730,7 @@
         "tables-squirrel-map-sort-negative-control",
         "tables-squirrel-count-stop-negative-control",
         "tables-squirrel-block-order-word-negative-control",
+        "tables-squirrel-view-doc-tags-negative-control",
         "tables-squirrel-text-differential-negative-control"
       ],
       "squirrel": "3.2"
