@@ -119,6 +119,8 @@ func init() {
 		Name{Name: "TableWidePut", What: "wstring(N) code units written little-endian under the caller's L (§3)", Scoped: true},
 		Name{Name: "TableRetainedFloatFinite", What: "the finite rule on a retained unknown of a float kind, tested on its raw bits like a known field (§3.3, §6.6)", Scoped: true},
 		Name{Name: "TableFloatRefuse", What: "the writer's finite rule: a NaN or an infinity is the save's refusal by name, non_finite_float (§3.3)", Scoped: true},
+		Name{Name: "TableBoundRefuse", What: "the writer's storage bound: a count past its bound is the save's refusal by name", Scoped: true},
+		Name{Name: "TableWidePaired", What: "§3's paired UTF-16 rule for the message and variable writers", Scoped: true},
 		Name{Name: "TableRetainDepthCap", What: "the retain walk's nesting cap (§6.6)", RustConst: true},
 		Name{Name: "TableDesc", What: "one table's descriptor in the card descriptors (§8.1)"},
 		Name{Name: "TableFieldDesc", What: "one field's descriptor in the card descriptors (§8.1)"},
