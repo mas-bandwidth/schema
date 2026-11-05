@@ -55,12 +55,15 @@ func TestCanonicalJSONWriterBytesAreOneAnswer(t *testing.T) {
 			}
 			val := model.New(def)
 			var report tabletext.Report
-			_, err = tablewire.Decode(model, val, wire, &report)
+			ok, err := tablewire.Decode(model, val, wire, &report)
 			if tablewire.Refused(err) {
 				t.Fatalf("%s: the wire read refused the value: %v", inst.Name, err)
 			}
 			if err != nil {
 				t.Fatalf("%s: the wire read failed: %v", inst.Name, err)
+			}
+			if !ok || report.Malformed {
+				t.Fatalf("%s: the wire read did not succeed cleanly: ok=%t malformed=%t", inst.Name, ok, report.Malformed)
 			}
 
 			got1, err := model.Write(val)
