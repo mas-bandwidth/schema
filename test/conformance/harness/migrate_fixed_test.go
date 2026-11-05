@@ -52,7 +52,10 @@ func TestMigrateFixedRetiresTheCookWriteOfANoFileFormInstance(t *testing.T) {
 	if err := migrateFixed(m, manifest, jsonDir); err != nil {
 		t.Fatal(err)
 	}
-	migrated, err := ReadManifest(manifest, jsonDir)
+	// read the way generate reads the corpus, its goldens named under the
+	// corpus directory, so generate writes every byte under the temporary
+	// jsonDir's parent and nothing in the working tree moves
+	migrated, err := ReadManifest(manifest, defaultJSONDir)
 	if err != nil {
 		t.Fatalf("the migrated manifest does not read: %v", err)
 	}
