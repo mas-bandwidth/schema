@@ -347,3 +347,10 @@ func TestEvolutionSuiteVerdictAndCallerCapacity(t *testing.T) {
 	checkMemoryCeilingOverlap(t)
 	RunEvolutionSuite(t, "../..", stubEvoRunner{})
 }
+
+// TestEvolutionRowsSelection keeps the selected-row API scoped while the full
+// suite regression above continues to exercise RunEvolutionSuite's default.
+func TestEvolutionRowsSelection(t *testing.T) {
+	t.Parallel()
+	RunEvolutionRows(t, "../..", stubEvoRunner{}, "optional-values")
+}
