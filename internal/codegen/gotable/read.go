@@ -24,6 +24,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	n := st.Name
 	g.pf("func %sLoadBody(r *TableReader, value *%s) bool {\n", n, g.storageName(n))
 	g.pf("\t%sReset(value)\n", n)
+	g.pf("\tvar seen [64]byte\n\tvar seenHigh map[uint64]struct{}\n")
 	if g.retain {
 		g.pf("r.Retain.discard(r.Path,false,0)\n")
 	}
@@ -75,10 +76,17 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\tif ref == 0 { return true }\n")
 	}
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { %s; return false }\n", damaged)
+	// a repeated field id in one body is damage, checked as the body decodes
+	// it (docs/SPEC-TABLES.md §4; tla/ReadOrder.tla, OneVerdict)
+	g.pf("\t\tif ref < 512 { if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 { %s; return false }; seen[ref>>3] |= byte(1) << (ref & 7) } else { if seenHigh == nil { seenHigh = make(map[uint64]struct{}) }; if _, dup := seenHigh[ref]; dup { %s; return false }; seenHigh[ref] = struct{}{} }\n", damaged, damaged)
 	// A reserved id in a body that is not its transport is damage
 	// (docs/SPEC-TABLES.md §3.1, §3.3).
 	g.pf("\t\tkind := r.Get8()\n")
-	g.pf("\t\tif fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff { %s; return false }\n", damaged)
+	if g.regional && ir.VariableTables(g.unit)[st.Name] {
+		g.pf("\t\tif fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff { %s; return false }\n", damaged)
+	} else {
+		g.pf("\t\tif fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff { %s; return false }\n", damaged)
+	}
 	g.pf("\t\tswitch fieldID {\n")
 	for ordinal, f := range st.Fields {
 		g.retainOrdinal = ordinal
@@ -125,7 +133,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.retain {
 		g.pf("default:r.Report.Unknown++;if !r.capture(fieldID,kind,%q){%s;return false}\n}\n}\n}\n", st.DeclaredName(), damaged)
 	} else {
-		g.pf("\t\tdefault:\n\t\t\tr.Report.Unknown++; if !r.Skip(kind) { %s; return false }\n\t\t}\n\t}\n}\n\n", damaged)
+		g.pf("\t\tdefault:\n\t\t\tr.Report.Unknown++; if !tableWireSkipValue(r, kind) { %s; return false }\n\t\t}\n\t}\n}\n\n", damaged)
 	}
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
@@ -242,9 +250,11 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.retainDiscard("r")
 	}
 	if keyed {
+		g.pf("%svar keySeen [64]byte\n%svar keySeenHigh map[uint64]struct{}\n", i, i)
 		g.pf("%sfor range count {\n", i)
 		j := i + "\t"
 		g.pf("%skeyRef, ok := sub.Leb(); if !ok { %s }\n", j, stop)
+		g.pf("%sif keyRef < 512 { if keySeen[keyRef>>3]&(byte(1)<<(keyRef&7)) != 0 { %s }; keySeen[keyRef>>3] |= byte(1) << (keyRef & 7) } else { if keySeenHigh == nil { keySeenHigh = make(map[uint64]struct{}) }; if _, dup := keySeenHigh[keyRef]; dup { %s }; keySeenHigh[keyRef] = struct{}{} }\n", j, stop, stop)
 		g.pf("%skey, ok := sub.Resolve(keyRef); if !ok { %s }\n", j, stop)
 		g.pf("%selem, ok := sub.Body(); if !ok { %s }\n", j, stop)
 		g.pf("%svar slot %s; if !slot.TableEnumValue(key) { r.Report.Unknown++;", j, f.KeyEnum)
