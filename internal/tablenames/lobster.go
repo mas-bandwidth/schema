@@ -13,11 +13,14 @@ import "sort"
 // TestLobsterTableRuntimeNamesAreClaimed holds it to the emitted runtime both
 // ways, and TestLobsterRuntimeNameScanGoesRed is its control.
 //
-// The claimable Lobster spellings are the two the emitter refuses by name
+// The claimable Lobster spellings are those the emitter refuses by name
 // instead: the namespace itself (a package named schema_rt) and a runtime
 // module's FILE name, because a Lobster import names a file beside the module
-// (a schema file named for a runtime module is refused beside a table and
-// kept in a table-free unit, TestLobsterRuntimeFileNamesAreClaimed).
+// (a schema file named for an emitted runtime module is refused; table-free
+// units emit only descriptor dependencies: TestLobsterRuntimeFileNamesAreClaimed).
+// Package names that match runtime bindings are additionally refused by
+// lobstertable/runtime_package_names.go, which derives its inventory from
+// embedded sources rather than this namespace-level list.
 
 // lobsterRuntimeNames is every name the Lobster table runtime defines at
 // namespace scope (a def, a class, a let or a var at column zero), by the
@@ -55,13 +58,16 @@ var lobsterRuntimeNames = map[string][]string{
 		"retired_variants", "save_strict", "variant_retired",
 	},
 	"descriptors.lobster": {
-		"DeprecatedEnumShape", "DeprecatedName", "FieldAnnotation", "KeyEnumName", "MapEntryName", "UnitView",
-		"ViewConstant", "ViewType", "ViewVariant", "ViewVocabulary", "_descriptors_enum", "deprecated_names",
+		"DeprecatedName", "FieldAnnotation", "KeyEnumName", "MapEntryName", "UnitView",
+		"ViewConstant", "ViewType", "ViewVariant", "ViewVocabulary", "deprecated_names",
 		"deprecated_variant", "enum_default", "field_annotation", "field_annotations", "field_doc", "field_tags",
 		"is_deprecated_variant", "key_enums", "keyed_enum", "keyed_enum_of", "keyed_slot", "map_entries", "map_entry",
 		"map_entry_of", "set_unit", "unit_view", "variant_name", "view_constant", "view_constants", "view_enums",
 		"view_flags", "view_package", "view_protocol", "view_table", "view_tables", "view_type", "view_types",
-		"view_unions", "view_vocabulary",
+		"view_unions", "view_union_arm", "view_vocabulary", "view_name_before", "view_sorted_types", "view_sorted_vocabulary", "view_sorted_constants",
+	},
+	"descriptors_load.lobster": {
+		"DeprecatedEnumShape", "_descriptors_enum",
 	},
 	"fixed.lobster": {
 		"fixed_file", "fixed_record",
