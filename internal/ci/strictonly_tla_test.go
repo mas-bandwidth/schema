@@ -45,7 +45,7 @@ func TestStrictOnlyModelsAreRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 	sort.Strings(paths)
-	reversedName := ""
+	var reversedNames []string
 	for _, path := range paths {
 		cfg, err := readTLAConfig(path)
 		if err != nil {
@@ -61,11 +61,10 @@ func TestStrictOnlyModelsAreRecorded(t *testing.T) {
 			}
 		}
 		if trueFaults == 1 {
-			reversedName = filepath.Base(path)
-			break
+			reversedNames = append(reversedNames, filepath.Base(path))
 		}
 	}
-	if reversedName == "" {
+	if len(reversedNames) == 0 {
 		t.Fatalf("no MCReadOrder*.cfg turns exactly one fault TRUE and checks OneVerdict")
 	}
 
@@ -73,7 +72,8 @@ func TestStrictOnlyModelsAreRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"MCReadOrder.cfg", reversedName} {
+	names := append([]string{"MCReadOrder.cfg"}, reversedNames...)
+	for _, name := range names {
 		row, ok := runs[name]
 		if !ok {
 			t.Fatalf("tla/RUNS.tsv has no row for %s", name)
@@ -85,8 +85,10 @@ func TestStrictOnlyModelsAreRecorded(t *testing.T) {
 	if row := runs["MCReadOrder.cfg"]; row.outcome != "exhaustive" {
 		t.Errorf("tla/RUNS.tsv row MCReadOrder.cfg outcome is %q, want exhaustive", row.outcome)
 	}
-	if row := runs[reversedName]; row.outcome != "counterexample" || row.invariant != "OneVerdict" {
-		t.Errorf("tla/RUNS.tsv row %s is outcome %q invariant %q, want counterexample OneVerdict", reversedName, row.outcome, row.invariant)
+	for _, name := range reversedNames {
+		if row := runs[name]; row.outcome != "counterexample" || row.invariant != "OneVerdict" {
+			t.Errorf("tla/RUNS.tsv row %s is outcome %q invariant %q, want counterexample OneVerdict", name, row.outcome, row.invariant)
+		}
 	}
 }
 
