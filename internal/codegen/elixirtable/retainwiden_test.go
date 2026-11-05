@@ -82,7 +82,7 @@ func TestRetainingUnionArmWideningElixir(t *testing.T) {
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			ok, e := tablewire.Decode(m, v, wire, &report)
-			if e != nil || ok == tc.malformed || report.Malformed != tc.malformed || int(report.Widened) != tc.widened || int(report.Clamped) != tc.clamped || int(report.KindMismatch) != tc.mismatch {
+			if ok == tc.malformed || tablewire.ReadRefusal(e) != tc.malformed || int(report.Widened) != tc.widened {
 				t.Fatalf("%s/%s independent report: %v %v %+v", field, tc.name, ok, e, report)
 			}
 			canonical := ""
@@ -129,7 +129,7 @@ func TestPinnedUnionArmWideningElixir(t *testing.T) {
 	store := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
 	var report tabletext.Report
 	ok, e := tablewire.DecodeRetain(m, v, wire, &store, &report)
-	if e != nil || !ok || report.Malformed || report.Widened != 1 || report.KindMismatch != 0 || report.Clamped != 0 || report.RetainLost != 0 {
+	if e != nil || !ok || report.Refused || report.Widened != 1 || report.RetainLost != 0 {
 		t.Fatalf("pinned widening oracle: %v %v %+v", ok, e, report)
 	}
 	// Canonical output uses the declared uint32 arm with the same value17.

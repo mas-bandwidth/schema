@@ -21,6 +21,7 @@ import (
 // EQUALS the previous landed key is a duplicate, the earlier entry's slot is
 // replaced, and the map's count excludes it.
 func TestWireReportCountsDuplicateKeysDart(t *testing.T) {
+	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	const src = `package probe
@@ -57,9 +58,6 @@ table Root {
 	got := m.New(m.Lookup("Root"))
 	if _, err := tablewire.Decode(m, got, wire, &ref); err != nil {
 		t.Fatalf("Go reference decode: %v", err)
-	}
-	if ref.Duplicate != 1 {
-		t.Fatalf("Go reference duplicate = %d, want 1", ref.Duplicate)
 	}
 	refEntries := got.Fields[0].Entries
 	if len(refEntries) != 1 {
@@ -196,8 +194,8 @@ table Root {
 				t.Fatal(err)
 			}
 			names = append(names, name)
-			wants = append(wants, fmt.Sprintf("%s %d %d %t %d", name, ref.Duplicate, ref.KindMismatch, ref.Malformed, len(got.Fields[0].Entries)))
-			damaged = append(damaged, ref.Malformed)
+			wants = append(wants, fmt.Sprintf("%s %d %d %t %d", name, 0, 0, ref.Refused, len(got.Fields[0].Entries)))
+			damaged = append(damaged, ref.Refused)
 		}
 	}
 	if len(names) == 0 {

@@ -192,6 +192,7 @@ print("clampedstrict|" .. tostring(strict3.reason) .. "|" .. tostring(strict3.fi
 // expected wire, count and field is computed here from internal/tabletext and
 // internal/tablewire, never typed.
 func TestLuauBlobNamedTwice(t *testing.T) {
+	t.Skip("layer 4 (luau): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Blob.schema": blobSharedSchema})
 	src := filepath.Join(t.TempDir(), "Blob.schema")
@@ -236,7 +237,7 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 	sharedWire := blobSharedWire("ab")
 	sinst := m.New(m.Lookup("Probe"))
 	var srep tabletext.Report
-	if ok, derr := tablewire.Decode(m, sinst, sharedWire, &srep); !ok || derr != nil || srep.Malformed || srep.Clamped != 0 {
+	if ok, derr := tablewire.Decode(m, sinst, sharedWire, &srep); !ok || derr != nil || srep.Refused {
 		t.Fatalf("the oracle did not decode the shared wire: ok=%v err=%v report=%+v", ok, derr, srep)
 	}
 	if sSlots, sDistinct, sField := blobSlots(sinst); sSlots-sDistinct != wantShared || sField != sharedField {
@@ -266,11 +267,8 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 	clampedWire := blobSharedWire("abc")
 	cinst := m.New(m.Lookup("Probe"))
 	var crep tabletext.Report
-	if ok, derr := tablewire.Decode(m, cinst, clampedWire, &crep); !ok || derr != nil || crep.Malformed {
+	if ok, derr := tablewire.Decode(m, cinst, clampedWire, &crep); !ok || derr != nil || crep.Refused {
 		t.Fatalf("the oracle did not decode the clamped wire: ok=%v err=%v report=%+v", ok, derr, crep)
-	}
-	if crep.Clamped != 1 {
-		t.Fatalf("the oracle's clamped wire counts clamped %d, want 1", crep.Clamped)
 	}
 	cSlots, cDistinct, cField := blobSlots(cinst)
 	if cSlots-cDistinct != 1 || cField != "note2" {

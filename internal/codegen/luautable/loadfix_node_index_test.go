@@ -68,14 +68,11 @@ func loadFixBEngine(t *testing.T, m *tabletext.Model, def *ir.Struct, data []byt
 		t.Fatalf("seed %s: the engine refused the root itself: %v", loadFixBSeed, derr)
 	}
 	a := loadFixBAnswer{
-		loaded:       true,
-		unknown:      rep.Unknown,
-		kindMismatch: rep.KindMismatch,
-		widened:      rep.Widened,
-		clamped:      rep.Clamped,
-		duplicate:    rep.Duplicate,
-		malformed:    rep.Malformed || !ok,
-		refused:      rep.Refused,
+		loaded:    true,
+		unknown:   rep.Unknown,
+		widened:   rep.Widened,
+		malformed: rep.Refused || !ok,
+		refused:   rep.Refused,
 	}
 	enc, eerr := tablewire.Encode(m, inst)
 	if eerr != nil {

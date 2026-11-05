@@ -1,7 +1,6 @@
 package tablewire
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -24,8 +23,7 @@ func NodeRecordTypes(data []byte) (types []uint64, whole bool) {
 }
 
 func nodeRecordTypes(body []byte, ids []uint64) (types []uint64, whole bool) {
-	var ignored tabletext.Report
-	payload, present, framed := nodeTableBytes(body, ids, &ignored)
+	payload, present, framed := nodeTableBytes(body, ids)
 	if !present {
 		return nil, true
 	}
@@ -57,8 +55,7 @@ func FileNodeRecords(data []byte) ([]FileNodeRecord, bool) {
 	if len(data) == 0 || data[0] != ir.TableWireForm || !ok {
 		return nil, false
 	}
-	var report tabletext.Report
-	payload, present, framed := nodeTableBytes(body, ids, &report)
+	payload, present, framed := nodeTableBytes(body, ids)
 	if !present {
 		return nil, true
 	}

@@ -104,7 +104,7 @@ func TestMessageIntegrityBatch(t *testing.T) {
 			dst := fresh()
 			var rep tabletext.Report
 			n, ok, err := tablewire.DecodeMessages(model, dst, bad, &vocab, &rep)
-			if n != 0 || ok || err != nil || rep != (tabletext.Report{Malformed: true, Reason: "integrity_mismatch"}) {
+			if n != 0 || ok || tablewire.RefusalReason(err) != tablewire.ReasonIntegrityMismatch || !rep.Refused {
 				t.Fatalf("CRC accepted or decoded: n=%d ok=%t err=%v report=%+v", n, ok, err, rep)
 			}
 			for _, v := range dst {
@@ -120,13 +120,13 @@ func TestMessageIntegrityBatch(t *testing.T) {
 	for cut := 1; cut < 6; cut++ {
 		var rep tabletext.Report
 		n, ok, err := tablewire.DecodeMessages(model, fresh(), want[:cut], &vocab, &rep)
-		if n != 0 || ok || err != nil || rep.Reason != "integrity_mismatch" {
+		if n != 0 || ok || tablewire.RefusalReason(err) != tablewire.ReasonIntegrityMismatch || rep.Reason != "integrity_mismatch" {
 			t.Errorf("short%d: n=%d ok=%t err=%v report=%+v", cut, n, ok, err, rep)
 		}
 	}
 	var wrong tabletext.Report
 	_, ok, err = tablewire.DecodeMessages(model, fresh(), []byte{1}, &vocab, &wrong)
-	if ok || err == nil || !strings.Contains(err.Error(), "newer_form") || wrong.Malformed || wrong.Reason != "" {
+	if ok || err == nil || !strings.Contains(err.Error(), "newer_form") || !wrong.Refused || wrong.Reason != "newer_form" {
 		t.Errorf("form must precede CRC: ok=%t err=%v report=%+v", ok, err, wrong)
 	}
 }

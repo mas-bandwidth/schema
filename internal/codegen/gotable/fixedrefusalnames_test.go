@@ -8,7 +8,7 @@ import (
 // naming rule: every refusal of the emitted <T>FixedLoad has a name, the
 // framing-damage returns included. Each case returns -1 with a non-empty
 // Reason EQUAL to one of the exported TableRefuse* members; the four
-// framing-damage returns keep report.Malformed set beside the name. One case
+// framing-damage returns keep (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") set beside the name. One case
 // per existing name, all over a small fixed table.
 func TestFixedLoadNamesEveryRefusal(t *testing.T) {
 	t.Parallel()
@@ -62,10 +62,10 @@ func TestNames(t *testing.T) {
 	add("plan_too_large", file, 2, plan[:0], refused(TableRefusePlanTooLarge.Error()))
 	add("batch_too_large", file, 1, plan, refused(TableRefuseBatchTooLarge.Error()))
 	add("no_layout", forge(func(b []byte) []byte { b[len(b)-2*int(PointFixedRecordBytes)] ^= 1; return b }), 2, plan, refused(TableRefuseNoLayout.Error()))
-	add("truncated empty", nil, 2, plan, TableReport{Malformed: true, Reason: TableRefuseTruncated.Error()})
-	add("truncated short header", file[:19], 2, plan, TableReport{Malformed: true, Reason: TableRefuseTruncated.Error()})
-	add("truncated ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Malformed: true, Reason: TableRefuseTruncated.Error()})
-	add("reserved_not_zero", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Malformed: true, Reason: TableRefuseReservedNotZero.Error()})
+	add("truncated empty", nil, 2, plan, TableReport{Refusal: TableRefuseWireDamaged, Reason: TableRefuseTruncated.Error()})
+	add("truncated short header", file[:19], 2, plan, TableReport{Refusal: TableRefuseWireDamaged, Reason: TableRefuseTruncated.Error()})
+	add("truncated ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Refusal: TableRefuseWireDamaged, Reason: TableRefuseTruncated.Error()})
+	add("reserved_not_zero", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Refusal: TableRefuseWireDamaged, Reason: TableRefuseReservedNotZero.Error()})
 	for _, c := range cases {
 		dst := make([]Point, c.cap)
 		r := TableReport{}

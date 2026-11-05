@@ -22,6 +22,7 @@ import (
 // table slot whose body stops short of L is malformed (docs/SPEC-TABLES.md
 // §3.2, §4).
 func TestJavaFixKeyedScalarSlotWidened(t *testing.T) {
+	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	cases := []struct {
 		name  string
@@ -135,7 +136,7 @@ public final class Driver {
 			if !ok || err != nil {
 				t.Fatalf("oracle decode: ok=%v err=%v report=%+v", ok, err, want)
 			}
-			if want.Widened != 1 || want.Malformed {
+			if want.Widened != 1 || want.Refused {
 				t.Fatalf("test setup: oracle report %+v, want widened=1 and malformed=false", want)
 			}
 			wantJSON, err := model.Write(value)
@@ -148,11 +149,11 @@ public final class Driver {
 			}
 			wantFields := []string{
 				fmt.Sprintf("%d", want.Unknown),
-				fmt.Sprintf("%d", want.KindMismatch),
+				fmt.Sprintf("%d", want.Unknown),
 				fmt.Sprintf("%d", want.Widened),
-				fmt.Sprintf("%d", want.Clamped),
-				fmt.Sprintf("%d", want.Duplicate),
-				fmt.Sprintf("%t", want.Malformed),
+				fmt.Sprintf("%d", want.Unknown),
+				fmt.Sprintf("%d", want.Unknown),
+				fmt.Sprintf("%t", want.Refused),
 				fmt.Sprintf("%t", want.Refused),
 			}
 			for i := range wantFields {

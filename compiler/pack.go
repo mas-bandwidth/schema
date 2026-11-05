@@ -7,63 +7,38 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TableReport is the read report both table forms share (docs/SPEC-TABLES.md §4,
-// §16.2), aggregated across a whole tree by a pack (§17.3). Silence — every
-// counter zero and Malformed false — means the data matched the schema exactly:
-// nothing was skipped, nothing was renamed, nothing was cut down.
+// TableReport is the read report every table read shares (docs/SPEC-TABLES.md
+// §4, §6.5), aggregated across a whole tree by a pack (§17.3). A read returns
+// the whole value or refuses: Refused is the verdict, and Reason is the
+// refusal's diagnostic. The counters are diagnostic too, and silence (every
+// counter zero, not refused) means the data matched the schema exactly.
 type TableReport struct {
 	// Unknown counts every name this schema cannot name: a field key, an enum
-	// variant, a union arm, an enum-keyed slot.
+	// variant, a union arm, an enum-keyed slot, a node record's type.
 	Unknown int
-	// KindMismatch counts a value present with the wrong JSON type for its
-	// declared kind — skipped, never coerced.
-	KindMismatch int
 	// Widened counts a wire kind that GREW since the writer, decoded exactly
 	// (docs/SPEC-TABLES.md §4): an integer kind read into a wider one of the
 	// same signedness, or f32 into f64. The text form never raises it, because
 	// a JSON number carries no kind (§16.2).
 	Widened int
-	// Clamped counts a value cut down to what the declaration can hold: a
-	// number outside its range, a string past its capacity, an array past its
-	// bound.
-	Clamped int
-	// Duplicate counts a key placed more than once; the last occurrence wins.
-	Duplicate int
-	// MissingRequired counts whole records refused for absent required fields.
-	MissingRequired int
-	// Reason preserves a named refusal or clamp reported by the read.
+	// Reason is a refusal's diagnostic, `<reason>: <detail>`.
 	Reason string
-	// BlobShared counts the extra slots that named a blob record another slot
-	// already named (docs/SPEC-TABLES.md §4, §2.5); the tolerant read keeps the
-	// one node, never a copy per slot.
-	BlobShared int
-	// Malformed is set when a text or a body was damaged past the point the
-	// walk could continue.
-	Malformed bool
-	// Refused is the VERDICT beside the counters (docs/SPEC-TABLES.md §3): a
-	// FORM BYTE this reader does not carry. Nothing was decoded, no counter
-	// moved, and no damage is reported — which is why the verdict has to be
-	// said, since a clean read prints the same five zeros.
+	// Refused is the VERDICT: the read refused the whole input, and no value
+	// and no counter is defined.
 	Refused bool
 }
 
-// Silent reports whether nothing at all was counted.
+// Silent reports whether the read returned with nothing counted.
 func (r TableReport) Silent() bool {
-	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.BlobShared == 0 && r.MissingRequired == 0 && !r.Malformed
+	return r.Unknown == 0 && r.Widened == 0 && !r.Refused
 }
 
 func publicReport(r tabletext.Report) TableReport {
 	return TableReport{
-		Unknown:         r.Unknown,
-		KindMismatch:    r.KindMismatch,
-		Widened:         r.Widened,
-		Clamped:         r.Clamped,
-		Duplicate:       r.Duplicate,
-		MissingRequired: r.MissingRequired,
-		Reason:          r.Reason,
-		BlobShared:      r.BlobShared,
-		Malformed:       r.Malformed,
-		Refused:         r.Refused,
+		Unknown: r.Unknown,
+		Widened: r.Widened,
+		Reason:  r.Reason,
+		Refused: r.Refused,
 	}
 }
 
@@ -79,7 +54,7 @@ func publicReport(r tabletext.Report) TableReport {
 // `<field>.json` holding the whole array; a nested table takes either form; a
 // plain `<field>.json` at any level is that field's value verbatim; and the
 // root may simply be one `<Root>.json`. Each file's content is read by §16's
-// walk, so every rule about kinds, presence, clamping and the report is that
+// walk, so every rule about kinds, presence, refusal and the report is that
 // section's.
 //
 // A tree that does not mirror the table is REPORTED rather than guessed at: the

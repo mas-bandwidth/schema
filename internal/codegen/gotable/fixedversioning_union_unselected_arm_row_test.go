@@ -42,10 +42,10 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
 	if back[0].Seq != 15 {
 		t.Fatalf("seq is the writer's 15, not %v", back[0].Seq)
 	}
-	if r.Retained != 0 || r.RetainLost != 0 || r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+	if r.Retained != 0 || r.RetainLost != 0 || r.Widened != 0 || r.Unknown != 0 {
 		t.Fatalf("a clean read moved a counter: %+v", r)
 	}
-	if r.Malformed {
+	if (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("a clean backward read is not malformed: %+v", r)
 	}
 	if r.Verdict == TableOpenRefused || r.Reason != "" {

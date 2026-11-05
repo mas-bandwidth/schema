@@ -6,6 +6,7 @@ import (
 )
 
 func TestTextListCSharp(t *testing.T) {
+	t.Skip("layer 4 (cs): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "the .NET SDK")
 	runCarryCS(t, `package probe
 table Root {

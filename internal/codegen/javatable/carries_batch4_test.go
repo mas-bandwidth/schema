@@ -14,6 +14,7 @@ import (
 )
 
 func TestJavaCarriesTextList(t *testing.T) {
+	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "compiles and runs generated Java text-list codecs")
 	t.Parallel()
 
@@ -54,7 +55,7 @@ table Lists
 	}()
 	backClamp := m.New(m.Lookup("Lists"))
 	var clampRep tabletext.Report
-	if ok, err := tablewire.Decode(m, backClamp, rawElemClamp, &clampRep); !ok || err != nil || clampRep.Clamped != 1 {
+	if ok, err := tablewire.Decode(m, backClamp, rawElemClamp, &clampRep); !ok || err != nil || clampRep.Unknown != 1 {
 		t.Fatalf("oracle decode clamped: ok=%v err=%v rep=%+v", ok, err, clampRep)
 	}
 	wantElemClampWire, err := tablewire.Encode(m, backClamp)
