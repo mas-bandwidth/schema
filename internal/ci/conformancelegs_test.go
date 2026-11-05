@@ -200,7 +200,7 @@ func makeGraph(t *testing.T, root string, replace map[string]string) map[string]
 		}
 		rest = strings.TrimPrefix(rest, ":")
 		rest = strings.ReplaceAll(rest, "|", " ")
-		for _, tgt := range strings.Fields(target) {
+		for tgt := range strings.FieldsSeq(target) {
 			graph[tgt] = append(graph[tgt], strings.Fields(rest)...)
 		}
 	}
