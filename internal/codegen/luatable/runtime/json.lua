@@ -2593,7 +2593,7 @@ local function map_entries(cache, fd, x)
   return got
 end
 
-local count_of = D.count_of
+local count_of, count_ok = D.count_of, D.count_ok
 local guard_holds = D.guard_holds
 
 -- THE NUMBERING PASS (§16.7): how many slots name each node, and whether the
@@ -2712,6 +2712,7 @@ end
 -- §2.13's: the element past M, a zero byte or ill-formed UTF-8, and a sum past
 -- `| total = N` refuse the value (nil from ToJson), as the generated Go does.
 local function write_text_list(T, fd, _d, vf, val, depth, _g, w)
+  if not count_ok(fd, val) then return false end
   local n = count_of(fd, val)
   local total = fd.total or 0
   local spent = 0
@@ -2759,6 +2760,8 @@ end
 local function write_array(T, fd, val, depth, g, w)
   local td, tvf = text_list_elem(T, fd)
   if td ~= nil then return write_text_list(T, fd, td, tvf, val, depth, g, w) end
+  -- a count past the array bound refuses the write (docs/SPEC.md §5.1 row 3)
+  if not count_ok(fd, val) then return false end
   local n = count_of(fd, val)
   if n == 0 then
     raw(w, "[]")
@@ -2955,8 +2958,8 @@ function J.ToJson(T, name, v)
   if g == nil then return nil end
   local w = W()
   -- a float the text has no spelling for (a NaN or an infinity, §3.3, §16.3)
-  -- refuses the write, named
-  if not write_table(T, desc, v, 0, g, w) then return nil, D.refuse_non_finite(T, name, v) end
+  -- or a count past its bound refuses the write, named
+  if not write_table(T, desc, v, 0, g, w) then return nil, D.refuse_write(T, name, v) end
   w.parts[#w.parts + 1] = "\n"
   return table.concat(w.parts)
 end

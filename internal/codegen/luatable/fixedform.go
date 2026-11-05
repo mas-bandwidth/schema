@@ -450,6 +450,21 @@ func emitFixedTables(m *Module, roots []*ir.Struct) {
 			case *ir.Union:
 				if !seen[r.Name] {
 					seen[r.Name] = true
+					// the tag's storage width, then each arm's payload size in
+					// ordinal order (docs/FIXED-FORM-ALGORITHM.md §3: the tag
+					// THEN the widest arm, zero behind a narrower one)
+					m.Printf("_M.FixedUnions[%q] = { tag = %d, arms = {", r.Name, ir.StorageBitsFor(r.Max)/8)
+					for i, v := range r.Variants {
+						if i > 0 {
+							m.Printf(",")
+						}
+						size := int64(0)
+						if v.F != nil {
+							size = fixedFieldBytesAt(v.F, 1)
+						}
+						m.Printf(" { size = %d }", size)
+					}
+					m.Printf(" } }\n")
 					for _, v := range r.Variants {
 						if v.F != nil {
 							visitType(v.F.Type)
@@ -464,10 +479,6 @@ func emitFixedTables(m *Module, roots []*ir.Struct) {
 			visitType(f.Type)
 		}
 	}
-	// A table-side union reaches this emission only through a fixed root's own
-	// closure. The runtime reads it from _M.FixedUnions when a union field is
-	// written; a unit with no such root emits none.
-	_ = m.Unions
 }
 
 var _ = fmt.Sprintf

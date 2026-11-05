@@ -102,12 +102,12 @@ pub fn mixed_chat_event_save_body(v: &MixedChatEvent, out: &mut Vec<u8>, ids: &m
     if v.channel != 0i32 {
         leb_write(out, ids.id_ref(0xa5013e9ad5caeda4));
         out.push(4);
-        out.extend_from_slice(&v.channel.to_le_bytes());
+        debug_assert!((0i32..=3i32).contains(&v.channel), "MixedChatEvent.channel: value outside 0..=3, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.channel.to_le_bytes());
     }
     if v.speaker != 0u16 {
         leb_write(out, ids.id_ref(0xfbf1ac4d96ebd022));
         out.push(7);
-        out.extend_from_slice(&v.speaker.to_le_bytes());
+        debug_assert!((0u16..=4095u16).contains(&v.speaker), "MixedChatEvent.speaker: value outside 0..=4095, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.speaker.to_le_bytes());
     }
 }
 
@@ -120,52 +120,52 @@ pub fn mixed_entity_save_body(v: &MixedEntity, out: &mut Vec<u8>, ids: &mut IdTa
     if v.entity_id != 0u16 {
         leb_write(out, ids.id_ref(0x23fcfd6678e36712));
         out.push(7);
-        out.extend_from_slice(&v.entity_id.to_le_bytes());
+        debug_assert!((0u16..=4095u16).contains(&v.entity_id), "MixedEntity.entity_id: value outside 0..=4095, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.entity_id.to_le_bytes());
     }
     if v.pos_x != 0i32 {
         leb_write(out, ids.id_ref(0xcb4b37357667310e));
         out.push(4);
-        out.extend_from_slice(&v.pos_x.to_le_bytes());
+        debug_assert!((-16383i32..=16383i32).contains(&v.pos_x), "MixedEntity.pos_x: value outside -16383..=16383, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.pos_x.to_le_bytes());
     }
     if v.pos_y != 0i32 {
         leb_write(out, ids.id_ref(0xcb4b3835766732c1));
         out.push(4);
-        out.extend_from_slice(&v.pos_y.to_le_bytes());
+        debug_assert!((-16383i32..=16383i32).contains(&v.pos_y), "MixedEntity.pos_y: value outside -16383..=16383, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.pos_y.to_le_bytes());
     }
     if v.pos_z != 0i32 {
         leb_write(out, ids.id_ref(0xcb4b353576672da8));
         out.push(4);
-        out.extend_from_slice(&v.pos_z.to_le_bytes());
+        debug_assert!((-16383i32..=16383i32).contains(&v.pos_z), "MixedEntity.pos_z: value outside -16383..=16383, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.pos_z.to_le_bytes());
     }
     if v.yaw != 0u16 {
         leb_write(out, ids.id_ref(0xb54d8e19798e16e8));
         out.push(7);
-        out.extend_from_slice(&v.yaw.to_le_bytes());
+        debug_assert!((0u16..=511u16).contains(&v.yaw), "MixedEntity.yaw: value outside 0..=511, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.yaw.to_le_bytes());
     }
     if v.pitch != 0u16 {
         leb_write(out, ids.id_ref(0x53a9f665a90cc1b1));
         out.push(7);
-        out.extend_from_slice(&v.pitch.to_le_bytes());
+        debug_assert!((0u16..=511u16).contains(&v.pitch), "MixedEntity.pitch: value outside 0..=511, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.pitch.to_le_bytes());
     }
     if v.vel_x != 0i32 {
         leb_write(out, ids.id_ref(0x6cede6b6eb60ee67));
         out.push(4);
-        out.extend_from_slice(&v.vel_x.to_le_bytes());
+        debug_assert!((-2048i32..=2047i32).contains(&v.vel_x), "MixedEntity.vel_x: value outside -2048..=2047, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.vel_x.to_le_bytes());
     }
     if v.vel_y != 0i32 {
         leb_write(out, ids.id_ref(0x6cede5b6eb60ecb4));
         out.push(4);
-        out.extend_from_slice(&v.vel_y.to_le_bytes());
+        debug_assert!((-2048i32..=2047i32).contains(&v.vel_y), "MixedEntity.vel_y: value outside -2048..=2047, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.vel_y.to_le_bytes());
     }
     if v.vel_z != 0i32 {
         leb_write(out, ids.id_ref(0x6cede8b6eb60f1cd));
         out.push(4);
-        out.extend_from_slice(&v.vel_z.to_le_bytes());
+        debug_assert!((-2048i32..=2047i32).contains(&v.vel_z), "MixedEntity.vel_z: value outside -2048..=2047, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.vel_z.to_le_bytes());
     }
     if v.health != 0i32 {
         leb_write(out, ids.id_ref(0x7f69d4b5288ba9cf));
         out.push(4);
-        out.extend_from_slice(&v.health.to_le_bytes());
+        debug_assert!((0i32..=1000i32).contains(&v.health), "MixedEntity.health: value outside 0..=1000, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.health.to_le_bytes());
     }
     if v.weapon != MixedWeapon::None {
         leb_write(out, ids.id_ref(0xa0b610205f2c6e01));
@@ -199,17 +199,17 @@ pub fn mixed_hit_event_save_body(v: &MixedHitEvent, out: &mut Vec<u8>, ids: &mut
     if v.target_id != 0u16 {
         leb_write(out, ids.id_ref(0xb7bc9ac015a25050));
         out.push(7);
-        out.extend_from_slice(&v.target_id.to_le_bytes());
+        debug_assert!((0u16..=4095u16).contains(&v.target_id), "MixedHitEvent.target_id: value outside 0..=4095, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.target_id.to_le_bytes());
     }
     if v.damage != 0i32 {
         leb_write(out, ids.id_ref(0x7f6308be8ab37fc0));
         out.push(4);
-        out.extend_from_slice(&v.damage.to_le_bytes());
+        debug_assert!((0i32..=4095i32).contains(&v.damage), "MixedHitEvent.damage: value outside 0..=4095, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.damage.to_le_bytes());
     }
     if v.hit_kind != 0i32 {
         leb_write(out, ids.id_ref(0x01fbc365b059b925));
         out.push(4);
-        out.extend_from_slice(&v.hit_kind.to_le_bytes());
+        debug_assert!((0i32..=7i32).contains(&v.hit_kind), "MixedHitEvent.hit_kind: value outside 0..=7, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.hit_kind.to_le_bytes());
     }
     if v.crit {
         leb_write(out, ids.id_ref(0x126167908c9aa52d));
@@ -227,12 +227,12 @@ pub fn mixed_pickup_event_save_body(v: &MixedPickupEvent, out: &mut Vec<u8>, ids
     if v.item_id != 0u16 {
         leb_write(out, ids.id_ref(0x9e7fd06d864fbd56));
         out.push(7);
-        out.extend_from_slice(&v.item_id.to_le_bytes());
+        debug_assert!((0u16..=1023u16).contains(&v.item_id), "MixedPickupEvent.item_id: value outside 0..=1023, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.item_id.to_le_bytes());
     }
     if v.amount != 0i32 {
         leb_write(out, ids.id_ref(0x8113fe7ea2b16969));
         out.push(4);
-        out.extend_from_slice(&v.amount.to_le_bytes());
+        debug_assert!((0i32..=255i32).contains(&v.amount), "MixedPickupEvent.amount: value outside 0..=255, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.amount.to_le_bytes());
     }
 }
 
@@ -250,7 +250,7 @@ pub fn mixed_stat_save_body(v: &MixedStat, out: &mut Vec<u8>, ids: &mut IdTable,
     if v.delta != 0i32 {
         leb_write(out, ids.id_ref(0x52076675ec13a0c1));
         out.push(4);
-        out.extend_from_slice(&v.delta.to_le_bytes());
+        debug_assert!((-512i32..=511i32).contains(&v.delta), "MixedStat.delta: value outside -512..=511, refused on write (docs/SPEC-TABLES.md section 3)"); out.extend_from_slice(&v.delta.to_le_bytes());
     }
 }
 

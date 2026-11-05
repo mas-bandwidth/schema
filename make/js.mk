@@ -1332,6 +1332,62 @@ packet-utf8-js-negative-control: packet-utf8-js
 
 test-js: packet-utf8-js packet-utf8-js-negative-control
 
+# THE FLAT TIER's FINITE FLOAT RULE (SPEC §4.3, docs/SPEC.md §5.1): the
+# packet-finite JavaScript leg writes every non-finite float32 and float64
+# pattern through Write<T>Flat and requires -1, and
+# carries the finite edge patterns bit exact through Read<T>Flat. It runs
+# twice, under the default NODE_ENV and under NODE_ENV=production: the flat
+# writer refuses in every build. Two controls, each a sabotaged compiler built
+# through a Go overlay (tools/sabotage): the flat writer's two finite checks
+# removed (exactly write.expected red), and a NODE_ENV fork put back into every
+# flat writer refusal (the production run red on exactly write.expected, the
+# development run green).
+build/packet-finite/js/.stamp: bin/schema test/packet-finite/Finite.schema
+	@rm -rf build/packet-finite/js && mkdir -p build/packet-finite/js
+	./bin/schema generate --lang js --out build/packet-finite/js test/packet-finite/Finite.schema
+	@touch $@
+
+.PHONY: packet-finite-js packet-finite-js-negative-control packet-finite-js-production-negative-control
+packet-finite-js: build/packet-finite/js/.stamp
+	$(NODE) test/packet-finite/js/main.mjs build/packet-finite/js
+	NODE_ENV=production $(NODE) test/packet-finite/js/main.mjs build/packet-finite/js
+
+# packet_finite_js_control builds the compiler sabotaged by $(1) into
+# build/packet-finite/js-$(1) and generates the Finite unit with it.
+define packet_finite_js_control
+	@rm -rf build/packet-finite/js-$(1) && mkdir -p build/packet-finite/js-$(1)
+	go run ./tools/sabotage -name packet-finite-js-flat-$(1) -out build/packet-finite/js-$(1)/flat.gotext internal/codegen/js/flat.go
+	@# the overlay names the files by the path go itself resolves: pwd's, which
+	@# is the logical one where CURDIR is the physical one behind a symlink
+	@printf '{"Replace":{"%s/internal/codegen/js/flat.go":"%s/build/packet-finite/js-$(1)/flat.gotext"}}\n' \
+		"$$(pwd)" "$$(pwd)" > build/packet-finite/js-$(1)/overlay.json
+	go build -overlay=build/packet-finite/js-$(1)/overlay.json -o build/packet-finite/js-$(1)/schema ./cmd/schema
+	./build/packet-finite/js-$(1)/schema generate --lang js --out build/packet-finite/js-$(1)/generated test/packet-finite/Finite.schema
+endef
+
+# packet_finite_js_red runs the leg over build/packet-finite/js-$(1) under
+# NODE_ENV=$(2) and requires exactly write.expected's vectors red.
+define packet_finite_js_red
+	@if NODE_ENV=$(2) $(NODE) test/packet-finite/js/main.mjs build/packet-finite/js-$(1)/generated > build/packet-finite/js-$(1)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: packet-finite-js-flat-$(1) left the $(2) run green'; exit 1; fi
+	@sed -n 's/^FAILED: \([^:]*\):.*/\1/p' build/packet-finite/js-$(1)/log | LC_ALL=C sort > build/packet-finite/js-$(1)/got
+	@diff -u test/packet-finite/js/write.expected build/packet-finite/js-$(1)/got || \
+		{ echo 'NEGATIVE CONTROL FAILED: packet-finite-js-flat-$(1) turned another set red'; cat build/packet-finite/js-$(1)/log; exit 1; }
+endef
+
+packet-finite-js-negative-control: packet-finite-js
+	$(call packet_finite_js_control,write)
+	$(call packet_finite_js_red,write,development)
+	@echo 'packet-finite JavaScript negative control: the flat writer without its finite checks writes a NaN and an infinity'
+
+packet-finite-js-production-negative-control: packet-finite-js
+	$(call packet_finite_js_control,production)
+	NODE_ENV=development $(NODE) test/packet-finite/js/main.mjs build/packet-finite/js-production/generated
+	$(call packet_finite_js_red,production,production)
+	@echo 'packet-finite JavaScript negative control: a NODE_ENV fork in the flat writer turns the production run red'
+
+test-js: packet-finite-js packet-finite-js-negative-control packet-finite-js-production-negative-control
+
 
 build/packet-wide/js/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
 	./bin/schema generate --lang js --out build/packet-wide/js build/packet-wide/source/WideText.schema
@@ -1428,6 +1484,32 @@ conformance-negative-control-js-walk: build/conformance-harness build/tables-gen
 	sh test/conformance/js/negative-control walk
 
 test-js: conformance-negative-control-js-walk
+
+# THE JAVASCRIPT LEG's WRITE-REFUSAL NEGATIVE CONTROL: the variable writer's
+# ranged-integer refusal is dropped in a COPY of build/tables-generated-js, and
+# the driver is aimed at the copy. The matrix must go red on
+# `js / write-refusal` (wref_range_high, wref_range_low) while `wire` stays
+# green. Nothing tracked is written to.
+.PHONY: conformance-negative-control-js-write-refusal
+conformance-negative-control-js-write-refusal: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control write-refusal
+
+test-js: conformance-negative-control-js-write-refusal
+
+# THE FIXED AND MESSAGE WRITERS' controls, the same way: WeaponConfig's
+# ranged-integer refusal dropped from the fixed writer's check body
+# (`js / write-refusal-fixed` red at fref_range_high and fref_range_low), and
+# StorePurchase's from the message writer's body (`js / write-refusal-message`
+# red at mref_range_high and mref_range_low, `message` green), each in a COPY
+# of build/tables-generated-js with `wire` green.
+.PHONY: conformance-negative-control-js-write-refusal-fixed conformance-negative-control-js-write-refusal-message
+conformance-negative-control-js-write-refusal-fixed: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control write-refusal-fixed
+
+conformance-negative-control-js-write-refusal-message: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control write-refusal-message
+
+test-js: conformance-negative-control-js-write-refusal-fixed conformance-negative-control-js-write-refusal-message
 
 # THE JAVASCRIPT LEG's FRAMING NEGATIVE CONTROL (docs/LAYERS/1-framing.md): one
 # framing rule of the generated variable reader is dropped in a COPY of

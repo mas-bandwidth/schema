@@ -10,24 +10,54 @@
 #           unknown field is skipped by its length and counted): report and
 #           retain (whose lines carry the report) go red; wire and retain-save
 #           stay green
+#   write-refusal  the save stops holding an integer to its declared set
+#           (§4, §5: a value off its range or past bits(N) is refused as
+#           invalid_value): write-refusal goes red; wire stays green
+#   write-refusal-fixed  FixedSave's check stops holding a ranged integer to
+#           its max (tabledemo's WeaponConfig.penetration): write-refusal-fixed
+#           goes red; wire stays green
+#   write-refusal-message  SaveMessages stops holding a ranged integer to its
+#           max (backenddemo's StorePurchase.quantity): write-refusal-message
+#           goes red; message stays green
 #
 # usage: test/conformance/goose/negative-control <mode>
 # The working directory is the repository root.
 mode=$1
-surfaces="wire report retain retain-save"
 case "$mode" in
 load)
+	surfaces="wire report retain retain-save"
 	file=wire_load.goose
 	from='            c.report.unknown += 1; // skipped by its length (§4)'
 	to='            // sabotaged: the unknown field is not counted'
 	red="report retain"
 	;;
+write-refusal)
+	surfaces="wire write-refusal"
+	file=wire_save.goose
+	from='    if d.shape == ShapeInt && !int_fits(v, d, kind) {'
+	to='    if d.shape == ShapeInt && !int_fits(v, d, kind) && false {'
+	red="write-refusal"
+	;;
+write-refusal-fixed)
+	surfaces="wire write-refusal-fixed"
+	file=TablesTable.goose
+	from='    if v.Penetration > 10 { return false; }'
+	to='    // sabotaged: the range max is not held'
+	red="write-refusal-fixed"
+	;;
+write-refusal-message)
+	surfaces="message write-refusal-message"
+	file=BackendTable.goose
+	from='        if v.Quantity > 99 { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }'
+	to='        // sabotaged: the range max is not held'
+	red="write-refusal-message"
+	;;
 *)
-	echo "usage: $0 load" >&2
+	echo "usage: $0 load | write-refusal | write-refusal-fixed | write-refusal-message" >&2
 	exit 2
 	;;
 esac
-green=$(for s in $surfaces; do case " $red " in *" $s "*) ;; *) printf '%s ' "$s" ;; esac; done)
+green=$(for s in $surfaces; do case " $red " in (*" $s "*) ;; (*) printf '%s ' "$s" ;; esac; done)
 nc=build/goose-negative-control/$mode
 rm -rf "$nc" && mkdir -p "$nc" || exit 1
 [ -d build/conformance-goose ] || { echo "NEGATIVE CONTROL FAILED: build/conformance-goose is missing (make build/conformance-goose)"; exit 1; }
@@ -55,12 +85,14 @@ if SCHEMA_GOOSE_GENERATED=$nc/units ./build/conformance-harness run --only goose
 	cat "$nc/log"
 	exit 1
 fi
+# a surface name as wide as the column runs into its cell, so no space need
+# follow it
 for s in $red; do
-	grep -Eq "^$s +FAIL" "$nc/log" ||
+	grep -Eq "^$s *FAIL" "$nc/log" ||
 		{ echo "NEGATIVE CONTROL FAILED ($mode): $s did not go red"; cat "$nc/log"; exit 1; }
 done
 for s in $green; do
-	grep -Eq "^$s +pass" "$nc/log" ||
+	grep -Eq "^$s *pass" "$nc/log" ||
 		{ echo "NEGATIVE CONTROL FAILED ($mode): $s did not read a pass, so the control does not localise the clause"; cat "$nc/log"; exit 1; }
 done
 echo "goose conformance negative control ($mode): caught by $red, not by $green"

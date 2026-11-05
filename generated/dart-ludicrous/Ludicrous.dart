@@ -808,9 +808,15 @@ void initLudicrousState(LudicrousState value) {
 // writeLudicrousState packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
 // ludicrousStateMaxBytes. Returns the bytes written.
+// A count or a length past its storage is refused before the first byte
+// is stored: asserted, and -1 without --enable-asserts.
 int writeLudicrousState(LudicrousState value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= ludicrousStateMaxBytes);
+  if (value.keysCount < 0 || value.keysCount > 4) {
+    assert(false, 'write contract: storage');
+    return -1;
+  }
   var scratch = 0;
   var scratchBits = 0;
   var wordIndex = 0;

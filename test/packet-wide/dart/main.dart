@@ -60,12 +60,19 @@ void contracts() {
   final v = d.WideSeven();
   // SPEC §4.12's two WRITE-side rules — the used length in [0, N], and no
   // zero code unit among the used units — are the caller's contract and ride
-  // on asserts (SPEC §5), so they are gone from the release build the compiled
-  // driver is made from. Under --enable-asserts they refuse with an
-  // AssertionError; there is nothing to probe in the release driver. The
+  // on asserts (SPEC §5): under --enable-asserts they refuse with an
+  // AssertionError. The used length also indexes the text's own storage, so
+  // the release build the compiled driver is made from refuses it too, with
+  // -1 before a byte is stored (SPEC §5.1); the zero unit is gone from it. The
   // READ-side rules below run in both configurations.
   var asserts = false;
   assert(asserts = true);
+  if (!asserts) {
+    for (final n in [-1, 8]) {
+      v.textLength = n;
+      check(d.writeWideSeven(v, wire) == -1, 'writer bounds');
+    }
+  }
   if (asserts) {
     for (final n in [-1, 8, 1]) {
       v.textLength = n;

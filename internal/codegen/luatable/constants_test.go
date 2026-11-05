@@ -78,7 +78,19 @@ for i, root in ipairs(roots) do
 end
 -- a value past its declared range is clamped to the bound, and a wide bound is a
 -- table of the descriptor's: write one out of range both ways, read it into a
--- kept value twice, and the bound must still be what it was
+-- kept value twice, and the bound must still be what it was. The writer
+-- refuses a value past its declared range, so the out-of-range wire is written
+-- through a copy of the table's descriptor with that field's range taken off.
+local function unranged(d, fd)
+  local f2, d2, fields = {}, {}, {}
+  for k, x in pairs(fd) do f2[k] = x end
+  f2.lo, f2.hi = nil, nil
+  for k, x in pairs(d) do d2[k] = x end
+  for i, f in ipairs(d.fields) do fields[i] = (f == fd) and f2 or f end
+  d2.fields = fields
+  local tables = setmetatable({ [d.name] = d2 }, { __index = T.Tables })
+  return setmetatable({ Tables = tables }, { __index = T })
+end
 for name, d in pairs(T.Tables) do
   if T["New" .. name] then
     for _, fd in ipairs(d.fields) do
@@ -86,7 +98,7 @@ for name, d in pairs(T.Tables) do
         for _, big in ipairs({ math.maxinteger, math.mininteger }) do
           local v = T["New" .. name]()
           v[fd.name] = { lo = 0, hi = big }
-          local ok, wire = pcall(save.Save, T, name, v)
+          local ok, wire = pcall(save.Save, unranged(d, fd), name, v)
           if ok and wire ~= nil then
             local into = T["New" .. name]()
             load.LoadTolerant(T, name, wire, report(), state, into)

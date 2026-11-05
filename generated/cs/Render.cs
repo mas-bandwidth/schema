@@ -179,7 +179,10 @@ namespace Example
                     return false;
                 }
             }
-            Debug.Assert(value.SpritesCount >= 0 && value.SpritesCount <= (int)RenderBlockMaxSprites, "value.SpritesCount out of range [0, (int)RenderBlockMaxSprites]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.SpritesCount < 0 || value.SpritesCount > (int)RenderBlockMaxSprites) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.SpritesCount);
                 if (!batch.SerializeBits(ref offsetValue, 7))

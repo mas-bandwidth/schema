@@ -178,6 +178,9 @@ type gen struct {
 	// unions is its own body occurrence (docs/SPEC-TABLES.md §6.6), as the
 	// oracle keys records by the body instance and never by the field.
 	armIndex string
+	// rowStorage selects the storage walk (<t>_check_storage) over the write
+	// contract's (<t>_check_row) while rowcheck.go emits (emitRowStorage).
+	rowStorage bool
 
 	body strings.Builder
 }

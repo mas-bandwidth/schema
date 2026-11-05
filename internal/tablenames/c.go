@@ -265,6 +265,7 @@ func init() {
 		Name{Name: "table_json_write_wide", What: "the C table wide numeric and text runtime"},
 		Name{Name: "table_wire_utf16", What: "the C table wide numeric and text runtime"},
 		Name{Name: "table_wire_utf16_clamp", What: "the C table wide numeric and text runtime"},
+		Name{Name: "table_wire_utf16_paired", What: "the C table wide numeric and text runtime"},
 		Name{Name: "table_wire_utf16_unit", What: "the C table wide numeric and text runtime"},
 
 		Name{Name: "table_reader_array_header", What: "the form-1 array header reader"},
@@ -277,6 +278,7 @@ func init() {
 		Name{Name: "table_wire_open", What: "the form-1 file wire runtime"},
 		Name{Name: "table_wire_utf8", What: "the form-1 file wire runtime"},
 		Name{Name: "table_wire_utf8_clamp", What: "the form-1 file wire runtime"},
+		Name{Name: "table_wire_utf8_well_formed", What: "the form-1 file wire runtime"},
 		Name{Name: "table_writer_finish", What: "the form-1 file wire runtime"},
 		Name{Name: "table_writer_id", What: "the form-1 file wire runtime"},
 		Name{Name: "table_writer_id_at", What: "the form-1 file wire runtime's ordinal slot cache"},

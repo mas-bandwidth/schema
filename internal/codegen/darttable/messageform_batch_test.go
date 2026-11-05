@@ -152,6 +152,14 @@ void main() {
 // imports both, so a defect in either is a compile error, never a green.
 func runBatchProbe(t *testing.T, u *ir.Unit, root, body string) (string, error) {
 	t.Helper()
+	return runBatchProbeBuild(t, u, root, body, true)
+}
+
+// runBatchProbeBuild is runBatchProbe in one build: asserts compiled in (the
+// debug build) or not (the release build, which runs only the refusals every
+// build makes).
+func runBatchProbeBuild(t *testing.T, u *ir.Unit, root, body string, asserts bool) (string, error) {
+	t.Helper()
 	files, err := dart.Generate(u)
 	if err != nil {
 		t.Fatalf("generate packet: %v", err)
@@ -176,7 +184,11 @@ func runBatchProbe(t *testing.T, u *ir.Unit, root, body string) (string, error) 
 	if err := os.WriteFile(filepath.Join(dir, "batch_probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(announceDartBinary(t), "--enable-asserts", "batch_probe.dart")
+	args := []string{"batch_probe.dart"}
+	if asserts {
+		args = append([]string{"--enable-asserts"}, args...)
+	}
+	cmd := exec.Command(announceDartBinary(t), args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err

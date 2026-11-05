@@ -789,12 +789,26 @@ void main() {
     // A COUNT IS A WRITER CONTRACT LIKE ANY OTHER (SPEC §4.6, §5):
     // "writing packets correctness is the caller's responsibility, and it is
     // our duty to catch it with asserts in debug." The count asserts with
-    // --enable-asserts and is gone from release.
+    // --enable-asserts. It also indexes the value's own storage, so release
+    // refuses it too (SPEC §5.1): -1 before a byte is stored, as for a text
+    // length past its storage.
     expectAssert(() {
       final bad = InputPacket();
       bad.inputsCount = 17; // above [0, MaxInputsPerPacket]
       writeInputPacket(bad, writeView);
     }, 'a count above its wire range must trip the writer contract');
+    if (!assertsEnabled) {
+      final count = InputPacket()..inputsCount = 17;
+      check(
+        writeInputPacket(count, writeView) == -1,
+        'a count past its storage is refused in release',
+      );
+      final text = Chat()..textLength = 999;
+      check(
+        writeChat(text, writeView) == -1,
+        'a text length past its storage is refused in release',
+      );
+    }
 
     expectAssert(() {
       final bad = ShipCreate();

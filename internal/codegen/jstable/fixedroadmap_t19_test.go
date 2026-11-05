@@ -60,11 +60,23 @@ if (n !== 1 || report.refused !== 0) { fail("the astral pair refused: " + TableF
 if (back[0].sLength !== 2) { fail("U+1F600 is not two UTF-16 code units here: " + back[0].sLength); }
 if (back[0].s[0] !== 0xD83D || back[0].s[1] !== 0xDE00) { fail("the pair did not round-trip"); }
 // AND EACH REFUSAL IS NAMED: a used run with an interior null is a refusal by
-// its own name, never read as data (§4.12's interior-null rule).
+// its own name, never read as data (§4.12's interior-null rule). The writer
+// refuses to produce one (docs/SPEC.md §5.1), so the save answers -1 and
+// leaves its buffer untouched, and the damaged wire is a lawful save of
+// "ACB" with its middle unit zeroed in the bytes.
 const bad = new T(); InitT(bad);
 bad.s[0] = 0x0041; bad.s[1] = 0x0000; bad.s[2] = 0x0042; bad.sLength = 3;
 const badBuf = new Uint8Array(TFixedMeasure(1));
-TFixedSave([bad], 1, badBuf);
+if (TFixedSave([bad], 1, badBuf) !== -1) { fail("the writer wrote an interior null"); }
+if (badBuf.some((b) => b !== 0)) { fail("the refused save wrote into its buffer"); }
+bad.s[1] = 0x0043;
+if (TFixedSave([bad], 1, badBuf) !== badBuf.length) { fail("the lawful save of ACB failed"); }
+let unit = -1;
+for (let i = 0; i + 6 <= badBuf.length; i++) {
+  if (badBuf[i] === 0x41 && badBuf[i + 1] === 0 && badBuf[i + 2] === 0x43 && badBuf[i + 3] === 0 && badBuf[i + 4] === 0x42 && badBuf[i + 5] === 0) { unit = i + 2; break; }
+}
+if (unit < 0) { fail("the units of ACB are not in the saved bytes"); }
+badBuf[unit] = 0;
 const rb = new TableFixedReport();
 const nb = TFixedLoad([new T()], 1, badBuf, badBuf.length, TFixedNewPlan(4096, 4096), rb);
 if (nb !== -1) { fail("an interior null was not refused"); }

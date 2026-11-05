@@ -166,6 +166,7 @@ SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t len
 
 SCHEMA_WRITE_INLINE bool WriteWideSeven( serialize::WriteStream & stream, const WideSeven & value )
 {
+    if ( value.text_length < 0 || value.text_length > 7 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
         serialize_assert( value.text[i] != 0 );
@@ -212,6 +213,7 @@ SCHEMA_READ_INLINE bool ReadWideSeven( serialize::ReadStream & stream, WideSeven
 
 SCHEMA_WRITE_INLINE bool WriteWideFour( serialize::WriteStream & stream, const WideFour & value )
 {
+    if ( value.text_length < 0 || value.text_length > 4 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
         serialize_assert( value.text[i] != 0 );
@@ -258,6 +260,7 @@ SCHEMA_READ_INLINE bool ReadWideFour( serialize::ReadStream & stream, WideFour &
 
 SCHEMA_WRITE_INLINE bool WriteNarrowFifteen( serialize::WriteStream & stream, const NarrowFifteen & value )
 {
+    if ( value.text_length < 0 || value.text_length > 15 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
         serialize_assert( value.text[i] != 0 );
@@ -286,6 +289,7 @@ SCHEMA_READ_INLINE bool ReadNarrowFifteen( serialize::ReadStream & stream, Narro
 
 SCHEMA_WRITE_INLINE bool WriteWideInterop( serialize::WriteStream & stream, const WideInterop & value )
 {
+    if ( value.caption_length < 0 || value.caption_length > 7 ) { return false; } // a count or a length past its storage is refused in every build (SPEC §5.1)
     for ( int32_t i = 0; i < value.caption_length; i++ )
     {
         serialize_assert( value.caption[i] != 0 );

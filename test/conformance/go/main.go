@@ -589,6 +589,14 @@ func main() {
 		run = surfaceMessage
 	case "wire":
 		run = surfaceWire
+	case "write-refusal":
+		run = surfaceWriteRefusal
+	case "write-refusal-fixed":
+		run = surfaceWriteRefusalFixed
+	case "write-refusal-message":
+		run = surfaceWriteRefusalMessage
+	case "write-refusal-json":
+		run = surfaceWriteRefusalJson
 	case "report":
 		run = surfaceReport
 	case "framing":

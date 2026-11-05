@@ -34,6 +34,72 @@ local guardHolds = function(fd, v) {
   return true;
 };
 
+// THE FIELD A REFUSAL NAMES (docs/SPEC-TABLES.md §3): writeFields keeps the
+// <Owner>.<field> it is writing here, so a refusal raised inside an array body
+// or an arm payload, which writes into a writer of its own, still names its
+// field. A save starts with both null.
+local writing = { owner = null, field = null };
+
+// A VALUE OUTSIDE ITS DECLARED SET IS REFUSED BY EVERY BUILD: a ranged integer
+// off its min or max, a bits(N) value wider than N, an integer its kind cannot
+// hold, a count or a length past its bound, an enum value naming no variant, a
+// union tag naming no arm, ill-formed text. The first refusal names its field on SaveReason as
+// invalid_value: <Owner>.<field>, and the save answers null.
+local refuseInvalid = function() {
+  if (_M.SaveReason == null) {
+    local where = (writing.owner == null ? "" : writing.owner + ".") + (writing.field == null ? "" : writing.field);
+    _M.SaveReason <- "invalid_value: " + where;
+  }
+  return false;
+};
+
+local u64Less = function(a, b) {
+  local MIN = 0x8000000000000000;
+  return (a ^ MIN) < (b ^ MIN);
+};
+
+// a 128-bit [low, high] pair against another, signed or unsigned
+local wideLess = function(a, b, signed) {
+  local MIN = 0x8000000000000000;
+  local ah = signed ? a[1] : a[1] ^ MIN, bh = signed ? b[1] : b[1] ^ MIN;
+  if (ah != bh) return ah < bh;
+  return u64Less(a[0], b[0]);
+};
+local widePairOf = function(v) {
+  if (typeof v == "array") return v;
+  return [v, v < 0 ? -1 : 0];
+};
+
+// AN INTEGER IS IN ITS DECLARED SET: its kind's width, its declared range
+// (§4), and bits(N)'s N
+local intFits = function(d, val) {
+  if (d.width == 16) {
+    if (typeof val != "array" || val.len() != 2) return false;
+    if (d.lo == null || d.hi == null) return true;
+    local lo = widePairOf(d.lo), hi = widePairOf(d.hi);
+    return !wideLess(val, lo, d.signed) && !wideLess(hi, val, d.signed);
+  }
+  if (typeof val != "integer") return false;
+  if (d.width < 8) {
+    local n = d.width * 8;
+    if (d.signed) {
+      local half = 1 << (n - 1);
+      if (val < -half || val >= half) return false;
+    } else if ((val >>> n) != 0) {
+      return false;
+    }
+  }
+  if (d.lo != null && d.hi != null) {
+    if (d.signed) {
+      if (val < d.lo || val > d.hi) return false;
+    } else if (u64Less(val, d.lo) || u64Less(d.hi, val)) {
+      return false;
+    }
+  }
+  if (d.bits > 0 && d.bits < 64 && (val >>> d.bits) != 0) return false;
+  return true;
+};
+
 local newWriter = function() {
   // owner and field name the refusal a deprecated variant makes
   // (docs/SPEC-TABLES.md §2.15)
@@ -216,6 +282,45 @@ local textTotalPast = function(d, val) {
     if (sum > d.total) return true;
   }
   return false;
+};
+// TEXT A PROGRAM BUILT IS WELL-FORMED OR REFUSED (docs/SPEC.md §5.1): a
+// string's bytes are UTF-8 (no overlong or surrogate sequence, nothing past
+// U+10FFFF, no truncated tail), and wide text pairs every surrogate. A zero
+// byte or unit is text, not ill-formed, here.
+local utf8Ok = function(s) {
+  if (typeof s != "string") return false;
+  local n = s.len(), i = 0;
+  while (i < n) {
+    local c = s[i] & 0xff;
+    if (c < 0x80) { i++; continue; }
+    local k = 0, c1 = 0;
+    if (c < 0xC2) return false;
+    if (c < 0xE0) k = 2;
+    else if (c < 0xF0) k = 3;
+    else if (c < 0xF5) k = 4;
+    else return false;
+    if (i + k > n) return false;
+    c1 = s[i + 1] & 0xff;
+    if (c == 0xE0 && c1 < 0xA0) return false;
+    if (c == 0xED && c1 > 0x9F) return false;
+    if (c == 0xF0 && c1 < 0x90) return false;
+    if (c == 0xF4 && c1 > 0x8F) return false;
+    for (local j = 1; j < k; j++) if ((s[i + j] & 0xc0) != 0x80) return false;
+    i += k;
+  }
+  return true;
+};
+local widePaired = function(val) {
+  local n = val.len();
+  for (local i = 0; i < n; i++) {
+    local u = val[i];
+    if (u >= 0xD800 && u <= 0xDBFF) {
+      if (i + 1 >= n || val[i + 1] < 0xDC00 || val[i + 1] > 0xDFFF) return false;
+      i++;
+    } else if (u >= 0xDC00 && u <= 0xDFFF) return false;
+  }
+  return true;
+};
 };
 local wideUnits = function(w, val) {
   foreach (u in val) { wu8(w, u); wu8(w, u >> 8); }
@@ -464,9 +569,10 @@ writePrim = function(w, d, val, ids) {
         wleb(w, idsRef(ids, pair[1])); return true;
       }
     }
-    return false;
+    return refuseInvalid();
   }
   if (d.shape == "int" || d.shape == "flags") {
+    if (d.shape == "int" && !intFits(d, val)) return refuseInvalid();
     if (d.width == 16) {
       wfixed(w, val[0], 8);
       wfixed(w, val[1], 8);
@@ -490,9 +596,11 @@ local writeFields = function(T, c, v, w, ids, nodes, root) {
     if (!present) continue;
     local val = v[fd.member];
     local prevOwner = w.owner, prevField = w.field;
+    local outerOwner = writing.owner, outerField = writing.field;
     w.owner = c.name; w.field = fd.name;
     local ok = writeValue(T, fd, val, w, ids, nodes, root, true, v, fd.member);
     w.owner = prevOwner; w.field = prevField;
+    writing.owner = outerOwner; writing.field = outerField;
     if (!ok) return false;
   }
   // THE RETAINED TAIL: at the end of their own body, in the order retained,
@@ -573,6 +681,7 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
       wleb(w, idx);
     } else if (e.shape == "sblob" || e.shape == "bblob") {
       local kind = e.shape == "sblob" ? "s" : "b";
+      if (kind == "s" && v != null && !utf8Ok(v)) { refuseInvalid(); return -1; }
       local idx = indexOfBlob(nodes, kind, v, val, i);
       if (idx < 0) return -1;
       wleb(w, idx);
@@ -613,7 +722,7 @@ writeUnionValue = function(T, u, inst, w, ids, nodes, root) {
   if (t == null || t == 0) { wleb(w, 0); return true; }
   local arm = null;
   foreach (a in u.arms) { if (a.tag == t) { arm = a; break; } }
-  if (arm == null) return false;
+  if (arm == null) return refuseInvalid();
   local ref = idsRef(ids, arm.id);
   wleb(w, ref);
   local p = arm.payload;
@@ -638,6 +747,7 @@ writeBare = function(T, d, val, w, ids, nodes, root, holder = null, key = null) 
   }
   if (shape == "sblob" || shape == "bblob") {
     local kind = shape == "sblob" ? "s" : "b";
+    if (kind == "s" && val != null && !utf8Ok(val)) return refuseInvalid();
     local idx = indexOfBlob(nodes, kind, val, holder, key);
     if (idx < 0) return false;
     wleb(w, idx);
@@ -650,15 +760,17 @@ writeBare = function(T, d, val, w, ids, nodes, root, holder = null, key = null) 
   }
   if (shape == "union") return writeUnionValue(T, unionDesc(T, d.table), val, w, ids, nodes, root);
   if (shape == "str") {
+    if (val.len() > d.bound || !utf8Ok(val)) return refuseInvalid();
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
   }
   if (shape == "wstr") {
-    if (!wideFits(val, d.bound)) return false;
+    if (!wideFits(val, d.bound) || !widePaired(val)) return refuseInvalid();
     wideUnits(w, val);
     return true;
   }
   if (shape == "bytes") {
+    if (val.len() > d.bound) return refuseInvalid();
     wu8(w, 6); wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
@@ -717,6 +829,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
   if (shape == "sblob" || shape == "bblob") {
     if (!always && val == null) return true;
     local kind = shape == "sblob" ? "s" : "b";
+    if (kind == "s" && !utf8Ok(val)) return refuseInvalid();
     local idx = indexOfBlob(nodes, kind, val, holder, key);
     if (idx < 0) return false;
     wleb(w, idsRef(ids, d.id)); wu8(w, 17); wleb(w, idx);
@@ -744,7 +857,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
   }
   if (shape == "str") {
     if (!always && scalarDefault(val, d.def)) return true;
-    if (val.len() > d.bound) return false;
+    if (val.len() > d.bound || !utf8Ok(val)) return refuseInvalid();
     wleb(w, idsRef(ids, d.id)); wu8(w, 12);
     wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
@@ -753,7 +866,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
   if (shape == "wstr") {
     // the empty value is the default wide text takes (SPEC §4.12), so it elides
     if (!always && typeof val == "array" && val.len() == 0) return true;
-    if (!wideFits(val, d.bound)) return false;
+    if (!wideFits(val, d.bound) || !widePaired(val)) return refuseInvalid();
     wleb(w, idsRef(ids, d.id)); wu8(w, 33);
     wleb(w, val.len() * 2);
     wideUnits(w, val);
@@ -761,7 +874,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
   }
   if (shape == "bytes") {
     if (!always && blobEqString(val, d.def)) return true;
-    if (val.len() > d.bound) return false;
+    if (val.len() > d.bound) return refuseInvalid();
     wleb(w, idsRef(ids, d.id)); wu8(w, 14);
     local body = newWriter();
     wu8(body, 6); wleb(body, val.len());
@@ -787,8 +900,8 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
       return true;
     }
     if (!always && !arrayRides(d, val)) return true;
-    if (!d.list && val.len() > d.bound) return false;
-    if (("total" in d) && textTotalPast(d, val)) return false;
+    if (!d.list && val.len() > d.bound) return refuseInvalid();
+    if (("total" in d) && textTotalPast(d, val)) return refuseInvalid();
     wleb(w, idsRef(ids, d.id)); wu8(w, 14);
     local body = newWriter();
     local n = writeArrayBody(T, d, val, body, ids, nodes, root);
@@ -817,6 +930,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
 // terminator, then the id table and its count.
 _M.save <- function(T, rootName, value, retain = null) {
   _M.SaveReason <- null;
+  writing.owner = null; writing.field = null;
   local c = tableDesc(T, rootName);
   local numbered = number(T, c, value);
   if (numbered == null) return null;

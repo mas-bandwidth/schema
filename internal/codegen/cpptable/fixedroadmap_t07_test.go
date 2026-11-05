@@ -173,12 +173,16 @@ fixed table C14 {
     C14Reset( one );
     one.n = 5;
     one.xs[0] = 5;
-    one.xs[1] = 999; // the ONLY live value out of [0,10]
+    one.xs[1] = 10;
     one.xs_count = 2;
     one.tail = 4;
     const int64_t need = C14FixedMeasure( 1 );
     C14FixedSave( &one, 1, buf, need );
     const uint8_t * b = buf + kTableFixedHeaderBytes + 4 + C14FixedLayoutBytes + 8;
+    // the ONLY live value out of [0,10], stored by the record's own store: the
+    // writer refuses it (docs/SPEC.md §5.1)
+    one.xs[1] = 999;
+    C14FixedWriteBody( (uint8_t *) b, one );
     // xs: count at body+4, elements at body+8 (n is 4 bytes, so xs starts at 4).
     for ( int i = 8 + 2 * 4; i < 8 + 4 * 4; ++i ) { ((uint8_t *) b)[i] = 0x5A; }
     C14 back;

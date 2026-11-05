@@ -155,17 +155,6 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 	}
 }
 
-func (g *tableGen) emitTableSave(st *ir.Struct) {
-	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
-		return
-	}
-	if st.Integrity != "" {
-		g.pf("func %sSave(value *%s, buffer []byte) int64 {\n if len(buffer) < 4 { return -1 }\n var ids TableIds\n w := TableWriter{Buffer:buffer[:len(buffer)-4], Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return tableIntegritySeal(buffer, w.Offset)\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
-		return
-	}
-	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
-}
-
 // arrayLoopRange is what follows `for i := range` in the loops that index the
 // arrayLengths scratch. gosec G602 cannot bound `range int(n)` against a
 // fixed-size array and flags every arrayLengths[i]; ranging over the scratch
@@ -228,7 +217,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 	if f.KeyEnum == "" && kind != tkTable {
 		g.pf("%s{\n", ind)
 		i := ind + "\t"
-		g.emitStorageCheck(f, expr, i)
+		g.emitStorageCheck(f, expr, i, "return false")
 		cond := "true"
 		if !f.Type.Optional {
 			cond = g.emitFieldRides(f, expr, i)
@@ -273,14 +262,14 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 	g.pf("%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, i, ind)
 }
 
-func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
+func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind, refuse string) {
 	if f.IsList() || f.IsMap() {
-		g.pf("%sif %s.Count<0 {return false}\n", ind, expr)
+		g.pf("%sif %s.Count<0 {%s}\n", ind, expr, refuse)
 		return
 	}
 	if f.Type.Pointer {
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sif %sCount<0 || %sCount>%d { return false }\n", ind, expr, expr, f.ArrayBound)
+			g.pf("%sif %sCount<0 || %sCount>%d { %s }\n", ind, expr, expr, f.ArrayBound, refuse)
 		}
 		return
 	}
@@ -289,9 +278,9 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 		// unbounded text (docs/SPEC-TABLES.md §2.13.1): no length bound beyond
 		// the blob record's own, which the text rule below reads
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
-		g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)
+		g.pf("%sif %sLength < 0 || %sLength > %d { %s }\n", ind, expr, expr, f.Type.Size, refuse)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%sif %sCount < 0 || %sCount > %d { return false }\n", ind, expr, expr, f.ArrayBound)
+		g.pf("%sif %sCount < 0 || %sCount > %d { %s }\n", ind, expr, expr, f.ArrayBound, refuse)
 	}
 }
 
@@ -360,7 +349,7 @@ func (g *tableGen) elideDiffers(f *ir.Field, lhs, def string) string {
 // framed adds the ordinary value's L. A union arm already supplies its own
 // L, so its value is emitted bare. Union values themselves have no L.
 func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed bool) {
-	g.emitStorageCheck(f, expr, ind)
+	g.emitStorageCheck(f, expr, ind, "return false")
 	switch {
 	case f.IsMap():
 		g.emitMapWrite(f, expr, writer, ind, framed)

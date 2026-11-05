@@ -42,6 +42,13 @@
 // in `check()` as part of landing the fix it names.
 //
 // THE FLOOR API THIS FILE ASSUMES is written out in full at `floor_cases()`.
+// A ROW MAY CARRY A VALUE ITS WRITER'S DECLARATION DOES NOT ADMIT, for the
+// reader to clamp (docs/SPEC.md §5.1), and a debug FixedSave refuses such a
+// record at its assert. These rows write those records on purpose, so this
+// file routes the generated writers' schema_assert, the hook a caller defines
+// before the headers (docs/USAGE.md), to nothing.
+#define schema_assert( condition ) ( (void) 0 )
+
 #include <cstdint>
 #include <cstdio>
 #include <cstring>

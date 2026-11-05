@@ -26,6 +26,7 @@ extern "C" {
 /* Writes DefaultArm. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_arm( serialize_write_stream_t * stream, const example_default_arm_t * value )
 {
+    if ( value->entries_count < 0 || value->entries_count > 2 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     serialize_assert( value->entries_count >= 0 && value->entries_count <= 2 );
     if ( !serialize_write_int( stream, value->entries_count, 0, 2 ) )
     {
@@ -153,6 +154,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_bulk_arm( s
     {
         return 0;
     }
+    if ( value->data_length < 0 || value->data_length > 2 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     if ( !serialize_write_int( stream, value->data_length, 0, 2 ) )
     {
         return 0;

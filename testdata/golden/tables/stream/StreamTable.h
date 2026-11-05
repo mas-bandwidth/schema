@@ -1128,6 +1128,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -7930,6 +7947,7 @@ inline int64_t HeaderMeasureBody( TableIds & ids, const Header & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     return bytes;
 }
@@ -7945,6 +7963,7 @@ inline int64_t HeaderMeasure( const Header & value )
 STREAMDEMO_TABLE_INLINE bool HeaderSaveBody( TableWriter & w, TableIds & ids, const Header & value )
 {
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 13, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -7955,8 +7974,16 @@ STREAMDEMO_TABLE_INLINE bool HeaderSaveBody( TableWriter & w, TableIds & ids, co
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): in a DEBUG build the
+// measure runs first and refuses before the first byte, so the caller's
+// buffer stays untouched on -1; in a RELEASE build the C++ debug-assert
+// idiom (schema_assert under NDEBUG) drops the check and pays nothing for it.
 inline int64_t HeaderSave( const Header & value, uint8_t * buffer, int64_t capacity )
 {
+#ifndef NDEBUG
+    const int64_t need = HeaderMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
+#endif
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -8176,6 +8203,7 @@ inline bool HeaderSaveMessageBody( TableBitWriter & w, const Header & value )
     if ( value.name_length > 0 )
     {
         w.put( 8, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.name_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
@@ -8264,10 +8292,14 @@ inline int64_t HeaderMeasureMessages( const Header * values, int64_t count, Tabl
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t HeaderSaveMessages( const Header * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = HeaderMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -9307,6 +9339,26 @@ inline void HeaderFixedClampBody( Header & value, int32_t & TABLE_CLAMP_RESTRICT
     }
 }
 
+// Header's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool HeaderFixedFits( const Header & value )
+{
+    (void) value;
+    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// Header's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool HeaderFixedWriteCheck( const Header & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length );
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9428,6 +9480,8 @@ inline int64_t HeaderFixedSave( const Header * values, int64_t count, uint8_t * 
 {
     const int64_t need = HeaderFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !HeaderFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( HeaderFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, HeaderFixedHash );
@@ -11859,6 +11913,7 @@ inline int64_t HeaderMeasureBodyRetain( TableRetainIds & ids, const Header & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -11867,6 +11922,7 @@ inline int64_t HeaderMeasureBodyRetain( TableRetainIds & ids, const Header & val
 STREAMDEMO_TABLE_INLINE bool HeaderSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Header & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 13, 0xc4bcadba8e631b86ull ), 12 ); // name

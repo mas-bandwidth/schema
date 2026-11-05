@@ -482,21 +482,17 @@ func tableJSONNamed(name string) bool { return name != "" && name != "???" }
 
 func tableJSONFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
-// tableJSONCount is a counted field's companion: a string's length, a bytes'
-// length, a counted array's count. Bounded by the declared extent on the way
-// out, so a storage invariant a caller broke cannot walk off the end. A
-// container with no declared bound has no extent to clamp to: UnboundedContainer
-// is no limit (docs/SPEC-TABLES.md §8.1).
+// tableJSONCount is a counted field's companion as the caller holds it: a
+// string's length, a bytes' length, a counted array's count. The writer
+// refuses one outside [0, extent] before it indexes the storage, in every
+// build (docs/SPEC.md §5.1), rather than walking off the end or clamping. A
+// container with no declared bound has no extent: UnboundedContainer is no
+// limit (docs/SPEC-TABLES.md §8.1).
 func tableJSONCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	if !f.Counted {
 		return f.ArrayBound
 	}
-	count := *(*int32)(unsafe.Add(base, uintptr(f.CountOffset)))
-	count = max(count, 0)
-	if !f.UnboundedContainer && count > f.ArrayBound {
-		count = f.ArrayBound
-	}
-	return count
+	return *(*int32)(unsafe.Add(base, uintptr(f.CountOffset)))
 }
 
 func tableJSONSetCount(base unsafe.Pointer, f *TableFieldInfo, count int32) {
@@ -1018,6 +1014,9 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 
 func tableJSONWriteField(out *tableJSONOut, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+	if n := tableJSONCount(base, f); n < 0 || !f.UnboundedContainer && n > f.ArrayBound {
+		return false
+	}
  if f.Map {return tableJSONWriteMap(out,storage,f,depth)}
  if f.List {return tableJSONWriteList(out,storage,f,depth)}
  if f.Kind==33 {tableJSONWriteWString(out,unsafe.Slice((*uint16)(storage),tableJSONCount(base,f)));return true}

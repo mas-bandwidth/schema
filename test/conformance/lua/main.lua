@@ -36,7 +36,8 @@ local SURFACE_ORDER = {
   "wire", "message", "report", "framing", "retain", "retain-save", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
   "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
-  "block-reason",
+  "block-reason", "write-refusal", "write-refusal-fixed", "write-refusal-message",
+  "write-refusal-json",
 }
 local SURFACES = {}
 for _, s in ipairs(SURFACE_ORDER) do SURFACES[s] = true end
@@ -105,7 +106,7 @@ local NOT_GENERATED = "unit not generated for lua: docs/SPEC-TABLES.md §15"
 -- later require runs against another unit's search path
 local RUNTIME = {
   "load", "save", "json", "retain", "message", "cook",
-  "cookwrite", "block",
+  "cookwrite", "block", "descriptor",
 }
 
 -- the unit's table module is <Package>Tables.lua beside its runtime; the
@@ -255,6 +256,171 @@ local function noText(f)
   return f[6] == "no-text"
 end
 
+-- THE WRITE-REFUSAL surface (testdata/conformance/tables/FORMAT.md): the wire
+-- loaded as its root, ONE field set by the row's kind, then Save, the same
+-- entry the wire surface uses. Save answers nil and a NAMED reason when the
+-- write contract refuses (docs/SPEC-TABLES.md §3); a nameless nil is a
+-- driver failure, as it is on the wire surface.
+--
+-- The path walks the value: `name` steps into a field, `name[i]` into the
+-- array element i (0-based in the path, 1-based in Lua). The kinds set the
+-- leaf in the value's own representation:
+--   int      the integer itself
+--   count    the array's length; new elements copy element 1 (deep)
+--   length   a string of that many "a" bytes (a wstring: that many code units)
+--   ordinal  an enum is its variant's NAME, variants[k] for ordinal k and nil
+--            for 0; an ordinal no variant holds is the integer k itself, a
+--            value the field's slot can hold that names no variant
+--   tag      a union is { tag = k, <arm slot> = payload }: a lawful tag takes
+--            its arm with the arm's declared defaults (a table arm the fresh
+--            record, any other arm nil, its zero); an unlawful one is the tag
+--            alone
+--   float    nan is 0/0, inf and -inf are +-math.huge
+--   bytes    a narrow text's exact bytes, from hex
+--   units    a wide text's exact UTF-16 units, four hex digits each
+local function deepCopy(x)
+  if type(x) ~= "table" then return x end
+  local out = {}
+  for k, v in pairs(x) do out[k] = deepCopy(v) end
+  return setmetatable(out, getmetatable(x))
+end
+
+local function fieldOf(T, desc, name)
+  if desc == nil then return nil end
+  for _, fd in ipairs(desc.fields) do
+    if fd.name == name then return fd end
+  end
+  return nil
+end
+
+local function writeRefusalSet(u, root, v, path, what, value)
+  local T = u.T
+  local desc = T.Tables[root]
+  local holder, key, fd = nil, nil, nil
+  local cur = v
+  for step in path:gmatch("[^.]+") do
+    local name, index = step:match("^([%w_]+)%[(%d+)%]$")
+    if name == nil then name = step end
+    fd = fieldOf(T, desc, name)
+    if fd == nil then fail("write-refusal: no field " .. name .. " in " .. tostring(desc and desc.name)) end
+    holder, key = cur, name
+    if index ~= nil then
+      holder, key = cur[name], tonumber(index) + 1
+      fd = fd.elem
+    end
+    cur = holder[key]
+    desc = fd.target and T.Tables[fd.target] or nil
+  end
+  if what == "int" then
+    holder[key] = math.tointeger(tonumber(value))
+  elseif what == "count" then
+    local n = math.tointeger(tonumber(value))
+    local a = holder[key]
+    for i = #a + 1, n do a[i] = deepCopy(a[1]) end
+    for i = #a, n + 1, -1 do a[i] = nil end
+  elseif what == "length" then
+    local n = math.tointeger(tonumber(value))
+    if fd.shape == "wstring" then
+      local t = {}
+      for i = 1, n do t[i] = 0x61 end
+      holder[key] = t
+    else
+      holder[key] = string.rep("a", n)
+    end
+  elseif what == "ordinal" then
+    local k = math.tointeger(tonumber(value))
+    if k == 0 then
+      holder[key] = nil
+    elseif fd.variants[k] ~= nil then
+      holder[key] = fd.variants[k][1]
+    else
+      holder[key] = k
+    end
+  elseif what == "tag" then
+    local k = math.tointeger(tonumber(value))
+    local un = T.Unions[fd.target]
+    local arm = un.arms[k]
+    local x = { tag = k }
+    if arm ~= nil and arm.field ~= nil and arm.field.shape == "table" then
+      x[arm.slot] = u.descriptor.fresh(T, T.Tables[arm.field.target])
+    end
+    holder[key] = x
+  elseif what == "bytes" then
+    holder[key] = (value:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end))
+  elseif what == "units" then
+    local t = {}
+    for h in value:gmatch("%x%x%x%x") do t[#t + 1] = tonumber(h, 16) end
+    holder[key] = t
+  elseif what == "float" then
+    if value == "nan" then
+      holder[key] = 0 / 0
+    elseif value == "inf" then
+      holder[key] = math.huge
+    elseif value == "-inf" then
+      holder[key] = -math.huge
+    else
+      holder[key] = tonumber(value)
+    end
+  else
+    fail("write-refusal: unknown kind " .. what)
+  end
+end
+
+-- each write-refusal line kind saves through its own writer: the row's unit
+-- loaded and the field set as above, then `save(u, root, v)` answers the
+-- written bytes or text, or nil and the named reason (it is handed the line). A nameless nil is a
+-- driver failure. `wrote` is the written result `accept` holds (the JSON rows:
+-- the zero byte or unit spelled \u0000).
+local function writeRefusalRows(all, outdir, lineKind, unitOf, save, accept)
+  for _, f in ipairs(kind(all, lineKind)) do
+    local u = unit(unitOf(f[3]))
+    if not u then
+      absent(outdir, f[2], NOT_GENERATED)
+    else
+      local v = u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), newReport())
+      if v == nil then fail(f[2] .. ": load refused " .. f[5]) end
+      writeRefusalSet(u, f[4], v, f[6], f[7], f[8])
+      local saved, why = save(u, f[4], v, f)
+      if saved == nil then
+        if why == nil then fail(f[2] .. ": " .. lineKind .. " refused without a name") end
+        writeBytes(outdir .. "/" .. f[2], "refused\n")
+      elseif accept == nil or accept(saved) then
+        writeBytes(outdir .. "/" .. f[2], "wrote\n")
+      else
+        fail(f[2] .. ": the writer wrote a text that does not spell the zero as \\u0000")
+      end
+    end
+  end
+end
+
+local function sameUnit(key)
+  return key
+end
+
+local function surfaceWriteRefusal(all, outdir)
+  writeRefusalRows(all, outdir, "write-refusal", sameUnit, function(u, root, v)
+    return u.save.Save(u.T, root, v)
+  end)
+end
+
+-- write-refusal-fixed: the one value through WriteFixed, the fixed form's
+-- writer of one record (docs/SPEC-TABLES.md §3.4)
+local function surfaceWriteRefusalFixed(all, outdir)
+  writeRefusalRows(all, outdir, "write-refusal-fixed", sameUnit, function(u, root, v)
+    return u.T.WriteFixed(root, v)
+  end)
+end
+
+-- write-refusal-json: the one value through ToJson (§16.3: a zero byte or unit
+-- is written \u0000)
+local function surfaceWriteRefusalJson(all, outdir)
+  writeRefusalRows(all, outdir, "write-refusal-json", sameUnit, function(u, root, v)
+    return u.json.ToJson(u.T, root, v)
+  end, function(text)
+    return text:find("\\u0000", 1, true) ~= nil
+  end)
+end
+
 -- json-read: the TOLERANT text read of the instance's committed text, then
 -- Save, the bytes (§16.2). Every leg's json-read and json-hostile call that one
 -- entry point, FromJsonTolerant (test/conformance/README.md).
@@ -363,6 +529,17 @@ local function surfaceMessage(all, outdir)
       writeBytes(outdir .. "/" .. f[2], saved)
     end
   end
+end
+
+-- write-refusal-message: the <unit> column is a connection key; the one value
+-- goes through SaveMessages as a batch of one, against the vocabulary the
+-- connection's announcement gives (§3.3)
+local function surfaceWriteRefusalMessage(all, outdir)
+  writeRefusalRows(all, outdir, "write-refusal-message", function(key)
+    return connectionNamed(all, key)[3]
+  end, function(u, root, v, f)
+    return u.T.SaveMessages(root, vocabulary(u, connectionNamed(all, f[3]), f[2]), { v })
+  end)
 end
 
 ---------------------------------------------------------------------------
@@ -836,5 +1013,9 @@ elseif surface == "forgery" then surfaceForgery(all, outdir, "block", false)
 elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook", false)
 elseif surface == "cook-reason" then surfaceForgery(all, outdir, "cook", true)
 elseif surface == "block-reason" then surfaceForgery(all, outdir, "block", true)
+elseif surface == "write-refusal" then surfaceWriteRefusal(all, outdir)
+elseif surface == "write-refusal-fixed" then surfaceWriteRefusalFixed(all, outdir)
+elseif surface == "write-refusal-message" then surfaceWriteRefusalMessage(all, outdir)
+elseif surface == "write-refusal-json" then surfaceWriteRefusalJson(all, outdir)
 end
 os.exit(0)

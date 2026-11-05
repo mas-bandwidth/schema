@@ -155,9 +155,16 @@ fixed table Signed128
     want[3].i128 = -2000;
     want[4].i128 = 2000;
 
+    // THE WRITER REFUSES A VALUE OFF ITS DECLARATION (docs/SPEC.md §5.1), so
+    // the clamp's input is stored by each record's own store over a batch
+    // saved at the declared defaults, which are in range
     static uint8_t buffer[1 << 16];
-    int64_t written = Signed128FixedSave( want, 5, buffer, (int64_t) sizeof( buffer ) );
+    Signed128 lawful[5];
+    for ( int k = 0; k < 5; ++k ) { Signed128Reset( lawful[k] ); }
+    int64_t written = Signed128FixedSave( lawful, 5, buffer, (int64_t) sizeof( buffer ) );
     if ( written != Signed128FixedMeasure( 5 ) ) { printf( "signed128: save wrote %lld for 5 records\n", (long long) written ); return 1; }
+    for ( int k = 0; k < 5; ++k )
+        Signed128FixedWriteBody( buffer + kTableFixedHeaderBytes + 4 + Signed128FixedLayoutBytes + 8 + k * Signed128FixedRecordBytes, want[k] );
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     Signed128 got[5];
@@ -222,9 +229,16 @@ fixed table RangedInts
     want[0].rng = 0;   want[1].rng = 100; want[2].rng = 50;
     want[3].rng = -1;  want[4].rng = 101;
 
+    // THE WRITER REFUSES A VALUE OFF ITS DECLARATION (docs/SPEC.md §5.1), so
+    // the clamp's input is stored by each record's own store over a batch
+    // saved at the declared defaults, which are in range
     static uint8_t buffer[1 << 16];
-    int64_t written = RangedIntsFixedSave( want, 5, buffer, (int64_t) sizeof( buffer ) );
+    RangedInts lawful[5];
+    for ( int k = 0; k < 5; ++k ) { RangedIntsReset( lawful[k] ); }
+    int64_t written = RangedIntsFixedSave( lawful, 5, buffer, (int64_t) sizeof( buffer ) );
     if ( written != RangedIntsFixedMeasure( 5 ) ) { printf( "ranged: save wrote %lld for 5 records\n", (long long) written ); return 1; }
+    for ( int k = 0; k < 5; ++k )
+        RangedIntsFixedWriteBody( buffer + kTableFixedHeaderBytes + 4 + RangedIntsFixedLayoutBytes + 8 + k * RangedIntsFixedRecordBytes, want[k] );
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     RangedInts got[5];
@@ -255,9 +269,16 @@ fixed table BitsVals
     BitsVals want[4];
     want[0].bitsv = 0;    want[1].bitsv = 1;    want[2].bitsv = 4095; want[3].bitsv = 4096;
 
+    // THE WRITER REFUSES A VALUE OFF ITS DECLARATION (docs/SPEC.md §5.1), so
+    // the clamp's input is stored by each record's own store over a batch
+    // saved at the declared defaults, which are in range
     static uint8_t buffer[1 << 16];
-    int64_t written = BitsValsFixedSave( want, 4, buffer, (int64_t) sizeof( buffer ) );
+    BitsVals lawful[4];
+    for ( int k = 0; k < 4; ++k ) { BitsValsReset( lawful[k] ); }
+    int64_t written = BitsValsFixedSave( lawful, 4, buffer, (int64_t) sizeof( buffer ) );
     if ( written != BitsValsFixedMeasure( 4 ) ) { printf( "bits: save wrote %lld for 4 records\n", (long long) written ); return 1; }
+    for ( int k = 0; k < 4; ++k )
+        BitsValsFixedWriteBody( buffer + kTableFixedHeaderBytes + 4 + BitsValsFixedLayoutBytes + 8 + k * BitsValsFixedRecordBytes, want[k] );
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     BitsVals got[4];
@@ -356,9 +377,16 @@ fixed table SignedFixed
     want[3].fx = -70000;
     want[4].fx = 70000;
 
+    // THE WRITER REFUSES A VALUE OFF ITS DECLARATION (docs/SPEC.md §5.1), so
+    // the clamp's input is stored by each record's own store over a batch
+    // saved at the declared defaults, which are in range
     static uint8_t buffer[1 << 16];
-    int64_t written = SignedFixedFixedSave( want, 5, buffer, (int64_t) sizeof( buffer ) );
+    SignedFixed lawful[5];
+    for ( int k = 0; k < 5; ++k ) { SignedFixedReset( lawful[k] ); }
+    int64_t written = SignedFixedFixedSave( lawful, 5, buffer, (int64_t) sizeof( buffer ) );
     if ( written != SignedFixedFixedMeasure( 5 ) ) { printf( "signed-fixed: save wrote %lld for 5 records\n", (long long) written ); return 1; }
+    for ( int k = 0; k < 5; ++k )
+        SignedFixedFixedWriteBody( buffer + kTableFixedHeaderBytes + 4 + SignedFixedFixedLayoutBytes + 8 + k * SignedFixedFixedRecordBytes, want[k] );
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     SignedFixed got[5];
@@ -393,9 +421,16 @@ fixed table UnsignedFixed
     want[2].ufx = 32768;
     want[3].ufx = 70000;
 
+    // THE WRITER REFUSES A VALUE OFF ITS DECLARATION (docs/SPEC.md §5.1), so
+    // the clamp's input is stored by each record's own store over a batch
+    // saved at the declared defaults, which are in range
     static uint8_t buffer[1 << 16];
-    int64_t written = UnsignedFixedFixedSave( want, 4, buffer, (int64_t) sizeof( buffer ) );
+    UnsignedFixed lawful[4];
+    for ( int k = 0; k < 4; ++k ) { UnsignedFixedReset( lawful[k] ); }
+    int64_t written = UnsignedFixedFixedSave( lawful, 4, buffer, (int64_t) sizeof( buffer ) );
     if ( written != UnsignedFixedFixedMeasure( 4 ) ) { printf( "unsigned-fixed: save wrote %lld for 4 records\n", (long long) written ); return 1; }
+    for ( int k = 0; k < 4; ++k )
+        UnsignedFixedFixedWriteBody( buffer + kTableFixedHeaderBytes + 4 + UnsignedFixedFixedLayoutBytes + 8 + k * UnsignedFixedFixedRecordBytes, want[k] );
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     UnsignedFixed got[4];

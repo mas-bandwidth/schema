@@ -392,6 +392,36 @@ const fixedRuntimeBody = `  @moduledoc """
     raise ArgumentError, "value is #{byte_size(bytes)} bytes, past the declared bound of #{n}"
   end
 
+  @doc """
+  A string's bytes, or ArgumentError when they are not well-formed UTF-8 or
+  hold a zero byte: storage that holds ill-formed text is refused by every
+  writer (docs/SPEC.md §5.1), and the fixed reader refuses a zero byte as
+  text_ill_formed. The check is the reader's own walk, so this writer never
+  writes text its reader refuses.
+  """
+  def utf8_text(bytes) do
+    if is_binary(bytes) and text_ok?(1, bytes) do
+      bytes
+    else
+      raise ArgumentError, "#{inspect(bytes)} is not well-formed UTF-8 without a zero byte"
+    end
+  end
+
+  @doc """
+  A wstring's units, or ArgumentError when they are not paired UTF-16 or hold
+  a zero unit: a surrogate with no partner is half a character
+  (docs/SPEC.md §5.1), and the fixed reader refuses a zero unit as
+  text_ill_formed. The check is the reader's own walk, so this writer never
+  writes text its reader refuses.
+  """
+  def utf16_text(units) do
+    if is_binary(units) and text_ok?(2, units) do
+      units
+    else
+      raise ArgumentError, "#{inspect(units)} is not paired UTF-16 without a zero unit"
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # THE HASH: fnv1a64 over the layout's bytes, exactly as written
   # ---------------------------------------------------------------------------

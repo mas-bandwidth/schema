@@ -12,6 +12,9 @@ func (g *gen) emitWriteWString(f *ir.Field, name, ind string) {
 	g.pf("%s{\n%s    let mut length = %s_length;\n", ind, ind, name)
 	g.writeAssert(ind+"    ", fmt.Sprintf("(0..=%s).contains(&length)", bound),
 		fmt.Sprintf("%s_length out of range [0, %s]", assertLabel(name), bound))
+	// an unpaired surrogate is ill-formed text, refused on write (docs/SPEC.md §5.1)
+	g.writeAssert(ind+"    ", fmt.Sprintf("core::char::decode_utf16(%s[..length as usize].iter().copied()).all(|u| u.is_ok())", name),
+		fmt.Sprintf("%s holds an unpaired surrogate within its used length", assertLabel(name)))
 	g.pf("%s    stream.serialize_int(&mut length, 0, %s)?;\n", ind, bound)
 	g.pf("%s    for &unit in &%s[..length as usize] {\n", ind, name)
 	g.writeAssert(ind+"        ", "unit != 0", fmt.Sprintf("%s carries an interior null within its used length", assertLabel(name)))

@@ -289,7 +289,8 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.emitZeroFunction(st.Name, st.Fields)
 	g.emitInitFunction(st.Name, st.Fields)
 	g.emitCheckFunction(st.Name, func(ind string) { g.emitCheckItems(st.Items, "value", ind) })
-	g.emitWriteFunction(st.Name, func(ind string) { g.emitWriteItems(st.Items, "value", ind) })
+	fits := g.emitFitsFunction(st.Name, st.Items)
+	g.emitWriteFunction(st.Name, fits, func(ind string) { g.emitWriteItems(st.Items, "value", ind) })
 	g.emitReadFunction(st.Name, func(ind string) { g.emitReadItems(st.Items, "value", ind, false) })
 }
 
@@ -310,7 +311,8 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		// the tag contract; each arm's own contracts bind in its own entry
 		g.assertRange(loadUnsignedWidth(enumStorageBitsForTag(d.Max), "value.type"), big.NewInt(0), big.NewInt(d.Max), true, ind)
 	})
-	g.emitWriteFunction(d.Name, func(ind string) { g.emitWriteUnion(d, "value", ind) })
+	fits := g.emitFitsFunction(d.Name, []ir.Item{&ir.FieldItem{F: &ir.Field{Type: ir.FieldType{Kind: ir.TNamed, Name: d.Name, Ref: d}}}})
+	g.emitWriteFunction(d.Name, fits, func(ind string) { g.emitWriteUnion(d, "value", ind) })
 	g.emitReadFunction(d.Name, func(ind string) { g.emitReadUnion(d, "value", ind) })
 }
 
@@ -323,7 +325,7 @@ func (g *gen) resetFn() {
 
 const bodyInd = "        " // function bodies sit two levels inside the outer class
 
-func (g *gen) emitWriteFunction(name string, walk func(ind string)) {
+func (g *gen) emitWriteFunction(name string, fits bool, walk func(ind string)) {
 	g.resetFn()
 	// a write starts with data holding everything below bitOffset — the
 	// stored state: the first merge loads the partial word (settle), and a
@@ -340,8 +342,15 @@ func (g *gen) emitWriteFunction(name string, walk func(ind string)) {
 	g.bpf("    // position after it — the trusted writer (contracts in the checkWrite%s\n", name)
 	g.bpf("    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;\n")
 	g.bpf("    // data must be a multiple of 8 bytes long and hold bitOffset + %s.\n", constName(name+"MaxBits"))
+	if fits {
+		g.bpf("    // A count or a length past its storage answers -1 in every build, before\n")
+		g.bpf("    // the first bit is stored (fits%s).\n", name)
+	}
 	g.bpf("    public static int write%sBits(%s value, byte[] data, int bitOffset) {\n", name, name)
 	g.bpf("        assert checkWrite%s(value, data, bitOffset);\n", name)
+	if fits {
+		g.bpf("        if (!fits%s(value)) {\n            return -1;\n        }\n", name)
+	}
 	if body == "" {
 		g.bpf("        // empty body — presence is the payload (SPEC §4.6)\n")
 		g.bpf("        return bitOffset;\n")
@@ -363,9 +372,163 @@ func (g *gen) emitWriteFunction(name string, walk func(ind string)) {
 
 	g.bpf("    // write%s packs value into data from its start and returns the bytes written;\n", name)
 	g.bpf("    // data must hold %s.\n", maxBytes)
+	if fits {
+		g.bpf("    // -1 when a count or a length lies past its storage.\n")
+	}
 	g.bpf("    public static int write%s(%s value, byte[] data) {\n", name, name)
-	g.bpf("        return (write%sBits(value, data, 0) + 7) >>> 3;\n", name)
+	if fits {
+		g.bpf("        final int pos = write%sBits(value, data, 0);\n", name)
+		g.bpf("        return pos < 0 ? -1 : (pos + 7) >>> 3;\n")
+	} else {
+		g.bpf("        return (write%sBits(value, data, 0) + 7) >>> 3;\n", name)
+	}
 	g.bpf("    }\n\n")
+}
+
+// ---- the storage bound (docs/SPEC.md §5.1: memory is not a value) ----
+
+// holdsStorageItems reports whether a scope holds, anywhere in its closure
+// by value, a counted array's count or a text's length: a number the writer
+// indexes the value's own storage with.
+func holdsStorageItems(items []ir.Item) bool {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			if holdsStorageField(item.F) {
+				return true
+			}
+		case *ir.Branch:
+			if holdsStorageItems(item.Then) || holdsStorageItems(item.Else) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func holdsStorageField(f *ir.Field) bool {
+	if f.Array == ir.ArrayCounted {
+		return true
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes, ir.TWString:
+		return true
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return holdsStorageItems(ref.Items)
+		case *ir.Union:
+			for _, vr := range ref.Variants {
+				if !vr.Void() && holdsStorageItems(vr.Ref.Items) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitFitsFunction emits fits<Name>, the writer's EVERY-BUILD bound on the
+// numbers that index the value's own storage: every count and length the
+// write would walk, over the whole closure inline, inside [0, N]. Unlike
+// checkWrite it is not an assert: the write answers -1 for it before the
+// first bit is stored, rather than throwing mid-write. A type whose closure
+// holds neither has none; reports whether it emitted one.
+func (g *gen) emitFitsFunction(name string, items []ir.Item) bool {
+	if !holdsStorageItems(items) {
+		return false
+	}
+	g.resetFn()
+	g.emitFitsItems(items, "value", bodyInd)
+	body := g.fn.String()
+	g.bpf("    // fits%s answers whether every count and length write%sBits indexes\n", name, name)
+	g.bpf("    // storage with lies inside that storage: checked in every build.\n")
+	g.bpf("    static boolean fits%s(%s value) {\n", name, name)
+	g.body.WriteString(body)
+	g.bpf("        return true;\n")
+	g.bpf("    }\n\n")
+	return true
+}
+
+func (g *gen) emitFitsItems(items []ir.Item, path, ind string) {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			if holdsStorageField(item.F) {
+				g.emitFitsField(item.F, path, ind)
+			}
+		case *ir.Branch:
+			if !holdsStorageItems(item.Then) && !holdsStorageItems(item.Else) {
+				continue
+			}
+			neg := ""
+			if item.Neg {
+				neg = "!"
+			}
+			g.pf("%sif (%s%s.%s) {\n", ind, neg, path, javaName(item.Cond))
+			g.emitFitsItems(item.Then, path, ind+"    ")
+			if item.Else != nil && holdsStorageItems(item.Else) {
+				g.pf("%s} else {\n", ind)
+				g.emitFitsItems(item.Else, path, ind+"    ")
+			}
+			g.pf("%s}\n", ind)
+		}
+	}
+}
+
+func (g *gen) emitFitsField(f *ir.Field, path, ind string) {
+	name := path + "." + javaName(f.Name)
+	if f.Name == "" {
+		name = path // the standalone union functions' self item
+	}
+	elem := f.Type.Kind == ir.TNamed && holdsStorageField(&ir.Field{Type: f.Type})
+	loop := func(bound string) {
+		iv := fmt.Sprintf("j%d", g.loopDepth)
+		g.loopDepth++
+		g.pf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, iv, iv, bound, iv)
+		g.emitFitsScalar(f, fmt.Sprintf("%s[%s]", name, iv), ind+"    ")
+		g.pf("%s}\n", ind)
+		g.loopDepth--
+	}
+	switch f.Array {
+	case ir.ArrayFixed:
+		if elem {
+			loop(fmt.Sprintf("%d", f.ArrayBound))
+		}
+	case ir.ArrayCounted:
+		count := name + "Count"
+		g.pf("%sif (%s < 0 || %s > %d) {\n%s    return false;\n%s}\n", ind, count, count, f.ArrayBound, ind, ind)
+		if elem {
+			loop(count)
+		}
+	default:
+		g.emitFitsScalar(f, name, ind)
+	}
+}
+
+func (g *gen) emitFitsScalar(f *ir.Field, name, ind string) {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes, ir.TWString:
+		length := name + "Length"
+		g.pf("%sif (%s < 0 || %s > %d) {\n%s    return false;\n%s}\n", ind, length, length, f.Type.Size, ind, ind)
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.emitFitsItems(ref.Items, name, ind)
+		case *ir.Union:
+			g.pf("%sswitch (%s) {\n", ind, tagSwitchExpr(ref, name))
+			for i, vr := range ref.Variants {
+				if vr.Void() || !holdsStorageItems(vr.Ref.Items) {
+					continue
+				}
+				g.pf("%s    case %d:\n", ind, i+1)
+				g.emitFitsItems(vr.Ref.Items, name+"."+javaName(vr.Name), ind+"        ")
+				g.pf("%s        break;\n", ind)
+			}
+			g.pf("%s    default:\n%s        break;\n", ind, ind)
+			g.pf("%s}\n", ind)
+		}
+	}
 }
 
 func (g *gen) emitReadFunction(name string, walk func(ind string)) {

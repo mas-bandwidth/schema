@@ -32,6 +32,7 @@
 #        driver <manifest> block-fuzz <seed> <n>
 #        driver <manifest> cook-fuzz <seed> <n> <fixtures dir>
 main=test/conformance/goose/main.goose
+manifest=$1
 goose=${GOOSE:-dist/goose-v2026.2-linux-x64/goose}
 units=${SCHEMA_GOOSE_GENERATED:-build/conformance-goose}
 # THE WORK DIRECTORY is one per units tree and per surface, so calls that run
@@ -71,6 +72,41 @@ glue() {
 			echo "    }"
 		done
 		echo "    return -1;"
+		echo "}"
+		# THE WRITE CONTRACT's typed writers (docs/SPEC.md §5.1): one arm per
+		# root the unit carries FixedSave for. The typed record is the loaded
+		# value through <Root>FromLoaded, or the declared defaults for a root
+		# with no value bridge; then the row's count, length, bytes or units,
+		# which the bridge clamps or does not carry, are set on the record
+		# itself (wref_patches), a count or length even past storage. The
+		# answer: 0 written, -1 refused by name, -9 a row this glue cannot
+		# build (an absence), anything else a failure.
+		echo "fn conformance_wref(form: const u8[:], name: const u8[:], root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], at: i64, announce: const u8[:]) -> i64 {"
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)FixedSave(.*/\1/p' "$1"/*Table.goose); do
+			echo "    if root == \"$r\" {"
+			echo "        var v = $ns::$r { .. };"
+			bridge=0
+			if grep -q "^fn ${r}FromLoaded(" "$1"/*Table.goose; then
+				bridge=1
+				echo "        if !$ns::${r}FromLoaded(v, conformance_unit(), data, vals, at) { return -8; }"
+			fi
+			wref_patches "$(basename "$1")" "$r" "$bridge"
+			echo "        var values: $ns::$r[1] = [v];"
+			echo "        var out: u8[>..] = [];"
+			echo "        if form == \"write-refusal-fixed\" { return if $ns::${r}FixedSave(values[0..1], out) < 0 { -1 } else { 0 }; }"
+			if grep -q "^fn ${r}SaveMessages(" "$1"/*Table.goose; then
+				echo "        if form == \"write-refusal-message\" {"
+				echo "            var voc = schema_rt::MsgVocabulary { .. };"
+				echo "            var rep = schema_rt::MsgReport { .. };"
+				echo "            if !schema_rt::announce_read(voc, announce, rep) { return -7; }"
+				echo "            if $ns::${r}SaveMessages(values[0..1], out, rep) < 0 { return if rep.reason != 0 { -1 } else { -6 }; }"
+				echo "            return 0;"
+				echo "        }"
+			fi
+			echo "        return -9;"
+			echo "    }"
+		done
+		echo "    return -9;"
 		echo "}"
 		# THE TEXT FORM's two directions. A root with a typed record (the fixed
 		# class, json_form.go) reads and writes through it and its generated
@@ -133,6 +169,45 @@ glue() {
 	for f in conformance_unit main unit; do
 		mv -f "$1/$f.goose.$$" "$1/$f.goose" || exit 1
 	done
+}
+# wref_patches <unit> <root> <bridged>: the write-refusal-fixed and
+# write-refusal-message rows of this unit and root whose kind the value bridge
+# cannot carry, as statements on the typed record v: a count or a length
+# beside its storage, a text's bytes or wide units and its length. A path's
+# segments are the members' names, each word capitalized (version_note is
+# VersionNote). A root with no bridge answers its other rows -9.
+wref_patches() {
+	awk -v k="$1" -v r="$2" -v bridged="$3" '
+	function member(seg,   at, name, idx, parts, n, i, out) {
+		at = index(seg, "["); name = seg; idx = ""
+		if (at > 0) { name = substr(seg, 1, at - 1); idx = substr(seg, at) }
+		n = split(name, parts, "_"); out = ""
+		for (i = 1; i <= n; i++) out = out toupper(substr(parts[i], 1, 1)) substr(parts[i], 2)
+		return out idx
+	}
+	function lvalue(path,   segs, n, i, out) {
+		n = split(path, segs, "."); out = "v"
+		for (i = 1; i <= n; i++) out = out "." member(segs[i])
+		return out
+	}
+	$1 == "connection" { unit_of[$2] = $3; next }
+	($1 == "write-refusal-fixed" || $1 == "write-refusal-message") && $4 == r {
+		u = ($1 == "write-refusal-message") ? unit_of[$3] : $3
+		if (u != k) next
+		lv = lvalue($6); kind = $7; val = $8; line = ""
+		if (kind == "count") line = " " lv "Count = " val ";"
+		else if (kind == "length") line = " " lv "Length = " val ";"
+		else if (kind == "bytes" || kind == "units") {
+			d = (kind == "units") ? 4 : 2; n = 0
+			for (i = 1; i + d - 1 <= length(val); i += d) { line = line " " lv "[" n "] = 0x" substr(val, i, d) ";"; n++ }
+			line = line " " lv "Length = " n ";"
+		} else {
+			if (bridged == 0) bare = bare (bare == "" ? "" : " || ") "name == \"" $2 "\""
+			next
+		}
+		print "        if name == \"" $2 "\" {" line " }"
+	}
+	END { if (bare != "") print "        if " bare " { return -9; }" }' "$manifest"
 }
 # THE ACCELERATORS (docs/SPEC-TABLES.md §7, §19): the block form's and the
 # cook's surfaces run accel.goose in place of main.goose, beside a second glue
@@ -319,7 +394,9 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 			(s == "report" && $1 == "report" && $3 == k) ||
 			(s == "framing" && $1 == "framing" && $3 == k) ||
 			((s == "retain" || s == "retain-save") && $1 == "retain" && $3 == k) ||
-			(s == "json-hostile" && $1 == "json-hostile" && $3 == k) { print $2 " absent" }' "$1" >>"$out"
+			(s == "json-hostile" && $1 == "json-hostile" && $3 == k) ||
+			((s == "write-refusal" || s == "write-refusal-fixed" || s == "write-refusal-json") && $1 == s && $3 == k) ||
+			(s == "write-refusal-message" && $1 == s && unit_of[$3] == k) { print $2 " absent" }' "$1" >>"$out"
 		continue
 	fi
 	glue "$u"

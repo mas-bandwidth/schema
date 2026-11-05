@@ -1533,7 +1533,11 @@ type TableMessageWriter struct {
 	TableBitWriter
 	IndexBits int64
 	Clamped   int32
+	Reason    string
 }
+
+// Refuse is the writer's refusal of a value its declaration does not admit.
+func (w *TableMessageWriter) Refuse() bool { w.Reason = "invalid_value"; return false }
 
 const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16
@@ -6378,6 +6382,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 }
 
 func BenchMixedSave(value *BenchMixed, buffer []byte) int64 {
+	if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 || !tableUTF8Valid(value.PlayerName[:value.PlayerNameLength]) {
+		return -1
+	}
 	var ids TableIds
 	w := TableWriter{Buffer: buffer, Ids: &ids}
 	w.Put8(1)

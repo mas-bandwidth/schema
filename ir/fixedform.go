@@ -1737,11 +1737,77 @@ func TableFixedEmitted(u *Unit, st *Struct) bool {
 	return TableFixedLeafCount(u, st) <= TableFixedLeafCap
 }
 
+// TableFixedWriteCheckNeeded answers whether a type's closure declares anything
+// the fixed WRITER holds a record to before its first byte (docs/SPEC.md §5.1):
+// every bound the read side holds (TableFixedClampNeeded), and beside them a
+// text or bytes field's used length and a counted array's live count, which the
+// read side never sees out of bounds and a program can set anywhere.
+func TableFixedWriteCheckNeeded(st *Struct) bool {
+	return tableFixedWriteCheckNeeded(st, map[string]bool{})
+}
+
+func tableFixedWriteCheckNeeded(st *Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if tableFixedWriteCheckNeededField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// TableFixedWriteCheckNeededField is the same question about ONE field, its
+// array or optional shape included.
+func TableFixedWriteCheckNeededField(f *Field) bool {
+	return tableFixedWriteCheckNeededField(f, map[string]bool{})
+}
+
+func tableFixedWriteCheckNeededField(f *Field, seen map[string]bool) bool {
+	if f.Array == ArrayCounted {
+		return true
+	}
+	if f.Array == ArrayNone && f.KeyEnum == "" {
+		switch f.Type.Kind {
+		case TString, TWString, TBytes:
+			return true
+		}
+	}
+	return tableFixedWriteCheckNeededElement(f, seen)
+}
+
+// TableFixedWriteCheckNeededElement is the question about ONE ELEMENT of a
+// field: its type alone, without its array or optional shape.
+func TableFixedWriteCheckNeededElement(f *Field) bool {
+	return tableFixedWriteCheckNeededElement(f, map[string]bool{})
+}
+
+func tableFixedWriteCheckNeededElement(f *Field, seen map[string]bool) bool {
+	if f.Type.Kind == TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *Struct:
+			return tableFixedWriteCheckNeeded(r, seen)
+		case *Union, *Enum:
+			return true
+		}
+		return false
+	}
+	// A RANGED FLOAT OFF ITS RANGE IS CLAMPED, by the reader and by no writer
+	// of the C and C++ legs (docs/SPEC.md §5.1, row 10), so it is not asked
+	if f.HasFloatRange {
+		return false
+	}
+	return tableFixedClampNeededField(f, seen)
+}
+
 // TableFixedHasWriteBound answers whether any fixed table of the unit has a
 // number the WRITE side bounds: a text field's used length, or a counted
-// array's live count. Those are the only two write-side checks this form has,
-// and they are DEBUG-ONLY (schema_assert), so a unit of plain scalars declares
-// no bound and pays for no assert hook at all — the zero-cost gate (§2.2).
+// array's live count. The store asserts both (schema_assert, debug-only; the
+// save's every-build refusal of the same numbers is a plain compare and needs
+// no hook), so a unit of plain scalars declares no bound and pays for no
+// assert hook at all — the zero-cost gate (§2.2).
 func TableFixedHasWriteBound(u *Unit) bool {
 	seen := map[string]bool{}
 	var has func(st *Struct) bool
