@@ -63,7 +63,6 @@
         "tables-slot-negative-control",
         "tables-view-containment-negative-control",
         "tables-was-negative-control",
-        "tables-wire-text-total-negative-control",
         "tables-wasrows-negative-control",
         "tables-zero-cost-negative-control",
         "toolchain-negative-control"

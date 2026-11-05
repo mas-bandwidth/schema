@@ -1500,7 +1500,7 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::allocation_failed: return "allocation_failed";
         case blockdemo::wire_damaged: return "wire_damaged";
         case blockdemo::malformed: return "malformed";
-        case blockdemo::clamped: return "clamped";
+        case blockdemo::out_of_range: return "out_of_range";
         case blockdemo::kind_mismatch: return "kind_mismatch";
         case blockdemo::base64_damaged: return "base64_damaged";
         case blockdemo::base64_not_canonical: return "base64_not_canonical";
@@ -1527,6 +1527,7 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::text_ill_formed: return "text_ill_formed";
         case blockdemo::count_over_bound: return "count_over_bound";
         case blockdemo::length_over_bound: return "length_over_bound";
+        case blockdemo::missing_required: return "missing_required";
     }
     return "?";
 }

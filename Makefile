@@ -7445,29 +7445,6 @@ build-version-elemkind-negative-control:
 		  cat build/buildversion-no-elemkind-frames.log; exit 1; }
 	@echo "negative control: removing elemkind from the list's cook line turns the retype gate and §4.1's row RED"
 
-# THE TEXT TOTAL ON THE ENGINE'S READ (docs/SPEC-TABLES.md §2.13): the engine
-# is the oracle, so it keeps the prefix within the reader's total. Make the
-# clamp return the decoded count unchanged in a COPY of the decoder and the
-# total test must go red.
-.PHONY: tables-wire-text-total-negative-control
-tables-wire-text-total-negative-control:
-	@mkdir -p build
-	@sed -e 's@^[[:space:]]*if f.TextTotal <= 0 || !f.IsTextList() {$$@if true || f.TextTotal <= 0 || !f.IsTextList() { // SABOTAGED: the total is never held@' \
-		internal/tablewire/decode.go > build/tablewire-no-total.gotext
-	@grep -q SABOTAGED build/tablewire-no-total.gotext || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch the total clamp"; exit 1; }
-	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/tablewire-no-total.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/tablewire-no-total-overlay.json
-	@if SCHEMA_SLOW=1 go test -timeout=0 -count=1 -overlay=build/tablewire-no-total-overlay.json \
-		./internal/tablewire -run TestTextTotalClampsTheReadToAPrefix > build/tablewire-no-total.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the total test passed with the clamp gone"; \
-		cat build/tablewire-no-total.log; exit 1; \
-	fi
-	@grep -q "want clamped 4" build/tablewire-no-total.log || \
-		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the missing clamp"; \
-		  cat build/tablewire-no-total.log; exit 1; }
-	@echo "negative control: removing the engine's total clamp turns the text-total test RED"
-
 test: release-proof-refusal
 
 .PHONY: slow-gate-scan
