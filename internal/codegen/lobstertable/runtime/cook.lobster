@@ -647,9 +647,6 @@ def cc_field(c:CookCarve, at:int, sl:Slot, cf:CookField) -> void:
         return
     if fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob":
         return
-    if fd.s == "text":
-        cc_text(c, at, sl.cell.s)
-        return
     if not cc_has_field(c, fd):
         return
     if fd.s == "arr":
@@ -667,28 +664,25 @@ def cc_field(c:CookCarve, at:int, sl:Slot, cf:CookField) -> void:
 // `u32 zero`, the bytes and one zero byte, padded to the region's alignment;
 // the 8-byte slot is the self-relative delta to it, and the empty string's
 // slot is null.
-def cc_text(c:CookCarve, at:int, s:string) -> void:
-    let n = length(s)
-    if n == 0:
+def cc_elem(c:CookCarve, at:int, fd:FieldDescriptor, v:Value, cf:CookField) -> void:
+    if fd.s == "text":
+        let n = length(v.s)
+        if n == 0:
+            if c.write:
+                let o = c.o
+                assert o
+                co_u64(o, at, 0, c.big)
+            return
+        c.at = cook_align_up(c.at, 8)
+        let start = c.at
+        c.at += cook_align_up(8 + n + 1, c.ralign)
         if c.write:
             let o = c.o
             assert o
-            co_u64(o, at, 0, c.big)
-        return
-    c.at = cook_align_up(c.at, 8)
-    let start = c.at
-    c.at += cook_align_up(8 + n + 1, c.ralign)
-    if c.write:
-        let o = c.o
-        assert o
-        let blob = c.extent_at + start
-        co_u64(o, at, blob - at, c.big)
-        co_u32(o, blob, n, c.big)
-        co_bytes(o, blob + 8, s)
-
-def cc_elem(c:CookCarve, at:int, fd:FieldDescriptor, v:Value, cf:CookField) -> void:
-    if fd.s == "text":
-        cc_text(c, at, v.s)
+            let blob = c.extent_at + start
+            co_u64(o, at, blob - at, c.big)
+            co_u32(o, blob, n, c.big)
+            co_bytes(o, blob + 8, v.s)
         return
     if fd.s == "tab":
         let t = v.tab
@@ -986,33 +980,33 @@ def cr_count(c:CookRead, at:int, countoff:int, bufsize:int) -> int:
         return 0
     return n
 
-def cr_text(c:CookRead, at:int, countoff:int, bufsize:int) -> string:
-    let n = cr_count(c, at, countoff, bufsize)
-    return substring(c.data, at, n)
-
-// cr_utext reads ONE unbounded text back (docs/SPEC-TABLES.md §2.13.1;
+// cr_text reads a bounded text or byte array when countoff >= 0, or ONE
+// unbounded text back when countoff < 0 (docs/SPEC-TABLES.md §2.13.1;
 // uncook.go's text): a null slot is the empty string; otherwise the slot's
 // delta names an eight-byte-aligned blob in the data, `u32 length` (never 0),
 // the bytes and their zero byte. Anything else is a damaged cook.
-def cr_utext(c:CookRead, at:int) -> string:
-    if at < cook_header_bytes or at > c.end or 8 > c.end - at:
-        c.bad = true
-        return ""
-    let delta = cr_word(c, at)
-    if delta == 0:
-        return ""
-    if delta < cook_header_bytes - at or delta > c.end - at:
-        c.bad = true
-        return ""
-    let start = at + delta
-    if start % 8 != 0 or 8 > c.end - start:
-        c.bad = true
-        return ""
-    let n = cr_word32(c, start)
-    if n <= 0 or n + 1 > c.end - start - 8 or c.data[start + 8 + n] != 0:
-        c.bad = true
-        return ""
-    return substring(c.data, start + 8, n)
+def cr_text(c:CookRead, at:int, countoff:int, bufsize:int) -> string:
+    if countoff < 0:
+        if at < cook_header_bytes or at > c.end or 8 > c.end - at:
+            c.bad = true
+            return ""
+        let delta = cr_word(c, at)
+        if delta == 0:
+            return ""
+        if delta < cook_header_bytes - at or delta > c.end - at:
+            c.bad = true
+            return ""
+        let start = at + delta
+        if start % 8 != 0 or 8 > c.end - start:
+            c.bad = true
+            return ""
+        let n = cr_word32(c, start)
+        if n <= 0 or n + 1 > c.end - start - 8 or c.data[start + 8 + n] != 0:
+            c.bad = true
+            return ""
+        return substring(c.data, start + 8, n)
+    let n = cr_count(c, at, countoff, bufsize)
+    return substring(c.data, at, n)
 
 def cr_units(c:CookRead, at:int, countoff:int, bufsize:int) -> [int]:
     let n = cr_count(c, at, countoff, bufsize)
@@ -1070,7 +1064,7 @@ def cr_field(c:CookRead, at:int, sl:Slot, cf:CookField) -> void:
             sl.cell.s = cr_text(c, at, cf.count, cf.size)
             sl.count = cr_count(c, at, cf.count, cf.size)
     elif s == "text":
-        sl.cell.s = cr_utext(c, at)
+        sl.cell.s = cr_text(c, at, -1, 0)
     elif s == "bytes":
         sl.cell.s = cr_text(c, at, cf.count, cf.size)
         sl.count = cr_count(c, at, cf.count, cf.size)
@@ -1120,7 +1114,7 @@ def cr_elem(c:CookRead, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff:
         else:
             v.s = cr_text(c, at, countoff, vsize)
     elif s == "text":
-        v.s = cr_utext(c, at)
+        v.s = cr_text(c, at, -1, 0)
     elif s == "bytes":
         v.s = cr_text(c, at, countoff, vsize)
     elif s == "bool":

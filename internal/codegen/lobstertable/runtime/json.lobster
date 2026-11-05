@@ -45,12 +45,12 @@ let json_text_list_registry:[FieldDescriptor] = []
 // A TEXT LIST's `| total = N` on the JSON read (docs/SPEC-TABLES.md §2.13):
 // the total and the `Table.field` its clamp names, registered by the unit for
 // each text list that declares one.
-class JsonTextTotal:
+/**/class JsonTextTotal:
     fd:FieldDescriptor
     total:int
     of:string
 
-let json_text_total_registry:[JsonTextTotal] = []
+/**/let json_text_total_registry:[JsonTextTotal] = []
 
 // json_fd_of is the descriptor a table field or a union arm names.
 def json_fd_of(owner:string, field:string) -> FieldDescriptor?:
@@ -90,12 +90,12 @@ def json_text_list(owner:string, field:string):
         push(json_text_list_registry, f)
 
 // json_text_total registers a text list's total (§2.13).
-def json_text_total(owner:string, field:string, total:int, of:string):
+/**/def json_text_total(owner:string, field:string, total:int, of:string):
     let f = json_fd_of(owner, field)
     if f:
         push(json_text_total_registry, JsonTextTotal { fd: f, total: total, of: of })
 
-def j_text_total_of(f:FieldDescriptor) -> JsonTextTotal?:
+/**/def j_text_total_of(f:FieldDescriptor) -> JsonTextTotal?:
     for(json_text_total_registry) x:
         if x.fd == f:
             return x

@@ -6939,6 +6939,10 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # is up to date, and a phony target with only that prerequisite would report
 # nothing to be done.
 SERIALIZE_GO_PIN     ?= v2.1.1
+SERIALIZE_C_PIN      ?= v2.1.1
+SERIALIZE_CS_PIN     ?= v2.1.1
+SERIALIZE_RS_PIN     ?= v5.0.0
+SERIALIZE_JS_PIN     ?= v2.1.2
 # Immutable commit resolved from refs/tags/v2.1.1 (annotated tag object: 36717230bfad4d890fe23882d14f87b9658205ab).
 SERIALIZE_GO_COMMIT  ?= 97c6825383cffe9f43af64526dea4e0ef10d1662
 SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git

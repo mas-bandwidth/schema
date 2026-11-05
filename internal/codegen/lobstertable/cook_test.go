@@ -373,8 +373,8 @@ run()
 // byte for byte the tool's.
 func TestLobsterCookUnboundedTextNegativeControl(t *testing.T) {
 	t.Parallel()
-	const from = "        co_u64(o, at, blob - at, c.big)\n"
-	const to = "        co_u64(o, at, 0, c.big)\n"
+	const from = "            co_u64(o, at, blob - at, c.big)\n"
+	const to = "            co_u64(o, at, 0, c.big)\n"
 	seen := map[string]bool{}
 	for _, r := range cookWriteRows(t) {
 		if r.name != "feature_full" && r.name != "root_full" {

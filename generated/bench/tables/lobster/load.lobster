@@ -1995,7 +1995,7 @@ def decode_variable(st:LoadState, root:Record, hi:int):
 // Each vertex is entered once: a pointer to an OPEN vertex is a cycle, and a
 // pointer to a CLOSED one is a legal share. The walk keeps its own stack, so
 // it is linear in vertices plus edges and a chain costs no stack.
-def load_cyclic(st:LoadState, root:Record) -> bool:
+/**/def load_cyclic(st:LoadState, root:Record) -> bool:
     let all:[Record] = [root]
     for(st.nodes) node:
         let nr = node.rec

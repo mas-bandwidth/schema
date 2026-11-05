@@ -2002,6 +2002,10 @@
     {
       "target": "tables-cpp-format-negative-control",
       "reason": "the C++ format gate's drift control (docs/PORTING.md J4): the emitter writes one struct brace K&R and tables-cpp-format's engine must go red naming Types.h. It needs the pinned clang-format (make/c.mk CLANG_FORMAT_PIN), which the base rows do not install, so it refuses by name where the pin does not resolve and runs in the leg that does: ci-fast.yml's `fixed form and versioning rows` step for the cpp leg, beside tables-cpp-clean itself, as the Java drift control rides test-java."
+    },
+    {
+      "target": "roadmap-check-negative-control",
+      "reason": "runs in ci-fast.yml's lint-fast step (make roadmap-check roadmap-check-negative-control) on every push and pull request; running it again in the negative-controls matrix would duplicate a fast-lane check."
     }
   ]
 }
