@@ -12,8 +12,8 @@
 --   * a binary32 / binary64 BIT PATTERN to its text: C's `%.*g` at the fewest
 --     digits (6..9, 15..17) whose text reads back to the same value at the
 --     field's own width — internal/tabletext/write.go's writeFloat, step for
---     step, the read back included (a float32 is read back through a double
---     and narrowed, as Go's `float32(ParseFloat(text, 64))` does). The digits
+--     step, the read back included (rounded once at the field's own width, as
+--     Go's `ParseFloat(text, 32|64)` does, §16.14 W12). The digits
 --     come from the value's exact expansion, rounded half to even.
 --   * a decimal token to the NEAREST binary32 / binary64 pattern, ties to even,
 --     in one rounding at the field's own width (`strconv.ParseFloat(token,
@@ -676,29 +676,28 @@ local function float64Parts(hi: number, lo: number): (Big, number)
 end
 
 -- readsBack(d, E, single, bits, hi, lo): whether the text of the digits d at
--- decimal exponent E reads back as the value: parsed to the nearest double
--- and, for a float32, narrowed to the nearest float32, exactly as write.go's
--- `float32(strconv.ParseFloat(text, 64))` does (two roundings, on purpose).
+-- decimal exponent E reads back as the value: rounded ONCE to the nearest
+-- value at the field's own width, as write.go's strconv.ParseFloat(text, 32|64)
+-- does (docs/SPEC-TABLES.md §16.14, W12). A float32 never passes through a
+-- double: rounding twice parts from rounding once.
 local function readsBack(d: string, E: number, single: boolean, bits: number, hi: number, lo: number): boolean
 	local last = #d
 	while string.byte(d, last) == 48 do
 		last -= 1
 	end
 	local q = E - #d + 1 + (#d - last)
-	local kind, qh, ql, e = decimalBinary(string.sub(d, 1, last), q, F64)
+	local kind, qh, ql, e = decimalBinary(string.sub(d, 1, last), q, if single then F32 else F64)
 	if kind ~= 1 then
 		return false
+	end
+	if single then
+		return float32Bits(qh, ql, e) == bits
 	end
 	local bh, bl = float64Bits(qh, ql, e)
 	if bh >= 0x7FF00000 then
 		return false -- past the largest double: ParseFloat's range error
 	end
-	if not single then
-		return bh == hi and bl == lo
-	end
-	local M, me = float64Parts(bh, bl)
-	local nh, nl, ne = roundBinary(M, { 1 }, me, 24, -149)
-	return float32Bits(nh, nl, ne) == bits
+	return bh == hi and bl == lo
 end
 
 local function shortest(negative: boolean, M: Big, e: number, single: boolean, bits: number, hi: number, lo: number): string
@@ -1269,8 +1268,11 @@ local function put(w: Out, s: string)
 	table.insert(w.parts, s)
 end
 
--- writeString: one JSON string, the seven short escapes, every other control
--- byte as \u00xx, and an ill-formed sequence as U+FFFD per maximal subpart
+-- writeString: one JSON string, the seven short escapes and every other control
+-- byte as \u00xx. A JSON text MUST be valid UTF-8 (RFC 8259 §8.1) and no read
+-- puts anything else into storage, so an ill-formed sequence was put there by
+-- a program: it refuses the whole write, invalid_value (docs/SPEC-TABLES.md
+-- §16.3, §16.14 W0), and nothing is replaced
 local function writeString(w: Out, s: string)
 	put(w, "\"")
 	local n = #s
@@ -1296,7 +1298,9 @@ local function writeString(w: Out, s: string)
 		else
 			local width = utf8Sequence(s, at)
 			if width < 0 then
-				put(w, "\u{FFFD}")
+				if w.err == nil then
+					w.err = "invalid_value: a string holds ill-formed UTF-8 (docs/SPEC-TABLES.md §16.3, §16.14 W0)"
+				end
 				i = at - width
 			else
 				put(w, string.sub(s, at, at + width - 1))
@@ -1308,7 +1312,8 @@ local function writeString(w: Out, s: string)
 end
 
 -- writeWString: a wide field's UTF-16 code units back to UTF-8; a pair is one
--- code point, an unpaired surrogate one U+FFFD, a zero unit \u0000
+-- code point, a zero unit \u0000, and an unpaired surrogate, which is not
+-- text, refuses the whole write, invalid_value (§16.14 W0)
 local function writeWString(w: Out, b: buffer, units: number)
 	put(w, "\"")
 	local i = 0
@@ -1321,11 +1326,12 @@ local function writeWString(w: Out, b: buffer, units: number)
 				i += 1
 			end
 		end
-		if code >= 0xD800 and code <= 0xDFFF then
-			code = 0xFFFD
-		end
 		local short = SHORT_ESCAPE[code]
-		if short ~= nil then
+		if code >= 0xD800 and code <= 0xDFFF then
+			if w.err == nil then
+				w.err = "invalid_value: a wide string holds an unpaired surrogate (docs/SPEC-TABLES.md §16.3, §16.14 W0)"
+			end
+		elseif short ~= nil then
 			put(w, short)
 		elseif code < 0x20 then
 			put(w, controlEscape(code))
@@ -3848,6 +3854,9 @@ function J.toJson(d: any, rec: any): (string?, string?)
 		return nil, w.err
 	end
 	if not writeValue(w, d, rec, 0) then
+		return nil, w.err
+	end
+	if w.err ~= nil then
 		return nil, w.err
 	end
 	emit(w, "\n")

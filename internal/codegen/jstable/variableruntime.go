@@ -1581,8 +1581,49 @@ function TableVariableFormatG(v, prec) {
   return (neg ? "-" : "") + s;
 }
 
-// the SHORTEST precision that reads back as the same value at the field's own
-// width; a non-finite value has no JSON spelling and the writer refuses (null)
+// the float32 a decimal token names, correctly rounded from the token itself
+// (§16.14, W12); x is the token's correctly-rounded double. The reader lands a
+// float32 field through it, and the writer's read-back check uses it, so a text
+// is accepted by the same single rounding that will read it.
+function TableVariableF32OfToken(tok, x) {
+  const f = Math.fround(x);
+  if (f === x || Number.isNaN(x)) { return f; }
+  const b = new DataView(new ArrayBuffer(8));
+  const step = (v, up) => {
+    if (v === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
+    if (v === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
+    if (v === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
+    b.setFloat32(0, v, true);
+    const u = b.getUint32(0, true);
+    b.setUint32(0, (v > 0) === up ? u + 1 : u - 1, true);
+    return b.getFloat32(0, true);
+  };
+  const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
+  const at = (v) => (v === Infinity ? 2 ** 128 : v === -Infinity ? -(2 ** 128) : v);
+  if (at(lo) + at(hi) !== 2 * x) { return f; } // not a tie: one rounding is the right one
+  // the tie: the sign of (token - x), both exact rationals
+  const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
+  if (m === null) { return f; }
+  const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
+  if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
+  let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
+  b.setFloat64(0, x, true);
+  const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
+  const ex = (hiw >>> 20) & 0x7ff;
+  let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
+  let e2 = ex === 0 ? -1074 : ex - 1075;
+  if (ex !== 0) { mant |= 1n << 52n; }
+  let right = x < 0 ? -mant : mant;
+  if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
+  if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
+  if (left === right) { return f; } // exactly on the midpoint: ties-to-even, which fround is
+  return left > right ? hi : lo;
+}
+
+// a float by §16.14's W12: %.*g at the first precision whose text reads back
+// as the same value at the field's own width, the read-back ONE correctly
+// rounded conversion (never a double narrowed by Math.fround); a non-finite
+// value has no JSON spelling and the writer refuses (null)
 function TableVariableFloatText(v, single) {
   if (!Number.isFinite(v)) { return null; }
   const low = single ? 6 : 15, high = single ? 9 : 17;
@@ -1590,7 +1631,7 @@ function TableVariableFloatText(v, single) {
     const text = TableVariableFormatG(v, digits);
     if (digits >= high) { return text; }
     const back = Number(text);
-    if (single ? Math.fround(back) === v : back === v) { return text; }
+    if (single ? TableVariableF32OfToken(text, back) === v : back === v) { return text; }
   }
 }
 
@@ -1626,6 +1667,9 @@ function TableVariableToJson(c, v) {
   TableVariableEntryCache = new Map();
   try {
     return TableVariableToJsonWalk(c, v);
+  } catch (e) {
+    if (e === TableVariableNotText) { return null; }
+    throw e;
   } finally {
     TableVariableEntryCache = outer;
   }
@@ -1702,7 +1746,7 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       return true;
     case "str": if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; } out.push(TableVariableJsonString(val)); return true;
     // wide text's text is the same JSON string (docs/SPEC-TABLES.md §16.2;
-    // tabletext writeWString), an unpaired surrogate written as U+FFFD
+    // tabletext writeWString), and an unpaired surrogate refuses the write
     case "wstr": out.push(TableVariableJsonString(val)); return true;
     case "bytes": out.push(TableVariableBase64Text(val)); return true;
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
@@ -2355,42 +2399,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       holder[key] = false;
       return true;
     case "float": {
-      // the float32 a decimal token names, correctly rounded from the token
-      // itself; x is the token's correctly-rounded double
-      const f32OfToken = (tok, x) => {
-        const f = Math.fround(x);
-        if (f === x || Number.isNaN(x)) { return f; }
-        const b = new DataView(new ArrayBuffer(8));
-        const step = (v, up) => {
-          if (v === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
-          if (v === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
-          if (v === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
-          b.setFloat32(0, v, true);
-          const u = b.getUint32(0, true);
-          b.setUint32(0, (v > 0) === up ? u + 1 : u - 1, true);
-          return b.getFloat32(0, true);
-        };
-        const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
-        const at = (v) => (v === Infinity ? 2 ** 128 : v === -Infinity ? -(2 ** 128) : v);
-        if (at(lo) + at(hi) !== 2 * x) { return f; } // not a tie: one rounding is the right one
-        // the tie: the sign of (token - x), both exact rationals
-        const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
-        if (m === null) { return f; }
-        const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
-        if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
-        let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
-        b.setFloat64(0, x, true);
-        const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
-        const ex = (hiw >>> 20) & 0x7ff;
-        let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
-        let e2 = ex === 0 ? -1074 : ex - 1075;
-        if (ex !== 0) { mant |= 1n << 52n; }
-        let right = x < 0 ? -mant : mant;
-        if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
-        if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
-        if (left === right) { return f; } // exactly on the midpoint: ties-to-even, which fround is
-        return left > right ? hi : lo;
-      };
+      const f32OfToken = TableVariableF32OfToken;
       const n = inp.number();
       if (n === null) { inp.bad = true; return false; }
       let x = Number(n.tok);
