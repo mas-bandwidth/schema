@@ -1505,7 +1505,7 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        holes = %sLineageHoles[pick]\n", name)
 	g.Pf("        census_unknown = lane.unknown\n")
 	g.Pf("        census_kind = lane.kind_mismatch\n")
-	g.Pf("    if entry_count > length(plan):\n")
+	g.Pf("    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):\n")
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)\n")
 	g.Pf("    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes\n")
 	g.Pf("    let rest = length(data) - records_start\n")

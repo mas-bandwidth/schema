@@ -404,8 +404,6 @@ func quoted(q, body string) string {
 		}
 		if body[i:i+n] == `\"` {
 			b.WriteByte('"')
-		} else if body[i:i+n] == "'" {
-			b.WriteString(`\'`)
 		} else {
 			b.WriteString(body[i : i+n])
 		}

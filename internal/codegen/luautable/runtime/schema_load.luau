@@ -667,6 +667,7 @@ local function loadFixDScanKey(keyfd: any, body: any, entry: any): (any, boolean
 		if id == MapKeyId and keyfd ~= nil then
 			if kind ~= keyfd.k and widens(kind, keyfd.k) then
 				entryWidened = true
+				kindBad = false -- this occurrence replaces the earlier key kind
 				local x = scalar_at(scan, keyfd, kind, quiet)
 				if x == nil then return keyVal, kindBad, entryWidened, false end
 				keyvals[keyfd.slot] = x
@@ -711,10 +712,18 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		if hdr.bad then report.malformed = true; r.at = endpos; return true end
 		local sub = new_reader(r.b, hdr.at, if endpos < hdr.at then hdr.at else endpos)
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
-		-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9, §2.2): a count past it
-		-- refuses the read as count_over_extent_cap when the walk ends.
+		-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9, §2.2; internal/tablewire
+		-- collectionCap): a count inside the map's L refuses the read as
+		-- count_over_extent_cap when the walk ends, the refusal LoadMeasure
+		-- names first. A count whose spelling CROSSED L is read against the
+		-- parent (§3) where the measure, bounded by L, sees no count, so it is
+		-- the region's recovery instead: damage, the walk resuming after L.
 		if count > 0x7FFFFFFF then
-			refuseCount(report)
+			if hdr.at > endpos then
+				report.malformed = true
+			else
+				refuseCount(report)
+			end
 			r.at = endpos
 			return true
 		end
@@ -928,7 +937,10 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	local head = new_reader(sub.b, sub.at, headerEnd or sub.e)
 	local ek = r_u8(head)
 	local count = r_leb(head)
-	sub.at = if head.at > sub.e then sub.e else head.at
+	-- a count whose spelling ends past the body's own end CROSSED L: the
+	-- measure, bounded by L, saw no count there
+	local crossed = head.at > sub.e
+	sub.at = if crossed then sub.e else head.at
 	if head.bad then
 		report.malformed = true
 		if fd.present ~= nil and v ~= nil then v[fd.present] = true end
@@ -937,15 +949,22 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	if ek ~= fd.ek then
 		if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; return false end
 		-- a list past the int32 storage cap refuses below and moves no
-		-- counter (§2.9), the widening included
-		if not (fd.array == "list" and count > 0x7FFFFFFF) then report.widened = report.widened + 1 end
+		-- counter (§2.9), the widening included; one whose count crossed L is
+		-- damage below, and damage counts the widening (internal/tablewire
+		-- capDamages)
+		if not (fd.array == "list" and count > 0x7FFFFFFF and not crossed) then report.widened = report.widened + 1 end
 	end
 	local keep = count
 	if fd.array == "list" then
 		if count > 0x7FFFFFFF then
-			-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9): a count past it
-			-- refuses the read as count_over_extent_cap when the walk ends.
-			refuseCount(report)
+			-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9), read_map's rule:
+			-- inside L the read's refusal, count_over_extent_cap when the walk
+			-- ends; crossing L the region's damage
+			if crossed then
+				report.malformed = true
+			else
+				refuseCount(report)
+			end
 			return false
 		end
 	elseif count > fd.bound then

@@ -88,6 +88,7 @@ local joinField = function(cf, fd) {
     presentOffset = cf.presentOffset, isPointer = fd.shape == "ptr", variants = fd.variants,
     f32 = ("f32" in fd) && fd.f32, nf = ("nf" in fd) ? fd.nf : null, list = ("list" in fd) && fd.list,
     counted = ("counted" in fd) && fd.counted,
+    unbounded = ("unbounded" in fd) && fd.unbounded,
     elemAlign = cf.elemAlign, entry = ("entry" in fd) ? fd.entry : null,
     mapkey = ("mapkey" in fd) ? fd.mapkey : null
   };
@@ -123,6 +124,7 @@ number = function(T, rootName, root) {
 
 fieldHasExtent = function(T, f) {
   if (f.shape == "map" || (f.shape == "arr" && f.list)) return true;
+  if (f.shape == "str" && ("unbounded" in f) && f.unbounded) return true;
   if (f.shape == "arr") return fieldHasExtent(T, f.elem);
   if (f.shape == "tab") return hasExtent(T, f.table);
   if (f.shape == "union") {
@@ -149,6 +151,24 @@ carveElement = function(T, f, value, at, extentBase, c, buf, regionBase, order, 
   return true;
 };
 carveField = function(T, f, value, at, extentBase, c, buf, regionBase, order, nodes, offsets) {
+  if (f.shape == "str" && f.unbounded) {
+    // UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): a blob record in the
+    // holder's extent at eight-byte alignment, `u32 length`, `u32 zero`, the
+    // bytes and one zero byte, padded to the region's alignment; the slot is
+    // the self-relative delta to it, and the empty string's slot is null
+    local n = value == null ? 0 : value.len();
+    if (n == 0) return true;
+    c.at = ciUp(c.at, 8);
+    local start = c.at;
+    c.at += ciUp(8 + n + 1, T.TableRegionAlign);
+    if (buf != null) {
+      local blobAt = extentBase + start;
+      put(buf, at, blobAt - at, 8, order);
+      put(buf, blobAt, n, 4, order);
+      for (local i = 0; i < n; i++) buf[blobAt + 8 + i] = value[i] & 0xff;
+    }
+    return true;
+  }
   if (f.shape == "map" || (f.shape == "arr" && f.list)) {
     local isMap = f.shape == "map";
     local indices = null;
@@ -325,7 +345,8 @@ writeField = function(T, f, inst, buf, regionBase, at, order, nodes, offsets) {
     local present = inst[f.member + "Present"];
     put(buf, at + f.presentOffset - f.offset, present ? 1 : 0, 1, order);
   }
-  if (f.shape == "map" || (f.shape == "arr" && f.list)) return true;
+  // the extent walk places maps, unbounded arrays and unbounded text
+  if (f.shape == "map" || (f.shape == "arr" && f.list) || (f.shape == "str" && f.unbounded)) return true;
   if (f.shape == "ptr" || f.shape == "sblob" || f.shape == "bblob") {
     local target = inst[f.member];
     if (target == null) { put(buf, at, 0, 8, order); return true; }

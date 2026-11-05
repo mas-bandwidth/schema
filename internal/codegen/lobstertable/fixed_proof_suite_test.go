@@ -1,4 +1,4 @@
-package lobstertable
+package lobstertable_test
 
 import (
 	"encoding/hex"
@@ -10,16 +10,27 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+func enableLobsterProofWhenPresent() {
+	if p, _ := lobsterrun.Interpreter(); p != "" && os.Getenv("SCHEMA_SLOW") == "" {
+		_ = os.Setenv("SCHEMA_SLOW", "1")
+	}
+}
+
 func TestLobsterFixedProofSuiteValues(t *testing.T) {
+	enableLobsterProofWhenPresent()
+	t.Parallel()
 	fixedproof.RunValueSuite(t, lobsterFixedProofRunner{})
 }
 
 func TestLobsterFixedProofSuiteNegativeControl(t *testing.T) {
+	enableLobsterProofWhenPresent()
+	t.Parallel()
 	fixedproof.RunNegativeControlSuite(t, lobsterFixedProofRunner{})
 }
 
@@ -52,7 +63,7 @@ func lobsterProofRun(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, wire []byt
 	if err != nil {
 		return nil, err
 	}
-	tables, err := Generate(u)
+	tables, err := lobstertable.Generate(u)
 	if err != nil {
 		return nil, err
 	}

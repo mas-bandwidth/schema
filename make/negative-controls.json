@@ -58,7 +58,6 @@
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-negative-control",
-        "tables-py-packet-negative-control",
         "tables-retain-fixed-class-negative-control",
         "tables-runtime-home-negative-control",
         "tables-slot-negative-control",
@@ -139,6 +138,9 @@
       "targets": [
         "conformance-negative-control-lua",
         "packet-finite-lua-negative-control",
+        "packet-utf8-lua-negative-control",
+        "packet-wide-lua-negative-control",
+        "packet-defaults-lua-negative-control",
         "conformance-negative-control-lua-walk",
         "conformance-negative-control-lua-framing",
         "conformance-negative-control-lua-cycle",

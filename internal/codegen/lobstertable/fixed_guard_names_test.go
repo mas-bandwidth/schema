@@ -1,4 +1,4 @@
-package lobstertable
+package lobstertable_test
 
 import (
 	"maps"
@@ -6,12 +6,15 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 )
 
 // Union payloads overlay their arm storage, so distinct lexical occurrences
 // can have the same byte offset. Lobster still forbids reusing their locals.
 func TestLobsterFixedNestedUnionGuardNames(t *testing.T) {
+	enableLobsterProofWhenPresent()
+	t.Parallel()
 	u := fixedproof.ParseCheckUnit(t, `package probe
 union Inner {
     value uint8
@@ -30,7 +33,7 @@ fixed table Root {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tables, err := Generate(u)
+	tables, err := lobstertable.Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}

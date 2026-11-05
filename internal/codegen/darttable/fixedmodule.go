@@ -533,6 +533,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		g.pf("    );\n\n")
 	}
 
+	writerBounds := g.emitWriterBounds(st, lower, entries, hash)
+
 	// ---- the caller's plan storage ----
 	g.pf("/// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC\n")
 	g.pf("/// NEVER ALLOCATES. One of these per endpoint; a layout whose plan does not fit\n")
@@ -716,6 +718,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // once per endpoint, never per record, and REFUSE moves no counter at all.\n")
 	g.pf("  var censusUnknown = 0;\n")
 	g.pf("  var censusKind = 0;\n")
+	if writerBounds {
+		g.pf("  %s? writerBounds;\n", fixedWriterBoundsType)
+	}
 	g.pf("  if (hash != %sFixedHash) {\n", lower)
 	g.pf("    final lane = %sFixedLineagePlans[pick];\n", lower)
 	g.pf("    if (lane.why != TableFixedRefusal.none) {\n")
@@ -729,6 +734,15 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    fills = lane.fill;\n    fillCount = lane.fillCount;\n")
 	g.pf("    remap = lane.remap;\n")
 	g.pf("    censusUnknown = lane.unknown;\n    censusKind = lane.kindMismatch;\n")
+	if writerBounds {
+		// `dart format` breaks an assignment past eighty columns after the `=`,
+		// four columns further in.
+		if one := fmt.Sprintf("    writerBounds = %sFixedWriterBounds[pick];", lower); len(one) <= 80 {
+			g.pf("%s\n", one)
+		} else {
+			g.pf("    writerBounds =\n        %sFixedWriterBounds[pick];\n", lower)
+		}
+	}
 	g.pf("  }\n")
 	g.pf("  // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout\n")
 	g.pf("  // against this build's; digest is not on the wire, so the header hash is\n")
@@ -769,6 +783,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("        init%s(values[j]);\n", capitalize(st.Name))
 	g.pf("      }\n")
 	g.pf("      report.refused = runWhy;\n      return -1;\n    }\n")
+	if writerBounds {
+		g.pf("    // THE WRITER'S RANGE, THEN THIS READER'S (§4.6): the lane's own pass on\n")
+		g.pf("    // the image, then the projection's clamp.\n")
+		g.pf("    writerBounds?.call(plan.imageView, report);\n")
+	}
 	g.call("    ", "", lower+"FixedDecode",
 		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
 	if finite {
