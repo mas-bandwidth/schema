@@ -40,6 +40,14 @@ _M.get <- function(b, at, w) {
   return _M.u64le(b, at);
 };
 
+// ONE UNSIGNED LEAF AT ITS DECLARED STORAGE WIDTH, ZERO-EXTENDED (SPEC §4.3).
+_M.getu <- function(b, at, w) {
+  if (w == 1) { return b[at] & 0xff; }
+  if (w == 2) { return (b[at] & 0xff) | ((b[at+1] & 0xff) << 8); }
+  if (w == 4) { return _M.u32le(b, at) & 0xffffffff; }
+  return _M.u64le(b, at);
+};
+
 _M.put <- function(b, at, w, v) {
   for (local i = 0; i < w; i++) { b[at + i] = (v >> (8 * i)) & 0xff; }
 };
