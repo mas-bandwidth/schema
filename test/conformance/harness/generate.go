@@ -534,6 +534,7 @@ func framingValues(u *units, framings []FramingCase, jsonDir string) error {
 		if err != nil {
 			return err
 		}
+		var fixed *ir.Struct
 		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared {
 			key := fc.Unit + "." + fc.Root
 			if variable[key] == nil {
@@ -543,6 +544,7 @@ func framingValues(u *units, framings []FramingCase, jsonDir string) error {
 				}
 			}
 			unit = variable[key]
+			fixed = unit.Tables[fc.Root]
 		}
 		wire, err := os.ReadFile(fc.Wire)
 		if err != nil {
@@ -579,7 +581,14 @@ func framingValues(u *units, framings []FramingCase, jsonDir string) error {
 		if err := writeValue(out, true, func() ([]byte, error) { return model.Write(value) }); err != nil {
 			return fmt.Errorf("%s: %w", fc.Name, err)
 		}
+		// The row is READ as the variable form, but the write-back is the
+		// root's own: a fixed root writes form 3 (docs/rulings.json
+		// fixed-root-refuses-form1).
 		if err := writeSaveWire(fc.Save, true, func() ([]byte, error) {
+			if fixed != nil {
+				fixed.FixedDeclared = true
+				defer func() { fixed.FixedDeclared = false }()
+			}
 			return tablewire.Encode(model, value)
 		}); err != nil {
 			return fmt.Errorf("%s: write-back wire: %w", fc.Name, err)
