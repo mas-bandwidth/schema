@@ -331,7 +331,7 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("  if (len < 20) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  for (local i = 1; i < 8; i++) if (b[i] != 0) { _M.FixedReason = \"reserved_not_zero\"; return -1; }\n")
 	m.Printf("  local L = _rt_fixed.u32le(b, 16);\n")
-	m.Printf("  if (L < 4 || 20 + L > len) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (L < 21 || 20 + L > len) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  local n = _rt_fixed.u32le(b, 20);\n")
 	m.Printf("  if (n != (L - 4) / 17 || 4 + n * 17 != L) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  local rb = 8 + _rt_fixed.u32le(b, 20 + 4 + 9);\n")
