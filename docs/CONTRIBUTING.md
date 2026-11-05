@@ -262,7 +262,13 @@ The same split is in [SECURITY.md](SECURITY.md).
 - [`.github/workflows/ci-fast.yml`](../.github/workflows/ci-fast.yml) runs on a
   pull request into `main`, `dev`, or `fixed-table-form`, and on `workflow_dispatch`.
   It is a path-selected Linux lane. It is not the full `make test` chain, and
-  it does not run on macOS.
+  it does not run on macOS. Its merge gate (`plan`, `lint-fast`, `block-gate`
+  and `go-test-touched`) runs on GitHub's hosted `ubuntu-latest`, so a merge
+  never waits on the fleet; the per-leg `leg-gate` matrix runs on the fleet.
+- Every self-hosted job carries `timeout-minutes` and runs its steps through
+  [`tools/pgroup`](../tools/pgroup/main.go), which kills each step's whole process
+  group when the step ends, so a child a test left running cannot hold a
+  runner.
 - [`.github/workflows/ci-full.yml`](../.github/workflows/ci-full.yml) runs on a
   push to `main`, `dev`, or `fixed-table-form`, on its nightly schedule
   (`10 7 * * *`), on `workflow_dispatch`, and on a pull request into those

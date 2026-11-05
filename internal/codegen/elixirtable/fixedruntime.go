@@ -314,6 +314,40 @@ const fixedRuntimeBody = `  @moduledoc """
   def clamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
+  A COMPILED LANE'S IMAGE HELD TO ITS WRITER'S OWN RANGES, before the projection
+  holds this reader's own (docs/FIXED-FORM-ALGORITHM.md §4.6, bill §12.5). Each
+  bound is {offset, bits, sign, lo, hi} on the raw scale; a value past one lands
+  that bound. Answers the image and how many clamps fired, and a clean image
+  comes back as it went in, with no new binary.
+  """
+  def writer_bounds(image, bounds), do: writer_bounds(image, bounds, 0)
+
+  defp writer_bounds(image, [], c), do: {image, c}
+
+  defp writer_bounds(image, [{at, bits, sign, lo, hi} | rest], c) do
+    case writer_raw(image, at, bits, sign) do
+      v when v < lo -> writer_bounds(writer_put(image, at, bits, lo), rest, c + 1)
+      v when v > hi -> writer_bounds(writer_put(image, at, bits, hi), rest, c + 1)
+      _ -> writer_bounds(image, rest, c)
+    end
+  end
+
+  defp writer_raw(image, at, bits, :signed) do
+    <<_::binary-size(^at), v::little-signed-size(^bits), _::binary>> = image
+    v
+  end
+
+  defp writer_raw(image, at, bits, :unsigned) do
+    <<_::binary-size(^at), v::little-unsigned-size(^bits), _::binary>> = image
+    v
+  end
+
+  defp writer_put(image, at, bits, v) do
+    <<pre::binary-size(^at), _::size(^bits), post::binary>> = image
+    <<pre::binary, v::little-size(bits), post::binary>>
+  end
+
+  @doc """
   A RANGED FLOAT AGAINST ITS READER'S OWN BOUNDS, held and counted separately
   from 'clamps/4' so a float bound reads as a float bound. A NaN or an infinity
   never arrives here: 'f32_value/1' and 'f64_value/1' refuse one on its raw

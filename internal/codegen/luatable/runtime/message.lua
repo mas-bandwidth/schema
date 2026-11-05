@@ -909,7 +909,8 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
       if kind ~= 14 then return damage() end
       local n
       n, at = read_leb(body, at)
-      if n == nil or at + n - 1 > #body then return damage() end
+      -- bounded before the cursor moves: a length near 2^63 must not wrap
+      if n == nil or math.ult(#body - at + 1, n) then return damage() end
       local field = body:sub(at, at + n - 1)
       at = at + n
       if #field < 1 or string.byte(field, 1) ~= 6 then return damage() end

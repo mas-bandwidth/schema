@@ -326,6 +326,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// reaches it cannot replace a lane with one of its own.\n")
 	g.pf("for (const lane of %sFixedLineagePlans) { if (lane !== null) { Object.freeze(lane); } }\n", st.Name)
 	g.pf("Object.freeze(%sFixedLineagePlans);\n\n", st.Name)
+	writerBounds := g.emitWriterBounds(st, entries, hash)
 
 	// ---- the caller's plan storage ----
 	g.pf("// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC\n")
@@ -461,6 +462,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  if (plan === null) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }\n")
 	g.pf("  let entries = %sFixedIdentity, entryCount = 1, remap = null;\n", st.Name)
 	g.pf("  let censusUnknown = 0, censusKind = 0;\n")
+	if writerBounds {
+		g.pf("  let writerBounds = null;\n")
+	}
 	g.pf("  const recordBytes = known.recordBytes;\n")
 	g.pf("  const lane = %sFixedLineagePlans[pick];\n", st.Name)
 	g.pf("  if (lane !== null) {\n")
@@ -473,6 +477,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4); it lands\n")
 	g.pf("    // after the loop, on a read that RETURNS — REFUSE moves no counter.\n")
 	g.pf("    censusUnknown = lane.unknown; censusKind = lane.kindMismatch;\n")
+	if writerBounds {
+		g.pf("    writerBounds = %sFixedWriterBounds[pick];\n", st.Name)
+	}
 	g.pf("  }\n")
 	g.pf("  // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout\n")
 	g.pf("  // against this build's; digest is not on the wire, so the header hash is\n")
@@ -524,6 +531,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the\n")
 	g.pf("    // projection: refuse is total, no counter moves and no record lands.\n")
 	g.pf("    if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }\n")
+	if writerBounds {
+		g.pf("    // THE WRITER'S RANGE, THEN THIS READER'S (§4.6): the lane's own pass on\n")
+		g.pf("    // the image, then the projection's clamp.\n")
+		g.pf("    if (writerBounds !== null) { writerBounds(imageView, stage); }\n")
+	}
 	g.pf("    %sFixedDecode(values[k], imageView, 0, stage);\n", st.Name)
 	g.pf("    // THE PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): a copied run carries\n")
 	g.pf("    // no text op, so the decode is where a byte string or a wide string\n")

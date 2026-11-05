@@ -2,6 +2,7 @@ package mootable
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"strings"
@@ -248,12 +249,8 @@ func (v *viewGen) registry() {
 	}
 	b.WriteString("\t},\n\tunions = {\n")
 	unions := map[string]*ir.Union{}
-	for n, un := range u.Unions {
-		unions[n] = un
-	}
-	for n, un := range u.TableUnions {
-		unions[n] = un
-	}
+	maps.Copy(unions, u.Unions)
+	maps.Copy(unions, u.TableUnions)
 	for _, n := range sortedKeys(unions) {
 		un := unions[n]
 		rows := []string{v.variant(0, "None", 0, "", "", "", "", nil)}

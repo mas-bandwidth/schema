@@ -1117,6 +1117,26 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// THE INDEX OF THIS BUILD'S OWN LAYOUT, which takes the IDENTITY plan.\n")
 	g.pf("pub const %s_FIXED_OWN: usize = %d;\n\n", up, ownIndex)
 
+	// THE WRITER'S RANGES, per lineage entry (docs/FIXED-FORM-ALGORITHM.md
+	// §4.5): a record read under an older entry is held to what THAT writer
+	// declared, then to this reader's own ranges. One straight-line pass per
+	// entry that bounds anything, spelled by the reader's own clamp emitter
+	// over the reader's storage with the writer's numbers.
+	var writerClamps []int
+	for i, fields := range fixedWriterFields(st, lineage, hash) {
+		if len(fields) == 0 {
+			continue
+		}
+		writerClamps = append(writerClamps, i)
+		g.pf("/// LINEAGE ENTRY %d's WRITER RANGES (§4.5): every clamp counts.\n", i)
+		g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
+		g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32) {\n", fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)), st.Name)
+		for _, f := range fields {
+			g.emitFixedClampField(f, "value."+f.Name, 4)
+		}
+		g.pf("}\n\n")
+	}
+
 	if len(lineage) > 1 {
 		planCap := max(int(body)+2*len(entries)+256, 512)
 		remapCap := 1024 + 32*len(entries)
@@ -1456,6 +1476,23 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            report.widened = widened_before;\n")
 		g.pf("            return report.refuse_non_finite(why);\n")
 		g.pf("        }\n")
+	}
+	if len(writerClamps) > 0 {
+		g.pf("        // THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),\n")
+		g.pf("        // then this reader's own below.\n")
+		g.pf("        {\n            let mut clamped = 0i32;\n")
+		if len(writerClamps) == 1 {
+			i := writerClamps[0]
+			g.pf("            if found == %d {\n                %s(&mut values[k], &mut clamped);\n            }\n",
+				i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+		} else {
+			g.pf("            match found {\n")
+			for _, i := range writerClamps {
+				g.pf("                %d => %s(&mut values[k], &mut clamped),\n", i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+			}
+			g.pf("                _ => {}\n            }\n")
+		}
+		g.pf("            report.clamped += clamped as u32;\n        }\n")
 	}
 	if fixedRangeClampNeeded(st) {
 		g.pf("        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the\n")

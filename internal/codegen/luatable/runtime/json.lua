@@ -353,13 +353,19 @@ local function big_mul(a, m)
 end
 
 local function big_pow(a, base, n)
-  for _ = 1, n do big_mul(a, base) end
+  for _ = 1, n do
+    big_mul(a, base)
+  end
 end
 
 local function big_cmp(a, b)
   local na, nb = #a, #b
-  while na > 1 and a[na] == 0 do na = na - 1 end
-  while nb > 1 and b[nb] == 0 do nb = nb - 1 end
+  while na > 1 and a[na] == 0 do
+    na = na - 1
+  end
+  while nb > 1 and b[nb] == 0 do
+    nb = nb - 1
+  end
   if na ~= nb then return na < nb and -1 or 1 end
   for i = na, 1, -1 do
     if a[i] ~= b[i] then return a[i] < b[i] and -1 or 1 end
@@ -372,7 +378,11 @@ end
 local function f32_step(f, away)
   local bits = string.unpack("<I4", string.pack("<f", f))
   local sign, mag = bits & 0x80000000, bits & 0x7fffffff
-  if away then mag = mag + 1 else mag = mag - 1 end
+  if away then
+    mag = mag + 1
+  else
+    mag = mag - 1
+  end
   return string.unpack("<f", string.pack("<I4", sign | mag))
 end
 
@@ -387,11 +397,24 @@ local function token_cmp(token, x)
   local be = (bits >> 52) & 0x7ff
   local m = bits & 0xfffffffffffff
   local e
-  if be == 0 then e = -1074 else m = m | (1 << 52); e = be - 1075 end
+  if be == 0 then
+    e = -1074
+  else
+    m = m | (1 << 52)
+    e = be - 1075
+  end
   local left = big_digits(digits)
   local right = big_small(m)
-  if k > 0 then big_pow(left, 10, k) else big_pow(right, 10, -k) end
-  if e > 0 then big_pow(right, 2, e) else big_pow(left, 2, -e) end
+  if k > 0 then
+    big_pow(left, 10, k)
+  else
+    big_pow(right, 10, -k)
+  end
+  if e > 0 then
+    big_pow(right, 2, e)
+  else
+    big_pow(left, 2, -e)
+  end
   return big_cmp(left, right)
 end
 
