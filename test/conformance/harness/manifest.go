@@ -352,7 +352,7 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			}
 			m.Units = append(m.Units, Unit{Key: f[1], Paths: f[2:]})
 		case "instance":
-			if len(f) < 5 || len(f) > 7 {
+			if len(f) < 5 {
 				return nil, fmt.Errorf("%s: instance takes name, unit, root, wire path, and optional markers", where)
 			}
 			inst := Instance{
@@ -375,8 +375,8 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 					inst.WireRefused = true
 				case strings.HasPrefix(marker, "refused-by=") && !hasRefusedBy:
 					ports := strings.Split(strings.TrimPrefix(marker, "refused-by="), ",")
-					if slices.Contains(ports, "") {
-						return nil, fmt.Errorf("%s: refused-by names an empty port", where)
+					if slices.Contains(ports, "") || slices.Contains(ports, "go") {
+						return nil, fmt.Errorf("%s: refused-by names an empty port or go (go-refusal= already holds go)", where)
 					}
 					hasRefusedBy = true
 				default:

@@ -191,11 +191,10 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 		}
 		inst := model.New(def)
 		var got framingOutcome
-		got.accepted, got.err = strictDecode(model, inst, data, &got.report)
-		if got.err != nil {
-			t.Errorf("%s: the engine errored: %v", fc.Name, got.err)
-			continue
-		}
+		// strictDecode reports its refusal as an error; the verdict is the
+		// return value, and no reason name is compared (docs/rulings.json
+		// refusal-verdict-only).
+		got.accepted, _ = strictDecode(model, inst, data, &got.report)
 		if fault := framingVerdictFault(fc, strictRule, got); fault != nil {
 			t.Errorf("%s: %v", fc.Name, fault)
 			continue

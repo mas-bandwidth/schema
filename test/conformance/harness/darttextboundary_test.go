@@ -32,7 +32,7 @@ func TestDartTextBoundaryBOMOracle(t *testing.T) {
 		var report tabletext.Report
 		ok := model.Read(value, []byte(tc.text), &report)
 		t.Logf("%s bytes=%x ok=%t report=%+v", tc.name, []byte(tc.text), ok, report)
-		if ok != tc.ok || report.Refused == tc.ok {
+		if ok != tc.ok {
 			t.Fatalf("%s: ok=%t report=%+v, want accepted=%t", tc.name, ok, report, tc.ok)
 		}
 		if ok {

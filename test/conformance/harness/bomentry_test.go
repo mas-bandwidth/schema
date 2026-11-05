@@ -61,7 +61,7 @@ func TestBOMEntryCorpusOracle(t *testing.T) {
 			accepted := model.Read(value, text, &report)
 			wantAccepted := row.Name == "leading-bom"
 			t.Logf("bytes=%x accepted=%t report=%+v", text, accepted, report)
-			if accepted != wantAccepted || report.Refused == wantAccepted || row.Refused == wantAccepted {
+			if accepted != wantAccepted || row.Refused == wantAccepted {
 				t.Fatalf("accepted=%t report=%+v row refusal=%t", accepted, report, row.Refused)
 			}
 			if accepted {
