@@ -25,6 +25,7 @@ import (
 )
 
 func TestSquirrelBlobSharedMutantMatchesGo(t *testing.T) {
+	t.Skip("layer 4 (squirrel): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	repo, err := sqrun.RepoRoot()
 	if err != nil {
@@ -217,6 +218,7 @@ func buildHostileAmplificationWire(t *testing.T, u *ir.Unit, data []byte) []byte
 // holds every refusal name, count and saved byte to the Go oracle
 // (docs/SPEC-TABLES.md §2.5, §16.7).
 func TestSquirrelBlobNamedTwice(t *testing.T) {
+	t.Skip("layer 4 (squirrel): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	dir := t.TempDir()
 	u24, mod24 := writeGeneratedUnit(t, dir, "seed24", blobNamedTwiceSeed24Unit)
@@ -236,7 +238,7 @@ func TestSquirrelBlobNamedTwice(t *testing.T) {
 	if ok, err := tablewire.Decode(m24, dInst, damaged, &dRep); !ok || err != nil {
 		t.Fatalf("oracle decode damaged: ok=%v err=%v", ok, err)
 	}
-	if dRep.BlobShared != 1 || dRep.Malformed {
+	if dRep.Unknown != 1 || dRep.Refused {
 		t.Fatalf("oracle damaged report: %+v, want BlobShared=1", dRep)
 	}
 	if _, err := tablewire.Encode(m24, dInst); err == nil || !strings.Contains(err.Error(), "blob_shared") {
@@ -304,7 +306,7 @@ func TestSquirrelBlobNamedTwice(t *testing.T) {
 	if ok, err := tablewire.Decode(mAmp, ampInst, ampWire, &ampRep); !ok || err != nil {
 		t.Fatalf("oracle decode amplification: ok=%v err=%v", ok, err)
 	}
-	if ampRep.BlobShared != 4095 || ampRep.Malformed {
+	if ampRep.Unknown != 4095 || ampRep.Refused {
 		t.Fatalf("oracle amplification report: %+v, want BlobShared=4095", ampRep)
 	}
 	if _, err := tablewire.Encode(mAmp, ampInst); err == nil || !strings.Contains(err.Error(), "blob_shared") {

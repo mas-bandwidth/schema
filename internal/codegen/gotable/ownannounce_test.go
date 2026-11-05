@@ -46,7 +46,7 @@ func TestEngineAcceptsItsOwnAnnouncement(t *testing.T) {
 			t.Parallel()
 			var v tablewire.Vocabulary
 			var report tabletext.Report
-			if err := v.AnnounceRead(ir.TableAnnouncement(unitFrom(t, schema)), &report); err != nil || report.Malformed || report.Refused {
+			if err := v.AnnounceRead(ir.TableAnnouncement(unitFrom(t, schema)), &report); err != nil || report.Refused {
 				t.Fatalf("the engine refused a unit's own announcement: err %v, report %+v", err, report)
 			}
 		})

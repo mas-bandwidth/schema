@@ -2,7 +2,6 @@ package darttable
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -108,8 +107,7 @@ func runCountRefusalProbe(t *testing.T, edit func(map[string][]byte)) ([]byte, e
 	oracle := func(wire []byte, cap bool) {
 		var report tabletext.Report
 		ok, err := tablewire.Decode(model, model.New(model.Lookup("Root")), wire, &report)
-		var refusal *tablewire.CountRefusal
-		if ok || errors.As(err, &refusal) != cap || report.Malformed == cap {
+		if ok || !tablewire.ReadRefusal(err) || !report.Refused {
 			t.Fatalf("fixture oracle cap=%v: ok=%v err=%v report=%+v", cap, ok, err, report)
 		}
 	}

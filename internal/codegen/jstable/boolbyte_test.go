@@ -45,10 +45,10 @@ func TestBoolByteAboveOneIsMalformedJavaScript(t *testing.T) {
 
 	var rep tabletext.Report
 	ok, decErr := tablewire.Decode(m, m.New(def), wire, &rep)
-	if decErr != nil {
+	if decErr != nil && !tablewire.ReadRefusal(decErr) {
 		t.Fatalf("oracle Decode: %v", decErr)
 	}
-	if ok || !rep.Malformed {
+	if ok || !tablewire.ReadRefusal(decErr) {
 		t.Fatalf("the vector no longer carries a bool byte above 1: the oracle answers ok=%v %+v", ok, rep)
 	}
 

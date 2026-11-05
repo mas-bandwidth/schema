@@ -97,12 +97,12 @@ func countRefusalProbe(t *testing.T) (map[string][]byte, string) {
 		var plain tabletext.Report
 		ok, err := tablewire.Decode(model, model.New(model.Lookup("Root")), wire, &plain)
 		var refusal *tablewire.CountRefusal
-		if ok || errors.As(err, &refusal) != cap || plain.Malformed == cap {
+		if ok || errors.As(err, &refusal) != cap || !tablewire.ReadRefusal(err) {
 			t.Fatalf("%s fixture: cap=%v ok=%v err=%v report=%+v", label, cap, ok, err, plain)
 		}
 		fmt.Fprintf(&rows, "Probe.plain(%q, %s, %t, %s)\n", label, elixirCountBytes(wire), cap, elixirCountReport(plain))
 		for _, damage := range []bool{false, true} {
-			report := tabletext.Report{Unknown: 3, KindMismatch: 4, Widened: 5, Clamped: 6, Duplicate: 7, Retained: 8, RetainLost: 9, Malformed: damage}
+			report := tabletext.Report{Unknown: 3, Widened: 5, Retained: 8, RetainLost: 9, Refused: damage}
 			retain := &tablewire.Retain{Capacity: 4096, IdCapacity: 512}
 			ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup("Root")), wire, retain, &report)
 			refusal = nil
@@ -168,7 +168,7 @@ func countRefusalProbe(t *testing.T) (map[string][]byte, string) {
 	var boundedReport tabletext.Report
 	boundedValue := model.New(model.Lookup("Root"))
 	ok, err := tablewire.Decode(model, boundedValue, boundedWire, &boundedReport)
-	if !ok || err != nil || boundedReport.Malformed || boundedReport.Clamped != 1 {
+	if !ok || err != nil || boundedReport.Refused {
 		t.Fatalf("bounded fixture: ok=%v err=%v report=%+v", ok, err, boundedReport)
 	}
 	probe := strings.ReplaceAll(countRefusalElixir, "CASES", rows.String())
@@ -184,7 +184,7 @@ func elixirCountBytes(b []byte) string {
 	return "<<" + strings.Join(parts, ",") + ">>"
 }
 func elixirCountReport(r tabletext.Report) string {
-	return fmt.Sprintf("{%d,%d,%d,%d,%d,%d,%d,%t}", r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Retained, r.RetainLost, r.Malformed)
+	return fmt.Sprintf("{%d,%d,%d,%d,%d,%d,%d,%t}", r.Unknown, 0, r.Widened, 0, 0, r.Retained, r.RetainLost, r.Refused)
 }
 
 const countRefusalElixir = `
@@ -268,7 +268,7 @@ func TestWireCountBoundedRetainElixir(t *testing.T) {
 			} else {
 				ok, err = tablewire.Decode(model, v, wire, &report)
 			}
-			if !ok || err != nil || report.Malformed || report.Clamped != 1 {
+			if !ok || err != nil || report.Refused {
 				t.Fatalf("%s retaining=%v oracle ok=%v err=%v report=%+v", c.name, retaining, ok, err, report)
 			}
 		}

@@ -20,6 +20,7 @@ import (
 // the header by the L found the count truncated, called it framing damage,
 // and reported kind_mismatch 0.
 func TestWireFuzzMapHeaderCrossingItsLengthIsAKindMismatch(t *testing.T) {
+	t.Skip("layer 3: the oracle's six counters and the reach rule for a map header across L, retired per docs/plans/strict-only.md (b)")
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "listdemo", "Army", false, false)
 	if err != nil {

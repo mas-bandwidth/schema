@@ -47,7 +47,7 @@ func TestPackRefusesZeroInText(t *testing.T) {
 			}
 			wire, _, report, err := tablepack.Pack(m, "Memo", tree)
 			if escape == `\u0000` {
-				if err == nil || !report.Malformed {
+				if err == nil || !report.Refused {
 					var back tabletext.Report
 					ok, derr := tablewire.Decode(m, m.New(m.Unit.Tables["Memo"]), wire, &back)
 					t.Errorf("%s: Pack accepted a zero in text (err=%v report=%+v); its wire decodes ok=%v err=%v report=%+v", name, err, report, ok, derr, back)
@@ -61,7 +61,7 @@ func TestPackRefusesZeroInText(t *testing.T) {
 				t.Fatalf("%s: the \\u0001 control did not pack clean: %v %+v", name, err, report)
 			}
 			var back tabletext.Report
-			if ok, derr := tablewire.Decode(m, m.New(m.Unit.Tables["Memo"]), wire, &back); !ok || derr != nil || back.Malformed {
+			if ok, derr := tablewire.Decode(m, m.New(m.Unit.Tables["Memo"]), wire, &back); !ok || derr != nil || back.Refused {
 				t.Errorf("%s: the control's wire decodes damaged: ok=%v err=%v %+v", name, ok, derr, back)
 			}
 		}

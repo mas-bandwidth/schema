@@ -41,10 +41,10 @@ func TestJavaFixUnionArmKindWidened(t *testing.T) {
 	model := tabletext.NewModel(u)
 	oracle := new(tabletext.Report)
 	oval := model.New(u.Tables["Root"])
-	if _, err := tablewire.Decode(model, oval, mutant, oracle); err != nil {
+	if _, err := tablewire.Decode(model, oval, mutant, oracle); err != nil && !tablewire.ReadRefusal(err) {
 		t.Fatal(err)
 	}
-	if !oracle.Malformed || oracle.Widened != 0 || oracle.KindMismatch != 0 {
+	if !oracle.Refused || oracle.Widened != 0 {
 		t.Fatalf("oracle report is not the widening-off-width case: %+v", oracle)
 	}
 

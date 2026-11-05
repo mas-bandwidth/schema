@@ -75,19 +75,19 @@ func loadIds(ids []uint64) (ok bool, report TableReport) {
 
 func TestOpenDistinctnessVerdict(t *testing.T) {
 	ok, report := loadIds([]uint64{1, 2})
-	if !ok || report.Malformed || report.Verdict != TableOpenOk {
+	if !ok || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenOk {
 		t.Fatalf("distinct pair: %+v", report)
 	}
 	ok, report = loadIds([]uint64{1, 1})
-	if ok || !report.Malformed || report.Verdict != TableOpenDamaged {
+	if ok || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenDamaged {
 		t.Fatalf("duplicate: %+v", report)
 	}
 	ok, report = loadIds([]uint64{0, 0})
-	if ok || !report.Malformed || report.Verdict != TableOpenDamaged {
+	if ok || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenDamaged {
 		t.Fatalf("zero duplicate: %+v", report)
 	}
 	ok, report = loadIds([]uint64{COLLIDE_A, COLLIDE_B})
-	if !ok || report.Malformed || report.Verdict != TableOpenOk {
+	if !ok || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenOk {
 		t.Fatalf("hash-slot collision of distinct ids: %+v", report)
 	}
 	probe := []uint64{COLLIDE_A, COLLIDE_B}
@@ -97,7 +97,7 @@ func TestOpenDistinctnessVerdict(t *testing.T) {
 		}
 	}
 	ok, report = loadIds(probe)
-	if !ok || report.Malformed || report.Verdict != TableOpenOk {
+	if !ok || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenOk {
 		t.Fatalf("hash-slot collision on the probe path: %+v", report)
 	}
 	seven := make([]uint64, 7)
@@ -105,12 +105,12 @@ func TestOpenDistinctnessVerdict(t *testing.T) {
 		seven[i] = uint64(i + 1)
 	}
 	ok, report = loadIds(seven)
-	if !ok || report.Malformed || report.Verdict != TableOpenOk {
+	if !ok || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenOk {
 		t.Fatalf("7 distinct pairwise floor: %+v", report)
 	}
 	seven[6] = 1
 	ok, report = loadIds(seven)
-	if ok || !report.Malformed || report.Verdict != TableOpenDamaged {
+	if ok || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenDamaged {
 		t.Fatalf("7 with duplicate: %+v", report)
 	}
 	eight := make([]uint64, 8)
@@ -118,12 +118,12 @@ func TestOpenDistinctnessVerdict(t *testing.T) {
 		eight[i] = uint64(i + 1)
 	}
 	ok, report = loadIds(eight)
-	if !ok || report.Malformed || report.Verdict != TableOpenOk {
+	if !ok || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenOk {
 		t.Fatalf("8 distinct probe path: %+v", report)
 	}
 	eight[7] = 1
 	ok, report = loadIds(eight)
-	if ok || !report.Malformed || report.Verdict != TableOpenDamaged {
+	if ok || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenDamaged {
 		t.Fatalf("8 with duplicate: %+v", report)
 	}
 	over := make([]uint64, 257)
@@ -131,18 +131,18 @@ func TestOpenDistinctnessVerdict(t *testing.T) {
 		over[i] = uint64(i + 1)
 	}
 	ok, report = loadIds(over)
-	if !ok || report.Malformed || report.Verdict != TableOpenOk {
+	if !ok || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenOk {
 		t.Fatalf("257 distinct pairwise fallback: %+v", report)
 	}
 	over[256] = 1
 	ok, report = loadIds(over)
-	if ok || !report.Malformed || report.Verdict != TableOpenDamaged {
+	if ok || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenDamaged {
 		t.Fatalf("257 with duplicate: %+v", report)
 	}
 	over = over[:256]
 	over[0] = 2
 	ok, report = loadIds(over)
-	if ok || !report.Malformed || report.Verdict != TableOpenDamaged {
+	if ok || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenDamaged {
 		t.Fatalf("256 with duplicate: %+v", report)
 	}
 }

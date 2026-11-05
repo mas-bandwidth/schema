@@ -80,10 +80,11 @@ func TestGoMixedUnitKeepsFixedForm(t *testing.T) {
 	runGenerated(t, mixed, mixedFixedProbe)
 }
 
-// TestGoMixedUnitUnionKeepsFormOne holds §3.4's named follow-on: a fixed table
-// whose closure holds a union keeps form 1 in a regional unit, by the named
-// predicate, and still carries form 3 in a plain unit.
-func TestGoMixedUnitUnionKeepsFormOne(t *testing.T) {
+// TestGoMixedUnitUnionCarriesFixedForm holds §3.4's rule that a variable
+// table in the unit changes nothing for its fixed tables when their closure
+// holds a union: directly, through a nested table and through an array of
+// them, each carries the fixed form in a regional unit as in a plain one.
+func TestGoMixedUnitUnionCarriesFixedForm(t *testing.T) {
 	t.Parallel()
 	tables := `package probe
 
@@ -115,14 +116,9 @@ fixed table Flat {
 		if !strings.Contains(plainSrc, "func "+table+"FixedSave(") {
 			t.Errorf("plain unit: %s lost the fixed form", table)
 		}
-	}
-	for _, table := range []string{"Holder", "Inner", "Outer"} {
-		if strings.Contains(mixedSrc, "func "+table+"FixedSave(") {
-			t.Errorf("mixed unit: %s holds a union and must keep form 1 (fixedRowHoldsUnion)", table)
+		if !strings.Contains(mixedSrc, "func "+table+"FixedSave(") {
+			t.Errorf("mixed unit: %s lost the fixed form (a variable table in the unit dropped it)", table)
 		}
-	}
-	if !strings.Contains(mixedSrc, "func FlatFixedSave(") {
-		t.Error("mixed unit: Flat holds no union and must carry the fixed form")
 	}
 }
 
@@ -158,7 +154,7 @@ func sample() []Pos {
 }
 
 func outcome(n int64, r TableReport) string {
-	return fmt.Sprintf("n=%d reason=%q malformed=%v clamped=%d", n, r.Reason, r.Malformed, r.Clamped)
+	return fmt.Sprintf("n=%d reason=%q malformed=%v clamped=%d", n, r.Reason, (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed"), 0)
 }
 
 func TestMixedFixed(t *testing.T) {

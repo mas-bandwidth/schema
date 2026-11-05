@@ -213,18 +213,18 @@ func one(surface string, c aCase, outdir string) error {
 	return fmt.Errorf("unknown surface %q", surface)
 }
 
-// writeReport writes the read report, one Name=value line per counter of the
-// Go TableReport in declaration order (tables/cards/conformance/FORMAT.md).
+// writeReport writes the read report of an accepted read, one Name=value line
+// per row of tables/cards/conformance/FORMAT.md, in its order. The first four
+// are the Go TableReport counters. The strict read refuses the whole load on a
+// kind mismatch, an out-of-range value, a repeat or damage, so an accepted read
+// writes the last four rows as zero and false.
 func writeReport(outdir, name string, r cards.Report) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Retained=%d\n", r.Retained)
 	fmt.Fprintf(&b, "RetainLost=%d\n", r.RetainLost)
 	fmt.Fprintf(&b, "Widened=%d\n", r.Widened)
 	fmt.Fprintf(&b, "Unknown=%d\n", r.Unknown)
-	fmt.Fprintf(&b, "KindMismatch=%d\n", r.KindMismatch)
-	fmt.Fprintf(&b, "Clamped=%d\n", r.Clamped)
-	fmt.Fprintf(&b, "Duplicate=%d\n", r.Duplicate)
-	fmt.Fprintf(&b, "Malformed=%t\n", r.Malformed)
+	b.WriteString("KindMismatch=0\nClamped=0\nDuplicate=0\nMalformed=false\n")
 	return writeFile(outdir, name, "report", []byte(b.String()))
 }
 

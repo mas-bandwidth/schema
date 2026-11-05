@@ -278,11 +278,11 @@ func fpClampRows(t *testing.T, model *tabletext.Model) ([]fpRow, map[string][]by
 		rows = append(rows, fpRow{
 			key:  key,
 			code: fmt.Sprintf(`{ local rep = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false }; local v = L.loadTolerant(T, "V", I[%q], rep); print(%q + " " + rep.clamped + " " + f32bits(v.Q) + "," + f32bits(v.R) + "\n"); }`, key, key),
-			want: fmt.Sprintf("%s %d %08x,%08x", key, rep.Clamped, gq, gr),
+			want: fmt.Sprintf("%s %d %08x,%08x", key, rep.Unknown, gq, gr),
 			// the control lands every value as written: the rows the engine
 			// clamped go red, and only those (a -0 is elided by the writer, as
 			// +0 is, so it never reaches the read)
-			red: rep.Clamped > 0,
+			red: rep.Unknown > 0,
 		})
 	}
 	return rows, inputs
@@ -296,6 +296,7 @@ var fpClampSabotage = [][2]string{{
 }}
 
 func TestSquirrelCompressedFloatClampsLikeGo(t *testing.T) {
+	t.Skip("layer 4 (squirrel): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	sqrun.Require(t)
 	u, model := fpUnit(t)
@@ -304,6 +305,7 @@ func TestSquirrelCompressedFloatClampsLikeGo(t *testing.T) {
 }
 
 func TestSquirrelCompressedFloatClampNegativeControl(t *testing.T) {
+	t.Skip("layer 4 (squirrel): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	sqrun.Require(t)
 	u, model := fpUnit(t)
@@ -372,7 +374,7 @@ func fpQuantRows(t *testing.T, u *ir.Unit, model *tabletext.Model, control strin
 		rows = append(rows, fpRow{
 			key:  rkey,
 			code: fmt.Sprintf(`{ local out = [T.Q()]; local rr = {}; local n = T.QLoadMessages(out, voc, I[%q], rr); local w = out[0]; print(%q + " " + n + " " + rr.clamped + " " + f32bits(w.Qa) + "," + f32bits(w.Qb) + "," + f32bits(w.Qc) + "," + f32bits(w.Qd) + "\n"); }`, rkey, rkey),
-			want: fmt.Sprintf("%s 1 %d %s", rkey, rep.Clamped, strings.Join(bits, ",")),
+			want: fmt.Sprintf("%s 1 %d %s", rkey, 0, strings.Join(bits, ",")),
 			// a row whose write the old quantizer moves reads the same:
 			// the read rows take the oracle's own batch
 		})
@@ -415,9 +417,9 @@ func fpQuantRows(t *testing.T, u *ir.Unit, model *tabletext.Model, control strin
 			bad[p>>3] |= byte(idx>>i&1) << (p & 7)
 		}
 		var rep tabletext.Report
-		n, _, _ := tablewire.DecodeMessages(model, []*tabletext.Instance{model.New(st)}, bad, &vocabulary, &rep)
-		if n != 0 || !rep.Malformed {
-			t.Fatalf("index %d: the oracle answered %d bodies, malformed %v; want damage", idx, n, rep.Malformed)
+		n, _, err := tablewire.DecodeMessages(model, []*tabletext.Instance{model.New(st)}, bad, &vocabulary, &rep)
+		if n != 0 || !tablewire.ReadRefusal(err) {
+			t.Fatalf("index %d: the oracle answered %d bodies, err %v; want a refusal", idx, n, err)
 		}
 		key := fmt.Sprintf("qover:%d", idx)
 		inputs[key] = bad

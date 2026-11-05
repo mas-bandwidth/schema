@@ -12,9 +12,11 @@ type MissingRequired struct{ Reason string }
 
 func (e *MissingRequired) Error() string { return e.Reason }
 
-// RequireSeen closes one body. Presence is supplied by the form's own rule:
-// a named JSON key or a compatible binary field. Guards use the final value.
-func (r *Report) RequireSeen(inst *Instance, seen func(int) bool) bool {
+// MissingFields closes one body: the required fields the body lacks, joined
+// by ", ", and "" when none is missing. Presence is supplied by the form's own
+// rule: a named JSON key or a compatible binary field. Guards use the final
+// value.
+func MissingFields(inst *Instance, seen func(int) bool) string {
 	guards := Guards(inst.Def)
 	var missing []string
 	for i := range inst.Fields {
@@ -27,12 +29,7 @@ func (r *Report) RequireSeen(inst *Instance, seen func(int) bool) bool {
 		}
 		missing = append(missing, f.Name)
 	}
-	if len(missing) == 0 {
-		return true
-	}
-	r.MissingRequired++
-	r.Reason = "missing_required: " + strings.Join(missing, ", ")
-	return false
+	return strings.Join(missing, ", ")
 }
 
 // ValidateRequiredValue refuses an unset or out-of-range required value.

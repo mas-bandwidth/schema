@@ -85,9 +85,9 @@ func t07Emitted(t *testing.T) string {
 // gates the optional on its present byte, and never walks the declared bound.
 func t07GoC14(t *testing.T) {
 	body := t07Emitted(t)
-	clamp := funcSource(body, "func RootFixedClampBody(")
+	clamp := funcSource(body, "func RootFixedBoundsBody(")
 	if clamp == "" {
-		t.Fatal("RootFixedClampBody is not emitted")
+		t.Fatal("RootFixedBoundsBody is not emitted")
 	}
 	if !strings.Contains(clamp, "for i := range int64(value.MarksCount) {") {
 		t.Error("C14: the bounds pass must walk a counted array's LIVE count (§4.6)")
@@ -155,7 +155,7 @@ func t07RuntimeCase(t *testing.T, op, next string) string {
 // loop". The prefill is the hole list, copied one hole at a time, and never a
 // whole-record copy that would clobber what the plan lands.
 func t07GoW9(t *testing.T) {
-	load := funcSource(t07Emitted(t), "func RootFixedLoadTolerant(")
+	load := funcSource(t07Emitted(t), "func RootFixedLoad(")
 	if load == "" {
 		t.Fatal("RootFixedLoad is not emitted")
 	}

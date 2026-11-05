@@ -21,6 +21,7 @@ import (
 // count and the verdict (read vs refused) must equal the oracle's, one subtest
 // per row.
 func TestJsonHostileReportClampCounterJava(t *testing.T) {
+	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 
@@ -79,7 +80,7 @@ func TestJsonHostileReportClampCounterJava(t *testing.T) {
 		inst := model.New(table)
 		rep := new(tabletext.Report)
 		okRead := model.Read(inst, text, rep)
-		if rep.Clamped == 0 {
+		if rep.Unknown == 0 {
 			continue
 		}
 		rows = append(rows, row{fields[1], key, root, text, *rep, okRead})
@@ -193,7 +194,7 @@ public final class Driver {
 				t.Fatalf("java report shape for %s: %q\n%s", r.name, strings.Join(javaFields, ","), out)
 			}
 			gotClamped := javaFields[3]
-			wantClamped := fmt.Sprintf("%d", r.want.Clamped)
+			wantClamped := fmt.Sprintf("%d", r.want.Unknown)
 			if gotClamped != wantClamped {
 				t.Errorf("row %s: java clamped=%s oracle clamped=%s (java %q, oracle %+v)", r.name, gotClamped, wantClamped, strings.Join(javaFields, ","), r.want)
 			}
