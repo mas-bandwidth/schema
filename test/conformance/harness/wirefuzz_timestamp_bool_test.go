@@ -32,8 +32,8 @@ func TestWireFuzzTimestampKindSkipsEightBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer.report != (Counts{Unknown: 1, KindMismatch: 1, Malformed: true}) {
-		t.Fatalf("kind 36 skip: the oracle says %s, want 1,1,0,0,0,true", answer.report)
+	if answer.report != (Counts{Refused: true}) {
+		t.Fatalf("kind 36 skip: a form-1 wire at a fixed root refuses by form first: the oracle says %s", answer.report)
 	}
 }
 
@@ -55,7 +55,7 @@ func TestWireFuzzBoolByteAboveOneIsMalformed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer.report != (Counts{Unknown: 2, Malformed: true}) {
-		t.Fatalf("hostile bool: the oracle says %s, want 2,0,0,0,0,true", answer.report)
+	if answer.report != (Counts{Refused: true}) {
+		t.Fatalf("hostile bool: a form-1 wire at a fixed root refuses by form first: the oracle says %s", answer.report)
 	}
 }
