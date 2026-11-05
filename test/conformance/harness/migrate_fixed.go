@@ -121,6 +121,11 @@ func migrateFixed(m *Manifest, manifest, jsonDir string) error {
 			if len(f) >= 5 && f[0] == "instance" && f[1] == inst.Name {
 				lines[i] = strings.Replace(line, inst.Wire, filepath.ToSlash(out), 1)
 			}
+			// a message row's file-form wire is the instance's file: it
+			// moves to the new positive bytes with the instance row
+			if len(f) == 6 && f[0] == "message" && f[4] == inst.Wire {
+				lines[i] = strings.Replace(line, inst.Wire, filepath.ToSlash(out), 1)
+			}
 		}
 		refusal := "previous_form_" + inst.Name
 		lines = append(lines, fmt.Sprintf("report %s %s %s %s", refusal, inst.Unit, inst.Root, inst.Wire))
