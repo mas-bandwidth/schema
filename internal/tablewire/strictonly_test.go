@@ -69,4 +69,14 @@ func TestEngineHasNoTolerantPaths(t *testing.T) {
 		}
 	}
 
+	oversized := listModel(t, "package strictceiling\nfixed table Huge { payload bytes(65536) }")
+	huge := oversized.New(oversized.Lookup("Huge"))
+	if data, err := tablewire.Encode(oversized, huge); len(data) != 0 || err == nil || err.Error() != "table Huge: fixed layout is unsupported" {
+		t.Fatalf("oversized fixed root save = %x, %v; want unsupported layout refusal", data, err)
+	}
+	form1 := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	if ok, err := tablewire.Decode(oversized, huge, form1, &report); ok || err == nil || !strings.HasPrefix(err.Error(), "previous_form:") {
+		t.Fatalf("oversized fixed root form-1 read = %v, %v; want previous_form refusal", ok, err)
+	}
+
 }
