@@ -309,7 +309,7 @@ static SCHEMA_UNUSED int64_t table_json_write_graph( const void * root, const Ta
     if ( ok ) { ok = table_json_write_value(&out,root,info,0); }
     table_release(graph.nodes.allocator,graph.nodes.entries);
     if ( !ok ) { return -1; }
-    table_json_put(&out,'\n'); return out.overflow ? -1 : out.offset;
+    table_json_put(&out,'\n'); return out.overflow || out.invalid ? -1 : out.offset;
 }
 /* ---- json graph walk: end ---- */
 
