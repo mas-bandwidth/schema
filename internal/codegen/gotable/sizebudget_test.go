@@ -44,7 +44,10 @@ const (
 	// +2: carry structural depth into the node-free unknown-payload walk (SPEC-TABLES §4)
 	// -33: the open runs no separate tableWireVerify prepass; the node table is
 	// checked by the region load that carries it (strict-engine.w7)
-	goOneTableLineBudget = 9950
+	// +39: the region and builder loads hold a record of a type the reader
+	// cannot name and the decoded graph in the same walk; no tableWireVerify
+	// prepass is left (strict-engine.w8)
+	goOneTableLineBudget = 9989
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -70,7 +73,10 @@ const (
 	// +1087: a file without a node table is checked in the body read's one walk (strict-engine.w5 STEP 5)
 	// +390: structural depth at declared table/array/union entries (SPEC-TABLES §4)
 	// -33: the open runs no separate tableWireVerify prepass (strict-engine.w7)
-	goExamplesLineBudget = 59407
+	// +121: the region and builder loads hold a record of a type the reader
+	// cannot name and the decoded graph in the same walk; no tableWireVerify
+	// prepass is left (strict-engine.w8)
+	goExamplesLineBudget = 59528
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
