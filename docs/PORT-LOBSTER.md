@@ -326,6 +326,23 @@ carries no `reason`; the text-lists card (schema-lobster-vt-text-lists)
 carries it. Retention (§6.6) and the region read are later cards'
 (retain-unknown).
 
+**The final widened map key.** A repeated map key whose earlier occurrence
+carried an incompatible kind keeps its `kind_bad` flag only until a later
+occurrence widens to the declared kind; the later key replaces the earlier
+kind (§2.8, §3), so `map_key` clears `kind_bad` when it takes the widening
+branch. Without that store the widening entry is discarded even though the
+last key wins. The reset is one store inside the widening branch, so a map
+key that does not widen never executes it. On a Linux/x86-64 fleet host with
+the pinned toolchain (default JIT), 200,000 plain loads of the shared
+`map_repeated_key_widen` vector took a median of 1.274s with the reset and
+0.537s without it: the difference is the repair keeping the widened entry
+instead of dropping it early. On `map_key_widen`, where no key repeats, the
+medians were 0.480s with and 0.471s without, inside run-to-run noise, because
+the added line is unreachable there. `TestLobsterMapRepeatedKeyLastKindWins`
+holds the repeated-key value to the Go reader and removes the reset to check
+the original misdecode returns; `TestLobsterMapRepeatedKeySharedVector` holds
+the shared vector through plain and retaining load, save and reload.
+
 **The test.** `TestLobsterTableLoadMatchesTheReports` loads every report and
 instance row of the tables manifest, one program per unit, and holds each
 row's report to reports.txt and to the Go engine's `tablewire.Decode` on the

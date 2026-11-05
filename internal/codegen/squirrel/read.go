@@ -83,8 +83,10 @@ func emitReadUnion(m *Module, d *ir.Union) {
 			}
 			m.Printf("    case %d: // %s\n", i+1, armName)
 			if armType != "" {
+				m.Printf("      value.%s = %s();\n", armName, m.Ref(armType))
 				m.Printf("      if (!%s(stream, value.%s)) return false;\n", readRef(m, armType), armName)
 			} else {
+				m.Init(v.F, "value."+armName, "      ")
 				emitReadField(m, v.F, "value."+armName, "      ")
 			}
 			m.Printf("      break;\n")
