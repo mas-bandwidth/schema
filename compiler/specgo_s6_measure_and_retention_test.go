@@ -49,8 +49,9 @@ func TestSpecGoS6MeasureAndRetention(t *testing.T) {
 			stale: "writes nothing either",
 		},
 		{
-			name: "§6.5 LoadMeasure and LoadMeasureReason disagree on damage",
-			want: "The plain `LoadMeasure` and `LoadMeasureReason` PURPOSELY DISAGREE on a damaged wire.",
+			name:  "§6.5 LoadMeasure and LoadMeasureReason agree on damage",
+			want:  "`LoadMeasure` AND `LoadMeasureReason` AGREE, within a leg.",
+			stale: "PURPOSELY DISAGREE on a damaged wire",
 		},
 		{
 			name: "§6.5 Go's LoadMeasure is combined size",

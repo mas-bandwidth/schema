@@ -56,7 +56,7 @@ func TestCfloatRangeWiden(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("old: the newer reader did not read the older writer's one record: n=%%d %%+v", n, r)
 	}
-	if r.Reason != "" || r.Malformed || r.Verdict == TableOpenRefused {
+	if r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Verdict == TableOpenRefused {
 		t.Fatalf("old: a clean NEW-READS-OLD is not a refusal: %%+v", r)
 	}
 	if back[0].Lead != 1 || back[0].Trail != 2 {
@@ -65,10 +65,10 @@ func TestCfloatRangeWiden(t *testing.T) {
 	if bits := math.Float32bits(back[0].Aim); bits != %#[5]x {
 		t.Fatalf("old: aim moved: %%#x, want %#[5]x from the corpus manifest (%%v)", bits, back[0].Aim)
 	}
-	if r.Clamped != 0 {
-		t.Fatalf("old: clamped %%d, want 0", r.Clamped)
+	if r.Refused() {
+		t.Fatalf("old: clamped %%d, want 0", r.Refusal)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("old: a counter that must not move did: %%+v", r)
 	}
 
@@ -76,7 +76,7 @@ func TestCfloatRangeWiden(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("hostile: the forged file reads one record, not %%d (%%+v)", n, r)
 	}
-	if r.Reason != "" || r.Malformed || r.Verdict == TableOpenRefused {
+	if r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Verdict == TableOpenRefused {
 		t.Fatalf("hostile: a forged read is not a refusal: %%+v", r)
 	}
 	if back[0].Lead != 1 || back[0].Trail != 2 {
@@ -85,18 +85,18 @@ func TestCfloatRangeWiden(t *testing.T) {
 	if bits := math.Float32bits(back[0].Aim); bits != %#[6]x {
 		t.Fatalf("hostile: aim landed %%#x, want %#[6]x, the manifest's own forged value (%%v)", bits, back[0].Aim)
 	}
-	if r.Clamped != 0 {
-		t.Fatalf("hostile: clamped %%d, want 0", r.Clamped)
+	if r.Refused() {
+		t.Fatalf("hostile: clamped %%d, want 0", r.Refusal)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("hostile: a counter that must not move did: %%+v", r)
 	}
 
-	n = %[4]sFixedLoadTolerant(back, pastData, plan, &r)
+	n = %[4]sFixedLoad(back, pastData, plan, &r)
 	if n != 1 {
 		t.Fatalf("past: the forged file reads one record, not %%d (%%+v)", n, r)
 	}
-	if r.Reason != "" || r.Malformed || r.Verdict == TableOpenRefused {
+	if r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Verdict == TableOpenRefused {
 		t.Fatalf("past: a forged read is not a refusal: %%+v", r)
 	}
 	if back[0].Lead != 1 || back[0].Trail != 2 {
@@ -105,10 +105,10 @@ func TestCfloatRangeWiden(t *testing.T) {
 	if bits := math.Float32bits(back[0].Aim); bits != 0x40000000 {
 		t.Fatalf("past: aim landed %%#x, want 0x40000000 — THIS READER'S OWN declared max 2.0, not a manifest value (%%v)", bits, back[0].Aim)
 	}
-	if r.Clamped != 1 {
-		t.Fatalf("past: clamped %%d, want 1", r.Clamped)
+	if !r.Refused() {
+		t.Fatalf("past: clamped %%d, want 1", r.Refusal)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("past: a counter that must not move did: %%+v", r)
 	}
 }

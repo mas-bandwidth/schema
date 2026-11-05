@@ -50,7 +50,7 @@ func TestRowCountedArraysValidData(t *testing.T) {
 	if loadedN != 1 {
 		t.Fatalf("CfgFixedLoad returned n=%d, want 1", loadedN)
 	}
-	if report.Malformed {
+	if report.Refused() {
 		t.Fatal("CfgFixedLoad reported malformed")
 	}
 	if report.Verdict != tblv1.TableOpenOk {

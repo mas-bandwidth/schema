@@ -74,7 +74,7 @@ func unboundedUTF8Answers(t *testing.T, patch func(string) string) (luau, engine
 		if tablewire.Refused(err) {
 			t.Fatalf("%s: the engine refused the root", r.name)
 		}
-		engine[r.name] = r.name + ":" + map[bool]string{true: "true", false: "false"}[rep.Malformed || !ok]
+		engine[r.name] = r.name + ":" + map[bool]string{true: "true", false: "false"}[rep.Refused || !ok]
 	}
 	var mods strings.Builder
 	for name := range g.files {

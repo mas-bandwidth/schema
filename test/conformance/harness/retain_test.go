@@ -45,7 +45,7 @@ func TestTheOracleAnswersEveryRetainRow(t *testing.T) {
 				inst := model.New(def)
 				store := &tablewire.Retain{Capacity: capacity, IdCapacity: ids}
 				ok, err := tablewire.DecodeRetain(model, inst, wire, store, &report)
-				if err != nil || !ok || report.Malformed {
+				if err != nil || !ok || report.Refused {
 					t.Fatalf("the load reported damage on a sound wire: ok=%v err=%v %+v", ok, err, report)
 				}
 				return inst, store, report
@@ -70,7 +70,7 @@ func TestTheOracleAnswersEveryRetainRow(t *testing.T) {
 			if got != rc.Load {
 				t.Fatalf("the load says %s and the manifest says %s", got, rc.Load)
 			}
-			if report.KindMismatch != 0 || report.Clamped != 0 || report.Widened != 0 || report.Duplicate != 0 {
+			if report.Widened != 0 {
 				t.Fatalf("retention moved a read counter: %+v", report)
 			}
 

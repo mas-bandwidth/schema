@@ -143,12 +143,9 @@ func loadFixTabledemoEngine(t *testing.T, m *tabletext.Model, def *ir.Struct, da
 	}
 	o.loaded = true
 	o.counts = loadFixTabledemoCounts{
-		unknown:      rep.Unknown,
-		kindMismatch: rep.KindMismatch,
-		widened:      rep.Widened,
-		clamped:      rep.Clamped,
-		duplicate:    rep.Duplicate,
-		malformed:    rep.Malformed || !ok,
+		unknown:   rep.Unknown,
+		widened:   rep.Widened,
+		malformed: rep.Refused || !ok,
 	}
 	enc, eerr := tablewire.Encode(m, inst)
 	if eerr != nil {

@@ -203,10 +203,10 @@ func TestT16OrdinalLanes(t *testing.T) {
 	if co.Top.A299.Inner.Y.N != 888 { t.Fatalf("inner payload landed %d, want 888", co.Top.A299.Inner.Y.N) }
 	if co.Seq != 9 { t.Fatalf("seq landed %d, want 9", co.Seq) }
 
-	// FORGED ORDINALS PAST 65535 AND PAST MaxUint32 LAND None (§4.5: the
+	// FORGED ORDINALS PAST 65535 AND PAST MaxUint32 REFUSE (§4.5, §4.6: the
 	// ordinal reads through a 64-bit temporary). A 32-bit temporary would
 	// truncate 0x1_0000_0001 to variant 1 and land it.
-	// A FORGED ORDINAL PAST THE WRITER'S SET LANDS None.
+	// A FORGED ORDINAL PAST THE WRITER'S SET REFUSES out_of_range.
 	{
 		body := t16Body()
 		binary.LittleEndian.PutUint16(body[0:], 301)
@@ -214,8 +214,8 @@ func TestT16OrdinalLanes(t *testing.T) {
 		RootReset(&fo)
 		var fr TableReport
 		fdst := tableFixedOverlay(unsafe.Pointer(&fo), unsafe.Sizeof(fo))
-		if why := tableFixedRun(plan, made, body, fdst, &fr); why != "" { t.Fatalf("run: %s", why) }
-		if fo.Many != ManyNone { t.Fatalf("forged ordinal 301 landed %d, want None", int(fo.Many)) }
+		if why := tableFixedRun(plan, made, body, fdst, &fr); why != "out_of_range" { t.Fatalf("forged ordinal 301: run %q, want out_of_range", why) }
+		if fo.Many != ManyNone { t.Fatalf("forged ordinal 301 landed %d", int(fo.Many)) }
 	}
 
 	// THE ORDINAL TEMPORARY IS 64-BIT (§4.5): an 8-byte ordinal of
@@ -227,15 +227,13 @@ func TestT16OrdinalLanes(t *testing.T) {
 	odst := make([]byte, 8)
 	var orr TableReport
 	binary.LittleEndian.PutUint64(osrc, 4294967297)
-	tableFixedRun(oc.plan, 1, osrc, odst, &orr)
-	if v := binary.LittleEndian.Uint64(odst); v != 0 {
-		t.Fatalf("the 8-byte ordinal 0x1_0000_0001 landed %d, want None (0): the temporary truncated", v)
+	if why := tableFixedRun(oc.plan, 1, osrc, odst, &orr); why != "out_of_range" {
+		t.Fatalf("the 8-byte ordinal 0x1_0000_0001 ran %q, want out_of_range: the temporary truncated", why)
 	}
 	binary.LittleEndian.PutUint64(osrc, 70000)
 	odst = make([]byte, 8)
-	tableFixedRun(oc.plan, 1, osrc, odst, &orr)
-	if v := binary.LittleEndian.Uint64(odst); v != 0 {
-		t.Fatalf("the 8-byte ordinal 70000 (past 65535) landed %d, want None (0)", v)
+	if why := tableFixedRun(oc.plan, 1, osrc, odst, &orr); why != "out_of_range" {
+		t.Fatalf("the 8-byte ordinal 70000 (past 65535) ran %q, want out_of_range", why)
 	}
 	binary.LittleEndian.PutUint64(osrc, 2)
 	odst = make([]byte, 8)

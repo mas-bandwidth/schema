@@ -62,7 +62,7 @@ func TestMapsAndUnionArmsOnTheTableWireJava(t *testing.T) {
 			}
 			value := model.New(u.Tables[item.root])
 			report := new(tabletext.Report)
-			if ok, err := tablewire.Decode(model, value, data, report); !ok || err != nil || report.Malformed || report.Refused {
+			if ok, err := tablewire.Decode(model, value, data, report); !ok || err != nil || report.Refused {
 				t.Fatalf("Go reference %s: %v %+v", item.name, err, report)
 			}
 			text, err := model.Write(value)

@@ -221,7 +221,7 @@ func TestLuauJsonTimestampStrictRFC3339(t *testing.T) {
 				t.Fatalf("%s: the Go reference ToJson: %v", tc.name, err)
 			}
 			wantText = hexBytes(append(body, '\n'))
-		} else if !rep.Malformed || !strings.HasPrefix(rep.Reason, "timestamp_not_rfc3339: at") {
+		} else if !rep.Refused || !strings.HasPrefix(rep.Reason, "timestamp_not_rfc3339: at") {
 			t.Fatalf("%s: the Go reference refused as %+v, not timestamp_not_rfc3339: at", tc.name, rep)
 		}
 

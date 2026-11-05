@@ -120,6 +120,6 @@ func untouched(b []byte) bool {
 }
 
 func dirty() TableReport {
-	return TableReport{Widened: 1, Unknown: 2, KindMismatch: 3, Clamped: 4, Duplicate: 5, Malformed: true, Retained: 6, RetainLost: 7}
+	return TableReport{Widened: 1, Unknown: 2, Refusal: TableRefuseWireDamaged, Retained: 6, RetainLost: 7}
 }
 `

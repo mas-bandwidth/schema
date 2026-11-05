@@ -61,7 +61,7 @@ func TestEngineStringRefusesInvalidUTF8(t *testing.T) {
 			t.Errorf("%s: Read accepted ill-formed UTF-8", text)
 			continue
 		}
-		if !r.Malformed || !strings.HasPrefix(r.Reason, "string_not_utf8") {
+		if !r.Refused || !strings.HasPrefix(r.Reason, "string_not_utf8") {
 			t.Errorf("%s: report %+v, want Malformed with Reason starting string_not_utf8", text, r)
 		}
 	}
@@ -70,7 +70,7 @@ func TestEngineStringRefusesInvalidUTF8(t *testing.T) {
 	inst := m.New(root)
 	var r tabletext.Report
 	cleanNarrow := `{"s":"` + "\xf0\x9f\x98\x80" + `"}` // U+1F600
-	if !m.Read(inst, []byte(cleanNarrow), &r) || r.Malformed {
+	if !m.Read(inst, []byte(cleanNarrow), &r) || r.Refused {
 		t.Fatalf("narrow clean read %s: report %+v", cleanNarrow, r)
 	}
 	if fv, ok := inst.FieldByKey("s"); !ok || string(fv.Cell.Str) != "\xf0\x9f\x98\x80" {
@@ -81,7 +81,7 @@ func TestEngineStringRefusesInvalidUTF8(t *testing.T) {
 	inst = m.New(root)
 	r = tabletext.Report{}
 	cleanWide := `{"w":"` + "\xe2\x82\xac" + `"}` // U+20AC EURO SIGN
-	if !m.Read(inst, []byte(cleanWide), &r) || r.Malformed {
+	if !m.Read(inst, []byte(cleanWide), &r) || r.Refused {
 		t.Fatalf("wide clean read %s: report %+v", cleanWide, r)
 	}
 	if fv, ok := inst.FieldByKey("w"); !ok || len(fv.Cell.Units) != 1 || fv.Cell.Units[0] != 0x20ac {

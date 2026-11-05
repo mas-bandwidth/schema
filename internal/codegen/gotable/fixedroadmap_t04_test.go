@@ -405,10 +405,10 @@ func t04WriteModule(t *testing.T, dir, mod string, files map[string][]byte) {
 // compiled plan reads, and the report must be SILENT (§5.4, §5.9 #30).
 func t04CleanBody(t *testing.T, row, oa, na string) string {
 	t.Helper()
-	clean := `	if r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 {
+	clean := `	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("R19: counters moved on a clean backward read: %+v", r)
 	}
-	if r.Reason != "" || r.Malformed || r.LayoutHash != 0 {
+	if r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.LayoutHash != 0 {
 		t.Fatalf("R19: a clean NEW-READS-OLD is not a refusal: %+v", r)
 	}`
 	var checks string
@@ -462,7 +462,7 @@ func t04CleanBody(t *testing.T, row, oa, na string) string {
 	got := make([]%s.Lineage, 1)
 	var r %s.TableReport
 	plan := make([]%s.TableFixedEntry, 4096)
-	if n := %s.LineageFixedLoadTolerant(got, buf, plan, &r); n != 1 {
+	if n := %s.LineageFixedLoad(got, buf, plan, &r); n != 1 {
 		t.Fatalf("R19 %s: the newer reader refused the older writer's file: n=%%d %%+v", n, r)
 	}
 %s
@@ -473,19 +473,13 @@ func t04CleanBody(t *testing.T, row, oa, na string) string {
 
 // ---- go/E9 ------------------------------------------------------------------
 
-// t04GoE9 holds E9 to the report's own word: "Fixed-class wire fields do not
-// raise it ... A wire read always leaves it zero" (the Duplicate field's
-// comment, §5.4). The fixed module never writes report.Duplicate and never
-// carries a duplicate refusal reason.
+// t04GoE9 holds E9: the report carries no duplicate counter at all (the one
+// read refuses a repeat as damage, docs/SPEC-TABLES.md §4), and the fixed
+// module never names a duplicate.
 func t04GoE9(t *testing.T) {
 	src := t02GoEmit(t, unitFrom(t, t04Flat))
-	if !strings.Contains(src, "Duplicate int32") {
-		t.Fatal("E9: the report carries no Duplicate counter to hold at zero")
-	}
-	for _, bad := range []string{"Duplicate++", "report.Duplicate =", "Duplicate++"} {
-		if strings.Contains(src, bad) {
-			t.Errorf("E9: the fixed module raises the duplicate counter (%q); a wire read leaves it zero", bad)
-		}
+	if strings.Contains(src, "Duplicate int32") {
+		t.Fatal("E9: the report still carries a Duplicate counter")
 	}
 	if strings.Contains(src, `"duplicate"`) {
 		t.Error("E9: the fixed module carries a duplicate refusal reason; the fixed form never raises one")
@@ -503,15 +497,13 @@ func t04GoE9(t *testing.T) {
 // `report.Widened++` inside the per-entry loop, and §5.4's "a folded element run
 // is ONE" is the copy/present fold (`tableFixedRuns` folds only
 // `tableFixedCopy`/`tableFixedBool`), so a widen run is never folded. `count`
-// and `text` clamp once per entry. AND THE TITLE'S LAST CLAUSE: §5.4 says
+// and `text` past their bounds refuse in the pre-scan. AND THE TITLE'S LAST CLAUSE: §5.4 says
 // "`copy`, `const`, `present`, `ordinal` ... the op lands its value and moves
 // nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans"
 // (docs/FIXED-FORM-ALGORITHM.md §5.4, fix 27). The `ordinal` and `const` op
-// cases therefore carry NO `report.Clamped++`; the forged ordinal/union tag is
-// counted by `tableFixedForgedBounds`, the bounds pass the compiled read runs
-// over the record's source, while the identity plan — which carries no
-// `ordinal` or unguarded `const` entry — has its own forged tag counted by the
-// storage clamp (§5.8 row 12, schema#1254).
+// cases therefore carry no counter; a forged ordinal or union tag refuses in the
+// pre-scan the compiled read runs over the record's source, before any
+// destination byte (§4.5, §4.6).
 func t04GoR16(t *testing.T) {
 	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
 	if run == "" {
@@ -535,28 +527,18 @@ func t04GoR16(t *testing.T) {
 	if !strings.Contains(run, "if why := tableFixedTextRefusal(plan, count, src); why != \"\" {") {
 		t.Error("R16: direct runner does not pre-scan before writes")
 	}
-	// THE OPS MOVE NOTHING (§5.4): the ordinal and const ops land their value and
-	// count no clamp; the forged ordinal's count is the bounds pass's. The const
-	// case is last under the switch, so its block runs to the function's return.
-	for _, op := range [][2]string{
-		{"case tableFixedOrdinal:", "case tableFixedWiden:"},
-		{"case tableFixedConst:", "return \"\""},
-	} {
-		if strings.Contains(t02GoBlock(t, run, op[0], op[1]), "report.Clamped++") {
-			t.Errorf("R16: %s counts clamped in the op; §5.4 puts the forged count in the bounds pass, not the op", op[0])
+	// A FORGED ORDINAL OR TAG AND A BOOL BYTE OTHER THAN 0 OR 1 refuse in the
+	// pre-scan, before any destination byte (§4.5, §4.6)
+	for _, want := range []string{"case tableFixedOrdinal:", "case tableFixedTag:", "case tableFixedBool:", "return TableRefuseOutOfRange.Error()", "return TableRefuseWireDamaged.Error()"} {
+		if !strings.Contains(refusal, want) {
+			t.Errorf("R16: pre-scan does not carry %q", want)
 		}
 	}
-	if !strings.Contains(tableFixedRuntime, "func tableFixedForgedBounds(") {
-		t.Error("R16: the bounds pass that counts a forged ordinal is not emitted")
-	}
-	load := t02GoNorm(funcSource(t02GoEmit(t, unitFrom(t, t04Flat)), "func TFixedLoadTolerant("))
-	if !strings.Contains(load, "tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)") {
-		t.Error("R16: the compiled read does not run the bounds pass that counts a forged ordinal")
-	}
+	load := t02GoNorm(funcSource(t02GoEmit(t, unitFrom(t, t04Flat)), "func TFixedLoad("))
 	if n := strings.Count(load, "report.Unknown += censusUnknown"); n != 1 {
 		t.Errorf("R16: the load adds the unknown census %d times, want once per endpoint", n)
 	}
-	if n := strings.Count(load, "censusUnknown, censusKind = lane.Unknown, lane.KindMismatch"); n != 1 {
+	if n := strings.Count(load, "censusUnknown = lane.Unknown"); n != 1 {
 		t.Errorf("R16: the census lane is read %d times, want once per endpoint", n)
 	}
 }
@@ -576,7 +558,7 @@ func t04GoR18(t *testing.T) {
 	if strings.Contains(usrc, "TFixedClamp") {
 		t.Error("R18: a clamp that cannot fire is emitted for an unbounded table")
 	}
-	if strings.Contains(t02GoNorm(funcSource(usrc, "func TFixedLoadTolerant(")), "TFixedClamp(") {
+	if strings.Contains(t02GoNorm(funcSource(usrc, "func TFixedLoad(")), "TFixedBounds(") {
 		t.Error("R18: the load calls a clamp for a table that declares nothing bounded")
 	}
 
@@ -585,13 +567,13 @@ func t04GoR18(t *testing.T) {
 		t.Error("R18: a ranged table reports no clamp is needed")
 	}
 	rsrc := t02GoEmit(t, ranged)
-	if !strings.Contains(rsrc, "func TFixedClamp(") {
+	if !strings.Contains(rsrc, "func TFixedBounds(") {
 		t.Error("R18: a ranged table emitted no clamp pass")
 	}
-	if !strings.Contains(t02GoNorm(funcSource(rsrc, "func TFixedLoadTolerant(")), "TFixedClamp(&values[k], report)") {
-		t.Error("R18: the load does not run the clamp pass for a ranged table")
+	if !strings.Contains(t02GoNorm(funcSource(rsrc, "func TFixedLoad(")), "if !TFixedBounds(&values[k]) {") {
+		t.Error("R18: the load does not run the bounds pass for a ranged table")
 	}
-	if !strings.Contains(rsrc, "report.Clamped += clamped") {
-		t.Error("R18: the clamp pass does not move the report once with what it clamped")
+	if !strings.Contains(rsrc, "return tableFixedRefuse(report, TableRefuseOutOfRange.Error())") {
+		t.Error("R18: the bounds pass does not refuse out_of_range")
 	}
 }
