@@ -2,8 +2,10 @@ package luatable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"testing"
@@ -39,10 +41,6 @@ func TestLuaTableDescriptorsLoad(t *testing.T) {
 			paths = append(paths, filepath.Join(repo, p))
 		}
 		u := luarun.LoadUnit(t, paths...)
-		if len(ir.TableWideFields(u)) > 0 {
-			refused = append(refused, fmt.Sprintf("%s: carries the wide kinds the descriptor walk does not spell yet", key))
-			continue
-		}
 		files, err := Generate(u)
 		if err != nil {
 			if !strings.Contains(err.Error(), "Lua") {
@@ -163,3 +161,54 @@ function root(mod, name)
   print("root " .. name .. " registered")
 end
 `
+
+func TestMain(m *testing.M) {
+	debug.SetMemoryLimit(2 << 30)
+	os.Exit(m.Run())
+}
+
+// TestLuaTableDescriptorsNegativeControlFunctional sabotages a field kind and a table
+// type_id in TabledemoTables.lua and requires probeUnit to go red on each.
+func TestLuaTableDescriptorsNegativeControlFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
+	repo := filepath.Join("..", "..", "..")
+	units, roots := manifest(t, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	var paths []string
+	for _, p := range units["tabledemo"] {
+		paths = append(paths, filepath.Join(repo, p))
+	}
+	u := luarun.LoadUnit(t, paths...)
+	probe, want := probeUnit(u, roots["tabledemo"])
+	mod := ModuleName(u) + ".lua"
+	for _, tc := range []struct {
+		name string
+		from string
+		to   string
+	}{
+		{"field_kind", "kind = 4,", "kind = 5,"},
+		{"default_value", "default = 100", "default = 101"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			files, err := Generate(u)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(files[mod])
+			if !strings.Contains(text, tc.from) {
+				t.Fatalf("missing sabotage anchor %q in %s", tc.from, mod)
+			}
+			files[mod] = []byte(strings.Replace(text, tc.from, tc.to, 1))
+			dir := t.TempDir()
+			luarun.WriteFiles(t, dir, files)
+			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out, _, runErr := luarun.Try(t, dir, "main.lua", nil)
+			if runErr == nil && strings.TrimRight(out, "\n") == want {
+				t.Fatalf("NEGATIVE CONTROL FAILED: %s sabotage left TestLuaTableDescriptorsLoad green", tc.name)
+			}
+		})
+	}
+}

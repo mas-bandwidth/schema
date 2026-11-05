@@ -90,7 +90,7 @@ local function elem_of(T, d)
     local row = T.Tables[d.target]
     if row == nil then error("block: no descriptor for record " .. tostring(d.target), 0) end
     return { size = row.size, align = row.align }
-  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" or (s == "string" and d.unbounded) then
     return { size = 8, align = 8 }
   end
   return { size = 1, align = 1 }
@@ -116,8 +116,12 @@ local function pieces(T, f, projection)
   elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     p[#p + 1] = { size = 8, align = 8 }
   elseif s == "string" then
-    p[#p + 1] = { size = f.bound + 1, align = 1 }
-    p[#p + 1] = { size = 4, align = 4 }
+    if f.unbounded then
+      p[#p + 1] = { size = 8, align = 8 }
+    else
+      p[#p + 1] = { size = f.bound + 1, align = 1 }
+      p[#p + 1] = { size = 4, align = 4 }
+    end
   elseif s == "wstring" then
     p[#p + 1] = { size = 2 * (f.bound + 1), align = 2 }
     p[#p + 1] = { size = 4, align = 4 }
@@ -144,8 +148,8 @@ end
 -- Layout derives one record's C ABI layout from the descriptors: a projection
 -- opens with the generated 24-byte prologue (§19.1), every row is the record
 -- its descriptor names. It is the §19.3 model, not the wire's packed one.
-function B.Layout(T, name, projection)
-  local d = T.Tables[name]
+function B.Layout(T, name, projection, d)
+  d = d or T.Tables[name]
   if d == nil then error("block: no descriptor for table " .. tostring(name), 0) end
   local offset = projection and PROLOGUE or 0
   local record_align = projection and 8 or 1
@@ -193,7 +197,7 @@ function B.Layout(T, name, projection)
       fl.bound = f.bound
       fl.elemSize = 0
       fl.countOffset = offsets[1].offset + 8
-    elseif f.shape == "string" or f.shape == "wstring" or f.shape == "bytes" then
+    elseif (f.shape == "string" and not f.unbounded) or f.shape == "wstring" or f.shape == "bytes" then
       fl.counted = true
       fl.isArray = f.shape == "bytes"
       fl.bound = f.bound
@@ -233,7 +237,7 @@ end
 function B.BlockOpen(T, name, bytes, build_version, base_offset)
   if type(bytes) ~= "string" then return nil, "truncated" end
   if build_version == nil then build_version = T.BuildVersion end
-  local layout = B.Layout(T, name, true)
+  local layout = B.Layout(T, name, true, T.Tables[name])
 
   -- the alignment clause is last, but a nil base is what a non-string is:
   -- there is no block to read and no offset to measure
