@@ -1,7 +1,7 @@
 # The Python port: the design
 
-Glenn Fiedler, 2026-11-03: *"I would also like to extend to support python
-too."* This page is the Python leg's design. Every layer of the leg is built to
+The request to support Python, recorded 2026-11-03, starts this design. This
+page is the Python leg’s design. Every layer of the leg is built to
 it, and a layer that needs to depart from it changes this page first. The
 layers, bottom up, and what secures each are in
 [plans/python-leg.md](plans/python-leg.md); the roadmap work-set is
@@ -21,8 +21,8 @@ spec, PR #2790):
 
 ## THE DECISIONS
 
-Glenn ruled on the plan's eight decisions on 2026-11-03 ("Yes, as
-recommended"):
+The plan’s eight decisions were answered on 2026-11-03: “Yes, as
+recommended.”
 
 | | decision | ruling |
 |---|---|---|
@@ -30,7 +30,7 @@ recommended"):
 | D2 | which Python | **3.11 is the floor**, tested on 3.11 and on the newest stable CPython. Generated code and the runtime use nothing newer than 3.11 |
 | D3 | the toolchain | **CPython built from python.org source, pinned by sha256, into `dist/`**, as the Lua and Squirrel legs build theirs. The analyzer is mypy, installed from a hash-locked list. No system interpreter anywhere |
 | D4 | the bit layer | **serialize.py**, a serialize-family sibling at format 2.0 |
-| D5 | packaging | **The runtime ships beside the generated code.** Nothing to install. Publishing to PyPI is a separate, later decision, and Glenn's |
+| D5 | packaging | **The runtime ships beside the generated code.** Nothing to install. Publishing to PyPI remains a separate, later decision. |
 | D6 | errors | **A read returns the value or raises `Refused`** (a `ValueError`), with no partial value. **A write raises `InvalidValue`** (a `ValueError`). Enums are plain ints |
 | D7 | the JSON reader | **A port of the engine's reader** (`internal/tabletext`), never Python's `json` module |
 | D8 | the release | **Python does not block v3.0.0.** It is held to the same bar as every leg, on its own schedule |
@@ -227,10 +227,10 @@ serialize.py is the serialize family's Python member at format 2.0: a port of
 `serialize.h` to [STANDARD.md](https://github.com/mas-bandwidth/serialize/blob/main/STANDARD.md),
 judged by the family corpus. It is staged in this tree at
 `third_party/serialize.py/`, laid out as its own repository, until
-`mas-bandwidth/serialize.py` exists. Creating that public repository is
-Glenn's to do; the directory then moves there as it stands, is released, joins
-COMPATIBILITY.md, and is vendored back into the leg's runtime by sha256 like
-every other leg's.
+`mas-bandwidth/serialize.py` exists. Creating that public repository is a later task.
+When it exists, the directory moves there as it stands, is released, joins
+COMPATIBILITY.md, and is vendored back into the leg runtime by sha256,
+following the other language legs.
 
 - **The surface** mirrors serialize.js in Python spelling: `WriteStream`,
   `ReadStream`, `MeasureStream`, one `serialize_<op>` per operation on the
