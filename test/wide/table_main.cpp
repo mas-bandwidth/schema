@@ -476,9 +476,9 @@ static void element_site()
 // ---------------------------------------------------------------------------
 // THE TEXT FORM's wide rows (§16.2, §16.5): the same text transcoded at the
 // boundary, a clamp at N code units that never splits a pair, storage BUILT IN
-// CODE holding an unpaired surrogate written as U+FFFD, and one holding a zero
-// unit written as \u0000. The two storage rows are built in code deliberately:
-// no wire can deliver either.
+// CODE holding an unpaired surrogate, which the write refuses, and one
+// holding a zero unit written as \u0000. The two storage rows are built in
+// code deliberately: no wire can deliver either.
 
 static void text_form()
 {
@@ -527,8 +527,8 @@ static void text_form()
     }
 
     // §16.3's two rows, BUILT IN CODE: an unpaired surrogate is not a code
-    // point at all and writes one U+FFFD, and a zero unit is U+0000, which
-    // JSON has an escape for, and writes \u0000
+    // point at all, so measure and write alike refuse (§16.14 W0), and a zero
+    // unit is U+0000, which JSON has an escape for, and writes \u0000
     {
         Caption value;
         value.title[0] = (char16_t) 0x0041;
@@ -536,10 +536,8 @@ static void text_form()
         value.title[2] = 0;
         value.title_length = 2;
         char out[512];
-        const int64_t written = CaptionToJson( value, out, (int64_t) sizeof( out ) );
-        check( written > 0 );
-        out[written] = 0;
-        check( strstr( out, "\"A\xef\xbf\xbd\"" ) != NULL );
+        check( CaptionToJsonMeasure( value ) == -1 );
+        check( CaptionToJson( value, out, (int64_t) sizeof( out ) ) == -1 );
     }
     {
         Caption value;

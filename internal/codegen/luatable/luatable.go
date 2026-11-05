@@ -856,7 +856,8 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 			// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): a text-list
 			// element or a map key with no length bound, stored as one blob
 			// slot. No `bound =` rides, so no reader clamps and no map key is
-			// dropped for its length.
+			// dropped for its length. Its default is "", so an empty key
+			// elides inside its entry exactly as a `string(N)` key's does.
 			if withDefault {
 				return "shape = \"string\", unbounded = true, default = \"\""
 			}
