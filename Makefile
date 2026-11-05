@@ -5567,33 +5567,33 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 	@grep -m1 "FAILED" $(ORACLE_NC)/log
 	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
 
-# DAMAGE DISCARDS THE WHOLE LOAD (Glenn, 2026-10-31; docs/SPEC-TABLES.md §4):
-# on a mutant the oracle reads as damaged, the wire fuzzer compares the
-# refusal and nothing after it. The control removes the discard from a COPY
-# of wirefuzz.go, reached through a Go build overlay, so the re-saved bytes
-# and the retention report are compared again on damaged input, and the gate
-# TestWireVerdictComparesOnlyTheRefusalOnDamage must go red on exactly that.
-# Nothing tracked is written to.
+# THE VERDICT IS THE WHOLE CONTRACT (docs/rulings.json refusal-verdict-only):
+# an answer that is not accepted is held to its verdict alone, never to a
+# value or a diagnostic after it. The control removes that guard from a COPY
+# of wirefuzz.go, reached through a Go build overlay, so a refused answer's
+# bytes are compared again, and the gate
+# TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues must go red on exactly
+# that. Nothing tracked is written to.
 DISCARD_NC := build/wire-fuzz-nc-discard
 .PHONY: tables-wire-fuzz-discard-negative-control
 tables-wire-fuzz-discard-negative-control:
 	@rm -rf $(DISCARD_NC) && mkdir -p $(DISCARD_NC)
-	@sed -e 's|discarded := ans.report.Malformed \|\| ans.report.Refused|discarded := false // NEGATIVE CONTROL: damaged loads are compared whole|' \
+	@sed -e 's|if !ans.accepted {|if false { // NEGATIVE CONTROL: a refused answer is compared whole|' \
 		test/conformance/harness/wirefuzz.go > $(DISCARD_NC)/wirefuzz.go.txt
 	@cmp -s test/conformance/harness/wirefuzz.go $(DISCARD_NC)/wirefuzz.go.txt && \
 		{ echo "NEGATIVE CONTROL: the discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/test/conformance/harness/wirefuzz.go":"%s/$(DISCARD_NC)/wirefuzz.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(DISCARD_NC)/overlay.json
-	@if go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyTheRefusalOnDamage$$' \
+	@if go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues$$' \
 			./test/conformance/harness > $(DISCARD_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: damaged loads are compared whole and the gate stayed green"; \
+		echo "NEGATIVE CONTROL FAILED: refused answers are compared whole and the gate stayed green"; \
 		cat $(DISCARD_NC)/log; exit 1; \
 	fi
-	@grep -q "a leg that refuses the damaged load is red" $(DISCARD_NC)/log || \
+	@grep -q "the decoded value differs" $(DISCARD_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(DISCARD_NC)/log; exit 1; }
-	@grep -m1 "refuses the damaged load is red" $(DISCARD_NC)/log
-	@echo "negative control: comparing a damaged load's saved bytes turns the discard gate RED"
+	@grep -m1 "the decoded value differs" $(DISCARD_NC)/log
+	@echo "negative control: comparing a refused answer's saved bytes turns the verdict gate RED"
 
 # DAMAGE DISCARDS THE WHOLE LOAD in the C++ reference (docs/SPEC-TABLES.md §4):
 # the control removes the discard from a COPY of the emitter's LoadVerdict,

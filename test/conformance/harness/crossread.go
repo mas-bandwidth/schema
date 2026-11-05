@@ -32,7 +32,7 @@ type crossCase struct {
 	out string
 	// refusal is the row's named writer refusal, which the reference may
 	// answer instead of bytes (docs/SPEC-TABLES.md §2.5)
-	refusal string
+	refused bool
 }
 
 // crossRead runs the second direction for one leg over the writes it left
@@ -179,7 +179,7 @@ func crossCases(m *Manifest, surface, dir string, want []expectation) ([]crossCa
 				continue
 			}
 			out = append(out, crossCase{
-				name: inst.Name, file: path, want: wantBy[inst.Name], refusal: inst.GoWireRefusal,
+				name: inst.Name, file: path, want: wantBy[inst.Name], refused: inst.WireRefused,
 				line: fmt.Sprintf("instance %s %s %s %s", inst.Name, inst.Unit, inst.Root, repoRelative(path)),
 				out:  inst.Name,
 			})
@@ -333,8 +333,8 @@ func judgeReread(c crossCase, out string) string {
 	got, err := os.ReadFile(answer)
 	if err != nil {
 		if reason, rerr := os.ReadFile(answer + ".absent"); rerr == nil {
-			if c.refusal != "" && string(reason) == c.refusal {
-				return "" // the row's named writer refusal, which C++ gives too (§2.5)
+			if c.refused {
+				return ""
 			}
 			return fmt.Sprintf("%s: C++ answered ABSENT (%q) for the port's bytes", c.name, string(reason))
 		}
