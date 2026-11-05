@@ -54,6 +54,17 @@ func discardWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A fixed root uses form 3: its positional image has no field-kind byte.
+	// Truncating its final record is damage in that form. Variable roots
+	// retain the nested-body corruption below.
+	if tablewire.FixedRoot(m, inst.Def) {
+		wire = wire[:len(wire)-1]
+		var report tabletext.Report
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || err == nil || !report.Refused {
+			t.Fatalf("%s: truncated fixed record accepted: ok=%v err=%v %+v", root, ok, err, report)
+		}
+		return wire
+	}
 	at := bytes.Index(wire, []byte{byte(ir.TableKindI32), 3, 0, 0, 0, 0})
 	if at < 0 {
 		t.Fatalf("%s: Inner's body is not where this test expects it", root)
@@ -113,10 +124,10 @@ func TestDiscard(t *testing.T) {
 	var v Root
 	RootReset(&v)
 	var r TableReport
-	if RootLoad(&v, fixed, &r) {
+	if RootFixedLoad([]Root{v}, fixed, make([]TableFixedEntry, 4096), &r) >= 0 {
 		t.Fatalf("fixed: LoadTolerant answered true on damage")
 	}
-	if !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
+	if r.Err() == nil {
 		t.Fatalf("fixed: the report does not say malformed: %%+v", r)
 	}
 	if v.A != 0 || v.B != 0 || v.Inner.N != 0 {
@@ -124,7 +135,7 @@ func TestDiscard(t *testing.T) {
 	}
 	var strict Root
 	var s TableReport
-	if RootLoad(&strict, fixed, &s) || !s.Malformed {
+	if RootFixedLoad([]Root{strict}, fixed, make([]TableFixedEntry, 4096), &s) >= 0 || s.Err() == nil {
 		t.Fatalf("fixed: the strict Load did not refuse: %%+v", s)
 	}
 
@@ -133,7 +144,7 @@ func TestDiscard(t *testing.T) {
 	if root := GraphLoad(aligned(need), variable, &g); root != nil {
 		t.Fatalf("variable: LoadTolerant handed back a root on damage: a=%%d b=%%d", root.A, root.B)
 	}
-	if !g.Malformed {
+	if g.Err() == nil {
 		t.Fatalf("variable: the report does not say malformed: %%+v", g)
 	}
 
