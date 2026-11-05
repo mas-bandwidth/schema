@@ -2345,8 +2345,11 @@ end
 -- the write walk (§16.1, §16.3, §16.7)
 ----------------------------------------------------------------------------
 
+-- w.invalid is storage that is not text (ill-formed UTF-8 in a narrow string,
+-- an unpaired surrogate in a wide one), which refuses the whole write,
+-- invalid_value (docs/SPEC-TABLES.md §16.3, §16.14 W0)
 local function W()
-  return { parts = {} }
+  return { parts = {}, invalid = false }
 end
 local function raw(w, s)
   w.parts[#w.parts + 1] = s
@@ -2358,6 +2361,10 @@ local function line(w, depth)
   w.parts[#w.parts + 1] = "\n" .. string.rep("  ", depth)
 end
 
+-- A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts anything
+-- else into storage, so a byte that is not part of a well-formed sequence was
+-- put there by a program: the write REFUSES (invalid_value,
+-- docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
 local function write_string(w, s)
   local hex = "0123456789abcdef"
   put(w, '"')
@@ -2394,7 +2401,7 @@ local function write_string(w, s)
     else
       local width = utf8_seq(s, i)
       if width < 0 then
-        raw(w, utf8_encode(0xfffd))
+        w.invalid = true -- not text: the write refuses (§16.14 W0)
         i = i + 1
       else
         raw(w, s:sub(i, i + width - 1))
@@ -2418,8 +2425,10 @@ local function write_wstring(w, units)
         i = i + 1
       end
     end
-    if code >= 0xd800 and code <= 0xdfff then code = 0xfffd end
-    if code == 34 then
+    if code >= 0xd800 and code <= 0xdfff then
+      -- an unpaired surrogate is not text: the write refuses (§16.14 W0)
+      w.invalid = true
+    elseif code == 34 then
       raw(w, '\\"')
     elseif code == 92 then
       raw(w, "\\\\")
@@ -2557,8 +2566,10 @@ local function float_text(v, single)
     local back = tonumber(text)
     if back ~= nil then
       if single then
+        -- ONE correctly rounded conversion, as the reader lands it (§16.14,
+        -- W12): the double narrowed alone rounds twice
         local narrow = string.unpack("<f", string.pack("<f", back))
-        if narrow == v then return text end
+        if nearest_f32(text, back, narrow) == v then return text end
       elseif back == v then
         return text
       end
@@ -2957,6 +2968,7 @@ function J.ToJson(T, name, v)
   -- a float the text has no spelling for (a NaN or an infinity, §3.3, §16.3)
   -- refuses the write, named
   if not write_table(T, desc, v, 0, g, w) then return nil, D.refuse_non_finite(T, name, v) end
+  if w.invalid then return nil, "invalid_value: " .. name .. " holds a string that is not text" end
   w.parts[#w.parts + 1] = "\n"
   return table.concat(w.parts)
 end

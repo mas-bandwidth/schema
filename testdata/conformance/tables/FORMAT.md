@@ -49,6 +49,7 @@ cook-write   <instance> <little-endian file> <big-endian file>
 block        <name> <unit> <block file> <dump file>
 forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 refusal      <forgery> <reason>
+json-write-refusal <case> <unit> <root> <wire file> <damage>
 ```
 
 - **`unit`** names a compilation unit by the key every other line uses.
@@ -65,6 +66,17 @@ refusal      <forgery> <reason>
   refuses. `harness generate` writes none and the harness asks no leg for one.
   The marker is the data saying so on the instance's own line, which is louder
   than a missing file quietly tolerated.
+- **`json-write-refusal`** is one value the TEXT WRITER must refuse
+  (docs/SPEC-TABLES.md §16.14, W0), answered on the `json-write` surface as
+  `<case>.json` holding `refused` and a newline. The driver loads `<wire file>`
+  at `<root>`, then applies `<damage>` in code: `none` writes the value as
+  loaded (a graph one past the depth cap); `narrow:<field>` sets that top-level
+  text field's storage to the bytes `61 FF 62`, ill-formed UTF-8; and
+  `wide:<field>` sets that wide field's storage to the units `0061 D800 0062`,
+  an unpaired surrogate. No wire and no text can deliver either, so only a
+  program can build them, and the writer refuses them rather than writing a
+  replacement. A leg whose storage cannot hold the bytes the row names holds
+  the nearest value that is not text in that leg and says so in its driver.
 - **`connection`** is one CONNECTION's announced id table
   (docs/SPEC-TABLES.md §3.3): the unit whose whole vocabulary it carries, the
   BUILD VERSION that keys it, and the announcement itself, which is an ordinary

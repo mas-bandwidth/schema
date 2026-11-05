@@ -59,6 +59,14 @@
         "Doesn't have to be the same. Goose is a unique language, so it's natural the approach here could be different."
       ],
       "source": "Glenn, live in Rowan's session, answering whether Goose may prove cells that Go proves through its plan interpreter and its LoadMeasure (Goose fixed ordinals, union-guards and plan-execution; variable widening's measure half) through its own design: per-table straight-line code and no LoadMeasure. A port proves the same guarantees through its own fastest correct code paths; it is not required to reproduce another port's internal structure. The guarantees are still owed and still proved; this ruling makes nothing not-applicable."
+    },
+    {
+      "id": "deterministic-json-output",
+      "date": "2026-11-03",
+      "quotes": [
+        "i think this is both achievable and a good idea, we should enforce this, with some deterministic sorting order for outputting json the same way across all languages, and you should spec the walking order and how this is done so it is deterministic when you follow the spec."
+      ],
+      "source": "Glenn, relayed to Rowan's session, answering whether every language must write byte-identical JSON (and canonical text) for the same value. The spec is docs/SPEC-TABLES.md §16.14, the canonical writer step by step: field walk order, what is emitted and omitted, map key order per key kind, number, string, base64 and timestamp spelling, and layout. The json-write conformance surface compares every leg's text to the reference's as bytes, and conformance-negative-control-go-key-order is its reversed witness. This ruling makes nothing not-applicable."
     }
   ]
 }

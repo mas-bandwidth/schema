@@ -298,6 +298,43 @@ if (mode == "json-read" || mode == "json-write") {
       writeBytes(outdir + "/" + outname, out);
     }
   }
+  // WRITE-REFUSAL (testdata/conformance/tables/FORMAT.md): the wire loaded at
+  // the root, then the damage put into storage in code, which no read can
+  // deliver: `narrow:<field>` sets that top-level text field to the bytes
+  // 61 FF 62 (a Squirrel string holds those exact bytes), and `wide:<field>`
+  // sets that wide field to the units 0061 D800 0062. The writer must refuse,
+  // measure and write alike, and the answer is `refused`; a text it wrote
+  // instead is the answer, which the harness scores red.
+  if (write) foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 6 || f[0] != "json-write-refusal") continue;
+    local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4]; local damage = f[5];
+    local outname = cname + ".json";
+    if (!generated(unit)) { writeAbsent(outname); continue; }
+    local T = openUnit(unit)[1];
+    local v = T[root + "Load"](readBytes(wirepath), newReport());
+    if (v == null) throw cname + ": load refused " + wirepath;
+    if (damage != "none") {
+      local colon = damage.find(":");
+      if (colon == null) throw cname + ": damage " + damage + " names no field";
+      local kind = damage.slice(0, colon);
+      local name = damage.slice(colon + 1);
+      local member = name.slice(0, 1).toupper() + name.slice(1);
+      if (!(member in v)) throw cname + ": damage " + damage + " names no text field of " + root;
+      if (kind == "narrow") v[member] = format("%c%c%c", 0x61, 0xff, 0x62);
+      else if (kind == "wide") v[member] = [0x61, 0xd800, 0x62];
+      else throw cname + ": unknown damage " + damage;
+    }
+    local answer = "refused\n";
+    local size = T[root + "ToJsonMeasure"](v);
+    if (size >= 0) {
+      answer = T[root + "ToJson"](v);
+      if (answer == null || answer.len() != size) throw cname + ": ToJson did not write ToJsonMeasure's answer";
+    } else if (T[root + "ToJson"](v) != null) {
+      throw cname + ": ToJsonMeasure refused and ToJson wrote";
+    }
+    writeText(outdir + "/" + outname, answer);
+  }
   return;
 }
 
