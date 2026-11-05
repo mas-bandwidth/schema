@@ -1859,12 +1859,55 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 	return TableRefuseOk
 }
 
+// tableWireHasNodes answers whether the root's headers carry the node table.
+// Only then does the file have records or a pointer graph whose reachability,
+// sharing and cycles need a whole-file view; a file without one is checked by
+// the body read itself, as it decodes each field (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
+func tableWireHasNodes(r TableReader) bool {
+	probe := r
+	probe.Offset = 0
+	for {
+		ref, ok := probe.Leb()
+		if !ok || ref == 0 {
+			return false
+		}
+		id, ok := probe.Resolve(ref)
+		if !ok || !probe.Has(1) {
+			return false
+		}
+		kind := probe.Get8()
+		if id == 0xffffffffffffffff && kind == 12 {
+			return true
+		}
+		if !probe.Skip(kind) {
+			return false
+		}
+	}
+}
+
+// tableWireSkipValue walks one unknown payload with the wire-alone rules while
+// the body read skips it, so a field this reader cannot name is still held to
+// every condition the wire alone decides (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
+func tableWireSkipValue(r *TableReader, kind uint8) bool {
+	var c tableWireCheck
+	c.ids = len(r.Ids) / 8
+	at, ok := c.value(*r, kind)
+	if !ok {
+		r.Report.Refuse(c.failed(), "")
+		return false
+	}
+	r.Offset = at
+	return true
+}
+
 // tableOpenChecked opens a form-1 file and holds every wire-alone condition
 // before the body read starts (mas-bandwidth/schema docs/SPEC-TABLES.md §3, §4, §6.5). It answers
-// the report as a refusal for every verdict but TableOpenOk.
+// the report as a refusal for every verdict but TableOpenOk. A file without a
+// node table is checked in the body read's one walk; only the whole-file graph
+// conditions still need this prepass.
 func tableOpenChecked(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
 	r, verdict := tableOpen(data, report)
-	if verdict == TableOpenOk {
+	if verdict == TableOpenOk && tableWireHasNodes(r) {
 		if reason := tableWireVerify(r, nil); reason != TableRefuseOk {
 			verdict = TableOpenDamaged
 			if report != nil {
