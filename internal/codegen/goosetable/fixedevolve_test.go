@@ -257,7 +257,6 @@ fixed table Census
 	t.Logf("kind_mismatch: %s", got)
 }
 
-
 func refuseSchema(t *testing.T, src string) string {
 	t.Helper()
 	f, perrs := parser.Parse("T.schema", []byte(src))

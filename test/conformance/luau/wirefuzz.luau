@@ -211,6 +211,41 @@ function layout.union_layout(u: any): any
 	return z
 end
 
+-- layout.extent_align is ir.CookExtentAlign: the greatest alignment an extent
+-- holds, a TYPE property that counts every list element, map entry, by-value
+-- record and union arm, inactive or empty. The region's alignment is the
+-- greater of every record's alignment and every record's extent alignment
+-- (ir.TableRegionAlign), so a sixteen-aligned element in a record whose own
+-- alignment is eight still rounds the region to sixteen.
+function layout.extent_align(d: any, seen: { [any]: boolean }): number
+	if d == nil or seen[d] then return 1 end
+	seen[d] = true
+	local a = 1
+	for _, fd in d.fields do a = math.max(a, layout.field_extent_align(fd, seen)) end
+	return a
+end
+
+function layout.field_extent_align(fd: any, seen: { [any]: boolean }): number
+	if fd.s == "map" then
+		local entry = lookup_S.lookup(fd.t)
+		return math.max(layout.record_layout(entry).align, layout.extent_align(entry, seen))
+	end
+	if fd.s == "arr" then
+		local a = if fd.array == "list" then layout.value_piece(fd.e).align else 1
+		return math.max(a, layout.field_extent_align(fd.e, seen))
+	end
+	if fd.s == "tab" then return layout.extent_align(lookup_S.lookup(fd.t), seen) end
+	if fd.s == "union" then
+		local u = lookup_S.lookup(fd.t)
+		if seen[u] then return 1 end
+		seen[u] = true
+		local a = 1
+		for _, arm in u.arms do a = math.max(a, layout.field_extent_align(arm, seen)) end
+		return a
+	end
+	return 1
+end
+
 local function new_reader(b: buffer, at: number, e: number): any
 	return { b = b, at = at, e = e }
 end
@@ -652,7 +687,7 @@ local function pipe(host: any)
 					end
 					for k, v in mod do
 						if type(k) == "string" and string.sub(k, -10) == "Descriptor" and type(v) == "table" and v.fields ~= nil and v.id ~= nil then
-							local a = layout.record_layout(v).align
+							local a = math.max(layout.record_layout(v).align, layout.extent_align(v, {}))
 							if a > align then align = a end
 						end
 					end

@@ -409,6 +409,7 @@ for** (bill §12.5), and never the reader's: the reader's range is the wider one
 value the old writer could not have written. The reference carries them per entry for ranges and still owes the
 rest (§5.8 row 4).
 
+<<<<<<< HEAD
 - **A RANGED SCALAR** outside the min and max the plan carries: `REFUSE out_of_range`, naming the field.
   **A fixed-point field's bounds are in VALUE UNITS and its storage is raw**, so both ends are shifted by
   `F` first; a `bits(N)` past `2^N - 1` refuses by the same name. A COMPRESSED FLOAT is a ranged scalar
@@ -417,6 +418,15 @@ rest (§5.8 row 4).
   FORGED FLAG, set instead of landing a value): `REFUSE out_of_range`** — a value with no name in the writer's set is not one the writer wrote
   (fixes 5, 9 and 14, as ruled 2026-11-03). This pass is the ONLY place a tag or an ordinal is checked, and it
   refuses on either plan. There is no `| max = K` headroom on
+=======
+- **A RANGED SCALAR** clamps to the min and max the plan carries, `COUNT clamped`. **A fixed-point field's
+  bounds are in VALUE UNITS and its storage is raw**, so both ends are shifted by `F` first; a `bits(N)`
+  clamps to `2^N - 1`. **Every element of a ranged FIXED ARRAY is held the same as a scalar**, each clamp
+  counted. **The comparison is in the field's own type**: signed for a signed kind, UNSIGNED for an unsigned
+  one, so a `uint64` at or above `2^63` is past the max and lands the max, never the min.
+- **A UNION TAG past the plan's arm count, or an ENUM ORDINAL past the plan's top variant, lands `None`** —
+  the same nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). There is no `| max = K` headroom on
+>>>>>>> origin/sprint/schema-100
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
   compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule).
 

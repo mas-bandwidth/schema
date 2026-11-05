@@ -18,3 +18,6 @@ MCFramingResumeAfterDamage.cfg	Framing	counterexample	DamageEndsLoad	97	43	3	12	
 MCNodeNumbering.cfg	NodeNumbering	exhaustive	-	1496688	1496688	14	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCNodeNumberingReverse.cfg	NodeNumbering	counterexample	MatchesPreOrder	1491882	1491882	11	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCNodeNumberingBreadthFirst.cfg	NodeNumbering	counterexample	MatchesPreOrder	1947590	1947590	14	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCPGroup.cfg	PGroup	exhaustive	-	64	30	5	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCPGroupKillOnlyLeader.cfg	PGroup	counterexample	NoSurvivor	30	22	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCPGroupNoGraceKill.cfg	PGroup	counterexample	StopEnds	74	38	5	13	21.0.12.1	2.19 (2024-08-08, rev 5a47802)

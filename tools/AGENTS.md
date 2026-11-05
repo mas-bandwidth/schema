@@ -13,6 +13,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `matrix/` | language matrix page | `make matrix-check` | `make matrix` |
 | `moofuzzhost/` | moo wire-fuzz native host (C++) | `make tables-moo-wire-fuzz` | `make tables-moo-wire-fuzz` |
 | `negativecontrols/` | negative-control enumerator | `go test ./tools/negativecontrols` | `go run ./tools/negativecontrols check` |
+| `pgroup/` | process-group runner for CI steps | `go test ./tools/pgroup` | `go run ./tools/pgroup -- make test` |
 | `releasediff/` | previous-release differential (#463) | `make release-differential-negative-control` | `make release-differential` |
 | `releasetag/` | promotion and release tags | `go test ./tools/releasetag` | `make release` |
 | `roadmap/` | ROADMAP.md table honesty | `go test ./tools/roadmap` | `go test ./tools/roadmap` |
