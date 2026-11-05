@@ -637,6 +637,15 @@
       ]
     },
     {
+      "name": "python-toolchain",
+      "when": "pull-request",
+      "why": "the Python leg's pin check (docs/PORT-PYTHON.md, THE PIN), on the pins .github/actions/python restores into dist/: PYTHON pointed at the floor interpreter, MYPY pointed at a program that is not the locked mypy, and a copy of the leg's make files with a line that runs an interpreter from PATH, each of which must turn python-toolchain-check red by name. Three shell runs of the check, under 2 s together on a bench, so the row is the pins' cache restore.",
+      "targets": [
+        "python-toolchain-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

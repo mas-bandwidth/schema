@@ -2267,6 +2267,12 @@ jobs:
       - uses: ./.github/actions/moo
         if: matrix.moo != ''
 
+      # The Python pins (make/python-toolchain.mk: CPython 3.11.18, CPython
+      # 3.15.2 and mypy), for a row naming `python`: .github/actions/python
+      # builds them once per runner image and caches them under the pins.
+      - uses: ./.github/actions/python
+        if: matrix.python != ''
+
       # The Lobster pin, as the conformance row installs it (make dist-lobster
       # at the row's version, the two GL libraries the release binary links).
       - name: install the Lobster pin
