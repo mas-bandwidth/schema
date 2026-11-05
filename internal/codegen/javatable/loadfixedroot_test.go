@@ -1,10 +1,13 @@
 package javatable
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestJavaDriverLoadsFixedRootFormThree pins how the Java conformance driver
@@ -97,4 +100,37 @@ func driverFunc(t *testing.T, driver, name string) string {
 		end = len(rest)
 	}
 	return rest[:end]
+}
+
+// TestJavaFixedLayoutIsTheReferenceLayout pins that the layout a generated
+// `<Root>Fixed` writes into a file header, and the hash taken over it, are the
+// compiler's own (ir.TableFixedWalkRoot) for every fixed root of the units the
+// conformance corpus names. A file written by any other leg carries that
+// layout, and a reader holding a different one refuses the file.
+func TestJavaFixedLayoutIsTheReferenceLayout(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+	data, err := os.ReadFile(filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 3 || f[0] != "unit" {
+			continue
+		}
+		u := unitFromPath(t, filepath.Join(repo, f[2]))
+		for _, st := range fixedRoots(u) {
+			checked++
+			got := fixedLayoutBytes(fixedWalkRoot(st).entries)
+			want := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+			if !bytes.Equal(got, want) {
+				t.Errorf("%s %s: the Java layout is %d bytes and the compiler's is %d", f[1], st.Name, len(got), len(want))
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("the manifest names no fixed root")
+	}
 }
