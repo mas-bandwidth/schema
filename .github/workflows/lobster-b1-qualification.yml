@@ -1,0 +1,28 @@
+name: Lobster B1 packet qualification
+on:
+  push:
+    branches: [codex/lobster-b1-evidence-20261105]
+permissions:
+  contents: read
+jobs:
+  packet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 3d0d63e642b415b2a1a61071a91b52d0bc69e9ae
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: Install pinned Lobster
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster
+      - name: Qualify exact packet package
+        run: |
+          test "$(git rev-parse HEAD)" = 3d0d63e642b415b2a1a61071a91b52d0bc69e9ae
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobster/... -count=1 -timeout 600s -v
