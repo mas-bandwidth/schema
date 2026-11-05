@@ -43,10 +43,6 @@ const (
 	// ReasonNonFiniteFloat is every read's refusal of a float whose bits are a
 	// NaN or an infinity (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27).
 	ReasonNonFiniteFloat = "non_finite_float"
-	// ReasonPreviousForm is a fixed root's refusal of a form-1 file, by name
-	// before any body is read (docs/SPEC-TABLES.md §3.4; docs/rulings.json
-	// fixed-root-refuses-form1).
-	ReasonPreviousForm = "previous_form"
 
 	// ProbeSchemaPath is the manifest's name for the one schema that is not in
 	// the checkout: a variable root whose collection count can pass the int32
@@ -139,7 +135,6 @@ func EngineReasons() []string {
 		ReasonCountRefusal,
 		ReasonDamaged,
 		ReasonNonFiniteFloat,
-		ReasonPreviousForm,
 	}
 }
 
@@ -381,9 +376,6 @@ func RefusalReason(err error) (string, error) {
 	}
 	if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](err); ok {
 		return ReasonNonFiniteFloat, nil
-	}
-	if fr, ok := errors.AsType[*tablewire.FixedRefusal](err); ok {
-		return fr.Reason, nil
 	}
 	return "", fmt.Errorf("engine returned an unnamed refusal: %w", err)
 }
