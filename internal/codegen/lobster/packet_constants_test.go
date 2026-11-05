@@ -38,12 +38,12 @@ func runPacketConstants(t *testing.T, sabotage string) string {
 		src := string(files[file])
 		anchor := "let " + sabotage + " = "
 		if strings.Count(src, anchor) != 1 {
-			t.Fatal("HalfTurn constant anchor must occur once")
+			t.Fatalf("%s constant anchor must occur once", sabotage)
 		}
 		start := strings.Index(src, anchor)
 		end := strings.IndexByte(src[start:], '\n')
 		if end < 0 {
-			t.Fatal("HalfTurn declaration has no newline")
+			t.Fatalf("%s declaration has no newline", sabotage)
 		}
 		replacement := "0"
 		if sabotage == "HalfTurn" {
