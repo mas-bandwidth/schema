@@ -156,7 +156,7 @@ func TestIssue710TableRecovery(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			v := m.New(u.Tables[tc.root])
 			var r tabletext.Report
-			ok, err := tablewire.Decode(m, v, tc.wire, &r)
+			ok, err := tablewire.DecodeFileForm(m, v, tc.wire, &r)
 			if ok || err != nil || !r.Malformed {
 				t.Fatalf("damage must discard the whole load: ok=%v err=%v report=%+v", ok, err, r)
 			}

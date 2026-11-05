@@ -113,7 +113,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		if err := os.MkdirAll(one, 0o755); err != nil {
 			return err
 		}
-		report, err := u.c.UnpackOneFile(unit, inst.Root, wire, one)
+		report, err := fileUnpackOneFile(u.c, unit, inst.Root, wire, one)
 		if err != nil {
 			return fmt.Errorf("%s: unpack: %w", inst.Name, err)
 		}
@@ -140,7 +140,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 
 		// and the text back to wire, which is what proves the text COMPLETE:
 		// a text that lost a field cannot pack to the bytes it came from
-		back, _, backReport, err := u.c.Pack(unit, inst.Root, one)
+		back, _, backReport, err := filePack(u.c, unit, inst.Root, one)
 		if err != nil {
 			return fmt.Errorf("%s: pack: %w", inst.Name, err)
 		}
@@ -201,7 +201,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 			path string
 			big  bool
 		}{{cw.Little, false}, {cw.Big, true}} {
-			cooked, _, report, err := u.c.Cook(unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
+			cooked, _, report, err := fileCook(u.c, unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
 			if err != nil {
 				return fmt.Errorf("%s: cook: %w", cw.Instance, err)
 			}
@@ -244,7 +244,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		model := tabletext.NewModel(unit)
 		var report tabletext.Report
 		value := model.New(root)
-		ok, err := tablewire.Decode(model, value, wire, &report)
+		ok, err := fileDecode(model, value, wire, &report)
 		// Named form refusals are report verdicts. Resource refusals and
 		// other engine errors must still stop generation.
 		if err != nil && !tablewire.Refused(err) {

@@ -74,7 +74,7 @@ func fileInstance(t *testing.T, model *tabletext.Model, root, wire string) *tabl
 	}
 	inst := model.New(def)
 	var report tabletext.Report
-	ok, err := tablewire.Decode(model, inst, wireBytes(t, wire), &report)
+	ok, err := fileDecode(model, inst, wireBytes(t, wire), &report)
 	if err != nil || !ok || !report.Silent() {
 		t.Fatalf("%s: the variable form did not read clean: ok=%v err=%v report=%+v", wire, ok, err, report)
 	}
@@ -252,7 +252,7 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 		}
 		// MESSAGE in, FILE out
 		fromMessage := messageInstance(t, model, vocabulary, msg.Root, msg.MessageWire)
-		back, err := tablewire.Encode(model, fromMessage)
+		back, err := fileEncode(model, fromMessage)
 		if err != nil {
 			t.Errorf("%s: %v", msg.Name, err)
 			continue
@@ -842,7 +842,7 @@ func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 			wire := wireBytes(t, "testdata/wire/tables/file_reserved_"+names[id]+"_"+row.name+".bin")
 			inst := model.New(model.Lookup(row.root))
 			var report tabletext.Report
-			_, err := tablewire.Decode(model, inst, wire, &report)
+			_, err := fileDecode(model, inst, wire, &report)
 			if err != nil {
 				t.Errorf("%s in a %s file body: %v", names[id], row.name, err)
 				continue

@@ -7,7 +7,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // THE CROSS-IMPLEMENTATION LOCK (docs/SPEC-TABLES.md §3.1): `schema pack`'s
@@ -53,7 +52,7 @@ func TestTheEngineWritesTheReferencesBytes(t *testing.T) {
 			t.Errorf("%s: the text did not place", inst.Name)
 			continue
 		}
-		wire, err := tablewire.Encode(model, value)
+		wire, err := fileEncode(model, value)
 		if err != nil {
 			t.Errorf("%s: the engine refused the value: %v", inst.Name, err)
 			continue

@@ -39,7 +39,7 @@ fixed table Root {
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
 	empty := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0} // form, terminator, zero trailer entries
-	got, err := tablewire.Encode(model, value)
+	got, err := tablewire.EncodeFileForm(model, value)
 	if err != nil || !bytes.Equal(got, empty) {
 		t.Fatalf("default table: %x, %v; want %x", got, err, empty)
 	}
@@ -47,7 +47,7 @@ fixed table Root {
 	if !model.Read(value, []byte(`{"payload":{"leaf":{"values":[9]},"rows":[{"values":[4,5]}]}}`), &report) {
 		t.Fatal(report)
 	}
-	full, err := tablewire.Encode(model, value)
+	full, err := tablewire.EncodeFileForm(model, value)
 	if err != nil {
 		t.Fatal(err)
 	}
