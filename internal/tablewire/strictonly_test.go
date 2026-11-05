@@ -51,4 +51,22 @@ func TestEngineHasNoTolerantPaths(t *testing.T) {
 			t.Errorf("refusal retained partial value in %s", key)
 		}
 	}
+	writer := listModel(t, "package strictpartial\ntable Partial { a int32\n b int32 }")
+	reader := listModel(t, "package strictpartial\ntable Partial { a int32\n b int32 | min = 0, max = 1 }")
+	valid := place(t, writer, "Partial", `{"a":7,"b":3}`)
+	wire, err = tablewire.Encode(writer, valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partial := reader.New(reader.Lookup("Partial"))
+	report = tabletext.Report{}
+	if ok, err := tablewire.Decode(reader, partial, wire, &report); ok || err == nil {
+		t.Fatalf("out-of-range field accepted: ok=%v err=%v", ok, err)
+	}
+	for _, field := range partial.Fields {
+		if field.Cell.I != 0 {
+			t.Errorf("refusal retained partial %s=%d", field.Def.Name, field.Cell.I)
+		}
+	}
+
 }
