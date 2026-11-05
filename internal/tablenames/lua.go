@@ -23,19 +23,21 @@ const Lua Backend = 1 << 9
 // by the file that returns the table.
 var luaModuleKeys = map[string][]string{
 	"the unit's table module (<Package>Tables.lua)": {
-		"AnnounceRead", "Announcement", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "Fixed", "FixedEnums",
+		"AnnounceRead", "Announcement", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "DocNone", "Fixed", "FixedEnums",
 		"FixedFields", "FixedUnions", "Keyed", "LoadMessages", "LoadMessagesTolerant", "MeasureMessages", "MessageBatchMax",
 		"MessageEntries", "MessageNodeId", "MessageRefBits", "MessageRoots", "MessageVersionId", "MessageVocabulary",
 		"MessageVocabularyId", "Package", "ReadFixed", "ReadFixedTolerant", "RegionAlign", "Registry", "SaveMessages",
 		"StringBlobTypeId", "Tables", "TypedBodies", "Unions", "WireIds", "WriteFixed",
 	},
-	"the unit's type view (<Package>View.lua)": {"Package", "ProtocolId", "Registry", "Tables", "Types"},
+	"the unit's type view (<Package>View.lua)": {
+		"Constants", "DocNone", "Enums", "Flags", "Package", "ProtocolId", "Registry", "Tables", "Types", "Unions", "UnitView",
+	},
 	"block.lua":      {"BlockOpen", "ByteOrder", "Dump", "Layout", "Open"},
 	"blockbuild.lua": {"Begin", "BlockBytes", "BlockMaxBytes"},
 	"cook.lua":       {"Check", "Open"},
 	"cookwrite.lua":  {"Cook", "CookMeasure"},
 	"descriptor.lua": {
-		"F32_EXP", "F64_EXP", "ID_TABLE_BOUND", "by_id", "bytes_less", "check_defaults", "count_of", "deprecated_variant", "field",
+		"F32_EXP", "F64_EXP", "ID_TABLE_BOUND", "by_id", "bytes_less", "check_defaults", "count_of", "cyclic", "deprecated_variant", "field",
 		"fingerprint", "finite", "fresh", "guard_holds", "keyed", "list_layout", "map_entries", "number_nodes",
 		"pointer_reachable", "prepare", "record_size", "refuse_deprecated", "refuse_non_finite", "region_align",
 		"reset", "reset_elem", "seal",
