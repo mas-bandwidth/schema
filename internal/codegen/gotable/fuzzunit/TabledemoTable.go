@@ -1437,7 +1437,11 @@ type TableMessageWriter struct {
 	TableBitWriter
 	IndexBits int64
 	Clamped   int32
+	Reason    string
 }
+
+// Refuse is the writer's refusal of a value its declaration does not admit.
+func (w *TableMessageWriter) Refuse() bool { w.Reason = "invalid_value"; return false }
 
 // THE FIXED LOAD'S REFUSAL NAMES ARE THE ONE ENUM (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §6.5, §21.3): every fixed-form refusal is a TableRefuseReason member, and
