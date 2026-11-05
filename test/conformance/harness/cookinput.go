@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -40,9 +39,9 @@ func cookInput(unit *ir.Unit, inst Instance, recipe CookWrite, base string) (*ta
 	var report tabletext.Report
 	accepted := false
 	if input != "" {
-		accepted = model.Read(value, data, &report)
+		accepted = strictReadJSON(model, value, data, &report)
 	} else {
-		accepted, err = tablewire.Decode(model, value, data, &report)
+		accepted, err = strictDecode(model, value, data, &report)
 	}
 	if err != nil || !accepted || report.Refused {
 		return nil, nil, fmt.Errorf("%s: cook construction input refused: %v", inst.Name, err)
