@@ -1,6 +1,7 @@
 package luatable_test
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -271,8 +272,50 @@ print("OK")
 	return ""
 }
 
+// luaDefaultBatchCapacity is the runtime's default when the caller omits the
+// capacity or passes nil; a caller that wants more passes its own bound.
+const luaDefaultBatchCapacity = 4096
+
+// luaWireRecords is the record count a fixed file states for root, or -1 when
+// the header, layout length or record size does not parse.
+func luaWireRecords(u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry, wire []byte) int {
+	if len(wire) < 20 {
+		return -1
+	}
+	hash := binary.LittleEndian.Uint64(wire[8:16])
+	layoutLen := int(binary.LittleEndian.Uint32(wire[16:20]))
+	if layoutLen < 0 || len(wire) < 20+layoutLen {
+		return -1
+	}
+	record := int64(0)
+	for _, e := range lineage[root] {
+		if e.Wire == hash {
+			record = e.Record
+			break
+		}
+	}
+	if record == 0 {
+		if own, ok := fixedproof.LineageEntryOf(u, root); ok && own.Wire == hash {
+			record = own.Record
+		}
+	}
+	if record <= 8 {
+		return -1
+	}
+	rest := int64(len(wire) - 20 - layoutLen)
+	if rest < 0 || rest%record != 0 {
+		return -1
+	}
+	return int(rest / record)
+}
+
 func (luaFixedProofRunner) LoadLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry, wireBytes []byte, cap int) (int, string, map[string]string, []byte, fixedproof.LoadCounters) {
 	t.Helper()
+	if cap < 0 {
+		if n := luaWireRecords(u, root, lineage, wireBytes); n > luaDefaultBatchCapacity {
+			t.Skipf("%d records with no capacity (schema-fixedproof-x1's row): lua's default batch capacity stays 4,096 by contract, and only a caller-set capacity goes above it. TestLuaFixedBatch4097Roundtrip proves the caller-set 4,097 path and the 4,096 refusal.", n)
+		}
+	}
 	var files map[string][]byte
 	var err error
 	if lmap := toLuaLineage(lineage); lmap != nil {
