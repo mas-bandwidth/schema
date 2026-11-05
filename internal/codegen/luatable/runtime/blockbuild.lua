@@ -191,6 +191,7 @@ end
 function B.BlockMaxBytes(T, root)
   local desc = T.Tables[root]
   if desc == nil then return nil, "blockbuild: no table descriptor for " .. tostring(root) end
+  if desc.block_eligible ~= true then return nil, "bad_layout" end -- BlockMaxBytes
   local size, _, _, arrays = projection(T, desc)
   local offset = size
   for _, a in ipairs(arrays) do
@@ -211,6 +212,7 @@ end
 function B.Begin(T, root, counts)
   local desc = T.Tables[root]
   if desc == nil then return nil, "blockbuild: no table descriptor for " .. tostring(root) end
+  if desc.block_eligible ~= true then return nil, "bad_layout" end -- Begin
   if T.BuildVersion == nil then
     return nil,
       "blockbuild: T.BuildVersion is nil; the block prologue carries the unit's build version"

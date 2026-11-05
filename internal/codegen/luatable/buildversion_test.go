@@ -30,6 +30,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -120,6 +121,9 @@ table WideUnboundedBlock
 {
     rows [..4]WideUnboundedRow
 }
+
+fixed table WideRow { tag uint128 }
+fixed table WideBlock { rows [..4]WideRow }
 `
 
 const luaBuildVersionWideUnboundedProbe = `local T = require("BvprobeTables")
@@ -135,11 +139,13 @@ local function flip0(s)
   return s:sub(1, 8) .. string.char(b) .. s:sub(10)
 end
 
-local b1, r1 = BB.Begin(T, "WideUnboundedBlock", { rows = 1 })
+local rejected, rejection = BB.Begin(T, "WideUnboundedBlock", { rows = 1 })
+assert(rejected == nil and rejection == "bad_layout", "variable table acquired a block form")
+local b1, r1 = BB.Begin(T, "WideBlock", { rows = 1 })
 assert(b1 ~= nil, "blockbuild Begin failed: " .. tostring(r1))
-local hb, rb = B.BlockOpen(T, "WideUnboundedBlock", b1.bytes, T.BuildVersion)
+local hb, rb = B.BlockOpen(T, "WideBlock", b1.bytes, T.BuildVersion)
 assert(hb ~= nil, "BlockOpen failed: " .. tostring(rb))
-local hbad, rbad = B.BlockOpen(T, "WideUnboundedBlock", flip0(b1.bytes), T.BuildVersion)
+local hbad, rbad = B.BlockOpen(T, "WideBlock", flip0(b1.bytes), T.BuildVersion)
 assert(hbad == nil and rbad == "wrong_build_version", "BlockOpen bit flip answered " .. tostring(rbad))
 
 local v = T.NewWideUnboundedRow()
@@ -212,6 +218,7 @@ func luaBuildVersionGate(t *testing.T, mutate func(*testing.T, map[string][]byte
 
 func TestLuaBuildVersionFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional build-version probe")
 	for clause, whys := range luaBuildVersionGate(t, nil) {
 		for _, why := range whys {
 			t.Errorf("%s: %s", clause, why)
@@ -242,6 +249,7 @@ func TestLuaBuildVersionFunctional(t *testing.T) {
 
 func TestLuaBuildVersionNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional build-version controls")
 	plant := func(file, from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {
 			src := string(files[file])

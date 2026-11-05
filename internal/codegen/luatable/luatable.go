@@ -348,8 +348,9 @@ func emit(m *Module) {
 	m.Printf("-- the table descriptors, by name (docs/SPEC-TABLES.md §8.1)\n")
 	m.Printf("_M.Tables = {}\n\n")
 	variable := ir.VariableTables(u)
+	blocks := ir.Blocks(u)
 	for _, st := range m.Closure {
-		emitDescriptor(m, st, variable[st.Name])
+		emitDescriptor(m, st, variable[st.Name], blocks.IsBlock(st.Name) && st.CarriesForm("block"))
 	}
 	m.Printf("-- the table-side union descriptors, by name (docs/SPEC-TABLES.md §2.6)\n")
 	m.Printf("_M.Unions = {}\n\n")
@@ -377,7 +378,7 @@ func emit(m *Module) {
 // the conjunction composed through nesting (structGuards, re-derived here from
 // the IR as the C++ emitter composes it; an emitter never imports the engine):
 // a field under a false guard is elided and is not an edge (§3, §3.1).
-func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
+func emitDescriptor(m *Module, st *ir.Struct, variable, blockEligible bool) {
 	layout := ir.RecordLayout(m.Unit, st)
 	regionAlign := ir.TableRegionAlign(m.Unit)
 	m.Printf("_M.Tables[%q] = {\n", st.Name)
@@ -396,6 +397,9 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 		m.Printf(" },\n")
 	}
 	m.Printf("  variable = %v,\n", variable)
+	// Reuse the canonical fixed-closure eligibility, including the union and
+	// synthesized-map-entry exclusions; runtime layout is not an eligibility test.
+	m.Printf("  block_eligible = %v,\n", blockEligible)
 	if st.Integrity != "" {
 		m.Printf("  integrity = %q,\n", st.Integrity)
 	}

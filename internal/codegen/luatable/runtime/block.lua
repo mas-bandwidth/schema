@@ -151,6 +151,7 @@ end
 function B.Layout(T, name, projection)
   local d = T.Tables[name]
   if d == nil then error("block: no descriptor for table " .. tostring(name), 0) end
+  if projection and d.block_eligible ~= true then return nil, "bad_layout" end
   local offset = projection and PROLOGUE or 0
   local record_align = projection and 8 or 1
   local fields = {}
@@ -235,6 +236,8 @@ end
 -- the base's alignment — the only clause that reads nothing out of the block.
 -- On a failure it returns nil and the refusal's name (§7's vocabulary).
 function B.BlockOpen(T, name, bytes, build_version, base_offset)
+  local bd = T.Tables[name]
+  if bd == nil or bd.block_eligible ~= true then return nil, "bad_layout" end
   if type(bytes) ~= "string" then return nil, "truncated" end
   if build_version == nil then build_version = T.BuildVersion end
   local layout = B.Layout(T, name, true)
