@@ -777,6 +777,8 @@ public final class Driver {
         }
         int count(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getInt(report); }
         boolean flag(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getBoolean(report); }
+        // the name of the refusal the read reported
+        String reason(Object report) throws ReflectiveOperationException { return String.valueOf(reportType.getField("reason").get(report)); }
     }
 
     private static FixedCodec fixedCodec(String unit, String root) throws ReflectiveOperationException {
@@ -797,6 +799,7 @@ public final class Driver {
     }
 
     private static final String FIXED_NO_TEXT = "fixed table: the fixed form carries no text form in this leg";
+    private static final String FIXED_NO_COOK = "fixed table: the cook is fed a form 1 value, which a form 3 file does not give";
 
     // The variable form is emitted for every table the unit holds, so the
     // codec is looked up for every unit. A unit on another classpath, or a
@@ -885,7 +888,7 @@ public final class Driver {
                     Object report = fixed.report();
                     Object values = fixed.newValues();
                     int read = fixed.load(values, Files.readAllBytes(Paths.get(f[4])), report);
-                    if (read < 0 || fixed.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                    if (read < 0 || fixed.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4] + " (" + fixed.reason(report) + ")");
                     byte[] saved = fixed.save(values, read);
                     if (saved == null) return failInt(f[1] + ": save refused the value");
                     spill(out, f[1], saved);
@@ -1145,8 +1148,8 @@ public final class Driver {
                 if (fixedCodec(inst[2], inst[3]) != null) {
                     // the cook is fed a value read from a form 1 file, which a
                     // fixed root's form 3 file is not
-                    spillAbsentReason(out, f[1], FIXED_NO_TEXT);
-                    spillAbsentReason(out, f[1] + "-be", FIXED_NO_TEXT);
+                    spillAbsentReason(out, f[1], FIXED_NO_COOK);
+                    spillAbsentReason(out, f[1] + "-be", FIXED_NO_COOK);
                     continue;
                 }
                 codec = cookCodec(inst[2], inst[3]);
