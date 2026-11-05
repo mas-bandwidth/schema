@@ -2213,7 +2213,7 @@ an unpaired surrogate under the rules above. A code unit above `0xFFFF`
 cannot be written at all, because the storage holds 16 bits per unit in
 every target. In Elixir, where the storage is a binary rather than a counted
 buffer, the write additionally requires an EVEN `byte_size` and raises
-`ArgumentError` otherwise, which is that target's json-write-refusal idiom under
+`ArgumentError` otherwise, which is that target's write-refusal idiom under
 §5: an odd binary has no last code unit.
 
 **Storage, and the conversion rule at the boundary.** Storage is a
