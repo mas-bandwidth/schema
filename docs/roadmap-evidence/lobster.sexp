@@ -1,0 +1,16 @@
+;; Packet evidence is pending merge and validation on main. The single task
+;; maps to all 28 packet rows; each entry below names the concrete probes.
+(:id "port/lobster/packet" :state :doing
+ :evidence (
+  "constants: internal/codegen/lobster/packet_constants_test.go TestLobsterPacketConstants and TestLobsterPacketConstantsNegativeControl (authored integer and float constants, composed and enum-derived values; HalfTurn mutation)"
+  "enums, flags, types, composition, unions, bool, full-width-integers, ranged-integers, bits, bytes, fixed-arrays, counted-arrays, if-else: internal/codegen/lobster/read_test.go TestLobsterTypeWireReadsTheGoldens (named example values, clean end and C++-pinned writeback) and internal/codegen/lobster/write_test.go TestLobsterTypeWireWritesTheGoldens and TestLobsterTypeWireWriteNegativeControl (fourteen independent writes and bool-width mutation)"
+  "payload-free-arms: internal/codegen/lobster/packet_void_test.go TestLobsterPacketVoidArms and TestLobsterPacketVoidArmsNegativeControls (literal bit pins and separate read/write mutations)"
+  "int128, fixed-point: internal/codegen/lobster/packet_wide_test.go TestLobsterPacketWideGoldens and TestLobsterPacketWideGoldensNegativeControl (LudicrousState, untargeted and degenerate C++ pins; lane-swap mutation); internal/codegen/lobster/packet_ufixed_test.go TestLobsterUnsignedFixedGoldens and TestLobsterUnsignedFixedGoldensNegativeControl"
+  "floats, compressed-float: internal/codegen/lobster/packet_finite_test.go TestLobsterPacketFiniteFloats and TestLobsterPacketFiniteFloatsNegativeControls; read_test.go TestLobsterTypeWireReadsTheGoldens compressed_probe and rigidbody rows"
+  "string, string-utf8-refusal, wstring: internal/codegen/lobster/packet_text_test.go TestLobsterPacketText and TestLobsterPacketTextNegativeControls (shared pinned corpus and bit-flip oracle; UTF-8 and surrogate-pair controls); internal/codegen/lobster/packet_text_fuzz_test.go TestLobsterPacketTextHostileFuzz and TestLobsterPacketTextHostileFuzzNegativeControl (narrow text)"
+  "const, reserved, align: internal/codegen/lobster/read_test.go TestLobsterTypeWireReadsTheGoldens probe_header and refusal rows; TestLobsterTypeWireReadNegativeControls const and reserved mutations"
+  "scalar-defaults, text-defaults: internal/codegen/lobster/packet_defaults_test.go TestLobsterPacketDefaults and TestLobsterPacketDefaultsNegativeControl; internal/codegen/lobster/packet_arm_defaults_test.go TestLobsterPacketArmDefaults and TestLobsterPacketArmDefaultsNegativeControl"
+  "protocol-id: internal/codegen/lobster/lobster_test.go TestSkeletonFixture checks the generated and native value 17; the compiler owns the wire-shape hash"
+  "runtime pin: internal/codegen/lobster/serialize_vendor_test.go TestLobsterVendoredSerializeIsThePin")
+ :tested-revision "a7a9de758425f8366d3ad92acc40639fdb267f14"
+ :note "B1 evidence mapping; hosted native packet qualification of a7a9de758425f8366d3ad92acc40639fdb267f14 passed with SCHEMA_SLOW=1 on ubuntu-latest in GitHub Actions run 41977366015, including 682 narrow text-fuzz cases with zero divergences. The exact PR #2793 head 3d0d63e642b415b2a1a61071a91b52d0bc69e9ae passed the packet package with SCHEMA_SLOW=1 on ubuntu-latest in GitHub Actions run 41977103173. Review, required CI, merge and validation on main remain; this task is not accepted yet.")
