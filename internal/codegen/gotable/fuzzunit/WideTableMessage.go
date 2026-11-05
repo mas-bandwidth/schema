@@ -12,18 +12,22 @@ package tabledemo
 
 import (
 	"math"
+	"unicode/utf8"
 	"unsafe"
 )
 
 func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 	{
 		if value.LabelLength < 0 || value.LabelLength > 70000 {
-			return false
+			return w.Refuse()
 		}
 		if value.LabelLength > 0 {
 			w.Put(107, TableMessageRefBitsHere)
 			if value.LabelLength < 0 || value.LabelLength > 70000 {
-				return false
+				return w.Refuse()
+			}
+			if !utf8.Valid(value.Label[:value.LabelLength]) {
+				return w.Refuse()
 			}
 			w.Put(uint64(value.LabelLength), 17)
 			w.Raw(value.Label[:value.LabelLength])
@@ -31,12 +35,12 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 	}
 	{
 		if value.PayloadLength < 0 || value.PayloadLength > 70000 {
-			return false
+			return w.Refuse()
 		}
 		if value.PayloadLength > 0 {
 			w.Put(108, TableMessageRefBitsHere)
 			if value.PayloadLength < 0 || value.PayloadLength > 70000 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.PayloadLength)-0, 17)
 			w.Align()
@@ -47,12 +51,12 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 	}
 	{
 		if value.SamplesCount < 0 || value.SamplesCount > 70000 {
-			return false
+			return w.Refuse()
 		}
 		if value.SamplesCount > 0 {
 			w.Put(109, TableMessageRefBitsHere)
 			if value.SamplesCount < 0 || value.SamplesCount > 70000 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.SamplesCount)-0, 17)
 			for i := range int(value.SamplesCount) {
@@ -73,6 +77,9 @@ func WideBlobMeasureMessages(values []*WideBlob, report *TableReport) int64 {
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !WideBlobSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -83,13 +90,7 @@ func WideBlobMeasureMessages(values []*WideBlob, report *TableReport) int64 {
 	return 2 + w.Bits/8
 }
 func WideBlobSaveMessages(values []*WideBlob, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := WideBlobMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -97,6 +98,9 @@ func WideBlobSaveMessages(values []*WideBlob, buffer []byte, report *TableReport
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !WideBlobSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
