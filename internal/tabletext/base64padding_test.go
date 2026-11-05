@@ -40,9 +40,9 @@ func base64PaddingUnit(t *testing.T) *ir.Unit {
 
 // TestTextBase64PaddingIsTheWalks pins docs/SPEC-TABLES.md §16.2's bytes(N)
 // padding grammar: tabletext and the generated walk are two readers of one
-// rule, so every body lands the same bytes and raises the same counters.
-// Red at BASE: tabletext skipped any '=' anywhere and accepted A=Q=, AQ===,
-// AQ= and =AQI where the walk answers kind_mismatch.
+// rule, so every body gets the same verdict (§6.5), and an accepted body lands
+// the same bytes. The generated walk's verdict is its read with no refusing
+// condition counted.
 func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 	t.Parallel()
 	u := base64PaddingUnit(t)
@@ -53,38 +53,42 @@ func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 	}
 	bodies := []string{"AQ==", "AQ", "A=Q=", "AQ===", "AQ=", "A", "AQID", "=AQI"}
 	type want struct {
-		body   string
-		text   string
-		ok     bool
-		data   []byte
-		km, cl int
-		mal    bool
+		body string
+		text string
+		ok   bool
+		data []byte
 	}
 	wants := make([]want, 0, len(bodies))
+	accepted := 0
 	for _, body := range bodies {
 		inst := model.New(st)
 		text := `{"data":` + strconv.Quote(body) + `}`
 		var report tabletext.Report
 		ok := model.Read(inst, []byte(text), &report)
+		if ok == report.Refused {
+			t.Fatalf("%q: ok=%t disagrees with the report %+v", body, ok, report)
+		}
 		fv, found := inst.FieldByKey("data")
 		if !found {
 			t.Fatal("no data field")
 		}
-		wants = append(wants, want{
-			body: body,
-			text: text,
-			ok:   ok,
-			data: append([]byte(nil), fv.Cell.Str...),
-			km:   report.KindMismatch,
-			cl:   report.Clamped,
-			mal:  report.Malformed,
-		})
+		var data []byte
+		if ok {
+			accepted++
+			data = append([]byte(nil), fv.Cell.Str...)
+		}
+		wants = append(wants, want{body: body, text: text, ok: ok, data: data})
+	}
+	// both verdicts are present, so the cross-check has an accepted twin for
+	// every refusal it compares
+	if accepted == 0 || accepted == len(bodies) {
+		t.Fatalf("the bodies carry one verdict only: %d of %d accepted", accepted, len(bodies))
 	}
 
 	var src strings.Builder
 	src.WriteString("package probe\n\nimport (\n\t\"bytes\"\n\t\"testing\"\n)\n\n")
 	src.WriteString("func TestWalkBase64Padding(t *testing.T) {\n")
-	src.WriteString("\tcases := []struct {\n\t\tbody, text string\n\t\tok         bool\n\t\tdata       []byte\n\t\tkm, cl     int32\n\t\tmal        bool\n\t}{\n")
+	src.WriteString("\tcases := []struct {\n\t\tbody, text string\n\t\tok         bool\n\t\tdata       []byte\n\t}{\n")
 	for _, w := range wants {
 		data := "nil"
 		if w.data != nil {
@@ -94,19 +98,20 @@ func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 			}
 			data = "[]byte{" + strings.Join(parts, ", ") + "}"
 		}
-		fmt.Fprintf(&src, "\t\t{%s, %s, %t, %s, %d, %d, %t},\n",
-			strconv.Quote(w.body), strconv.Quote(w.text), w.ok, data, w.km, w.cl, w.mal)
+		fmt.Fprintf(&src, "\t\t{%s, %s, %t, %s},\n",
+			strconv.Quote(w.body), strconv.Quote(w.text), w.ok, data)
 	}
 	src.WriteString(`	}
 	for _, c := range cases {
 		var v Blob
 		BlobReset(&v)
 		var r TableReport
-		ok := BlobFromJSONTolerant(&v, []byte(c.text), &r)
-		got := append([]byte(nil), v.Data[:v.DataLength]...)
-		if ok != c.ok || !bytes.Equal(got, c.data) || r.KindMismatch != c.km || r.Clamped != c.cl || r.Malformed != c.mal {
-			t.Fatalf("%q: walk ok=%t data=%x km=%d cl=%d mal=%t; text ok=%t data=%x km=%d cl=%d mal=%t",
-				c.body, ok, got, r.KindMismatch, r.Clamped, r.Malformed, c.ok, c.data, c.km, c.cl, c.mal)
+		ok := BlobFromJSON(&v, []byte(c.text), &r)
+		if ok != c.ok {
+			t.Fatalf("%q: walk ok=%t report=%+v; text ok=%t", c.body, ok, r, c.ok)
+		}
+		if got := append([]byte(nil), v.Data[:v.DataLength]...); ok && !bytes.Equal(got, c.data) {
+			t.Fatalf("%q: walk data=%x; text data=%x", c.body, got, c.data)
 		}
 	}
 }

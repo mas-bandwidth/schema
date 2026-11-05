@@ -11,6 +11,6 @@ func runShape() {
 		benchtable.TableMixedSave,
 		func(v *benchtable.TableMixed, b []byte) bool {
 			var report benchtable.TableReport
-			return benchtable.TableMixedLoad(v, b, &report) && !report.Malformed
+			return benchtable.TableMixedLoad(v, b, &report)
 		})
 }

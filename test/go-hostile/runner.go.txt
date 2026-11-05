@@ -92,19 +92,22 @@ func reasonName(s string) string {
 }
 
 func wireRefusal(ok bool, r *goruntime.TableReport) string {
-	if r.NonFiniteFloat != "" {
-		return "refuse non_finite_float"
-	}
 	if r.Verdict == goruntime.TableOpenRefused {
 		if r.Reason == "" {
 			return "error: unnamed public refusal"
 		}
 		return "refuse " + reasonName(r.Reason)
 	}
-	if !ok || r.Malformed {
+	switch r.Refusal {
+	case goruntime.TableRefuseOk:
+		if !ok {
+			return "refuse damaged"
+		}
+		return ""
+	case goruntime.TableRefuseWireDamaged, goruntime.TableRefuseMalformed, goruntime.TableRefuseTruncated:
 		return "refuse damaged"
 	}
-	return ""
+	return "refuse " + reasonName(r.Refusal.Error())
 }
 
 // The region API requires its generated measure before allocation. A named

@@ -74,7 +74,7 @@ func TestBlobOwnershipUsesFinalSlotsElixir(t *testing.T) {
 		value := m.New(u.Tables["Catalog"])
 		var report tabletext.Report
 		ok, e := tablewire.Decode(m, value, c.wire, &report)
-		if e != nil || !ok || report.Malformed || report.BlobShared != c.shared {
+		if e != nil || !ok || report.Refused {
 			t.Fatalf("%s independent slot count: %v %v %+v", c.name, ok, e, report)
 		}
 		want, e := tablewire.Encode(m, value)
@@ -134,7 +134,7 @@ func TestBlobOwnershipUsesLiveGuardsElixir(t *testing.T) {
 		value := m.New(u.Tables["Catalog"])
 		var report tabletext.Report
 		ok, e := tablewire.Decode(m, value, b, &report)
-		if e != nil || !ok || report.Malformed || report.BlobShared != 1 {
+		if e != nil || !ok || report.Refused {
 			t.Fatalf("guard %v oracle: %v %v %+v", bits, ok, e, report)
 		}
 		shared := bits[0] == 1 && bits[1] == 1

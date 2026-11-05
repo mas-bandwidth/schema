@@ -19,13 +19,13 @@ if RootTableFields[0].Kind!=4{t.Fatal("kind")}
 var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();b.GetRoot().N=3;n:=RootMeasure(b.GetRoot(),&b.Arena);clean:=make([]byte,n);if RootSave(b.GetRoot(),clean,&b.Arena)!=n{t.Fatal("save")}
 agree(t,clean,nil)
 if got,err:=RootReadStrict(clean);err!=nil||got==nil||got.N!=3{t.Fatalf("clean value %v %+v",err,got)}
-agree(t,putFile(4,[]byte{100,0,0,0},false),TableRefuseClamped)
+agree(t,putFile(4,[]byte{100,0,0,0},false),TableRefuseOutOfRange)
 agree(t,putFile(9,[]byte{1,0,0,0,0,0,0,0},false),TableRefuseKindMismatch)
 agree(t,[]byte{1},TableRefuseWireDamaged)
 agree(t,[]byte{2},TableRefuseUnknownForm)
 agree(t,[]byte{255},TableRefuseUnknownForm)
 agree(t,damaged(),TableRefuseWireDamaged)
-agree(t,malformed(),TableRefuseMalformed)
+agree(t,malformed(),TableRefuseWireDamaged)
 agree(t,onlyUnknown(),nil)
 if got,err:=RootReadStrict(onlyUnknown());err!=nil||got==nil||got.N!=1{t.Fatalf("unknown field %v %+v",err,got)}
 wide:=putFile(2,[]byte{3},false);got,err:=RootReadStrict(wide);if err!=nil||got==nil||got.N!=3{t.Fatalf("widened %v %+v",err,got)}

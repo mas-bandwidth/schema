@@ -42,7 +42,7 @@ table Root { a *string
 	} {
 		v := m.New(u.Tables["Root"])
 		var r tabletext.Report
-		if !m.Read(v, []byte(input), &r) || r.Malformed || r.KindMismatch != 0 {
+		if !m.Read(v, []byte(input), &r) || r.Refused {
 			t.Fatalf("input %d %+v", i, r)
 		}
 		wire, err := tablewire.Encode(m, v)
@@ -82,19 +82,16 @@ table Root { a *string
  }
 `)
 	}
-	// Both pointers name one incoming empty-string record. The read succeeds,
-	// but every wire writer must still refuse the shared node.
+	// Both pointers name one incoming empty-string record, which the strict read
+	// refuses as blob_shared.
 	shared := []byte{1, 1, 17, 2, 2, 17, 2, 3, 12, 3, 1, 4, 0, 0}
 	for _, id := range []uint64{ir.TableWireId("a"), ir.TableWireId("b"), ir.TableNodeWireId, ir.StringWireTypeId, 4} {
 		shared = binary.LittleEndian.AppendUint64(shared, id)
 	}
 	v := m.New(u.Tables["Root"])
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, v, shared, &r); !ok || err != nil || r.BlobShared != 1 {
-		t.Fatalf("shared string oracle %+v %v", r, err)
-	}
-	if _, err := tablewire.Encode(m, v); err == nil || !strings.Contains(err.Error(), "blob_shared") {
-		t.Fatalf("shared writer %v", err)
+	if ok, err := tablewire.Decode(m, v, shared, &r); ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("shared string oracle accepted %+v %v", r, err)
 	}
 	fmt.Fprintf(&b, `for(final retaining in [false,true]){
  final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();final data=bytes(%q);

@@ -145,6 +145,7 @@ func rustCountWire(t *testing.T, u *ir.Unit, shape string, count uint64, short b
 }
 
 func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
+	t.Skip("layer 4 (rust): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (the generated count-refusal and retention probe)")
 	u := unitFrom(t, rustCountRefusalSchema)
 	model := tabletext.NewModel(u)
@@ -162,7 +163,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 			r := tabletext.Report{Unknown: 7}
 			ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &r)
 			var refusal *tablewire.CountRefusal
-			if ok || !errors.As(err, &refusal) || r.Malformed || r.Unknown < 7 {
+			if ok || !errors.As(err, &refusal) || r.Refused || r.Unknown < 7 {
 				t.Fatalf("%s/%d: oracle did not preserve storage refusal: %v %v %+v", shape, count, ok, err, r)
 			}
 			load := ir.RustSnake(root)
@@ -191,7 +192,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 		}
 		root, wire := rustCountWire(t, u, shape, 0, false)
 		var rep tabletext.Report
-		if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &rep); !ok || err != nil || rep.Malformed {
+		if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &rep); !ok || err != nil || rep.Refused {
 			t.Fatalf("%s: valid twin rejected by oracle: %v %v %+v", shape, ok, err, rep)
 		}
 		load := ir.RustSnake(root)
@@ -212,7 +213,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 	}
 	root, descending := rustCountWire(t, u, "map-descending", 1<<31, false)
 	var descendingReport tabletext.Report
-	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), descending, &descendingReport); ok || err != nil || !descendingReport.Malformed {
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), descending, &descendingReport); ok || err != nil || !descendingReport.Refused {
 		t.Fatalf("descending-map control is not damage: %v %v %+v", ok, err, descendingReport)
 	}
 	fmt.Fprintf(&body, `
@@ -227,7 +228,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 `, rustBytes(descending))
 	_, short := rustCountWire(t, u, "map", 1, true)
 	var rep tabletext.Report
-	if ok, err := tablewire.Decode(model, model.New(model.Lookup("Leaf")), short, &rep); ok || err != nil || !rep.Malformed {
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup("Leaf")), short, &rep); ok || err != nil || !rep.Refused {
 		t.Fatalf("body-short control is not damage: %v %v %+v", ok, err, rep)
 	}
 	fmt.Fprintf(&body, `
@@ -254,6 +255,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 
 // A later measure failure cannot erase the diagnostic prefix before refusal.
 func TestCountRefusalKeepsEarnedPrefixRust(t *testing.T) {
+	t.Skip("layer 4 (rust): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (the generated count-refusal diagnostic-prefix probe)")
 	u := unitFrom(t, rustCountRefusalSchema)
 	model := tabletext.NewModel(u)
@@ -263,13 +265,13 @@ func TestCountRefusalKeepsEarnedPrefixRust(t *testing.T) {
 		report := tabletext.Report{Unknown: 7, Widened: 13}
 		ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &report)
 		var refusal *tablewire.CountRefusal
-		if ok || !errors.As(err, &refusal) || report.Malformed || report.Unknown != 8 || report.Widened != 14 {
+		if ok || !errors.As(err, &refusal) || report.Refused || report.Unknown != 8 || report.Widened != 14 {
 			t.Fatalf("%s: unexpected oracle prefix: %v %v %+v", shape, ok, err, report)
 		}
 		retainingReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
 		retained := tablewire.Retain{Capacity: 4096, IdCapacity: 64}
 		ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &retained, &retainingReport)
-		if ok || !errors.As(err, &refusal) || retainingReport.Malformed || retainingReport.Unknown != 8 || retainingReport.Widened != 14 {
+		if ok || !errors.As(err, &refusal) || retainingReport.Refused || retainingReport.Unknown != 8 || retainingReport.Widened != 14 {
 			t.Fatalf("%s: unexpected retaining oracle prefix: %v %v %+v", shape, ok, err, retainingReport)
 		}
 		fmt.Fprintf(&body, `

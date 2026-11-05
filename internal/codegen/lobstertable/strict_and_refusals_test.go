@@ -71,10 +71,9 @@ func strictAgrees(lobster, engine string) bool {
 	return lobster == engine || lobster == "wire_damaged" && engine == "malformed"
 }
 
-// goStrictReason is the Go reference's strict answer for one wire, in the
-// order TableReport.Err() applies (§6.5): a non-finite float first, a form
-// refusal as unknown_form, then missing_required, malformed, blob_shared,
-// clamped and kind_mismatch; unknown and widened alone are not a refusal.
+// goStrictReason is the Go reference's strict answer for one wire: a
+// non-finite float first, a count past the storage cap, then any other
+// refusal as unknown_form; unknown and widened alone are not a refusal.
 func goStrictReason(u *irUnit, rootName string, wire []byte) string {
 	m := tabletext.NewModel(u.u)
 	inst := m.New(m.Lookup(rootName))
@@ -93,14 +92,6 @@ func goStrictReason(u *irUnit, rootName string, wire []byte) string {
 		return "unknown_form"
 	case strings.HasPrefix(rep.Reason, "missing_required"):
 		return "missing_required"
-	case rep.Malformed:
-		return "malformed"
-	case rep.BlobShared > 0:
-		return "blob_shared"
-	case rep.Clamped > 0:
-		return "clamped"
-	case rep.KindMismatch > 0:
-		return "kind_mismatch"
 	}
 	return "ok"
 }

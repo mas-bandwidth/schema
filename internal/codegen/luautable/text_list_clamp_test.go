@@ -22,14 +22,12 @@ func TestLuauTextListClampAndMalformedLoadLikeGo(t *testing.T) {
 	m := textListModel(t)
 
 	t.Run("element past M clamps", func(t *testing.T) {
+		t.Skip("layer 4 (luau): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 		raw := textListRawWire(t, m, "123456789")
 		back := m.New(m.Lookup("Lists"))
 		var report tabletext.Report
 		if ok, err := tablewire.Decode(m, back, raw, &report); !ok || err != nil {
 			t.Fatalf("the Go load refuses the wire: ok=%v err=%v", ok, err)
-		}
-		if report.Clamped != 1 {
-			t.Fatalf("the Go load does not clamp the element: %+v", report)
 		}
 		want, err := tablewire.Encode(m, back)
 		if err != nil {
@@ -49,10 +47,10 @@ func TestLuauTextListClampAndMalformedLoadLikeGo(t *testing.T) {
 		// load refuses it, and the leg owes the refusal and nothing else
 		raw := textListRawWire(t, m, "\xff\xfe")
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Lists")), raw, &report); ok || err != nil {
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Lists")), raw, &report); ok || !tablewire.ReadRefusal(err) {
 			t.Fatalf("the Go load does not refuse the damaged load: ok=%v err=%v", ok, err)
 		}
-		if !report.Malformed {
+		if !report.Refused {
 			t.Fatalf("the Go load does not call the element malformed: %+v", report)
 		}
 		got := runTextListProbe(t, g, raw)

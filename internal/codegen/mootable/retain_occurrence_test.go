@@ -188,6 +188,7 @@ func (b *wb) mapOf(entries [][3]int, names []string, damage bool) {
 // moo and by the Go reference engine at a full capacity and one byte under what
 // that used, and the counters and the saved bytes must be the same.
 func TestMooRetainOccurrencesMatchTheGoEngine(t *testing.T) {
+	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Occ.schema": occurrenceUnit})

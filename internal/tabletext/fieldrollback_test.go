@@ -19,7 +19,7 @@ func TestMalformedFieldFileDiscardsDecodedState(t *testing.T) {
 			inst := m.New(m.Lookup("Root"))
 			fv := field(t, inst, tc.key)
 			var good tabletext.Report
-			if !m.ReadValue(fv, []byte(tc.good), &good) || good.Malformed {
+			if !m.ReadValue(fv, []byte(tc.good), &good) || good.Refused {
 				t.Fatalf("valid control refused: %+v", good)
 			}
 			want := field(t, m.New(inst.Def), tc.key)
@@ -27,7 +27,7 @@ func TestMalformedFieldFileDiscardsDecodedState(t *testing.T) {
 				t.Fatal("valid control did not place a value")
 			}
 			var report tabletext.Report
-			if m.ReadValue(fv, []byte(tc.bad), &report) || !report.Malformed {
+			if m.ReadValue(fv, []byte(tc.bad), &report) || !report.Refused {
 				t.Fatalf("malformed field accepted: %+v", report)
 			}
 			if !reflect.DeepEqual(fv, want) {
@@ -42,12 +42,12 @@ func TestMalformedElementFileDiscardsOnlyDecodedElement(t *testing.T) {
 	inst := m.New(m.Lookup("Root"))
 	fv := field(t, inst, "list")
 	var good tabletext.Report
-	if !m.ReadValue(fv, []byte(`["left","right"]`), &good) || good.Malformed {
+	if !m.ReadValue(fv, []byte(`["left","right"]`), &good) || good.Refused {
 		t.Fatalf("valid control refused: %+v", good)
 	}
 	sibling, count := fv.Elems[1], fv.Count
 	var report tabletext.Report
-	if m.ReadElement(fv, 0, []byte(`"changed" trailing`), &report) || !report.Malformed {
+	if m.ReadElement(fv, 0, []byte(`"changed" trailing`), &report) || !report.Refused {
 		t.Fatalf("malformed element accepted: %+v", report)
 	}
 	want := field(t, m.New(inst.Def), "list").Elems[0]

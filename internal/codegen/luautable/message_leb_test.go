@@ -163,7 +163,7 @@ func goAnnounce(data []byte) (announced, malformed bool) {
 	var v tablewire.Vocabulary
 	var report tabletext.Report
 	_ = v.AnnounceRead(data, &report)
-	return v.Announced(), report.Malformed
+	return v.Announced(), report.Refused
 }
 
 const announceProbe = `local M = require("./schema_message")

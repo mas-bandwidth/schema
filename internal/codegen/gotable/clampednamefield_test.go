@@ -4,7 +4,7 @@ import "testing"
 
 // TestGoClampedRefusalNamesField pins that the strict read's clamped refusal
 // for a SCALAR clamp names the clamped field (docs/SPEC-TABLES.md §6.5): a
-// strict refusal of a wire past a scalar's bound answers TableClampedField
+// strict refusal of a wire past a scalar's bound answers TableOutOfRange
 // with that field's name, as the other refusals name theirs. The clamped
 // scalar lives in a NESTED table, so the name is the nested field's own.
 func TestGoClampedRefusalNamesField(t *testing.T) {
@@ -17,9 +17,9 @@ import("errors";"testing")
 func clampedWire() []byte{var ids TableIds;buf:=make([]byte,128);w:=TableWriter{Buffer:buf,Ids:&ids};w.Put8(1);w.ID(RootTableFields[0].ID);w.Put8(13);s:=TableWriter{Buffer:make([]byte,64),Ids:&ids};s.ID(InnerTableFields[0].ID);s.Put8(4);s.Put32(100);s.Put8(0);w.PutLeb(uint64(s.Offset));w.Raw(s.Buffer[:s.Offset]);w.Put8(0);w.Trailer();return buf[:w.Offset]}
 func TestClampedNamesField(t *testing.T){
  wire:=clampedWire()
- got,err:=RootReadStrict(wire);if got!=nil{t.Fatal("ReadStrict answered a value for a past-bound wire")};if !errors.Is(err,TableRefuseClamped){t.Fatalf("ReadStrict err %v, want the clamped refusal",err)}
- var c TableClampedField;if !errors.As(err,&c){t.Fatalf("ReadStrict err %T %v, want TableClampedField",err,err)};if c.Field!="Inner.n"{t.Fatalf("clamped field %q, want Inner.n",c.Field)};if got:=err.Error();got!="clamped: Inner.n"{t.Fatalf("error text %q, want clamped: Inner.n",got)}
- var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var report TableReport;if RootLoadBuilder(&b,wire,&report){t.Fatal("LoadBuilder accepted a past-bound wire")};if !errors.Is(report.Err(),TableRefuseClamped){t.Fatalf("report.Err %v, want the clamped refusal",report.Err())}
+ got,err:=RootReadStrict(wire);if got!=nil{t.Fatal("ReadStrict answered a value for a past-bound wire")};if !errors.Is(err,TableRefuseOutOfRange){t.Fatalf("ReadStrict err %v, want the clamped refusal",err)}
+ var c TableOutOfRange;if !errors.As(err,&c){t.Fatalf("ReadStrict err %T %v, want TableOutOfRange",err,err)};if c.Field!="Inner.n"{t.Fatalf("clamped field %q, want Inner.n",c.Field)};if got:=err.Error();got!="out_of_range: Inner.n"{t.Fatalf("error text %q, want out_of_range: Inner.n",got)}
+ var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var report TableReport;if RootLoadBuilder(&b,wire,&report){t.Fatal("LoadBuilder accepted a past-bound wire")};if !errors.Is(report.Err(),TableRefuseOutOfRange){t.Fatalf("report.Err %v, want the clamped refusal",report.Err())}
 }
 `)
 }

@@ -85,9 +85,9 @@ func TestGoTestgenBoundProbes(t *testing.T) {
 		})
 	}
 
-	// A READER WITH ONE RANGE CLAMP REMOVED: TeamConfig.spawn_count's upper
-	// clamp on its own kind (kind 4) is cut, so 65 stands, and the probe fails.
-	t.Run("clamp_removed", func(t *testing.T) {
+	// A READER WITH ONE RANGE BOUND REMOVED: TeamConfig.spawn_count's upper
+	// bound on its own kind (kind 4) is cut, so 65 reads, and the probe fails.
+	t.Run("bound_removed", func(t *testing.T) {
 		t.Parallel()
 		u := loadUnitPaths(t, "../../..", []string{"tables/examples"})
 		tests, err := Testgen(u)
@@ -105,22 +105,22 @@ func TestGoTestgenBoundProbes(t *testing.T) {
 			if direct < 0 {
 				t.Fatal("no direct-kind read of spawn_count")
 			}
-			clamp := []byte("} else if v > 64 {")
+			clamp := []byte("|| v > 64 {")
 			c := bytes.Index(src[at+direct:], clamp)
 			if c < 0 {
-				t.Fatal("no upper clamp of spawn_count")
+				t.Fatal("no upper bound of spawn_count")
 			}
 			b := at + direct + c
 			edited := bytes.Clone(src[:b])
-			edited = append(edited, []byte("} else if false {")...)
+			edited = append(edited, []byte("|| false {")...)
 			edited = append(edited, src[b+len(clamp):]...)
 			files["KeyedTable.go"] = edited
 		}, "-v", "-run", "^TestTeamConfigGenBoundProbes$")
 		if err == nil || !bytes.Contains(out, []byte("--- FAIL: TestTeamConfigGenBoundProbes/spawn_count:above")) {
-			t.Fatalf("a reader with its spawn_count clamp removed went unnoticed: %v\n%s", err, out)
+			t.Fatalf("a reader with its spawn_count bound removed went unnoticed: %v\n%s", err, out)
 		}
 		if !bytes.Contains(out, []byte("--- PASS: TestTeamConfigGenBoundProbes/spawn_count:below")) {
-			t.Fatalf("the untouched lower clamp should still pass:\n%s", out)
+			t.Fatalf("the untouched lower bound should still pass:\n%s", out)
 		}
 	})
 
