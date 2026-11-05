@@ -89,12 +89,14 @@ var bornAtMinimum = map[string]string{
 // the refusal kind. Every other target has a build-removable idiom and is
 // held to it by assertsInDebug.
 var refusesEveryBuild = map[string][]string{
+	"cs":     {"if (value.WindowCount < 2 || value.WindowCount > 8)", "return false;"},
 	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
 	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
 	// Goose's `assert` aborts in every build and the language has no
 	// build-removable check, so the writer returns the refusal kind, Go's form
 	// (internal/codegen/goose/write.go)
 	"goose": {"if value.WindowCount < 2 || value.WindowCount > 8 { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
+	"js":    {"value.windowCount < 2 || value.windowCount > 8"},
 	// Lua's assert is a function call that no build removes, so the writer
 	// refuses (returns false) in every build, as Go's does.
 	"lua": {"v.WindowCount < 2 or v.WindowCount > 8 then return false end"},
@@ -109,13 +111,10 @@ var refusesEveryBuild = map[string][]string{
 var assertsInDebug = map[string][]string{
 	"c":    {"serialize_assert( value->window_count >= 2 && value->window_count <= 8 );"},
 	"cpp":  {"serialize_assert( int32_t( value.window_count ) >= int32_t( 2 ) && int32_t( value.window_count ) <= int32_t( 8 ) );"},
-	"cs":   {`Debug.Assert(value.WindowCount >= 2 && value.WindowCount <= 8, "value.WindowCount out of range [2, 8]");`},
 	"dart": {"assert(value.windowCount >= 2);", "assert(value.windowCount <= 8);"},
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
 	"lobster": {"assert v.WindowCount >= 2 and v.WindowCount <= 8"},
-	// js is not here: its debug-only idiom is not an assert statement but the
-	// PRODUCTION/checked fork of the flat writer, checked separately below.
 	"rust": {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
 }
 
@@ -150,7 +149,6 @@ var goneFromRelease = map[string][]string{
 	"cpp": {
 		"if ( int32_t( value.window_count ) < int32_t( 2 ) || int32_t( value.window_count ) > int32_t( 8 ) )",
 	},
-	"cs":      {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
 	"dart":    {"if (value.windowCount < 2 || value.windowCount > 8) {"},
 	"java":    {"if (value.windowCount < 2 || value.windowCount > 8) {"},
 	"lobster": {"if v.WindowCount < 2 or v.WindowCount > 8: return false"},
@@ -161,7 +159,9 @@ var goneFromRelease = map[string][]string{
 // contracts with. For a refusesEveryBuild target, none of them may reach the
 // count.
 var assertToken = map[string][]string{
+	"cs":     {"Debug.Assert("},
 	"elixir": nil,         // the BEAM has no compile-out assert, so the raise is always on
+	"js":     {"PRODUCTION"},
 	"go":     nil,         // the runtime returns an error, in every build
 	"goose":  {"assert("}, // the writer returns the refusal kind; an assert would abort, never compile out
 	"lua":    nil,         // assert() is always on; the writer returns false in every build
@@ -182,23 +182,6 @@ func generatedText(t *testing.T, src, target string) string {
 		all.WriteByte('\n')
 	}
 	return all.String()
-}
-
-// jsFlatWriter slices one named function out of the JavaScript flat codec.
-// JavaScript's debug-only idiom is the emitted fork, not a statement: the
-// checked writer holds the contract and the production writer holds none, and
-// `PRODUCTION ? production : checked` picks between them at import time.
-func jsFlatWriter(t *testing.T, text, fn string) string {
-	t.Helper()
-	i := strings.Index(text, "function "+fn+"(")
-	if i < 0 {
-		t.Fatalf("js: %s is not emitted; the flat writer fork is gone", fn)
-	}
-	rest := text[i+1:]
-	if before, _, ok := strings.Cut(rest, "\nfunction "); ok {
-		return before
-	}
-	return rest
 }
 
 // CLAIM 1. A [A..B] count is born at A in every target: the one wire-legal
@@ -226,19 +209,6 @@ func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 		text := generatedText(t, countedAboveZero, target)
 
 		if writerStillOwed(t, target, text) {
-			continue
-		}
-
-		if target == "js" {
-			// the fork, not a statement: the contract lives in the checked
-			// writer and the production writer is free of it
-			const want = "value.windowCount < 2 || value.windowCount > 8"
-			if got := jsFlatWriter(t, text, "writeTFlatChecked"); !strings.Contains(got, want) {
-				t.Errorf("js: the checked flat writer does not hold the count, %q absent", want)
-			}
-			if got := jsFlatWriter(t, text, "writeTFlatProduction"); strings.Contains(got, want) {
-				t.Errorf("js: the PRODUCTION flat writer still holds the count: %q survives release", want)
-			}
 			continue
 		}
 

@@ -56,8 +56,6 @@ var tagAssertsInDebug = map[string][]string{
 	"java": {"assert (value.type & 0xffL) >= 0;", "assert (value.type & 0xffL) <= 2;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
 	"lobster": {"assert v.Type >= 0 and v.Type <= 2"},
-	// js is not here: its debug-only idiom is the PRODUCTION/checked fork of
-	// the flat writer, not a statement. Checked separately below.
 }
 
 // tagGoneFromRelease is the every-build refusal each assert target used to
@@ -80,6 +78,7 @@ var tagRefusesEveryBuild = map[string][]string{
 	// Goose has no build-removable assert: the writer returns the refusal
 	// kind before the tag rides (internal/codegen/goose/wire.go)
 	"goose": {"if value.Type > ShotTypeMax { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
+	"js":    {"value.shot.type < 0 || value.shot.type > 2"},
 	// Lua's assert() is an ordinary call no build strips, so the writer
 	// refuses an out-of-set tag (returns false) in every build, as Go does.
 	"lua": {`if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end`},
@@ -101,17 +100,6 @@ func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 		case writerStillOwed(t, target, text):
 			// no writer yet: the claim is owed (countedbirth_test.go,
 			// packetWriterOwed)
-
-		case target == "js":
-			// the fork, not a statement: the contract lives in the checked
-			// flat writer and the production writer is free of it
-			const want = "value.shot.type < 0 || value.shot.type > 2"
-			if got := jsFlatWriter(t, text, "writeVolleyFlatChecked"); !strings.Contains(got, want) {
-				t.Errorf("js: the checked flat writer does not hold the tag, %q absent", want)
-			}
-			if got := jsFlatWriter(t, text, "writeVolleyFlatProduction"); strings.Contains(got, want) {
-				t.Errorf("js: the PRODUCTION flat writer still holds the tag: %q survives release", want)
-			}
 
 		case target == "rust":
 			// an out-of-set tag cannot be BUILT: Shot is a Rust enum and the
