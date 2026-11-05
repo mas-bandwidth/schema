@@ -12750,7 +12750,7 @@ function per unit, name-first in the unit's own namespace beside
 `ProtocolId` (SPEC §6.1), answering with the set of everything the build
 declared:
 
-**PORT STATUS: C++, C and Go emit the registry.** C++ emits its pair for units
+**PORT STATUS: C++, C, Go and Lobster emit the registry.** C++ emits its pair for units
 that declare a table. C emits `<Package>View.h` and `<Package>View.c` for
 every unit, including a table-free unit, with `unit_view()` as its entry point.
 Go emits `<Package>View.go` for every unit, with `UnitView()` and all six sets,
@@ -12758,7 +12758,11 @@ and the §8.7 corpus gate holds it (`TestGoUnitViewCorpus`). The
 independently generated listing in §8.7 checks all three. The C registry and
 its descriptors are immutable static data, with program lifetime; they own no
 decoded region. A caller using a descriptor to inspect a value must still keep
-that value's storage alive. Other ports' registries remain follow-ons (§15).
+that value's storage alive. Lobster emits `<package>View.lobster` for every
+unit, including table-free units, with `<package>.UnitView()` and all six sets
+in declaration-name order. Its native `TestLobsterUnitViewListing` compares every `VIEW_CORPUS` and
+table-manifest unit against the shared §8.7 listing (`make tables-lobster-view`). Other ports'
+registries remain follow-ons (§15).
 
 ```cpp
 struct ViewConstant
