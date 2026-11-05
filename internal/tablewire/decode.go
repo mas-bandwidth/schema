@@ -94,6 +94,12 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 }
 
 func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, region bool) (bool, error) {
+	if FixedRoot(m, inst.Def) {
+		// A READER THAT EXPECTS A FIXED TABLE REFUSES EVERY OTHER FORM, BY
+		// NAME (docs/SPEC-TABLES.md §3.4): form 3 is read, and a form-1 file
+		// is previous_form with nothing decoded
+		return decodeFixed(m, inst, data, report)
+	}
 	// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so
 	// a file that is both a newer form and damaged is a refusal and never
 	// damage (§3).

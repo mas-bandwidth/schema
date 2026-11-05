@@ -140,12 +140,12 @@ func TestLobsterTableLoadUnlinksWhatTheRootDoesNotReach(t *testing.T) {
 // load's pass out and requires the orphan cycle to leak.
 func TestLobsterTableLoadUnlinksWhatTheRootDoesNotReachNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "    if length(st.nodes) > 0:\n        unlink_unreached(st, root)\n"
+	const anchor = "\n        unlink_unreached(st, root)\n"
 	out := runRelease(t, cyclicListWire(t, 2, true), false, func(src string) string {
 		if n := strings.Count(src, anchor); n != 1 {
 			t.Fatalf("the unlink anchor is in the emitted runtime %d times, want 1", n)
 		}
-		return strings.Replace(src, anchor, "    if length(st.nodes) < 0:\n        unlink_unreached(st, root)\n", 1)
+		return strings.Replace(src, anchor, "\n        if length(st.nodes) < 0:\n            unlink_unreached(st, root)\n", 1)
 	})
 	if !strings.Contains(out, leakReport) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: without the unlink pass the orphan cycle still did not leak:\n%s", out)

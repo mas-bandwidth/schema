@@ -712,23 +712,6 @@ conformance-negative-control-go: build/conformance-harness build/conformance-go
 conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control walk
 
-# THE CANONICAL WRITER's control (docs/SPEC-TABLES.md §16.14, W6): the
-# generated Go text writer walks every map in DESCENDING key order, and the
-# map_key_order and map_text_order rows of json-write must go red while wire
-# and json-read stay green, which says the key order is what the gate holds.
-.PHONY: conformance-negative-control-go-key-order
-conformance-negative-control-go-key-order: build/conformance-harness build/conformance-go
-	sh test/conformance/go/negative-control key-order
-
-# THE WRITE REFUSAL's control (docs/SPEC-TABLES.md §16.14, W0): the generated
-# Go text writer writes ill-formed UTF-8 raw and an unpaired surrogate as
-# U+FFFD instead of refusing them, and the text_refuse_illformed and
-# text_refuse_unpaired rows of json-write must go red while wire and json-read
-# stay green.
-.PHONY: conformance-negative-control-go-text-refusal
-conformance-negative-control-go-text-refusal: build/conformance-harness build/conformance-go
-	sh test/conformance/go/negative-control text-refusal
-
 # THE FRAMING SURFACE's own control (docs/LAYERS/1-framing.md): the generated
 # Go reader's 4096 id-table entry cap is removed, and the framing row
 # frame_entries_4097 must go red while the wire surface stays green.
@@ -745,8 +728,6 @@ conformance-negative-control-go-framing: build/conformance-harness build/conform
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
-	$(MAKE) conformance-negative-control-go-key-order
-	$(MAKE) conformance-negative-control-go-text-refusal
 	$(MAKE) conformance-negative-control-go-framing
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone
@@ -1336,3 +1317,21 @@ test-go: tables-go-discard-negative-control
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-go/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE CANONICAL WRITER's control (docs/SPEC-TABLES.md §16.14, W6): the
+# generated Go text writer walks every map in DESCENDING key order, and the
+# map_key_order and map_text_order rows of json-write must go red while wire
+# and json-read stay green, which says the key order is what the gate holds.
+.PHONY: conformance-negative-control-go-key-order
+conformance-negative-control-go-key-order: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control key-order
+
+# THE WRITE REFUSAL's control (docs/SPEC-TABLES.md §16.14, W0): the generated
+# Go text writer writes ill-formed UTF-8 raw and an unpaired surrogate as
+# U+FFFD instead of refusing them, and the text_refuse_illformed and
+# text_refuse_unpaired rows of json-write must go red while wire and json-read
+# stay green.
+.PHONY: conformance-negative-control-go-text-refusal
+conformance-negative-control-go-text-refusal: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control text-refusal
+test-go: conformance-negative-control-go-key-order conformance-negative-control-go-text-refusal

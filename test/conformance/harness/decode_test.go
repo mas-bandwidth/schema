@@ -209,7 +209,9 @@ func TestReportRowsDecodeThroughTheEngine(t *testing.T) {
 		}
 		if sig, pinnedRow := pinnedPresence[rc.Name]; pinnedRow {
 			seen[rc.Name] = true
-			checkSignature(t, rc.Name, sig, optionalSignature(inst))
+			if !got.Refused {
+				checkSignature(t, rc.Name, sig, optionalSignature(inst))
+			}
 		}
 	}
 	for name := range pinnedPresence {

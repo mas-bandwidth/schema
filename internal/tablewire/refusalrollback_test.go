@@ -12,8 +12,8 @@ import (
 // A late refusal must not publish earlier fields or retained unknowns.
 // Defaults are deliberately nonzero so clearing bytes cannot satisfy the test.
 func TestNonFiniteRefusalDiscardsDecodedState(t *testing.T) {
-	writer := listModel(t, "package rollback\nfixed table Root\n{\n x int32 = 9\n extra int32\n f float64\n}\n")
-	reader := listModel(t, "package rollback\nfixed table Root\n{\n x int32 = 9\n f float64\n}\n")
+	writer := listModel(t, "package rollback\ntable Root\n{\n x int32 = 9\n extra int32\n f float64\n}\n")
+	reader := listModel(t, "package rollback\ntable Root\n{\n x int32 = 9\n f float64\n}\n")
 	source := place(t, writer, "Root", `{"x":7,"extra":11,"f":1.25}`)
 	wire, err := tablewire.Encode(writer, source)
 	if err != nil {
