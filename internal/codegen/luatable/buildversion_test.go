@@ -30,6 +30,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -217,6 +218,7 @@ func luaBuildVersionGate(t *testing.T, mutate func(*testing.T, map[string][]byte
 
 func TestLuaBuildVersionFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional build-version probe")
 	for clause, whys := range luaBuildVersionGate(t, nil) {
 		for _, why := range whys {
 			t.Errorf("%s: %s", clause, why)
@@ -247,6 +249,7 @@ func TestLuaBuildVersionFunctional(t *testing.T) {
 
 func TestLuaBuildVersionNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional build-version controls")
 	plant := func(file, from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {
 			src := string(files[file])

@@ -123,12 +123,17 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 		// A form no table in the unit carries emits no surface file at all
 		// (docs/SPEC-TABLES.md §2.12), and a declared unit's runtime refuses
 		// a call for a form its table left out by that form's name. The
-		// surfaces outside the forms vocabulary (fixed, view, message,
+		// block-eligibility clause is independent of a forms declaration and
+		// is emitted only for a unit that actually carries a table with no
+		// fixed block form, so a unit whose every table is eligible emits no
+		// such clause and its block paths pay no per-call eligibility test.
+		// The surfaces outside the forms vocabulary (fixed, view, message,
 		// retain) are governed by the surface list alone and always stay.
 		if !runtimeCarriesForm(u, base) {
 			continue
 		}
-		data = gateDeclaredFormsRuntime(base, data)
+		eligibility := (base == "block.lua" || base == "blockbuild.lua") && unitNeedsBlockEligibility(u)
+		data = gateDeclaredFormsRuntime(base, data, eligibility)
 		out[base] = data
 	}
 	return out, nil
@@ -150,12 +155,19 @@ func emitTail(m *Module) {
 	m.Printf("return _M\n")
 }
 
-// unitDeclaresForms reports whether any declared table of u carries an
-// explicit `forms` declaration (docs/SPEC-TABLES.md §2.12). A synthesized map
-// entry inherits its owner's declaration and is not counted on its own.
-func unitDeclaresForms(u *ir.Unit) bool {
+// unitNeedsBlockEligibility reports whether any declared table of u lacks a
+// fixed block form, either because its by-value closure is variable-length or
+// union-backed or because its `forms` declaration leaves block out. Only such
+// a unit needs the runtime to refuse that name before block layout, capacity
+// or build; a unit whose every table is eligible keeps the runtime's bytes
+// unchanged, so its block paths carry no eligibility test at all.
+func unitNeedsBlockEligibility(u *ir.Unit) bool {
+	blocks := ir.Blocks(u)
 	for _, st := range u.Tables {
-		if !st.IsMapEntry() && st.DeclaredForms() {
+		if st.IsMapEntry() {
+			continue
+		}
+		if !blocks.IsBlock(st.Name) || !st.CarriesForm("block") {
 			return true
 		}
 	}
@@ -200,12 +212,19 @@ func runtimeCarriesForm(u *ir.Unit, name string) bool {
 
 // gateDeclaredFormsRuntime wires a table's declaration into an emitted
 // runtime's entry points, so a call for a form the table leaves out is
-// refused by the form's name (docs/SPEC-TABLES.md §2.12). The emitted
-// runtime files themselves are untouched: a unit with no declaration keeps
-// exactly today's bytes.
-func gateDeclaredFormsRuntime(name string, data []byte) []byte {
+// refused by the form's name (docs/SPEC-TABLES.md §2.12), and — for a unit
+// that carries a table with no fixed block form — so a block call for that
+// table is refused before layout, capacity or build. The forms clause always
+// lands, so every unit's copy of a walk file is the same bytes; the
+// block-eligibility clause lands only where it is needed, so a unit whose
+// every table is eligible emits block runtimes with no eligibility test and
+// its hot BlockOpen and Begin paths pay nothing for it.
+func gateDeclaredFormsRuntime(name string, data []byte, eligibility bool) []byte {
 	s := string(data)
 	replaceOnce := func(old, repl string) {
+		if old == repl {
+			return
+		}
 		if !strings.Contains(s, old) {
 			panic("luatable: missing forms runtime anchor in " + name)
 		}
@@ -222,23 +241,31 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 			"function J.ToJson(T, name, v)\n  local desc = T.Tables[name]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"json: table \" .. tostring(name) .. \" does not carry json (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
 		)
 	case "block.lua":
-		replaceOnce(
-			"function B.Layout(T, name, projection)\n  local d = T.Tables[name]\n",
-			"function B.Layout(T, name, projection)\n  local d = T.Tables[name]\n  if projection and d ~= nil and d.block_eligible ~= true then return nil, \"bad_layout\" end\n",
-		)
-		replaceOnce(
-			"function B.BlockOpen(T, name, bytes, build_version, base_offset)\n",
-			"function B.BlockOpen(T, name, bytes, build_version, base_offset)\n  local bd = T.Tables[name]\n  if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then\n    error(\"block: table \" .. tostring(name) .. \" does not carry block (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n  if bd ~= nil and bd.block_eligible ~= true then return nil, \"bad_layout\" end\n",
-		)
+		if eligibility {
+			replaceOnce(
+				"function B.Layout(T, name, projection)\n  local d = T.Tables[name]\n",
+				"function B.Layout(T, name, projection)\n  local d = T.Tables[name]\n  if projection and d ~= nil and d.block_eligible ~= true then return nil, \"bad_layout\" end\n",
+			)
+		}
+		old := "function B.BlockOpen(T, name, bytes, build_version, base_offset)\n"
+		repl := old + "  local bd = T.Tables[name]\n  if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then\n    error(\"block: table \" .. tostring(name) .. \" does not carry block (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n"
+		if eligibility {
+			repl += "  if bd ~= nil and bd.block_eligible ~= true then return nil, \"bad_layout\" end\n"
+		}
+		replaceOnce(old, repl)
 	case "blockbuild.lua":
-		replaceOnce(
-			"function B.BlockMaxBytes(T, root)\n  local desc = T.Tables[root]\n  if desc == nil then return nil, \"blockbuild: no table descriptor for \" .. tostring(root) end\n",
-			"function B.BlockMaxBytes(T, root)\n  local desc = T.Tables[root]\n  if desc == nil then return nil, \"blockbuild: no table descriptor for \" .. tostring(root) end\n  if desc.block_eligible ~= true then return nil, \"bad_layout\" end -- BlockMaxBytes\n",
-		)
-		replaceOnce(
-			"function B.Begin(T, root, counts)\n",
-			"function B.Begin(T, root, counts)\n  local bd = T.Tables[root]\n  if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then\n    error(\"block: table \" .. tostring(root) .. \" does not carry block (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n  if bd ~= nil and bd.block_eligible ~= true then return nil, \"bad_layout\" end -- Begin\n",
-		)
+		if eligibility {
+			replaceOnce(
+				"function B.BlockMaxBytes(T, root)\n  local desc = T.Tables[root]\n  if desc == nil then return nil, \"blockbuild: no table descriptor for \" .. tostring(root) end\n",
+				"function B.BlockMaxBytes(T, root)\n  local desc = T.Tables[root]\n  if desc == nil then return nil, \"blockbuild: no table descriptor for \" .. tostring(root) end\n  if desc.block_eligible ~= true then return nil, \"bad_layout\" end -- BlockMaxBytes\n",
+			)
+		}
+		old := "function B.Begin(T, root, counts)\n"
+		repl := old + "  local bd = T.Tables[root]\n  if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then\n    error(\"block: table \" .. tostring(root) .. \" does not carry block (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n"
+		if eligibility {
+			repl += "  if bd ~= nil and bd.block_eligible ~= true then return nil, \"bad_layout\" end -- Begin\n"
+		}
+		replaceOnce(old, repl)
 	case "cook.lua":
 		replaceOnce(
 			"function C.Open(T, name, bytes, base_offset)\n",

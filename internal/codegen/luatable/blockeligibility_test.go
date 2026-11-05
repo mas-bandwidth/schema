@@ -73,6 +73,37 @@ func blockEligibilityGate(t *testing.T, file, from, to string) []string {
 	return strings.Split(out, "\n")
 }
 
+// TestLuaBlockEligibilityRuntimeVerbatimOnEligibleUnits pins the generation
+// seam: a unit whose every table has a fixed block form carries block.lua and
+// blockbuild.lua with no block_eligible test, so its hot BlockOpen and Begin
+// paths pay nothing for eligibility. Only a unit that actually carries an
+// ineligible table gets the guard (the functional controls below require it).
+func TestLuaBlockEligibilityRuntimeVerbatimOnEligibleUnits(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Eligible.schema")
+	src := `package eligible
+fixed table Row { value uint128 }
+fixed table Frame { rows [..16]Row }
+`
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	u := luarun.LoadUnit(t, path)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"block.lua", "blockbuild.lua"} {
+		if strings.Contains(string(files[name]), "block_eligible") {
+			t.Errorf("%s gained a per-call eligibility test for a unit whose every table is eligible", name)
+		}
+	}
+	if !strings.Contains(string(files["block.lua"]), "does not carry block") {
+		t.Error("the block runtime lost the forms clause every unit's copy carries")
+	}
+}
+
 func TestLuaBlockEligibilityFunctional(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "Lua 5.4 functional block eligibility")
