@@ -21,11 +21,16 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-type luauEvoRunner struct{}
+type luauEvoRunner struct {
+	// plantWriter patches the emitted fixed-form writer so every record's
+	// last body byte is flipped after it is written. It is only set by the
+	// negative control's planted-writer arm.
+	plantWriter bool
+}
 
-func (luauEvoRunner) Name() string { return "luau" }
+func (r luauEvoRunner) Name() string { return "luau" }
 
-func (luauEvoRunner) generated(u *ir.Unit) (map[string][]byte, error) {
+func (r luauEvoRunner) generated(u *ir.Unit) (map[string][]byte, error) {
 	files, err := luau.Generate(u)
 	if err != nil {
 		return nil, err
@@ -35,6 +40,15 @@ func (luauEvoRunner) generated(u *ir.Unit) (map[string][]byte, error) {
 		return nil, err
 	}
 	maps.Copy(files, tables)
+	if r.plantWriter {
+		const anchor = "\t\twriteStruct(d, root, v, rec)\n"
+		const planted = anchor + "\t\tbuffer.writeu8(rec, fixed.recordBytes - 1, bit32.bxor(buffer.readu8(rec, fixed.recordBytes - 1), 1))\n"
+		src := string(files["schema_fixed.luau"])
+		if strings.Count(src, anchor) != 1 {
+			return nil, fmt.Errorf("the record write anchor is not in schema_fixed.luau exactly once")
+		}
+		files["schema_fixed.luau"] = []byte(strings.Replace(src, anchor, planted, 1))
+	}
 	return files, nil
 }
 
@@ -313,37 +327,273 @@ func TestLuauFixedProofGroupE(t *testing.T) {
 	fixedproof.RunEvolutionRows(t, "../../..", luauEvoRunner{}, "retirement", "retired-runtime", "optional-values", "field-evolution", "live-extents", "writing", "union-guards", "plan-execution", "interoperability")
 }
 
-// TestLuauFixedProofGroupENegativeControl checks that every selected row's
-// proof harness catches both a corrupted file and a writer whose fixed hash
-// was deliberately changed. The row suites above supply the row-specific
-// values, lineage, and assertions; these twins exercise the shared rejection
-// and writer mismatch paths independently.
+func luauEvoCorpus(t *testing.T, repo, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repo, "build", "fixedform-corpus", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func luauEvoCorruptHeader(wire []byte) []byte {
+	out := append([]byte(nil), wire...)
+	out[8] ^= 0x01
+	return out
+}
+
+// luauEvoFileRefused requires the real Luau reader to refuse the planted file.
+func luauEvoFileRefused(t *testing.T, what string, u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry, wire []byte) {
+	t.Helper()
+	n, reason, _, _, _ := (luauEvoRunner{}).LoadLineage(t, u, root, lineage, wire, -1)
+	if n != -1 {
+		t.Fatalf("%s: the planted file was accepted: n=%d reason=%q", what, n, reason)
+	}
+}
+
+// luauEvoWriterDiffers loads the row's real reference bytes with the real
+// writer and again with the planted writer, and requires the two re-saves to
+// differ: the planted writer's output is rejected by the row's byte gate.
+func luauEvoWriterDiffers(t *testing.T, what string, u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry, wire []byte) []byte {
+	t.Helper()
+	n, reason, _, good, _ := (luauEvoRunner{}).LoadLineage(t, u, root, lineage, wire, -1)
+	if n < 0 {
+		t.Fatalf("%s: the reference bytes did not load: reason=%q", what, reason)
+	}
+	pn, pr, _, planted, _ := (luauEvoRunner{plantWriter: true}).LoadLineage(t, u, root, lineage, wire, -1)
+	if pn < 0 {
+		t.Fatalf("%s: the planted writer's file did not load: reason=%q", what, pr)
+	}
+	if bytes.Equal(good, planted) {
+		t.Fatalf("%s: the planted writer saved the reference bytes", what)
+	}
+	return good
+}
+
+func luauEvoSaveWriterDiffers(t *testing.T, what string, u *ir.Unit, root, scenario string) {
+	t.Helper()
+	good, why := (luauEvoRunner{}).SaveCustom(t, u, root, scenario)
+	if why != "" {
+		t.Fatalf("%s: the control save failed: %s", what, why)
+	}
+	planted, why := (luauEvoRunner{plantWriter: true}).SaveCustom(t, u, root, scenario)
+	if why != "" {
+		t.Fatalf("%s: the planted writer failed: %s", what, why)
+	}
+	if bytes.Equal(good, planted) {
+		t.Fatalf("%s: the planted writer saved the row's reference bytes", what)
+	}
+}
+
+// TestLuauFixedProofGroupENegativeControl breaks each selected row two ways
+// with that row's own schema, records, lineage and reference bytes: a FILE
+// arm plants a file the real reader must refuse, and a WRITER arm plants a
+// mutation in the emitted fixed-form writer and requires its output to differ
+// from the row's reference. Each arm therefore reaches the row's real gate; a
+// proof that stopped exercising it would let these controls fail.
 func TestLuauFixedProofGroupENegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
-	rows := []string{"retirement", "retired-runtime", "optional-values", "field-evolution", "live-extents", "writing", "union-guards", "plan-execution", "interoperability"}
-	for _, row := range rows {
-		t.Run(row, func(t *testing.T) {
+	const repo = "../../.."
+	r := luauEvoRunner{}
+
+	retirement := func(t *testing.T) {
+		older := fixedproof.LoadRepoUnit(t, repo, "test/tables/VOLD_floor.schema")
+		mid := fixedproof.LoadRepoUnit(t, repo, "test/tables/VMID_floor.schema")
+		newer := fixedproof.LoadRepoUnit(t, repo, "test/tables/VNEW_floor.schema")
+		eOld, _ := fixedproof.LineageEntryOf(older, "Floored")
+		eMid, _ := fixedproof.LineageEntryOf(mid, "Floored")
+		eNew, _ := fixedproof.LineageEntryOf(newer, "Floored")
+		oldData := luauEvoCorpus(t, repo, "old_floor.bin")
+		newData := luauEvoCorpus(t, repo, "new_floor.bin")
+		live := map[string][]fixedproof.LineageEntry{"Floored": {eOld, eMid}}
+		if n, reason, _, _, _ := r.LoadLineage(t, newer, "Floored", live, oldData, -1); n != 1 {
+			t.Fatalf("control: the live lineage did not load old_floor.bin: n=%d reason=%q", n, reason)
+		}
+		retiredOld, retiredMid := eOld, eMid
+		retiredOld.Retired = true
+		retiredMid.Retired = true
+		retired := map[string][]fixedproof.LineageEntry{"Floored": {retiredOld, retiredMid}}
+		luauEvoFileRefused(t, "retirement retired entry", newer, "Floored", retired, oldData)
+		good := luauEvoWriterDiffers(t, "retirement", newer, "Floored", map[string][]fixedproof.LineageEntry{"Floored": {eNew}}, newData)
+		if !bytes.Equal(good, newData) {
+			t.Fatalf("retirement: the unplanted re-save is not new_floor.bin")
+		}
+	}
+
+	retiredRuntime := func(t *testing.T) {
+		for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
+			older := fixedproof.LoadRepoUnit(t, repo, "test/tables/VOLD_"+row+".schema")
+			root := fixedproof.RootOf(t, older)
+			eOwn, _ := fixedproof.LineageEntryOf(older, root)
+			lin := map[string][]fixedproof.LineageEntry{root: {eOwn}}
+			newData := luauEvoCorpus(t, repo, "new_"+row+".bin")
+			oldData := luauEvoCorpus(t, repo, "old_"+row+".bin")
+			luauEvoFileRefused(t, "retired-runtime "+row, older, root, lin, newData)
+			n, reason, _, _, _ := r.LoadLineage(t, older, root, lin, oldData, -1)
+			if n < 0 {
+				t.Fatalf("retired-runtime %s: the older schema refused its own file: %q", row, reason)
+			}
+			if good := luauEvoWriterDiffers(t, "retired-runtime "+row, older, root, lin, oldData); !bytes.Equal(good, oldData) {
+				t.Fatalf("retired-runtime %s: the unplanted re-save is not old_%s.bin", row, row)
+			}
+		}
+	}
+
+	optionalValues := func(t *testing.T) {
+		const types = "package probe\ntype Inner {\n    a int32 = 5\n    b int32 = 6\n}\n"
+		u := fixedproof.ParseCheckUnit(t, types+"fixed table T {\n    plain Inner\n    opt ?Inner\n}\n")
+		eOwn, _ := fixedproof.LineageEntryOf(u, "T")
+		good, why := r.SaveCustom(t, u, "T", "optional_absent_zeros")
+		if why != "" {
+			t.Fatalf("optional-values: %s", why)
+		}
+		luauEvoFileRefused(t, "optional-values header", u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, luauEvoCorruptHeader(good))
+		luauEvoSaveWriterDiffers(t, "optional-values", u, "T", "optional_absent_zeros")
+	}
+
+	fieldEvolution := func(t *testing.T) {
+		older := fixedproof.LoadRepoUnit(t, repo, "test/tables/VOLD_rename_without_was.schema")
+		newer := fixedproof.LoadRepoUnit(t, repo, "test/tables/VNEW_rename_without_was.schema")
+		eOld, _ := fixedproof.LineageEntryOf(older, "Lineage")
+		eNew, _ := fixedproof.LineageEntryOf(newer, "Lineage")
+		if eOld.Wire != eNew.Wire {
+			t.Fatal("field-evolution: the rename moved the hash")
+		}
+		oldData := luauEvoCorpus(t, repo, "old_rename_without_was.bin")
+		lin := map[string][]fixedproof.LineageEntry{"Lineage": {eNew}}
+		if n, reason, _, _, _ := r.LoadLineage(t, newer, "Lineage", lin, oldData, -1); n != 1 {
+			t.Fatalf("field-evolution control: n=%d reason=%q", n, reason)
+		}
+		at := 20 + len(eNew.Layout) + 8
+		bad := append([]byte(nil), oldData...)
+		if at >= len(bad) {
+			t.Fatalf("field-evolution: body offset %d past %d bytes", at, len(bad))
+		}
+		bad[at] ^= 0x01
+		n, reason, _, resaved, _ := r.LoadLineage(t, newer, "Lineage", lin, bad, -1)
+		if n >= 0 && bytes.Equal(resaved, oldData) {
+			t.Fatalf("field-evolution: the planted body byte normalized to the reference (n=%d reason=%q)", n, reason)
+		}
+		if good := luauEvoWriterDiffers(t, "field-evolution", newer, "Lineage", lin, oldData); !bytes.Equal(good, oldData) {
+			t.Fatalf("field-evolution: the unplanted re-save is not old_rename_without_was.bin")
+		}
+	}
+
+	liveExtents := func(t *testing.T) {
+		u := fixedproof.ParseCheckUnit(t, "package probe\nenum Small { One, Two }\nfixed table T {\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n}\n")
+		eOwn, _ := fixedproof.LineageEntryOf(u, "T")
+		good, why := r.SaveCustom(t, u, "T", "live_extents_base")
+		if why != "" {
+			t.Fatalf("live-extents: %s", why)
+		}
+		luauEvoFileRefused(t, "live-extents header", u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, luauEvoCorruptHeader(good))
+		luauEvoSaveWriterDiffers(t, "live-extents", u, "T", "live_extents_base")
+	}
+
+	writing := func(t *testing.T) {
+		u := fixedproof.ParseCheckUnit(t, "package probe\nunion Pick {\n    narrow uint8\n    wide uint64\n}\nfixed table T {\n    arr [..3]uint16\n    s string(4)\n    b bytes(4)\n    pick Pick\n}\n")
+		eOwn, _ := fixedproof.LineageEntryOf(u, "T")
+		good, why := r.SaveCustom(t, u, "T", "writing_slack_batch")
+		if why != "" {
+			t.Fatalf("writing: %s", why)
+		}
+		luauEvoFileRefused(t, "writing header", u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, luauEvoCorruptHeader(good))
+		unzeroed, why := r.SaveCustom(t, u, "T", "writing_slack_unzeroed")
+		if why != "" || bytes.Equal(unzeroed, good) {
+			t.Fatalf("writing: the unzeroed writer control did not move the bytes (reason=%q)", why)
+		}
+		if wire, why := r.SaveCustom(t, u, "T", "writing_overcount"); why == "" || len(wire) != 0 {
+			t.Fatalf("writing: the over-count writer was not refused (bytes=%d reason=%q)", len(wire), why)
+		}
+		luauEvoSaveWriterDiffers(t, "writing", u, "T", "writing_slack_batch")
+	}
+
+	unionGuards := func(t *testing.T) {
+		const guardOld = "package probe\nunion Inner\n{\n    x int16\n    y int32\n}\nunion Outer\n{\n    inner Inner\n    plain int32\n}\nfixed table T\n{\n    outer Outer\n    tail int32 = 9\n}\n"
+		uOld := fixedproof.ParseCheckUnit(t, guardOld)
+		uNew := fixedproof.ParseCheckUnit(t, strings.Replace(guardOld, "x int16", "x int32", 1))
+		eOld, _ := fixedproof.LineageEntryOf(uOld, "T")
+		file := fixedproof.MakeFixedFile(eOld.Wire, eOld.Layout,
+			[]byte{1, 1, 0xf9, 0xff, 0, 0, 100, 0, 0, 0},
+			[]byte{2, 8, 3, 2, 1, 0, 200, 0, 0, 0})
+		lin := map[string][]fixedproof.LineageEntry{"T": {eOld}}
+		if n, reason, _, _, _ := r.LoadLineage(t, uNew, "T", lin, file, -1); n != 2 {
+			t.Fatalf("union-guards control: n=%d reason=%q", n, reason)
+		}
+		bad := append([]byte(nil), file...)
+		bad[len(bad)-int(eOld.Record)] ^= 0x01
+		luauEvoFileRefused(t, "union-guards record hash", uNew, "T", lin, bad)
+		luauEvoWriterDiffers(t, "union-guards", uNew, "T", lin, file)
+	}
+
+	planExecution := func(t *testing.T) {
+		const planSchema = "package probe\nenum Kind { A, B }\nunion Choice\n{\n    n int32\n    s string(4)\n}\nfixed table T\n{\n    head int32 = 1\n    opt ?int32\n    arr [..2]Kind\n    ch Choice\n}\n"
+		u := fixedproof.ParseCheckUnit(t, planSchema)
+		eOwn, _ := fixedproof.LineageEntryOf(u, "T")
+		lin := map[string][]fixedproof.LineageEntry{"T": {eOwn}}
+		body := make([]byte, eOwn.Record-8)
+		binary.LittleEndian.PutUint32(body[0:], 42)
+		body[4] = 1
+		binary.LittleEndian.PutUint32(body[5:], 0xffffff9d)
+		binary.LittleEndian.PutUint32(body[9:], 1)
+		body[13] = 2
+		body[15] = 2
+		binary.LittleEndian.PutUint32(body[16:], 2)
+		copy(body[20:], "hi")
+		idBytes := fixedproof.MakeFixedFile(eOwn.Wire, eOwn.Layout, body, body)
+		if n, reason, _, _, _ := r.LoadLineage(t, u, "T", lin, idBytes, -1); n != 2 {
+			t.Fatalf("plan-execution control: n=%d reason=%q", n, reason)
+		}
+		bad := append([]byte(nil), idBytes...)
+		bad[len(bad)-int(eOwn.Record)] ^= 0x01
+		luauEvoFileRefused(t, "plan-execution record hash", u, "T", lin, bad)
+		if good := luauEvoWriterDiffers(t, "plan-execution", u, "T", lin, idBytes); !bytes.Equal(good, idBytes) {
+			t.Fatalf("plan-execution: the unplanted re-save is not the planted file")
+		}
+	}
+
+	interoperability := func(t *testing.T) {
+		u := fixedproof.LoadRepoUnit(t, repo, "test/tables/FX1.schema")
+		eOwn, _ := fixedproof.LineageEntryOf(u, "FxRoot")
+		lin := map[string][]fixedproof.LineageEntry{"FxRoot": {eOwn}}
+		data := luauEvoCorpus(t, repo, "fx1.bin")
+		n, reason, _, _, _ := r.LoadLineage(t, u, "FxRoot", lin, data, -1)
+		if n <= 0 {
+			t.Fatalf("interoperability control: n=%d reason=%q", n, reason)
+		}
+		at := 20 + len(eOwn.Layout) + 8
+		bad := append([]byte(nil), data...)
+		if at >= len(bad) {
+			t.Fatalf("interoperability: body offset %d past %d bytes", at, len(bad))
+		}
+		bad[at] ^= 0x01
+		mn, mr, _, msaved, _ := r.LoadLineage(t, u, "FxRoot", lin, bad, -1)
+		if mn >= 0 && bytes.Equal(msaved, data) {
+			t.Fatalf("interoperability: the moved body byte round-tripped (n=%d reason=%q)", mn, mr)
+		}
+		if good := luauEvoWriterDiffers(t, "interoperability", u, "FxRoot", lin, data); !bytes.Equal(good, data) {
+			t.Fatalf("interoperability: the unplanted re-save is not fx1.bin")
+		}
+	}
+
+	for _, row := range []struct {
+		name string
+		run  func(*testing.T)
+	}{
+		{"retirement", retirement},
+		{"retired-runtime", retiredRuntime},
+		{"optional-values", optionalValues},
+		{"field-evolution", fieldEvolution},
+		{"live-extents", liveExtents},
+		{"writing", writing},
+		{"union-guards", unionGuards},
+		{"plan-execution", planExecution},
+		{"interoperability", interoperability},
+	} {
+		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
-			u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1\n}\n")
-			runner := luauEvoRunner{}
-			good, why := runner.SaveCustom(t, u, "T", "closure_small_42")
-			if why != "" {
-				t.Fatalf("control save failed: %s", why)
-			}
-			entry, _ := fixedproof.LineageEntryOf(u, "T")
-			badFile := bytes.Clone(good)
-			badFile[8] ^= 1
-			if n, reason, _, _, _ := runner.LoadLineage(t, u, "T", map[string][]fixedproof.LineageEntry{"T": {entry}}, badFile, -1); n != -1 {
-				t.Errorf("file negative control was accepted: n=%d reason=%q", n, reason)
-			}
-			badWriter, why := runner.SaveCustom(t, u, "T", "writer_bad_hash")
-			if why != "" {
-				t.Fatalf("writer negative control failed: %s", why)
-			}
-			if bytes.Equal(badWriter, good) {
-				t.Error("writer negative control produced the same bytes")
-			}
+			row.run(t)
 		})
 	}
 }
