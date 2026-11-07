@@ -1186,7 +1186,7 @@ final class TableWireReader {
   }
 
   // readBool reads a bool payload: any nonzero byte reads true, and a byte
-  // above 1 is malformed (docs/SPEC-TABLES.md §3, internal/tablewire scalarAt).
+  // above 1 is damage (docs/SPEC-TABLES.md §3, internal/tablewire scalarAt).
   bool readBool() {
     final v = data[pos];
     pos++;
@@ -1346,7 +1346,7 @@ final class TableWireReader {
   // resolveBlob turns a kind-17 node index into the blob bytes it names
   // (§3.1): 0 is null; 1 is the ROOT, which a blob can never be, so it is a
   // kind mismatch; records 2.. are the node table's blob records. An index
-  // above node_count + 1 is malformed, and a record whose type id this reader
+  // above node_count + 1 is damage, and a record whose type id this reader
   // cannot name reads null — the unknown was counted once at the node table,
   // not once per pointer (§3.1). recognized is the flag that gates whether
   // this root reaches that blob kind at all. A PLACED record of another kind
@@ -1455,7 +1455,7 @@ final class TableWireReader {
     // edge of that kind carries no table id, yet the scan counted no unknown
     // for it, and resolveCell counts one kind_mismatch for a *T slot naming a
     // node whose Blob is set. Only an unplaced record — an unknown, or a text
-    // blob the scan refused as malformed (type 0), which Go leaves empty —
+    // blob the scan refused as damage (type 0), which Go leaves empty —
     // reads null silently.
     if (!_placedNode(nodeTypes[rec])) return null;
     if (nodeTypes[rec] != wantType) {
@@ -1500,7 +1500,7 @@ final class TableWireReader {
     final count = readU64(data, data.length - 8);
     if (count < 0 || count > (data.length - 9) ~/ 8) return 2;
     // THE ENTRY COUNT HAS A MAXIMUM (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
-    // CHECK): a table above 4096 entries is malformed on the whole-wire rule,
+    // CHECK): a table above 4096 entries is damage on the whole-wire rule,
     // whatever the buffer would hold.
     if (count > 4096) return 2;
     final start = data.length - 8 - count * 8;
@@ -1533,17 +1533,17 @@ final class TableWireReader {
   // §3.1, §3.3): the reserved id's LAST well-framed kind-12 occurrence is the
   // table, and it REPLACES the payload an earlier occurrence supplied. A
   // node-table field under any other kind, or with a length past the body, is
-  // malformed before a later occurrence is read, and the whole table reads
-  // nothing — every pointer in the save is null, one malformed counts (§3.1).
+  // damaged before a later occurrence is read, and the whole table reads
+  // nothing — every pointer in the save is null, one damage count (§3.1).
   // Framing damage to the root body elsewhere — an id this reader cannot name,
   // a field it cannot skip — stops the gather and keeps the table found so far,
   // as nodeTableBytes does. Only the gathered payload is scanned, on its own
   // length: a count the scan does not match, a type reference of 0 or above the
-  // entry count, or a record length past the payload is malformed and reads
+  // entry count, or a record length past the payload is damage and reads
   // nothing (§3.1). A record whose type id is the *string blob stores its
   // bytes; any other type id keeps its index, counts one unknown at the
   // record, and every pointer naming it reads null (§3.1). A string blob that
-  // is not well-formed UTF-8 without NUL is malformed and reads null too.
+  // is not well-formed UTF-8 without NUL is damage and reads null too.
   void scanNodeTable() {
     pos = 1;
     var present = false;

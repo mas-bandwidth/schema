@@ -426,7 +426,7 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
 }
 
 // _jsonWStringField reads wide text (docs/SPEC-TABLES.md §16.2): a string,
-// clamped at its bound in CODE UNITS and never through a surrogate pair.
+// past its bound in CODE UNITS refuses the whole load.
 String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
   if (val is! String) {
     r.refuse('kind_mismatch');

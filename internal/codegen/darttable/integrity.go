@@ -59,6 +59,6 @@ func (g *wireGen) emitIntegrityRead(st *ir.Struct, report, empty string) {
 		return
 	}
 	g.pf("\tif (data.isNotEmpty && data[0] == 1) {\n")
-	g.pf("\t\tif (!tableIntegrityValid(data, data.length, 5)) { %s.malformed = true; %s.integrityMismatch = true; return %s; }\n", report, report, empty)
+	g.pf("\t\tif (!tableIntegrityValid(data, data.length, 5)) { %s.refuse('wire_damaged'); %s.integrityMismatch = true; return %s; }\n", report, report, empty)
 	g.pf("\t\tdata = Uint8List.sublistView(data, 0, data.length - 4);\n\t}\n")
 }

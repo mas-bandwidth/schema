@@ -226,7 +226,7 @@ String _jsonText(String s) {
 }
 
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
-// mismatch; a string past N is clamped at a CODE POINT boundary and counted,
+// mismatch; a string past N refuses the whole load,
 // never cut through a multi-byte character (§16.3).
 String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
   if (val is! String) {
@@ -240,7 +240,7 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
 }
 
 // _jsonIntField reads one int field (§16.2): an integer token, or an integral
-// float, placed and range-clamped; anything else is a kind mismatch. lo and hi
+// float, placed and range-checked; anything else is a kind mismatch. lo and hi
 // are the declared range, or the storage width below 64 bits; an unsigned
 // field's bounds are 64-bit patterns. A token an int holds is placed by int
 // compares. Every other integral value (a token at or past +-2^63, a negative
@@ -629,7 +629,7 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
 }
 `)
 	g.pf(`// §16.2: comments and trailing commas are layout, not values. The
-// duplicate count is taken before jsonDecode folds an object's repeated key.
+// a repeated key is judged before jsonDecode folds an object's repeated key.
 // String tokens are copied byte-for-byte so comment marks inside them stay text.
 String _jsonPrepare(String text, TableTextReport r) {
   final source = text.codeUnits;

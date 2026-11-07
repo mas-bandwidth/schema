@@ -583,7 +583,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("%s %sWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {\n", n, d)
 	g.pf("\tretain.reset();\n")
 	g.pf("\tfinal v = %s();\n", n)
-	g.pf("\tif (report.integrityMismatch) report.malformed = false;\n\treport.integrityMismatch = false;\n")
+	g.pf("\tif (report.integrityMismatch) { report.refusal = ''; report.refused = false; }\n\treport.integrityMismatch = false;\n")
 	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
@@ -598,7 +598,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	// verdict 3 is framing damage on the root body, not the file's: the body
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
-	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
+	g.pf("\tif (verdict == 2) { r.report.refuse('wire_damaged'); retain.reset(); return %s(); }\n", n)
 	g.pf("\ttry {\n")
 	g.pf("\t\tr.scanNodeTable();\n")
 	g.pf("\t\tr.pos = 1;\n")
@@ -616,10 +616,10 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): nothing lands,
 	// the retained store included.
 	g.pf("\t_collectNodeEdges(r);\n")
-	g.pf("\tif (r.cyclic()) {\n\t\tr.report.malformed = true;\n\t\tretain.reset();\n\t\treturn %s();\n\t}\n", n)
+	g.pf("\tif (r.cyclic()) {\n\t\tr.report.refuse('wire_damaged');\n\t\tretain.reset();\n\t\treturn %s();\n\t}\n", n)
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.6): nothing
 	// decoded lands and nothing is retained.
-	g.pf("\tif (r.report.malformed) {\n")
+	g.pf("\tif (r.report.refused) {\n")
 	g.pf("\t\tretain.reset();\n")
 	g.pf("\t\treturn %s();\n", n)
 	g.pf("\t}\n")
