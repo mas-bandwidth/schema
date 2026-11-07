@@ -1,12 +1,12 @@
 // THE STRICT READ AND ITS NAMED REFUSALS (docs/SPEC-TABLES.md §6.5, §11,
 // §2.14). ReadStrict answers the root or refuses with ONE name, the set §6.5
 // states and Go's TableReport.Err() answers: wire_damaged (the file's own
-// framing), non_finite_float, malformed, clamped and kind_mismatch, each with the
+// framing), non_finite_float, malformed, oor and kind_mismatch, each with the
 // first field the walk saw move it; a form byte the root's own form does not read
 // (previous_form, message_form_as_file, newer_form); and integrity_mismatch.
-// It does NOT refuse unknown, widened or duplicate alone (§6.5: unknown is
+// It does NOT refuse unknown, widened or repeated alone (§6.5: unknown is
 // evolution, widened decoded exactly; a repeat is last-wins, §4): those stay
-// counted on the report. It is a wrapper over schema_table_load's tolerant
+// counted on the report. It is a wrapper over schema_table_load's walk
 // walk and edits nothing in it: the counters are the load's report (§4), and
 // the field is read off the walk's own frame when a counter first moves (THE
 // WITNESS, below).
@@ -19,8 +19,8 @@ local FORM_FIXED = 3;
 
 // the report's counters in load.nut's spelling, and §11's name for each
 local COUNTERS = {
-  unknown = "unknown", kindMismatch = "kind_mismatch", widened = "widened",
-  clamped = "clamped", duplicate = "duplicate", malformed = "malformed",
+  unknown = "unknown", mismatch = "kind_mismatch", widened = "widened",
+  oor = "out_of_range", repeated = "repeated", bodyDamaged = "malformed",
   refused = "refused",
   countRefusal = "count_over_extent_cap"
 };
@@ -214,13 +214,13 @@ local witness = function(store, first) {
 // the report's reset: every counter at rest, no reason, no field
 local reset = function(report) {
   foreach (k, _ in COUNTERS)
-    report[k] <- (k == "malformed" || k == "refused" || k == "countRefusal") ? false : 0;
+    report[k] <- (k == "bodyDamaged" || k == "refused" || k == "countRefusal") ? false : 0;
   report.missingRequired <- false;
   report.reason <- null;
   report.field <- null;
   report.nonFiniteFloat <- null;
   report.unknownField <- null;
-  report.duplicateField <- null;
+  report.repeatedField <- null;
 };
 
 // ReadStrict(T, root, bytes, report): the root instance or null, with
@@ -242,7 +242,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   reset(report);
   local d = T.Descriptors[root];
   if (bytes == null || bytes.len() < 1) {
-    report.malformed = true;
+    report.bodyDamaged = true;
     report.reason = "wire_damaged";
     return null;
   }
@@ -251,18 +251,18 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   // fixed form refuses its construct, squirreltable/fixedform.go) is read and
   // written here as form 1 only: form 3 is a form this call does not carry,
   // unknown_form, and its form 1 is read as a variable root's
-  local fixedReader = d.fixed && ((root + "FixedLoadTolerant") in T);
+  local fixedReader = d.fixed && ((root + "FixedLoad") in T);
   if (d.fixed && !fixedReader && form == FORM_FIXED) { report.reason = "unknown_form"; return null; }
   if (fixedReader && form == FORM_FIXED) {
     local out = [d.make()];
-    local n = T[root + "FixedLoadTolerant"](bytes, out, 1);
+    local n = T[root + "FixedLoad"](bytes, out, 1);
     if (n < 0) {
       report.reason = T.FixedReason;
       // a non-finite float names its field (docs/SPEC-TABLES.md §3.3)
       if (("FixedField" in T) && T.FixedField != null) report.field = T.FixedField;
       return null;
     }
-    if (n != 1) { report.malformed = true; report.reason = "wire_damaged"; return null; }
+    if (n != 1) { report.bodyDamaged = true; report.reason = "wire_damaged"; return null; }
     return out[0];
   }
   if (d.fixed && form == FORM_VARIABLE) {
@@ -276,7 +276,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   }
   if (("integrity" in d) && d.integrity != null && d.integrity != "") {
     local body = integrityOpen(bytes);
-    if (body == null) { report.malformed = true; report.reason = "integrity_mismatch"; return null; }
+    if (body == null) { report.bodyDamaged = true; report.reason = "integrity_mismatch"; return null; }
     bytes = body;
   }
   local store = {};
@@ -285,7 +285,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   store.walkDamaged <- false;
   local first = {};
   // the trailer was opened above (§2.14), so the load must not strip it again
-  local v = _load.loadTolerant(T, root, bytes, witness(store, first), null, true);
+  local v = _load.loadWalk(T, root, bytes, witness(store, first), null, true);
   foreach (k, _ in COUNTERS) report[k] = store[k];
   report.missingRequired = store.missingRequired;
   // A NON-FINITE FLOAT OUTRANKS EVERY OTHER VERDICT (docs/SPEC-TABLES.md
@@ -315,16 +315,16 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     return null;
   }
   // damage first, then the counters in Err()'s order, so one wire always
-  // answers one name (§6.5, §11); unknown, widened and duplicate alone read
+  // answers one name (§6.5, §11); unknown, widened and repeated alone read
   // Both paths discard the value. The witness records whether the file was
   // opened and its body walked: failure before that is wire_damaged, while
   // damage in the body is malformed, matching Go's strict error names.
-  if (v == null && store.malformed && !store.walkDamaged) {
+  if (v == null && store.bodyDamaged && !store.walkDamaged) {
     report.reason = "wire_damaged";
     return null;
   }
   // damage, then the refusing counters in Go's Err() order
-  foreach (k in ["malformed", "clamped", "kindMismatch"]) {
+  foreach (k in ["bodyDamaged", "oor", "mismatch"]) {
     local moved = typeof store[k] == "bool" ? store[k] : store[k] > 0;
     if (!moved) continue;
     report.reason = COUNTERS[k];
@@ -333,7 +333,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   }
   // the fields of the counters that do not refuse, for a caller that asks
   report.unknownField = ("unknown" in first) ? first.unknown : null;
-  report.duplicateField = ("duplicate" in first) ? first.duplicate : null;
+  report.repeatedField = ("repeated" in first) ? first.repeated : null;
   return v;
 };
 
@@ -341,10 +341,10 @@ _M.ReadStrict <- function(T, root, bytes, report) {
 // the reason string (docs/SPEC-TABLES.md §11, §6.5)
 _M.ReadStrictNames <- {
   previous_form = true, message_form_as_file = true, newer_form = true,
-  integrity_mismatch = true, wire_damaged = true, unknown_form = true, malformed = true,
-  non_finite_float = true, clamped = true, kind_mismatch = true, count_over_extent_cap = true,
+  integrity_mismatch = true, wire_damaged = true, unknown_form = true, ["malformed"] = true,
+  non_finite_float = true, out_of_range = true, kind_mismatch = true, count_over_extent_cap = true,
   missing_required = true,
   // the fixed reader's own, answered through <Root>FixedLoad (§3.4)
-  layout_malformed = true, layout_record_too_large = true, no_layout = true,
+  layout_bodyDamaged = true, layout_record_too_large = true, no_layout = true,
   plan_too_large = true
 };

@@ -125,7 +125,7 @@ local out = blob(m);
 local n = R.SaveRetain(T, "Root", v, store, out, r);
 print("measure " + m + "\n");
 print("save " + n + "\n");
-print("report " + r.retained + "," + r.retainLost + "," + r.unknown + "," + (r.malformed ? 1 : 0) + "\n");
+print("report " + r.retained + "," + r.retainLost + "," + r.unknown + "," + (r.bodyDamaged ? 1 : 0) + "\n");
 ::hexline(out);
 local r2 = rep();
 local s2 = { capacity = 8, idCapacity = 1024 };

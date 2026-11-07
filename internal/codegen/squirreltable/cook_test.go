@@ -327,7 +327,7 @@ walkStorage = function(T, formName, b, off0, length, storage, path, seen, order)
   }
 };
 local dump = function(T, root, key) {
-  local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
+  local report = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };
   local h = T.cookOpen(root, inputs[key + ".cook"], report);
   if (h == null) {
     print("FAIL " + key + " " + (("reason" in report) ? report.reason : "?") + "\n");
@@ -339,13 +339,13 @@ local dump = function(T, root, key) {
   print("END " + key + "\n");
 };
 local hostile = function(T, name, root, lead) {
-  local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
+  local report = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };
   local h = T.cookOpen(root, inputs[name], report, lead);
   if (h == null) print("HOSTILE " + name + " " + (("reason" in report) ? report.reason : "?") + "\n");
   else print("HOSTILE " + name + " ok\n");
 };
 local hostileNull = function(T, name, root) {
-  local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
+  local report = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };
   local h = T.cookOpen(root, null, report);
   if (h == null) print("HOSTILE " + name + " " + (("reason" in report) ? report.reason : "?") + "\n");
   else print("HOSTILE " + name + " ok\n");

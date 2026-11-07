@@ -23,10 +23,10 @@ local run = function(mod, root, key, unit) {
   local T = schema.require(mod);
   local L = schema.require("schema_table_load");
   local report = {
-    unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false
+    unknown = 0, mismatch = 0, widened = 0, oor = 0,
+    repeated = 0, bodyDamaged = false, refused = false
   };
-  local value = L.loadTolerant(T, root, inputs[key + ".wire"], report);
+  local value = L.loadWalk(T, root, inputs[key + ".wire"], report);
   if (value == null) { print(key + " load refused\n"); return; }
   local size = T.CookMeasure(root, value);
   local arms = [[1, ".little"], [2, ".big"]];

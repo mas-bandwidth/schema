@@ -52,8 +52,8 @@ var sqVectorCases = []sqVectorCase{
 	{"distinct_empty_string_blobs", "blobdemo", "tables/blobs", "Catalog", "schema_table_load.nut",
 		"    if (p.fd.shape == \"sblob\") _M.noteStringOrigin(p.holder, p.key, value, token);\n", ""},
 	{"pointer_orphan_cycle", "graphdemo", "tables/pointers", "Scene", "schema_table_load.nut",
-		"if (_require(\"schema_table_save\").cyclic(T, rootName, v, verts)) report.malformed = true;",
-		"if (_require(\"schema_table_save\").numberForCook(T, rootName, v) == null) report.malformed = true;"},
+		"if (_require(\"schema_table_save\").cyclic(T, rootName, v, verts)) report.bodyDamaged = true;",
+		"if (_require(\"schema_table_save\").numberForCook(T, rootName, v) == null) report.bodyDamaged = true;"},
 }
 
 // sqVectorVerdict answers the first disagreement between the driver and the

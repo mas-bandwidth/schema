@@ -4,7 +4,7 @@ local _M = vargv[0];
 local setSlot = function(o, k, v) { if (k in o) o[k] = v; else o[k] <- v; };
 local reset = function(r) {
   if (r == null) return;
-  setSlot(r, "unknown", 0); setSlot(r, "kindMismatch", 0); setSlot(r, "widened", 0); setSlot(r, "clamped", 0);
+  setSlot(r, "unknown", 0); setSlot(r, "mismatch", 0); setSlot(r, "widened", 0); setSlot(r, "oor", 0);
   setSlot(r, "malformed", false); setSlot(r, "refused", false); setSlot(r, "reason", null);
 };
 
@@ -114,9 +114,9 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   // THE FORM IS READ BEFORE THE LENGTH, as the engine does: a form byte this
   // reader does not carry is newer_form even when the file is too short to
   // hold the rest of an announcement (docs/SPEC-TABLES.md §3.3).
-  if (bytes == null || bytes.len()<1) { if(report!=null)report.malformed=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
+  if (bytes == null || bytes.len()<1) { if(report!=null)report.bodyDamaged=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
   if ((bytes[0]&0xff)!=1) return refuseAnnouncement(v,report,(bytes[0]&0xff)==2 ? "message_form_as_file" : "newer_form");
-  if (bytes.len()<9) { if(report!=null)report.malformed=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
+  if (bytes.len()<9) { if(report!=null)report.bodyDamaged=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
   // THE RECEIVER'S TWO BOUNDS (docs/SPEC-TABLES.md §3.3): MaxEntries caps the
   // entry count, MaxBytes the vocabulary field's own byte length, and zero
   // means the conforming default in each case.
@@ -124,7 +124,7 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   local maxBytes = (("MaxBytes" in v) && v.MaxBytes > 0) ? v.MaxBytes : 65536;
   local total=bytes.len(), trailer=total-8, entries=readU64(bytes,trailer);
   if(entries>maxEntries)return refuseAnnouncement(v,report,"vocabulary_too_large");
-  if(entries>(trailer-1)/8){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
+  if(entries>(trailer-1)/8){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
   local bodyEnd=trailer-entries*8, ids=[];
   for(local i=0;i<entries;i++)ids.append(readU64(bytes,bodyEnd+i*8));
   local state={b=bytes,at=1,end=bodyEnd,bad=false}, versionCount=0, wordsCount=0, words=null, build=0;
@@ -147,9 +147,9 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
       skipFileKind(bytes,state,kind);if(state.bad)break;
     }
   }
-  if(state.bad||state.at!=bodyEnd||versionCount!=1||wordsCount!=1){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
+  if(state.bad||state.at!=bodyEnd||versionCount!=1||wordsCount!=1){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
   local parsed=parseVocabulary(words);
-  if(!parsed[2]){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
+  if(!parsed[2]){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
   setSlot(v,"Ids",parsed[0]);setSlot(v,"Entries",parsed[1]);v.Count<-v.Ids.len();local refs=0, cap=v.Count;while(cap>0){refs++;cap=cap>>1;}v.RefBits<-refs;if(v.RefBits==0)v.RefBits=1;
   v.BuildVersion<-build;setSlot(v,"Announced",true);return true;
 };
@@ -231,11 +231,11 @@ messageWidenF32 = function(bits) {
 f32 = function(x) { return messageWidenF32(messageNarrowF32(x.tofloat())); };
 // THE ONE RULE (§3.3): a finite float32 read into a COMPRESSED float32 field
 // clamps to the declared range and counts, a -0 lands as +0, and a float32
-// widened into a float64 field clamps nothing (the Go engine's clampFloat)
+// widened into a float64 field clamps nothing (the Go engine's rangeFloat)
 local messageClampFloat = function(r, fd, v) {
   if (!fd.f32 || fd.fmin == null) return v;
-  if (v < fd.fmin) { r.clamped++; return f32(fd.fmin); }
-  if (v > fd.fmax) { r.clamped++; return f32(fd.fmax); }
+  if (v < fd.fmin) { r.oor++; return f32(fd.fmin); }
+  if (v > fd.fmax) { r.oor++; return f32(fd.fmax); }
   if (v == 0.0) return 0.0;
   return v;
 };
@@ -379,7 +379,7 @@ local writeScalar = function(T, w, fd, value) {
   }
   if (fd.shape == "float") {
     // A NaN OR AN INFINITY IS REFUSED BEFORE THE QUANTIZER RUNS, never
-    // clamped (docs/SPEC-TABLES.md §3.3), and a float32 must stay finite at
+    // oor (docs/SPEC-TABLES.md §3.3), and a float32 must stay finite at
     // float32: the write refuses, non_finite_float: <Owner>.<field>
     value = value.tofloat();
     local finite = fd.f32 ? (messageNarrowF32(value) & 0x7f800000) != 0x7f800000
@@ -431,7 +431,7 @@ local readScalar = function(r, T, v, fd, shape) {
     if (shape.Kind==11) {local raw=get(r,64);if(r.bad)return 0.0;if((raw&0x7ff0000000000000)==0x7ff0000000000000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}return casti2f(raw);}
     if (shape.Kind==10 && shape.Packing!=2) {local raw=get(r,32);if(r.bad)return 0.0;if((raw&0x7f800000)==0x7f800000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}return messageClampFloat(r,fd,messageWidenF32(raw));}
     // ir.TableMessageDequantize, bit for bit: an index above the step count is
-    // damage and never clamped (§3.3, SPEC.md §4.3), every product rounds to
+    // damage and never oor (§3.3, SPEC.md §4.3), every product rounds to
     // float32, and the float lands under the reader's own declared range
     if (shape.Kind==10 && shape.Packing==2) {local index=get(r,shape.Bits);if(r.bad)return 0.0;if(index>shape.QCount){r.bad=true;return 0.0;}local n=f32(f32(index.tofloat())/f32(shape.QCount.tofloat()));local scaled=f32(n*shape.QDelta);return messageClampFloat(r,fd,f32(scaled+shape.QMin));}
     if (shape.Kind==10) return messageWidenF32(get(r, 32));
@@ -445,9 +445,9 @@ local readScalar = function(r, T, v, fd, shape) {
   if (fd.shape == "int" && fd.lo != null && fd.hi != null) {
     if (fd.kind == 9) {
       local MIN = 0x8000000000000000;
-      if ((x ^ MIN) < (fd.lo ^ MIN)) { x = fd.lo; r.clamped++; }
-      else if ((x ^ MIN) > (fd.hi ^ MIN)) { x = fd.hi; r.clamped++; }
-    } else if(x<fd.lo){x=fd.lo;r.clamped++;}else if(x>fd.hi){x=fd.hi;r.clamped++;}
+      if ((x ^ MIN) < (fd.lo ^ MIN)) { x = fd.lo; r.oor++; }
+      else if ((x ^ MIN) > (fd.hi ^ MIN)) { x = fd.hi; r.oor++; }
+    } else if(x<fd.lo){x=fd.lo;r.oor++;}else if(x>fd.hi){x=fd.hi;r.oor++;}
   }
   return x;
 };
@@ -529,18 +529,18 @@ skipPayload = function(T, v, r, fd, depth) {
 
 readPayload = function(T, v, r, fd, owner, member, depth, entry) {
   if (depth > 128) { r.bad = true; return; }
-  if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry,0);return;}
+  if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.mismatch++;skipRemoteEntry(T,v,r,entry,0);return;}
   if(entry.Kind!=fd.kind)r.widened++;
   if (fd.shape == "str") {
     local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max){r.bad=true;return;}
     if(!alignRead(r)){r.bad=true;return;}
-    local s="";if(n>fd.bound)r.clamped++;for(local i=0;i<n;i++){local c=get(r,8)&0xff;if(i<fd.bound)s+=format("%c",c);}
+    local s="";if(n>fd.bound)r.oor++;for(local i=0;i<n;i++){local c=get(r,8)&0xff;if(i<fd.bound)s+=format("%c",c);}
     owner[member]=s;return;
   }
   if (fd.shape == "bytes") {
     local n=get(r,entry.Shape.Bits);if(r.bad||n<entry.Shape.Min||n>entry.Shape.Max){r.bad=true;return;}
     if(!alignRead(r)){r.bad=true;return;}
-    local kept=n<fd.bound?n:fd.bound;if(kept<n)r.clamped++;
+    local kept=n<fd.bound?n:fd.bound;if(kept<n)r.oor++;
     local b=blob(kept);for(local i=0;i<n;i++){local x=get(r,8)&0xff;if(i<kept)b[i]=x;}
     owner[member]=b;return;
   }
@@ -548,7 +548,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max||r.bits+n*16>r.b.len()*8){r.bad=true;return;}
     local units=array(n);for(local i=0;i<n;i++)units[i]=get(r,16);
     if(r.bad||!wideValid(units)){r.bad=true;return;}
-    if(n>fd.bound){r.clamped++;units=wideClamp(units,fd.bound);}
+    if(n>fd.bound){r.oor++;units=wideClamp(units,fd.bound);}
     owner[member]=units;return;
   }
   if(fd.shape=="tab"){local child=T.Descriptors[fd.table].make();readBody(T,v,r,T.Descriptors[fd.table],child,depth+1);owner[member]=child;return;}
@@ -566,13 +566,13 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     // §3.3: kind 14 counts and aligns byte elements; kind 16 restores each element by key name.
     local shape=entry.Shape,n=get(r,shape.Bits)+shape.Min;
     if(r.bad||n<shape.Min||n>shape.Max){r.bad=true;return;}
-    local kept=n<fd.bound?n:fd.bound;if(kept<n)r.clamped++;
+    local kept=n<fd.bound?n:fd.bound;if(kept<n)r.oor++;
     if(entry.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}
     local keyed=(fd.keyvariants != null),a=keyed?owner[member]:[];if(!keyed){local size=((fd.list||fd.counted)?kept:fd.bound);for(local j=0;j<size;j++)a.append(fd.elem.def);}
     for(local i=0;i<n;i++){
       local index=i;
       if(keyed){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id)index=j;if(index<0){r.unknown++;skipRemoteEntry(T,v,r,entry.Element,0);if(r.bad)return;continue;}}
-      if(entry.Element.Kind!=fd.elem.kind&&!kindWidens(entry.Element.Kind,fd.elem.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry.Element,0);if(r.bad)return;continue;}
+      if(entry.Element.Kind!=fd.elem.kind&&!kindWidens(entry.Element.Kind,fd.elem.kind)){r.mismatch++;skipRemoteEntry(T,v,r,entry.Element,0);if(r.bad)return;continue;}
       local holder={value=null};readPayload(T,v,r,fd.elem,holder,"value",depth+1,entry.Element);if(index<kept)a[index]=holder.value;if(r.bad)return;
     }
     owner[member]=a;return;
@@ -613,7 +613,7 @@ readBody = function(T, v, r, d, value, depth) {
     if(id==0xfffffffffffffffd||id==0xfffffffffffffffe||id==0xffffffffffffffff){r.bad=true;return;}
     local entry=v.Entries[ref-1],fd=null;if(id in d.byId)fd=d.byId[id];
     if(fd==null){r.unknown++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;}
-    if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;}
+    if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.mismatch++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;}
     if(fd.optional)value[fd.member + "Present"] = true;
     readPayload(T,v,r,fd,value,fd.member,depth+1,entry);
     if(r.bad)return;
@@ -628,7 +628,7 @@ local writeBatch = function(T, root, values, out, measuring, report) {
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
   local w=newWriter(out,measuring);put(w,2,8);put(w,values.len()-1,8);
 
-  foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null){report.malformed<-true;report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}}
+  foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null){report.bodyDamaged<-true;report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}}
   local pad=(-w.bits)&7;put(w,0,pad);
   if(w.bad){if(report!=null){report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}
   return (w.bits+7)/8;
@@ -643,7 +643,7 @@ _M.SaveMessages <- function(T, root, values, out, report) {
 _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   reset(report);
   if(v==null||!("Announced" in v)||!v.Announced)return refuse(report,"no_vocabulary");
-  if(bytes==null||bytes.len()<2){if(report!=null)report.malformed<-true;return -1;}
+  if(bytes==null||bytes.len()<2){if(report!=null)report.bodyDamaged<-true;return -1;}
   if((bytes[0]&0xff)!=2)return refuse(report,"newer_form");
   local count = (bytes[1]&0xff)+1;
   if(count>storage.len())return refuse(report,"batch_too_large");
@@ -654,7 +654,7 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   // and the interpreter cannot grow its stack inside one, so a deep but legal
   // nesting would die in the bit reader rather than at the depth bound.
   local raw=array(bytes.len());for(local i=0;i<raw.len();i++)raw[i]=bytes[i]&0xff;
-  local r={b=raw,bits=16,bad=false,unknown=0,kindMismatch=0,widened=0,clamped=0,nonFinite=null};
+  local r={b=raw,bits=16,bad=false,unknown=0,mismatch=0,widened=0,oor=0,nonFinite=null};
   local walked=readBatch(T,v,r,d,storage,count,bytes,report);
   // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
   // §3.3), outranking every other verdict: no body of it is delivered
@@ -669,11 +669,11 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
 readBatch = function(T, v, r, d, storage, count, bytes, report) {
   for(local k=0;k<count;k++){
     local before=r.bits;readBody(T,v,r,d,storage[k],0);
-    if(report!=null){report.unknown+=r.unknown;report.kindMismatch+=r.kindMismatch;report.widened+=r.widened;report.clamped+=r.clamped;}
-    r.unknown=0;r.kindMismatch=0;r.widened=0;r.clamped=0;
-    if(r.bad){if(report!=null)report.malformed<-true;return k;}
-    if(r.bits==before){if(report!=null)report.malformed<-true;return k;}
+    if(report!=null){report.unknown+=r.unknown;report.mismatch+=r.mismatch;report.widened+=r.widened;report.oor+=r.oor;}
+    r.unknown=0;r.mismatch=0;r.widened=0;r.oor=0;
+    if(r.bad){if(report!=null)report.bodyDamaged<-true;return k;}
+    if(r.bits==before){if(report!=null)report.bodyDamaged<-true;return k;}
   }
-  if(!alignRead(r)||r.bits!=bytes.len()*8){if(report!=null)report.malformed<-true;return -1;}
+  if(!alignRead(r)||r.bits!=bytes.len()*8){if(report!=null)report.bodyDamaged<-true;return -1;}
   return count;
 };

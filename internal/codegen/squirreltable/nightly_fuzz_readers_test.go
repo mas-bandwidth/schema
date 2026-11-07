@@ -49,15 +49,15 @@ local run = function(unit, mod, root, key, kind) {
   if (kind == "text") {
     local TX = schema.require("schema_table_text");
     v = TX.LoadText(T, root, inputs[key], r);
-    if ((v == null) != (r.refused || r.malformed))
+    if ((v == null) != (r.refused || r.bodyDamaged))
       throw "LoadText answered a value and a refusal together, or neither";
   } else {
     local J = schema.require("schema_table_json");
-    v = J.FromJsonTolerant(T, root, inputs[key], r);
+    v = J.fromJsonWalk(T, root, inputs[key], r);
     // FromJson always answers an instance; a bad text must set malformed,
     // which is its typed refusal, never a silent clean read.
   }
-  print(key + "|" + ((r.refused || r.malformed) ? "refused" : "read") + "\n");
+  print(key + "|" + ((r.refused || r.bodyDamaged) ? "refused" : "read") + "\n");
 };
 `
 

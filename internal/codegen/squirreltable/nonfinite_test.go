@@ -103,8 +103,8 @@ local bits = function(x) {
 };
 local nn = function(x) { return x == null ? "-" : x; };
 local newReport = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false };
+  return { unknown = 0, mismatch = 0, widened = 0, oor = 0,
+    repeated = 0, bodyDamaged = false, refused = false };
 };
 // a value from its bits: 16 hex digits are a double, 8 a float32
 local hexInt = function(h) {
@@ -122,14 +122,14 @@ local value = function(h) {
 // LOAD rows: the tolerant load, the strict read
 foreach (key in __LOADS__) {
   local report = newReport();
-  local v = L.loadTolerant(T, "Root", inputs[key], report);
+  local v = L.loadWalk(T, "Root", inputs[key], report);
   if (v == null) {
     print(key + " tol=nil refused=" + report.refused + " reason=" + nn(report.reason) + "\n");
   } else {
-    print(key + " tol=" + (report.malformed ? 1 : 0).tostring() + "," +
+    print(key + " tol=" + (report.bodyDamaged ? 1 : 0).tostring() + "," +
           (report.refused ? 1 : 0).tostring() + "," + report.unknown.tostring() + "," +
-          report.kindMismatch.tostring() + "," + report.clamped.tostring() + "," +
-          report.widened.tostring() + "," + report.duplicate.tostring() + "\n");
+          report.mismatch.tostring() + "," + report.oor.tostring() + "," +
+          report.widened.tostring() + "," + report.repeated.tostring() + "\n");
     print(key + " bits=" + bits(v.A) + "," + bits(v.B) + "," + bits(v.N.C) + "," +
           bits(v.N.D) + "," + bits(v.Xs[1]) + "," + bits(v.Ys[1]) + "\n");
     local b = S.save(T, "Root", v);

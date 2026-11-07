@@ -339,7 +339,7 @@ local strOf = function(b) {
 local nn = function(x) { return x == null ? "-" : x.tostring(); };
 
 local fresh = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
+  return { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };
 };
 
 // 1. Seed24
@@ -354,14 +354,14 @@ local fresh = function() {
 
   local sr = {};
   local sv = R.ReadStrict(T, "Root", inputs["damaged"], sr);
-  print("seed24_strict|" + nn(sv) + "|" + nn(sr.reason) + "|" + nn(sr.field) + "|" + nn(("blobShared" in sr) ? sr.blobShared : 0) + "\n");
+  print("seed24_strict|" + nn(sv) + "|" + nn(sr.reason) + "|" + nn(sr.field) + "|" + nn(("sharedBlob" in sr) ? sr.sharedBlob : 0) + "\n");
 
   local ltr = {};
   local ltv = X.LoadText(T, "Root", strOf(inputs["damaged_b64"]), ltr);
-  print("seed24_loadtext|" + nn(ltv) + "|" + nn(ltr.reason) + "|" + nn(ltr.field) + "|" + nn(("blobShared" in ltr) ? ltr.blobShared : 0) + "\n");
+  print("seed24_loadtext|" + nn(ltv) + "|" + nn(ltr.reason) + "|" + nn(ltr.field) + "|" + nn(("sharedBlob" in ltr) ? ltr.sharedBlob : 0) + "\n");
 
   local tr = fresh();
-  local tv = L.loadTolerant(T, "Root", inputs["damaged"], tr);
+  local tv = L.loadWalk(T, "Root", inputs["damaged"], tr);
   local sameNode = tv != null && tv.F2 != null && tv.F2.len() > 0 && tv.F2 == tv.U0.Ptr;
   local jm = J.ToJsonMeasure(T, "Root", tv);
   local jr = ("ToJsonReason" in J) ? J.ToJsonReason : null;
@@ -369,7 +369,7 @@ local fresh = function() {
   local sm = S.measure(T, "Root", tv);
   local sreason = ("SaveReason" in S) ? S.SaveReason : null;
   local sw = S.save(T, "Root", tv);
-  print("seed24_tolerant|" + (tv != null) + "|" + tr.malformed + "|" + nn(("blobShared" in tr) ? tr.blobShared : 0) + "|" +
+  print("seed24_tolerant|" + (tv != null) + "|" + tr.bodyDamaged + "|" + nn(("sharedBlob" in tr) ? tr.sharedBlob : 0) + "|" +
         nn(("reason" in tr) ? tr.reason : null) + "|" + nn(("field" in tr) ? tr.field : null) + "|" + sameNode + "|" +
         jm + "|" + nn(jr) + "|" + nn(jw) + "|" + sm + "|" + nn(sreason) + "|" + nn(sw) + "\n");
 
@@ -407,8 +407,8 @@ local fresh = function() {
   local qjm = qv == null ? -1 : J.ToJsonMeasure(T, "Root", qv);
   local qj = qv == null ? null : J.ToJson(T, "Root", qv);
   local qfr = fresh();
-  local qf = qj == null ? null : J.FromJsonTolerant(T, "Root", qj, qfr);
-  local qj2 = (qf == null || qfr.malformed) ? null : J.ToJson(T, "Root", qf);
+  local qf = qj == null ? null : J.fromJsonWalk(T, "Root", qj, qfr);
+  local qj2 = (qf == null || qfr.bodyDamaged) ? null : J.ToJson(T, "Root", qf);
   print("writers_two|" + qm + "|" + hexOf(qs) + "|" + nn(qst) + "|" + nn(qvr.reason) + "|" +
         hexOf(qvBack) + "|" + qjm + "|" + hexOf(qj) + "|" + hexOf(qj2) + "\n");
 }
@@ -439,10 +439,10 @@ local fresh = function() {
 
   local sr = {};
   local sv = R.ReadStrict(T, "Root", inputs["amp"], sr);
-  print("amp_strict|" + nn(sv) + "|" + nn(sr.reason) + "|" + nn(sr.field) + "|" + nn(("blobShared" in sr) ? sr.blobShared : 0) + "\n");
+  print("amp_strict|" + nn(sv) + "|" + nn(sr.reason) + "|" + nn(sr.field) + "|" + nn(("sharedBlob" in sr) ? sr.sharedBlob : 0) + "\n");
 
   local tr = fresh();
-  local tv = L.loadTolerant(T, "Root", inputs["amp"], tr);
+  local tv = L.loadWalk(T, "Root", inputs["amp"], tr);
   local allSame = tv != null && tv.Items.len() == 4096 && tv.Items[0].B != null && tv.Items[0].B.len() == 65536;
   if (allSame) {
     local first = tv.Items[0].B;
@@ -459,7 +459,7 @@ local fresh = function() {
   local asm = tv == null ? 0 : S.measure(T, "Root", tv);
   local asReason = ("SaveReason" in S) ? S.SaveReason : null;
   local asw = tv == null ? "non-null" : S.save(T, "Root", tv);
-  print("amp_tolerant|" + (tv != null) + "|" + tr.malformed + "|" + nn(("blobShared" in tr) ? tr.blobShared : 0) + "|" +
+  print("amp_tolerant|" + (tv != null) + "|" + tr.bodyDamaged + "|" + nn(("sharedBlob" in tr) ? tr.sharedBlob : 0) + "|" +
         nn(("reason" in tr) ? tr.reason : null) + "|" + nn(("field" in tr) ? tr.field : null) + "|" + allSame + "|" +
         ajm + "|" + nn(ajReason) + "|" + nn(ajw) + "|" + asm + "|" + nn(asReason) + "|" + nn(asw) + "\n");
 }
