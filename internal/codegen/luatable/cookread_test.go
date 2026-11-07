@@ -60,7 +60,11 @@ func TestLuaCookRead(t *testing.T) {
 			}
 			dir := t.TempDir()
 			luarun.WriteFiles(t, dir, files)
-			probe := cookReadProbe(ModuleName(u), row.root)
+			fixedRoot := false
+			if st := u.Tables[row.root]; st != nil && st.FixedDeclared {
+				fixedRoot = true
+			}
+			probe := cookReadProbe(ModuleName(u), row.root, fixedRoot)
 			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -75,9 +79,14 @@ func TestLuaCookRead(t *testing.T) {
 	}
 }
 
-// cookReadProbe is the Lua main for one row: it loads the wire, opens the cook,
-// reads the opened region, and compares canonical dumps of the two values.
-func cookReadProbe(module, root string) string {
+// cookReadProbe is the Lua main for one row: it loads the wire (through the
+// root's declared form, §3.4), opens the cook, reads the opened region, and
+// compares canonical dumps of the two values.
+func cookReadProbe(module, root string, fixed bool) string {
+	loadLine := `local wire = load.LoadTolerant(T, root, inputs.wire, report)`
+	if fixed {
+		loadLine = `local wire = T.ReadFixedTolerant(root, inputs.wire)`
+	}
 	return fmt.Sprintf(`local T = require(%q)
 local load = require("load")
 local cook = require("cook")
@@ -119,7 +128,7 @@ local function dump(v)
 end
 
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local wire = load.LoadTolerant(T, root, inputs.wire, report)
+%s
 local h, why = cook.Open(T, root, inputs.cook)
 if h == nil then error("cook refused: " .. tostring(why)) end
 local opened = uncook.Read(T, h)
@@ -132,5 +141,5 @@ if a ~= b then
     i, a:sub(math.max(1, i - 80), i + 80), b:sub(math.max(1, i - 80), i + 80)))
 end
 print("ok")
-`, module, root)
+`, module, root, loadLine)
 }

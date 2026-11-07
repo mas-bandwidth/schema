@@ -266,18 +266,84 @@ encode_table = function(T, name, v)
   return table.concat(parts)
 end
 
+-- The tolerant read's tallies (docs/SPEC-TABLES.md §3.4, §5.4 of the
+-- fixed-form algorithm): a value the record states past its declared bound
+-- counts clamped (the tolerant value itself rides unchecked, as BASE's
+-- answer does; the strict read refuses it), and a union tag naming no arm lands
+-- None and counts unknown, as the engine's fixed decode counts them. One
+-- tally serves the read in flight; the readers return it.
+local clamp_tally = nil
+local read_strict = false
+local function count_clamp()
+  if clamp_tally ~= nil and not read_strict then clamp_tally.clamped = clamp_tally.clamped + 1 end
+end
+local function count_unknown()
+  if clamp_tally ~= nil then clamp_tally.unknown = clamp_tally.unknown + 1 end
+end
+
 decode_value = function(T, d, buf, pos, size, elemSize)
   local s = d.shape
   if s == "int" then
     local w = d.timestamp and 8 or size
     local signed = d.timestamp or d.signed
-    return unpack_int(buf, pos, w, signed)
+    local v = unpack_int(buf, pos, w, signed)
+    if d.lo ~= nil and d.hi ~= nil and type(v) == "number" then
+      -- unsigned storage compares by math.ult, as the variable walk's
+      -- less_than does: an eight-byte raw value's high bit is not a sign
+      local below, above
+      if d.signed then
+        below, above = v < d.lo, v > d.hi
+      else
+        below, above = math.ult(v, d.lo), math.ult(d.hi, v)
+      end
+      if below then
+        count_clamp()
+      elseif above then
+        count_clamp()
+      end
+    end
+    -- a bits(N) field clamps to its mask and counts it (§3.4); a declared
+    -- range on the same field already counted the same landing
+    if d.lo == nil and d.bits ~= nil and d.bits > 0 and d.bits < w * 8 and type(v) == "number" and v > (1 << d.bits) - 1 then
+      count_clamp()
+    end
+    return v, pos + w
   elseif s == "wide" then
-    return unpack_wide(buf, pos)
+    local v = unpack_wide(buf, pos)
+    -- a 128-bit range clamps on its raw halves and counts it (§3.4), the
+    -- halves compared as the variable walk's less_than compares them
+    if d.lo ~= nil and d.hi ~= nil then
+      local function lt128(a, b)
+        if d.signed then
+          if a.hi ~= b.hi then return a.hi < b.hi end
+          return math.ult(a.lo, b.lo)
+        end
+        if a.hi ~= b.hi then return math.ult(a.hi, b.hi) end
+        return math.ult(a.lo, b.lo)
+      end
+      if lt128(v, d.lo) then
+        count_clamp()
+      elseif lt128(d.hi, v) then
+        count_clamp()
+      end
+    end
+    return v, pos + size
   elseif s == "bool" then
     return buf:byte(pos) ~= 0, pos + size
   elseif s == "float" then
-    return unpack_float(d.f32, buf, pos)
+    local v, nxt = unpack_float(d.f32, buf, pos)
+    -- a ranged float32 clamps to its bound and counts it (§3.4); a -0
+    -- lands as +0, uncounted (§3.3, the special values)
+    if d.fmin ~= nil and d.fmax ~= nil then
+      if v < d.fmin then
+        count_clamp()
+      elseif v > d.fmax then
+        count_clamp()
+      elseif v == 0 then
+        v = 0
+      end
+    end
+    return v, nxt
   elseif s == "string" or s == "bytes" then
     local n = string.unpack("<i4", buf, pos)
     local cap = size - 4
@@ -298,6 +364,8 @@ decode_value = function(T, d, buf, pos, size, elemSize)
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
     local raw = unpack_int(buf, pos, w, false)
+    -- a forged ordinal lands None and counts clamped (§5.4)
+    if raw > #d.variants then count_clamp() end
     local v = nil
     -- a retired variant reads the declared default (docs/SPEC-TABLES.md §2.15)
     local var = raw ~= 0 and d.variants[raw] or nil
@@ -318,7 +386,10 @@ decode_value = function(T, d, buf, pos, size, elemSize)
   elseif s == "union" then
     local ud = T.FixedUnions[d.target]
     local tag = unpack_int(buf, pos, ud.tag, false)
-    if tag > #ud.arms then tag = 0 end
+    if tag > #ud.arms then
+      tag = 0
+      count_unknown()
+    end
     local v = { tag = tag }
     if tag ~= 0 then
       local arm = ud.arms[tag]
@@ -335,7 +406,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
         local n = d.bound or #d.keyed
         for i = 1, n do
           local ev = decode_value(T, d.elem, buf, pos + (i - 1) * elemSize, elemSize)
-          t[i] = ev == nil and false or ev
+          if ev == nil then t[i] = false else t[i] = ev end
         end
         return t, pos + size
       end
@@ -343,7 +414,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
       if n < 0 or n > d.bound then error("count_over_bound") end
       for i = 1, n do
         local ev = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
-        t[i] = ev == nil and false or ev
+        if ev == nil then t[i] = false else t[i] = ev end
       end
       return t, pos + size
     end
@@ -664,7 +735,7 @@ end
 -- laid down, and an older writer's records are read under ITS layout bytes.
 -- `strict` is the plain name's read (docs/SPEC-TABLES.md §6.5): the tolerant
 -- twin passes false and keeps BASE's answers.
-function F.read(T, name, buf, strict)
+local function read_impl(T, name, buf, strict)
   if #buf < 1 then error("malformed") end
   local form = buf:byte(1)
   if form ~= formByte then
@@ -740,6 +811,19 @@ function F.read(T, name, buf, strict)
   return value, hash, layout
 end
 
+-- F.read is one record's read: the value, its layout hash and bytes, and
+-- the read's clamped and unknown tallies.
+function F.read(T, name, buf, strict)
+  clamp_tally = { clamped = 0, unknown = 0 }
+  read_strict = strict and true or false
+  local ok, v, h, l = pcall(read_impl, T, name, buf, strict)
+  read_strict = false
+  local clamped, unknown = clamp_tally.clamped, clamp_tally.unknown
+  clamp_tally = nil
+  if not ok then error(v, 0) end
+  return v, h, l, clamped, unknown
+end
+
 -- F.write writes the header and ONE record (docs/FIXED-FORM-ALGORITHM.md §2,
 -- §3.1): the template is the hash and a zeroed body, and each field lands at
 -- its constant offset, little-endian, at its declared width.
@@ -795,7 +879,7 @@ end
 
 -- F.load parses a batch fixed-form file under §5.3's named refusal order and
 -- returns the array of decoded records, the header hash, and the layout bytes.
-function F.load(T, name, buf, strict, cap)
+local function load_impl(T, name, buf, strict, cap)
   if #buf < 1 then error("truncated", 0) end
   local form = buf:byte(1)
   if form ~= formByte then
@@ -861,6 +945,19 @@ function F.load(T, name, buf, strict, cap)
     out[k] = v
   end
   return out, hash, layout, rep and rep.widened or 0
+end
+
+-- F.load is a whole file's read: the records, the layout hash and bytes,
+-- the widened count, and the read's clamped and unknown tallies.
+function F.load(T, name, buf, strict, cap)
+  clamp_tally = { clamped = 0, unknown = 0 }
+  read_strict = strict and true or false
+  local ok, out, h, l, w = pcall(load_impl, T, name, buf, strict, cap)
+  read_strict = false
+  local clamped, unknown = clamp_tally.clamped, clamp_tally.unknown
+  clamp_tally = nil
+  if not ok then error(out, 0) end
+  return out, h, l, w, clamped, unknown
 end
 
 -- F.prepare builds, once, every derived fact the fixed form reads from a
