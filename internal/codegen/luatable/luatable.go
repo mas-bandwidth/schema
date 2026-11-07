@@ -612,8 +612,8 @@ func guardedFieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, guard []guardT
 // contiguous storage members ir.FieldPieces names, in order.
 func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []guardTerm, pieces []ir.BlockFieldPiece) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "{ name = %q, key = %q, id = %s, ordinal = %d, kind = %d, ",
-		f.Name, ir.TableFieldJsonKey(f), idLit(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
+	fmt.Fprintf(&b, "{ name = %q, key = %s, id = %s, ordinal = %d, kind = %d, ",
+		f.Name, lua.ByteString([]byte(ir.TableFieldJsonKey(f))), idLit(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
 	if len(pieces) > 0 {
 		fmt.Fprintf(&b, "at = %d, ", pieces[0].Offset)
 		if needsCompanion(f) && len(pieces) > 1 {
