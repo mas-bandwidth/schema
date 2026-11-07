@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	sqOrphanCycleFrom = `if (_require("schema_table_save").cyclic(T, rootName, v, verts)) report.malformed = true;`
-	sqOrphanCycleTo   = `if (_require("schema_table_save").numberForCook(T, rootName, v) == null) report.malformed = true;`
+	sqOrphanCycleFrom = `if (_require("schema_table_save").cyclic(T, rootName, v, verts)) report.bodyDamaged = true;`
+	sqOrphanCycleTo   = `if (_require("schema_table_save").numberForCook(T, rootName, v) == null) report.bodyDamaged = true;`
 )
 
 func runSquirrelOrphanCycleProbe(t *testing.T, wire []byte, plant bool) string {
@@ -60,7 +60,7 @@ local schema = dofile("graphdemo/schema_module.nut", true);
 local T = schema.require(%q);
 local r = {};
 local v = T.SceneLoad(inputs["vec"], r);
-local damaged = (v == null) && ("malformed" in r) && r.malformed;
+local damaged = (v == null) && ("bodyDamaged" in r) && r.bodyDamaged;
 print((v != null ? "loaded" : "null") + "|" + (damaged ? "damage" : "ok") + "\n");
 `, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(main))
@@ -100,7 +100,7 @@ func TestSquirrelPointerOrphanCycleIsDamage(t *testing.T) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: restoring the root-only cycle walk left pointer_orphan_cycle answering %q", got)
 	}
 
-	twin := bytes.Replace(wire, []byte{0x04, 0x11, 0x02, 0x00}, []byte{0x04, 0x11, 0x03, 0x00}, 1)
+	twin := bytes.Replace(bytes.Replace(wire, []byte{0x04, 0x11, 0x02, 0x00}, []byte{0x04, 0x11, 0x03, 0x00}, 1), []byte{0x01, 0x11, 0x00}, []byte{0x01, 0x11, 0x02}, 1)
 	if bytes.Equal(twin, wire) {
 		t.Fatal("pointer_orphan_cycle.bin did not contain expected ListNode 2 self-edge 04 11 02 00")
 	}

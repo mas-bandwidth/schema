@@ -470,7 +470,7 @@ _M.LoadRetain <- function(T, rootName, bytes, store, report) {
     foreach (rec in store.recs) if (rec.body == inst) return true;
     return false;
   };
-  local v = L.loadTolerant(T, rootName, bytes, report, store);
+  local v = L.loadWalk(T, rootName, bytes, report, store);
   // a count past the int32 storage cap discards the partial builder, and with
   // it every record the walk captured before the refusal (§2.9)
   if (v == null && report.countRefusal) {

@@ -30,7 +30,7 @@ local _json = _require("schema_table_json");
 
 // The stable refusal names (§16.9.4).
 local UNKNOWN_KEY = "text_unknown_key";
-local DUPLICATE_KEY = "text_duplicate_key";
+local REPEATED_KEY = "text_repeated_key";
 local BOUND = "text_bound";
 local UNTERMINATED = "text_unterminated";
 local SYNTAX = "text_syntax";
@@ -44,7 +44,7 @@ local REFERENCE = "text_reference";
 local LIMIT = "text_limit";
 local EDIT_CONFLICT = "text_edit_conflict";
 
-_M.Names <- [UNKNOWN_KEY, DUPLICATE_KEY, BOUND, UNTERMINATED, SYNTAX, KIND_MISMATCH,
+_M.Names <- [UNKNOWN_KEY, REPEATED_KEY, BOUND, UNTERMINATED, SYNTAX, KIND_MISMATCH,
   UNKNOWN_VARIANT, ENCODING, TIMESTAMP, MISSING_REQUIRED, INACTIVE_FIELD, REFERENCE,
   LIMIT, EDIT_CONFLICT];
 
@@ -658,7 +658,7 @@ record = function(r, node, desc, path, first, label) {
     local fp = joinPath(path, fd.key);
     k.path = fp;
     k.pathed = true;
-    if (seen[index] != null) return rfail(r, DUPLICATE_KEY, k, k.start);
+    if (seen[index] != null) return rfail(r, REPEATED_KEY, k, k.start);
     seen[index] = k;
     if (!array) {
       if (wrote) raw(r, ",");
@@ -777,7 +777,7 @@ local flagsValue = function(r, v, d, path) {
     local bit = -1;
     foreach (b, name in names) if (name == item.text) { bit = b; break; }
     if (bit < 0) return rfail(r, UNKNOWN_VARIANT, item, item.start);
-    if (bit in seen) return rfail(r, DUPLICATE_KEY, item, item.start);
+    if (bit in seen) return rfail(r, REPEATED_KEY, item, item.start);
     seen[bit] <- true;
     item.canon = item.text;
     if (i > 0) raw(r, ",");
@@ -947,7 +947,7 @@ local keyed = function(r, v, d, path) {
     local sp = joinPath(path, k.text);
     k.path = sp;
     k.pathed = true;
-    if (seen[slot]) return rfail(r, DUPLICATE_KEY, k, k.start);
+    if (seen[slot]) return rfail(r, REPEATED_KEY, k, k.start);
     seen[slot] = true;
     if (i > 0) raw(r, ",");
     jsonString(r, k.text);
@@ -976,7 +976,7 @@ local union = function(r, v, d, path) {
     local ap = joinPath(path, k.text);
     k.path = ap;
     k.pathed = true;
-    if (chosen == arm) return rfail(r, DUPLICATE_KEY, k, k.start);
+    if (chosen == arm) return rfail(r, REPEATED_KEY, k, k.start);
     // a union holds one arm: two different arms is the wrong shape
     if (chosen != null) return rfail(r, KIND_MISMATCH, k, k.start);
     chosen = arm;
@@ -1197,13 +1197,13 @@ local read = function(T, rootName, src, limits) {
 // between the two and is never accepted silently.
 local land = function(T, rootName, js) {
   local report = {};
-  local v = _json.FromJsonTolerant(T, rootName, js, report);
+  local v = _json.fromJsonWalk(T, rootName, js, report);
   local name = null;
-  if (report.clamped > 0) name = BOUND;
+  if (report.oor > 0) name = BOUND;
   else if (report.unknown > 0) name = UNKNOWN_KEY;
-  else if (report.duplicate > 0) name = DUPLICATE_KEY;
-  else if (report.malformed || report.refused) name = SYNTAX;
-  else if (report.kindMismatch > 0 || report.widened > 0) name = KIND_MISMATCH;
+  else if (report.repeated > 0) name = REPEATED_KEY;
+  else if (report.bodyDamaged || report.refused) name = SYNTAX;
+  else if (report.mismatch > 0 || report.widened > 0) name = KIND_MISMATCH;
   return name == null ? [v, null] : [null, name];
 };
 

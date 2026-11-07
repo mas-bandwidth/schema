@@ -211,7 +211,7 @@ local check = function(name, wire, expectOK) {
   values[0].A = -7; values[1].A = -7;
   local rep = {};
   local count = T.RootLoadMessages(values, v, wire, rep);
-  local malformed = ("malformed" in rep) && rep.malformed;
+  local bodyDamaged = ("bodyDamaged" in rep) && rep.bodyDamaged;
   local refused = ("refused" in rep) && rep.refused;
   local unknown = ("unknown" in rep) ? rep.unknown : 0;
   local good;

@@ -43,8 +43,8 @@ func TestSquirrelUnionElementResetsAtItsArmID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ans.malformed {
-		t.Fatalf("the engine's answer moved: saveFail=%t malformed=%t", ans.saveFail, ans.malformed)
+	if !ans.bodyDamaged {
+		t.Fatalf("the engine's answer moved: saveFail=%t malformed=%t", ans.saveFail, ans.bodyDamaged)
 	}
 
 	dir := t.TempDir()
@@ -72,8 +72,8 @@ func TestSquirrelArmWidenedCountsOnlyADecodedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ans.malformed {
-		t.Fatalf("the engine's answer moved: widened=%d malformed=%t", ans.widened, ans.malformed)
+	if !ans.bodyDamaged {
+		t.Fatalf("the engine's answer moved: widened=%d malformed=%t", ans.widened, ans.bodyDamaged)
 	}
 	dir := t.TempDir()
 	mod := emitUnit(t, dir, "messagedemo", unit)
@@ -196,7 +196,7 @@ func TestSquirrelHeaderAndUnionFieldPins(t *testing.T) {
 			}
 			dir := t.TempDir()
 			mod := emitUnit(t, dir, pin.pkg, unit)
-			if ans.malformed {
+			if ans.bodyDamaged {
 				requireSquirrelDiscard(t, dir, pin.pkg, mod, pin.root, data)
 				return
 			}
@@ -205,7 +205,7 @@ func TestSquirrelHeaderAndUnionFieldPins(t *testing.T) {
 			fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", pin.pkg, mod, pin.root, "case")
 			writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 			got := reportLine(t, sqrun.Run(t, dir, "main.nut", map[string][]byte{"case": data}))
-			want := fmt.Sprintf("%d,%d,%d,%d,%d,%t,", ans.unknown, ans.kindMismatch, ans.widened, ans.clamped, ans.duplicate, ans.malformed)
+			want := fmt.Sprintf("%d,%d,%d,%d,%d,%t,", ans.unknown, ans.mismatch, ans.widened, ans.oor, ans.repeated, ans.bodyDamaged)
 			if !strings.HasPrefix(got, want) {
 				t.Fatalf("the load reports %q, the engine %s (unknown, kind_mismatch, widened, clamped, duplicate, malformed)", got, want)
 			}
@@ -229,8 +229,8 @@ func requireSquirrelDiscardWithDelegate(t *testing.T, dir, pkg, mod, root string
 	t.Helper()
 	program := fmt.Sprintf(`local I=dofile("inputs.nut",true);
 local S=dofile(%q,true); local T=S.require(%q); local L=S.require("schema_table_load");
-local report={unknown=0,kindMismatch=0,widened=0,clamped=0,duplicate=0,malformed=false,refused=false,countRefusal=false,missingRequired=false}; if(%t)report.setdelegate({}); local value=L.loadTolerant(T,%q,I["case"],report);
-print(report.malformed && value==null ? "discarded" : "kept");`, pkg+"/schema_module.nut", mod, delegated, root)
+local report={unknown=0,kindMismatch=0,widened=0,clamped=0,duplicate=0,malformed=false,refused=false,countRefusal=false,missingRequired=false}; if(%t)report.setdelegate({}); local value=L.loadWalk(T,%q,I["case"],report);
+print(report.bodyDamaged && value==null ? "discarded" : "kept");`, pkg+"/schema_module.nut", mod, delegated, root)
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(program))
 	got := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"case": data})))
 	if got != "discarded" {

@@ -35,7 +35,7 @@ local run = function(unit, mod, root, key, form, integrity) {
   local nn = function(x) { return x == null ? "-" : x; };
   print(key + "|" + (report.reason == null ? "ok" : report.reason) + "|" + nn(report.field) + "|" +
         report.unknown + ":" + nn(report.unknownField) + "|" +
-        report.duplicate + ":" + nn(report.duplicateField) + "\n");
+        report.repeated + ":" + nn(report.repeatedField) + "\n");
 };
 `
 
@@ -68,7 +68,7 @@ func strictName(t *testing.T, row, pinned string) string {
 	case f[5] == "true":
 		return "wire_damaged"
 	case f[3] != "0":
-		return "clamped"
+		return "out_of_range"
 	case f[1] != "0":
 		return "kind_mismatch"
 	}
@@ -201,7 +201,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		t.Fatal("no report row reached a generated unit")
 	}
 	// every counter §6.5 refuses on does so on at least one pinned row
-	for _, name := range []string{"kind_mismatch", "clamped", "malformed"} {
+	for _, name := range []string{"kind_mismatch", "out_of_range", "malformed"} {
 		if moved[name] == 0 {
 			t.Errorf("no generated report row refuses as %s", name)
 		}
@@ -290,7 +290,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		// a repeated field and an unknown one READ (§6.5, §4: last wins;
 		// unknown is evolution); unknown is counted with its field, and a
 		// repeated field id counts no duplicate at all (§4)
-		refusalCase{key: "duplicate", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "ok", field: "-", side: "duplicate:0:-"},
+		refusalCase{key: "repeated", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "ok", field: "-", side: "duplicate:0:-"},
 		refusalCase{key: "unknown", unit: "streamdemo", root: "Feed", input: "unknown", form: -1, want: "ok", field: "-", side: fmt.Sprintf("unknown:#%016x", unknownId)},
 		refusalCase{key: "clean", unit: "streamdemo", root: "Feed", input: "clean_plain", form: -1, want: "ok", field: "-"},
 		refusalCase{key: "integrity_ok", unit: "streamdemo", root: "Feed", input: "integrity_ok", form: -1, integrity: true, want: "ok", field: "-"},
@@ -372,7 +372,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 				wantSide = f
 			}
 			got := parts[3]
-			if counter == "duplicate" {
+			if counter == "repeated" {
 				got = parts[4]
 			}
 			if got != wantSide {
@@ -380,7 +380,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"malformed", "wire_damaged", "clamped", "kind_mismatch",
+	for _, name := range []string{"malformed", "wire_damaged", "out_of_range", "kind_mismatch",
 		"message_form_as_file", "newer_form", "integrity_mismatch", "ok"} {
 		if names[name] == 0 {
 			t.Errorf("no case answered %s", name)
@@ -401,8 +401,8 @@ local run = function(unit, mod, root, key) {
   local v = R.ReadStrict(T, root, inputs[key], report);
   print(key + "|" + (v == null ? "null" : "root") + "|" +
         (report.reason == null ? "-" : report.reason) + "|" +
-        report.unknown + "," + report.kindMismatch + "," + report.widened + "," +
-        report.clamped + "," + report.duplicate + "\n");
+        report.unknown + "," + report.mismatch + "," + report.widened + "," +
+        report.oor + "," + report.repeated + "\n");
 };
 `
 

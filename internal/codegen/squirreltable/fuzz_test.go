@@ -122,8 +122,8 @@ func fuzzMutant(base []byte, r *splitmix64) []byte {
 // engine's, in the same shape.
 type fuzzAnswer struct {
 	loaded                                             bool
-	unknown, kindMismatch, widened, clamped, duplicate int
-	malformed, refused                                 bool
+	unknown, mismatch, widened, oor, repeated int
+	bodyDamaged, refused                      bool
 	saved                                              []byte
 	saveFail                                           bool
 	// nonFinite is the engine's refusal of a NaN or an infinity
@@ -142,7 +142,7 @@ func (a fuzzAnswer) String() string {
 		save = fmt.Sprintf("%d bytes", len(a.saved))
 	}
 	return fmt.Sprintf("loaded=%t report=%d,%d,%d,%d,%d,%t refused=%t saved=%s",
-		a.loaded, a.unknown, a.kindMismatch, a.widened, a.clamped, a.duplicate, a.malformed, a.refused, save)
+		a.loaded, a.unknown, a.mismatch, a.widened, a.oor, a.repeated, a.bodyDamaged, a.refused, save)
 }
 
 // fuzzVerdict names the first disagreement between the leg and the engine, or
@@ -156,7 +156,7 @@ func fuzzVerdict(leg, eng fuzzAnswer) string {
 		return ""
 	}
 	if eng.refusedLoad {
-		if !leg.refused && !leg.malformed {
+		if !leg.refused && !leg.bodyDamaged {
 			return "the engine refuses the load; the leg did not refuse the wire"
 		}
 		return ""
@@ -164,9 +164,9 @@ func fuzzVerdict(leg, eng fuzzAnswer) string {
 	switch {
 	case leg.loaded != eng.loaded:
 		return "the builder's completion differs"
-	case leg.unknown != eng.unknown || leg.kindMismatch != eng.kindMismatch ||
-		leg.widened != eng.widened || leg.clamped != eng.clamped ||
-		leg.duplicate != eng.duplicate || leg.malformed != eng.malformed:
+	case leg.unknown != eng.unknown || leg.mismatch != eng.mismatch ||
+		leg.widened != eng.widened || leg.oor != eng.oor ||
+		leg.repeated != eng.repeated || leg.bodyDamaged != eng.bodyDamaged:
 		return "the report differs"
 	case leg.refused != eng.refused:
 		return "the refusal verdict differs"
@@ -204,7 +204,7 @@ func fuzzEngine(m *tabletext.Model, def *ir.Struct, variable bool, data []byte) 
 	case tablewire.ReadRefusal(derr) || (derr == nil && !ok):
 		// the leg owes the discard, which callers read as malformed
 		ans.refusedLoad = true
-		ans.malformed = true
+		ans.bodyDamaged = true
 		return ans, nil
 	case derr != nil:
 		return ans, fmt.Errorf("the engine failed: %w", derr)
@@ -317,11 +317,11 @@ func (l *fuzzLeg) ask(index int, data []byte) (fuzzAnswer, error) {
 	}
 	a.loaded = r[0] != 0
 	a.unknown = int(int32(binary.LittleEndian.Uint32(r[1:])))
-	a.kindMismatch = int(int32(binary.LittleEndian.Uint32(r[5:])))
+	a.mismatch = int(int32(binary.LittleEndian.Uint32(r[5:])))
 	a.widened = int(int32(binary.LittleEndian.Uint32(r[9:])))
-	a.clamped = int(int32(binary.LittleEndian.Uint32(r[13:])))
-	a.duplicate = int(int32(binary.LittleEndian.Uint32(r[17:])))
-	a.malformed = r[21] != 0
+	a.oor = int(int32(binary.LittleEndian.Uint32(r[13:])))
+	a.repeated = int(int32(binary.LittleEndian.Uint32(r[17:])))
+	a.bodyDamaged = r[21] != 0
 	a.refused = r[22] != 0
 	if measure := int64(binary.LittleEndian.Uint64(r[23:])); measure != -1 {
 		return a, fmt.Errorf("the driver answered a region measure of %d; this leg has no region", measure)
@@ -535,10 +535,10 @@ func TestSquirrelWireFuzzNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	const anchor = "readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {\n" +
 		"  local L = leb(r);\n" +
-		"  if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }\n"
+		"  if (r.bad || r.at + L > r.end) { report.bodyDamaged = true; return false; }\n"
 	const sabotaged = "readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {\n" +
 		"  local L = leb(r);\n" +
-		"  if (r.bad) { report.malformed = true; return false; }\n" +
+		"  if (r.bad) { report.bodyDamaged = true; return false; }\n" +
 		"  if (r.at + L > r.end) L = r.end - r.at;\n"
 	patched := 0
 	_, err := runWireFuzzDifferential(t, func(name string, src []byte) []byte {

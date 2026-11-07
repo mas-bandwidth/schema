@@ -123,7 +123,7 @@ local values = { flag = 1, tiny = 0xab, small = 0xcdef, word = 0x89abcdef, big =
 local file = wire.saveFile(layout, [values]);
 local read = wire.open(file);
 
-ok("the file opens clean: not refused, no damage, every §4 counter zero", !read.refused && !read.report.malformed && read.report.unknown == 0 && read.report.kind_mismatch == 0 && read.report.widened == 0 && read.report.clamped == 0 && read.report.duplicate == 0);
+ok("the file opens clean: not refused, no damage, every §4 counter zero", !read.refused && !read.report.bodyDamaged && read.report.unknown == 0 && read.report.kind_mismatch == 0 && read.report.widened == 0 && read.report.oor == 0 && read.report.repeated == 0);
 ok("the file is the framing §3.4 states: 16 header + 4 length + 140 layout + 8 hash + 28 body = 196 bytes", file.len() == 196);
 ok("the form byte is 3 and the seven reserved bytes are written zero (§3 THE FIRST BYTE)", file[0] == 3 && file[1] == 0 && file[2] == 0 && file[3] == 0 && file[4] == 0 && file[5] == 0 && file[6] == 0 && file[7] == 0);
 ok("the layout length word at 16 reads back 140 (u32 LE)", wire.u32At(file, 16) == 140);
@@ -156,7 +156,7 @@ local lyingOnly = copyBytes(file);
 lyingOnly[8] = lyingOnly[8] ^ 0xff;
 local rLying = wire.open(lyingOnly);
 ok("a lying hash alone is refused BY NAME: layout_malformed", rLying.refused && rLying.reason == "layout_malformed");
-ok("the lying-hash refusal moves none of §4's six counters and reports no damage", !rLying.report.malformed && rLying.report.unknown == 0 && rLying.report.kind_mismatch == 0 && rLying.report.widened == 0 && rLying.report.clamped == 0 && rLying.report.duplicate == 0);
+ok("the lying-hash refusal moves none of §4's six counters and reports no damage", !rLying.report.bodyDamaged && rLying.report.unknown == 0 && rLying.report.kind_mismatch == 0 && rLying.report.widened == 0 && rLying.report.oor == 0 && rLying.report.repeated == 0);
 
 // ---------------------------------------------------------------------------
 // §3.4: A TRUNCATED FILE UNDER 20 BYTES IS REFUSED BY NAME; THE FORM BYTE FIRST

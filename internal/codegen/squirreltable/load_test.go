@@ -26,15 +26,15 @@ local run = function(unit, mod, root, key) {
   local T = schema.require(mod);
   local L = schema.require("schema_table_load");
   local report = {
-    unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false
+    unknown = 0, mismatch = 0, widened = 0, oor = 0,
+    repeated = 0, bodyDamaged = false, refused = false
   };
-  L.loadTolerant(T, root, inputs[key], report);
+  L.loadWalk(T, root, inputs[key], report);
   local verdict = report.refused ? "refused" : "read";
-  local m = report.malformed ? "true" : "false";
-  print(key + " " + report.unknown.tostring() + "," + report.kindMismatch.tostring() + "," +
-        report.widened.tostring() + "," + report.clamped.tostring() + "," +
-        report.duplicate.tostring() + "," + m + "," + verdict + "\n");
+  local m = report.bodyDamaged ? "true" : "false";
+  print(key + " " + report.unknown.tostring() + "," + report.mismatch.tostring() + "," +
+        report.widened.tostring() + "," + report.oor.tostring() + "," +
+        report.repeated.tostring() + "," + m + "," + verdict + "\n");
 };
 `
 
@@ -438,7 +438,7 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 // (docs/SPEC-TABLES.md §4: "A 128-bit integer clamps to its declared bounds in
 // 128 bits"). A form-1 body carries an int128 past its declared max; the load
 // clamps it to the bound, counts one `clamped` and saves the clamped value,
-// exactly as the Go engine does. With clampScalar's array branch reverted it
+// exactly as the Go engine does. With rangeScalar's array branch reverted it
 // saves the raw value and reports no clamp, so this control goes red.
 func TestSquirrelLoadClampsThe128BitRange(t *testing.T) {
 	t.Skip("layer 4 (squirrel): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")

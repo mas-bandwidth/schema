@@ -166,7 +166,7 @@ local tableModuleName = function(dir) {
 };
 
 local newReport = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
+  return { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };
 };
 
 // One unit is opened once per process: the module loader and the table module
@@ -221,12 +221,12 @@ if (mode == "report" || mode == "framing") {
     local T = opened[1];
     local L = opened[0].require("schema_table_load");
     local report = newReport();
-    local v = L.loadTolerant(T, root, readBytes(wirepath), report);
-    local m = (report.malformed || (v == null && !report.refused)) ? "true" : "false";
-    local text = report.unknown.tostring() + "," + report.kindMismatch.tostring() + "," +
-                 report.widened.tostring() + "," + report.clamped.tostring() + "," +
-                 report.duplicate.tostring() + "," + m + "," + (report.refused ? "refused" : "read") + "\n";
-    if (v != null && !report.refused && !report.malformed && !noValue) {
+    local v = L.loadWalk(T, root, readBytes(wirepath), report);
+    local m = (report.bodyDamaged || (v == null && !report.refused)) ? "true" : "false";
+    local text = report.unknown.tostring() + "," + report.mismatch.tostring() + "," +
+                 report.widened.tostring() + "," + report.oor.tostring() + "," +
+                 report.repeated.tostring() + "," + m + "," + (report.refused ? "refused" : "read") + "\n";
+    if (v != null && !report.refused && !report.bodyDamaged && !noValue) {
       local json = T[root + "ToJson"](v);
       if (json == null) throw cname + ": ToJson refused the value";
       text += json;
@@ -251,7 +251,7 @@ if (mode == "wire") {
     local L = opened[0].require("schema_table_load");
     local S = opened[0].require("schema_table_save");
     local report = newReport();
-    local v = L.loadTolerant(T, root, readBytes(wirepath), report);
+    local v = L.loadWalk(T, root, readBytes(wirepath), report);
     if (v == null || report.refused) throw cname + ": load refused " + wirepath;
     local out = S.save(T, root, v);
     if (out == null) {
@@ -267,7 +267,7 @@ if (mode == "wire") {
 
 // THE TEXT FORM (docs/SPEC-TABLES.md §16). json-read: the TOLERANT text read
 // of the pinned text, Save, the bytes; json-read and json-hostile call that
-// one entry point, FromJsonTolerant (test/conformance/README.md). json-write:
+// one entry point, fromJsonWalk (test/conformance/README.md). json-write:
 // Load the wire, ToJson, the text, and its ToJsonMeasure must be the text's
 // length.
 if (mode == "json-read" || mode == "json-write") {
@@ -290,8 +290,8 @@ if (mode == "json-read" || mode == "json-write") {
     } else {
       local report = newReport();
       local J = opened[0].require("schema_table_json");
-      local v = J.FromJsonTolerant(T, root, readBytes("testdata/conformance/tables/json/" + cname + ".json"), report);
-      if (v == null || report.malformed) throw cname + ": FromJsonTolerant refused the text";
+      local v = J.fromJsonWalk(T, root, readBytes("testdata/conformance/tables/json/" + cname + ".json"), report);
+      if (v == null || report.bodyDamaged) throw cname + ": fromJsonWalk refused the text";
       local out = T[root + "Save"](v);
       if (out == null) throw cname + ": save refused the value";
       if (T[root + "Measure"](v) != out.len()) throw cname + ": Measure is not the save's length";
@@ -313,12 +313,12 @@ if (mode == "json-hostile") {
     local opened = openUnit(unit);
     local J = opened[0].require("schema_table_json");
     local r = newReport();
-    local v = J.FromJsonTolerant(opened[1], root, readBytes(tree + "/" + root + ".json"), r);
-    if (r.malformed || v == null) { writeText(outdir + "/" + cname, "refused\n"); continue; }
+    local v = J.fromJsonWalk(opened[1], root, readBytes(tree + "/" + root + ".json"), r);
+    if (r.bodyDamaged || v == null) { writeText(outdir + "/" + cname, "refused\n"); continue; }
     local json = opened[1][root + "ToJson"](v);
     if (json == null) throw cname + ": ToJson refused the value";
     writeText(outdir + "/" + cname,
-      r.unknown + "," + r.kindMismatch + "," + r.widened + "," + r.clamped + "," + r.duplicate + ",false,read\n" + json);
+      r.unknown + "," + r.mismatch + "," + r.widened + "," + r.oor + "," + r.repeated + ",false,read\n" + json);
   }
   return;
 }
@@ -603,8 +603,8 @@ if (mode == "cook-write") {
     // the TOLERANT load, as the wire surface's: a blob two slots name
     // (blob_shared) is refused by the strict read by name, and the cook of the
     // value it holds is still the tool's file
-    local v = openUnit(unit)[0].require("schema_table_load").loadTolerant(T, root, readBytes(inst[4]), report);
-    if (v == null || report.malformed || report.refused) throw name + ": the cook input did not load";
+    local v = openUnit(unit)[0].require("schema_table_load").loadWalk(T, root, readBytes(inst[4]), report);
+    if (v == null || report.bodyDamaged || report.refused) throw name + ": the cook input did not load";
     local size = T.CookMeasure(root, v);
     if (size < 1) throw name + ": CookMeasure refused the value";
     foreach (order in [1, 2]) {
@@ -654,7 +654,7 @@ if (mode == "message") {
     for (local i = 0; i < storage.len(); i++) storage[i] = T[root]();
     local lr = {};
     local count = T[root + "LoadMessages"](storage, v, readBytes(f[5]), lr);
-    if (count < 1 || lr.malformed || (("refused" in lr) && lr.refused)) throw name + ": LoadMessages answered " + count;
+    if (count < 1 || lr.bodyDamaged || (("refused" in lr) && lr.refused)) throw name + ": LoadMessages answered " + count;
     local values = storage.slice(0, count);
     local size = T[root + "MeasureMessages"](values, {});
     if (size < 0) throw name + ": MeasureMessages refused";
@@ -696,7 +696,7 @@ if (mode == "retain" || mode == "retain-save") {
       throw name + ": capacity " + f[5] + " is neither full nor short";
     }
     local v = T[root + "LoadRetain"](wire, store, report);
-    if (v == null || report.malformed) throw name + ": LoadRetain failed";
+    if (v == null || report.bodyDamaged) throw name + ": LoadRetain failed";
     local retained = report.retained, lost = report.retainLost, unknown = report.unknown;
     local n = T[root + "MeasureRetain"](v, store);
     if (n < 0) throw name + ": MeasureRetain refused";

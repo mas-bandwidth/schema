@@ -114,7 +114,7 @@ func Testgen(u *ir.Unit) (map[string][]byte, error) {
 			b.WriteString("  // §16.11 damage: JSON OF THE WRONG SHAPE, a document cut off inside its object\n")
 			b.WriteString("  local jr = fresh();\n")
 			b.WriteString("  J.FromJson(T, root, \"{\", jr);\n")
-			b.WriteString("  if (!jr.malformed) fail(root + \": a JSON document cut off inside its object was not refused as malformed\");\n")
+			b.WriteString("  if (!jr.bodyDamaged) fail(root + \": a JSON document cut off inside its object was not refused as malformed\");\n")
 			b.WriteString("  covered++;\n")
 			b.WriteString("};\n")
 			fmt.Fprintf(&b, "%s_gen();\n", st.Name)

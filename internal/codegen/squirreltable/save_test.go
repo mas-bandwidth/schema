@@ -22,10 +22,10 @@ local run = function(unit, mod, root, key) {
   local L = schema.require("schema_table_load");
   local S = schema.require("schema_table_save");
   local report = {
-    unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false
+    unknown = 0, mismatch = 0, widened = 0, oor = 0,
+    repeated = 0, bodyDamaged = false, refused = false
   };
-  local v = L.loadTolerant(T, root, inputs[key], report);
+  local v = L.loadWalk(T, root, inputs[key], report);
   local b = S.save(T, root, v);
   local m = S.measure(T, root, v);
   if (b == null) { print(key + " null -1\n"); return; }
