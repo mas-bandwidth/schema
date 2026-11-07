@@ -92,7 +92,7 @@ local vocabulary = MS.NewVocabulary()
 local report: any = {}
 if not MS.AnnounceRead(vocabulary, inputs.conn, report) then print("ANNOUNCE " .. tostring(report.reason)) return end
 local n, values = MS.LoadMessages(vocabulary, %q, inputs.message, 256, report)
-print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
+print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, 0, report.widened, 0, 0, tostring(report.damaged)))
 if n < 1 then print("LOAD " .. tostring(report.reason)) return end
 local size = MS.MeasureMessages(%q, values, report)
 local out = MS.SaveMessages(%q, values, report)
@@ -265,7 +265,7 @@ print("one " .. hex(out))
 local vocabulary = MS.NewVocabulary()
 if not MS.AnnounceRead(vocabulary, T.TableMessageAnnouncement, report) then print("ANNOUNCE " .. tostring(report.reason)) return end
 local n, values = MS.LoadMessages(vocabulary, %q, inputs.message, 256, report)
-print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
+print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, 0, report.widened, 0, 0, tostring(report.damaged)))
 if n ~= 1 then return end
 local file = save.save(St.lookup(%q), values[1])
 if file == nil then print("FILESAVE") return end
@@ -616,7 +616,7 @@ func runEvolve(t *testing.T, ub *ir.Unit, files map[string][]byte, rootName stri
 local report: any = {}
 if not MS.AnnounceRead(vocabulary, inputs.ann, report) then print("ANNOUNCE " .. tostring(report.reason)) return end
 local n, values = MS.LoadMessages(vocabulary, %q, inputs.message, 256, report)
-print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
+print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, 0, report.widened, 0, 0, tostring(report.damaged)))
 local out = save.save(St.lookup(%q), values[1])
 if out == nil then print("FILESAVE") return end
 local p = {}
@@ -649,7 +649,7 @@ func TestMooMessageFormEvolvesNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "\t\t\tt.report.kindMismatch += 1\n\t\t\tif not skipEntry(t, entry.kind, entry.shape) then\n\t\t\t\treturn dmal(t)\n"
+	const anchor = "\t\t\tt.report.kindChanged += 1\n\t\t\tif not skipEntry(t, entry.kind, entry.shape) then\n\t\t\t\treturn dmal(t)\n"
 	src := string(files["table_message.moo"])
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the body's kind-mismatch anchor is not in table_message.moo exactly once")

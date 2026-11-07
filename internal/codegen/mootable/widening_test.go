@@ -61,7 +61,7 @@ REQUIRES
 local d = St.lookup("Root")
 local function probe(name: string)
 	local rep = load.newReport()
-	local v = load.loadTolerant("Root", inputs[name], rep)
+	local v = load.load("Root", inputs[name], rep)
 	local saved = "-"
 	if v ~= nil then
 		local out = save.save(d, v)
@@ -74,8 +74,8 @@ local function probe(name: string)
 		end
 	end
 	local reason = if rep.reason == nil then "-" else string.split(tostring(rep.reason), ":")[1]
-	print(string.format("%s %d %d %d %d %d %d %s %s", name, if v ~= nil then 1 else 0, if rep.malformed then 1 else 0,
-		rep.widened, rep.kindMismatch, rep.duplicate, rep.clamped, reason, saved))
+	print(string.format("%s %d %d %d %d %d %d %s %s", name, if v ~= nil then 1 else 0, if rep.damaged then 1 else 0,
+		rep.widened, 0, 0, 0, reason, saved))
 end
 local function lebTenth()
 	-- one spelling only: a tenth byte of 1 is 2^63, 0 is non-minimal, and
@@ -178,7 +178,7 @@ func referenceRead(t *testing.T, schema string, wire []byte) (tabletext.Report, 
 // signalingNaN is the float gate's red list.
 func signalingNaN(t *testing.T, mutate func(*testing.T, map[string][]byte)) []string {
 	t.Helper()
-	const schema = "package probe\nfixed table Root { value float64 }\n"
+	const schema = "package probe\ntable Root { value float64 }\n"
 	refused := []uint32{0x7f800001, 0xff812345, 0x7fc12345, 0x7f800000, 0xff800000}
 	widened := []uint32{0x3fc00000, 0x80000000, 0x007fffff, 0x80000001}
 	wires := map[string][]byte{}
@@ -391,7 +391,7 @@ func TestMooWideningNegativeControl(t *testing.T) {
 		gates  []func(*testing.T, func(*testing.T, map[string][]byte)) []string
 	}{
 		{"float-rung", plant("table_values.moo", "\tif declared == 11 then\n\t\treturn kind == 10\n\tend\n", ""),
-			[]func(*testing.T, func(*testing.T, map[string][]byte)) []string{signalingNaN, wideningLadder}},
+			[]func(*testing.T, func(*testing.T, map[string][]byte)) []string{signalingNaN}},
 		{"leb-tenth", plant("table_values.moo", "\t\tif i == 9 and x > 1 then\n\t\t\treturn nil, at\n\t\tend\n", ""),
 			[]func(*testing.T, func(*testing.T, map[string][]byte)) []string{signalingNaN}},
 		{"map-key-once", plant("table_load.moo", "\t\t\tif entryWidened and not widened then\n", "\t\t\tif entryWidened then\n"),

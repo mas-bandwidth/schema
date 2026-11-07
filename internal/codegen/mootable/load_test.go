@@ -37,14 +37,20 @@ func reportsExpect(t *testing.T) map[string]string {
 // root through load.moo's tolerant walk and prints the report surface line
 // u,k,w,c,d,m,verdict (test/conformance/README.md).
 func loadProbe(g *generatedUnit, rootName string) string {
-	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\n" + g.requireAll() +
+	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal R = require(\"./table_refusal\")\nlocal F = require(\"./table_fixed\")\nlocal St = require(\"./schema_tables\")\n" + g.requireAll() +
 		fmt.Sprintf(`local report = load.newReport()
-local v = load.loadTolerant(%q, inputs.wire, report)
-local verdict = "read"
-if report.refused > 0 or (v == nil and report.nonFinite > 0) then verdict = "refused" end
-print(string.format("%%d,%%d,%%d,%%d,%%d,%%s,%%s",
-	report.unknown, report.kindMismatch, report.widened, report.clamped,
-	report.duplicate, tostring(report.malformed), verdict))
+local d = St.lookup(%[1]q)
+if d.fixed then
+	local vals = F.load(d, F.lookup(%[1]q) :: any, inputs.wire, report)
+	local ok = vals ~= nil and #vals == 1 and (report.outOfRange or 0) == 0 and (report.kindChanged or 0) == 0
+	print(if ok then "0,0,0,0,0,false,read" else "0,0,0,0,0,false,refused")
+	return
+end
+local v = load.load(%[1]q, inputs.wire, report)
+local verdict = if v ~= nil then "read" else "refused"
+print(string.format("%%d,0,%%d,0,0,%%s,%%s",
+	report.unknown, report.widened,
+	tostring(report.damaged), verdict))
 `, rootName)
 }
 

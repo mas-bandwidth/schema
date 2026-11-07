@@ -53,7 +53,7 @@ return function(ctx: any): { [string]: Surface }
 			report = L.newReport()
 		end
 		local v = R.LoadRetain(rootName, wire, report, store)
-		if v == nil or report.malformed then
+		if v == nil or report.damaged then
 			return nil, f[2] .. ": retained load refused"
 		end
 		local retained, lost, unknown = report.retained, report.retainLost, report.unknown

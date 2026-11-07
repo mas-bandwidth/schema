@@ -33,8 +33,8 @@ func listdemoUnit(t *testing.T) *ir.Unit {
 // whether a root came back and the report's verdict: malformed, refused and
 // reason.
 const countCrossProbe = `local report = load.newReport()
-local v = load.loadTolerant("Album", inputs.wire, report)
-print(tostring(v ~= nil) .. " " .. tostring(report.malformed) .. " " .. tostring(report.refused) .. " " .. tostring(report.reason))
+local v = load.load("Album", inputs.wire, report)
+print(tostring(v ~= nil) .. " " .. tostring(report.damaged) .. " " .. tostring(report.refused) .. " " .. tostring(report.reason))
 `
 
 // countCross runs the pinned vector list_count_cross_length (an Album whose

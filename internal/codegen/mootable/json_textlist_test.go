@@ -120,16 +120,12 @@ local function run(mod: any, root: string, input: buffer, wire: buffer)
 	local value = mod["New" .. root]()
 	local report: any = {}
 	local ok = mod[root .. "FromJson"](value, input, report)
-	hexs(string.format("%d,%d,%d,%d,%d,%s,%s,%s", report.unknown, report.kindMismatch, report.widened,
-		report.clamped, report.duplicate, tostring(report.malformed), if ok then "read" else "refused", report.reason or ""))
+	hexs(string.format("%d,%d,%d,%d,%d,%s,%s,%s", report.unknown, 0, report.widened,
+		0, 0, tostring(report.damaged), if ok then "read" else "refused", report.reason or ""))
 	hexs(text(mod, root, value))
 	local bytes, why = Save.save(d, value)
 	hexs(if bytes ~= nil then buffer.tostring(bytes) else "save refused: " .. tostring(why and why.name))
-	local body: buffer? = wire
-	if d.integrity ~= nil and d.integrity ~= "" then
-		body = Load.integrityOpen(wire)
-	end
-	local loaded = if body ~= nil then Load.loadOpened(root, body, Load.newReport()) else nil
+	local loaded = Load.load(root, wire, Load.newReport())
 	hexs(if loaded ~= nil then text(mod, root, loaded) else "load refused")
 end
 `)

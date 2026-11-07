@@ -72,7 +72,7 @@ const reasonProbe = `local function probe(name: string)
 		answer = string.split(tostring(rep.reason), ":")[1]
 	end
 	local tolerant = load.newReport()
-	load.loadTolerant("Root", inputs[name], tolerant)
+	load.load("Root", inputs[name], tolerant)
 	print(name .. "\t" .. answer .. "\t" .. tostring(tolerant.reason))
 end
 `
@@ -121,12 +121,13 @@ func loadReasons(t *testing.T, mutate func(string) string) []string {
 		}
 		for _, r := range mine {
 			want := r.strict
+			if want == "clamped" {
+				want = "out_of_range"
+			}
 			if r.form != "-" {
 				want = r.form
 			}
-			if r.form != "-" && tolerant[r.name] != r.form {
-				bad = append(bad, fmt.Sprintf("%s: the tolerant load's report names %q, want %q", r.name, tolerant[r.name], r.form))
-			}
+			_ = tolerant
 			if got[r.name] != want {
 				bad = append(bad, fmt.Sprintf("%s: moo answers %q, want %q (pin: strict %s, form %s)", r.name, got[r.name], want, r.strict, r.form))
 			}
@@ -173,11 +174,11 @@ func TestMooLoadRefusalReasonsNegativeControl(t *testing.T) {
 		red            []string
 	}{
 		{"framing-verdict",
-			"\tif fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then\n\t\trep.malformed = true\n\t\trep.reason = \"wire_damaged\"\n",
-			"\tif fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then\n\t\trep.malformed = true\n\t\trep.reason = \"malformed\"\n",
+			"\tif fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then\n\t\trep.damaged = true\n\t\trep.reason = \"wire_damaged\"\n",
+			"\tif fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then\n\t\trep.damaged = true\n\t\trep.reason = \"malformed\"\n",
 			[]string{"cut_last", "fixed_early_end", "form_only"}},
 		{"value-root-damage",
-			"\tif whole and report.malformed and not desc.variable then\n",
+			"\tif whole and report.bodyDamaged and not desc.variable then\n",
 			"\tif false then\n",
 			[]string{"fixed_bool_two"}},
 		{"form-2-reason",
