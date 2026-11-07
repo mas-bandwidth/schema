@@ -126,18 +126,29 @@ func (g *wireGen) emitTextRuntime() {
 	g.pf("%s", textListJSONRuntime)
 	g.pf(`// ---- the JSON text form (docs/SPEC-TABLES.md §16) ----
 
-// TableTextReport is a tolerant text read's report (§16.3): the three events
-// the card's constructs can move — an unknown property, a kind mismatch, a
-// clamp.
+// TableTextReport is the one strict text read's report (§16.3): the
+// evolution counter unknown, and the refusal verdict. A kind mismatch, a
+// repeated key, and a value, count or length out of its bound refuse the
+// whole load through refuse(); the read answers the type's defaults.
 final class TableTextReport {
   int unknown = 0;
-  int kindMismatch = 0;
-  int clamped = 0;
-  String clampedField = '';
-  int duplicate = 0;
-  int missingRequired = 0;
+  bool refused = false;
+  String refusal = '';
   String missingFields = '';
   final Set<int> textLabels = <int>{};
+
+  // refuse records the read's whole-load refusal by name (a per-language
+  // diagnostic, never compared across legs): the first refusal stands.
+  void refuse(String r) {
+    if (refusal.isEmpty) refusal = r;
+    refused = true;
+  }
+
+  String get reason {
+    if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
+    if (refusal.isNotEmpty) return refusal;
+    return 'ok';
+  }
 }
 
 // _JOut is the writer's sink (§16.1): raw text and the two-space indent.
@@ -219,21 +230,13 @@ String _jsonText(String s) {
 // never cut through a multi-byte character (§16.3).
 String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
   if (val is! String) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return def;
   }
   val = _jsonText(val);
   if (utf8.encode(val).length <= bound || bound < 0) return val;
-  final kept = StringBuffer();
-  var used = 0;
-  for (final rune in val.runes) {
-    final len = utf8.encode(String.fromCharCode(rune)).length;
-    if (used + len > bound) break;
-    kept.write(String.fromCharCode(rune));
-    used += len;
-  }
-  r.clamped++;
-  return kept.toString();
+  r.refuse('length_over_bound');
+  return def;
 }
 
 // _jsonIntField reads one int field (§16.2): an integer token, or an integral
@@ -249,11 +252,11 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
   if (val is int && (!unsigned || val >= 0)) {
     var v = val;
     if (unsigned) {
-      if (lo != null && _u64Below(v, lo)) { v = lo; r.clamped++; }
-      if (hi != null && _u64Above(v, hi)) { v = hi; r.clamped++; }
+      if (lo != null && _u64Below(v, lo)) { r.refuse('out_of_range'); return def; }
+      if (hi != null && _u64Above(v, hi)) { r.refuse('out_of_range'); return def; }
     } else {
-      if (lo != null && v < lo) { v = lo; r.clamped++; }
-      if (hi != null && v > hi) { v = hi; r.clamped++; }
+      if (lo != null && v < lo) { r.refuse('out_of_range'); return def; }
+      if (hi != null && v > hi) { r.refuse('out_of_range'); return def; }
     }
     return v;
   }
@@ -265,31 +268,31 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
   } else {
     final d = val is _JNum ? val.d : (val is num ? val.toDouble() : double.nan);
     if (!d.isFinite || d != d.truncateToDouble()) {
-      r.kindMismatch++;
+      r.refuse('kind_mismatch');
       return def;
     }
     wide = d.abs() >= 18446744073709551616.0 ? (d.isNegative ? -_jsonU64Span : _jsonU64Span) : BigInt.from(d);
   }
   if (wide.abs() > _jsonU64Max) {
-    wide = wide.isNegative ? -_jsonU64Max : _jsonU64Max;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   }
   BigInt bound(int b) => unsigned ? BigInt.from(b).toUnsigned(64) : BigInt.from(b);
   if (lo != null && wide < bound(lo)) {
-    wide = bound(lo);
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   } else if (hi != null && wide > bound(hi)) {
-    wide = bound(hi);
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   }
   if (unsigned) {
-    if (wide.isNegative) { wide = BigInt.zero; r.clamped++; }
+    if (wide.isNegative) { r.refuse('out_of_range'); return def; }
   } else if (wide < _jsonI64Min) {
-    wide = _jsonI64Min;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   } else if (wide > _jsonI64Max) {
-    wide = _jsonI64Max;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   }
   return wide.toSigned(64).toInt();
 }
@@ -471,7 +474,7 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
   if (val == null) return null;
   final entries = _jsonEntries(val);
   if (entries == null) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return def;
   }
   var hasNode = false;
@@ -492,7 +495,7 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
         if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
         throw const FormatException('undefined node label');
       }
-      if (have.runtimeType != make().runtimeType) { r.kindMismatch++; return null; }
+      if (have.runtimeType != make().runtimeType) { r.refuse('kind_mismatch'); return null; }
       return have;
     }
     final have = sh.defined[raw];
@@ -621,7 +624,7 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
     final narrowed = _narrowF32(d, token);
     if (narrowed != null) return narrowed;
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def;
 }
 `)
@@ -748,7 +751,7 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	g.pf("\t}\n\treturn '';\n}\n\n")
 	none := g.enumConst(e, 0)
 	g.pf("%s %sFromName(dynamic val, TableTextReport r, [%s? def]) {\n", g.enumType(e), dn, g.enumType(e))
-	g.pf("\tif (val is! String) { r.kindMismatch++; return def ?? %s; }\n", none)
+	g.pf("\tif (val is! String) { r.refuse('kind_mismatch'); return def ?? %s; }\n", none)
 	g.pf("\tswitch (val) {\n")
 	g.pf("\t\tcase \"None\": return %s;\n", none)
 	for i, name := range e.Variants {
@@ -960,7 +963,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
-	g.pf("\t\t\t\tif (!seen.add(key)) r.duplicate++;\n")
+	g.pf("\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n")
 	switch {
 	case needsGenericText(f):
 		// the constructs textmore.go reads (§16.2, §16.3); an optional's null
@@ -990,15 +993,15 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	case isByValueTable(f):
 		ref := tableRef(f)
 		g.pf("\t\t\t\tif (%s) { v.%s = %s(); %sFromJsonFields(v.%s, val, r, sh); }\n", jsonTableShape(ref, "val"), name, ref.Name, dartName(ref.Name), name)
-		g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
+		g.pf("\t\t\t\telse { r.refuse('kind_mismatch'); }\n")
 		g.pf("\t\t\t\tbreak;\n")
 	case f.CountedOnWire():
-		g.pf("\t\t\t\tif (val is! List) { r.kindMismatch++; break; }\n")
+		g.pf("\t\t\t\tif (val is! List) { r.refuse('kind_mismatch'); break; }\n")
 		et := g.listElemType(f)
 		g.pf("\t\t\t\tv.%s = <%s>[];\n", name, et)
 		g.pf("\t\t\t\tfor (var index = 0; index < val.length; index++) {\n")
 		if f.ArrayBound > 0 {
-			g.pf("\t\t\t\t\tif (v.%s.length >= %d) { r.clamped += val.length - index; break; }\n", name, f.ArrayBound)
+			g.pf("\t\t\t\t\tif (v.%s.length >= %d) { r.refuse('count_over_bound'); break; }\n", name, f.ArrayBound)
 		}
 		g.pf("\t\t\t\t\tfinal item = val[index];\n")
 		switch listElementKind(f) {
@@ -1007,7 +1010,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			g.pf("\t\t\t\t\tif (%s) {\n", jsonTableShape(tableRef(f), "item"))
 			g.pf("\t\t\t\t\t\t%sFromJsonFields(e, item, r, sh);\n", dartName(f.Type.Name))
 			g.pf("\t\t\t\t\t} else {\n")
-			g.pf("\t\t\t\t\t\tr.kindMismatch++;\n")
+			g.pf("\t\t\t\t\t\tr.refuse('kind_mismatch');\n")
 			g.pf("\t\t\t\t\t}\n")
 			g.pf("\t\t\t\t\tv.%s.add(e);\n", name)
 		case wireKindPtr:
@@ -1022,7 +1025,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			case wireKindEnum:
 				g.pf("\t\t\t\t\tv.%s.add(%sFromName(item, r));\n", name, dartName(enumRef(f).Name))
 			case wireKindString:
-				g.pf("\t\t\t\t\tif (item is String) { v.%s.add(_jsonText(item)); } else { r.kindMismatch++; }\n", name)
+				g.pf("\t\t\t\t\tif (item is String) { v.%s.add(_jsonText(item)); } else { r.refuse('kind_mismatch'); }\n", name)
 			default:
 				lo, hi := jsonIntBounds(f)
 				if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
@@ -1034,7 +1037,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\t}\n")
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBool:
-		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.kindMismatch++; }\n", name)
+		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.refuse('kind_mismatch'); }\n", name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TInt:
 		lo, hi := jsonIntBounds(f)
@@ -1060,7 +1063,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tv.%s = %sFromName(val, r, v.%s);\n", name, dartName(enumRef(f).Name), name)
 		g.pf("\t\t\t\tbreak;\n")
 	default:
-		g.pf("\t\t\t\tr.kindMismatch++;\n")
+		g.pf("\t\t\t\tr.refuse('kind_mismatch');\n")
 		g.pf("\t\t\t\tbreak;\n")
 	}
 }
@@ -1147,6 +1150,7 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
 	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 	g.pf("\t}\n")
+	g.pf("\tif (r.refused) return %s();\n", st.Name)
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 }

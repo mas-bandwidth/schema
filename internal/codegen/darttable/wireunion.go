@@ -562,7 +562,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// internal/tablewire arrayBody, which an arm shares with a field)
 		g.pf("%svar keep = count;\n", ind)
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, f.ArrayBound, p)
+			g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, p)
 		} else {
 			g.pf("%sif (keep < 0 || keep > 0x7FFFFFFF) %s\n", ind, bad)
 		}
@@ -586,7 +586,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		}
 		g.pf("%sfinal out = <%s>[];\n", ind, et)
 		g.pf("%svar keep = count;\n", ind)
-		g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, f.ArrayBound, p)
+		g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, p)
 		g.emitArmElems(f, ek, wc, p, ind)
 		g.pf("%sfinal fresh = List<%s>.generate(%d, (_) => %s);\n", ind, et, f.ArrayBound, g.elemDefault(f))
 		g.pf("%sfor (var i = 0; i < out.length && i < %d; i++) { fresh[i] = out[i]; }\n", ind, f.ArrayBound)
@@ -618,7 +618,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sif (count == null) %s\n", ind, bad)
 		g.pf("%sif (elemKind != %d) { %s.report.refuse('kind_mismatch'); return false; }\n", ind, wireKindU8, p)
 		g.pf("%svar keep = count;\n", ind)
-		g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.Type.Size, f.Type.Size, p)
+		g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.Type.Size, p)
 		g.pf("%sif (keep > %s.limit - %s.pos) { keep = %s.limit - %s.pos; %s.report.refuse('wire_damaged'); }\n", ind, p, p, p, p, p)
 		g.pf("%s%s = latin1.decode(%s.data.sublist(%s.pos, %s.pos + keep));\n", ind, dest, p, p, p)
 		g.pf("%sreturn true;\n", ind)
@@ -650,8 +650,8 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%s}\n", ind)
 		if f.HasFloatRange {
 			// a -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
-			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, fmtFloat(f.FMin), dest, fmtFloat(f.FMin), p)
-			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, fmtFloat(f.FMax), dest, fmtFloat(f.FMax), p)
+			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, fmtFloat(f.FMin), p)
+			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, fmtFloat(f.FMax), p)
 			g.pf("%sif (%s == 0) %s = 0.0;\n", ind, dest, dest)
 		}
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
@@ -721,16 +721,16 @@ func (g *wireGen) emitIntClamp(f *ir.Field, value, p, ind string) {
 	if f.HasIntRange {
 		lo, hi := dartBoundLiteral(f.IntMin), dartBoundLiteral(f.IntMax)
 		if signed {
-			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, value, lo, value, lo, p)
-			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, value, hi, value, hi, p)
+			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, value, lo, p)
+			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, value, hi, p)
 		} else {
-			g.pf("%sif (_u64Below(%s, %s)) { %s.report.refuse('out_of_range'); }\n", ind, value, lo, value, lo, p)
-			g.pf("%sif (_u64Above(%s, %s)) { %s.report.refuse('out_of_range'); }\n", ind, value, hi, value, hi, p)
+			g.pf("%sif (_u64Below(%s, %s)) { %s.report.refuse('out_of_range'); }\n", ind, value, lo, p)
+			g.pf("%sif (_u64Above(%s, %s)) { %s.report.refuse('out_of_range'); }\n", ind, value, hi, p)
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		lit := dartU64Literal(uint64(1)<<f.Type.Width - 1)
-		g.pf("%sif (_u64Above(%s, %s)) { %s.report.refuse('out_of_range'); }\n", ind, value, lit, value, lit, p)
+		g.pf("%sif (_u64Above(%s, %s)) { %s.report.refuse('out_of_range'); }\n", ind, value, lit, p)
 	}
 }
 
@@ -1136,7 +1136,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	// counts (§2.8, §4; internal/tablewire mapField `if entryWidened &&
 	// !widened`)
 	g.pf("%s\t\t\tif ((scan & 4) != 0 && !mapWidened) { mapWidened = true; r.report.widened++; }\n", ind)
-	g.pf("%s\t\t\tif ((scan & 3) == 2) { r.report.refuse('kind_mismatch'); break; }\n", ind, name, en)
+	g.pf("%s\t\t\tif ((scan & 3) == 2) { r.report.refuse('kind_mismatch'); break; }\n", ind)
 	g.pf("%s\t\t\tif ((scan & 3) != 0) { r.report.refuse('wire_damaged'); break; }\n", ind)
 	// KEYS NEVER CLAMP (§2.8): a key whose LAST occurrence rides a string the
 	// declaration bounds under its length drops the entry WHOLE, one `clamped`
@@ -1165,7 +1165,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
 	g.pf("%s\t\t\tif ((r.retain?.records.length ?? 0) > retainedAt) r.retain!.rememberMap(v, %q, e);\n", ind, name)
 	g.pf("%s\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
-	g.pf("%s\t\t\tif (order == 0) { r.report.refuse('wire_damaged'); break; }\n", ind, name, name, name)
+	g.pf("%s\t\t\tif (order == 0) { r.report.refuse('wire_damaged'); break; }\n", ind)
 	g.pf("%s\t\t\tlastEntry = e;\n", ind)
 	g.pf("%s\t\t\tlastLanded = true;\n", ind)
 	g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)

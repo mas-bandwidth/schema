@@ -2493,7 +2493,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		loop := "count"
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s\t\tvar keep = count;\n", ind)
-			g.pf("%s\t\tif (keep < 0 || keep > %d) { r.report.refuse('count_over_bound'); return; }\n", ind, f.ArrayBound, f.ArrayBound)
+			g.pf("%s\t\tif (keep < 0 || keep > %d) { r.report.refuse('count_over_bound'); return; }\n", ind, f.ArrayBound)
 			loop = "keep"
 		} else {
 			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
@@ -2647,16 +2647,16 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		if f.HasIntRange {
 			lo, hi := dartBoundLiteral(f.IntMin), dartBoundLiteral(f.IntMax)
 			if signed {
-				g.pf("%s\t\tif (value < %s) { r.report.refuse('out_of_range'); return; }\n", ind, lo, lo)
-				g.pf("%s\t\tif (value > %s) { r.report.refuse('out_of_range'); return; }\n", ind, hi, hi)
+				g.pf("%s\t\tif (value < %s) { r.report.refuse('out_of_range'); return; }\n", ind, lo)
+				g.pf("%s\t\tif (value > %s) { r.report.refuse('out_of_range'); return; }\n", ind, hi)
 			} else {
-				g.pf("%s\t\tif (_u64Below(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, lo, lo)
-				g.pf("%s\t\tif (_u64Above(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, hi, hi)
+				g.pf("%s\t\tif (_u64Below(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, lo)
+				g.pf("%s\t\tif (_u64Above(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, hi)
 			}
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 			lit := dartU64Literal(uint64(1)<<f.Type.Width - 1)
-			g.pf("%s\t\tif (_u64Above(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, lit, lit)
+			g.pf("%s\t\tif (_u64Above(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, lit)
 		}
 		g.pf("%s\t\tv.%s = value;\n", ind, name)
 		g.pf("%s\t}\n", ind)
@@ -2699,8 +2699,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		if f.HasFloatRange {
 			// one past an end clamps and counts, and a -0 lands as +0,
 			// uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
-			g.pf("%s\t\tif (d < %s) { r.report.refuse('out_of_range'); return; }\n", ind, fmtFloat(f.FMin), fmtFloat(f.FMin))
-			g.pf("%s\t\tif (d > %s) { r.report.refuse('out_of_range'); return; }\n", ind, fmtFloat(f.FMax), fmtFloat(f.FMax))
+			g.pf("%s\t\tif (d < %s) { r.report.refuse('out_of_range'); return; }\n", ind, fmtFloat(f.FMin))
+			g.pf("%s\t\tif (d > %s) { r.report.refuse('out_of_range'); return; }\n", ind, fmtFloat(f.FMax))
 			g.pf("%s\t\tif (d == 0) d = 0.0;\n", ind)
 		}
 		g.pf("%s\t\tv.%s = d;\n", ind, name)
@@ -2722,7 +2722,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tif (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tif (elemKind != %d) { r.report.refuse('kind_mismatch'); r.pos = end; break; }\n", ind, wireKindU8)
 		g.pf("%s\t\tvar keep = count;\n", ind)
-		g.pf("%s\t\tif (keep > %d || keep < 0) { r.report.refuse('count_over_bound'); return; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s\t\tif (keep > %d || keep < 0) { r.report.refuse('count_over_bound'); return; }\n", ind, f.Type.Size)
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
 		g.pf("%s\t\tvar take = keep;\n", ind)
 		g.pf("%s\t\tif (take > arr.limit - arr.pos) take = arr.limit - arr.pos;\n", ind)
@@ -2768,7 +2768,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\tif (!_lebValid(%s.data, %s.pos, elen)) { r.report.refuse('wire_damaged'); %s.pos += elen; break; }\n", ind, arr, arr, arr)
 		if f.IsTextList() {
 			g.pf("%s\t\t\tfinal kept=_textBoundary(%s.data,%s.pos,elen,%d);\n", ind, arr, arr, textBound(ir.TextListValue(f)))
-			g.pf("%s\t\t\tif(kept!=elen){r.report.refuse('length_over_bound'); return;}\n", ind, f.TextListElem().MapEntryOf)
+			g.pf("%s\t\t\tif(kept!=elen){r.report.refuse('length_over_bound'); return;}\n", ind)
 			g.pf("%s\t\t\tfinal e=%s()..value=utf8.decode(%s.data.sublist(%s.pos,%s.pos+kept));\n", ind, f.Type.Name, arr, arr, arr)
 			g.emitTextTotalKeep(f, "kept", ind+"\t\t\t")
 			g.pf("%s\t\t\t%s.add(e);\n", ind, dest)

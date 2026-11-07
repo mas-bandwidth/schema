@@ -294,7 +294,7 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
   } else if (val is double) {
     token = val.toString();
   } else {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return def;
   }
   var i = 0;
@@ -345,10 +345,10 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
   if (digits.isEmpty) {
     raw = BigInt.zero;
   } else if (point > 40) {
-    raw = negative ? domainLo : domainHi;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   } else if (point < -40) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return def;
   } else {
     final scale = point - digits.length;
@@ -358,34 +358,31 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     } else {
       final den = BigInt.from(10).pow(-scale);
       if (v.remainder(den) != BigInt.zero) {
-        r.kindMismatch++;
+        r.refuse('kind_mismatch');
         return def;
       }
       v = v ~/ den;
     }
     raw = negative ? -v : v;
-    if (raw < domainLo) {
-      raw = domainLo;
-      r.clamped++;
-    } else if (raw > domainHi) {
-      raw = domainHi;
-      r.clamped++;
+    if (raw < domainLo || raw > domainHi) {
+      r.refuse('out_of_range');
+      return def;
     }
   }
   if (lo != null && raw < lo) {
-    raw = lo;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   }
   if (hi != null && raw > hi) {
-    raw = hi;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   }
   return raw;
 }
 
 bool _jsonBoolField(dynamic val, TableTextReport r, [bool def = false]) {
   if (val is bool) return val;
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def;
 }
 
@@ -394,23 +391,23 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = 
     try {
       final b = base64Decode(base64.normalize(val));
       if (b.length > bound) {
-        r.clamped++;
-        return latin1.decode(b.sublist(0, bound));
+        r.refuse('length_over_bound');
+        return def;
       }
       return latin1.decode(b);
     } on FormatException {
-      r.kindMismatch++;
+      r.refuse('kind_mismatch');
       return '';
     }
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def;
 }
 
 String? _jsonStringBlob(dynamic val, TableTextReport r, [String? def]) {
   if (val == null) return null;
   if (val is String) return _jsonText(val);
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def;
 }
 
@@ -420,11 +417,11 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
     try {
       return base64Decode(base64.normalize(val));
     } on FormatException {
-      r.kindMismatch++;
+      r.refuse('kind_mismatch');
       return null;
     }
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def;
 }
 
@@ -432,28 +429,24 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
 // clamped at its bound in CODE UNITS and never through a surrogate pair.
 String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
   if (val is! String) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return def;
   }
   val = _jsonText(val);
   if (val.length <= bound) return val;
-  var keep = bound;
-  if (keep > 0 && (val.codeUnitAt(keep - 1) & 0xFC00) == 0xD800 && (val.codeUnitAt(keep) & 0xFC00) == 0xDC00) {
-    keep--;
-  }
-  r.clamped++;
-  return val.substring(0, keep);
+  r.refuse('length_over_bound');
+  return def;
 }
 
 List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynamic) f, [List<T>? fallback]) {
   if (val is! List) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return fallback ?? <T>[];
   }
   final out = <T>[];
   for (final item in val) {
     if (bound >= 0 && out.length >= bound) {
-      r.clamped += val.length - out.length;
+      r.refuse('count_over_bound');
       break;
     }
     out.add(f(item));
@@ -463,13 +456,13 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
 
 List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return fallback ?? List<T>.generate(n, (_) => def());
   }
   final out = List<T>.generate(n, (_) => def());
   for (var i = 0; i < val.length; i++) {
     if (i >= n) {
-      r.clamped += val.length - i;
+      r.refuse('count_over_bound');
       break;
     }
     out[i] = f(val[i], out[i]);
@@ -480,7 +473,7 @@ List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T
 List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, Map<String, int> slots, T Function(dynamic, T) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return fallback ?? List<T>.generate(n, (_) => def());
   }
   final out = List<T>.generate(n, (_) => def());
@@ -491,7 +484,7 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
       r.unknown++;
       continue;
     }
-    if (!seen.add(slot)) r.duplicate++;
+    if (!seen.add(slot)) r.refuse('text_damaged');
     out[slot] = f(entry.value, out[slot]);
   }
   return out;
@@ -500,7 +493,7 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
 List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return fallback ?? <T>[];
   }
   final out = <T>[];
@@ -511,7 +504,7 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
     final k = keyOf(item);
     final at = seen[k];
     if (at != null) {
-      r.duplicate++;
+      r.refuse('text_damaged');
       out[at] = item;
     } else {
       seen[k] = out.length;
@@ -525,7 +518,7 @@ String? _jsonStringKey(String k, int bound, TableTextReport r) {
   k = _jsonText(k);
   final len = utf8.encode(k).length;
   if (bound >= 0 && (len > bound || len > 255)) {
-    r.clamped++;
+    r.refuse('length_over_bound');
     return null;
   }
   return k;
@@ -534,7 +527,7 @@ String? _jsonStringKey(String k, int bound, TableTextReport r) {
 int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
   _jsonText(k);
   if (utf8.encode(k).length > 255) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return null;
   }
   var i = 0;
@@ -593,20 +586,20 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
     mag = BigInt.zero;
     negative = false;
   } else if (point < digits.length || point > 20) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return null;
   } else {
     mag = BigInt.parse(digits) * BigInt.from(10).pow(point - digits.length);
   }
   if (unsigned) {
     if (negative) {
-      r.kindMismatch++;
+      r.refuse('kind_mismatch');
       return null;
     }
     final minU = lo != null ? BigInt.from(lo).toUnsigned(64) : BigInt.zero;
     final maxU = hi != null ? BigInt.from(hi).toUnsigned(64) : (BigInt.one << 64) - BigInt.one;
     if (mag < minU || mag > maxU) {
-      r.kindMismatch++;
+      r.refuse('kind_mismatch');
       return null;
     }
     final signed = mag > BigInt.from(9223372036854775807) ? mag - (BigInt.one << 64) : mag;
@@ -616,7 +609,7 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
   final minS = lo != null ? BigInt.from(lo) : -(BigInt.one << 63);
   final maxS = hi != null ? BigInt.from(hi) : (BigInt.one << 63) - BigInt.one;
   if (val < minS || val > maxS) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return null;
   }
   return val.toInt();
@@ -645,7 +638,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tout.raw(']');\n")
 		g.pf("}\n\n")
 		g.pf("int %s(dynamic val, TableTextReport r, [int def = 0]) {\n", flagsFn(fl, "FromJson"))
-		g.pf("\tif (val is! List) { r.kindMismatch++; return def; }\n")
+		g.pf("\tif (val is! List) { r.refuse('kind_mismatch'); return def; }\n")
 		g.pf("\tvar bits = 0;\n")
 		g.pf("\tfor (final item in val) {\n")
 		g.pf("\t\tswitch (item) {\n")
@@ -683,7 +676,7 @@ func (g *wireGen) emitTextMoreDecls() {
 
 		g.pf("%s %s(dynamic val, TableTextReport r, _Share sh, [%s? def]) {\n", un.Name, unionFn(un, "FromJson"), un.Name)
 		g.pf("\tfinal entries = _jsonEntries(val);\n")
-		g.pf("\tif (entries == null) { r.kindMismatch++; return def ?? %s(); }\n", un.Name)
+		g.pf("\tif (entries == null) { r.refuse('kind_mismatch'); return def ?? %s(); }\n", un.Name)
 		g.pf("\tfinal v = %s();\n", un.Name)
 		g.pf("\tif (entries.isEmpty) return v;\n")
 		g.pf("\tif (entries.length != 1) throw const FormatException('union has two keys');\n")
@@ -692,13 +685,13 @@ func (g *wireGen) emitTextMoreDecls() {
 		for i, arm := range un.Variants {
 			g.pf("\t\tcase %s:\n", strconv.Quote(arm.Name))
 			if arm.Void() {
-				g.pf("\t\t\tif (item == null) { v.armTag = %d; } else { r.kindMismatch++; }\n", i+1)
+				g.pf("\t\t\tif (item == null) { v.armTag = %d; } else { r.refuse('kind_mismatch'); }\n", i+1)
 			} else {
 				g.pf("\t\t\tif (%s) {\n", unionArmShapeCond(arm.F, "item"))
 				g.pf("\t\t\t\tv.armTag = %d;\n", i+1)
 				g.pf("\t\t\t\tv.%s = %s;\n", armMember(arm), g.jsonReadExpr(arm.F, "item", 1, "v."+armMember(arm)))
 				g.pf("\t\t\t} else {\n")
-				g.pf("\t\t\t\tr.kindMismatch++;\n")
+				g.pf("\t\t\t\tr.refuse('kind_mismatch');\n")
 				g.pf("\t\t\t}\n")
 			}
 		}
@@ -727,7 +720,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\t\t%sFromJsonFields(v, val, r, sh);\n", dartName(st.Name))
 		g.pf("\t\treturn v;\n")
 		g.pf("\t}\n")
-		g.pf("\tr.kindMismatch++;\n")
+		g.pf("\tr.refuse('kind_mismatch');\n")
 		g.pf("\treturn def ?? %s();\n", st.Name)
 		g.pf("}\n\n")
 	}

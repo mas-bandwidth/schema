@@ -287,7 +287,7 @@ func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	// a count past the declared slots keeps them and counts one clamp; the
 	// excess skips via the length (§4, internal/tablewire arrayBody)
 	g.pf("\tvar keep = count;\n")
-	g.pf("\tif (keep > %d || keep < 0) { p.report.refuse('count_over_bound'); keep = 0; }\n", f.ArrayBound, f.ArrayBound)
+	g.pf("\tif (keep > %d || keep < 0) { p.report.refuse('count_over_bound'); keep = 0; }\n", f.ArrayBound)
 	if wc != "" && !f.Type.Pointer {
 		// WIDENED at an element kind (§4): every element decodes at the wire
 		// kind's width, and ONE `widened` counts for the field

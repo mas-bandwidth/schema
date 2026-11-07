@@ -98,8 +98,8 @@ func (g *wireGen) emitWideClamp(f *ir.Field, value, p, ind string) {
 	if !ok {
 		return
 	}
-	g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, value, bigLiteral(lo), value, bigLiteral(lo), p)
-	g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, value, bigLiteral(hi), value, bigLiteral(hi), p)
+	g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, value, bigLiteral(lo), p)
+	g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, value, bigLiteral(hi), p)
 }
 
 // emitSaveWide writes a wide field (§3): elided at its default, otherwise the
@@ -143,7 +143,7 @@ func (g *wireGen) emitLoadWide(f *ir.Field, ind string) {
 	}
 	g.pf("%s\t\t\tdefault:\n", ind)
 	g.pf("%s\t\t\t\tr.report.refuse('kind_mismatch');\n", ind)
-	g.pf("%s\t\t\t\tif (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }\n", ind)
+	g.pf("%s\t\t\t\treturn;\n", ind)
 	g.pf("%s\t\t\t\tbreak;\n", ind)
 	g.pf("%s\t\t}\n", ind)
 	g.pf("%s\t\tif (value != null) {\n", ind)
