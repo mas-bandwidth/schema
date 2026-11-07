@@ -303,8 +303,8 @@ namespace Blockhome
                 {
                     new TableFieldInfo { Name = "armor", Json = "armor", TypeName = "ArmorConfig", Id = 0xd19988b67e699194, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockhome.PartRow)o).Armor; }, MessageSlot = 16, Ordinal = 0, NativeOffset = 0, NativeElementSize = 40, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockhome.PartRow)o; TableReset(value.Armor); } },
                     new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerSettings", Id = 0x40dbb648c0cd44aa, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockhome.PartRow)o).Gunner; }, MessageSlot = 17, Ordinal = 1, NativeOffset = 40, NativeElementSize = 304, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockhome.PartRow)o; TableReset(value.Gunner); } },
-                    new TableFieldInfo { Name = "part_id", Json = "part_id", TypeName = "uint32", Id = 0x04d6206b33415104, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockhome.PartRow)o).PartId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockhome.PartRow)o).PartId = unchecked((uint)r); }, MessageSlot = 18, Ordinal = 2, NativeOffset = 344, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockhome.PartRow)o; value.PartId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "slot", Json = "slot", TypeName = "uint8", Id = 0x6a771618f6fe31d1, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockhome.PartRow)o).Slot; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockhome.PartRow)o).Slot = unchecked((byte)r); }, MessageSlot = 19, Ordinal = 3, NativeOffset = 348, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockhome.PartRow)o; value.Slot = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "part_id", Json = "part_id", TypeName = "uint32", Id = 0x04d6206b33415104, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockhome.PartRow)o).PartId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockhome.PartRow)o).PartId = unchecked((uint)r); }, MessageSlot = 18, Ordinal = 2, NativeOffset = 344, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockhome.PartRow)o; value.PartId = 0; }, DefaultRaw = (ulong)0, RangeRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "slot", Json = "slot", TypeName = "uint8", Id = 0x6a771618f6fe31d1, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockhome.PartRow)o).Slot; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockhome.PartRow)o).Slot = unchecked((byte)r); }, MessageSlot = 19, Ordinal = 3, NativeOffset = 348, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockhome.PartRow)o; value.Slot = 0; }, DefaultRaw = (ulong)0, RangeRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Blockhome.PartRow)o); };
                 info.Doc = TableDocNone;
@@ -340,7 +340,7 @@ namespace Blockhome
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "version", Json = "version", TypeName = "uint64", Id = 0xbb62c62c9808ea37, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockhome.PartFrame)o).Version; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockhome.PartFrame)o).Version = unchecked((ulong)r); }, MessageSlot = 14, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockhome.PartFrame)o; value.Version = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "version", Json = "version", TypeName = "uint64", Id = 0xbb62c62c9808ea37, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockhome.PartFrame)o).Version; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockhome.PartFrame)o).Version = unchecked((ulong)r); }, MessageSlot = 14, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockhome.PartFrame)o; value.Version = 0; }, DefaultRaw = (ulong)0, RangeRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
                     new TableFieldInfo { Name = "parts", Json = "parts", TypeName = "PartRow", Id = 0x0c519da7a1f958c5, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return PartRowTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockhome.PartFrame)o).Parts[i]; }, GetCount = delegate (object o) { return ((global::Blockhome.PartFrame)o).PartsCount; }, SetCount = delegate (object o, int n) { ((global::Blockhome.PartFrame)o).PartsCount = n; }, MessageSlot = 15, Ordinal = 1, NativeOffset = 8, NativeElementSize = 352, NativeCountOffset = 11272, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockhome.PartFrame)o; for (int i = 0; i < value.Parts.Length; i++) { TableReset(value.Parts[i]); } value.PartsCount = 0; } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Blockhome.PartFrame)o); };
@@ -972,8 +972,7 @@ namespace Blockhome
                     case TableFixedWire.Count:
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                             PartRowFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -982,8 +981,7 @@ namespace Blockhome
                             uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
                             uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -1016,7 +1014,7 @@ namespace Blockhome
                                 {
                                     v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                 }
-                                if (raw > count) { forgedOrdinal++; }
+                                if (raw > count) { return "out_of_range"; }
                             }
                             PartRowFixedSetRaw(dst, p.Dst, v, report);
                             break;
@@ -1266,7 +1264,7 @@ namespace Blockhome
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -1283,14 +1281,14 @@ namespace Blockhome
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                     return -1;
                 }
             }
@@ -1357,11 +1355,11 @@ namespace Blockhome
                 // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
-                census_kind = lane.KindMismatch;
+                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -1378,7 +1376,7 @@ namespace Blockhome
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     for (int j = 0; j < k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new PartRow(); }
@@ -1390,23 +1388,29 @@ namespace Blockhome
                 if (run_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = PartRowFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                if (report != null) { report.Clamped += forgedOrdinal; }
+                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                if (report != null && report.Refused)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    report.Verdict = TableWire.Verdict.Refused;
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
             {
                 report.Unknown += census_unknown;
-                report.KindMismatch += census_kind;
+                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -1433,7 +1437,7 @@ namespace Blockhome
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
             string run_why = PartRowFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
-            if (report != null) { report.Clamped += forgedOrdinal; }
+            if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -11195,8 +11199,7 @@ namespace Blockhome
                     case TableFixedWire.Count:
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                             PartFrameFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -11205,8 +11208,7 @@ namespace Blockhome
                             uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
                             uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -11239,7 +11241,7 @@ namespace Blockhome
                                 {
                                     v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                 }
-                                if (raw > count) { forgedOrdinal++; }
+                                if (raw > count) { return "out_of_range"; }
                             }
                             PartFrameFixedSetRaw(dst, p.Dst, v, report);
                             break;
@@ -14160,7 +14162,7 @@ namespace Blockhome
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -14177,14 +14179,14 @@ namespace Blockhome
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                     return -1;
                 }
             }
@@ -14251,11 +14253,11 @@ namespace Blockhome
                 // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
-                census_kind = lane.KindMismatch;
+                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -14272,7 +14274,7 @@ namespace Blockhome
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     for (int j = 0; j < k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new PartFrame(); }
@@ -14284,23 +14286,29 @@ namespace Blockhome
                 if (run_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = PartFrameFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                if (report != null) { report.Clamped += forgedOrdinal; }
+                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                if (report != null && report.Refused)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    report.Verdict = TableWire.Verdict.Refused;
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
             {
                 report.Unknown += census_unknown;
-                report.KindMismatch += census_kind;
+                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -14327,7 +14335,7 @@ namespace Blockhome
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
             string run_why = PartFrameFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
-            if (report != null) { report.Clamped += forgedOrdinal; }
+            if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }
