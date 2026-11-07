@@ -10,9 +10,9 @@ name: schema-elixir-runs-hostile-corpus
 
 on:
   push:
-    branches: [ main, 'sprint/**' ]
+    branches: [ main, 'sprint/*' ]
   pull_request:
-    branches: [ main, 'sprint/**' ]
+    branches: [ main, 'sprint/*' ]
   schedule:
     - cron: "29 3 * * *"
   workflow_dispatch:
