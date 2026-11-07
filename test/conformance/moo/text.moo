@@ -107,7 +107,7 @@ return function(ctx: any): { [string]: Surface }
 				local J: any = ctx.module(f[3], "json")
 				local load: any = ctx.module(f[3], "table_load")
 				local d: any = (ctx.module(f[3], "schema_tables") :: any).lookup(f[4])
-				local v = load.loadTolerant(f[4], ctx.inputs(f[5]), load.newReport())
+				local v = load.load(f[4], ctx.inputs(f[5]), load.newReport())
 				if v == nil then
 					error(f[2] .. ": load refused " .. f[5])
 				end

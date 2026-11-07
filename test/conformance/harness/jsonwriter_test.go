@@ -36,6 +36,7 @@ func TestCanonicalJSONWriterBytesAreOneAnswer(t *testing.T) {
 		}
 		inst := inst
 		t.Run(inst.Name, func(t *testing.T) {
+			t.Parallel()
 			unit, err := u.get(inst.Unit)
 			if err != nil {
 				t.Fatal(err)

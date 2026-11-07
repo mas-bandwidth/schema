@@ -1077,6 +1077,7 @@ public final class Driver {
         // write are the same call.
         for (String[] f : kind("json-write-refusal")) {
             try {
+                if (fixedCodec(f[2], f[3]) != null) { spillAbsentReason(out, f[1] + ".json", FIXED_NO_TEXT); continue; }
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1] + ".json"); continue; }
                 Object report = codec.report();

@@ -94,7 +94,7 @@ namespace E5
                 Console.Error.WriteLine("FAIL: P1 ChainFixedLoad read " + p1ReadCount + " records, expected 1");
                 failed++;
             }
-            if (p1Report.Malformed)
+            if (p1Report.Damaged)
             {
                 Console.Error.WriteLine("FAIL: P1 ChainFixedLoad reported malformed");
                 failed++;
@@ -129,7 +129,7 @@ namespace E5
                 Console.Error.WriteLine("FAIL: P3 ChainFixedLoad read " + p3ReadCount + " records, expected 1");
                 failed++;
             }
-            if (p3Report.Malformed)
+            if (p3Report.Damaged)
             {
                 Console.Error.WriteLine("FAIL: P3 ChainFixedLoad reported malformed");
                 failed++;

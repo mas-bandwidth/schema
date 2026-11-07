@@ -72,7 +72,7 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("public static void %sFixedClamp(%s value, TableReport report)\n{\n", st.Name, st.Name)
 	g.pf("    int clamped = 0;\n")
 	g.pf("    %sFixedClampBody(value, ref clamped);\n", st.Name)
-	g.pf("    if (report != null) { report.Clamped += clamped; }\n")
+	g.pf("    if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
 	g.pf("}\n\n")
 }
 
@@ -154,8 +154,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			tagType := f.Type.Name + "Type"
 			g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
 			if !csOrdinalFillsStorage(r.Max, ir.StorageBitsFor(r.Max)) {
-				g.pf("%s    if ((ulong)%s.Type > %d) { %s.Type = (%s)0; clamped++; }\n",
-					ind, expr, r.Max, expr, tagType)
+				g.pf("%s    if ((ulong)%s.Type > %d) { clamped++; }\n", ind, expr, r.Max)
 			}
 			if ir.TableFixedClampNeededUnionArm(r) {
 				g.pf("%s    switch (%s.Type)\n%s    {\n", ind, expr, ind)
@@ -184,8 +183,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			if csOrdinalFillsStorage(r.Max, r.StorageBits) {
 				return
 			}
-			g.pf("%sif ((ulong)%s > %d) { %s = (%s)0; clamped++; }\n",
-				ind, expr, r.Max, expr, f.Type.Name)
+			g.pf("%sif ((ulong)%s > %d) { clamped++; }\n", ind, expr, r.Max)
 			return
 		}
 		return
@@ -290,7 +288,7 @@ func (g *tableGen) emitFixedWriterClamp(name string, idx int, rows []fixedWriter
 	for _, r := range rows {
 		g.emitFixedWriterClampField(r, 4)
 	}
-	g.pf("    if (report != null) { report.Clamped += clamped; }\n")
+	g.pf("    if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
 	g.pf("}\n\n")
 }
 
@@ -354,8 +352,7 @@ func (g *tableGen) csClampBoth(expr, lo, hi, ind string) {
 // csClampBothAs is csClampBoth with the COMPARED operand spelled apart from the
 // ASSIGNED one: a 128-bit leaf compares through its BCL type (csWideCompare).
 func (g *tableGen) csClampBothAs(cmp, expr, lo, hi, ind string) {
-	g.pf("%sif (%s < %s) { %s = %s; clamped++; }\n", ind, cmp, lo, expr, lo)
-	g.pf("%selse if (%s > %s) { %s = %s; clamped++; }\n", ind, cmp, hi, expr, hi)
+	g.pf("%sif (%s < %s || %s > %s) { clamped++; }\n", ind, cmp, lo, cmp, hi)
 }
 
 // csClampEnd is the one-ended twin: an end the storage's own width already holds
@@ -367,7 +364,7 @@ func (g *tableGen) csClampEnd(expr, op, bound, ind string) {
 
 // csClampEndAs is csClampEnd with the compared operand spelled apart.
 func (g *tableGen) csClampEndAs(cmp, expr, op, bound, ind string) {
-	g.pf("%sif (%s %s %s) { %s = %s; clamped++; }\n", ind, cmp, op, bound, expr, bound)
+	g.pf("%sif (%s %s %s) { clamped++; }\n", ind, cmp, op, bound)
 }
 
 // csWideCompare spells a 128-bit leaf's COMPARED operand through its BCL type.
