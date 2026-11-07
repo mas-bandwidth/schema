@@ -16,7 +16,14 @@ import (
 func lobsterDamageProbe(t *testing.T, patchFile, anchor string) []string {
 	t.Helper()
 	units, _ := readManifest(t)
-	paths, err := compiler.GatherPaths(prefix(units["backenddemo"]))
+	// the file probe reads a variable root: the fixed tables of backenddemo
+	// are read as form 3, where the damage is refused inside the fixed read
+	// and the tolerant reader's file-boundary discard is not the boundary
+	varSrc := filepath.Join(t.TempDir(), "FileRoot.schema")
+	if err := os.WriteFile(varSrc, []byte("package backenddemo\ntable FileRoot { x int32 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := compiler.GatherPaths(append(prefix(units["backenddemo"]), varSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +53,7 @@ import .message
 let bad = read_file("bad")
 assert bad
 let frep = schema_rt.LoadReport {}
-let rec = schema_rt.load_tolerant("LoginRequest", bad, frep)
+let rec = schema_rt.load_tolerant("FileRoot", bad, frep)
 print(if frep.malformed and not rec: "file discarded" else: "file kept")
 schema_rt.release(rec)
 let ann = read_file("ann")
