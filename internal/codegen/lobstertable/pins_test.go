@@ -102,6 +102,24 @@ func lobsterPinRows(t *testing.T) map[string][]lobsterPin {
 	return bySchema
 }
 
+// lobsterStrictPins answers the pin rows as this leg reads them: a declared
+// fixed root is read as form 3 (§3.4), so a form-1 wire there is refused as
+// previous_form — the strict read's unknown_form — rather than read for its
+// content (docs/SPEC-TABLES.md §6.5). The measure and float schemas are
+// variable and unchanged.
+func lobsterStrictPins(schema string, pins []lobsterPin) []lobsterPin {
+	if schema != "fixed" {
+		return pins
+	}
+	out := make([]lobsterPin, len(pins))
+	for i := range pins {
+		p := pins[i]
+		p.strict = "unknown_form"
+		out[i] = p
+	}
+	return out
+}
+
 // lobsterPinFaults runs one schema's rows, with edit applied to the emitted
 // runtime when it is set, and answers each row's fault by name.
 func lobsterPinFaults(t *testing.T, schema string, pins []lobsterPin, edit func(dir string)) map[string]string {
@@ -166,7 +184,7 @@ func TestLobsterLoadRefusalPins(t *testing.T) {
 	for schema, pins := range lobsterPinRows(t) {
 		t.Run(schema, func(t *testing.T) {
 			t.Parallel()
-			for name, fault := range lobsterPinFaults(t, schema, pins, nil) {
+			for name, fault := range lobsterPinFaults(t, schema, lobsterStrictPins(schema, pins), nil) {
 				t.Errorf("%s: %s", name, fault)
 			}
 		})
@@ -204,12 +222,15 @@ func TestLobsterLoadRefusalPinsNegativeControl(t *testing.T) {
 			[]string{"values_widened_over_cap"}},
 		{"damaged", "measure", plant("    if rep.damaged:\n        return \"wire_damaged\"\n", "", 1),
 			[]string{"cut_last", "empty", "form_only"}},
-		{"damaged", "fixed", plant("    if rep.damaged:\n        return \"wire_damaged\"\n", "", 1),
-			[]string{"fixed_bool_two", "fixed_dup_ids", "fixed_early_end"}},
+		// a fixed root is read as form 3, so every form-1 wire is refused as
+		// previous_form (unknown_form); removing the fixed-form routing is the
+		// sabotage that turns all eight rows red
+		{"fixed", "fixed", plant("    if d.fixed:\n        return load_fixed(d, data, report)\n", "", 1),
+			[]string{"fixed_bool_two", "fixed_clamped", "fixed_cut_payload", "fixed_dup_ids", "fixed_early_end", "fixed_good", "fixed_kind_mismatch", "fixed_nan"}},
 	} {
 		t.Run(c.name+"/"+c.schema, func(t *testing.T) {
 			t.Parallel()
-			faults := lobsterPinFaults(t, c.schema, rows[c.schema], c.edit)
+			faults := lobsterPinFaults(t, c.schema, lobsterStrictPins(c.schema, rows[c.schema]), c.edit)
 			var got []string
 			for name := range faults {
 				got = append(got, name)

@@ -40,7 +40,13 @@ class JsonGuard:
 let json_flags_registry:[JsonFlags] = []
 let json_guard_registry:[JsonGuard] = []
 let json_array_registry:[string] = []
-let json_text_list_registry:[FieldDescriptor] = []
+
+class JsonTextList:
+    fd:FieldDescriptor
+    total:int = 0
+    total_of:string = ""
+
+let json_text_list_registry:[JsonTextList] = []
 
 // json_fd_of is the descriptor a table field or a union arm names.
 def json_fd_of(owner:string, field:string) -> FieldDescriptor?:
@@ -74,10 +80,16 @@ def json_flags_of(f:FieldDescriptor) -> JsonFlags?:
 
 // json_text_list marks a TEXT LIST field, whose JSON is a plain array of
 // strings (§2.13, §16.2).
-def json_text_list(owner:string, field:string):
+def json_text_list(owner:string, field:string, total:int, total_of:string):
     let f = json_fd_of(owner, field)
     if f:
-        push(json_text_list_registry, f)
+        push(json_text_list_registry, JsonTextList { fd: f, total: total, total_of: total_of })
+
+def json_text_list_of(fd:FieldDescriptor) -> JsonTextList:
+    for(json_text_list_registry) x:
+        if x.fd == fd:
+            return x
+    return JsonTextList { fd: fd }
 
 // json_array_table marks a `json = "array"` table (§16.10).
 def json_array_table(name:string):
@@ -170,7 +182,7 @@ def j_storage_bytes(f:FieldDescriptor) -> int:
 
 def j_is_text_list(f:FieldDescriptor) -> bool:
     for(json_text_list_registry) x:
-        if x == f:
+        if x.fd == f:
             return true
     return false
 
@@ -1604,6 +1616,7 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
 // j_read_text_list places a TEXT LIST's plain array of strings (§2.13).
 def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
     let f = sl.fd
+    let fact = json_text_list_of(f)
     if j_peek(r) != '[':
         r.bad = true
         return false
@@ -1619,6 +1632,9 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
         sl.elems = []
     let vf = table_of(elem_of(f).t).fields[0]
     let optional = vf.present != ""
+    var spent = 0
+    var full = false
+    var seen = 0
     while true:
         var c = j_peek(r)
         if c == ']':
@@ -1627,9 +1643,16 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == 0:
             r.bad = true
             return false
-        if list and placed == length(sl.elems):
+        if not full and list and placed == length(sl.elems):
             push(sl.elems, element_zero(f))
-        if placed >= bound:
+        let before = placed
+        seen++
+        if full:
+            if seen > bound:
+                r.report.clamped++
+            if not j_skip_value(r, depth + 1):
+                return false
+        elif placed >= bound:
             r.report.clamped++
             if not j_skip_value(r, depth + 1):
                 return false
@@ -1655,6 +1678,24 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
                 if optional:
                     t.fields[0].present = true
             placed++
+        if placed > before and fact.total > 0:
+            let rec = sl.elems[placed - 1].tab
+            var n = 0
+            if rec:
+                let value = rec.fields[0]
+                if value.fd.present == "" or value.present:
+                    n = length(value.cell.s)
+            if n > fact.total - spent:
+                r.report.clamped++
+                if r.report.reason == "":
+                    r.report.reason = "clamped: " + fact.total_of
+                sl.elems[placed - 1] = element_zero(f)
+                placed--
+                full = true
+                if list:
+                    truncate(sl.elems, placed)
+            else:
+                spent += n
         c = j_peek(r)
         if c == ',':
             r.pos++

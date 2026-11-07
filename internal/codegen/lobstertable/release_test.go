@@ -110,12 +110,13 @@ func runRelease(t *testing.T, wire []byte, release bool, patch func(string) stri
 assert data
 let rep = schema_rt.LoadReport {}
 let rec = schema_rt.load_tolerant("ListNode", data, rep)
-assert rec
-let out, why = schema_rt.save_reasoned(rec)
-print("loaded unknown={rep.unknown} malformed={rep.malformed} save=" + (if why == "": "ok" else: why))
+print("loaded unknown={rep.unknown} malformed={rep.malformed} rec=" + (if rec: "yes" else: "no"))
+if rec:
+    let out, why = schema_rt.save_reasoned(rec)
+    print("save=" + (if why == "": "ok" else: why))
 `)
 	if release {
-		b.WriteString("schema_rt.release(rec)\n")
+		b.WriteString("    schema_rt.release(rec)\n")
 	}
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(b.String()), 0o644); err != nil {
 		t.Fatal(err)
@@ -126,49 +127,56 @@ print("loaded unknown={rep.unknown} malformed={rep.malformed} save=" + (if why =
 const leakReport = "LEAKS FOUND"
 
 // TestLobsterTableLoadUnlinksWhatTheRootDoesNotReach: an orphan cycle (B and
-// C naming each other, the root naming neither) is the load's to end, so a
-// caller that never releases anything leaks nothing.
+// C naming each other, the root naming neither) is damage (§3.1, §4), so the
+// load refuses it and leaks nothing.
 func TestLobsterTableLoadUnlinksWhatTheRootDoesNotReach(t *testing.T) {
 	t.Parallel()
 	out := runRelease(t, cyclicListWire(t, 2, true), false, nil)
-	if !strings.HasPrefix(out, "loaded ") || strings.Contains(out, leakReport) {
-		t.Fatalf("an orphan cycle outlived the load:\n%s", out)
+	if strings.Contains(out, leakReport) || !strings.Contains(out, "malformed=true") || !strings.Contains(out, "rec=no") {
+		t.Fatalf("an orphan cyclic wire was not refused as damage:\n%s", out)
 	}
 }
 
-// TestLobsterTableLoadUnlinksWhatTheRootDoesNotReachNegativeControl takes the
-// load's pass out and requires the orphan cycle to leak.
+// TestLobsterTableLoadUnlinksWhatTheRootDoesNotReachNegativeControl removes the
+// cycle refusal and the unlink pass and requires the orphan cycle to leak: the
+// witness that the refusal above is what ends it.
 func TestLobsterTableLoadUnlinksWhatTheRootDoesNotReachNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "\n        unlink_unreached(st, root)\n"
+	const block = "        if not st.report.malformed and load_cyclic(st, root):\n            st.report.malformed = true\n        unlink_unreached(st, root)\n"
 	out := runRelease(t, cyclicListWire(t, 2, true), false, func(src string) string {
-		if n := strings.Count(src, anchor); n != 1 {
-			t.Fatalf("the unlink anchor is in the emitted runtime %d times, want 1", n)
+		if n := strings.Count(src, block); n != 1 {
+			t.Fatalf("the cycle-refusal and unlink block is in the emitted runtime %d times, want 1", n)
 		}
-		return strings.Replace(src, anchor, "\n        if length(st.nodes) < 0:\n            unlink_unreached(st, root)\n", 1)
+		return strings.Replace(src, block, "        st.report.stopped = st.report.stopped\n", 1)
 	})
 	if !strings.Contains(out, leakReport) {
-		t.Fatalf("NEGATIVE CONTROL FAILED: without the unlink pass the orphan cycle still did not leak:\n%s", out)
+		t.Fatalf("NEGATIVE CONTROL FAILED: without the cycle refusal and unlink the orphan cycle still did not leak:\n%s", out)
 	}
 }
 
-// TestLobsterTableReleaseEndsAReachedCycle: root -> B -> C -> root is the
-// caller's graph, and release(root) ends it.
+// TestLobsterTableReleaseEndsAReachedCycle: root -> B -> C -> root is damage
+// too, so the load refuses it and leaks nothing.
 func TestLobsterTableReleaseEndsAReachedCycle(t *testing.T) {
 	t.Parallel()
 	out := runRelease(t, cyclicListWire(t, 1, false), true, nil)
-	if !strings.HasPrefix(out, "loaded ") || strings.Contains(out, leakReport) {
-		t.Fatalf("a released cycle outlived the program:\n%s", out)
+	if strings.Contains(out, leakReport) || !strings.Contains(out, "malformed=true") || !strings.Contains(out, "rec=no") {
+		t.Fatalf("a cyclic reached wire was not refused as damage:\n%s", out)
 	}
 }
 
-// TestLobsterTableReleaseEndsAReachedCycleNegativeControl drops the release
-// and requires the reached cycle to leak: the witness that the test above
-// loads a real cycle.
+// TestLobsterTableReleaseEndsAReachedCycleNegativeControl removes the cycle
+// refusal and requires the reached cycle to leak: the witness that the refusal
+// above is what ends it.
 func TestLobsterTableReleaseEndsAReachedCycleNegativeControl(t *testing.T) {
 	t.Parallel()
-	out := runRelease(t, cyclicListWire(t, 1, false), false, nil)
+	const cyc = "        if not st.report.malformed and load_cyclic(st, root):\n            st.report.malformed = true\n"
+	out := runRelease(t, cyclicListWire(t, 1, false), false, func(src string) string {
+		if n := strings.Count(src, cyc); n != 1 {
+			t.Fatalf("the cycle-refusal anchor is in the emitted runtime %d times, want 1", n)
+		}
+		return strings.Replace(src, cyc, "", 1)
+	})
 	if !strings.Contains(out, leakReport) {
-		t.Fatalf("NEGATIVE CONTROL FAILED: an unreleased reached cycle did not leak:\n%s", out)
+		t.Fatalf("NEGATIVE CONTROL FAILED: without the cycle refusal the reached cycle still did not leak:\n%s", out)
 	}
 }
