@@ -237,7 +237,6 @@ func withoutArrayRoots(source string) string {
   defp json_root_pairs(%{json_array: true}, _raw), do: {:error, :root_shape}
 `,
 		`        {:error, :root_shape} ->
-          report = Map.put(empty_report(), :reason, "json_root_not_array: " <> table)
           {:error, :json_root_not_array, throw(:wire_damaged)}
 
 `,
@@ -2383,17 +2382,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 {:cont, "", throw(:wire_damaged)}
 
               div(len, 2) > f.size ->
-                cut = binary_part(raw, 0, f.size * 2)
-                size = byte_size(cut)
-
-                cut =
-                  if size > 0 do
-                    <<last::little-unsigned-16>> = binary_part(cut, size - 2, 2)
-                    if last in 0xD800..0xDBFF, do: binary_part(cut, 0, size - 2), else: cut
-                  else
-                    cut
-                  end
-
                 throw(:wire_damaged)
 
               true ->
@@ -2678,7 +2666,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp retyped_arm(_a, _name, _k, _inner, report),
+  defp retyped_arm(_a, _name, _k, _inner, _report),
     do: {:cont, nil, throw(:wire_damaged)}
 
   defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
@@ -2772,7 +2760,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # a count past a bounded array's declared bound reads the first bound
   # elements and counts one refusal, before any element is read, so the
   # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
-  defp clamp_count(n, %{max_count: max}, report) when n > max,
+  defp clamp_count(n, %{max_count: max}, _report) when n > max,
     do: {max, throw(:wire_damaged)}
 
   defp clamp_count(n, _f, report), do: {n, report}
@@ -3083,7 +3071,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         # the element's body is damaged mid-walk or runs off its own end: the
         # events its prefix already earned count, the element reads its
         # declared defaults, and one malformed counts (§3, §4)
-        {_status, _value, report} = decode(desc, fields, nodes, ids, false)
+        {_status, _value, _report} = decode(desc, fields, nodes, ids, false)
         {:cont, %{}, throw(:wire_damaged)}
 
       _ ->
@@ -3398,10 +3386,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp int_of(<<v::little-unsigned-128>>, 16, false), do: v
   defp int_of(_payload, _w, _signed), do: 0
 
-  defp clamp_int(v, %{min: lo, max: _hi}, report) when v < lo,
+  defp clamp_int(v, %{min: lo, max: _hi}, _report) when v < lo,
     do: {lo, throw(:wire_damaged)}
 
-  defp clamp_int(v, %{min: _lo, max: hi}, report) when v > hi,
+  defp clamp_int(v, %{min: _lo, max: hi}, _report) when v > hi,
     do: {hi, throw(:wire_damaged)}
 
   defp clamp_int(v, _f, report), do: {v, report}
@@ -3426,7 +3414,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_read_timestamp(name, raw, report) when is_binary(raw) do
+  defp json_read_timestamp(_name, raw, report) when is_binary(raw) do
     case timestamp_parse(raw) do
       {:ok, nanos} ->
         {nanos, report}
@@ -3436,7 +3424,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_read_timestamp(_name, raw, report) do
+  defp json_read_timestamp(_name, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -3608,7 +3596,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         end
       else
         {:error, :root_shape} ->
-          report = Map.put(empty_report(), :reason, "json_root_not_array: " <> table)
           {:error, :json_root_not_array, throw(:wire_damaged)}
 
         _ ->
@@ -4269,7 +4256,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_read_field(%{t: :string}, raw, report) do
+  defp json_read_field(%{t: :string}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4294,7 +4281,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_field(%{t: :union} = f, {:obj, _} = raw, report),
     do: json_read_arm(f.elem, raw, report)
 
-  defp json_read_field(%{t: :union}, raw, report) do
+  defp json_read_field(%{t: :union}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4306,25 +4293,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     units = utf16(raw)
 
     if div(byte_size(units), 2) > f.size do
-      # A clamp keeps a code-point prefix, never half of a surrogate pair.
-      cut = binary_part(units, 0, f.size * 2)
-      size = byte_size(cut)
-
-      cut =
-        if size > 0 do
-          <<last::little-unsigned-16>> = binary_part(cut, size - 2, 2)
-          if last in 0xD800..0xDBFF, do: binary_part(cut, 0, size - 2), else: cut
-        else
-          cut
-        end
-
       throw(:wire_damaged)
     else
       {raw, report}
     end
   end
 
-  defp json_read_field(%{t: :wstring}, raw, report) do
+  defp json_read_field(%{t: :wstring}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4360,7 +4335,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {values, report}
   end
 
-  defp json_read_field(%{t: :keyed}, raw, report) do
+  defp json_read_field(%{t: :keyed}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4376,7 +4351,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end)
   end
 
-  defp json_read_field(%{t: :int, flags: _}, raw, report) do
+  defp json_read_field(%{t: :int, flags: _}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4395,7 +4370,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_read_field(%{t: :enum}, raw, report) do
+  defp json_read_field(%{t: :enum}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4415,14 +4390,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_read_field(%{t: :int}, raw, report) do
+  defp json_read_field(%{t: :int}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}
 
-  defp json_read_field(%{t: :bool}, raw, report) do
+  defp json_read_field(%{t: :bool}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4439,7 +4414,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_read_field(%{t: :blob}, nil, report), do: {nil, report}
 
-  defp json_read_field(%{t: :blob}, raw, report) do
+  defp json_read_field(%{t: :blob}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4449,15 +4424,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {:ok, bytes} when byte_size(bytes) <= f.size ->
         {bytes, report}
 
-      {:ok, bytes} ->
-        {binary_part(bytes, 0, f.size), throw(:wire_damaged)}
+      {:ok, _bytes} ->
+        throw(:wire_damaged)
 
       :error ->
         {:skip, throw(:wire_damaged)}
     end
   end
 
-  defp json_read_field(%{t: :bytes}, raw, report) do
+  defp json_read_field(%{t: :bytes}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4515,7 +4490,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end)
   end
 
-  defp json_read_field(%{t: :map}, raw, report) do
+  defp json_read_field(%{t: :map}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4526,7 +4501,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     json_read_node(f.elem, pairs, report)
   end
 
-  defp json_read_field(%{t: :pointer}, raw, report) do
+  defp json_read_field(%{t: :pointer}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4539,10 +4514,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {:ok, v} ->
         case f do
           %{min: lo, max: _hi} when v < lo ->
-            {lo * 1.0, throw(:wire_damaged)}
+            throw(:wire_damaged)
 
           %{min: _lo, max: hi} when v > hi ->
-            {hi * 1.0, throw(:wire_damaged)}
+            throw(:wire_damaged)
 
           _ ->
             {v, report}
@@ -4550,16 +4525,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_read_field(%{t: :float}, raw, report) do
+  defp json_read_field(%{t: :float}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :list, text_list: true} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
-    # every element past [..N] counts a refusal, the total's drop included
-    # (docs/SPEC-TABLES.md §2.13, §16.2)
-    past = if bound > 0, do: max(length(raw) - bound, 0), else: 0
+    # every element past [..N] refuses the whole read (docs/SPEC-TABLES.md §2.13, §16.2)
 
     {elements, _count, _f, report} =
       Enum.reduce_while(raw, {[], 0, f, report}, fn raw, {acc, count, f, report} ->
@@ -4574,7 +4547,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               {:keep, f, report} ->
                 {:cont, {[value | acc], count + 1, f, report}}
 
-              {:drop, report} ->
+              {:drop, _report} ->
                 {:halt, {acc, count, f, throw(:wire_damaged)}}
             end
         end
@@ -4610,7 +4583,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {Enum.reverse(elems), report}
   end
 
-  defp json_read_field(%{t: :list}, raw, report) do
+  defp json_read_field(%{t: :list}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -4827,7 +4800,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_read_list_elem(%{text_list: true} = f, raw, report) do
+  defp json_read_list_elem(%{text_list: true} = f, raw, _report) do
     json_skip_value(raw)
     value = if f.text_optional, do: nil, else: ""
     {%{"value" => value}, throw(:wire_damaged)}
@@ -4921,7 +4894,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_read_list_elem(%{elem_kind: 15} = f, e, report), do: json_read_arm(f.elem, e, report)
 
-  defp json_read_list_elem(_f, _e, report),
+  defp json_read_list_elem(_f, _e, _report),
     do: {:skip, throw(:wire_damaged)}
 
   # json_read_arm reads one union object (docs/SPEC-TABLES.md §2.6, §16.2): {}
@@ -4957,12 +4930,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_read_arm(_union, {:obj, _pairs}, report) do
+  defp json_read_arm(_union, {:obj, _pairs}, _report) do
     Process.put(:elixir_json_bad, true)
     {nil, throw(:wire_damaged)}
   end
 
-  defp json_read_arm(_union, raw, report) do
+  defp json_read_arm(_union, raw, _report) do
     json_skip_value(raw)
     {nil, throw(:wire_damaged)}
   end
@@ -6503,10 +6476,10 @@ const variableRetainSource = `
           {{:value, v}, report, retain} when is_map(v) ->
             {:cont, v, report, retain}
 
-          {{:value, _}, report, retain} ->
+          {{:value, _}, _report, retain} ->
             {:cont, nil, throw(:wire_damaged), retain}
 
-          {:out_of_range, report, retain} ->
+          {:out_of_range, _report, retain} ->
             {:cont, nil, throw(:wire_damaged), retain}
 
           {:null, report, retain} ->
@@ -6654,7 +6627,7 @@ const variableRetainSource = `
 
   # a bounded array keeps its first bound elements and counts one refusal
   # (§4); a record under a cut element names no body, and a save counts it.
-  defp clamp_retain(value, %{max_count: max}, report, retain) when length(value) > max,
+  defp clamp_retain(value, %{max_count: max}, _report, retain) when length(value) > max,
     do: {:cont, Enum.take(value, max), throw(:wire_damaged), retain}
 
   defp clamp_retain(value, _f, report, retain), do: {:cont, value, report, retain}
@@ -6675,7 +6648,7 @@ const variableRetainSource = `
           else: {:cont, value, report, retain}
 
       {:stop, fields, [], _} ->
-        {_status, _value, report, retain} =
+        {_status, _value, _report, retain} =
           decode_retain(desc, fields, nodes, ids, retain, report, path, false)
 
         {:cont, %{}, throw(:wire_damaged), retain}
@@ -6973,13 +6946,13 @@ const variableRetainSource = `
             {{:value, v}, report, retain} when is_map(v) ->
               {v, report, retain}
 
-            {:out_of_range, report, retain} ->
+            {:out_of_range, _report, retain} ->
               {nil, throw(:wire_damaged), retain}
 
             {:null, report, retain} ->
               {nil, report, retain}
 
-            {_, report, retain} ->
+            {_, _report, retain} ->
               {nil, throw(:wire_damaged), retain}
           end
 
@@ -7127,7 +7100,7 @@ const variableRetainSource = `
           else: {:cont, value, report, retain}
 
       {:stop, fields, [], _remaining} ->
-        {_status, _value, report, retain} =
+        {_status, _value, _report, retain} =
           decode_retain(desc, fields, nodes, ids, retain, report, elem_path, false)
 
         {:cont, %{}, throw(:wire_damaged), retain}
