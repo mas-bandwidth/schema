@@ -1,0 +1,55 @@
+# THE ROADMAP GATE. The tables in ROADMAP.md are generated (make roadmap);
+# everything outside the nova-work markers is Glenn's, written by hand. This
+# job holds both: the tables match docs/roadmap.sexp and its evidence, every
+# block holds only a table and its source link, and no commit in the pushed
+# range by anyone but Glenn Fiedler changes the page outside the markers. The
+# negative control proves the gate refuses an "X update:" paragraph put back.
+# Full history is fetched so the range check can read each commit's parent.
+name: schema roadmap gate
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'ROADMAP.md', 'docs/roadmap.sexp', 'docs/roadmap-evidence/**', 'tools/roadmap/**', '.github/workflows/roadmap.yml' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'ROADMAP.md', 'docs/roadmap.sexp', 'docs/roadmap-evidence/**', 'tools/roadmap/**', '.github/workflows/roadmap.yml' ]
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  roadmap:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: sbcl is present
+        run: |
+          set -euo pipefail
+          if ! command -v sbcl >/dev/null 2>&1; then
+            echo "::error::tool missing: sbcl — install it fleet-wide (rowan-tools/fleet schema-toolchains)"
+            exit 1
+          fi
+          sbcl --version
+      - name: the tables match the data, blocks hold only tables, and the hand text is Glenn's
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=HEAD~1; fi
+          make roadmap-check ROADMAP_BASE="$BASE"
+      - name: the gate refuses an "X update:" paragraph put back
+        run: make roadmap-check-negative-control
+      - name: the renderer and gate suites
+        run: make roadmap-test

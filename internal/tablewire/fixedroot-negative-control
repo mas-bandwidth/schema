@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Restore the fixed-root exemption in an overlay; the ceiling pin must fail."""
+import json
+import pathlib
+import subprocess
+import tempfile
+
+root = pathlib.Path(__file__).resolve().parents[2]
+source = root / "internal/tablewire/fixed.go"
+text = source.read_text()
+old = "return st != nil && st.FixedDeclared"
+assert text.count(old) == 1, "fixed-root mutation did not match exactly once"
+mutated = text.replace(old, "return st != nil && st.FixedDeclared && ir.TableFixedEmitted(m.Unit, st)")
+# The restored predicate needs its original model argument.
+mutated = mutated.replace("func FixedRoot(_ *tabletext.Model", "func FixedRoot(m *tabletext.Model")
+with tempfile.TemporaryDirectory(prefix="fixed-root-control-") as tmp:
+    path = pathlib.Path(tmp)
+    replacement = path / "fixed.go"
+    replacement.write_text(mutated)
+    overlay = path / "overlay.json"
+    overlay.write_text(json.dumps({"Replace": {str(source): str(replacement)}}))
+    result = subprocess.run(["go", "test", "-p", "4", "-count=1", "-timeout", "600s", "-overlay", str(overlay), "./compiler/", "-run", "TestStrictSpecCarriesOneReadAndFixedRoot/fixed_root_ceiling_behavior"], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
+    print(result.stdout, end="")
+    assert result.returncode != 0, "restored exemption passed the ceiling pin"
+    assert "oversized fixed root must refuse form 1 as previous_form" in result.stdout, "control failed for an unrelated reason"
+print("PASS: restored form-1 exemption is caught by the exact refusal pin")

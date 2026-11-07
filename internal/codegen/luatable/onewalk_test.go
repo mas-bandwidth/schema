@@ -106,8 +106,8 @@ func walkAnswers(t *testing.T, module string, files map[string][]byte, root, nam
 // first, then everything else, in the same walk.
 const (
 	walkLoop = `  for _, fd in ipairs(desc.fields) do
-    if D.guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
-      edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
+    if (every or D.guard_holds(fd, v)) and not (fd.optional and not v[fd.name .. "_present"]) then
+      edge_value(T, fd, v[fd.name], v, fd.name, out, cache, every)
     end
   end
   return out
@@ -116,8 +116,8 @@ const (
     for _, fd in ipairs(desc.fields) do
       local e = fd.shape == "array" and fd.elem or fd
       local direct = e.shape == "pointer" or e.shape == "string_blob" or e.shape == "bytes_blob"
-      if (pass == 1) == direct and D.guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
-        edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
+      if (pass == 1) == direct and (every or D.guard_holds(fd, v)) and not (fd.optional and not v[fd.name .. "_present"]) then
+        edge_value(T, fd, v[fd.name], v, fd.name, out, cache, every)
       end
     end
   end

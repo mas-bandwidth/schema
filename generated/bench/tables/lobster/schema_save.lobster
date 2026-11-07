@@ -828,4 +828,6 @@ def save_reasoned(rec:Record) -> string, string:
     for(e.ids.ids) id:
         so_u64(out, id)
     so_u64(out, length(e.ids.ids))
+    if rec.d.integrity:
+        so_u32(out, wire_crc32c(out.b, out.n))
     return so_take(out), ""

@@ -1,0 +1,47 @@
+name: Python pins
+description: >
+  Puts the Python leg's pins make/python-toolchain.mk names at dist/: CPython
+  PYTHON_FLOOR_VERSION and PYTHON_CURRENT_VERSION, each built from its
+  python.org source tarball by `make dist-python`, which refuses any tarball
+  whose sha256 is not the pin, and mypy installed into the floor interpreter
+  from make/python-mypy.lock. The build is cached under a key naming every
+  version, every sha256, the lock, the OS and the architecture, so only the
+  first run per runner image pays for it. The cached tree is checked against
+  the pins before it is used. Needs a C compiler, make and the zlib headers on
+  the runner.
+runs:
+  using: composite
+  steps:
+    - name: the Python pins
+      id: pin
+      shell: bash
+      run: |
+        set -euo pipefail
+        floor=$(sed -n 's/^PYTHON_FLOOR_VERSION *:= *//p' make/python-toolchain.mk)
+        current=$(sed -n 's/^PYTHON_CURRENT_VERSION *:= *//p' make/python-toolchain.mk)
+        sums=$(sed -n 's/^PYTHON_SHA256_[0-9.]* *:= *//p' make/python-toolchain.mk | tr '\n' '-')
+        lock=$(shasum -a 256 make/python-mypy.lock | cut -c1-16)
+        echo "floor=$floor" >> "$GITHUB_OUTPUT"
+        echo "current=$current" >> "$GITHUB_OUTPUT"
+        echo "key=python-$floor-$current-$(echo "$sums" | shasum -a 256 | cut -c1-16)-$lock" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: restore
+      with:
+        path: |
+          dist/python-${{ steps.pin.outputs.floor }}
+          dist/python-${{ steps.pin.outputs.current }}
+        key: ${{ steps.pin.outputs.key }}-${{ runner.os }}-${{ runner.arch }}
+    - name: build the Python pins (cache miss)
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: make -j2 dist-python PYTHON_BUILD_JOBS="$(getconf _NPROCESSORS_ONLN)"
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: steps.restore.outputs.cache-hit != 'true'
+      with:
+        path: |
+          dist/python-${{ steps.pin.outputs.floor }}
+          dist/python-${{ steps.pin.outputs.current }}
+        key: ${{ steps.pin.outputs.key }}-${{ runner.os }}-${{ runner.arch }}
+    - name: the cached Python is the pins
+      shell: bash
+      run: make python-toolchain-check

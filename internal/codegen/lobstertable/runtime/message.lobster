@@ -1103,22 +1103,28 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
     if data[0] != 2:
         message_refuse(rep, "newer_form")
         return 0, false
-    if not v.announced:
-        message_refuse(rep, "no_vocabulary")
-        return 0, false
-    if length(data) < 2:
-        rep.malformed = true
-        return 0, false
     if not is_message_root(root):
         message_refuse(rep, "not_a_message_root: " + root)
         return 0, false
-    let count = data[1] + 1
+    let d = table_of(root)
+    let wire, intact = wire_integrity_body(d, data, 6)
+    if not intact:
+        rep.malformed = true
+        rep.damaged = true
+        rep.reason = "integrity_mismatch"
+        return 0, false
+    if not v.announced:
+        message_refuse(rep, "no_vocabulary")
+        return 0, false
+    if length(wire) < 2:
+        rep.malformed = true
+        return 0, false
+    let count = wire[1] + 1
     if count > capacity:
         message_refuse(rep, "batch_too_large")
         return count, false
-    let bits = MessageBits { b: data, lo: 2, n: (length(data) - 2) * 8 }
+    let bits = MessageBits { b: wire, lo: 2, n: (length(wire) - 2) * 8 }
     let m = MessageRead { bits: bits, v: v, rep: rep }
-    let d = table_of(root)
     var i = 0
     while i < count:
         let rec = new_record(d)
@@ -1155,13 +1161,13 @@ def load_messages(root:string, v:MessageVocabulary, data:string, rep:LoadReport,
 // more than its terminator, everything else when it is not its default.
 def mw_cell_rides(w:MessageWriter, d:FieldDescriptor, kind:int, v:Value, element:bool) -> bool, bool:
     if d.s == "tab":
-        let probe = MessageWriter { measuring: true, ref_bits: w.ref_bits }
+        let nested_writer = MessageWriter { measuring: true, ref_bits: w.ref_bits }
         var t = v.tab
         if not t:
             t = new_record(table_of(d.t))
-        if not mw_body(probe, t):
+        if not mw_body(nested_writer, t):
             return false, false
-        return probe.bits > w.ref_bits, true
+        return nested_writer.bits > w.ref_bits, true
     if d.s == "union":
         return v.i != 0, true
     if element:
@@ -1436,7 +1442,7 @@ def measure_messages(values:[Record], rep:LoadReport) -> int:
     mw_align(w)
     if w.overflow:
         return -1
-    return 2 + w.bits / 8
+    return 2 + w.bits / 8 + (if values[0].d.integrity: 4 else: 0)
 
 // save_messages writes the batch (Go's <Name>SaveMessages): the form byte, the
 // count, the bodies as one bit stream, the zero pad. It answers the bytes and
@@ -1455,4 +1461,11 @@ def save_messages(values:[Record], rep:LoadReport) -> string, int:
     var out = zeros(2)
     out = write_int8_le(out, 0, 2)
     out = write_int8_le(out, 1, length(values) - 1)
-    return out + w.b, 2 + w.bits / 8
+    out += w.b
+    let n = 2 + w.bits / 8
+    if values[0].d.integrity:
+        let crc = wire_crc32c(out, n)
+        out = ensure_size(out, n + 4, 0)
+        out = write_int32_le(out, n, crc)
+        return out, n + 4
+    return out, n

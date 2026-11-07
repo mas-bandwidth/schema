@@ -128,9 +128,8 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 		if !runtimeCarriesForm(u, base) {
 			continue
 		}
-		if unitDeclaresForms(u) {
-			data = gateDeclaredFormsRuntime(base, data)
-		}
+		eligibility := (base == "block.lua" || base == "blockbuild.lua") && unitNeedsBlockEligibility(u)
+		data = gateDeclaredFormsRuntime(base, data, eligibility)
 		out[base] = data
 	}
 	return out, nil
@@ -152,12 +151,19 @@ func emitTail(m *Module) {
 	m.Printf("return _M\n")
 }
 
-// unitDeclaresForms reports whether any declared table of u carries an
-// explicit `forms` declaration (docs/SPEC-TABLES.md §2.12). A synthesized map
-// entry inherits its owner's declaration and is not counted on its own.
-func unitDeclaresForms(u *ir.Unit) bool {
+// unitNeedsBlockEligibility reports whether any declared table of u lacks a
+// fixed block form, either because its by-value closure is variable-length or
+// union-backed or because its `forms` declaration leaves block out. Only such
+// a unit needs the runtime to refuse that name before block layout, capacity
+// or build; a unit whose every table is eligible keeps the runtime's bytes
+// unchanged, so its hot BlockOpen and Begin paths carry no eligibility test.
+func unitNeedsBlockEligibility(u *ir.Unit) bool {
+	blocks := ir.Blocks(u)
 	for _, st := range u.Tables {
-		if !st.IsMapEntry() && st.DeclaredForms() {
+		if st.IsMapEntry() {
+			continue
+		}
+		if !blocks.IsBlock(st.Name) || !st.CarriesForm("block") {
 			return true
 		}
 	}
@@ -202,12 +208,16 @@ func runtimeCarriesForm(u *ir.Unit, name string) bool {
 
 // gateDeclaredFormsRuntime wires a table's declaration into an emitted
 // runtime's entry points, so a call for a form the table leaves out is
-// refused by the form's name (docs/SPEC-TABLES.md §2.12). The emitted
-// runtime files themselves are untouched: a unit with no declaration keeps
-// exactly today's bytes. json.lua carries its gate in the runtime itself
-// (a table with no forms passes it), so the text walk stays one file across
-// every unit (docs/PORTING.md M9).
-func gateDeclaredFormsRuntime(name string, data []byte) []byte {
+// refused by the form's name (docs/SPEC-TABLES.md §2.12), and — for a unit
+// that carries a table with no fixed block form — so a block call for that
+// table is refused before layout, capacity or build. The JSON and cook forms
+// clauses always land. The block clause, its forms test included, lands only
+// where a table lacks the form, so a unit whose every table is eligible emits
+// block runtimes with no eligibility test and its hot BlockOpen and Begin
+// paths pay nothing for it. A shared package.loaded or output-directory copy
+// is guarded by the descriptor seal, which installs the same test when the
+// copies disagree.
+func gateDeclaredFormsRuntime(name string, data []byte, eligibility bool) []byte {
 	s := string(data)
 	replaceOnce := func(old, repl string) {
 		if !strings.Contains(s, old) {
@@ -216,16 +226,45 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 		s = strings.Replace(s, old, repl, 1)
 	}
 	switch name {
+	case "json.lua":
+		replaceOnce(
+			"function J.FromJson(T, name, text, report)\n",
+			"function J.FromJson(T, name, text, report)\n  local desc = T.Tables[name]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"json: table \" .. tostring(name) .. \" does not carry json (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+		)
+		replaceOnce(
+			"function J.ToJson(T, name, v)\n  local desc = T.Tables[name]\n",
+			"function J.ToJson(T, name, v)\n  local desc = T.Tables[name]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"json: table \" .. tostring(name) .. \" does not carry json (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+		)
 	case "block.lua":
-		replaceOnce(
-			"function B.BlockOpen(T, name, bytes, build_version, base_offset)\n",
-			"function B.BlockOpen(T, name, bytes, build_version, base_offset)\n  local bd = T.Tables[name]\n  if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then\n    error(\"block: table \" .. tostring(name) .. \" does not carry block (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
-		)
+		if eligibility {
+			replaceOnce(
+				"local B = {}\n",
+				"local B = {}\nB.EligibilityGuard = true\n",
+			)
+			replaceOnce(
+				"function B.Layout(T, name, projection, d)\n  d = d or T.Tables[name]\n",
+				"function B.Layout(T, name, projection, d)\n  d = d or T.Tables[name]\n  if projection and d ~= nil and d.block_eligible ~= true then return nil, \"bad_layout\" end\n",
+			)
+			replaceOnce(
+				"function B.BlockOpen(T, name, bytes, build_version, base_offset)\n",
+				"function B.BlockOpen(T, name, bytes, build_version, base_offset)\n  local bd = T.Tables[name]\n  if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then\n    error(\"block: table \" .. tostring(name) .. \" does not carry block (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n  if bd ~= nil and bd.block_eligible ~= true then return nil, \"bad_layout\" end\n",
+			)
+		}
 	case "blockbuild.lua":
-		replaceOnce(
-			"function B.Begin(T, root, counts)\n",
-			"function B.Begin(T, root, counts)\n  local bd = T.Tables[root]\n  if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then\n    error(\"block: table \" .. tostring(root) .. \" does not carry block (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
-		)
+		if eligibility {
+			replaceOnce(
+				"local B = {}\n",
+				"local B = {}\nB.EligibilityGuard = true\n",
+			)
+			replaceOnce(
+				"function B.BlockMaxBytes(T, root)\n  local desc = T.Tables[root]\n  if desc == nil then return nil, \"blockbuild: no table descriptor for \" .. tostring(root) end\n",
+				"function B.BlockMaxBytes(T, root)\n  local desc = T.Tables[root]\n  if desc == nil then return nil, \"blockbuild: no table descriptor for \" .. tostring(root) end\n  if desc.block_eligible ~= true then return nil, \"bad_layout\" end -- BlockMaxBytes\n",
+			)
+			replaceOnce(
+				"function B.Begin(T, root, counts)\n  local desc = T.Tables[root]\n",
+				"function B.Begin(T, root, counts)\n  local desc = T.Tables[root]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.block ~= true then\n    error(\"block: table \" .. tostring(root) .. \" does not carry block (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n  if desc ~= nil and desc.block_eligible ~= true then return nil, \"bad_layout\" end -- Begin\n",
+			)
+		}
 	case "cook.lua":
 		replaceOnce(
 			"function C.Open(T, name, bytes, base_offset)\n",
@@ -324,7 +363,10 @@ func emit(m *Module) {
 	// reserved blob type ids a directory names (§7.1, §7.4, §6.3)
 	m.Printf("_M.BuildVersion = %s\n", idLit(ir.BuildVersion(u)))
 	m.Printf("_M.BytesBlobTypeId = %s\n", idLit(ir.BytesTypeId))
-	m.Printf("_M.StringBlobTypeId = %s\n\n", idLit(ir.StringTypeId))
+	m.Printf("_M.StringBlobTypeId = %s\n", idLit(ir.StringTypeId))
+	m.Printf("_M.DocNone = \"\"\n")
+	m.Printf("_M.BlockForm = %v\n", unitCarriesForm(u, "block"))
+	m.Printf("_M.NeedsBlockEligibility = %v\n\n", unitNeedsBlockEligibility(u))
 	// every id this build can name (ir.TableWireIds): a retaining save tells a
 	// nameable id from a retained one by it, and only a retained one takes an
 	// entry of the caller's id list (docs/SPEC-TABLES.md §6.6, THE RETAINED IDS)
@@ -342,8 +384,9 @@ func emit(m *Module) {
 	m.Printf("-- the table descriptors, by name (docs/SPEC-TABLES.md §8.1)\n")
 	m.Printf("_M.Tables = {}\n\n")
 	variable := ir.VariableTables(u)
+	blocks := ir.Blocks(u)
 	for _, st := range m.Closure {
-		emitDescriptor(m, st, variable[st.Name])
+		emitDescriptor(m, st, variable[st.Name], blocks.IsBlock(st.Name) && st.CarriesForm("block"))
 	}
 	m.Printf("-- the table-side union descriptors, by name (docs/SPEC-TABLES.md §2.6)\n")
 	m.Printf("_M.Unions = {}\n\n")
@@ -371,7 +414,7 @@ func emit(m *Module) {
 // the conjunction composed through nesting (structGuards, re-derived here from
 // the IR as the C++ emitter composes it; an emitter never imports the engine):
 // a field under a false guard is elided and is not an edge (§3, §3.1).
-func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
+func emitDescriptor(m *Module, st *ir.Struct, variable, blockEligible bool) {
 	layout := ir.RecordLayout(m.Unit, st)
 	regionAlign := ir.TableRegionAlign(m.Unit)
 	m.Printf("_M.Tables[%q] = {\n", st.Name)
@@ -390,6 +433,10 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 		m.Printf(" },\n")
 	}
 	m.Printf("  variable = %v,\n", variable)
+	// The canonical fixed-closure eligibility, including the union and
+	// synthesized-map-entry exclusions; the runtime layout is not an
+	// eligibility test of its own.
+	m.Printf("  block_eligible = %v,\n", blockEligible)
 	if st.Integrity != "" {
 		m.Printf("  integrity = %q,\n", st.Integrity)
 	}
@@ -405,6 +452,10 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	m.Printf("  cook_align = %d,\n", ir.CookNodeAlign(m.Unit, st))
 	m.Printf("  cook_record = %d,\n", ir.CookExtentStart(m.Unit, st))
 	m.Printf("  region_align = %d,\n", regionAlign)
+	m.Printf("  doc = %s,\n", docLit(st.Doc))
+	if len(st.Tags) > 0 {
+		m.Printf("  tags = %s,\n", tagsLit(st.Tags))
+	}
 	m.Printf("  fields = {\n")
 	guards := structGuards(st)
 	for i, f := range st.Fields {
@@ -431,6 +482,10 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 	m.Printf("  align = %d,\n", align)
 	m.Printf("  tag = %d,\n", tag)
 	m.Printf("  arm_offset = %d,\n", armOffset)
+	m.Printf("  doc = %s,\n", docLit(un.Doc))
+	if len(un.Tags) > 0 {
+		m.Printf("  tags = %s,\n", tagsLit(un.Tags))
+	}
 	m.Printf("  arms = {\n")
 	slots := armSlots(un)
 	for i, v := range un.Variants {
@@ -440,12 +495,40 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 		}
 		field := "nil"
 		if v.F != nil {
-			field = fieldDescriptorAt(m.Unit, v.F, i+1, fieldPieces(m.Unit, v.F))
+			af := *v.F
+			af.Doc = v.Doc
+			af.Tags = v.Tags
+			field = armFieldDescriptorAt(m.Unit, &af, i+1, armOffset, fieldPieces(m.Unit, v.F))
 		}
-		m.Printf("    { name = %q, slot = %q, tag = %d, id = %s, field = %s },\n", v.Name, slots[i], i+1, idLit(ir.TableWireId(wire)), field)
+		armTags := ""
+		if len(v.Tags) > 0 {
+			armTags = fmt.Sprintf(", tags = %s", tagsLit(v.Tags))
+		}
+		m.Printf("    { name = %q, slot = %q, tag = %d, id = %s, arm_offset = %d, doc = %s%s, field = %s },\n",
+			v.Name, slots[i], i+1, idLit(ir.TableWireId(wire)), armOffset, docLit(v.Doc), armTags, field)
 	}
 	m.Printf("  },\n")
 	m.Printf("}\n\n")
+}
+
+func docLit(doc string) string {
+	if doc == "" {
+		return "_M.DocNone"
+	}
+	return lua.ByteString([]byte(doc))
+}
+
+func tagsLit(tags []string) string {
+	parts := make([]string, len(tags))
+	for i, tag := range tags {
+		parts[i] = lua.ByteString([]byte(tag))
+	}
+	return lua.TableOf(parts)
+}
+
+func armFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, armOffset int64, pieces []ir.BlockFieldPiece) string {
+	s := guardedFieldDescriptorAt(u, f, ordinal, nil, pieces)
+	return strings.TrimSuffix(s, " }") + fmt.Sprintf(", arm_offset = %d }", armOffset)
 }
 
 // armSlots answers, per arm, the key of the union VALUE that holds the arm's
@@ -548,7 +631,10 @@ func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []guar
 	} else {
 		b.WriteString("key_type_name = \"\", keys = {}, ")
 	}
-	fmt.Fprintf(&b, "optional = %v, present = %q, ", f.Type.Optional, presentCompanion(f))
+	fmt.Fprintf(&b, "optional = %v, present = %q, doc = %s, ", f.Type.Optional, presentCompanion(f), docLit(f.Doc))
+	if len(f.Tags) > 0 {
+		fmt.Fprintf(&b, "tags = %s, ", tagsLit(f.Tags))
+	}
 	if len(guard) > 0 {
 		b.WriteString("guard = {")
 		for i, t := range guard {
@@ -724,7 +810,7 @@ func needsCompanion(f *ir.Field) bool {
 	if f.Array == ir.ArrayCounted {
 		return true
 	}
-	if f.Array != ir.ArrayNone || f.Type.Pointer {
+	if f.Array != ir.ArrayNone || f.Type.Pointer || f.Type.TextUnbounded() {
 		return false
 	}
 	switch f.Type.Kind {

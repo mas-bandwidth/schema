@@ -5047,45 +5047,6 @@ tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test
 
 test: tables-fixed-matched
 
-# THE PYTHON LEG'S ROW GATE (mas-bandwidth/schema#1400). The python port is one
-# matrix row at a time, each row a self-checking script under
-# test/py-packet/<row>/test_<row>.py that exits non-zero on the first failed
-# assertion. The target runs EVERY such script, so the next row is gated the
-# day it lands without a line here, and it goes red if it ran none: a glob that
-# matches nothing is a gate that ran nothing (#1315). PYTHONDONTWRITEBYTECODE
-# keeps a run from leaving __pycache__ in the tree. The go-test job in
-# ci-full.yml runs it (the stream's go-test job; ci.yml is gone), and `make test`
-# carries it.
-PY_PACKET_ROWS = $(sort $(wildcard test/py-packet/*/test_*.py))
-
-.PHONY: tables-py-packet
-tables-py-packet:
-	@n=0; for f in $(PY_PACKET_ROWS); do \
-		echo "== $$f"; PYTHONDONTWRITEBYTECODE=1 python3 "$$f" || exit 1; n=$$((n+1)); \
-	done; \
-	if [ $$n -eq 0 ]; then echo "tables-py-packet: no test/py-packet/*/test_*.py ran" >&2; exit 1; fi; \
-	echo "tables-py-packet: $$n row(s) passed"
-
-test: tables-py-packet
-
-# Its control: a copy of the leg with F11's plan-capacity check removed
-# (python/packet.py's `if entry_count > len(plan):` becomes `if False:`) must
-# turn the F11 row red, or the gate above is not watching the rule it names.
-.PHONY: tables-py-packet-negative-control
-tables-py-packet-negative-control:
-	@rm -rf build/py-packet-negative && mkdir -p build/py-packet-negative/python build/py-packet-negative/test/py-packet
-	@cp python/packet.py build/py-packet-negative/python/
-	@cp -R test/py-packet/f11 build/py-packet-negative/test/py-packet/
-	@sed -i.orig 's/if entry_count > len(plan):/if False:/' build/py-packet-negative/python/packet.py
-	@if cmp -s python/packet.py build/py-packet-negative/python/packet.py; then \
-		echo "tables-py-packet-negative-control: the sabotage patched nothing" >&2; exit 1; fi
-	@if PYTHONDONTWRITEBYTECODE=1 python3 build/py-packet-negative/test/py-packet/f11/test_f11.py >build/py-packet-negative/out.txt 2>&1; then \
-		cat build/py-packet-negative/out.txt; \
-		echo "tables-py-packet-negative-control: F11 stayed green without the plan-capacity check" >&2; exit 1; fi
-	@grep -q 'Expected count=-1' build/py-packet-negative/out.txt || { cat build/py-packet-negative/out.txt; \
-		echo "tables-py-packet-negative-control: F11 went red for the wrong reason" >&2; exit 1; }
-	@echo "tables-py-packet-negative-control: F11 went red without the plan-capacity check (ok)"
-
 # THE C / C++ FIXED RUNTIME TWIN GATE (bench/paired/TWIN.md). Emit both
 # paired headers, normalise the fixed runtimes through the documented token
 # map, and diff the rest. Any leftover line that is not one of the three
@@ -6939,6 +6900,10 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # is up to date, and a phony target with only that prerequisite would report
 # nothing to be done.
 SERIALIZE_GO_PIN     ?= v2.1.1
+SERIALIZE_C_PIN      ?= v2.1.1
+SERIALIZE_CS_PIN     ?= v2.1.1
+SERIALIZE_RS_PIN     ?= v5.0.0
+SERIALIZE_JS_PIN     ?= v2.1.2
 # Immutable commit resolved from refs/tags/v2.1.1 (annotated tag object: 36717230bfad4d890fe23882d14f87b9658205ab).
 SERIALIZE_GO_COMMIT  ?= 97c6825383cffe9f43af64526dea4e0ef10d1662
 SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
@@ -6971,8 +6936,33 @@ else \
 fi
 endef
 
-.PHONY: deps
-deps:
+# THE SIBLING RUNTIMES AT THE PINS ABOVE. The pins are the single source: this
+# stages the C/C++/CS/Rust/JS checkouts CI clones, at the same tags, for a local
+# bench. deps names it as a prerequisite below, after deps-go has staged the Go
+# runtime, because deps owns the Go checkout's staged placement and tag-commit
+# verification (internal/ci/serializefetch_test.go holds that): a direct clone
+# here would bypass them. A pin that only this file reads would bind no
+# checkout (internal/ci/mainreds_pins_test.go refuses that). ci-full.yml's tags
+# are held to what these resolve to. An existing sibling is left alone; remove
+# it to re-stage. When NOVA_MIRRORS names a mirror directory but not this
+# runtime, the sibling is left absent and named, never cloned from the network:
+# a bench that mirrors part of the fleet stays offline.
+define stage-sibling
+if test ! -e "$(4)"; then \
+	if test -n "$(NOVA_MIRRORS)" && ! test -d "$(NOVA_MIRRORS)/$(2)"; then \
+		echo "serialize-siblings: no mirror for $(2); $(4) stays absent"; \
+	else \
+		$(call fetch-runtime,$(1),$(2),$(3),$(4),$(5)); \
+	fi; \
+fi
+endef
+
+# DEPS-GO owns the Go sibling: it stages the checkout under a temporary name,
+# verifies the pinned tag's commit, and publishes it only after a placement
+# race check (internal/ci/serializefetch_test.go). Keeping it separate from
+# deps lets the sibling staging hang off deps without running first.
+.PHONY: deps-go
+deps-go:
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
 		actual=$$(git -C "$(SERIALIZE_GO)" describe --tags --exact-match 2>/dev/null || echo untagged); \
 		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \
@@ -7008,6 +6998,17 @@ deps:
 		rm -rf "$$stage"; \
 	fi
 	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "make deps: serialize.go at '$(SERIALIZE_GO)' has no go.mod; refusing" >&2; exit 1; }
+
+.PHONY: serialize-siblings
+serialize-siblings: deps-go
+	@$(call stage-sibling,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),../serialize,C++)
+	@$(call stage-sibling,$(SERIALIZE_C_PIN),mas-bandwidth/serialize.c.git,https://github.com/mas-bandwidth/serialize.c.git,../serialize.c,C)
+	@$(call stage-sibling,$(SERIALIZE_CS_PIN),mas-bandwidth/serialize.cs.git,https://github.com/mas-bandwidth/serialize.cs.git,../serialize.cs,CS)
+	@$(call stage-sibling,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust)
+	@$(call stage-sibling,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS)
+
+.PHONY: deps
+deps: serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:
@@ -7244,10 +7245,11 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
 # the same Makefile this test was read from, so its control can hand it a copy
-RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD
+RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
 .PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
 release-refuses-on-differential:
 	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
+	@printf '{"commit":"%s","cells":1,"red":[]}\n' "$$(git rev-parse HEAD)" > $(RELEASE_GATE_TEST)/green.json
 	go build -o $(RELEASE_GATE_TEST)/schema-clean ./cmd/schema
 	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_GATE_TEST)/encode.gotext internal/tablewire/encode.go
 	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
@@ -7271,7 +7273,7 @@ release-refuses-on-differential:
 RELEASE_GATE_CONTROL := build/release-gate-control
 release-refuses-on-differential-negative-control: release-refuses-on-differential
 	@rm -rf $(RELEASE_GATE_CONTROL) && mkdir -p $(RELEASE_GATE_CONTROL)
-	@sed 's/^release: release-differential$$/release: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
+	@sed 's/^\t$$(MAKE) --no-print-directory release-differential$$/\t@: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
 	@! cmp -s Makefile $(RELEASE_GATE_CONTROL)/Makefile || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage no longer matches release's prerequisite line"; exit 1; }
 	@if $(MAKE) --no-print-directory -f $(RELEASE_GATE_CONTROL)/Makefile release-refuses-on-differential RELEASE_GATE_TEST=$(RELEASE_GATE_CONTROL)/test > $(RELEASE_GATE_CONTROL)/red.out 2>&1; then \

@@ -418,13 +418,22 @@ local function compilePlan(d: any, layout: string, recordBytes: number, ranges: 
 	local census = { unknown = 0, kindMismatch = 0 }
 	compileStruct(d, root, census)
 	-- the writer's ranges this entry carries land on the writer's nodes, so
-	-- the bounds pass holds the plan's own (§4.5)
+	-- the bounds pass holds the plan's own (§4.5): a scalar's own node, or a
+	-- fixed array's element node, which every element is read through, so
+	-- each element is held the same as a scalar
 	if ranges ~= nil then
 		for _, p in root.pairs :: { any } do
 			local r = ranges[p.f.id]
-			if r ~= nil and p.f.s == "int" then
-				p.v.wlo = r.lo
-				p.v.whi = r.hi
+			local f = p.f
+			local node: Node? = nil
+			if f.s == "int" then
+				node = p.v
+			elseif f.s == "arr" and f.array == "fixed" and f.e.s == "int" then
+				node = p.v.children[1]
+			end
+			if r ~= nil and node ~= nil then
+				node.wlo = r.lo
+				node.whi = r.hi
 			end
 		end
 	end

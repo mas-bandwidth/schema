@@ -62,20 +62,16 @@ type FixedLineageEntry struct {
 }
 
 // FixedRangeSpec is one bounded leaf of a lineage entry's WRITER: the field's
-// name, matched against this reader's own spelling of it, and the writer's
-// declared bounds on the raw scale. A bound that does not fit the int64 lanes
-// bounds nothing and is skipped by whoever builds the entry.
-type FixedRangeSpec struct {
-	Name string
-	Lo   int64
-	Hi   int64
-}
+// name, matched against this reader's own spelling of it, its scalar kind, and
+// the writer's declared bounds on the raw scale (ir.TableFixedWriterRange).
+type FixedRangeSpec = ir.TableFixedWriterRange
 
 // FixedLineageOf computes the entry a unit's OWN build locks for table `name`:
 // its layout bytes, the wire hash over them and the definitions digest (through
-// ir.TableFixedLayoutHash and never a private re-derivation, §5.9 #12), and its
-// record size. It is what a lock records at commit, and it is how a test — or a
-// build reading a sibling generation — states an older entry without a lock.
+// ir.TableFixedLayoutHash and never a private re-derivation, §5.9 #12), its
+// record size, and its ranged leaves. It is what a lock records at commit, and
+// it is how a test — or a build reading a sibling generation — states an older
+// entry without a lock.
 func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 	for _, st := range ir.TableFixedRoots(u) {
 		if st.Name != name {
@@ -88,6 +84,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 			Layout: layout,
 			Digest: ir.TableFixedDefinitionsDigest(st),
 			Record: 8 + fixedTypeBytes(st),
+			Ranges: ir.TableFixedWriterRanges(st),
 		}, true
 	}
 	return FixedLineageEntry{}, false

@@ -13,11 +13,14 @@ import "sort"
 // TestLobsterTableRuntimeNamesAreClaimed holds it to the emitted runtime both
 // ways, and TestLobsterRuntimeNameScanGoesRed is its control.
 //
-// The claimable Lobster spellings are the two the emitter refuses by name
+// The claimable Lobster spellings are those the emitter refuses by name
 // instead: the namespace itself (a package named schema_rt) and a runtime
 // module's FILE name, because a Lobster import names a file beside the module
-// (a schema file named for a runtime module is refused beside a table and
-// kept in a table-free unit, TestLobsterRuntimeFileNamesAreClaimed).
+// (a schema file named for an emitted runtime module is refused; table-free
+// units emit only descriptor dependencies: TestLobsterRuntimeFileNamesAreClaimed).
+// Package names that match runtime bindings are additionally refused by
+// lobstertable/runtime_package_names.go, which derives its inventory from
+// embedded sources rather than this namespace-level list.
 
 // lobsterRuntimeNames is every name the Lobster table runtime defines at
 // namespace scope (a def, a class, a let or a var at column zero), by the
@@ -35,8 +38,8 @@ var lobsterRuntimeNames = map[string][]string{
 		"_collections_arr", "_collections_map", "_collections_ptr", "collection_construct",
 	},
 	"cook.lobster": {
-		"CookCarve", "CookDump", "CookField", "CookGraph", "CookNode", "CookOut", "CookRead", "CookTable",
-		"CookUnion", "CookWrite", "cc_elem", "cc_extent", "cc_field", "cc_has_field", "cc_list", "cc_map", "cc_record",
+		"CookCarve", "CookDump", "CookField", "CookGraph", "CookNode", "CookOut", "CookRange", "CookRead", "CookTable",
+		"CookUnion", "CookWrite", "cc_elem", "cc_extent", "cc_field", "cc_has_field", "cc_list", "cc_map", "cc_record", "cc_text",
 		"cd_emit", "cd_field", "cd_find", "cd_node", "cd_scalar", "cd_storage", "cd_text", "cg_add_blob",
 		"cg_add_rec", "cg_blob_index", "cg_place", "cg_rec_index", "cg_visit_edges", "cg_visit_union",
 		"cg_visit_value", "co_bytes", "co_u16", "co_u32", "co_u64", "co_u8", "cook_align_up", "cook_bswap16",
@@ -44,8 +47,8 @@ var lobsterRuntimeNames = map[string][]string{
 		"cook_dump", "cook_f32frombits", "cook_header_bytes", "cook_magic", "cook_magic_swapped", "cook_measure",
 		"cook_open", "cook_open_named", "cook_open_reason", "cook_plan", "cook_read", "cook_table",
 		"cook_table_of", "cook_tables", "cook_union_named", "cook_union_of", "cook_unions", "cook_wide",
-		"cook_word", "cook_word32", "cook_write", "cr_array", "cr_count", "cr_elem", "cr_entry", "cr_field",
-		"cr_container", "cr_int", "cr_list", "cr_map", "cr_record", "cr_ref", "cr_scalar_int", "cr_text", "cr_union", "cr_units", "cr_wide", "cr_wide_at",
+		"cook_word", "cook_word32", "cook_write", "cr_array", "cr_claim", "cr_count", "cr_elem", "cr_entry", "cr_extent", "cr_field",
+		"cr_container", "cr_int", "cr_list", "cr_map", "cr_record", "cr_ref", "cr_scalar_int", "cr_text", "cr_unbounded_text", "cr_union", "cr_units", "cr_wide", "cr_wide_at",
 		"cr_word", "cr_word32", "cw_array", "cw_elem", "cw_field", "cw_int", "cw_record", "cw_ref", "cw_ref_blob",
 		"cw_str", "cw_union", "cw_units", "cw_wide",
 	},
@@ -55,13 +58,16 @@ var lobsterRuntimeNames = map[string][]string{
 		"retired_variants", "save_strict", "variant_retired",
 	},
 	"descriptors.lobster": {
-		"DeprecatedEnumShape", "DeprecatedName", "FieldAnnotation", "KeyEnumName", "MapEntryName", "UnitView",
-		"ViewConstant", "ViewType", "ViewVariant", "ViewVocabulary", "_descriptors_enum", "deprecated_names",
+		"DeprecatedName", "FieldAnnotation", "KeyEnumName", "MapEntryName", "UnitView",
+		"ViewConstant", "ViewType", "ViewVariant", "ViewVocabulary", "deprecated_names",
 		"deprecated_variant", "enum_default", "field_annotation", "field_annotations", "field_doc", "field_tags",
 		"is_deprecated_variant", "key_enums", "keyed_enum", "keyed_enum_of", "keyed_slot", "map_entries", "map_entry",
 		"map_entry_of", "set_unit", "unit_view", "variant_name", "view_constant", "view_constants", "view_enums",
 		"view_flags", "view_package", "view_protocol", "view_table", "view_tables", "view_type", "view_types",
-		"view_unions", "view_vocabulary",
+		"view_unions", "view_union_arm", "view_vocabulary", "view_name_before", "view_sorted_types", "view_sorted_vocabulary", "view_sorted_constants",
+	},
+	"descriptors_load.lobster": {
+		"DeprecatedEnumShape", "_descriptors_enum",
 	},
 	"fixed.lobster": {
 		"fixed_file", "fixed_record",
@@ -185,6 +191,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"so_u32", "so_u64", "so_u8",
 	},
 	"schema_tables.lobster": {
+		"wire_crc32c", "wire_crc32c_table", "wire_integrity_body",
 		"EnumVariant", "FieldDescriptor", "TableDescriptor", "UnionDescriptor", "lookup_table", "lookup_union",
 		"registered_tables", "registered_unions", "table", "table_registry", "union_of", "union_registry",
 	},

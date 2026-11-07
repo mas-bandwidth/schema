@@ -83,6 +83,15 @@ check_value = function(T, where, d, v, elem)
   elseif s == "union" then
     if type(v) ~= "table" or v.tag ~= 0 then return fail(where, "a union is born empty") end
     if T.Unions[d.target] == nil then return fail(where, "union " .. d.target .. " has no descriptor") end
+  elseif s == "wide" then
+    if type(v) ~= "table" or math.type(v.lo) ~= "integer" or math.type(v.hi) ~= "integer" then
+      return fail(where, "wide integer at its default")
+    end
+    if elem then
+      if v.lo ~= 0 or v.hi ~= 0 then return fail(where, "wide element is born zero") end
+    elseif v.lo ~= d.default.lo or v.hi ~= d.default.hi then
+      return fail(where, "wide integer at its default")
+    end
   else
     return fail(where, "unknown shape " .. tostring(s))
   end
@@ -441,7 +450,7 @@ local edge_value, edge_union, edges
 -- one value's pointer and blob edges, in the walk's order. holder/name name
 -- the slot the value occupies (a table's field or a union arm's payload);
 -- cache holds each map's entries (D.map_entries).
-edge_value = function(T, fd, val, holder, name, out, cache)
+edge_value = function(T, fd, val, holder, name, out, cache, every)
   local s = fd.shape
   if s == "string_blob" or s == "bytes_blob" then
     if val ~= nil and val ~= false then
@@ -451,33 +460,33 @@ edge_value = function(T, fd, val, holder, name, out, cache)
     if val ~= nil and val ~= false then out[#out + 1] = { blob = false, target = fd.target, val = val } end
   elseif s == "table" then
     local d = T.Tables[fd.target]
-    if d then edges(T, d, val, out, cache) end
+    if d then edges(T, d, val, out, cache, every) end
   elseif s == "array" then
     local n = D.count_of(fd, val)
     local e = fd.elem
     for i = 1, n do
-      edge_value(T, e, val[i], val, i, out, cache)
+      edge_value(T, e, val[i], val, i, out, cache, every)
     end
   elseif s == "union" then
-    edge_union(T, T.Unions[fd.target], val, out, cache)
+    edge_union(T, T.Unions[fd.target], val, out, cache, every)
   elseif s == "map" then
     -- A MAP IS A BY-VALUE EDGE at its field's position (§2.8, §3.1): its
     -- entries in ascending key order, each descended before the next
     local d = T.Tables[fd.entry]
     for _, kv in ipairs(D.map_entries(cache, fd, val)) do
-      edges(T, d, kv, out, cache)
+      edges(T, d, kv, out, cache, every)
     end
   end
 end
 
 -- a union arm's payload is a field line: its pointers, blobs, tables, arrays
 -- and nested unions are edges at the arm's position (§2.6, §3.1).
-edge_union = function(T, u, val, out, cache)
+edge_union = function(T, u, val, out, cache, every)
   local tag = type(val) == "table" and val.tag or 0
   if tag == 0 or u == nil then return end
   local arm = u.arms[tag]
   if arm == nil or arm.field == nil then return end
-  edge_value(T, arm.field, val[arm.slot], val, arm.slot, out, cache)
+  edge_value(T, arm.field, val[arm.slot], val, arm.slot, out, cache, every)
 end
 
 -- the pointer and blob edges of one node's by-value closure, in the walk's
@@ -485,12 +494,14 @@ end
 -- by-value node (nil) holds only its declared defaults and no pointer or blob
 -- edge (§3, §4.2). AN ABSENT ?T OWNS NO NODE (§2.3): the walk gates on the
 -- presence companion, so a value made absent after it was present writes no
--- stale node for the edges its untouched storage still holds.
-edges = function(T, desc, v, out, cache)
+-- stale node for the edges its untouched storage still holds. With every set,
+-- a field under a FALSE guard is walked too: the load stored it, and the cycle
+-- check (D.cyclic) counts every slot the load stored.
+edges = function(T, desc, v, out, cache, every)
   if v == nil then return out end
   for _, fd in ipairs(desc.fields) do
-    if D.guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
-      edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
+    if (every or D.guard_holds(fd, v)) and not (fd.optional and not v[fd.name .. "_present"]) then
+      edge_value(T, fd, v[fd.name], v, fd.name, out, cache, every)
     end
   end
   return out
@@ -551,6 +562,56 @@ function D.number_nodes(T, desc, root, refuse_shared)
     end
   end
   return nodes
+end
+
+-- D.cyclic reports whether a LOADED graph holds a cycle (docs/SPEC-TABLES.md
+-- §3.1, §4; internal/tablewire decodenodes.go cyclic). No writer produces one,
+-- so a cyclic wire is damage. The vertices are the root and every record the
+-- load placed, reached from the root or not, so a cycle among orphans is still
+-- a cycle; verts lists them as { desc, v } after the root. The edges are every
+-- pointer slot a vertex's by-value closure STORES, a slot under a false guard
+-- included. Each vertex is entered once: a pointer to an OPEN vertex is a
+-- cycle, and a pointer to a CLOSED one is a legal share, so the walk is linear
+-- in vertices plus slots, and it holds its own stack.
+function D.cyclic(T, desc, root, verts)
+  local all = { { desc = desc, v = root } }
+  local at = { [root] = 1 }
+  for _, x in ipairs(verts) do
+    if at[x.v] == nil then
+      all[#all + 1] = x
+      at[x.v] = #all
+    end
+  end
+  local mark = {} -- nil unvisited, 1 open, 2 closed
+  local cache = {}
+  local function out_of(k)
+    return edges(T, all[k].desc, all[k].v, {}, cache, true)
+  end
+  for start = 1, #all do
+    if mark[start] == nil then
+      mark[start] = 1
+      local stack = { { k = start, edges = out_of(start), i = 0 } }
+      while #stack > 0 do
+        local top = stack[#stack]
+        if top.i >= #top.edges then
+          mark[top.k] = 2
+          stack[#stack] = nil
+        else
+          top.i = top.i + 1
+          local e = top.edges[top.i]
+          local t = not e.blob and at[e.val] or nil
+          if t ~= nil then
+            if mark[t] == 1 then return true end
+            if mark[t] == nil then
+              mark[t] = 1
+              stack[#stack + 1] = { k = t, edges = out_of(t), i = 0 }
+            end
+          end
+        end
+      end
+    end
+  end
+  return false
 end
 
 -- THE DEFAULTS IN PLACE (docs/PORTING.md M1; docs/SPEC-TABLES.md §3, §4). A
@@ -809,7 +870,51 @@ function D.prepare(T)
   if T.Fixed ~= nil then require("fixed").prepare(T) end
 end
 
+-- A unit with a table that has no fixed block form needs the block runtime to
+-- refuse that name. The runtime's own bytes carry that test only where the
+-- generating unit needs it, so a shared output directory or Lua's
+-- package.loaded cache can hand mixed descriptors a guard-free copy. Install
+-- the eligibility clause on the loaded block modules here, once, and only for
+-- such a unit; an eligible unit's block calls stay guard-free.
+local function install_block_eligibility(T)
+  if T.BlockForm ~= true or T.NeedsBlockEligibility ~= true then return end
+  local B = require("block")
+  if B.EligibilityGuard then return end
+  local W = require("blockbuild")
+  local open, layout = B.BlockOpen, B.Layout
+  local maximum, begin = W.BlockMaxBytes, W.Begin
+  B.BlockOpen = function(T2, name, bytes, build_version, base_offset)
+    local bd = T2.Tables[name]
+    if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then
+      error("block: table " .. tostring(name) .. " does not carry block (docs/SPEC-TABLES.md §2.12)", 0)
+    end
+    if bd ~= nil and bd.block_eligible ~= true then return nil, "bad_layout" end
+    return open(T2, name, bytes, build_version, base_offset)
+  end
+  B.Open = B.BlockOpen
+  B.Layout = function(T2, name, projection, d)
+    d = d or T2.Tables[name]
+    if projection and d ~= nil and d.block_eligible ~= true then return nil, "bad_layout" end
+    return layout(T2, name, projection, d)
+  end
+  W.BlockMaxBytes = function(T2, root)
+    local desc = T2.Tables[root]
+    if desc == nil then return nil, "blockbuild: no table descriptor for " .. tostring(root) end
+    if desc.block_eligible ~= true then return nil, "bad_layout" end
+    return maximum(T2, root)
+  end
+  W.Begin = function(T2, root, counts)
+    local desc = T2.Tables[root]
+    if desc ~= nil and desc.forms ~= nil and desc.forms.block ~= true then
+      error("block: table " .. tostring(root) .. " does not carry block (docs/SPEC-TABLES.md §2.12)", 0)
+    end
+    if desc ~= nil and desc.block_eligible ~= true then return nil, "bad_layout" end
+    return begin(T2, root, counts)
+  end
+end
+
 function D.seal(T)
+  install_block_eligibility(T)
   D.prepare(T)
   local seen = {}
   for _, v in pairs(T) do
