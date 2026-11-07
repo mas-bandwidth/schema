@@ -136,8 +136,8 @@ func TestWireFuzzMixedBuilderPreservesFullRoster(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer.report.Malformed || !answer.builderStopped || !answer.encFail {
-		t.Fatalf("mixed variable oracle used region precedence: %+v", answer)
+	if answer.accepted || len(answer.encoded) != 0 {
+		t.Fatalf("mixed variable oracle accepted a truncated count: %+v", answer)
 	}
 }
 
