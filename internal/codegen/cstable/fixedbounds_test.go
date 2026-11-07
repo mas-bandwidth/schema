@@ -22,13 +22,13 @@ fixed table Holder {
 	if body == "" {
 		t.Fatal("there is no bounds pass: HolderFixedClampBody was not emitted")
 	}
-	if !strings.Contains(body, "if (value.V < 0) { value.V = 0; clamped++; }") {
+	if !strings.Contains(body, "if (value.V < 0 || value.V > 100) { clamped++; }") {
 		t.Errorf("the ranged scalar's low end does not clamp and count:\n%s", body)
 	}
-	if !strings.Contains(body, "if (value.V > 100) { value.V = 100; clamped++; }") {
+	if !strings.Contains(body, "if (value.V < 0 || value.V > 100) { clamped++; }") {
 		t.Errorf("the ranged scalar's high end does not clamp and count:\n%s", body)
 	}
-	if !strings.Contains(body, "if (value.W > 4095) { value.W = 4095; clamped++; }") {
+	if !strings.Contains(body, "if (value.W > 4095) { clamped++; }") {
 		t.Errorf("bits(12) does not clamp at 2^12-1 and count:\n%s", body)
 	}
 
@@ -36,7 +36,7 @@ fixed table Holder {
 	if clamp == "" {
 		t.Fatal("the root has no bounds entry point")
 	}
-	if !strings.Contains(clamp, "report.Clamped += clamped;") {
+	if !strings.Contains(clamp, "report.Refused = true;") {
 		t.Error("the bounds pass's count never reaches the report")
 	}
 
@@ -95,10 +95,10 @@ fixed table Ords {
 	if body == "" {
 		t.Fatal("the ordinals carry no bounds pass")
 	}
-	if !strings.Contains(body, "if ((ulong)value.C > 3) { value.C = (Colour)0; clamped++; }") {
+	if !strings.Contains(body, "if ((ulong)value.C > 3) { clamped++; }") {
 		t.Errorf("an enum ordinal past the top variant does not land None and count:\n%s", body)
 	}
-	if !strings.Contains(body, "if ((ulong)value.P.Type > 2) { value.P.Type = (PickType)0; clamped++; }") {
+	if !strings.Contains(body, "if ((ulong)value.P.Type > 2) { clamped++; }") {
 		t.Errorf("a union tag past the arm count does not land None and count:\n%s", body)
 	}
 }
@@ -144,11 +144,10 @@ func TestFixedOrdinalOpIsSixtyFourBit(t *testing.T) {
 	if !strings.Contains(op, "p.Size == 8") {
 		t.Error("the ordinal op has no eight-byte case; an ordinal width of 8 is admissible (§4.5)")
 	}
-	// §5.4's "ordinal moves nothing" is now LANDED: the forged ordinal's clamp is
-	// the BOUNDS PASS's to count, so the op records the forge in the caller's
-	// forgedOrdinal lane and never touches report.Clamped.
-	if !strings.Contains(op, "if (raw > count) { forgedOrdinal++; }") {
-		t.Error("the forged ordinal's count has not moved out of the ordinal op into the bounds step (§5.4)")
+	// A forged ordinal — one past the WRITER's own variant count — refuses
+	// the whole load out_of_range, in the op that reads it.
+	if !strings.Contains(op, "if (raw > count) { return \"out_of_range\"; }") {
+		t.Error("the ordinal op does not refuse a forged ordinal past the writer's variant count")
 	}
 }
 
@@ -173,10 +172,10 @@ fixed table Tilt {
 	}
 	// -8 and 7 shifted by F = 4: the raw ends are -128 and 112, and the storage
 	// is 16-bit signed, so NEITHER end sits on a limit and BOTH are spelled.
-	if !strings.Contains(body, "if (value.T < -128) { value.T = -128; clamped++; }") {
+	if !strings.Contains(body, "if (value.T < -128 || value.T > 112) { clamped++; }") {
 		t.Errorf("the signed fixed field's LOW end does not clamp and count — a raw below the declared minimum rides through:\n%s", body)
 	}
-	if !strings.Contains(body, "if (value.T > 112) { value.T = 112; clamped++; }") {
+	if !strings.Contains(body, "if (value.T < -128 || value.T > 112) { clamped++; }") {
 		t.Errorf("the signed fixed field's high end does not clamp at min<<F:\n%s", body)
 	}
 }
@@ -198,7 +197,7 @@ fixed table Lean {
 	if strings.Contains(body, "value.T < -128") {
 		t.Errorf("an end sitting ON the storage floor is spelled; it can never fire:\n%s", body)
 	}
-	if !strings.Contains(body, "if (value.T > 112) { value.T = 112; clamped++; }") {
+	if !strings.Contains(body, "if (value.T > 112) { clamped++; }") {
 		t.Errorf("the high end is missing:\n%s", body)
 	}
 }

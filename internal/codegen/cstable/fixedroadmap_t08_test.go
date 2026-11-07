@@ -537,7 +537,7 @@ fixed table T
     Probe.TableReport r = new Probe.TableReport();
     Probe.TableFixedEntry[] plan = new Probe.TableFixedEntry[64];
     long n = Probe.Schema.TFixedLoad(back, buf, plan, r);
-    if (n != 1 || r.Refused || r.Malformed || r.Clamped != 0) { return ProbeLog.Fail(what + ": clean read n=" + n + " refused=" + r.Refused + " malformed=" + r.Malformed + " clamped=" + r.Clamped); }
+    if (n != 1 || r.Refused || r.Damaged) { return ProbeLog.Fail(what + ": clean read n=" + n + " refused=" + r.Refused + " damaged=" + r.Damaged); }
     if (back.I8 != v.I8 || back.I16 != v.I16 || back.I32 != v.I32 || back.I64 != v.I64)
     {
         return ProbeLog.Fail(what + ": " + back.I8 + " " + back.I16 + " " + back.I32 + " " + back.I64);
@@ -577,7 +577,7 @@ fixed table T
     Probe.TableReport r = new Probe.TableReport();
     Probe.TableFixedEntry[] plan = new Probe.TableFixedEntry[64];
     long n = Probe.Schema.TFixedLoad(back, buf, plan, r);
-    if (n != 1 || r.Refused || r.Malformed || r.Clamped != 0) { return ProbeLog.Fail(what + ": clean read n=" + n + " refused=" + r.Refused + " malformed=" + r.Malformed + " clamped=" + r.Clamped); }
+    if (n != 1 || r.Refused || r.Damaged) { return ProbeLog.Fail(what + ": clean read n=" + n + " refused=" + r.Refused + " damaged=" + r.Damaged); }
     if (back.U8 != v.U8 || back.U16 != v.U16 || back.U32 != v.U32 || back.U64 != v.U64)
     {
         return ProbeLog.Fail(what + ": " + back.U8 + " " + back.U16 + " " + back.U32 + " " + back.U64);
@@ -617,7 +617,7 @@ fixed table T
     Probe.TableReport r = new Probe.TableReport();
     Probe.TableFixedEntry[] plan = new Probe.TableFixedEntry[64];
     long n = Probe.Schema.TFixedLoad(back, buf, plan, r);
-    if (n != 1 || r.Refused || r.Malformed || r.Clamped != 0) { return ProbeLog.Fail(what + ": clean read n=" + n + " refused=" + r.Refused + " malformed=" + r.Malformed + " clamped=" + r.Clamped); }
+    if (n != 1 || r.Refused || r.Damaged) { return ProbeLog.Fail(what + ": clean read n=" + n + " refused=" + r.Refused + " damaged=" + r.Damaged); }
     if (back.B1 != v.B1 || back.B7 != v.B7 || back.B12 != v.B12 || back.B40 != v.B40)
     {
         return ProbeLog.Fail(what + ": " + back.B1 + " " + back.B7 + " " + back.B12 + " " + back.B40);
@@ -661,7 +661,7 @@ Probe.Schema.TableReset(back);
 Probe.TableReport r = new Probe.TableReport();
 Probe.TableFixedEntry[] plan = new Probe.TableFixedEntry[64];
 long n = Probe.Schema.TFixedLoad(back, w1, plan, r);
-if (n != 1 || r.Refused || r.Malformed) { bad += ProbeLog.Fail("P2: clean read n=" + n + " refused=" + r.Refused + " malformed=" + r.Malformed); }
+if (n != 1 || r.Refused || r.Damaged) { bad += ProbeLog.Fail("P2: clean read n=" + n + " refused=" + r.Refused + " malformed=" + r.Damaged); }
 if (back.A != 12345 || back.B != -9876543210L || back.LabelLength != 2 || back.Label[0] != (byte)'h' || back.Label[1] != (byte)'i')
 {
     bad += ProbeLog.Fail("P2: the read did not reproduce the record");
@@ -706,7 +706,7 @@ for (int off = 0; off < good.Length; ++off)
             Probe.TableFixedEntry[] plan = new Probe.TableFixedEntry[64];
             long n = Probe.Schema.TFixedLoad(back, f, plan, r);
             if (r.Refused) { refusals++; }
-            else if (r.Malformed) { malformed++; }
+            else if (r.Damaged) { malformed++; }
             else if (n >= 1) { landed++; }
             else { bad += ProbeLog.Fail("P3: flip at " + off + "/" + bit + " is a fourth answer: n=" + n + " reason=" + r.Reason); }
         }

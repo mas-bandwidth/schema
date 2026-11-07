@@ -333,7 +333,7 @@ static class Held
         Root[] storage = Bodies(1);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, buf, vocab, report, out int count);
-        if (count != 0 || !report.Refused || report.Reason != "no_vocabulary" || report.Malformed) { Fail(row, "count=" + count + " refused=" + report.Refused + " reason=" + report.Reason + " malformed=" + report.Malformed); return; }
+        if (count != 0 || !report.Refused || report.Reason != "no_vocabulary" || report.Damaged) { Fail(row, "count=" + count + " refused=" + report.Refused + " reason=" + report.Reason + " malformed=" + report.Damaged); return; }
         Ok(row);
     }
 
@@ -351,7 +351,7 @@ static class Held
         int before = v.Count;
         var second = new TableReport();
         Schema.AnnounceRead(v, ann, second);
-        if (!second.Refused || second.Reason != "second_announcement" || second.Malformed) { Fail(row, "second refused=" + second.Refused + " reason=" + second.Reason); return; }
+        if (!second.Refused || second.Reason != "second_announcement" || second.Damaged) { Fail(row, "second refused=" + second.Refused + " reason=" + second.Reason); return; }
         if (v.Count != before) { Fail(row, "a second announcement replaced the vocabulary"); return; }
         var w = new TableVocabulary();
         var rejected = new TableReport();
@@ -381,11 +381,11 @@ static class Held
         var entries = new TableVocabulary { MaxEntries = 1 };
         var report = new TableReport();
         Schema.AnnounceRead(entries, ann, report);
-        if (!report.Refused || report.Reason != "vocabulary_too_large" || report.Malformed || entries.Announced) { Fail(row, "entry count: reason=" + report.Reason); return; }
+        if (!report.Refused || report.Reason != "vocabulary_too_large" || report.Damaged || entries.Announced) { Fail(row, "entry count: reason=" + report.Reason); return; }
         var bytes = new TableVocabulary { MaxBytes = 4 };
         var byteReport = new TableReport();
         Schema.AnnounceRead(bytes, ann, byteReport);
-        if (!byteReport.Refused || byteReport.Reason != "vocabulary_too_large" || byteReport.Malformed || bytes.Announced) { Fail(row, "vocabulary bytes: reason=" + byteReport.Reason); return; }
+        if (!byteReport.Refused || byteReport.Reason != "vocabulary_too_large" || byteReport.Damaged || bytes.Announced) { Fail(row, "vocabulary bytes: reason=" + byteReport.Reason); return; }
         Ok(row);
     }
 
@@ -413,12 +413,12 @@ static class Held
             var v = new TableVocabulary();
             var report = new TableReport();
             Schema.AnnounceRead(v, cases[i], report);
-            if (!report.Malformed || report.Refused || v.Announced) { Fail(row, names[i] + ": malformed=" + report.Malformed + " refused=" + report.Refused + " announced=" + v.Announced); return; }
+            if (!report.Damaged || report.Refused || v.Announced) { Fail(row, names[i] + ": malformed=" + report.Damaged + " refused=" + report.Refused + " announced=" + v.Announced); return; }
         }
         var keep = new TableVocabulary();
         var keepReport = new TableReport();
         Schema.AnnounceRead(keep, Announcement(Cat(VersionField(version), new byte[]{2,13})), keepReport);
-        if (!keepReport.Malformed || keep.BuildVersion != version || keep.Announced) { Fail(row, "the refused announcement did not keep the build version: " + keep.BuildVersion.ToString("x16")); return; }
+        if (!keepReport.Damaged || keep.BuildVersion != version || keep.Announced) { Fail(row, "the refused announcement did not keep the build version: " + keep.BuildVersion.ToString("x16")); return; }
         Ok(row);
     }
 
@@ -443,7 +443,7 @@ static class Held
         Root[] storage = Bodies(1);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, buf, vocab, report, out int count);
-        if (!report.Refused || report.Reason != "batch_too_large" || report.Malformed || count != 2) { Fail(row, "read over capacity: count=" + count + " reason=" + report.Reason); return; }
+        if (!report.Refused || report.Reason != "batch_too_large" || report.Damaged || count != 2) { Fail(row, "read over capacity: count=" + count + " reason=" + report.Reason); return; }
         Ok(row);
     }
 
@@ -461,7 +461,7 @@ static class Held
         Root[] storage = Bodies(3);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, wire, vocab, report, out int count);
-        if (count != 0 || !report.Malformed || report.Refused) { Fail(row, "count=" + count + " malformed=" + report.Malformed); return; }
+        if (count != 0 || !report.Damaged || report.Refused) { Fail(row, "count=" + count + " malformed=" + report.Damaged); return; }
         Ok(row);
     }
 
@@ -483,7 +483,7 @@ static class Held
         Root[] storage = Bodies(1);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, padded, vocab, report, out int count);
-        if (count != 0 || !report.Malformed) { Fail(row, "count=" + count + " malformed=" + report.Malformed); return; }
+        if (count != 0 || !report.Damaged) { Fail(row, "count=" + count + " malformed=" + report.Damaged); return; }
         Ok(row);
     }
 
@@ -546,8 +546,8 @@ static class Held
         Root[] storage = Bodies(1);
         var report = new TableReport();
         var verdict = Schema.RootLoadMessages(storage, buf, vocab, report, out int count);
-        if (verdict != Schema.TableWire.Verdict.Ok || count != 1 || report.Malformed || report.Unknown != 1 || storage[0].A != 0)
-        { Fail(row, "verdict=" + verdict + " count=" + count + " malformed=" + report.Malformed + " unknown=" + report.Unknown + " a=" + storage[0].A); return; }
+        if (verdict != Schema.TableWire.Verdict.Ok || count != 1 || report.Damaged || report.Unknown != 1 || storage[0].A != 0)
+        { Fail(row, "verdict=" + verdict + " count=" + count + " malformed=" + report.Damaged + " unknown=" + report.Unknown + " a=" + storage[0].A); return; }
         Ok(row);
     }
     static void ExpectBad(string row, TableVocabulary vocab, byte[] buf)
@@ -555,8 +555,8 @@ static class Held
         Root[] storage = Bodies(1);
         var report = new TableReport();
         var verdict = Schema.RootLoadMessages(storage, buf, vocab, report, out int count);
-        if (verdict != Schema.TableWire.Verdict.Damaged || count != 0 || !report.Malformed)
-        { Fail(row, "verdict=" + verdict + " count=" + count + " malformed=" + report.Malformed); return; }
+        if (verdict != Schema.TableWire.Verdict.Damaged || count != 0 || !report.Damaged)
+        { Fail(row, "verdict=" + verdict + " count=" + count + " malformed=" + report.Damaged); return; }
         Ok(row);
     }
     static void SkipDepth()
@@ -770,7 +770,7 @@ func csHeldConnMethod(c csHeldConn) string {
         var vocab = new %sv();
         var report = new %sr();
         %ss.AnnounceRead(vocab, Corpus(%q), report);
-        if (!vocab.Announced || report.Refused || report.Malformed) { Fail(row, "announce: " + report.Reason); return; }
+        if (!vocab.Announced || report.Refused || report.Damaged) { Fail(row, "announce: " + report.Reason); return; }
         if (vocab.BuildVersion != %sUL) { Fail(row, "build version " + vocab.BuildVersion.ToString("x16")); return; }
         Ok(row);
     }
@@ -787,7 +787,7 @@ func csHeldMsgMethod(m csHeldMsg) string {
         byte[] msg = Corpus(%q);
         var value = new %s();
         var loadReport = new %sr();
-        if (!%ss.%sLoad(value, file, loadReport) || loadReport.Refused || loadReport.Malformed) { Fail(row, "file load: " + loadReport.Reason); return; }
+        if (!%ss.%sLoad(value, file, loadReport) || loadReport.Refused || loadReport.Damaged) { Fail(row, "file load: " + loadReport.Reason); return; }
         var values = new %s[] { value };
         long measure = %ss.%sMeasureMessages(values);
         byte[] outMsg = new byte[measure];
@@ -800,7 +800,7 @@ func csHeldMsgMethod(m csHeldMsg) string {
         var storage = new %s[] { new %s() };
         var msgReport = new %sr();
         %ss.%sLoadMessages(storage, msg, vocab, msgReport, out int count);
-        if (count != 1 || msgReport.Refused || msgReport.Malformed) { Fail(row, "message load: count=" + count + " " + msgReport.Reason); return; }
+        if (count != 1 || msgReport.Refused || msgReport.Damaged) { Fail(row, "message load: count=" + count + " " + msgReport.Reason); return; }
         long fileMeasure = %ss.%sMeasure(storage[0]);
         byte[] outFile = new byte[fileMeasure];
         if (%ss.%sSave(storage[0], outFile) != fileMeasure || !Same(outFile, file)) { Fail(row, "message->file bytes differ"); return; }
