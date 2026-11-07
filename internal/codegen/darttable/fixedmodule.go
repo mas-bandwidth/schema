@@ -642,7 +642,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	})
 	g.pf("  report.reset();\n")
 	g.pf("  if (byteLength < 1 || byteLength > bytes.length) {\n")
-	g.pf("    report.malformed = true;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.damaged;\n    return -1;\n  }\n")
 	g.pf("  final view = %sFixedLoadView.of(bytes);\n", lower)
 	g.pf("  // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
 	g.pf("  // the registry is ordered, so a byte this reader does not carry is named\n")
@@ -658,17 +658,17 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    };\n")
 	g.pf("    return -1;\n  }\n")
 	if st.Integrity != "" {
-		g.pf("  if (!tableIntegrityValid(bytes, byteLength, 5)) {\n    report.malformed = true;\n    report.refused = TableFixedRefusal.integrityMismatch;\n    return -1;\n  }\n  byteLength -= 4;\n")
+		g.pf("  if (!tableIntegrityValid(bytes, byteLength, 5)) {\n    report.refused = TableFixedRefusal.integrityMismatch;\n    return -1;\n  }\n  byteLength -= 4;\n")
 	}
 	g.pf("  if (byteLength < TableFixedLimits.layoutAt) {\n")
-	g.pf("    report.malformed = true;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.damaged;\n    return -1;\n  }\n")
 	g.pf("  // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
 	g.pf("  for (var i = 1; i < TableFixedLimits.hashAt; i++) {\n")
-	g.pf("    if (bytes[i] != 0) {\n      report.malformed = true;\n      return -1;\n    }\n  }\n")
+	g.pf("    if (bytes[i] != 0) {\n      report.refused = TableFixedRefusal.damaged;\n      return -1;\n    }\n  }\n")
 	g.call("  ", "final layoutBytes = ", "view.getUint32",
 		[]string{"TableFixedLimits.headerBytes", "Endian.little"}, ";")
 	g.pf("  if (layoutBytes + TableFixedLimits.layoutAt > byteLength) {\n")
-	g.pf("    report.refused = TableFixedRefusal.layoutMalformed;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutDamaged;\n    return -1;\n  }\n")
 	g.call("  ", "final hash = ", "view.getUint64",
 		[]string{"TableFixedLimits.hashAt", "Endian.little"}, ";")
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
@@ -693,10 +693,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // malformation under a KNOWN hash is one name, layout_malformed.\n")
 	g.pf("  final known = %sFixedKnown[pick];\n", lower)
 	g.pf("  if (layoutBytes != known.layoutBytes) {\n")
-	g.pf("    report.refused = TableFixedRefusal.layoutMalformed;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutDamaged;\n    return -1;\n  }\n")
 	g.pf("  for (var i = 0; i < layoutBytes; i++) {\n")
 	g.pf("    if (bytes[TableFixedLimits.layoutAt + i] != known.layout[i]) {\n")
-	g.pf("      report.refused = TableFixedRefusal.layoutMalformed;\n      return -1;\n    }\n")
+	g.pf("      report.refused = TableFixedRefusal.layoutDamaged;\n      return -1;\n    }\n")
 	g.pf("  }\n")
 	g.pf("  report.hash = hash; // the header's hash; digest is not on the wire\n")
 	// STEP 8: the plan this endpoint resolves to, and the record size FROM THE LOCK.
@@ -717,7 +717,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // ONCE after the record loop and only on a read that returns (§5.9 #6):\n")
 	g.pf("  // once per endpoint, never per record, and REFUSE moves no counter at all.\n")
 	g.pf("  var censusUnknown = 0;\n")
-	g.pf("  var censusKind = 0;\n")
+	g.pf("")
 	if writerBounds {
 		g.pf("  %s? writerBounds;\n", fixedWriterBoundsType)
 	}
@@ -733,7 +733,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    entries = lane.entries;\n    entryCount = lane.count;\n")
 	g.pf("    fills = lane.fill;\n    fillCount = lane.fillCount;\n")
 	g.pf("    remap = lane.remap;\n")
-	g.pf("    censusUnknown = lane.unknown;\n    censusKind = lane.kindMismatch;\n")
+	g.pf("    censusUnknown = lane.unknown;\n")
 	if writerBounds {
 		// `dart format` breaks an assignment past eighty columns after the `=`,
 		// four columns further in.
@@ -751,7 +751,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:\n")
 	g.pf("  // the two ends of the file have met.\n")
 	g.pf("  if (recordBytes <= 8 || rest %% recordBytes != 0) {\n")
-	g.pf("    report.malformed = true;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.damaged;\n    return -1;\n  }\n")
 	g.pf("  final n = rest ~/ recordBytes;\n")
 	g.pf("  if (n > capacity) {\n")
 	g.pf("    report.refused = TableFixedRefusal.batchTooLarge;\n    return -1;\n  }\n")
@@ -810,7 +810,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  }\n")
 	g.pf("  // THE CENSUS LANDS ONCE, HERE, on a read that returns (§5.4, §5.9 #6).\n")
 	g.pf("  report.unknown += censusUnknown;\n")
-	g.pf("  report.kindMismatch += censusKind;\n")
+	g.pf("")
 	g.pf("  return n;\n}\n\n")
 
 	// THE MESSAGE FORM'S BATCH SURFACE (§3.3), beside the fixed form's: a
