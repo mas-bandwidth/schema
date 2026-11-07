@@ -6,52 +6,83 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"text/scanner"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// runtimeBindings scans NAMESPACE-SCOPE declarations only. A schema package
-// name can shadow a top-level runtime symbol, but a parameter or a local is
-// scoped to its own function: `tag` is a descriptors parameter and `t` is a
-// cook local, and both are ordinary package names. Comments, literals and
-// class fields are not declarations and reserve nothing.
+type bindingToken struct {
+	text  string
+	ident bool
+}
+
+// Scan bindings, not arbitrary words: comments, literals and class field
+// names do not reserve package names. Lobster resolves a package before a
+// same-named local in member expressions, so even nested locals matter.
 func runtimeBindings(source string) map[string]bool {
+	var scan scanner.Scanner
+	scan.Init(strings.NewReader(source))
+	scan.Mode = scanner.ScanIdents | scanner.ScanStrings | scanner.ScanRawStrings | scanner.ScanChars | scanner.ScanComments | scanner.SkipComments
+	// The runtime is Lobster, not Go; non-Go literal escapes are immaterial
+	// to this binding scan. Quoted tokens are never interpreted as code.
+	scan.Error = func(*scanner.Scanner, string) {}
+	var tokens []bindingToken
+	for kind := scan.Scan(); kind != scanner.EOF; kind = scan.Scan() {
+		tokens = append(tokens, bindingToken{scan.TokenText(), kind == scanner.Ident})
+	}
 	names := map[string]bool{}
-	add := func(name string) {
-		if name != "" && name != "_" {
-			names[name] = true
+	add := func(t bindingToken) {
+		if t.ident && t.text != "_" {
+			names[t.text] = true
 		}
 	}
-	for _, line := range strings.Split(source, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if line == "" || line[0] == ' ' || line[0] == '\t' {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		switch fields[0] {
-		case "def", "class":
-			name := fields[1]
-			if i := strings.IndexAny(name, "(: \t"); i >= 0 {
-				name = name[:i]
+	for i, t := range tokens {
+		if t.text == "let" || t.text == "var" {
+			for j := i + 1; j < len(tokens) && tokens[j].ident; j += 2 {
+				add(tokens[j])
+				if j+1 >= len(tokens) || tokens[j+1].text != "," {
+					break
+				}
 			}
-			add(name)
-		case "let", "var":
-			for _, field := range fields[1:] {
-				if field == "=" {
+		}
+		if t.text == "def" {
+			j := i + 1
+			for j < len(tokens) && tokens[j].text != "(" {
+				j++
+			}
+			depth := 0
+			for ; j < len(tokens); j++ {
+				if tokens[j].text == "(" {
+					depth++
+				}
+				if tokens[j].text == ")" {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+				if tokens[j].ident && ((j+1 < len(tokens) && tokens[j+1].text == ":") || (depth == 1 && j > 0 && (tokens[j-1].text == "(" || tokens[j-1].text == ","))) {
+					add(tokens[j])
+				}
+			}
+		}
+		// A callback binds names after its closing argument list: for(xs) x,i:
+		if t.text == ")" {
+			var pending []bindingToken
+			j := i + 1
+			for j < len(tokens) && tokens[j].ident {
+				pending = append(pending, tokens[j])
+				j++
+				if j >= len(tokens) || tokens[j].text != "," {
 					break
 				}
-				name := field
-				if i := strings.IndexAny(name, ":=(,,"); i >= 0 {
-					name = name[:i]
+				j++
+			}
+			if j < len(tokens) && tokens[j].text == ":" {
+				for _, name := range pending {
+					add(name)
 				}
-				if name == "" {
-					break
-				}
-				add(name)
 			}
 		}
 	}
@@ -78,7 +109,7 @@ func checkRuntimePackageName(u *ir.Unit) error {
 	sort.Strings(paths)
 	for _, path := range paths {
 		if runtimePackageBindings()[path][u.Package] {
-			return fmt.Errorf("lobster: package %s collides with a runtime namespace binding in %s; rename the package", u.Package, path)
+			return fmt.Errorf("lobster: package %s collides with a runtime binding in %s; rename the package because Lobster resolves package names before local member access", u.Package, path)
 		}
 	}
 	return nil

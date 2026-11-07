@@ -791,7 +791,8 @@ def encode_node_table(e:SaveEncoder, w:SaveOut, g:SaveGraph) -> void:
     so_leb(w, payload.n)
     so_bytes(w, so_take(payload))
 
-// save writes a form-1 wire from a Record (docs/SPEC-TABLES.md §3): the FORM
+// save dispatches declared fixed roots to their native form-3 codec. Other
+// roots write a form-1 wire from a Record (docs/SPEC-TABLES.md §3): the FORM
 // BYTE, the ROOT BODY, the ID TABLE, in that order. A data cycle is refused
 // as the reference refuses it (§3.1), and so is one blob named from two slots
 // (§2.5: every writer refuses that graph rather than write a copy per slot)
@@ -800,183 +801,12 @@ def encode_node_table(e:SaveEncoder, w:SaveOut, g:SaveGraph) -> void:
 def save(rec:Record) -> string:
     return save_reasoned(rec)
 
-// THE FIXED FORM AT A FIXED ROOT (docs/SPEC-TABLES.md §3.4; Go's EncodeFixed
-// in internal/tablewire/fixed.go): a root DECLARED fixed is written as form 3
-// and nothing else. The bytes are one record's file: the sixteen-byte header
-// (the form byte, seven reserved zeros, the layout hash), the layout behind its
-// u32 length, then the record as its own hash and the body at the constant
-// offsets every field's declared storage width gives it. A DEPRECATED FIELD'S
-// SLOT CARRIES ITS DECLARED DEFAULT whatever the value holds, and an absent
-// optional's payload is zeros.
-class FixedWrite:
-    b:string
-    why:string = ""
-    non_finite:string = ""
-
-def fixed_put(w:FixedWrite, off:int, width:int, v:int):
-    if width == 8:
-        w.b = write_int64_le(w.b, off, v)
-    elif width == 4:
-        w.b = write_int32_le(w.b, off, v)
-    elif width == 2:
-        w.b = write_int16_le(w.b, off, v)
-    elif width == 1:
-        w.b = write_int8_le(w.b, off, v & 0xff)
-    else:
-        var x = v
-        var j = 0
-        while j < width:
-            w.b = write_int8_le(w.b, off + j, x & 0xff)
-            x = shr(x, 8)
-            j++
-
-def fixed_write_fail(w:FixedWrite, why:string) -> bool:
-    if w.why == "":
-        w.why = why
-    return false
-
-def fixed_write_body(w:FixedWrite, rec:Record, at:int) -> bool:
-    var off = at
-    for(rec.fields) sl:
-        var s = sl
-        if sl.fd.deprecated:
-            s = new_slot(sl.fd)
-        if not fixed_write_field(w, s, off):
-            return false
-        off += sl.fd.fb
-    return true
-
-def fixed_write_field(w:FixedWrite, sl:Slot, off:int) -> bool:
-    if sl.fd.present != "":
-        // AN ABSENT OPTIONAL'S PAYLOAD IS ZEROS (docs/FIXED-FORM-ALGORITHM.md §3.1)
-        if not sl.present:
-            return true
-        w.b = write_int8_le(w.b, off, 1)
-        return fixed_write_payload(w, sl, off + 1)
-    return fixed_write_payload(w, sl, off)
-
-def fixed_write_payload(w:FixedWrite, sl:Slot, off:int) -> bool:
-    let f = sl.fd
-    if f.s == "arr":
-        let e = elem_of(f)
-        var n = f.fcount
-        var at = off
-        if f.array == "counted":
-            if sl.count < 0 or sl.count > f.bound:
-                return fixed_write_fail(w, "count_over_bound")
-            fixed_put(w, off, 4, sl.count)
-            n = sl.count
-            at = off + 4
-        for(n) i:
-            if i < length(sl.elems):
-                if not fixed_write_element(w, sl.elems[i], e, f, at + i * f.eb, true):
-                    return false
-        return true
-    if f.s == "str" or f.s == "bytes":
-        if f.wide:
-            let n = length(sl.cell.units)
-            if n > f.bound:
-                return fixed_write_fail(w, "length_over_bound")
-            fixed_put(w, off, 4, n)
-            for(sl.cell.units) u, i:
-                fixed_put(w, off + 4 + 2 * i, 2, u)
-        else:
-            let n = length(sl.cell.s)
-            if n > f.bound:
-                return fixed_write_fail(w, "length_over_bound")
-            fixed_put(w, off, 4, n)
-            w.b = write_substring(w.b, off + 4, sl.cell.s, false)
-        return true
-    return fixed_write_element(w, sl.cell, f, f, off, false)
-
-def fixed_write_element(w:FixedWrite, cell:Value, e:FieldDescriptor, f:FieldDescriptor, off:int, is_elem:bool) -> bool:
-    let s = e.s
-    if s == "tab":
-        var sub = cell.tab
-        if not sub:
-            sub = new_record(table_of(e.t))
-        return fixed_write_body(w, sub, off)
-    if s == "union":
-        let un = lookup_union(e.t)
-        assert un
-        let tag = cell.i
-        if ult(length(un.arms), tag):
-            return fixed_write_fail(w, "invalid_value")
-        fixed_put(w, off, un.tagw, tag)
-        if tag == 0:
-            return true
-        let a = un.arms[tag - 1]
-        if a.s == "void":
-            return true
-        if a.s == "tab":
-            var sub = cell.tab
-            if not sub:
-                sub = new_record(table_of(a.t))
-            return fixed_write_body(w, sub, off + un.tagw)
-        var fv = cell.arm
-        if not fv:
-            fv = new_slot(a)
-        return fixed_write_payload(w, fv, off + un.tagw)
-    if s == "enum":
-        fixed_put(w, off, f.sw, cell.i)
-        return true
-    if s == "bool":
-        w.b = write_int8_le(w.b, off, if cell.b: 1 else: 0)
-        return true
-    if s == "float":
-        if e.f32:
-            if not finite_f32(cell.f) and w.non_finite == "":
-                w.non_finite = float_owner(e)
-            w.b = write_float32_le(w.b, off, cell.f)
-        else:
-            if not finite_f64(cell.f) and w.non_finite == "":
-                w.non_finite = float_owner(e)
-            w.b = write_float64_le(w.b, off, cell.f)
-        return true
-    var kind = f.k
-    if is_elem:
-        kind = f.ek
-    if e.bits == 0 and kind_width(kind) != f.sw:
-        // a flags mask rides as its raw eight bytes
-        fixed_put(w, off, 8, cell.i)
-    elif kind_wide(kind) and e.bits == 0:
-        if f.sw == 16:
-            fixed_put(w, off, 8, cell.w.lo)
-            fixed_put(w, off + 8, 8, cell.w.hi)
-        else:
-            fixed_put(w, off, f.sw, cell.w.lo)
-    else:
-        fixed_put(w, off, f.sw, cell.i)
-    return true
-
-def save_fixed(rec:Record) -> string, string:
-    let d = rec.d
-    if not d.femit:
-        return "", "layout_unsupported"
-    let n = length(d.layout)
-    let w = FixedWrite { b: zeros(20 + n + 8 + d.fsize) }
-    w.b = write_int8_le(w.b, 0, 3)
-    w.b = write_int64_le(w.b, 8, d.lhash)
-    w.b = write_int32_le(w.b, 16, n)
-    w.b = write_substring(w.b, 20, d.layout, false)
-    w.b = write_int64_le(w.b, 20 + n, d.lhash)
-    if not fixed_write_body(w, rec, 28 + n):
-        return "", w.why
-    if w.non_finite != "":
-        return "", "non_finite_float"
-    if d.integrity:
-        let out = SaveOut {}
-        so_bytes(out, w.b)
-        so_u32(out, wire_crc32c(w.b))
-        return so_take(out), ""
-    return w.b, ""
-
 // save_reasoned is save with the refusal's name beside the bytes: "cycle",
 // "blob_shared", "non_finite_float" (Go's TableRefuseReason spellings), or ""
 // when it wrote.
 def save_reasoned(rec:Record) -> string, string:
     if rec.d.fixed:
-        return save_fixed(rec)
+        return fixed_record_codec(rec.d.name).write_fixed(rec)
     let g = SaveGraph {}
     push(g.nodes, SaveNode { kind: 1, rec: rec, tid: rec.d.id, open: true })
     push(g.recs, rec)

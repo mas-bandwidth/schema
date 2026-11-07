@@ -14,7 +14,7 @@
 bench-lobster-gate: toolchain-lobster generated/bench/lobster/.stamp generated/bench/tables/lobster/.stamp
 	bench/lobster/run --gate
 	bench/tables/lobster/leg build
-	bench/tables/lobster/leg run --gate
+	bench/tables/lobster/leg run --gate --wire-dir bench/corpus/fixed-table --variant-dir bench/corpus/fixed-table
 
 # The control plants a flipped golden under each leg, a compiler warning under
 # the packet runner, and a seconds_elapsed() clock and a corpus name in .lobster

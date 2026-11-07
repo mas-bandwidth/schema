@@ -15,6 +15,7 @@ import (
 // Extent-bearing holders must preserve the file header and write map entries,
 // nested extents and wide elements at the reference's exact addresses.
 func TestLobsterCookExtentCoordinates(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "native Lobster extent bytes, map ordering and malformed spans")
 	selected := map[string]bool{"map_cells": true, "map_chunks": true, "map_full": true, "map_slots": true, "map_text": true, "map_runs": true, "list_scalars": true, "list_nested": true, "list_of_maps": true, "widelist_wide": true}
 	found := 0
@@ -77,7 +78,7 @@ let le = read_file("le")
 let be = read_file("be")
 let want = read_file("want")
 assert wire and le and be and want
-let rec = schema_rt.load_tolerant(%q, wire, schema_rt.LoadReport {})
+let rec = schema_rt.load(%q, wire, schema_rt.LoadReport {})
 assert rec
 let backle = %s.%sReadCook(le)
 let backbe = %s.%sReadCook(be)

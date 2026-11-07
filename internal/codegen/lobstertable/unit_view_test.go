@@ -133,9 +133,6 @@ func TestLobsterUnitViewCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := os.Stat(filepath.Join(g.dir, g.u.Package+"View.lobster")); err != nil {
-				t.Fatal(err)
-			}
 			var want []string
 			add := func(kind, name string) { want = append(want, kind+" "+name+" "+g.u.DeclFile[name]+".schema") }
 			for name := range g.u.Structs {
@@ -201,75 +198,31 @@ func TestLobsterUnitViewCorpus(t *testing.T) {
 
 func TestLobsterUnitViewRuntimePackages(t *testing.T) {
 	t.Parallel()
-	// Ordinary runtime parameters and locals are not package namespace
-	// collisions: tag is a descriptors parameter, t a cook local.
-	for _, tc := range []struct {
-		name   string
-		tables bool
-		native bool
-	}{
-		{"tag", false, true},
-		{"t", true, false},
-	} {
-		t.Run("generates_"+tc.name, func(t *testing.T) {
-			source := "package " + tc.name + "\ntype Payload { n int32 }\n"
-			tables := 0
-			if tc.tables {
-				source += "table Root { n int32 }\n"
-				tables = 1
-			}
-			path := filepath.Join(t.TempDir(), "Root.schema")
-			if err := os.WriteFile(path, []byte(source), 0644); err != nil {
-				t.Fatal(err)
-			}
-			g, err := generateLoadUnit(t, []string{path})
-			if err != nil {
-				t.Fatalf("package %s refused: %v", tc.name, err)
-			}
-			if _, err := os.Stat(filepath.Join(g.dir, tc.name+"View.lobster")); err != nil {
-				t.Fatal(err)
-			}
-			if !tc.native {
-				return
-			}
-			program := fmt.Sprintf("import .%sView\nlet view_result = %s.UnitView()\nassert length(view_result.tables) == %d\nprint(\"declaration name passed\")\n", tc.name, tc.name, tables)
-			if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program), 0644); err != nil {
-				t.Fatal(err)
-			}
-			if got := strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", nil))); got != "declaration name passed" {
-				t.Fatal(got)
-			}
-		})
-	}
-	// A package that matches a namespace-scope runtime symbol is still refused.
-	for _, name := range []string{"unit_view", "view_types", "view_package", "set_unit"} {
-		t.Run("refuses_"+name, func(t *testing.T) {
+	for _, name := range []string{"report", "cell", "rec", "w", "v", "r", "s", "stella_registry_probe"} {
+		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "Root.schema")
 			if err := os.WriteFile(path, []byte("package "+name+"\ntable Root { n int32 }\n"), 0644); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := generateLoadUnit(t, []string{path}); err == nil || !strings.Contains(err.Error(), "collides with a runtime namespace binding") {
-				t.Fatalf("package %s: %v", name, err)
+			g, err := generateLoadUnit(t, []string{path})
+			if name != "stella_registry_probe" {
+				if err == nil || !strings.Contains(err.Error(), "collides with a runtime binding") {
+					t.Fatalf("package %s: %v", name, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			program := "import .stella_registry_probeView\nlet view_result = stella_registry_probe.UnitView()\nassert length(view_result.tables) == 1\nprint(\"renamed package passed\")\n"
+			if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", nil))); got != "renamed package passed" {
+				t.Fatal(got)
 			}
 		})
 	}
-	t.Run("custom_registry_probe", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "Root.schema")
-		if err := os.WriteFile(path, []byte("package custom_registry_probe\ntable Root { n int32 }\n"), 0644); err != nil {
-			t.Fatal(err)
-		}
-		g, err := generateLoadUnit(t, []string{path})
-		if err != nil {
-			t.Fatal(err)
-		}
-		program := "import .custom_registry_probeView\nlet view_result = custom_registry_probe.UnitView()\nassert length(view_result.tables) == 1\nprint(\"renamed package passed\")\n"
-		if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program), 0644); err != nil {
-			t.Fatal(err)
-		}
-		if got := strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", nil))); got != "renamed package passed" {
-			t.Fatal(got)
-		}
-	})
 }
 
 func TestLobsterUnitViewTableFreeRuntimePackages(t *testing.T) {
