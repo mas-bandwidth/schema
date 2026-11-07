@@ -916,9 +916,9 @@ async function surfaceReport(lines, outDir) {
     const r = codec.report();
     const wire = new Uint8Array(readFileSync(f[4]));
     const ok = codec.load(wire, r) !== null;
-    const malformed = r.malformed || (!ok && !r.refused);
+    const malformed = r.damaged || (!ok && !r.refused);
     const verdict = r.refused ? "refused" : "read";
-    let answer = [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, malformed, verdict].join(",") + "\n";
+    let answer = [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, malformed, verdict].join(",") + "\n";
     if (ok && !r.refused && !malformed) {
       const text = await valueText(f[2], f[3], wire);
       if (text === null) { wireAbsent(outDir, f[1]); } else { answer += text; }
@@ -951,9 +951,9 @@ async function surfaceFraming(lines, outDir) {
     const noValue = f.length > 5 && f[5] === "no-value";
     const r = codec.report();
     const v = codec.load(new Uint8Array(readFileSync(f[4])), r);
-    const malformed = r.malformed || (v === null && !r.refused);
+    const malformed = r.damaged || (v === null && !r.refused);
     const verdict = r.refused ? "refused" : "read";
-    let answer = [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, malformed, verdict].join(",") + "\n";
+    let answer = [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, malformed, verdict].join(",") + "\n";
     if (v !== null && !r.refused && !malformed && !noValue) {
       const text = codec.toJson(v);
       if (text === null) { fail(f[1] + ": ToJson refused the value"); }
@@ -972,7 +972,7 @@ async function surfaceJsonRead(lines, outDir) {
     const text = readJsonTextFile(join("testdata/conformance/tables/json", f[1] + ".json"));
     if (text === null) { fail(f[1] + ": invalid UTF-8 in JSON"); }
     const v = codec.fromJson(text, r);
-    if (r.malformed) { fail(f[1] + ": FromJson refused the text"); }
+    if (r.damaged) { fail(f[1] + ": FromJson refused the text"); }
     const saved = codec.save(v);
     if (saved === null) { fail(f[1] + ": save refused the value"); }
     writeFileSync(join(outDir, f[1]), saved);
@@ -1004,13 +1004,13 @@ async function surfaceJsonHostile(lines, outDir) {
     const text = readJsonTextFile(join(f[4], f[3] + ".json"));
     if (text === null) { writeFileSync(join(outDir, f[1]), "refused\n"); continue; }
     const v = codec.fromJson(text, r);
-    if (v === null || v === undefined || r.malformed || r.refused) {
+    if (v === null || v === undefined || r.damaged || r.refused) {
       writeFileSync(join(outDir, f[1]), "refused\n");
       continue;
     }
     const value = codec.toJson(v);
     if (value === null) { fail(f[1] + ": ToJson refused the value"); }
-    writeFileSync(join(outDir, f[1]), [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, false, "read"].join(",") + "\n" + value);
+    writeFileSync(join(outDir, f[1]), [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, false, "read"].join(",") + "\n" + value);
   }
 }
 
@@ -1145,7 +1145,7 @@ async function surfaceRetain(lines, outDir, saves) {
       report = new codec.m.TableVariableReport();
     }
     const root = codec.loadRetain(wire, store, report);
-    if (root === null || report.malformed) { fail(f[1] + ": retained load refused " + JSON.stringify(report)); }
+    if (root === null || report.damaged) { fail(f[1] + ": retained load refused " + JSON.stringify(report)); }
     const retained = report.retained, lost = report.retainLost, unknown = report.unknown;
     const size = codec.measureRetain(root, store);
     if (size < 0) { fail(f[1] + ": retaining measure refused"); }
@@ -1246,7 +1246,7 @@ async function wireFuzz() {
             const rep = {};
             const n = loadMessages(values, vocabulary, wire, rep);
             const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat);
-            const malformed = Boolean(rep.Malformed) || (n < 1 && !refused);
+            const malformed = Boolean(rep.Damaged) || (n < 1 && !refused);
             let saved = null;
             const ignored = {};
             const size = measureMessages(single, ignored);
@@ -1262,9 +1262,9 @@ async function wireFuzz() {
               report: {
                 reason: rep.Reason ?? "",
                 unknown: rep.Unknown | 0,
-                kindMismatch: rep.KindMismatch | 0,
+                kindMismatch: rep.Mismatch | 0,
                 widened: rep.Widened | 0,
-                clamped: rep.Clamped | 0,
+                clamped: rep.Oor | 0,
                 duplicate: 0,
                 malformed,
                 refused,
@@ -1316,11 +1316,11 @@ async function wireFuzz() {
         if (loaded) { saved = codec.save(card); }
       }
       report.unknown = rep.unknown;
-      report.kindMismatch = rep.kindMismatch;
+      report.mismatch = rep.mismatch;
       report.widened = rep.widened;
-      report.clamped = rep.clamped;
-      report.duplicate = rep.duplicate;
-      report.malformed = rep.malformed;
+      report.oor = rep.oor;
+      report.repeated = rep.repeated;
+      report.damaged = rep.damaged;
       // Storage-cap rejection is an out-of-band builder failure, not a
       // wire-form refusal in the shared report protocol.
       report.refused = rep.refused && rep.reason !== "count_over_extent_cap";
@@ -1339,11 +1339,11 @@ async function wireFuzz() {
     const header = Buffer.alloc(47);
     header[0] = loaded ? 1 : 0;
     header.writeInt32LE(report.unknown | 0, 1);
-    header.writeInt32LE(report.kindMismatch | 0, 5);
+    header.writeInt32LE(report.mismatch | 0, 5);
     header.writeInt32LE(report.widened | 0, 9);
-    header.writeInt32LE(report.clamped | 0, 13);
-    header.writeInt32LE(report.duplicate | 0, 17);
-    header[21] = report.malformed ? 1 : 0;
+    header.writeInt32LE(report.oor | 0, 13);
+    header.writeInt32LE(report.repeated | 0, 17);
+    header[21] = report.damaged ? 1 : 0;
     header[22] = report.refused ? 1 : 0;
     header.writeBigInt64LE(BigInt(measure), 23);
     header.writeInt32LE(report.retained | 0, 31);

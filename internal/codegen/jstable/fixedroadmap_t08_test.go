@@ -335,7 +335,7 @@ const plan = TFixedNewPlan(4096, 4096);
 const report = new TableFixedReport();
 const read = TFixedLoad(back, 1, bytes, bytes.length, plan, report);
 if (read !== 1) { fail("load answered " + read + " " + TableFixedRefusalName(report.refused)); }
-if (report.refused !== 0 || report.malformed) { fail("a clean round trip refused: " + TableFixedRefusalName(report.refused)); }
+if (report.refused !== 0 || report.damaged) { fail("a clean round trip refused: " + TableFixedRefusalName(report.refused)); }
 %s
 const again = new Uint8Array(TFixedMeasure(1));
 TFixedSave(back, 1, again);
@@ -389,7 +389,7 @@ const sanitized = [new T()]; InitT(sanitized[0]);
 const ro = new TableFixedReport();
 if (TFixedLoad(sanitized, 1, ord, ord.length, TFixedNewPlan(4096, 4096), ro) !== 1) { fail("the bad-ordinal record did not load"); }
 if (sanitized[0].grades[0] !== 0) { fail("an ordinal past the enum's top did not land None: " + sanitized[0].grades[0]); }
-if (ro.clamped < 1) { fail("the ordinal clamp was not counted"); }
+if (ro.oor < 1) { fail("the ordinal clamp was not counted"); }
 `)
 }
 

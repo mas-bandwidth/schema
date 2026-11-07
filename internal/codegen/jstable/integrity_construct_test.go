@@ -98,7 +98,7 @@ const expect=(ok,msg)=>{if(!ok){throw new Error(msg);}};
 
 for(const wireHex of spec.variable){
  const wire=bytes(wireHex),report=new v.TableVariableReport();const value=v.RootLoad(wire,report);
- expect(value!==null && !report.malformed && report.reason==="","variable integrity load");
+ expect(value!==null && !report.damaged && report.reason==="","variable integrity load");
  expect(hex(v.RootSave(value))===wireHex && v.RootMeasure(value)===wire.length,"variable integrity writer");
  expect(v.RootLoadMeasure(wire)>0,"integrity region measure");
  const text=v.RootToJson(value);expect(hex(v.RootSave(v.RootFromJson(text,new v.TableVariableReport())))===wireHex,"integrity JSON bridge");
@@ -106,7 +106,7 @@ for(const wireHex of spec.variable){
  const back=v.RootLoadRetain(wire,retained,rr);expect(back!==null && hex(v.RootSaveRetain(back,retained,rr))===wireHex && v.RootMeasureRetain(back,retained)===wire.length,"integrity retain bridge");
  for(let i=1;i<wire.length;i++){
   const bad=wire.slice();bad[i]^=1;const r=new v.TableVariableReport();
-  expect(v.RootLoad(bad,r)===null && r.malformed && r.reason==="integrity_mismatch" && r.unknown===0 && r.kindMismatch===0,"variable damaged byte "+i);
+  expect(v.RootLoad(bad,r)===null && r.damaged && r.reason==="integrity_mismatch" && r.unknown===0 && r.mismatch===0,"variable damaged byte "+i);
   expect(v.RootLoadMeasure(bad)===-1,"damaged integrity measure");
  }
  const plain=wire.subarray(0,wire.length-4);const r=new v.TableVariableReport();expect(v.RootLoad(plain,r)===null,"unsealed file accepted");
@@ -120,10 +120,10 @@ expect(f.ReadingFixedSave(records,3,new Uint8Array(fixed.length-1))===-1,"fixed 
 const plainRecords=records.map(x=>Object.assign(new f.PlainReading(),x));const plainOut=new Uint8Array(f.PlainReadingFixedMeasure(3));
 expect(f.PlainReadingFixedSave(plainRecords,3,plainOut)===plainOut.length && hex(plainOut)===spec.plainFixed,"plain fixed pin moved");
 function loadFixed(wire){const dst=Array.from({length:3},()=>{const x=new f.Reading();f.InitReading(x);x.x=777;return x;});const report=new f.TableFixedReport();const n=f.ReadingFixedLoad(dst,3,wire,wire.length,f.ReadingFixedNewPlan(4096,4096),report);return {n,dst,report};}
-const good=loadFixed(fixed);expect(good.n===3 && !good.report.malformed && good.dst[2].x===1002,"fixed integrity load");
+const good=loadFixed(fixed);expect(good.n===3 && !good.report.damaged && good.dst[2].x===1002,"fixed integrity load");
 for(let i=1;i<fixed.length;i++){
  const bad=fixed.slice();bad[i]^=1;const result=loadFixed(bad);
- expect(result.n===-1 && result.report.malformed && f.TableFixedRefusalName(result.report.refused)==="integrity_mismatch" && result.dst.every(x=>x.x===777),"fixed damaged byte "+i);
+ expect(result.n===-1 && result.report.damaged && f.TableFixedRefusalName(result.report.refused)==="integrity_mismatch" && result.dst.every(x=>x.x===777),"fixed damaged byte "+i);
 }
 const vocab=new f.TableVocabulary();vocab.Init(new Array(f.TableMessageEntriesHere));const ar={};expect(f.AnnounceRead(vocab,bytes(spec.announcement),ar),"integrity announcement");
 const message=bytes(spec.message);const msgOut=new Uint8Array(f.ReadingMeasureMessages(records,{}));
@@ -133,7 +133,7 @@ function loadMessage(wire){const dst=Array.from({length:3},()=>{const x=new f.Re
 expect(loadMessage(message).n===3,"message integrity load");
 for(let i=1;i<message.length;i++){
  const bad=message.slice();bad[i]^=1;const result=loadMessage(bad);
- expect(result.n===-1 && result.report.Malformed && result.report.Reason==="integrity_mismatch" && result.report.Verdict===2 && result.dst.every(x=>x.x===777),"message damaged byte "+i);
+ expect(result.n===-1 && result.report.Damaged && result.report.Reason==="integrity_mismatch" && result.report.Verdict===2 && result.dst.every(x=>x.x===777),"message damaged byte "+i);
 }
 // The form byte's diagnostic has precedence over CRC, including short inputs.
 const vr=new v.TableVariableReport();v.RootLoad(new Uint8Array([2]),vr);expect(vr.reason==="message_form_as_file","variable form precedence");

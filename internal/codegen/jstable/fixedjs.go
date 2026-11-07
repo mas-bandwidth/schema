@@ -510,7 +510,7 @@ func (g *fixedGen) storeTag(ind, at string, width int64, expr string) {
 // declared extent never reaches 2^32, so a NONZERO HIGH LANE is an ordinal no
 // declaration can hold. It lands as 2^32 — above every extent the clamps below
 // compare against — so the ordinal is forced through §4.6's clamp, comes back
-// None and counts one `clamped`, which is the one answer a forged eight-byte
+// None and counts one `oor`, which is the one answer a forged eight-byte
 // tag is owed (§5.4).
 func (g *fixedGen) loadTag(ind, lhs, at string, width int64) {
 	switch width {
@@ -545,7 +545,7 @@ func (g *fixedGen) loadTag(ind, lhs, at string, width int64) {
 // compiled plan copies a same-size ranged integer, and an ordinal op remaps by
 // name. Hash chooses the plan. This decode is the one path both land in.
 // A COUNTED ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never
-// projected and never clamped.
+// projected and never oor.
 func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("// %s's loads, out of the reader's own image and into the value the\n", st.Name)
 	g.pf("// caller handed in — filled, never returned, exactly as Read<Name>Flat is.\n")
@@ -777,7 +777,7 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 }
 
 // emitDecodeCount is §3.4's `count` op, inline: a count or a length is read out
-// of the image and CLAMPED to THIS reader's own bound, counting one `clamped`
+// of the image and CLAMPED to THIS reader's own bound, counting one `oor`
 // if it fired.
 //
 // THE COMPILED PLAN'S OWN count op has already done this — OP_COUNT and
@@ -792,7 +792,7 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64) {
 	g.pf("%s{\n", ind)
 	g.pf("%s  let n = view.getInt32(%s, true);\n", ind, at)
-	g.pf("%s  if (n < 0) { n = 0; report.clamped++; } else if (n > %d) { n = %d; report.clamped++; }\n",
+	g.pf("%s  if (n < 0) { n = 0; report.oor++; } else if (n > %d) { n = %d; report.oor++; }\n",
 		ind, bound, bound)
 	g.pf("%s  %s = n;\n", ind, dst)
 	g.pf("%s}\n", ind)
@@ -848,7 +848,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			tag := fixedUnionTagBytes(r)
 			g.loadTag(ind, expr+".type", off(base, at), tag)
 			// A TAG BEYOND THE ARM COUNT LANDS AS None (0) AND COUNTS ONE
-			// clamped. It is the twin of the count and length clamps two
+			// oor. It is the twin of the count and length clamps two
 			// functions down: on the IDENTITY path the whole body is ONE
 			// OP_COPY, so no per-field op runs and a forged tag would reach the
 			// consumer as a number naming an arm that does not exist.
@@ -856,7 +856,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// §5.4 OWES THIS COUNT ON BOTH PLANS, and the two ordinals reach it
 			// differently. AN ENUM ORDINAL does: the compiled plan's OP_ORDINAL
 			// remaps it and counts the forgery itself (fixedruntime.go's ordinal
-			// op), so `clamped` is 1 on the compiled plan and 1 on the identity
+			// op), so `oor` is 1 on the compiled plan and 1 on the identity
 			// plan, never 2 — the op counts where this projection cannot see,
 			// and this projection counts where no op ran.
 			//
@@ -868,7 +868,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// over the writer's arm ordinals beside the guarded consts, which is
 			// a plan-shape change and not a projection one; it is named here
 			// rather than left silent (§5.8's habit, §5.4's rule).
-			g.pf("%sif (%s.type > %d) { %s.type = 0; report.clamped++; }\n",
+			g.pf("%sif (%s.type > %d) { %s.type = 0; report.oor++; }\n",
 				ind, expr, len(r.Variants), expr)
 			g.pf("%sswitch (%s.type) {\n", ind, expr)
 			for i, v := range r.Variants {
@@ -887,12 +887,12 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 		case *ir.Enum:
 			g.loadTag(ind, expr, off(base, at), int64(r.StorageBits/8))
 			// AN ORDINAL PAST THE ENUM'S TOP VALUE LANDS None (0) AND COUNTS
-			// ONE clamped. Identity is one OP_COPY of the whole body, so the
+			// ONE oor. Identity is one OP_COPY of the whole body, so the
 			// plan never holds the set; this projection is the bounds pass
 			// both paths share. A value inside an `| max = K` headroom is in
 			// the set and stands (r.Max, not the named-variant count).
 			if max, ok := fixedEnumClampMax(r); ok {
-				g.pf("%sif (%s > %d) { %s = 0; report.clamped++; }\n",
+				g.pf("%sif (%s > %d) { %s = 0; report.oor++; }\n",
 					ind, expr, max, expr)
 			}
 			return
@@ -907,7 +907,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 
 // emitBigClampLanes is §4.6's ranged clamp for a 64- or 128-bit integer,
 // decided on the image's u32 LANES AS A NUMBER before any BigInt exists: a
-// clamped value lands its bound's literal and an in-range one is loaded once,
+// oor value lands its bound's literal and an in-range one is loaded once,
 // so no BigInt is made only to be compared and no BigInt comparison runs.
 //
 // THE DECISION IS EXACT. The Number is hi * 2^32 + lo (for 128 bits, the high
@@ -984,7 +984,7 @@ func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
 	g.pf("%s  const n = %s;\n", ind, nExpr)
 	first := true
 	if low {
-		g.pf("%s  if (%s) { %s = %s; report.clamped++; }\n", ind, loCond, expr, jsIntLit(rlo, true))
+		g.pf("%s  if (%s) { %s = %s; report.oor++; }\n", ind, loCond, expr, jsIntLit(rlo, true))
 		first = false
 	}
 	if high {
@@ -992,7 +992,7 @@ func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
 		if !first {
 			kw = "else if"
 		}
-		g.pf("%s  %s (%s) { %s = %s; report.clamped++; }\n", ind, kw, hiCond, expr, jsIntLit(rhi, true))
+		g.pf("%s  %s (%s) { %s = %s; report.oor++; }\n", ind, kw, hiCond, expr, jsIntLit(rhi, true))
 	}
 	g.pf("%s  else {\n", ind)
 	g.load(ind+"    ", expr, "view", at, f.Type)
@@ -1018,7 +1018,7 @@ func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
 	// it on its raw bits first (docs/SPEC-TABLES.md §3.3). `<` and `>` are IEEE
 	// comparisons on purpose, so a negative zero is not below a min of +0.
 	if lo, hi, ok := fixedFloatClampEnds(f); ok {
-		g.pf("%sif (%s < %s) { %s = %s; report.clamped++; } else if (%s > %s) { %s = %s; report.clamped++; }\n",
+		g.pf("%sif (%s < %s) { %s = %s; report.oor++; } else if (%s > %s) { %s = %s; report.oor++; }\n",
 			ind, expr, lo, expr, lo, expr, hi, expr, hi)
 		return
 	}
@@ -1028,19 +1028,19 @@ func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
 		low, high := fixedClampEnds(f)
 		switch {
 		case low && high:
-			g.pf("%sif (%s < %s) { %s = %s; report.clamped++; } else if (%s > %s) { %s = %s; report.clamped++; }\n",
+			g.pf("%sif (%s < %s) { %s = %s; report.oor++; } else if (%s > %s) { %s = %s; report.oor++; }\n",
 				ind, expr, lo, expr, lo, expr, hi, expr, hi)
 		case low:
-			g.pf("%sif (%s < %s) { %s = %s; report.clamped++; }\n", ind, expr, lo, expr, lo)
+			g.pf("%sif (%s < %s) { %s = %s; report.oor++; }\n", ind, expr, lo, expr, lo)
 		case high:
-			g.pf("%sif (%s > %s) { %s = %s; report.clamped++; }\n", ind, expr, hi, expr, hi)
+			g.pf("%sif (%s > %s) { %s = %s; report.oor++; }\n", ind, expr, hi, expr, hi)
 		}
 	}
 	w := fixedStorageBytes(f.Type)
 	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*w {
 		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 		lit := jsIntLit(maxv, fixedIsBig(f.Type))
-		g.pf("%sif (%s > %s) { %s = %s; report.clamped++; }\n", ind, expr, lit, expr, lit)
+		g.pf("%sif (%s > %s) { %s = %s; report.oor++; }\n", ind, expr, lit, expr, lit)
 	}
 }
 

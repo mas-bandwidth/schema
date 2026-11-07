@@ -102,7 +102,7 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 	// the committed text; and every root is carried, none refused by name.
 	for _, u := range units {
 		vc := newVariableClass(u.unit)
-		m := tabletext.NewModel(u.unit)
+		m := jsVariableModel(u.unit)
 		for _, c := range u.cases {
 			if !vc.carried(c.Root) {
 				t.Fatalf("%s: this leg refuses %s: %s", c.Name, c.Root, vc.reason[c.Root])
@@ -128,7 +128,7 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 	if why := newVariableClass(probe).reason["Probe"]; why != "" {
 		t.Fatalf("the probe root is refused: %s", why)
 	}
-	pm := tabletext.NewModel(probe)
+	pm := jsVariableModel(probe)
 	var probeCases []*vcCase
 	for _, pc := range wideProbeTexts {
 		inst := pm.New(pm.Lookup("Probe"))
@@ -152,7 +152,7 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 	// (same table and field names, so the same ids, §5), and forged payloads.
 	writer := unitFrom(t, wideDamageWriterSrc)
 	reader := unitFrom(t, wideDamageReaderSrc)
-	wm, rm := tabletext.NewModel(writer), tabletext.NewModel(reader)
+	wm, rm := jsVariableModel(writer), jsVariableModel(reader)
 	encodeTag := func(text string) []byte {
 		t.Helper()
 		inst := wm.New(wm.Lookup("Tag"))
@@ -449,10 +449,10 @@ for (const d of spec.damages ?? []) {
   const m = await import(pathToFileURL(d.module).href);
   const rep = new m.TableVariableReport();
   const v = m[d.root + "Load"](new Uint8Array(readFileSync(d.wire)), rep);
-  if (d.damaged) { console.log("DAMAGE " + d.name + (v === null ? " OK" : " DIFF the load was not refused " + JSON.stringify(rep))); continue; }
+  if (d.damaged) { console.log("DAMAGE " + d.name + (v === null || rep.err() !== null ? " OK" : " DIFF the load was not refused " + JSON.stringify(rep))); continue; }
   if (v === null) { console.log("DAMAGE " + d.name + " REFUSED " + JSON.stringify(rep)); continue; }
   const s = m[d.root + "Save"](v);
-  const got = [rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed].join(",") + " " + (s === null ? "null" : hexOf(s));
+  const got = [rep.unknown, rep.mismatch, rep.widened, rep.oor, rep.repeated, rep.damaged].join(",") + " " + (s === null ? "null" : hexOf(s));
   console.log("DAMAGE " + d.name + (got === d.want ? " OK" : " DIFF got " + got + " want " + d.want));
 }
 for (const r of spec.refusals ?? []) {

@@ -41,7 +41,7 @@ type FixedLineageEntry struct {
 	Reason  string
 	// Ranges are the WRITER's ranged integer leaves, on the raw scale
 	// (docs/FIXED-FORM-ALGORITHM.md §4.5): a record read under this entry is
-	// clamped to them first, then to this reader's own ranges.
+	// oor to them first, then to this reader's own ranges.
 	Ranges []ir.TableFixedWriterRange
 }
 
@@ -133,7 +133,7 @@ func jsMessageUnitRoots(u *ir.Unit) []*ir.Struct {
 // layout, or whose RECORD SIZE is `8` or less or not what its own layout
 // accounts for, is A BUG IN THE LOCK — so **the BUILD FAILS**, naming the table
 // and the entry's hash. It is not a wire event: routing it into LOAD would
-// report a lock bug as `malformed` on a file that did nothing wrong, and
+// report a lock bug as `damaged` on a file that did nothing wrong, and
 // routing it into §5.3 step 9 would report it as arithmetic over a file's tail.
 //
 // THE RUN-TIME NAME STAYS, and is not the same path. `TableFixedLineagePlans`

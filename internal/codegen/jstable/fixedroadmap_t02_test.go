@@ -265,7 +265,7 @@ func t02R23(t *testing.T) {
 	if n := strings.Count(report, "this.layoutHash"); n != 1 {
 		t.Fatalf("R23: the report names layout_hash %d times, want once", n)
 	}
-	if i, j := strings.Index(report, "this.duplicate = 0;"), strings.Index(report, "this.layoutHash = 0n;"); i < 0 || j < i {
+	if i, j := strings.Index(report, "this.repeated = 0;"), strings.Index(report, "this.layoutHash = 0n;"); i < 0 || j < i {
 		t.Errorf("R23: layout_hash is not the report's last member:\n%s", report)
 	}
 	if tail := report[strings.LastIndex(report, "this."):]; !strings.HasPrefix(tail, "this.layoutHash = 0n;") {

@@ -290,7 +290,7 @@ const storage = Array.from({ length: 256 }, () => new %[1]s());
 const batch = new Uint8Array(readFileSync("./batch.bin"));
 const loadReport = {};
 const count = %[1]sLoadMessages(storage, v, batch, loadReport);
-if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
+if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Damaged) {
   fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
 }
 // "loading either form and saving the other reproduces the other's pinned
@@ -340,7 +340,7 @@ const threeBatch = threeBuf.subarray(0, threeN);
 const shortStorage = Array.from({ length: 2 }, () => new %[1]s());
 const shortReport = {};
 const shortCount = %[1]sLoadMessages(shortStorage, v, threeBatch, shortReport);
-if (shortCount !== 3 || shortReport.Verdict !== 1 || shortReport.Reason !== "batch_too_large" || shortReport.Malformed) {
+if (shortCount !== 3 || shortReport.Verdict !== 1 || shortReport.Reason !== "batch_too_large" || shortReport.Damaged) {
   fail("LoadMessages above capacity: count=" + shortCount + " " + JSON.stringify(shortReport));
 }
 // "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME" (§3.3).
@@ -367,21 +367,21 @@ const storage = Array.from({ length: 256 }, () => new %[1]s());
 const damaged = new Uint8Array([2, 1, 0xc0, 0x0f]);
 const dReport = {};
 const dCount = %[1]sLoadMessages(storage, v, damaged, dReport);
-if (dCount !== 0 || !dReport.Malformed || dReport.Verdict !== 0) {
+if (dCount !== 0 || !dReport.Damaged || dReport.Verdict !== 0) {
   fail("damage inside body 2 delivered a body: count=" + dCount + " " + JSON.stringify(dReport));
 }
 // BYTES AFTER THE PAD ARE DAMAGE after the last body, and discard the batch too.
 const padded = new Uint8Array([2, 0, 0, 0]);
 const pReport = {};
 const pCount = %[1]sLoadMessages(storage, v, padded, pReport);
-if (!pReport.Malformed) { fail("bytes after the pad did not read as malformed: " + JSON.stringify(pReport)); }
+if (!pReport.Damaged) { fail("bytes after the pad did not read as malformed: " + JSON.stringify(pReport)); }
 if (pCount !== 0) { fail("bytes after the pad delivered a body: count=" + pCount); }
 // "FORM BYTE `+"`2`"+` IS THE MESSAGE FORM" (§3.3): a byte this reader does not
 // carry is a REFUSAL by name, never damage.
 const newer = new Uint8Array([3, 0, 0]);
 const nReport = {};
 const nCount = %[1]sLoadMessages(storage, v, newer, nReport);
-if (nCount !== -1 || nReport.Verdict !== 1 || nReport.Reason !== "newer_form" || nReport.Malformed) {
+if (nCount !== -1 || nReport.Verdict !== 1 || nReport.Reason !== "newer_form" || nReport.Damaged) {
   fail("newer form: " + JSON.stringify(nReport));
 }
 // "message_form_as_file" is the FILE reader's answer to a batch handed where a
@@ -423,7 +423,7 @@ if (n < 0 || saveReport.Verdict !== 0) { fail("SaveMessages: " + JSON.stringify(
 const storage = Array.from({ length: 256 }, () => new %[1]s());
 const loadReport = {};
 const count = %[1]sLoadMessages(storage, v, buf.subarray(0, n), loadReport);
-if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
+if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Damaged) {
   fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
 }
 // "file to message to file reproduces a compressed float only when the float
@@ -468,7 +468,7 @@ if (n < 0 || saveReport.Verdict !== 0) { fail("SaveMessages: " + JSON.stringify(
 const storage = Array.from({ length: 256 }, () => new %[1]s());
 const loadReport = {};
 const count = %[1]sLoadMessages(storage, v, buf.subarray(0, n), loadReport);
-if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
+if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Damaged) {
   fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
 }
 if (storage[0].slots[0] !== 7 || storage[0].slots[1] !== 0 || storage[0].slots[2] !== 9) {
@@ -502,7 +502,7 @@ if (n < 0 || saveReport.Verdict !== 0) { fail("SaveMessages: " + JSON.stringify(
 const storage = Array.from({ length: 256 }, () => new %[1]s());
 const loadReport = {};
 const count = %[1]sLoadMessages(storage, v, buf.subarray(0, n), loadReport);
-if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
+if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Damaged) {
   fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
 }
 if (storage[0].scores.points !== 42) { fail("by-value type: " + storage[0].scores.points); }
