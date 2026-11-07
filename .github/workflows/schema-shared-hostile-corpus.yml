@@ -14,9 +14,9 @@ name: schema-shared-hostile-corpus
 # certify the gates have blades rather than the corpus's content.
 on:
   push:
-    branches: [ main, 'sprint/**' ]
+    branches: [ main, 'sprint/*' ]
   pull_request:
-    branches: [ main, 'sprint/**' ]
+    branches: [ main, 'sprint/*' ]
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
