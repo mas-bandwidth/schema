@@ -15,7 +15,7 @@ import (
 
 // TestLuaCookRead holds the cook read (docs/SPEC-TABLES.md §7.2) to the load:
 // for every instance row of the tables conformance manifest, the Lua read of
-// internal/tablecook's cook of the row's wire equals the Lua LoadTolerant of
+// internal/tablecook's cook of the row's wire equals the Lua Load of
 // that wire. The comparison is a canonical dump of the two values, so it pins
 // the storage the variable-form load produces — scalars at their width, an
 // enum by its variant name, a map by its keys, a pointer by its one node, a
@@ -86,9 +86,9 @@ func TestLuaCookRead(t *testing.T) {
 // root's declared form, §3.4), opens the cook, reads the opened region, and
 // compares canonical dumps of the two values.
 func cookReadProbe(module, root string, fixed bool) string {
-	loadLine := `local wire = load.LoadTolerant(T, root, inputs.wire, report)`
+	loadLine := `local wire = load.Load(T, root, inputs.wire, report)`
 	if fixed {
-		loadLine = `local wire = T.ReadFixedTolerant(root, inputs.wire)`
+		loadLine = `local wire = T.ReadFixed(root, inputs.wire)`
 	}
 	return fmt.Sprintf(`local T = require(%q)
 local load = require("load")
@@ -130,7 +130,7 @@ local function dump(v)
   return t
 end
 
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 %s
 local h, why = cook.Open(T, root, inputs.cook)
 if h == nil then error("cook refused: " .. tostring(why)) end

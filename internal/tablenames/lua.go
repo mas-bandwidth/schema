@@ -24,9 +24,9 @@ const Lua Backend = 1 << 9
 var luaModuleKeys = map[string][]string{
 	"the unit's table module (<Package>Tables.lua)": {
 		"AnnounceRead", "Announcement", "BlockForm", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "DocNone", "Fixed", "FixedEnums",
-		"FixedFields", "FixedLoad", "FixedMeasure", "FixedSave", "FixedUnions", "Keyed", "LoadMessages", "LoadMessagesTolerant", "MeasureMessages", "MessageBatchMax",
+		"FixedFields", "FixedLoad", "FixedMeasure", "FixedSave", "FixedUnions", "Keyed", "LoadMessages", "MeasureMessages", "MessageBatchMax",
 		"MessageEntries", "MessageNodeId", "MessageRefBits", "MessageRoots", "MessageVersionId", "MessageVocabulary",
-		"MessageVocabularyId", "NeedsBlockEligibility", "Package", "ReadFixed", "ReadFixedTolerant", "RegionAlign", "Registry", "SaveMessages",
+		"MessageVocabularyId", "NeedsBlockEligibility", "Package", "ReadFixed", "RegionAlign", "Registry", "SaveMessages",
 		"StringBlobTypeId", "Tables", "TypedBodies", "Unions", "WireIds", "WriteFixed",
 	},
 	"the unit's type view (<Package>View.lua)": {
@@ -43,8 +43,8 @@ var luaModuleKeys = map[string][]string{
 		"cyclic", "reset", "reset_elem", "seal",
 	},
 	"fixed.lua":         {"load", "measure", "read", "save", "write"},
-	"json.lua":          {"FromJson", "FromJsonTolerant", "ToJson"},
-	"load.lua":          {"Load", "LoadMeasure", "LoadTolerant", "NewState", "crc32c"},
+	"json.lua":          {"FromJson", "ToJson"},
+	"load.lua":          {"Load", "LoadMeasure", "NewState", "crc32c"},
 	"message.lua":       {"announceRead", "loadMessages", "measureMessages", "saveMessages"},
 	"refusal.lua":       {"ReadStrict"},
 	"retain.lua":        {"LoadRetain", "MeasureRetain", "SaveRetain"},
@@ -81,5 +81,5 @@ func LuaModuleKeys() []string {
 func init() {
 	// ReadStrict predates the list and stays a registered, Scoped name (the
 	// refusal runtime's module table, docs/SPEC-TABLES.md §6.5).
-	define(Lua, Name{Name: "ReadStrict", What: "the strict read over the tolerant load, on the refusal runtime's module table (docs/SPEC-TABLES.md §6.5)", Scoped: true})
+	define(Lua, Name{Name: "ReadStrict", What: "the strict read over the variable-form load, on the refusal runtime's module table (docs/SPEC-TABLES.md §6.5)", Scoped: true})
 }

@@ -3,7 +3,7 @@ package luatable
 // TestLuaPlainLoadIsStrict pins docs/SPEC-TABLES.md §6.5's rule that THE PLAIN
 // NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS OWN for the Lua
 // variable-form read: load.Load answers nil exactly where refusal.ReadStrict
-// refuses, with report.reason naming the refusal, and load.LoadTolerant keeps
+// refuses, with report.reason naming the refusal, and load.Load keeps
 // the recovered value and its report under the explicit name. The oracle is
 // schema-go's TestGoDefaultReadIsStrict; every manifest instance and report
 // row is read both ways.
@@ -23,7 +23,7 @@ import (
 func plainStrictProbe(module, root string, instance bool) string {
 	instanceCheck := ""
 	if instance {
-		instanceCheck = `assert(tolerant ~= nil, "LoadTolerant answered no root for an instance row")
+		instanceCheck = `assert(tolerant ~= nil, "Load answered no root for an instance row")
 `
 	}
 	return `local T = require("` + module + `")
@@ -33,21 +33,21 @@ local inputs = require("inputs")
 local wire = inputs.wire
 
 local function fresh()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-           clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+           outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 
 local tr = fresh()
-local tolerant = load.LoadTolerant(T, "` + root + `", wire, tr)
+local tolerant = load.loadWalk(T, "` + root + `", wire, tr)
 ` + instanceCheck + `
 -- THE CALLER'S REPORT IS OVERWRITTEN WITH THIS READ'S REPORT (§6.5): seed it
 -- with stale answers and every counter must come back as the tolerant walk
 -- counted it.
-local sr = { malformed = true, refused = 7, unknown = 5, kindMismatch = 5,
-             clamped = 5, widened = 5, duplicate = 5, reason = "stale" }
+local sr = { damaged = true, refused = 7, unknown = 5, kindChanged = 5,
+             outOfRange = 5, widened = 5, repeatedKey = 5, reason = "stale" }
 local strict = load.Load(T, "` + root + `", wire, sr)
 
-local keys = { "malformed", "refused", "unknown", "kindMismatch", "clamped", "widened", "duplicate" }
+local keys = { "damaged", "refused", "unknown", "kindChanged", "outOfRange", "widened", "repeatedKey" }
 for _, k in ipairs(keys) do
   assert(sr[k] == tr[k], "plain read report " .. k .. ": got " .. tostring(sr[k]) .. ", want " .. tostring(tr[k]))
 end
@@ -60,7 +60,8 @@ if name == nil then
   assert(load.Load(T, "` + root + `", wire, nil) ~= nil, "the plain Load with a nil report refused an accepted wire")
 else
   assert(strict == nil, "the plain Load took a wire ReadStrict refused: " .. name)
-  assert(sr.reason == name, "the plain Load reason is " .. tostring(sr.reason) .. ", want " .. name)
+  local gotReason = sr.reason and sr.reason:match("^([^:]+)") or nil
+  assert(gotReason == name, "the plain Load reason is " .. tostring(sr.reason) .. ", want " .. name)
   assert(load.Load(T, "` + root + `", wire, nil) == nil, "the plain Load with a nil report took a wire ReadStrict refused: " .. name)
 end
 print("plain-strict-ok")
@@ -69,19 +70,19 @@ print("plain-strict-ok")
 
 // plainStrictProbeFixed is plainStrictProbe at a FIXED root whose wire is
 // form 3 (docs/SPEC-TABLES.md §3.4, §6.5): the plain name is ReadFixed, the
-// tolerant twin is ReadFixedTolerant, and ReadStrict must answer as
+// tolerant twin is ReadFixed, and ReadStrict must answer as
 // ReadFixed answers, because it routes the form byte to the same reader.
 func plainStrictProbeFixed(module, root string, instance bool) string {
 	instanceCheck := ""
 	if instance {
-		instanceCheck = `assert(okT, "ReadFixedTolerant answered no root for an instance row")
+		instanceCheck = `assert(okT, "ReadFixed answered no root for an instance row")
 `
 	}
 	return `local T = require("` + module + `")
 local R = require("refusal")
 local inputs = require("inputs")
 local wire = inputs.wire
-local okT, tolerant = pcall(T.ReadFixedTolerant, "` + root + `", wire)
+local okT, tolerant = pcall(T.ReadFixed, "` + root + `", wire)
 ` + instanceCheck + `local okS, strict = pcall(T.ReadFixed, "` + root + `", wire)
 local okR, rval = pcall(function() return R.ReadStrict(T, "` + root + `", wire) end)
 assert(okS == okR, "ReadFixed and ReadStrict disagree on acceptance of a form-3 wire")

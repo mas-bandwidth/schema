@@ -266,16 +266,15 @@ encode_table = function(T, name, v)
   return table.concat(parts)
 end
 
--- The tolerant read's tallies (docs/SPEC-TABLES.md §3.4, §5.4 of the
+-- The read's tallies (docs/SPEC-TABLES.md §3.4, §5.4 of the
 -- fixed-form algorithm): a value the record states past its declared bound
--- counts clamped (the tolerant value itself rides unchecked, as BASE's
--- answer does; the strict read refuses it), and a union tag naming no arm lands
+-- counts outOfRange (and the strict read refuses it), and a union tag naming no arm lands
 -- None and counts unknown, as the engine's fixed decode counts them. One
 -- tally serves the read in flight; the readers return it.
 local clamp_tally = nil
 local read_strict = false
 local function count_clamp()
-  if clamp_tally ~= nil and not read_strict then clamp_tally.clamped = clamp_tally.clamped + 1 end
+  if clamp_tally ~= nil and not read_strict then clamp_tally.outOfRange = clamp_tally.outOfRange + 1 end
 end
 local function count_unknown()
   if clamp_tally ~= nil then clamp_tally.unknown = clamp_tally.unknown + 1 end
@@ -364,7 +363,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
     local raw = unpack_int(buf, pos, w, false)
-    -- a forged ordinal lands None and counts clamped (§5.4)
+    -- a forged ordinal lands None and counts outOfRange (§5.4)
     if raw > #d.variants then count_clamp() end
     local v = nil
     -- a retired variant reads the declared default (docs/SPEC-TABLES.md §2.15)
@@ -701,14 +700,19 @@ decode_old_value = function(T, d, node, buf, pos, rep)
 end
 
 -- THE STRICT SET (docs/SPEC-TABLES.md §6.5, §3.4): the fixed form carries its
--- own rule, and a RANGED integer clamps on load (§3.4 THE RECORD), so a value
--- the record states past its declared bound is the `clamped` refusal. The
--- tolerant read keeps BASE's answer; the plain name walks what it decoded once.
+-- own rule, and a RANGED integer past its declared bound is the `out_of_range`
+-- refusal. The plain name walks what it decoded once.
 local function strict_value(T, d, v)
   if v == nil then return end
   local s = d.shape
   if s == "int" then
-    if d.lo ~= nil and d.hi ~= nil and (v < d.lo or v > d.hi) then error("clamped", 0) end
+    if d.lo ~= nil and d.hi ~= nil then
+      if d.signed then
+        if v < d.lo or v > d.hi then error("out_of_range", 0) end
+      else
+        if math.ult(v, d.lo) or math.ult(d.hi, v) then error("out_of_range", 0) end
+      end
+    end
   elseif s == "table" then
     local desc = T.Tables[d.target]
     if desc == nil then return end
@@ -733,8 +737,7 @@ end
 -- byte, the reserved zeroes, the hash, the layout and one record. A fixed
 -- table reads BACKWARD (§5.2): the header's hash selects a layout the BUILD
 -- laid down, and an older writer's records are read under ITS layout bytes.
--- `strict` is the plain name's read (docs/SPEC-TABLES.md §6.5): the tolerant
--- twin passes false and keeps BASE's answers.
+-- `strict` is the plain name's read (docs/SPEC-TABLES.md §6.5).
 local function read_impl(T, name, buf, strict)
   if #buf < 1 then error("malformed") end
   local form = buf:byte(1)
@@ -812,16 +815,16 @@ local function read_impl(T, name, buf, strict)
 end
 
 -- F.read is one record's read: the value, its layout hash and bytes, and
--- the read's clamped and unknown tallies.
+-- the read's outOfRange and unknown tallies.
 function F.read(T, name, buf, strict)
-  clamp_tally = { clamped = 0, unknown = 0 }
+  clamp_tally = { outOfRange = 0, unknown = 0 }
   read_strict = strict and true or false
   local ok, v, h, l = pcall(read_impl, T, name, buf, strict)
   read_strict = false
-  local clamped, unknown = clamp_tally.clamped, clamp_tally.unknown
+  local out_of_range, unknown = clamp_tally.outOfRange, clamp_tally.unknown
   clamp_tally = nil
   if not ok then error(v, 0) end
-  return v, h, l, clamped, unknown
+  return v, h, l, out_of_range, unknown
 end
 
 -- F.write writes the header and ONE record (docs/FIXED-FORM-ALGORITHM.md §2,
@@ -948,16 +951,16 @@ local function load_impl(T, name, buf, strict, cap)
 end
 
 -- F.load is a whole file's read: the records, the layout hash and bytes,
--- the widened count, and the read's clamped and unknown tallies.
+-- the widened count, and the read's outOfRange and unknown tallies.
 function F.load(T, name, buf, strict, cap)
-  clamp_tally = { clamped = 0, unknown = 0 }
+  clamp_tally = { outOfRange = 0, unknown = 0 }
   read_strict = strict and true or false
   local ok, out, h, l, w = pcall(load_impl, T, name, buf, strict, cap)
   read_strict = false
-  local clamped, unknown = clamp_tally.clamped, clamp_tally.unknown
+  local out_of_range, unknown = clamp_tally.outOfRange, clamp_tally.unknown
   clamp_tally = nil
   if not ok then error(out, 0) end
-  return out, h, l, w, clamped, unknown
+  return out, h, l, w, out_of_range, unknown
 end
 
 -- F.prepare builds, once, every derived fact the fixed form reads from a

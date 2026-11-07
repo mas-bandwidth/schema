@@ -1,13 +1,13 @@
 package luatable
 
-// THE PLAIN FromJson IS STRICT, FromJsonTolerant IS THE NAMED TWIN
+// THE PLAIN FromJson IS STRICT, FromJson IS THE NAMED TWIN
 // (docs/SPEC-TABLES.md §6.5, §16.2): the plain read refuses a text whose
 // tolerant report is not clean under the strict set — malformed, clamped, or
 // kind_mismatch — answering nil and writing the strict reason into the
 // supplied report, while unknown and duplicate alone read clean. The answers
 // are the generated Go's own (internal/codegen/gotable), whose
 // TestGoDefaultReadIsStrict pins the FromJson rows: Go err.Error() against
-// Lua report.reason. FromJsonTolerant keeps the answer FromJson had at BASE.
+// Lua report.reason. FromJson keeps the answer FromJson had at BASE.
 
 import (
 	"fmt"
@@ -78,14 +78,14 @@ local rows = {
 	}
 	b.WriteString(`}
 local function fresh()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+    outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 local function reportLine(r)
   local verdict = r.refused > 0 and "refused" or "read"
   return string.format("%d,%d,%d,%d,%d,%s,%s",
-    r.unknown, r.kindMismatch, r.widened, r.clamped,
-    r.duplicate, tostring(r.malformed), verdict)
+    r.unknown, r.kindChanged, r.widened, r.outOfRange,
+    r.repeatedKey, tostring(r.damaged), verdict)
 end
 for _, row in ipairs(rows) do
   local text = inputs[row.key]
@@ -95,9 +95,9 @@ for _, row in ipairs(rows) do
   if v == nil then verdict = r.Reason or "refused" end
   print(row.key .. "|strict|" .. verdict)
   local tr = fresh()
-  local tv = J.FromJsonTolerant(T, row.root, text, tr)
+  local tv = J.FromJson(T, row.root, text, tr)
   local tolerant = reportLine(tr)
-  if tv == nil or tr.malformed then tolerant = "refused" end
+  if tv == nil or tr.damaged then tolerant = "refused" end
   print(row.key .. "|tolerant|" .. tolerant)
 end
 `)
@@ -132,7 +132,7 @@ func strictGoProbe(pkg string, rows []strictJSONRow, texts map[string][]byte, fi
 // TestLuaFromJsonIsStrict pins docs/SPEC-TABLES.md §6.5 and §16.2 over every
 // JSON-bearing row of the tables manifest: the plain FromJson's verdict is the
 // generated Go's (Go err.Error() against Lua report.reason), and
-// FromJsonTolerant keeps the BASE answer (the manifest's own report line for a
+// FromJson keeps the BASE answer (the manifest's own report line for a
 // hostile text, a clean read for an instance's canonical text).
 func TestLuaFromJsonIsStrict(t *testing.T) {
 	t.Parallel()
@@ -257,10 +257,10 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 					wantTolerant = "refused"
 				}
 				if tolerant != wantTolerant {
-					t.Errorf("%s: FromJsonTolerant answered %q, BASE's FromJson answered %q", row.name, tolerant, wantTolerant)
+					t.Errorf("%s: FromJson answered %q, BASE's FromJson answered %q", row.name, tolerant, wantTolerant)
 				}
 			} else if tolerant != "0,0,0,0,0,false,read" {
-				t.Errorf("%s: FromJsonTolerant answered %q on a canonical instance text", row.name, tolerant)
+				t.Errorf("%s: FromJson answered %q on a canonical instance text", row.name, tolerant)
 			}
 			compared++
 		}
@@ -268,5 +268,5 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 	if compared == 0 {
 		t.Fatal("no JSON row compared")
 	}
-	t.Logf("%d JSON rows: plain FromJson agrees with the generated Go, FromJsonTolerant with BASE", compared)
+	t.Logf("%d JSON rows: plain FromJson agrees with the generated Go, FromJson with BASE", compared)
 }

@@ -4,7 +4,7 @@ package luatable
 // §2.13, §2.13.1, §16.2): a text list's text is a plain array of strings
 // (`null` for an absent ?string element) and an unbounded map key is an object
 // key with no length bound. The two binary cards' units are driven through the
-// Lua J.FromJson / J.ToJson and through the GENERATED GO's FromJsonTolerant /
+// Lua J.FromJson / J.ToJson and through the GENERATED GO's FromJson /
 // ToJson; every case's text and report must agree.
 
 import (
@@ -152,17 +152,17 @@ for _, c in ipairs(cases) do
   local f = assert(io.open("cases/" .. c.name .. ".json", "rb"))
   local text = f:read("*a")
   f:close()
-  local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-  -- the TOLERANT read, as the Go oracle's FromJsonTolerant (§16.11): the
+  local r = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+  -- the TOLERANT read, as the Go oracle's FromJson (§16.11): the
   -- plain FromJson is the strict read and answers nil on a clamp
-  local v = J.FromJsonTolerant(T, c.root, text, r)
-  local ok = not r.malformed
+  local v = J.FromJson(T, c.root, text, r)
+  local ok = not r.damaged
   local out = nil
   if ok then out = J.ToJson(T, c.root, v) end
   local refused = ok and out == nil
-  print(table.concat({ c.name, tostring(ok), tostring(r.unknown), tostring(r.kindMismatch),
-    tostring(r.widened), tostring(r.clamped), tostring(r.duplicate), tostring(r.malformed),
-    (r.Reason ~= nil and r.Reason ~= "") and r.Reason or (r.ClampedField and ("clamped: " .. r.ClampedField) or ""),
+  print(table.concat({ c.name, tostring(ok), tostring(r.unknown), tostring(r.kindChanged),
+    tostring(r.widened), tostring(r.outOfRange), tostring(r.repeatedKey), tostring(r.damaged),
+    (r.Reason ~= nil and r.Reason ~= "") and r.Reason or (r.outOfRangeField and ("clamped: " .. r.outOfRangeField) or ""),
     hex(out), tostring(refused) }, "|"))
 end
 `)
@@ -375,8 +375,8 @@ func TestOracle(t *testing.T) {
 		if err != nil { t.Fatal(err) }
 		ok, r, out, refused := oracle(c.root, text)
 		reason := r.Reason
-		if reason == "" && r.ClampedField != "" {
-			reason = "clamped: " + r.ClampedField
+		if reason == "" && r.outOfRangeField != "" {
+			reason = "clamped: " + r.outOfRangeField
 		}
 		lines = append(lines, fmt.Sprintf("%s|%t|%d|%d|%d|%d|%d|%t|%s|%s|%t",
 			c.name, ok, r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate,

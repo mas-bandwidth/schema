@@ -71,13 +71,13 @@ func TestLuaRetainIdCapacity(t *testing.T) {
 			probe := fmt.Sprintf(`local T = require(%q)
 local retain = require("retain")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0, retained = 0, retainLost = 0 }
 local store = { list = {}, used = 0, idCapacity = %s }
 local v = retain.LoadRetain(T, %q, inputs.wire, store, report)
 assert(v ~= nil, "the retaining load refused")
 local loaded = string.format("%%d,%%d,%%d", report.retained, report.retainLost, report.unknown)
 local size = retain.MeasureRetain(T, %q, v, store)
-local save = { malformed = false, refused = 0, retained = 0, retainLost = 0 }
+local save = { damaged = false, refused = 0, retained = 0, retainLost = 0 }
 local out = retain.SaveRetain(T, %q, v, store, save)
 assert(out ~= nil, "the retaining save refused")
 assert(size == #out, "MeasureRetain " .. tostring(size) .. ", the save wrote " .. #out)

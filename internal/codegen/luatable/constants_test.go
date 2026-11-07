@@ -41,8 +41,8 @@ local function try(f, ...)
   return ok, err
 end
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0,
-    widened = 0, duplicate = 0, blobShared = 0, missingRequired = 0, wireDamaged = false }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0,
+    widened = 0, repeatedKey = 0, sharedBlob = 0, missingRequired = 0, wireDamaged = false }
 end
 `)
 	b.WriteString("local roots = {")
@@ -52,18 +52,21 @@ end
 	b.WriteString(`}
 for i, root in ipairs(roots) do
   local wire = inputs["w" .. i]
-  local v = load.LoadTolerant(T, root, wire, report())
+  local v = load.Load(T, root, wire, report())
   -- the caller-owned form reads into one value, twice: the second read puts the
   -- value the first left back to its defaults IN PLACE, which must never reach
   -- a table a descriptor owns (a clamped wide bound was one)
   do
     local into = T["New" .. root]()
-    load.LoadTolerant(T, root, wire, report(), state, into)
-    load.LoadTolerant(T, root, wire, report(), state, into)
+    load.Load(T, root, wire, report(), state, into)
+    load.Load(T, root, wire, report(), state, into)
   end
   try(load.Load, T, root, wire, report())
   try(load.LoadMeasure, T, root, wire)
-  if T.ReadFixed then try(T.ReadFixed, root, wire) end
+  if T.ReadFixed then
+    local ok, fv = try(T.ReadFixed, root, wire)
+    if v == nil and ok then v = fv end
+  end
   if v ~= nil then
     try(save.Save, T, root, v)
     try(save.Measure, T, root, v)
@@ -89,8 +92,8 @@ for name, d in pairs(T.Tables) do
           local ok, wire = pcall(save.Save, T, name, v)
           if ok and wire ~= nil then
             local into = T["New" .. name]()
-            load.LoadTolerant(T, name, wire, report(), state, into)
-            load.LoadTolerant(T, name, wire, report(), state, into)
+            load.Load(T, name, wire, report(), state, into)
+            load.Load(T, name, wire, report(), state, into)
           end
         end
       end

@@ -3,12 +3,12 @@
 -- <Package>Tables.lua by internal/codegen/luatable, which embeds runtime/*.lua
 -- by glob.
 --
--- ReadStrict sits over the tolerant load (runtime/load.lua, the variable form)
+-- ReadStrict sits over the variable-form load (runtime/load.lua, the variable form)
 -- and over the fixed form's reader (runtime/fixed.lua, form 3). It refuses,
 -- with ONE typed reason in TableReport.Err()'s order, a read that is of an
 -- unknown form, integrity-mismatched, carrying a `[]` or map count above the
 -- int32 storage cap (count_over_extent_cap, §2.9), wire-damaged, missing a required field,
--- malformed, blob-shared, clamped or kind-mismatched, or that holds a float
+-- malformed, blob-shared, out-of-range or kind-mismatched, or that holds a float
 -- whose bits are a NaN or an infinity (non_finite_float, which every read
 -- refuses and which outranks every later verdict; §6.5, §11, §2.3, §2.5,
 -- §3.3). Unknown, widened and duplicate
@@ -22,9 +22,9 @@ local R = {}
 -- gotable/refusal.go). malformed is the report's boolean; the others are
 -- counters, and each is refused with its §6.5 spelling.
 local counters = {
-  { key = "blobShared", name = "blob_shared" },
-  { key = "clamped", name = "clamped" },
-  { key = "kindMismatch", name = "kind_mismatch" },
+  { key = "sharedBlob", name = "blob_shared" },
+  { key = "outOfRange", name = "out_of_range" },
+  { key = "kindChanged", name = "kind_mismatch" },
 }
 
 local function refuse(name, _field)
@@ -34,7 +34,7 @@ end
 -- THE DESCRIPTOR/REPORT PROXIES record the FIRST field an increment names.
 -- A counter is written after the field it belongs to has been touched, so the
 -- proxy remembers the last descriptor field read and the report proxy stamps
--- it onto the first nonzero write of every counter. Nothing in the tolerant
+-- it onto the first nonzero write of every counter. Nothing in the variable-form
 -- load changes: the walk still reads the same descriptors, through a table
 -- that answers with their own values.
 local function instrument(T, report, first)
@@ -71,7 +71,8 @@ local function instrument(T, report, first)
   for _, c in ipairs(counters) do
     seen[c.key] = true
   end
-  seen.malformed = true
+  seen.damaged = true
+  seen.repeatedKey = true
   local wrapped = setmetatable({}, {
     __index = report,
     __newindex = function(_t, k, v)
@@ -87,7 +88,7 @@ end
 -- (docs/SPEC-TABLES.md §6.5). It returns the root or raises an error whose
 -- message begins with the refusal's name: count_over_extent_cap,
 -- unknown_form, integrity_mismatch,
--- wire_damaged, missing_required, malformed, blob_shared, clamped,
+-- wire_damaged, missing_required, malformed, blob_shared, out_of_range,
 -- kind_mismatch or non_finite_float.
 -- The form-byte reasons previous_form, newer_form and message_form_as_file are
 -- the REPORT's reasons; TableReport.Err() folds them all into unknown_form.
@@ -124,26 +125,26 @@ function R.ReadStrict(T, name, bytes, integrity)
   end
 
   local report = {
-    malformed = false,
+    damaged = false,
     refused = 0,
     unknown = 0,
-    kindMismatch = 0,
-    clamped = 0,
+    kindChanged = 0,
+    outOfRange = 0,
     widened = 0,
-    duplicate = 0,
-    blobShared = 0,
+    repeatedKey = 0,
+    sharedBlob = 0,
     missingRequired = 0,
     wireDamaged = false,
     reason = "",
   }
   local first = {}
   local proxied, wrapped = instrument(T, report, first)
-  local root = load.LoadTolerant(proxied, name, bytes, wrapped)
+  local root = load.Load(proxied, name, bytes, wrapped)
 
   -- TableReport.Err()'s order (§6.5): a count past the int32 storage cap
   -- (§2.9; it sets refused, so it is named first), unknown form, integrity mismatch, a
   -- non-finite float (§3.3: it outranks every verdict the walk reached after
-  -- it), wire damage, missing_required, malformed, blob_shared, clamped,
+  -- it), wire damage, missing_required, malformed, blob_shared, out_of_range,
   -- kind_mismatch.
   if report.reason == "count_over_extent_cap" then refuse("count_over_extent_cap", name) end
   if report.refused ~= 0 then refuse("unknown_form", name) end
@@ -151,7 +152,7 @@ function R.ReadStrict(T, name, bytes, integrity)
   if report.nonFiniteFloat ~= nil then refuse("non_finite_float", report.nonFiniteFloat) end
   if report.wireDamaged then refuse("wire_damaged", name) end
   if report.missingRequired > 0 then refuse("missing_required", first.missingRequired or name) end
-  if report.malformed then refuse("malformed", first.malformed or name) end
+  if report.damaged then refuse("malformed", first.damaged or name) end
   for _, c in ipairs(counters) do
     if report[c.key] > 0 then refuse(c.name, first[c.key] or name) end
   end

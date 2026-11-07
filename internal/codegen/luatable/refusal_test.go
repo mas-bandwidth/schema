@@ -33,7 +33,7 @@ func rowRefusal(line string) string {
 	case malformed:
 		return "malformed"
 	case clamped > 0:
-		return "clamped"
+		return "out_of_range"
 	case mismatch > 0:
 		return "kind_mismatch"
 	}
@@ -70,7 +70,7 @@ func TestLuaStrictReadRefusesByName(t *testing.T) {
 	units := manifestUnits(t, manifestPath)
 	rows := onePerRefusal(t, manifestPath, reportsPath)
 
-	for _, name := range []string{"malformed", "clamped", "kind_mismatch"} {
+	for _, name := range []string{"malformed", "out_of_range", "kind_mismatch"} {
 		row, ok := rows[name]
 		if !ok {
 			t.Fatalf("no manifest report row refuses %s", name)
