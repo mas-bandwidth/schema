@@ -790,6 +790,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	}
 	g.call("    ", "", lower+"FixedDecode",
 		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
+	g.pf("    if (report.refused != TableFixedRefusal.none) {\n")
+	g.pf("      for (var j = 0; j <= k; j++) {\n")
+	g.pf("        init%s(values[j]);\n", capitalize(st.Name))
+	g.pf("      }\n")
+	g.pf("      return -1;\n")
+	g.pf("    }\n")
 	if finite {
 		g.pf("    // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the decode tested each\n")
 		g.pf("    // float's raw bits before it landed, and a NaN or an infinity refuses\n")

@@ -924,7 +924,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           0,
           empty,
           0,
-          0,
           TableFixedRefusal.none,
         ),
       );
@@ -939,7 +938,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
       empty,
       0,
       empty,
-      0,
       0,
       TableFixedRefusal.planTooLarge,
     );
@@ -959,7 +957,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           empty,
           0,
           empty,
-          0,
           0,
           TableFixedRefusal.layoutDamaged,
         );
@@ -986,7 +983,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           empty,
           0,
           empty,
-          0,
           0,
           TableFixedRefusal.layoutRecordTooLarge,
         );

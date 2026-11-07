@@ -921,7 +921,6 @@ func (g *fixedGen) emitDecodeValue(f *ir.Field, base string, at int64, expr, ind
 func (g *fixedGen) emitTextLengthClamp(expr string, cap int64, ind string) {
 	g.pf("%sif (%s < 0 || %s > %d) {\n", ind, expr, expr, cap)
 	g.pf("%s  report.refused = TableFixedRefusal.lengthOverBound;\n", ind)
-	g.pf("%s  return -1;\n", ind)
 	g.pf("%s}\n", ind)
 }
 
@@ -1193,11 +1192,9 @@ func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 		g.pf("%sif (%s < %s) {\n", ind, expr, lo)
 		g.pf("%s  %s = %s;\n", ind, expr, lo)
 		g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
-		g.pf("%s  return -1;\n", ind)
 		g.pf("%s} else if (%s > %s) {\n", ind, expr, hi)
 		g.pf("%s  %s = %s;\n", ind, expr, hi)
 		g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
-		g.pf("%s  return -1;\n", ind)
 		g.pf("%s} else if (%s == 0) {\n", ind, expr)
 		g.pf("%s  %s = 0.0;\n", ind, expr)
 		g.pf("%s}\n", ind)
@@ -1212,7 +1209,6 @@ func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 		g.pf("%s%s (%s < %s) {\n", ind, lead, lhs, cmp)
 		g.pf("%s  %s = %s;\n", ind, expr, assign)
 		g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
-		g.pf("%s  return -1;\n", ind)
 		g.pf("%s}", ind)
 		lead = " else if"
 	}
@@ -1224,7 +1220,6 @@ func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 		g.pf("%s (%s > %s) {\n", lead, lhs, cmp)
 		g.pf("%s  %s = %s;\n", ind, expr, assign)
 		g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
-		g.pf("%s  return -1;\n", ind)
 		g.pf("%s}", ind)
 	}
 	if low || high {
@@ -1236,7 +1231,6 @@ func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 		g.pf("%s  // the bits(%d) WIDTH clamp\n", ind, f.Type.Width)
 		g.pf("%s  %s = %s;\n", ind, expr, assign)
 		g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
-		g.pf("%s  return -1;\n", ind)
 		g.pf("%s}\n", ind)
 	}
 }
