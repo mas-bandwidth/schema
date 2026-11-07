@@ -3348,6 +3348,17 @@ func variableDefault(f *ir.Field) string {
 	return "null"
 }
 
+// hasFixedFile answers whether the unit emits the fixed form's file class for
+// st, which is a root declared fixed whose record is inside the form 3 ceiling.
+func hasFixedFile(u *ir.Unit, st *ir.Struct) bool {
+	for _, root := range fixedRoots(u) {
+		if root.Name == st.Name {
+			return true
+		}
+	}
+	return false
+}
+
 func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	st = variableStruct(st)
 	tables := cardVariableTables(u)
@@ -3615,11 +3626,21 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "        if (r == null) { return null; }\n")
 	fmt.Fprintf(&b, "        Value v = new Value();\n")
 	if st.FixedDeclared {
-		fmt.Fprintf(&b, "        readFields(r, v, null, report);\n")
-		fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
-		fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
-		fmt.Fprintf(&b, "        if (report.malformed) { return null; }\n")
-		fmt.Fprintf(&b, "        return v;\n")
+		if !hasFixedFile(u, st) {
+			// A fixed table past the form 3 ceiling (§3.4) has no file form,
+			// so the form 1 reader refuses it as a previous form.
+			fmt.Fprintf(&b, "        report.refused = true;\n")
+			fmt.Fprintf(&b, "        report.reason = \"previous_form\";\n")
+			fmt.Fprintf(&b, "        return null;\n")
+		} else {
+			// Keep the existing variable-value reader for fixed roots that do
+			// have a form 3 file; the conformance driver selects that file reader.
+			fmt.Fprintf(&b, "        readFields(r, v, null, report);\n")
+			fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
+			fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
+			fmt.Fprintf(&b, "        if (report.malformed) { return null; }\n")
+			fmt.Fprintf(&b, "        return v;\n")
+		}
 		fmt.Fprintf(&b, "    }\n\n")
 	} else {
 		fmt.Fprintf(&b, "        report.rootTypeId = TYPE_ID;\n")
