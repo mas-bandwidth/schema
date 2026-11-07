@@ -163,6 +163,55 @@ end
 `
 }
 
+// luaFuzzProbeFixed is luaFuzzProbe at a FIXED root (docs/SPEC-TABLES.md
+// §3.4): mutants ride the generated fixed form, whose refusal is the
+// verdict and whose read moves none of the variable counters. The fixed
+// form has no caller-owned load, so the second read must simply answer the
+// same bytes.
+func luaFuzzProbeFixed(module, root string) string {
+	return `local T = require("` + module + `")
+local f = assert(io.open(arg[1], "rb"))
+local blob = f:read("a")
+f:close()
+local wires = {}
+do
+  local n, at = string.unpack("<I4", blob, 1)
+  for i = 1, n do
+    local len
+    len, at = string.unpack("<I4", blob, at)
+    wires[i] = blob:sub(at, at + len - 1)
+    at = at + len
+  end
+end
+local function hex(s)
+  return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
+end
+local function work(wire)
+  local ok, v = pcall(T.ReadFixedTolerant, "` + root + `", wire)
+  local loaded = ok and 1 or 0
+  local savedHex = "none"
+  if ok then
+    local sok, b = pcall(T.FixedSave, "` + root + `", { v })
+    if sok and b ~= nil then savedHex = hex(b) end
+  end
+  local ok2, v2 = pcall(T.ReadFixedTolerant, "` + root + `", wire)
+  if ok ~= ok2 then error("the second fixed read answered differently") end
+  if ok2 then
+    local sok2, b2 = pcall(T.FixedSave, "` + root + `", { v2 })
+    local s2 = "none"
+    if sok2 and b2 ~= nil then s2 = hex(b2) end
+    if s2 ~= savedHex then error("the second fixed read read a different value") end
+  end
+  return table.concat({ loaded, 0, 0, 0, 0, 0,
+    "false", ok and 0 or 1, savedHex }, "|")
+end
+for i = 1, #wires do
+  local ok, res = pcall(work, wires[i])
+  if ok then print(res) else print("ERR|" .. hex(tostring(res))) end
+end
+`
+}
+
 // parseLuaFuzzLine parses one probe line.
 func parseLuaFuzzLine(line string) (luaFuzzAnswer, error) {
 	var a luaFuzzAnswer
@@ -202,6 +251,7 @@ func parseLuaFuzzLine(line string) (luaFuzzAnswer, error) {
 // luaFuzzOracle is the engine's answer for one mutant: the harness's oracle
 // (test/conformance/harness/wirefuzz.go, wireRoot.oracle) for a file root.
 type luaFuzzOracle struct {
+	fixed          bool // the root is a declared fixed table (§3.4)
 	variable       bool // the root is variable-class (§3.1)
 	framingRefused bool // FileRegionMeasure refuses to size a region (§6.5)
 	noRoot         bool // the engine refused the root itself
@@ -221,7 +271,7 @@ type luaFuzzOracle struct {
 // framing refuses is read by the plain Decode, because a Lua load has no
 // region to size and still owes its report for the same bytes.
 func luaFuzzEngine(m *tabletext.Model, def *ir.Struct, data []byte) luaFuzzOracle {
-	o := luaFuzzOracle{variable: m.IsVariable(def.Name)}
+	o := luaFuzzOracle{fixed: def.FixedDeclared, variable: m.IsVariable(def.Name)}
 	decode := tablewire.DecodeRegion
 	if o.variable {
 		if _, _, refused := tablewire.FileRegionMeasure(m.Unit, def, data); refused {
@@ -308,6 +358,14 @@ func luaFuzzVerdict(a luaFuzzAnswer, o luaFuzzOracle) string {
 		return ""
 	}
 	if !a.loaded {
+		if o.fixed {
+			// A fixed reader answers damage and refusal with one refusal
+			// shape (§3.4): no root, refused, nothing counted.
+			if a.refused && (o.refused || o.counts.malformed) {
+				return ""
+			}
+			return fmt.Sprintf("the Lua fixed read returned no root; the engine read %+v (refused=%t)", o.counts, o.refused)
+		}
 		if !o.variable {
 			return "the Lua load returned no root for a FIXED root, which always loads"
 		}
@@ -437,7 +495,11 @@ func runLuaFuzzDifferential(t *testing.T, edit func([]byte) []byte) luaFuzzResul
 			t.Fatalf("unit %s declares no table %s", r.unit, r.root)
 		}
 		luarun.WriteFiles(t, g.dir, files)
-		if err := os.WriteFile(filepath.Join(g.dir, "main.lua"), []byte(luaFuzzProbe(ModuleName(u), r.root)), 0o644); err != nil {
+		fuzzProbe := luaFuzzProbe(ModuleName(u), r.root)
+		if st := u.Tables[r.root]; st != nil && st.FixedDeclared {
+			fuzzProbe = luaFuzzProbeFixed(ModuleName(u), r.root)
+		}
+		if err := os.WriteFile(filepath.Join(g.dir, "main.lua"), []byte(fuzzProbe), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		for _, row := range r.rows {
