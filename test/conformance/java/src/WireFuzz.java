@@ -92,11 +92,11 @@ public final class WireFuzz {
             int n = 0;
             out[n++] = (byte) loaded;
             n = putI32(out, n, report.unknown);
-            n = putI32(out, n, report.kindMismatch);
+            n = putI32(out, n, 0);
             n = putI32(out, n, report.widened);
-            n = putI32(out, n, report.clamped);
+            n = putI32(out, n, 0);
             n = putI32(out, n, 0); // duplicate: the wire form raises none
-            out[n++] = (byte) (report.malformed ? 1 : 0);
+            out[n++] = (byte) (report.damaged ? 1 : 0);
             out[n++] = (byte) (report.refused ? 1 : 0);
             n = putI64(out, n, measure);
             n = putI32(out, n, report.retained);

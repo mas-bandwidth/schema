@@ -88,7 +88,7 @@ public final class TablesWireFuzz {
         r.duplicate = count(report, type, "duplicate");
         r.retained = count(report, type, "retained");
         r.retainLost = count(report, type, "retainLost");
-        r.malformed = type.getField("malformed").getBoolean(report);
+        r.malformed = type.getField("damaged").getBoolean(report);
         r.refused = type.getField("refused").getBoolean(report);
     }
 
@@ -220,7 +220,7 @@ public final class TablesWireFuzz {
             Object report = reportType.getConstructor().newInstance();
             boolean ok = (boolean) vocabType.getMethod("announceRead", vocabType, byte[].class, reportType)
                     .invoke(null, vocabulary, announcement, report);
-            if (!ok || reportType.getField("malformed").getBoolean(report) || reportType.getField("refused").getBoolean(report)) {
+            if (!ok || reportType.getField("damaged").getBoolean(report) || reportType.getField("refused").getBoolean(report)) {
                 throw new IllegalStateException(pkg + ": announceRead refused the unit's own announcement");
             }
         }
