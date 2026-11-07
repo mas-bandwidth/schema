@@ -665,7 +665,7 @@ defmodule Driver do
               line = report_counters(report) <> ",read\n"
 
               cond do
-                Map.get(report, :malformed, false) or rest == ["no-value"] ->
+                rest == ["no-value"] ->
                   write(outdir, name, line)
 
                 true ->
@@ -680,6 +680,9 @@ defmodule Driver do
 
             {:error, _refusal, %{reason: "wire_damaged"} = report} ->
               write(outdir, name, report_counters(report) <> ",read\n")
+
+            {:error, _refusal, _report} ->
+              write(outdir, name, "0,0,0,0,0,false,refused\n")
 
             _ ->
               write_absent(outdir, name)
@@ -698,7 +701,7 @@ defmodule Driver do
       else
         case mod.from_json(root, File.read!(json)) do
           {:ok, value, report} ->
-            if Map.get(report, :malformed, false) do
+            if damaged?(report) do
               write(outdir, name, "refused\n")
             else
               # a value the writer refuses (a float32 past its range, §3.3)
@@ -789,12 +792,11 @@ defmodule Driver do
 
     empty = %{
       unknown: 0,
-      kind_mismatch: 0,
       widened: 0,
-      clamped: 0,
-      malformed: false,
       retained: 0,
-      retain_lost: 0
+      retain_lost: 0,
+      reason: "",
+      missing_required: 0
     }
 
     cap =
@@ -841,7 +843,7 @@ defmodule Driver do
     else
       case mod.load(root, File.read!(wire)) do
         {:ok, value, report} ->
-          if Map.get(report, :malformed, false) do
+          if damaged?(report) do
             write_absent(outdir, name)
             write_absent(outdir, name <> "-be")
           else
@@ -918,15 +920,14 @@ defmodule Driver do
   defp report_line(nil, _root, _wire), do: :absent
 
   # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): a load
-  # that finished is a read, its counters as they stand (wire_damaged there
-  # is damage below the root, carried by the malformed flag); a refusal's
-  # unknown_form is a refused form, and its wire_damaged framing damage, which
-  # reports.txt spells as a read with malformed set.
+  # that finished is a read, its counters as they stand; an unknown_form
+  # refusal is a refused form, and wire_damaged framing damage, which
+  # reports.txt spells as a read with malformed set. Any other named refusal
+  # (missing_required, count_over_extent_cap, non_finite_float) is refused.
   defp report_line(mod, root, wire) do
     case mod.load(root, File.read!(wire)) do
       {:ok, value, report} ->
-        line = report_counters(report) <> ",read\n"
-        if Map.get(report, :malformed, false), do: line, else: {line, value}
+        {report_counters(report) <> ",read\n", value}
 
       {:error, _refusal, %{reason: "unknown_form"}} ->
         "0,0,0,0,0,false,refused\n"
@@ -934,6 +935,9 @@ defmodule Driver do
       {:error, _refusal, %{reason: "wire_damaged"} = report} ->
         # a damaged load returns no value, and its report stands
         report_counters(report) <> ",read\n"
+
+      {:error, _refusal, _report} ->
+        "0,0,0,0,0,false,refused\n"
 
       _ ->
         :absent
@@ -950,14 +954,20 @@ defmodule Driver do
     Atom.to_string(answer) <> "\n"
   end
 
+  # The strict report (docs/plans/strict-only.md): a load answers {:ok, value,
+  # report} with the surviving counters (unknown, widened, retained,
+  # retain_lost) and a reason, or {:error, reason, report} with no value.
+  # Damage is the reason "wire_damaged"; a named refusal is any other reason.
+  defp damaged?(report), do: Map.get(report, :reason, "") == "wire_damaged"
+
   defp report_counters(report) do
     [
       Map.get(report, :unknown, 0),
-      Map.get(report, :kind_mismatch, 0),
+      0,
       Map.get(report, :widened, 0),
-      Map.get(report, :clamped, 0),
-      Map.get(report, :duplicate, 0),
-      if(Map.get(report, :malformed, false), do: "true", else: "false")
+      0,
+      0,
+      if(damaged?(report), do: "true", else: "false")
     ]
     |> Enum.join(",")
   end
@@ -1436,9 +1446,10 @@ defmodule WireFuzz do
   # announcement once, read the batch, and write body one back as the batch of
   # one — the same single body the oracle encodes (test/conformance/harness/
   # wirefuzz.go, the `r.message` branch). A clean batch reports no counter and
-  # a damaged one reports `malformed`, which is the one counter the batch verbs
-  # themselves name; the message surface carries no per-kind counters, so those
-  # stay zero here rather than being invented.
+  # a damaged one reports damage (the strict reason "wire_damaged"), which is
+  # the one verdict the batch verbs themselves name; the message surface
+  # carries no per-kind counters, so those stay zero here rather than being
+  # invented.
   defp answer_message(r, wire) do
     with mod when mod != nil <- message_codec(r.unit, r.root),
          tmod when tmod != nil <- file_codec(r.unit, r.root),
@@ -1450,13 +1461,13 @@ defmodule WireFuzz do
           message_decode_and_reply(mod, vocab, tables, desc, bodies)
 
         {:malformed, _count, _bodies} ->
-          stdout_write(header(0, %{malformed: true}, -1) <> <<-1::little-signed-64>>)
+          stdout_write(header(0, %{reason: "wire_damaged"}, -1) <> <<-1::little-signed-64>>)
 
         {:error, reason} when reason in [:newer_form, :non_finite_float] ->
           stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
 
         _ ->
-          stdout_write(header(0, %{malformed: true}, -1) <> <<-1::little-signed-64>>)
+          stdout_write(header(0, %{reason: "wire_damaged"}, -1) <> <<-1::little-signed-64>>)
       end
     else
       _ ->
@@ -1489,22 +1500,23 @@ defmodule WireFuzz do
   defp message_decode_and_reply(mod, vocab, tables, desc, bodies) do
     empty = %{
       unknown: 0,
-      kind_mismatch: 0,
       widened: 0,
-      clamped: 0,
-      duplicate: 0,
-      malformed: false
+      retained: 0,
+      retain_lost: 0,
+      reason: "",
+      missing_required: 0,
+      refused: false
     }
 
     {decoded_rev, report} =
       Enum.reduce_while(bodies, {[], empty}, fn raw_body, {acc, rep} ->
         case msg_decode_body(vocab, tables, desc, raw_body, rep) do
           {:ok, val, rep2} -> {:cont, {[val | acc], rep2}}
-          {:malformed, rep2} -> {:halt, {[], %{rep2 | malformed: true}}}
+          {:malformed, rep2} -> {:halt, {[], Map.put(rep2, :reason, "wire_damaged")}}
         end
       end)
 
-    if report.malformed do
+    if damaged?(report) do
       stdout_write(header(0, report, -1) <> <<-1::little-signed-64>>)
     else
       first_val = decoded_rev |> Enum.reverse() |> hd()
@@ -1560,7 +1572,7 @@ defmodule WireFuzz do
               end
 
             true ->
-              {:cont, {:ok, acc, %{rep | kind_mismatch: rep.kind_mismatch + 1}}}
+              {:halt, {:malformed, rep}}
           end
       end
     end)
@@ -1583,18 +1595,11 @@ defmodule WireFuzz do
   end
 
   defp msg_decode_field(_vocab, _tables, %{t: :int} = f, val, rep) do
-    {val, rep} =
-      if Map.has_key?(f, :min) and Map.has_key?(f, :max) do
-        cond do
-          val < f.min -> {f.min, %{rep | clamped: rep.clamped + 1}}
-          val > f.max -> {f.max, %{rep | clamped: rep.clamped + 1}}
-          true -> {val, rep}
-        end
-      else
-        {val, rep}
-      end
-
-    {:ok, val, rep}
+    if Map.has_key?(f, :min) and Map.has_key?(f, :max) and (val < f.min or val > f.max) do
+      {:malformed, rep}
+    else
+      {:ok, val, rep}
+    end
   end
 
   defp msg_decode_field(_vocab, _tables, %{t: :string} = f, val, rep) when is_binary(val) do
@@ -1602,7 +1607,7 @@ defmodule WireFuzz do
       {:malformed, rep}
     else
       if byte_size(val) > f.size do
-        {:ok, msg_utf8_clamp(val, f.size), %{rep | clamped: rep.clamped + 1}}
+        {:malformed, rep}
       else
         {:ok, val, rep}
       end
@@ -1611,7 +1616,7 @@ defmodule WireFuzz do
 
   defp msg_decode_field(_vocab, _tables, %{t: :bytes} = f, val, rep) when is_list(val) do
     if length(val) > f.size do
-      {:ok, Enum.take(val, f.size), %{rep | clamped: rep.clamped + 1}}
+      {:malformed, rep}
     else
       {:ok, val, rep}
     end
@@ -1638,37 +1643,26 @@ defmodule WireFuzz do
   defp msg_decode_field(vocab, tables, %{t: :list, elem_kind: 13} = f, raw_elems, rep) do
     bound = Map.get(f, :max_count, Map.get(f, :array_bound, length(raw_elems)))
     elem_desc = Map.fetch!(tables, f.elem)
-    rep = if length(raw_elems) > bound, do: %{rep | clamped: rep.clamped + 1}, else: rep
 
-    case Enum.reduce_while(raw_elems, {:ok, [], rep}, fn raw_elem, {:ok, acc, r} ->
-           case msg_decode_body(vocab, tables, elem_desc, raw_elem, r) do
-             {:ok, v, r2} -> {:cont, {:ok, [v | acc], r2}}
-             {:malformed, r2} -> {:halt, {:malformed, r2}}
-           end
-         end) do
-      {:ok, rev, rep2} ->
-        {:ok, rev |> Enum.reverse() |> Enum.take(bound), rep2}
+    if length(raw_elems) > bound do
+      {:malformed, rep}
+    else
+      case Enum.reduce_while(raw_elems, {:ok, [], rep}, fn raw_elem, {:ok, acc, r} ->
+             case msg_decode_body(vocab, tables, elem_desc, raw_elem, r) do
+               {:ok, v, r2} -> {:cont, {:ok, [v | acc], r2}}
+               {:malformed, r2} -> {:halt, {:malformed, r2}}
+             end
+           end) do
+        {:ok, rev, rep2} ->
+          {:ok, Enum.reverse(rev), rep2}
 
-      {:malformed, rep2} ->
-        {:malformed, rep2}
+        {:malformed, rep2} ->
+          {:malformed, rep2}
+      end
     end
   end
 
   defp msg_decode_field(_vocab, _tables, _f, val, rep), do: {:ok, val, rep}
-
-  defp msg_utf8_clamp(bin, max_bytes) when byte_size(bin) <= max_bytes, do: bin
-
-  defp msg_utf8_clamp(bin, max_bytes) do
-    bin
-    |> String.codepoints()
-    |> Enum.reduce_while(<<>>, fn cp, acc ->
-      if byte_size(acc) + byte_size(cp) <= max_bytes do
-        {:cont, acc <> cp}
-      else
-        {:halt, acc}
-      end
-    end)
-  end
 
   defp msg_encode_body(vocab, tables, desc, val_map) do
     Enum.flat_map(desc.fields, fn f ->
@@ -1737,8 +1731,8 @@ defmodule WireFuzz do
   defp measure_refusal(mod, root, wire) do
     case mod.load(root, wire) do
       {:error, :newer_form, report} -> Map.put(report, :refused, true)
-      {:error, _reason, report} -> %{report | malformed: true}
-      _ -> %{malformed: true}
+      {:error, _reason, report} -> Map.put(report, :reason, "wire_damaged")
+      _ -> %{reason: "wire_damaged"}
     end
   end
 
@@ -1798,12 +1792,11 @@ defmodule WireFuzz do
 
     report = %{
       unknown: 0,
-      kind_mismatch: 0,
       widened: 0,
-      clamped: 0,
-      malformed: false,
       retained: 0,
-      retain_lost: 0
+      retain_lost: 0,
+      reason: "",
+      missing_required: 0
     }
 
     if measure < 0 do
@@ -1835,17 +1828,22 @@ defmodule WireFuzz do
     end
   end
 
+  # The strict report (docs/plans/strict-only.md): damage is the reason
+  # "wire_damaged" in the report; a named refusal carries the driver's own
+  # refused flag beside it. The retired counters read zero.
+  defp damaged?(report), do: Map.get(report, :reason, "") == "wire_damaged"
+
   # the reply header: loaded, the five counters, malformed, refused, the measure,
   # the two retention counters and the saved length. The two retention counters
   # ride the report when the entry retains, and are zero on every other entry
   # (docs/SPEC-TABLES.md §6.6).
   defp header(loaded, report, measure) do
     unknown = Map.get(report, :unknown, 0)
-    kind_mismatch = Map.get(report, :kind_mismatch, 0)
+    kind_mismatch = 0
     widened = Map.get(report, :widened, 0)
-    clamped = Map.get(report, :clamped, 0)
-    duplicate = Map.get(report, :duplicate, 0)
-    malformed = if Map.get(report, :malformed, false), do: 1, else: 0
+    clamped = 0
+    duplicate = 0
+    malformed = if damaged?(report), do: 1, else: 0
     refused = if Map.get(report, :refused, false), do: 1, else: 0
     retained = Map.get(report, :retained, 0)
     retain_lost = Map.get(report, :retain_lost, 0)

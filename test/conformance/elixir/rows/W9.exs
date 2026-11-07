@@ -54,20 +54,26 @@ checks = [
       body = :binary.copy(<<0x5A>>, PF.chain_fixed_body_bytes())
       poison = :binary.copy(<<0xA5>>, PF.chain_fixed_body_bytes())
       {image, report} = RT.run(PF.chain_fixed_plan(), body, poison, RT.report())
-      image == body and report.clamped == 0 and report.malformed == false
+
+      image == body and report.unknown == 0 and report.widened == 0 and
+        report.retained == 0 and report.retain_lost == 0 and report.layout_hash == 0
     end
   },
   {
-    "W9 production chain_fixed_load lands the raw body -- the prefill owned no byte",
+    "W9 production chain_fixed_load refuses the raw sentinel body by name -- the prefill owned no byte",
     fn ->
-      {:ok, [chain], report} = PF.chain_fixed_load(build_file.())
-      # The raw sentinel body reached the projection untouched: the name and
-      # tag hold the body's own bytes (0x5A is 'Z'), and the sentinel int32s
-      # are all past their declared maxima, so all three clamp. A prefill the
-      # identity read had paid would have landed the declared defaults (zeros)
-      # and clamped nothing.
-      chain.name == String.duplicate("Z", 16) and chain.link.tag == String.duplicate("Z", 8) and
-        chain.link.value == 1000 and report.clamped == 3
+      # The raw sentinel body reached the projection untouched: its sentinel
+      # int32s are all past their declared maxima, so the strict read refuses
+      # the whole load as out_of_range. A prefill the identity read had paid
+      # would have landed the declared defaults (zeros, in range) and the
+      # load would have read clean instead.
+      case PF.chain_fixed_load(build_file.()) do
+        {:error, :out_of_range, report} ->
+          report.unknown == 0 and report.widened == 0 and report.layout_hash == 0
+
+        _ ->
+          false
+      end
     end
   },
   {
