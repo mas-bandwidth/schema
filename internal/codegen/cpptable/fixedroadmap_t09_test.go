@@ -20,9 +20,11 @@ package cpptable
 //     THE WRITER'S LAYOUT, AND THEN THE VALUES IN DECLARED ORDER, EVERY FIELD
 //     AT ITS BOUND." — every field's declared storage is written and read, and
 //     a declared bound is the boundary value asserted.
-//   - docs/FIXED-FORM-ALGORITHM.md: the clamps the reader runs after the copy
-//     hold a ranged scalar to its declared min/max and a bits(N) value to
-//     2^N - 1, counting each one in `report->refused`.
+//   - docs/FIXED-FORM-ALGORITHM.md: a ranged scalar past its declared
+//     min/max (or a bits(N) value past 2^N - 1) refuses the whole load:
+//     the load returns -1 and `report->refused` is set. Rows whose declared
+//     bound can be exceeded therefore prove the in-range values in the
+//     valid batch and the out-of-range values in a separate refusal batch.
 //
 // EVERY PROBE COMPILES AGAINST THE LEG'S OWN GENERATED HEADERS. A row whose
 // header names serialize.h's 128-bit storage type — the wide integers and the
@@ -148,29 +150,40 @@ fixed table Signed128
 }
 `,
 		body: `
-    Signed128 want[5];
+    Signed128 want[3];
     want[0].i128 = 0;
     want[1].i128 = -1000;
     want[2].i128 = 1000;
-    want[3].i128 = -2000;
-    want[4].i128 = 2000;
 
     static uint8_t buffer[1 << 16];
-    int64_t written = Signed128FixedSave( want, 5, buffer, (int64_t) sizeof( buffer ) );
-    if ( written != Signed128FixedMeasure( 5 ) ) { printf( "signed128: save wrote %lld for 5 records\n", (long long) written ); return 1; }
+    int64_t written = Signed128FixedSave( want, 3, buffer, (int64_t) sizeof( buffer ) );
+    if ( written != Signed128FixedMeasure( 3 ) ) { printf( "signed128: save wrote %lld for 3 records\n", (long long) written ); return 1; }
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
-    Signed128 got[5];
-    int64_t n = Signed128FixedLoad( got, 5, buffer, written, plan, 4096, NULL, &r );
-    if ( n != 5 ) { printf( "signed128: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.damaged, (int) r.refused ); return 1; }
-    if ( r.damaged || r.refused || r.unknown != 0 || r.refused != 0 || r.widened != 0 )
-        { printf( "signed128: a read is not a refusal and moves no counter but the bound: malformed=%d refused=%d u=%d km=%d w=%d\n", (int) r.damaged, (int) r.refused, r.unknown, r.refused, r.widened ); return 1; }
+    Signed128 got[3];
+    int64_t n = Signed128FixedLoad( got, 3, buffer, written, plan, 4096, NULL, &r );
+    if ( n != 3 ) { printf( "signed128: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.damaged, (int) r.refused ); return 1; }
+    if ( r.damaged || r.refused || r.unknown != 0 || r.widened != 0 )
+        { printf( "signed128: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d w=%d\n", (int) r.damaged, (int) r.refused, r.unknown, r.widened ); return 1; }
     {
-        const serialize::int128_t wantv[5] = { 0, -1000, 1000, -1000, 1000 };
-        for ( int k = 0; k < 5; ++k )
+        const serialize::int128_t wantv[3] = { 0, -1000, 1000 };
+        for ( int k = 0; k < 3; ++k )
             if ( got[k].i128 != wantv[k] )
                 { printf( "signed128: record %d does not land its declared bound\n", k ); return 1; }
-        if ( r.refused != 2 ) { printf( "signed128: the two out-of-range values did not count exactly 2 clamps: %d\n", r.refused ); return 1; }
+    }
+    {
+        Signed128 bad[2];
+        bad[0].i128 = -2000;
+        bad[1].i128 = 2000;
+        static uint8_t badbuf[1 << 16];
+        int64_t badwritten = Signed128FixedSave( bad, 2, badbuf, (int64_t) sizeof( badbuf ) );
+        if ( badwritten != Signed128FixedMeasure( 2 ) ) { printf( "signed128: refusal save wrote %lld for 2 records\n", (long long) badwritten ); return 1; }
+        TableReport rr; memset( &rr, 0, sizeof( rr ) );
+        Signed128 badgot[2];
+        int64_t bn = Signed128FixedLoad( badgot, 2, badbuf, badwritten, plan, 4096, NULL, &rr );
+        if ( bn != -1 || !rr.refused || rr.refuse_reason != out_of_range )
+            { printf( "signed128: out-of-range values did not refuse the whole load: n=%lld refused=%d reason=%d\n", (long long) bn, (int) rr.refused, (int) rr.refuse_reason ); return 1; }
+        if ( rr.damaged ) { printf( "signed128: an out-of-range refusal is not malformed\n" ); return 1; }
     }
 `,
 	},
@@ -349,29 +362,40 @@ fixed table SignedFixed
 }
 `,
 		body: `
-    SignedFixed want[5];
+    SignedFixed want[3];
     want[0].fx = 0;
     want[1].fx = -65536;
     want[2].fx = 65536;
-    want[3].fx = -70000;
-    want[4].fx = 70000;
 
     static uint8_t buffer[1 << 16];
-    int64_t written = SignedFixedFixedSave( want, 5, buffer, (int64_t) sizeof( buffer ) );
-    if ( written != SignedFixedFixedMeasure( 5 ) ) { printf( "signed-fixed: save wrote %lld for 5 records\n", (long long) written ); return 1; }
+    int64_t written = SignedFixedFixedSave( want, 3, buffer, (int64_t) sizeof( buffer ) );
+    if ( written != SignedFixedFixedMeasure( 3 ) ) { printf( "signed-fixed: save wrote %lld for 3 records\n", (long long) written ); return 1; }
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
-    SignedFixed got[5];
-    int64_t n = SignedFixedFixedLoad( got, 5, buffer, written, plan, 4096, NULL, &r );
-    if ( n != 5 ) { printf( "signed-fixed: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.damaged, (int) r.refused ); return 1; }
-    if ( r.damaged || r.refused || r.unknown != 0 || r.refused != 0 || r.widened != 0 )
-        { printf( "signed-fixed: a read is not a refusal and moves no counter but the bound: malformed=%d refused=%d u=%d km=%d w=%d\n", (int) r.damaged, (int) r.refused, r.unknown, r.refused, r.widened ); return 1; }
+    SignedFixed got[3];
+    int64_t n = SignedFixedFixedLoad( got, 3, buffer, written, plan, 4096, NULL, &r );
+    if ( n != 3 ) { printf( "signed-fixed: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.damaged, (int) r.refused ); return 1; }
+    if ( r.damaged || r.refused || r.unknown != 0 || r.widened != 0 )
+        { printf( "signed-fixed: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d w=%d\n", (int) r.damaged, (int) r.refused, r.unknown, r.widened ); return 1; }
     {
-        const int32_t wantv[5] = { 0, -65536, 65536, -65536, 65536 };
-        for ( int k = 0; k < 5; ++k )
+        const int32_t wantv[3] = { 0, -65536, 65536 };
+        for ( int k = 0; k < 3; ++k )
             if ( got[k].fx != wantv[k] )
                 { printf( "signed-fixed: record %d lands %d, not the declared bound %d\n", k, got[k].fx, wantv[k] ); return 1; }
-        if ( r.refused != 2 ) { printf( "signed-fixed: the two out-of-range values did not count exactly 2 clamps: %d\n", r.refused ); return 1; }
+    }
+    {
+        SignedFixed bad[2];
+        bad[0].fx = -70000;
+        bad[1].fx = 70000;
+        static uint8_t badbuf[1 << 16];
+        int64_t badwritten = SignedFixedFixedSave( bad, 2, badbuf, (int64_t) sizeof( badbuf ) );
+        if ( badwritten != SignedFixedFixedMeasure( 2 ) ) { printf( "signed-fixed: refusal save wrote %lld for 2 records\n", (long long) badwritten ); return 1; }
+        TableReport rr; memset( &rr, 0, sizeof( rr ) );
+        SignedFixed badgot[2];
+        int64_t bn = SignedFixedFixedLoad( badgot, 2, badbuf, badwritten, plan, 4096, NULL, &rr );
+        if ( bn != -1 || !rr.refused || rr.refuse_reason != out_of_range )
+            { printf( "signed-fixed: out-of-range values did not refuse the whole load: n=%lld refused=%d reason=%d\n", (long long) bn, (int) rr.refused, (int) rr.refuse_reason ); return 1; }
+        if ( rr.damaged ) { printf( "signed-fixed: an out-of-range refusal is not malformed\n" ); return 1; }
     }
 `,
 	},
@@ -387,28 +411,39 @@ fixed table UnsignedFixed
 }
 `,
 		body: `
-    UnsignedFixed want[4];
+    UnsignedFixed want[3];
     want[0].ufx = 0;
     want[1].ufx = 65536;
     want[2].ufx = 32768;
-    want[3].ufx = 70000;
 
     static uint8_t buffer[1 << 16];
-    int64_t written = UnsignedFixedFixedSave( want, 4, buffer, (int64_t) sizeof( buffer ) );
-    if ( written != UnsignedFixedFixedMeasure( 4 ) ) { printf( "unsigned-fixed: save wrote %lld for 4 records\n", (long long) written ); return 1; }
+    int64_t written = UnsignedFixedFixedSave( want, 3, buffer, (int64_t) sizeof( buffer ) );
+    if ( written != UnsignedFixedFixedMeasure( 3 ) ) { printf( "unsigned-fixed: save wrote %lld for 3 records\n", (long long) written ); return 1; }
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
-    UnsignedFixed got[4];
-    int64_t n = UnsignedFixedFixedLoad( got, 4, buffer, written, plan, 4096, NULL, &r );
-    if ( n != 4 ) { printf( "unsigned-fixed: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.damaged, (int) r.refused ); return 1; }
-    if ( r.damaged || r.refused || r.unknown != 0 || r.refused != 0 || r.widened != 0 )
-        { printf( "unsigned-fixed: a read is not a refusal and moves no counter but the bound: malformed=%d refused=%d u=%d km=%d w=%d\n", (int) r.damaged, (int) r.refused, r.unknown, r.refused, r.widened ); return 1; }
+    UnsignedFixed got[3];
+    int64_t n = UnsignedFixedFixedLoad( got, 3, buffer, written, plan, 4096, NULL, &r );
+    if ( n != 3 ) { printf( "unsigned-fixed: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.damaged, (int) r.refused ); return 1; }
+    if ( r.damaged || r.refused || r.unknown != 0 || r.widened != 0 )
+        { printf( "unsigned-fixed: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d w=%d\n", (int) r.damaged, (int) r.refused, r.unknown, r.widened ); return 1; }
     {
-        const uint32_t wantv[4] = { 0, 65536, 32768, 65536 };
-        for ( int k = 0; k < 4; ++k )
+        const uint32_t wantv[3] = { 0, 65536, 32768 };
+        for ( int k = 0; k < 3; ++k )
             if ( got[k].ufx != wantv[k] )
                 { printf( "unsigned-fixed: record %d lands %u, not the declared bound %u\n", k, got[k].ufx, wantv[k] ); return 1; }
-        if ( r.refused != 1 ) { printf( "unsigned-fixed: the one out-of-range value did not count exactly 1 clamp: %d\n", r.refused ); return 1; }
+    }
+    {
+        UnsignedFixed bad[1];
+        bad[0].ufx = 70000;
+        static uint8_t badbuf[1 << 16];
+        int64_t badwritten = UnsignedFixedFixedSave( bad, 1, badbuf, (int64_t) sizeof( badbuf ) );
+        if ( badwritten != UnsignedFixedFixedMeasure( 1 ) ) { printf( "unsigned-fixed: refusal save wrote %lld for 1 record\n", (long long) badwritten ); return 1; }
+        TableReport rr; memset( &rr, 0, sizeof( rr ) );
+        UnsignedFixed badgot[1];
+        int64_t bn = UnsignedFixedFixedLoad( badgot, 1, badbuf, badwritten, plan, 4096, NULL, &rr );
+        if ( bn != -1 || !rr.refused || rr.refuse_reason != out_of_range )
+            { printf( "unsigned-fixed: the out-of-range value did not refuse the whole load: n=%lld refused=%d reason=%d\n", (long long) bn, (int) rr.refused, (int) rr.refuse_reason ); return 1; }
+        if ( rr.damaged ) { printf( "unsigned-fixed: an out-of-range refusal is not malformed\n" ); return 1; }
     }
 `,
 	},
