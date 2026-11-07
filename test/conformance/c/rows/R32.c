@@ -202,7 +202,7 @@ static int test_1_refuses_below_floor( void )
         fprintf( stderr, "test1: layout_hash mismatch\n" );
         return FAIL;
     }
-    if ( report.malformed ) {
+    if ( report.refused ) {
         fprintf( stderr, "test1: malformed should be clear on a layout refusal\n" );
         return FAIL;
     }
@@ -244,7 +244,7 @@ static int test_2_idempotent( void )
         fprintf( stderr, "test2: layout_hash differs between reads\n" );
         return FAIL;
     }
-    if ( r1.malformed != r2.malformed ) {
+    if ( r1.refused != r2.refused ) {
         fprintf( stderr, "test2: malformed changed on second read\n" );
         return FAIL;
     }

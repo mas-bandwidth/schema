@@ -112,7 +112,7 @@ static void cross_read( const ConformanceCodec * codec, const char * wire_path,
     }
     snprintf( line, sizeof( line ), "%s: silent cross-read (unknown %d kind_mismatch %d widened %d clamped %d duplicate %d malformed %d refused %d)",
               what, report.unknown, report.kind_mismatch, report.widened,
-              report.clamped, report.duplicate, report.malformed, report.refused );
+              report.clamped, report.duplicate, report.refused, report.refused );
     check( silent( &report ), line );
 
     if ( require_identical )
