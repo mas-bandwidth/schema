@@ -4271,7 +4271,8 @@ TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.refused = false;
+  r.report.refusal = '';
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
@@ -4431,7 +4432,8 @@ TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.refused = false;
+  r.report.refusal = '';
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
@@ -4579,7 +4581,8 @@ TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.refused = false;
+  r.report.refusal = '';
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
@@ -7008,7 +7011,10 @@ TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   if (_jsonEntries(root) != null) {
     tableEntityFromJsonFields(v, root, r, _Share());
   }
-  if (r.refused) return TableEntity();
+  if (r.refused) {
+    if (report == null) throw FormatException(r.reason);
+    return TableEntity();
+  }
   return v;
 }
 
@@ -7030,7 +7036,10 @@ TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   if (_jsonEntries(root) != null) {
     tableStatFromJsonFields(v, root, r, _Share());
   }
-  if (r.refused) return TableStat();
+  if (r.refused) {
+    if (report == null) throw FormatException(r.reason);
+    return TableStat();
+  }
   return v;
 }
 
@@ -7052,7 +7061,10 @@ TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   if (_jsonEntries(root) != null) {
     tableMixedFromJsonFields(v, root, r, _Share());
   }
-  if (r.refused) return TableMixed();
+  if (r.refused) {
+    if (report == null) throw FormatException(r.reason);
+    return TableMixed();
+  }
   return v;
 }
 

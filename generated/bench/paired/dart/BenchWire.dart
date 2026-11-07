@@ -4347,7 +4347,8 @@ FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.refused = false;
+  r.report.refusal = '';
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
@@ -6824,7 +6825,10 @@ FixedTable fixedTableFromJson(String text, [TableTextReport? report]) {
   if (_jsonEntries(root) != null) {
     fixedTableFromJsonFields(v, root, r, _Share());
   }
-  if (r.refused) return FixedTable();
+  if (r.refused) {
+    if (report == null) throw FormatException(r.reason);
+    return FixedTable();
+  }
   return v;
 }
 
