@@ -86,7 +86,7 @@ const tableMessageReadSource = `
             if (field == null)
             { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
             if (!MessageCompatible(entry, field, out bool widened))
-            { d.Report.KindMismatch++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
+            { return Fail(d.Report, "kind_mismatch"); }
             if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth)) { return false; }
             if (widened && !field.MapKey) { d.Report.Widened++; }
             if (field.Optional && value != null) { field.SetPresent(value, true); }
@@ -99,8 +99,8 @@ const tableMessageReadSource = `
             if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || !r.Align()) { return false; }
             ulong n = (ulong)raw;
             if (n > (ulong)((r.End - r.At) / 8)) { return false; }
-            int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
-            if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
+            if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+            int kept = (int)n;
             if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value, kept); }
             r.At += (long)n * 8; return true;
         }
@@ -122,8 +122,8 @@ const tableMessageReadSource = `
                 if (c >= 0xd800 && c <= 0xdbff)
                 { if (++i == (int)length || !check.Get(16, out UInt128 low) || low < 0xdc00 || low > 0xdfff) { return false; } }
             }
-            int keep = Math.Min((int)length, f.ArrayBound);
-            if (length > (uint)f.ArrayBound) { d.Report.Clamped++; }
+            if (length > (uint)f.ArrayBound) { return Fail(d.Report, "length_over_bound: " + f.Name); }
+            int keep = (int)length;
             char last = default;
             for (int i = 0; i < keep; i++) { r.Get(16, out UInt128 raw); last = (char)(uint)raw; if (value != null) { f.GetChars(value)[i] = last; } }
             if (keep > 0 && keep < (int)length && char.IsHighSurrogate(last)) { keep--; }
@@ -146,8 +146,8 @@ const tableMessageReadSource = `
                 return true;
             }
             int run = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : -1;
-            int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
-            if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
+            if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+            int kept = (int)n;
             int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
             // A FLOAT PAST THE BOUND IS STILL TESTED (docs/SPEC-TABLES.md §3.3):
             // the stream walks every element, the dropped tail into no slot, so
@@ -192,7 +192,7 @@ const tableMessageReadSource = `
             TableFieldInfo arm = f.Arms.Arms[tag].Field;
             bool widened = false;
             if (arm == null ? entry.Kind != 32 : !MessageCompatible(entry, arm, out widened))
-            { if (union != null) { f.Arms.SetTag(union, 0); } d.Report.KindMismatch++; return MessageSkip(ref r, d, entry.Kind, entry.Shape, depth + 1); }
+            { if (union != null) { f.Arms.SetTag(union, 0); } return Fail(d.Report, "kind_mismatch"); }
             if (widened) { d.Report.Widened++; }
             if (union != null) { f.Arms.SetTag(union, (ulong)tag); }
             if (arm == null) { return true; }
@@ -213,7 +213,7 @@ const tableMessageReadSource = `
             // refused on its raw bits, kept or dropped (docs/SPEC-TABLES.md §3.3)
             else if (NonFiniteBits(10, (ulong)bits)) { NonFinite(f, d.Report); return true; }
             ulong raw = f.Kind == 11 ? WidenFloat((uint)bits) : (uint)bits;
-            if (f.Kind != 11 && f.ClampRaw != null) { raw = f.ClampRaw(raw, d.Report); }
+            if (f.Kind != 11 && f.RangeRaw != null) { raw = f.RangeRaw(raw, d.Report); if (d.Report.Refused) { return false; } }
             if (keep) { f.SetRaw(value, index, raw); }
             return true;
         }
@@ -246,8 +246,7 @@ const tableMessageReadSource = `
                 if (!negative && unchecked((Int128)f.MessageMin) > 0 && stored < f.MessageMin) { low = true; }
             }
             else { low = negative || stored < f.MessageMin; high = above || !negative && stored > f.MessageMax; }
-            if (low) { stored = f.MessageMin; d.Report.Clamped++; }
-            else if (high) { stored = f.MessageMax; d.Report.Clamped++; }
+            if (low || high) { return Fail(d.Report, "out_of_range: " + f.Name); }
         }
         if (keep)
         {
@@ -276,8 +275,8 @@ const tableMessageReadSource = `
         if (report.Refused) { return Finish(report, Verdict.Refused); }
         if (total == 0) { return Finish(report, Verdict.Damaged); }
         if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
-        bool malformedBefore = report.Malformed;
-        report.Malformed = false;
+        bool damagedBefore = report.Damaged;
+        report.Damaged = false;
         BitReader r = new BitReader(bytes); r.At = 16;
         for (; count < total; count++)
         {
@@ -287,11 +286,12 @@ const tableMessageReadSource = `
             // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
             // §3.3), outranking damage met after it: no body is delivered.
             if (NonFiniteRefused(report))
-            { report.Malformed |= malformedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-            if (!good || report.Malformed) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
+            { report.Damaged |= damagedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+            if (report.Refused) { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+            if (!good || report.Damaged) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
         }
         if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
-        report.Malformed = malformedBefore;
+        report.Damaged = damagedBefore;
         return Finish(report, Verdict.Ok);
     }
     // DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): every body
