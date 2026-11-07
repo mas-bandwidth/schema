@@ -15,9 +15,9 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
   push:
-    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
   pull_request:
-    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
 
 jobs:
   replay:

@@ -14,7 +14,7 @@ on:
   push:
     branches: [ main, dev, fixed-table-form ]
   pull_request:
-    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
   schedule:
     - cron: "37 3 * * *"
   workflow_dispatch:
