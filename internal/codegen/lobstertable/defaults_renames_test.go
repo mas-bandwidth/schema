@@ -157,18 +157,19 @@ const saveRel = `def save_rel(root:string, file:string):
     let data = read_file(file)
     assert data
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load_tolerant(root, data, rep)
+    let rec = schema_rt.load(root, data, rep)
     if not rec:
         print("")
-        print(report_line(rep))
-        print("0")
+        print("refused")
+        print("1")
+        print("nil")
         return
     let out = schema_rt.save(rec)
     let saved = hexs(out)
     print(saved)
     let rep2 = schema_rt.LoadReport {}
-    let rec2 = schema_rt.load_tolerant(root, out, rep2)
-    print(report_line(rep2))
+    let rec2 = schema_rt.load(root, out, rep2)
+    print(if rec2: "read" else: "refused")
     labels = []
     var dump = "nil"
     if rec2:
@@ -322,32 +323,15 @@ func goSaveLoad(u *ir.Unit, rootName string, wire []byte) (savedHex, report, dum
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup(rootName))
 	var rep tabletext.Report
-	if _, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
-		return "", reportLine(rep), "nil", true
+	if ok, err := tablewire.Decode(m, inst, wire, &rep); err != nil || !ok {
+		return "", "refused", "nil", true
 	}
 	saved, err := tablewire.Encode(m, inst)
 	if err != nil {
-		return "", "0,0,0,0,0,false,refused", "nil", true
+		return "", "refused", "nil", true
 	}
-	m2 := tabletext.NewModel(u)
-	inst2 := m2.New(m2.Lookup(rootName))
-	var rep2 tabletext.Report
-	_, _ = tablewire.Decode(m2, inst2, saved, &rep2)
-	line := reportLine(rep2)
-	d := &goDumper{labels: map[*tabletext.Instance]int{inst2: 0}, next: 1}
-	return hex.EncodeToString(saved), line, d.rec(inst2), false
-}
-
-// reportLine is the load report line one instance wrote, in the harness's
-// spelling (load_test.go's goLoad).
-func reportLine(rep tabletext.Report) string {
-	verdict := "read"
-	if rep.Refused {
-		verdict = "refused"
-	}
-	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s",
-		rep.Unknown, 0, rep.Widened, 0, 0,
-		false, verdict)
+	verdict, value := goLoad(u, rootName, saved)
+	return hex.EncodeToString(saved), verdict, value, verdict != "read"
 }
 
 // TestLobsterDefaultsAndRenames holds this card's constructs on the OLD wire

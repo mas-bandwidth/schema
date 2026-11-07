@@ -103,7 +103,7 @@ func emitFixedTable(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("// %sDecode reads a TRUSTED form-3 file of %s records written by this\n", name, st.Name)
 	g.Pf("// build's own layout (%s, §2), asserting the header and every record\n", st.Name)
 	g.Pf("// hash. It is not a read of untrusted data: %sLoad is the strict\n", name)
-	g.Pf("// read and %sLoadTolerant the tolerant one (docs/SPEC-TABLES.md §6.5).\n", name)
+	g.Pf("// read (docs/SPEC-TABLES.md §6.5).\n")
 	g.Pf("def %sDecode(data:string) -> [%s]:\n", name, st.Name)
 	g.Pf("    let layout = %sLayoutBytes()\n", name)
 	g.Pf("    assert read_uint8_le(data, 0) == 3\n")
@@ -151,9 +151,6 @@ func fixedLobsterSimple(st *ir.Struct, depth int) bool {
 			if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
 				return false
 			}
-			if f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 8 {
-				return false // [N]uint8 stores as a byte string in Lobster
-			}
 		}
 		if f.Type.Kind != ir.TNamed {
 			return true
@@ -178,6 +175,32 @@ func fixedLobsterSimple(st *ir.Struct, depth int) bool {
 	return true
 }
 
+// Fixed uint8 arrays use Lobster byte-string storage, including enum-keyed
+// arrays. Read/reset/projection must replace the string, never its indexed byte.
+func fixedByteArray(f *ir.Field) bool {
+	return (f.Array != ir.ArrayNone || f.KeyEnumRef != nil) &&
+		f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 8
+}
+
+func fixedArrayBound(f *ir.Field) int64 {
+	if f.KeyEnumRef != nil {
+		return f.KeyEnumRef.Max
+	}
+	return f.ArrayBound
+}
+
+func getFixedByteArray(g *lobster.Gen, f *ir.Field, expr, base string, off int64, ind string) {
+	n := fmt.Sprint(fixedArrayBound(f))
+	if f.Array == ir.ArrayCounted {
+		n = slotExpr(expr, f, "Count")
+		g.Pf("%s%s = read_int32_le(data, %s + %d)\n", ind, n, base, off)
+		off += ir.TableFixedCountBytes
+		g.Pf("%s%s = write_substring(schema_rt.zeros(%d), 0, substring(data, %s + %d, %s), false)\n", ind, expr, f.ArrayBound, base, off, n)
+		return
+	}
+	g.Pf("%s%s = substring(data, %s + %d, %s)\n", ind, expr, base, off, n)
+}
+
 // loopVar is a loop variable unique to a field and offset, so nested loops
 // never shadow one another in the generated function.
 func loopVar(f *ir.Field, off int64) string {
@@ -186,9 +209,19 @@ func loopVar(f *ir.Field, off int64) string {
 
 // putFields emits the stores for a type's fields at the constant offsets.
 func putFields(g *lobster.Gen, st *ir.Struct, val, base string) {
+	for _, f := range st.Fields {
+		if f.Deprecated {
+			g.Pf("    let fixed_defaults = New%s()\n", st.Name)
+			break
+		}
+	}
 	off := int64(0)
 	for _, f := range st.Fields {
-		putField(g, st, f, val+"."+ir.GoExportName(f.Name), base, off, "", "    ")
+		owner := val
+		if f.Deprecated {
+			owner = "fixed_defaults"
+		}
+		putField(g, st, f, owner+"."+ir.GoExportName(f.Name), base, off, "", "    ")
 		off += ir.TableFixedFieldBytes(f)
 	}
 }
@@ -339,6 +372,10 @@ func getPayload(g *lobster.Gen, owner *ir.Struct, f *ir.Field, expr, base string
 		getPayload(g, owner, f, expr, base, off, "", ind+"    ")
 		return
 	}
+	if fixedByteArray(f) {
+		getFixedByteArray(g, f, expr, base, off, ind)
+		return
+	}
 	switch {
 	case f.KeyEnumRef != nil:
 		elem := ir.TableFixedElementBytes(f)
@@ -482,67 +519,4 @@ func readInt(width int, signed bool) string {
 		return "read_uint64_le"
 	}
 	return "read_int64_le"
-}
-
-// fixedFieldFacts are the byte sizes the runtime's form-3 reader and writer
-// walk a field by (docs/FIXED-FORM-ALGORITHM.md §3): the field's whole slot
-// (fb), one element's (eb), a leaf's storage width (sw) and the element count
-// of a fixed or enum-keyed array (fcount). A field the form does not carry (a
-// pointer, a map, a list, an unbounded text) names none.
-func fixedFieldFacts(f *ir.Field) []string {
-	if !fixedFieldCarried(f, 0) {
-		return nil
-	}
-	parts := []string{
-		fmt.Sprintf("fb: %d", ir.TableFixedFieldBytes(f)),
-		fmt.Sprintf("eb: %d", ir.TableFixedElementBytes(f)),
-		fmt.Sprintf("sw: %d", ir.TableFixedStorageBytes(f.Type)),
-	}
-	switch {
-	case f.KeyEnumRef != nil:
-		parts = append(parts, fmt.Sprintf("fcount: %d", f.KeyEnumRef.Max))
-	case f.Array == ir.ArrayFixed:
-		parts = append(parts, fmt.Sprintf("fcount: %d", f.ArrayBound))
-	}
-	return parts
-}
-
-// emitFixedFacts writes the table-level facts of the form-3 file: whether the
-// form is emitted for the table, the record's body size, and the writer's
-// layout bytes and hash (the compiler's own walk, never re-derived here).
-func emitFixedFacts(g *lobster.Gen, st *ir.Struct) {
-	if !st.FixedDeclared || !ir.TableFixedSupported(st, 0) {
-		return
-	}
-	g.Pf("    fsize: %d,\n", ir.TableFixedTypeBytes(st))
-	if !ir.TableFixedEmitted(g.Unit, st) {
-		return
-	}
-	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
-	hash := ir.TableFixedLayoutHash(layout, st)
-	g.Pf("    femit: true,\n")
-	g.Pf("    lhash: %s,\n", idLit(hash))
-	g.Pf("    layout: %s,\n", lobster.StringLit(layout))
-}
-
-// fixedFieldCarried reports whether a field's whole closure is one the form
-// carries, so its sizes are defined before they are asked for.
-func fixedFieldCarried(f *ir.Field, depth int) bool {
-	if depth > 64 || f.Type.Pointer || f.IsMap() || f.Array == ir.ArrayList || f.Type.TextUnbounded() {
-		return false
-	}
-	if f.Type.Kind != ir.TNamed {
-		return true
-	}
-	switch r := f.Type.Ref.(type) {
-	case *ir.Struct:
-		return ir.TableFixedSupported(r, 0)
-	case *ir.Union:
-		for _, v := range r.Variants {
-			if v.F != nil && !fixedFieldCarried(v.F, depth+1) {
-				return false
-			}
-		}
-	}
-	return true
 }

@@ -9,24 +9,26 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // Unlike the framing report surface, these probes inspect the API's returned
 // values: §4 permits no partial file value or delivered message before damage.
-func lobsterDamageProbe(t *testing.T, patchFile, anchor string) []string {
+func lobsterDamageProbe(t *testing.T, patchFile, anchor, replacement string) []string {
 	t.Helper()
 	units, _ := readManifest(t)
-	// the file probe reads a variable root: the fixed tables of backenddemo
-	// are read as form 3, where the damage is refused inside the fixed read
-	// and the tolerant reader's file-boundary discard is not the boundary
-	varSrc := filepath.Join(t.TempDir(), "FileRoot.schema")
-	if err := os.WriteFile(varSrc, []byte("package backenddemo\ntable FileRoot { x int32 }\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	paths, err := compiler.GatherPaths(append(prefix(units["backenddemo"]), varSrc))
+	paths, err := compiler.GatherPaths(prefix(units["backenddemo"]))
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The file control must reach the variable reader's discard boundary.
+	// The backend message fixtures below keep their declared fixed roots.
+	probe := filepath.Join(t.TempDir(), "FileProbe.schema")
+	if err := os.WriteFile(probe, []byte("package backenddemo\ntable FileProbe { marker uint32 = 7 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	paths = append(paths, probe)
 	g, err := generateLoadUnit(t, paths)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +42,7 @@ func lobsterDamageProbe(t *testing.T, patchFile, anchor string) []string {
 		if strings.Count(string(data), anchor) != 1 {
 			t.Fatalf("%s discard anchor must occur exactly once", patchFile)
 		}
-		if err := os.WriteFile(path, []byte(strings.Replace(string(data), anchor, "", 1)), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(strings.Replace(string(data), anchor, replacement, 1)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -50,11 +52,15 @@ func lobsterDamageProbe(t *testing.T, patchFile, anchor string) []string {
 	}
 	program.WriteString(`import .load
 import .message
+let good = read_file("good")
 let bad = read_file("bad")
-assert bad
+assert good and bad
 let frep = schema_rt.LoadReport {}
-let rec = schema_rt.load_tolerant("FileRoot", bad, frep)
-print(if frep.malformed and not rec: "file discarded" else: "file kept")
+let valid = schema_rt.load("FileProbe", good, frep)
+assert valid and schema_rt.slot_named(valid, "marker").cell.i == 23
+schema_rt.release(valid)
+let rec = schema_rt.load("FileProbe", bad, frep)
+print(if not rec: "file discarded" else: "file kept")
 schema_rt.release(rec)
 let ann = read_file("ann")
 let wire = read_file("wire")
@@ -65,18 +71,27 @@ assert schema_rt.announce_read(vocab, ann, arep)
 let mrep = schema_rt.LoadReport {}
 let batch:[schema_rt.Record] = []
 let count, ok = schema_rt.load_messages_into("Envelope", vocab, wire, mrep, 256, batch)
-print(if mrep.malformed and not ok and count == 0 and length(batch) == 0: "batch discarded" else: "batch kept")
+print(if not ok and count == 0 and length(batch) == 0: "batch discarded" else: "batch kept")
 let tail = read_file("tail")
 assert tail
 let trep = schema_rt.LoadReport {}
 let final:[schema_rt.Record] = []
 let delivered, whole = schema_rt.load_messages_into("LoginRequest", vocab, tail, trep, 256, final)
-print(if trep.malformed and not whole and delivered == 0 and length(final) == 0: "tail discarded" else: "tail kept")
+print(if not whole and delivered == 0 and length(final) == 0: "tail discarded" else: "tail kept")
 `)
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	inputs := map[string][]byte{"bad": {1}}
+	model := tabletext.NewModel(g.u)
+	value := model.New(model.Lookup("FileProbe"))
+	if !model.Read(value, []byte(`{"marker":23}`), &tabletext.Report{}) {
+		t.Fatal("valid file control JSON refused")
+	}
+	good, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := map[string][]byte{"good": good, "bad": good[:len(good)-1]}
 	for name, file := range map[string]string{"ann": "backend_conn.bin", "wire": "backend_batch_damaged_second_message.bin", "tail": "login_full_message.bin"} {
 		data, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables", file))
 		if err != nil {
@@ -92,7 +107,7 @@ print(if trep.malformed and not whole and delivered == 0 and length(final) == 0:
 
 func TestLobsterDamageDiscardsValues(t *testing.T) {
 	t.Parallel()
-	got := strings.Join(lobsterDamageProbe(t, "", ""), " ")
+	got := strings.Join(lobsterDamageProbe(t, "", "", ""), " ")
 	if got != "file discarded batch discarded tail discarded" {
 		t.Fatalf("damaged read exposed a value: %s", got)
 	}
@@ -100,13 +115,14 @@ func TestLobsterDamageDiscardsValues(t *testing.T) {
 
 // Both controls remove the real discard boundary, while preserving parsing.
 func TestLobsterDamageDiscardNegativeControl(t *testing.T) {
-	for _, c := range []struct{ file, anchor, want string }{
-		{"load.lobster", "    if report.malformed:\n        release(rec)\n        return nil\n", "file kept batch discarded tail discarded"},
-		{"message.lobster", "            for(batch) value: release(value)\n            truncate(batch, 0)\n", "file discarded batch kept tail discarded"},
-		{"message.lobster", "        for(batch) value: release(value)\n        truncate(batch, 0)\n", "file discarded batch discarded tail kept"},
+	t.Parallel()
+	for _, c := range []struct{ file, anchor, replacement, want string }{
+		{"load.lobster", "            read_refuse(report, \"wire_damaged\")\n        return nil\n    return rec", "            read_refuse(report, \"wire_damaged\")\n        return new_record(table_of(root))\n    return rec", "file kept batch discarded tail discarded"},
+		{"message.lobster", "            for(batch) value: release(value)\n            truncate(batch, 0)\n", "", "file discarded batch kept tail discarded"},
+		{"message.lobster", "        for(batch) value: release(value)\n        truncate(batch, 0)\n", "", "file discarded batch discarded tail kept"},
 	} {
 		t.Run(c.file, func(t *testing.T) {
-			got := strings.Join(lobsterDamageProbe(t, c.file, c.anchor), " ")
+			got := strings.Join(lobsterDamageProbe(t, c.file, c.anchor, c.replacement), " ")
 			if got != c.want {
 				t.Fatalf("discard sabotage: got %q, want %q", got, c.want)
 			}

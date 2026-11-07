@@ -3,40 +3,21 @@
 # HARNESS, "The wire-fuzz pipe"; test/conformance/README.md, "The wire-fuzz
 # driver"). Included by the Makefile's wildcard include, after make/lobster.mk.
 #
-# The harness (build/conformance-harness wire-fuzz) mutates every corpus wire
-# and holds the oracle, internal/tablewire. The leg is
-# test/conformance/lobster/wirefuzzhost: it speaks the harness's stream and
-# runs test/conformance/lobster/wirefuzz.lobster once per generated unit,
-# which loads each mutant through the Lobster tolerant read and saves what it
-# decoded. Two arms cover every form-1 root the corpus names, and a third the retention form:
-#
-#   the ordinary run   the FIXED-class roots (a fixed root always loads and
-#                      answers the measure -1)
-#   --builder          the VARIABLE-class roots, a mutable file reader held to
-#                      tablewire.Decode with no region preflight: Lobster's
-#                      load fills a record, not a region a LoadMeasure sizes
-#
-# the third is a flag of the ordinary run, with the
-# message roots riding the ordinary run itself:
-#
-#   --retain           the variable roots through load_retain and save_retain
-#                      with both capacities large (§6.6), the retention report
-#                      held to the oracle beside the six counters
-#   message roots      the harness's ordinary run already mutates the manifest's
-#                      message batches and holds the leg to the oracle: the
-#                      FIXED message roots (§3.3) through the tolerant batch
-#                      read. A variable message root is not carried (the
-#                      port's message form is fixed roots only, as Go's is).
-#                      --message only REPLAYS a mutant as a batch, which the
-#                      pinned message vectors below use
+# The harness mutates the corpus and compares the native read verdict plus
+# the complete canonical write-back with internal/tablewire. The host runs
+# wirefuzz.lobster once per generated unit. The ordinary run covers all file
+# roots (including declared-fixed form 3 through the native Record bridge)
+# and fixed message batches. --builder covers variable file roots without
+# region preflight; --retain covers their retaining load/save pair.
+# Diagnostics and allocation measurements are not cross-language verdicts.
 #
 # Every pinned vector of test/conformance/lobster/vectors replays in the
 # builder arm; the retention and message arms replay the corpus's own pinned
 # vectors (testdata/wire/tables/fuzz-vectors).
 #
 # THE BUDGET IS A COUNT: the enumerated pass is a fixed function of the corpus
-# (about 155,000 mutants over both arms, about a minute on the studio) and the
-# random pass is LOBSTER_WIRE_FUZZ_N per arm. test-lobster runs the small
+# (the run reports its effective live seeds, roots and enumerated mutants).
+# The random pass is LOBSTER_WIRE_FUZZ_N per arm. test-lobster runs the small
 # count; tables-lobster-release, which certify.yml discovers and runs by name,
 # runs the shared N.
 #
@@ -68,7 +49,7 @@ lobster-dist-present:
 	@[ -x "$(LOBSTER)" ] || $(MAKE) --no-print-directory dist-lobster
 
 # lobster_wire_fuzz_vectors replays every pinned vector of the builder arm
-# over the units in $(1); each name is <unit>.<root>.<anything>.bin
+# over the units in $(1), with an explicit unit/root assignment per vector
 # lobster_wire_fuzz_arm_vectors replays the corpus's pinned vectors the retain
 # and message arms are answerable for, over the units in $(1)
 define lobster_wire_fuzz_arm_vectors
@@ -106,32 +87,32 @@ tables-lobster-release:
 	$(MAKE) tables-lobster-wire-fuzz LOBSTER_WIRE_FUZZ_N=$(N)
 	$(MAKE) tables-lobster-wire-fuzz-negative-control
 
-# THE NEGATIVE CONTROL, two plants in a copy of the generated units:
-#   unknown  the load stops counting one unknown field (load.lobster), and the
-#            ordinary run must go red on the report
-#   guard    the descriptors lose their `when` guards, so the save writes a
-#            pointer under a false guard; the pinned guard-false-pointer vector
-#            must go red on the decoded value
-#   retain   the retaining map read stops forgetting the entry bodies an
-#            earlier occurrence built (load.lobster's forget_built), so the
-#            pinned map_retained_replaced vector must go red on the retention
-#            report in the --retain arm and stay green in the plain arm
-#   message  the batch read stops refusing ill-formed text, so the pinned
-#            message_ill_formed_text vector must go red replayed as a batch
-# Unplanted, the same units are green.
+# THE NEGATIVE CONTROLS plant observable behavior in copied generated units:
+#   fixed    refuse a valid fixed file (also proves the roster carries it)
+#   guard    remove a field guard, changing the canonical decoded value
+#   retain   omit retained unknown fields from the accepted write-back
+#   message  admit ill-formed UTF-8 in a message batch
+# A dropped unknown counter is a positive control: diagnostics alone must
+# leave a valid read and its write-back green. Unplanted vectors are green.
 LOBSTER_WIRE_FUZZ_PLANT := build/lobster-wire-fuzz-plant
 tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost
 	@rm -rf $(LOBSTER_WIRE_FUZZ_PLANT) && mkdir -p $(LOBSTER_WIRE_FUZZ_PLANT)
 	@cp -R build/conformance-lobster $(LOBSTER_WIRE_FUZZ_PLANT)/unknown
-	@sed -i.orig 's/^        rep\.unknown++$$/        rep.unknown += 0/' $(LOBSTER_WIRE_FUZZ_PLANT)/unknown/*/load.lobster
+	@sed -i.orig 's/rep\.unknown++$$/rep.unknown += 0/' $(LOBSTER_WIRE_FUZZ_PLANT)/unknown/*/load.lobster
 	@if cmp -s build/conformance-lobster/tabledemo/load.lobster $(LOBSTER_WIRE_FUZZ_PLANT)/unknown/tabledemo/load.lobster; then \
-		echo 'NEGATIVE CONTROL FAILED: the planted unknown-count bug did not apply'; exit 1; fi
-	@if ./build/conformance-harness wire-fuzz --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(LOBSTER_WIRE_FUZZ_PLANT)/unknown' \
-			--seed 1 --n 0 --failed $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.bin > $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: a load that drops the unknown count left the wire fuzz green'; \
-		cat $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log; exit 1; fi
-	@grep -qE 'the report differs|the oracle discards a damaged load' $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log || \
-		{ echo 'NEGATIVE CONTROL FAILED: the fuzz went red, but not on the report'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log; exit 1; }
+		echo 'CONTROL FAILED: the diagnostic-only change did not apply'; exit 1; fi
+	@./build/conformance-harness wire-fuzz --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(LOBSTER_WIRE_FUZZ_PLANT)/unknown' \
+		--replay testdata/wire/tables/retain_rt2.bin --unit tblrt1 --root Node > $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log 2>&1 || \
+		{ echo 'CONTROL FAILED: changing an unknown counter changed the verdict or value'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log; exit 1; }
+	@cp -R build/conformance-lobster $(LOBSTER_WIRE_FUZZ_PLANT)/fixed
+	@sed -i.orig 's/return fixed_record_codec(root).read_fixed(data, report)/return nil/' $(LOBSTER_WIRE_FUZZ_PLANT)/fixed/*/load.lobster
+	@if cmp -s build/conformance-lobster/tblv1/load.lobster $(LOBSTER_WIRE_FUZZ_PLANT)/fixed/tblv1/load.lobster; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted fixed-read refusal did not apply'; exit 1; fi
+	@if ./build/conformance-harness wire-fuzz --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(LOBSTER_WIRE_FUZZ_PLANT)/fixed' \
+			--replay testdata/conformance/tables/wire/v1_cfg.bin --unit tblv1 --root Cfg > $(LOBSTER_WIRE_FUZZ_PLANT)/fixed.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: refusing a valid fixed file left the replay green'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/fixed.log; exit 1; fi
+	@grep -q 'read acceptance differs' $(LOBSTER_WIRE_FUZZ_PLANT)/fixed.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: fixed replay did not differ on acceptance'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/fixed.log; exit 1; }
 	@cp -R build/conformance-lobster $(LOBSTER_WIRE_FUZZ_PLANT)/guard
 	@sed -i.orig -E 's/, when: \[[^]]*\]//' $(LOBSTER_WIRE_FUZZ_PLANT)/guard/tblg1/*Table.lobster
 	@if cmp -s build/conformance-lobster/tblg1/G1Table.lobster $(LOBSTER_WIRE_FUZZ_PLANT)/guard/tblg1/G1Table.lobster; then \
@@ -144,18 +125,17 @@ tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformanc
 	@grep -q 'the decoded value differs' $(LOBSTER_WIRE_FUZZ_PLANT)/guard.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the vector went red, but not on the value'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/guard.log; exit 1; }
 	@cp -R build/conformance-lobster $(LOBSTER_WIRE_FUZZ_PLANT)/retain
-	@sed -i.orig 's/^            if built_slots\[i\] == sl:$$/            if false:/' $(LOBSTER_WIRE_FUZZ_PLANT)/retain/*/retain_unknown.lobster
-	@if cmp -s build/conformance-lobster/mapdemo/retain_unknown.lobster $(LOBSTER_WIRE_FUZZ_PLANT)/retain/mapdemo/retain_unknown.lobster; then \
-		echo 'NEGATIVE CONTROL FAILED: the planted retain bug did not apply'; exit 1; fi
+	@sed -i.orig 's/^    register_retain_tail(RetainTailImpl { retain: retain, report: report })$$/    \/\/ negative control: omit retained fields/' $(LOBSTER_WIRE_FUZZ_PLANT)/retain/*/retain_unknown.lobster
+	@if cmp -s build/conformance-lobster/tblrt1/retain_unknown.lobster $(LOBSTER_WIRE_FUZZ_PLANT)/retain/tblrt1/retain_unknown.lobster; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted retained-field omission did not apply'; exit 1; fi
 	@if ./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(LOBSTER_WIRE_FUZZ_PLANT)/retain' \
-			--replay testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin --unit mapdemo --root Text \
+			--replay testdata/wire/tables/retain_rt2.bin --unit tblrt1 --root Node \
 			> $(LOBSTER_WIRE_FUZZ_PLANT)/retain.log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: a retaining read that forgets no map entry left the pinned vector green'; \
-		cat $(LOBSTER_WIRE_FUZZ_PLANT)/retain.log; exit 1; fi
-	@grep -q 'the retention report differs' $(LOBSTER_WIRE_FUZZ_PLANT)/retain.log || \
-		{ echo 'NEGATIVE CONTROL FAILED: the vector went red, but not on the retention report'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/retain.log; exit 1; }
+		echo 'NEGATIVE CONTROL FAILED: omitting retained fields left the replay green'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/retain.log; exit 1; fi
+	@grep -q 'the decoded value differs' $(LOBSTER_WIRE_FUZZ_PLANT)/retain.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: retained-field omission did not differ on value'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/retain.log; exit 1; }
 	@./build/conformance-harness wire-fuzz --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(LOBSTER_WIRE_FUZZ_PLANT)/retain' \
-		--replay testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin --unit mapdemo --root Text > /dev/null || \
+		--replay testdata/wire/tables/retain_rt2.bin --unit tblrt1 --root Node > /dev/null || \
 		{ echo 'NEGATIVE CONTROL FAILED: the retain plant reddened the plain arm too'; exit 1; }
 	@cp -R build/conformance-lobster $(LOBSTER_WIRE_FUZZ_PLANT)/message
 	@sed -i.orig 's/^    if not text_valid(r\.b, start, n):$$/    if false:/' $(LOBSTER_WIRE_FUZZ_PLANT)/message/*/message.lobster
@@ -166,8 +146,10 @@ tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformanc
 			> $(LOBSTER_WIRE_FUZZ_PLANT)/message.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a batch read that admits ill-formed text left the pinned vector green'; \
 		cat $(LOBSTER_WIRE_FUZZ_PLANT)/message.log; exit 1; fi
-	@grep -qE 'the report differs|the oracle discards a damaged load' $(LOBSTER_WIRE_FUZZ_PLANT)/message.log || \
-		{ echo 'NEGATIVE CONTROL FAILED: the vector went red, but not on the report'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/message.log; exit 1; }
+	@grep -q 'read acceptance differs' $(LOBSTER_WIRE_FUZZ_PLANT)/message.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the vector went red, but not on acceptance'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/message.log; exit 1; }
 	$(call lobster_wire_fuzz_vectors,build/conformance-lobster)
 	$(call lobster_wire_fuzz_arm_vectors,build/conformance-lobster)
-	@echo 'lobster wire-fuzz negative control: a dropped unknown count reds the fuzz, an unguarded save, a retaining read that forgets no map entry and a batch read that admits ill-formed text each red their pinned vector; unplanted all are green'
+	@./build/conformance-harness wire-fuzz --driver '$(LOBSTER_WIRE_FUZZ_HOST)' --replay testdata/conformance/tables/wire/v1_cfg.bin --unit tblv1 --root Cfg
+	@./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST)' --replay testdata/wire/tables/retain_rt2.bin --unit tblrt1 --root Node
+	@echo 'lobster wire-fuzz controls: fixed refusal, unguarded save, omitted retained fields and admitted message damage each diverge; diagnostic-only and unplanted controls stay green'

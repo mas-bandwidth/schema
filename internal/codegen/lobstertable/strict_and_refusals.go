@@ -1,14 +1,6 @@
-// The strict read and every refusal by Go's name (docs/SPEC-TABLES.md §6.5,
-// §2.3; docs/PORT-LOBSTER.md, THE LOAD). The read side lives once in
-// runtime/strict_and_refusals.lobster, emitted by the runtime glob: the plain
-// load is the strict read, the tolerant walk is load_tolerant, and every
-// read-time refusal carries Go's TableRefuseReason spelling. This file joins
-// the descriptor emitter through Register and refuses, at compile time and by
-// the same name, the one construct the Lobster walk does not carry: a
-// collection bound above the int32 extent cap (count_over_extent_cap, §2.2).
-// A `| required` field is carried: the load counts and names
-// missing_required at any depth and the save never elides one (§2.3,
-// runtime/load.lobster and runtime/schema_save.lobster).
+// The single read's diagnostic convenience entry point and compile-time
+// extent-cap check. Runtime refusal details are local diagnostics rather than
+// a cross-language taxonomy (docs/SPEC-TABLES.md §6.5).
 package lobstertable
 
 import (

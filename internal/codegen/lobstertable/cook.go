@@ -20,6 +20,13 @@ func init() { Register("cook", emitCook) }
 // record and union as data, the per-table CookMeasure/Cook pair (§7.6), the
 // cooked record read (§7, Uncook) and Open's header match (§7, §7.1).
 func emitCook(g *lobster.Gen) error {
+	haveRoot := false
+	for _, st := range g.Unit.Tables {
+		haveRoot = haveRoot || !st.IsMapEntry() && st.CarriesForm("cook")
+	}
+	if !haveRoot {
+		return nil
+	}
 	emitted := false
 	// a packet type gets cooked storage only when a table reaches it: an
 	// unreached one has no descriptor for the cooked read to fill
@@ -49,6 +56,7 @@ func emitCook(g *lobster.Gen) error {
 		layouts[st.Name] = true
 		if st.IsMapEntry() || !st.CarriesForm("cook") {
 			emitCookTable(g, st)
+			emitted = true
 		}
 	}
 	unions := append([]*ir.Union{}, g.File.TableUnions...)
@@ -64,6 +72,7 @@ func emitCook(g *lobster.Gen) error {
 		}
 		useen[un.Name] = true
 		emitCookUnion(g, un)
+		emitted = true
 	}
 	if emitted {
 		g.Import("cook")
@@ -104,8 +113,8 @@ func emitCookTable(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("    ]::%s.CookField\n", rt)
 	g.Pf("})\n\n")
 
-	// Synthetic map entries need a layout, but are not public roots.
-	if st.IsMapEntry() {
+	// Closure-only records need layouts, but do not expose root entry points.
+	if st.IsMapEntry() || !st.CarriesForm("cook") {
 		return
 	}
 

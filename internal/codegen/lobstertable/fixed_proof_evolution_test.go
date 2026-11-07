@@ -104,11 +104,11 @@ func (lobsterFixedProofRunner) LoadLineage(t *testing.T, u *ir.Unit, root string
 assert(data)
 let r:[%[1]s.%[2]s] = []
 for(%[3]d): push(r, %[1]s.New%[2]s())
-let report = schema_rt.TableReport { unknown: 99, kind_mismatch: 99, clamped: 99, widened: 99, duplicate: 99, malformed: true, reason: "stale" }
+let report = schema_rt.TableReport { unknown: 99, widened: 99, reason: "stale" }
 let plan:[schema_rt.TableFixedEntry] = []
 for(4096): push(plan, schema_rt.TableFixedEntry {})
 let count = %[1]s.%[2]sFixedLoad(r, data, plan, report)
-print("COUNTERS " + string(report.unknown) + " " + string(report.kind_mismatch) + " " + string(report.clamped) + " " + string(report.widened) + " " + string(report.duplicate))
+print("COUNTERS " + string(report.unknown) + " 0 0 " + string(report.widened) + " 0")
 if count < 0:
     print("REFUSED " + report.reason)
 else:
