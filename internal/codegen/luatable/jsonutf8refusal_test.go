@@ -45,10 +45,10 @@ func TestJSONRefusesIllFormedAtBound(t *testing.T) {
 	probe := `local T = require("` + ModuleName(u) + `")
 local J = require("json")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = J.FromJsonTolerant(T, "` + row.root + `", inputs.text, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = J.FromJson(T, "` + row.root + `", inputs.text, report)
 print(report.Reason or "")
-print(report.malformed and "1" or "0")
+print(report.damaged and "1" or "0")
 `
 	out := jsonRun(t, paths, ModuleName(u), row.root, probe, map[string][]byte{"text": textData}, nil)
 	lines := strings.Split(out, "\n")

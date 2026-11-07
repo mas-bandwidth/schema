@@ -89,15 +89,7 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 		}
 	}
 
-	// THE PLAIN JSON READ IS STRICT (docs/SPEC-TABLES.md §6.5, §16.2): the
-	// emitted damage test reads a cut-off document and inspects its report, so
-	// it calls the named tolerant twin, which keeps FromJson's BASE answer.
-	runTests := map[string][]byte{}
-	for name, src := range tests {
-		runTests[name] = bytes.ReplaceAll(src,
-			[]byte("local jgot = json.FromJson("),
-			[]byte("local jgot = json.FromJsonTolerant("))
-	}
+	runTests := tests
 
 	generated, err := Generate(u)
 	if err != nil {

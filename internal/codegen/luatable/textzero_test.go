@@ -125,12 +125,12 @@ local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
 local function fresh()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+    outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 local report = fresh()
-local v = J.FromJsonTolerant(T, "Root", inputs.text, report)
-if v == nil or report.malformed then
+local v = J.FromJson(T, "Root", inputs.text, report)
+if v == nil or report.damaged then
   print("refused")
   print(report.Reason or "-")
 else
@@ -142,8 +142,8 @@ else
   else
     print(hex(out))
     local again_report = fresh()
-    local again = J.FromJsonTolerant(T, "Root", out, again_report)
-    print(again ~= nil and not again_report.malformed and again_report.Reason == nil
+    local again = J.FromJson(T, "Root", out, again_report)
+    print(again ~= nil and not again_report.damaged and again_report.Reason == nil
       and "clean" or "dirty")
     local out2 = again and J.ToJson(T, "Root", again)
     print(out2 ~= nil and out2 == out and "same" or "moved")

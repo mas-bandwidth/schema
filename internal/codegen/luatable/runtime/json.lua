@@ -241,7 +241,7 @@ local function scan_unit(inp)
   return unit, false, true
 end
 
--- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded). A
+-- ONE JSON string into bytes, bounded at cap bytes (cap < 0 unbounded). A
 -- fourth truth is returned when the body carried a U+0000 unit — the \u0000
 -- escape into text storage §16.3 refuses as text_holds_zero — so the caller
 -- that places the value can name the field; callers that only scan (an object
@@ -253,23 +253,23 @@ local function scan_string(inp, cap)
     return nil, false, false
   end
   inp.p = inp.p + 1
-  local out, n, clamped, nul = {}, 0, false, false
+  local out, n, over_bound, nul = {}, 0, false, false
   while true do
     local unit, done, ok = scan_unit(inp)
     if not ok then return nil, false, false, false end
     if done then break end
     if unit == "\0" then nul = true end
-    if clamped or (cap >= 0 and n + #unit > cap) then
-      clamped = true
+    if over_bound or (cap >= 0 and n + #unit > cap) then
+      over_bound = true
     else
       out[#out + 1] = unit
       n = n + #unit
     end
   end
-  return table.concat(out), clamped, true, nul
+  return table.concat(out), over_bound, true, nul
 end
 
--- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2). The
+-- ONE JSON string into UTF-16 code units, bounded at cap units (§16.2). The
 -- fourth truth is §16.3's zero: a U+0000 unit bound for wide text storage.
 local function scan_wstring(inp, cap)
   if peek(inp) ~= '"' then
@@ -277,7 +277,7 @@ local function scan_wstring(inp, cap)
     return nil, false, false
   end
   inp.p = inp.p + 1
-  local out, n, clamped, nul = {}, 0, false, false
+  local out, n, over_bound, nul = {}, 0, false, false
   while true do
     local unit, done, ok = scan_unit(inp)
     if not ok then return nil, false, false, false end
@@ -291,8 +291,8 @@ local function scan_wstring(inp, cap)
       units = { 0xd800 + (rest >> 10), 0xdc00 + (rest & 0x3ff) }
     end
     if code == 0 then nul = true end
-    if clamped or (cap >= 0 and n + #units > cap) then
-      clamped = true
+    if over_bound or (cap >= 0 and n + #units > cap) then
+      over_bound = true
     else
       for i = 1, #units do
         out[#out + 1] = units[i]
@@ -300,7 +300,7 @@ local function scan_wstring(inp, cap)
       n = n + #units
     end
   end
-  return out, clamped, true, nul
+  return out, over_bound, true, nul
 end
 
 -- ONE RFC 8259 number; the token kept for conversion
@@ -677,7 +677,7 @@ end
 ----------------------------------------------------------------------------
 -- integers (§16.2): JSON has one number type, so any token whose VALUE is
 -- integral is that integer; a fractional value is the wrong shape, and a
--- magnitude past 64 bits saturates and counts clamped.
+-- magnitude past 64 bits saturates and counts outOfRange.
 ----------------------------------------------------------------------------
 
 local MAX64 = 0xffffffffffffffff
@@ -756,24 +756,24 @@ end
 
 local function place_integer(fd, n, report)
   if not n.finite or n.frac then
-    report.kindMismatch = report.kindMismatch + 1
+    report.kindChanged = report.kindChanged + 1
     return nil
   end
-  if n.sat then report.clamped = report.clamped + 1 end
+  if n.sat then report.outOfRange = report.outOfRange + 1 end
   if fd.lo ~= nil and fd.hi ~= nil then
     if int_less(n, fd.lo) then
       set_from_bound(n, fd.lo)
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
     elseif int_greater(n, fd.hi) then
       set_from_bound(n, fd.hi)
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
     end
   end
   if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
     local bmax = (1 << fd.bits) - 1
     if int_greater(n, bmax) then
       set_from_bound(n, bmax)
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
     end
   end
   local width = fd.width or 8
@@ -788,18 +788,18 @@ local function place_integer(fd, n, report)
         moved = true
       end
       local v = 0 - n.mag
-      if moved then report.clamped = report.clamped + 1 end
+      if moved then report.outOfRange = report.outOfRange + 1 end
       return v
     end
     if math.ult(high, n.mag) then
       n.mag = high
       moved = true
     end
-    if moved then report.clamped = report.clamped + 1 end
+    if moved then report.outOfRange = report.outOfRange + 1 end
     return n.mag
   end
   if n.neg then
-    report.clamped = report.clamped + 1
+    report.outOfRange = report.outOfRange + 1
     return 0
   end
   local high = MAX64
@@ -808,7 +808,7 @@ local function place_integer(fd, n, report)
     n.mag = high
     moved = true
   end
-  if moved then report.clamped = report.clamped + 1 end
+  if moved then report.outOfRange = report.outOfRange + 1 end
   return n.mag
 end
 
@@ -1183,13 +1183,13 @@ local function read_wide(inp, d, holder, key, report)
   end
   local value, exact, saturated = wide_parse(token, d.kind or 0, wide_frac(d))
   if not exact then
-    report.kindMismatch = report.kindMismatch + 1
+    report.kindChanged = report.kindChanged + 1
     return true
   end
-  if saturated then report.clamped = report.clamped + 1 end
-  local clamped
-  value, clamped = wide_clamp(value, d)
-  if clamped then report.clamped = report.clamped + 1 end
+  if saturated then report.outOfRange = report.outOfRange + 1 end
+  local over_bound
+  value, over_bound = wide_clamp(value, d)
+  if over_bound then report.outOfRange = report.outOfRange + 1 end
   if d.shape == "wide" then
     holder[key] = value
   else
@@ -1241,6 +1241,7 @@ end
 
 local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
   local seen = {}
+  local seen_keys = {}
   while true do
     local key
     if first_key ~= nil then
@@ -1255,16 +1256,20 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
         inp.bad = true
         return false
       end
-      local start = inp.p
-      local _, _, ok = scan_string(inp, MAX_KEY)
-      if not ok then return false end
-      key = inp.t:sub(start + 1, inp.p - 2)
+      local over_bound, ok
+      key, over_bound, ok = scan_string(inp, MAX_KEY)
+      if not ok or over_bound then
+        inp.bad = true
+        return false
+      end
       if peek(inp) ~= ":" then
         inp.bad = true
         return false
       end
       inp.p = inp.p + 1
     end
+    if seen_keys[key] then report.repeatedKey = report.repeatedKey + 1 end
+    seen_keys[key] = true
     if key ~= "" and key:sub(1, 1) == "&" then
       inp.bad = true
       return false
@@ -1274,7 +1279,6 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
       report.unknown = report.unknown + 1
       if not skip_value(inp, depth + 1, graph) then return false end
     else
-      if seen[fd.name] then report.duplicate = report.duplicate + 1 end
       seen[fd.name] = true
       local shape = value_shape(inp)
       local takes_null = fd.optional or fd.shape == "pointer" or fd.shape == "string_blob" or fd.shape == "bytes_blob"
@@ -1290,7 +1294,7 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
       else
         local want = expect_shape(T, fd)
         if shape ~= want then
-          report.kindMismatch = report.kindMismatch + 1
+          report.kindChanged = report.kindChanged + 1
           if not skip_value(inp, depth + 1, graph) then return false end
         else
           if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false, desc.name, fd.name) then
@@ -1346,10 +1350,11 @@ local function read_pointer(T, d, inp, holder, key, depth, graph, report)
     inp.bad = true
     return false
   end
-  local start = inp.p
-  local _, _, ok = scan_string(inp, MAX_KEY)
-  if not ok then return false end
-  local k = inp.t:sub(start + 1, inp.p - 2)
+  local k, over_bound, ok = scan_string(inp, MAX_KEY)
+  if not ok or over_bound then
+    inp.bad = true
+    return false
+  end
   if peek(inp) ~= ":" then
     inp.bad = true
     return false
@@ -1382,7 +1387,7 @@ local function read_pointer(T, d, inp, holder, key, depth, graph, report)
     holder[key] = nil
     if entry.st == nil then return true end
     if entry.st ~= d.target then
-      report.kindMismatch = report.kindMismatch + 1
+      report.kindChanged = report.kindChanged + 1
       return true
     end
     holder[key] = entry.node
@@ -1404,7 +1409,7 @@ local function read_base64(inp, bound, report)
   inp.p = inp.p + 1
   local out = {}
   local acc, held = 0, 0
-  local clamped, bad = false, false
+  local over_bound, bad = false, false
   while true do
     if inp.p > #inp.t then
       inp.bad = true
@@ -1425,17 +1430,17 @@ local function read_base64(inp, bound, report)
           if bound < 0 or #out < bound then
             out[#out + 1] = string.char((acc >> held) & 0xff)
           else
-            clamped = true
+            over_bound = true
           end
         end
       end
     end
   end
   if bad then
-    report.kindMismatch = report.kindMismatch + 1
+    report.kindChanged = report.kindChanged + 1
     return false
   end
-  if clamped then report.clamped = report.clamped + 1 end
+  if over_bound then report.outOfRange = report.outOfRange + 1 end
   return table.concat(out)
 end
 
@@ -1454,14 +1459,13 @@ local function text_list_elem(T, fd)
   return d, vf
 end
 
--- A text list's TOTAL clamp names its field once, the first time (§2.13,
--- §6.5, §16.2), in the report's clamped-field slot, never in Reason, as the
--- generated Go records it in TableReport.ClampedField; the strict read refuses
--- it as "clamped: <Table>.<field>". The element and count clamps are §2.13's
--- ordinary counters and name no field here, as in the Go JSON read.
-local function text_list_clamped(report, table_name, field_name)
-  report.clamped = report.clamped + 1
-  if not report.ClampedField or report.ClampedField == "" then report.ClampedField = table_name .. "." .. field_name end
+-- A text list's TOTAL bound names its field once, the first time (§2.13,
+-- §6.5, §16.2), in the report's outOfRangeField slot, never in Reason; the strict
+-- read refuses it as "out_of_range: <Table>.<field>". The element and count bounds
+-- are §2.13's ordinary counters and name no field here, as in the Go JSON read.
+local function text_list_over_bound(report, table_name, field_name)
+  report.outOfRange = report.outOfRange + 1
+  if not report.outOfRangeField or report.outOfRangeField == "" then report.outOfRangeField = table_name .. "." .. field_name end
 end
 
 -- ONE text list's JSON array (§16.2): strings in INDEX order, `null` for an
@@ -1487,10 +1491,10 @@ local function read_text_list(T, fd, _d, vf, inp, holder, key, depth, graph, rep
     if full then
       -- the total dropped this element; one past [..N] is counted as well, as
       -- the wire counts its count clamp beside the total (§2.13)
-      if seen > bound then report.clamped = report.clamped + 1 end
+      if seen > bound then report.outOfRange = report.outOfRange + 1 end
       if not skip_value(inp, depth + 1, graph) then return false end
     elseif placed >= bound then
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
       if not skip_value(inp, depth + 1, graph) then return false end
     else
       local vs = value_shape(inp)
@@ -1499,12 +1503,12 @@ local function read_text_list(T, fd, _d, vf, inp, holder, key, depth, graph, rep
         placed = placed + 1
         out[placed] = zero_elem(T, fd.elem)
       elseif vs ~= "s" then
-        report.kindMismatch = report.kindMismatch + 1
+        report.kindChanged = report.kindChanged + 1
         if not skip_value(inp, depth + 1, graph) then return false end
         placed = placed + 1
         out[placed] = zero_elem(T, fd.elem)
       else
-        local txt, clamped, ok, nul = scan_string(inp, cap)
+        local txt, over_bound, ok, nul = scan_string(inp, cap)
         if not ok then return false end
         -- §2.13.1: an unbounded element or key whose text decodes to U+0000
         -- refuses the read too; scan_string flags a zero at every cap here.
@@ -1513,14 +1517,14 @@ local function read_text_list(T, fd, _d, vf, inp, holder, key, depth, graph, rep
           inp.bad = true
           return false
         end
-        if clamped then report.clamped = report.clamped + 1 end
+        if over_bound then report.outOfRange = report.outOfRange + 1 end
         local rec = zero_elem(T, fd.elem)
         rec[vf.name] = txt
         if vf.optional then rec[vf.present] = true end
         if total > 0 then
           spent = spent + #txt
           if spent > total then
-            text_list_clamped(report, table_name, field_name)
+            text_list_over_bound(report, table_name, field_name)
             full = true
           else
             placed = placed + 1
@@ -1579,7 +1583,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
       return false
     end
     if placed >= bound then
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
       if not skip_value(inp, depth + 1, graph) then return false end
     elseif fd.elem.shape == "pointer" and vs == "z" then
       literal(inp, "null")
@@ -1591,7 +1595,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
       placed = placed + 1
       out[placed] = zero_elem(T, fd.elem)
     elseif vs ~= eshape then
-      report.kindMismatch = report.kindMismatch + 1
+      report.kindChanged = report.kindChanged + 1
       if not skip_value(inp, depth + 1, graph) then return false end
       placed = placed + 1
       out[placed] = zero_elem(T, fd.elem)
@@ -1646,7 +1650,7 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
     -- declared bound below.
     local keycap = MAX_KEY
     if string_key and kf.bound == nil then keycap = -1 end
-    local kraw, clamped, ok, nul = scan_string(inp, keycap)
+    local kraw, over_bound, ok, nul = scan_string(inp, keycap)
     if not ok then return false end
     if peek(inp) ~= ":" then
       inp.bad = true
@@ -1662,16 +1666,16 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
       return false
     end
     local kval, skip = nil, false
-    if clamped then
+    if over_bound then
       if string_key then
-        report.clamped = report.clamped + 1
+        report.outOfRange = report.outOfRange + 1
       else
-        report.kindMismatch = report.kindMismatch + 1
+        report.kindChanged = report.kindChanged + 1
       end
       skip = true
     elseif string_key then
       if kf.bound ~= nil and kf.bound > 0 and #kraw > kf.bound then
-        report.clamped = report.clamped + 1
+        report.outOfRange = report.outOfRange + 1
         skip = true
       else
         kval = kraw
@@ -1679,11 +1683,11 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
     else
       local v, why = map_int_key(kf, kraw)
       if why == "malformed" then
-        report.malformed = true
+        report.damaged = true
         inp.bad = true
         return false
       elseif why == "mismatch" then
-        report.kindMismatch = report.kindMismatch + 1
+        report.kindChanged = report.kindChanged + 1
         skip = true
       else
         kval = v
@@ -1702,18 +1706,18 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
     then
       null_ref = true
     elseif not skip and value_shape(inp) ~= expect_shape(T, vf) then
-      report.kindMismatch = report.kindMismatch + 1
+      report.kindChanged = report.kindChanged + 1
       skip = true
     end
     if null_ref then
       literal(inp, "null")
-      if seen[kval] then report.duplicate = report.duplicate + 1 end
+      if seen[kval] then report.repeatedKey = report.repeatedKey + 1 end
       seen[kval] = true
       out[kval] = false
     elseif skip then
       if not skip_value(inp, depth + 1, graph) then return false end
     else
-      if seen[kval] then report.duplicate = report.duplicate + 1 end
+      if seen[kval] then report.repeatedKey = report.repeatedKey + 1 end
       seen[kval] = true
       local tmp = {}
       if not read_value(T, fd.value_field, inp, tmp, "v", depth + 1, graph, report, true, table_name, field_name) then
@@ -1747,6 +1751,8 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
     out[i] = zero_elem(T, fd.elem)
   end
   local seen = {}
+  local seen_keys = {}
+  local dup_unknown = false
   local eshape = expect_shape(T, fd.elem)
   while true do
     local c = peek(inp)
@@ -1758,10 +1764,11 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
       inp.bad = true
       return false
     end
-    local start = inp.p
-    local _, _, ok = scan_string(inp, MAX_KEY)
-    if not ok then return false end
-    local name = inp.t:sub(start + 1, inp.p - 2)
+    local name, over_bound, ok = scan_string(inp, MAX_KEY)
+    if not ok or over_bound then
+      inp.bad = true
+      return false
+    end
     if peek(inp) ~= ":" then
       inp.bad = true
       return false
@@ -1775,13 +1782,15 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
       end
     end
     if slot == nil then
+      if seen_keys[name] then dup_unknown = true end
+      seen_keys[name] = true
       report.unknown = report.unknown + 1
       if not skip_value(inp, depth + 1, graph) then return false end
     else
-      if seen[slot] then report.duplicate = report.duplicate + 1 end
+      if seen[slot] then report.repeatedKey = report.repeatedKey + 1 end
       seen[slot] = true
       if value_shape(inp) ~= eshape then
-        report.kindMismatch = report.kindMismatch + 1
+        report.kindChanged = report.kindChanged + 1
         if not skip_value(inp, depth + 1, graph) then return false end
       else
         if not read_value(T, fd.elem, inp, out, slot, depth + 1, graph, report, true, table_name, field_name) then
@@ -1799,6 +1808,10 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
       inp.bad = true
       return false
     end
+  end
+  if dup_unknown and report.repeatedKey == 0 then
+    inp.bad = true
+    return false
   end
   holder[key] = out
   return true
@@ -1836,7 +1849,7 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     if not skip_value(inp, depth + 1, graph) then return nil end
   elseif arm.field == nil then
     if value_shape(inp) ~= "z" then
-      report.kindMismatch = report.kindMismatch + 1
+      report.kindChanged = report.kindChanged + 1
       if not skip_value(inp, depth + 1, graph) then return nil end
     else
       literal(inp, "null")
@@ -1851,7 +1864,7 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     literal(inp, "null")
     out.tag = tag
   elseif value_shape(inp) ~= expect_shape(T, arm.field) then
-    report.kindMismatch = report.kindMismatch + 1
+    report.kindChanged = report.kindChanged + 1
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
     out.tag = tag
@@ -1877,7 +1890,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
   if s == "pointer" then
     return read_pointer(T, d, inp, holder, key, depth, graph, report)
   elseif s == "string" then
-    local out, clamped, ok, nul = scan_string(inp, d.bound)
+    local out, over_bound, ok, nul = scan_string(inp, d.bound)
     if not ok then return false end
     if nul then
       -- §16.3: a JSON text that lands U+0000 in bounded text storage is
@@ -1886,11 +1899,11 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       inp.bad = true
       return false
     end
-    if clamped then report.clamped = report.clamped + 1 end
+    if over_bound then report.outOfRange = report.outOfRange + 1 end
     holder[key] = out
     return true
   elseif s == "wstring" then
-    local out, clamped, ok, nul = scan_wstring(inp, d.bound)
+    local out, over_bound, ok, nul = scan_wstring(inp, d.bound)
     if not ok then return false end
     if nul then
       -- §16.3: a U+0000 unit bound for wide text storage refuses the read
@@ -1899,7 +1912,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       inp.bad = true
       return false
     end
-    if clamped then report.clamped = report.clamped + 1 end
+    if over_bound then report.outOfRange = report.outOfRange + 1 end
     holder[key] = out
     return true
   elseif s == "bytes" then
@@ -1925,10 +1938,10 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
   elseif s == "bytes_blob" then
     -- §16.2 `*bytes`: a body that is not base64 is kind_mismatch, the
     -- reference left null; a decoded body is boxed as the `*string` row is.
-    local before = report.kindMismatch
+    local before = report.kindChanged
     local out = read_base64(inp, -1, report)
     if out == nil then return false end
-    if report.kindMismatch ~= before then
+    if report.kindChanged ~= before then
       holder[key] = elem and false or nil
     else
       holder[key] = { value = out == false and "" or out }
@@ -1957,7 +1970,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       end
       local fd = td.fields[1]
       if value_shape(inp) ~= "a" then
-        report.kindMismatch = report.kindMismatch + 1
+        report.kindChanged = report.kindChanged + 1
         if not skip_value(inp, depth + 1, graph) then return false end
         return true
       end
@@ -2020,20 +2033,25 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
         return false
       end
       if c ~= '"' then
-        report.kindMismatch = report.kindMismatch + 1
+        report.kindChanged = report.kindChanged + 1
         if not skip_value(inp, depth + 1, graph) then return false end
       else
-        local st = inp.p
-        local _, _, ok = scan_string(inp, MAX_KEY)
+        local nm, over_bound, ok = scan_string(inp, MAX_KEY)
         if not ok then return false end
-        local nm = inp.t:sub(st + 1, inp.p - 2)
         local found = false
-        local names = d.variants or {}
-        for i, v in ipairs(names) do
-          if v == nm then
-            bits = bits | (1 << (i - 1))
-            found = true
-            break
+        if not over_bound then
+          local names = d.variants or {}
+          for i, v in ipairs(names) do
+            if v == nm then
+              local bit = 1 << (i - 1)
+              if (bits & bit) ~= 0 then
+                inp.bad = true
+                return false
+              end
+              bits = bits | bit
+              found = true
+              break
+            end
           end
         end
         if not found then report.unknown = report.unknown + 1 end
@@ -2073,7 +2091,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     -- the sign the token spells is kept here.
     if x == 0 and token:sub(1, 1) == "-" then x = -0.0 end
     if x == nil or x ~= x or x == math.huge or x == -math.huge then
-      report.kindMismatch = report.kindMismatch + 1
+      report.kindChanged = report.kindChanged + 1
       return true
     end
     if d.f32 then
@@ -2099,7 +2117,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
         if below then
           x = neg and -3.4028234663852886e38 or 3.4028234663852886e38
         else
-          report.kindMismatch = report.kindMismatch + 1
+          report.kindChanged = report.kindChanged + 1
           return true
         end
       else
@@ -2125,7 +2143,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
         -- naming an instant outside Time.UnixNano's domain, is refused by
         -- name.
         report.Reason = "timestamp_not_rfc3339: " .. field_name
-        report.malformed = true
+        report.damaged = true
         inp.bad = true
         return false
       end
@@ -2269,12 +2287,11 @@ parse_timestamp = function(text)
   return seconds * 1000000000 + nanos
 end
 
--- ONE TEXT: the root's object and nothing after it (§16.1). This is the
--- TOLERANT read: it keeps the recovered value and counts every event it met.
-function J.FromJsonTolerant(T, name, text, report)
+-- ONE TEXT: the root's object and nothing after it (§16.1).
+local function read_json(T, name, text, report)
   local desc = T.Tables[name]
   if desc == nil then
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   local inp = new_in(text)
@@ -2301,41 +2318,58 @@ function J.FromJsonTolerant(T, name, text, report)
     space(inp)
     if inp.p ~= #inp.t + 1 then inp.bad = true end
   end
-  if inp.bad or not ok then report.malformed = true end
+  if inp.bad or not ok then report.damaged = true end
   if inp.utf8 and (report.Reason == nil or report.Reason == "") then
     -- §16.3: the READ refuses ill-formed UTF-8 by name; <root> names the top
     report.Reason = "string_not_utf8: <root>"
+  end
+  if inp.surrogate and (report.Reason == nil or report.Reason == "") then
+    report.Reason = "string_lone_surrogate: <root>"
   end
   return v
 end
 
 -- THE PLAIN NAME IS THE STRICT READ (§6.5, §16.2): it answers nil where the
--- tolerant report is not clean under the strict set, writing that reason into
--- the supplied report. Unknown and duplicate alone are evolution, not loss,
--- and read clean. The precedence is Go's TableReport.Err
--- (internal/codegen/gotable/refusal.go): missing_required once carried, then
--- malformed, blob_shared, clamped and kind_mismatch.
+-- report is not clean under the strict set, writing that reason into the
+-- supplied report. Unknown alone is evolution, not loss, and reads clean.
 function J.FromJson(T, name, text, report)
-  local v = J.FromJsonTolerant(T, name, text, report)
+  report = report or {}
+  report.damaged = false
+  report.refused = 0
+  report.unknown = 0
+  report.kindChanged = 0
+  report.outOfRange = 0
+  report.widened = 0
+  report.repeatedKey = 0
+  report.sharedBlob = 0
+  report.missingRequired = 0
+  report.MissingRequired = nil
+  report.Reason = nil
+  report.reason = nil
+  report.outOfRangeField = nil
+  local v = read_json(T, name, text, report)
   local reason = nil
-  if report.MissingRequired ~= nil and report.MissingRequired > 0 then
-    reason = report.Reason or "missing_required"
-  elseif report.malformed then
-    reason = "malformed"
-  elseif report.blobShared ~= nil and report.blobShared > 0 then
+  local mr = report.MissingRequired or report.missingRequired or 0
+  if mr > 0 then
+    reason = report.Reason or report.reason or "missing_required"
+  elseif report.damaged then
+    reason = (report.Reason ~= nil and report.Reason ~= "" and report.Reason)
+      or (report.reason ~= nil and report.reason ~= "" and report.reason)
+      or "malformed"
+  elseif report.sharedBlob ~= nil and report.sharedBlob > 0 then
     reason = "blob_shared"
-  elseif report.clamped ~= nil and report.clamped > 0 then
-    -- TableClampedField (§2.13): a clamp that named its field refuses naming it
-    if report.ClampedField ~= nil and report.ClampedField ~= "" then
-      reason = "clamped: " .. report.ClampedField
+  elseif report.outOfRange ~= nil and report.outOfRange > 0 then
+    if report.outOfRangeField ~= nil and report.outOfRangeField ~= "" then
+      reason = "out_of_range: " .. report.outOfRangeField
     else
-      reason = "clamped"
+      reason = "out_of_range"
     end
-  elseif report.kindMismatch ~= nil and report.kindMismatch > 0 then
+  elseif report.kindChanged ~= nil and report.kindChanged > 0 then
     reason = "kind_mismatch"
   end
   if reason ~= nil then
     report.Reason = reason
+    report.reason = reason
     return nil
   end
   return v
@@ -2961,4 +2995,5 @@ function J.ToJson(T, name, v)
   return table.concat(w.parts)
 end
 
+J.fromJsonWalk = read_json
 return J

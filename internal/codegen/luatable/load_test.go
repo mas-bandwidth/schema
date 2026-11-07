@@ -68,13 +68,13 @@ func loadProbe(module, root string) string {
 local load = require("load")
 local inputs = require("inputs")
 local wire = inputs.wire
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.LoadTolerant(T, "` + root + `", wire, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = load.Load(T, "` + root + `", wire, report)
 local verdict
 if report.refused > 0 then verdict = "refused" else verdict = "read" end
 print(string.format("%d,%d,%d,%d,%d,%s,%s",
-  report.unknown, report.kindMismatch, report.widened, report.clamped,
-  report.duplicate, tostring(report.malformed), verdict))
+  report.unknown, report.kindChanged, report.widened, report.outOfRange,
+  report.repeatedKey, tostring(report.damaged), verdict))
 `
 }
 
@@ -85,7 +85,7 @@ print(string.format("%d,%d,%d,%d,%d,%s,%s",
 func fixedLoadProbe(module, root string) string {
 	return `local T = require("` + module + `")
 local inputs = require("inputs")
-local ok = pcall(T.ReadFixedTolerant, "` + root + `", inputs.wire)
+local ok = pcall(T.ReadFixed, "` + root + `", inputs.wire)
 print(ok and "0,0,0,0,0,false,read" or "0,0,0,0,0,false,refused")
 `
 }
@@ -335,8 +335,8 @@ func wireCountRefusalReason(t *testing.T, wire []byte) string {
 	probe := `local T = require("` + ModuleName(u) + `")
 local load = require("load")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-  clamped = 0, widened = 0, duplicate = 0, reason = "" }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+  outOfRange = 0, widened = 0, repeatedKey = 0, reason = "" }
 load.Load(T, "Root", inputs.wire, report)
 print(report.reason)
 `

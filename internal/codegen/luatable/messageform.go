@@ -96,12 +96,8 @@ func emitMessageForm(m *Module) error {
 	m.Printf("\nfunction _M.AnnounceRead(vocab, data, report, maxBytes, maxEntries)\n")
 	m.Printf("  return M.announceRead(_M, vocab, data, report, maxBytes, maxEntries)\n")
 	m.Printf("end\n\n")
-	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ IS NAMED
-	// (docs/SPEC-TABLES.md §6.5): LoadMessages passes the strict decision into
-	// runtime/message.lua, and LoadMessagesTolerant keeps BASE's answer.
-	m.Printf("function _M.LoadMessagesTolerant(root, vocab, data, report)\n")
-	m.Printf("  return M.loadMessages(_M, root, vocab, data, report, false)\n")
-	m.Printf("end\n\n")
+	// THE PLAIN NAME IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):
+	// LoadMessages passes the strict decision into runtime/message.lua.
 	m.Printf("function _M.LoadMessages(root, vocab, data, report)\n")
 	m.Printf("  return M.loadMessages(_M, root, vocab, data, report, true)\n")
 	m.Printf("end\n\n")

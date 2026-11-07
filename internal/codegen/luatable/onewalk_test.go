@@ -69,9 +69,9 @@ func walkProbe(module, root string) string {
 local load, save, cookwrite = require("load"), require("save"), require("cookwrite")
 local inputs = require("inputs")
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
-local v = load.LoadTolerant(T, %q, inputs.wire, report())
+local v = load.Load(T, %q, inputs.wire, report())
 print("wire", save.Save(T, %q, v) == inputs.wire)
 if inputs.cook ~= nil then print("cook", cookwrite.Cook(T, %q, v) == inputs.cook) end
 `, module, root, root, root)

@@ -40,9 +40,9 @@ var float32Tokens = []string{
 const float32TokenProbe = `local T = require("ProbeTables")
 local J = require("json")
 for _, token in ipairs(TOKENS) do
-  local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-  local v = J.FromJsonTolerant(T, "F", '{"v": ' .. token .. '}', r)
-  print(string.format("%08x %s %d", string.unpack("<I4", string.pack("<f", v.v)), tostring(r.malformed), r.kindMismatch))
+  local r = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+  local v = J.FromJson(T, "F", '{"v": ' .. token .. '}', r)
+  print(string.format("%08x %s %d", string.unpack("<I4", string.pack("<f", v.v)), tostring(r.damaged), r.kindChanged))
 end
 `
 

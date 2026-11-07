@@ -22,8 +22,8 @@ local load = require("load")
 local save = require("save")
 local inputs = require("inputs")
 local wire = inputs.wire
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.LoadTolerant(T, "` + root + `", wire, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = load.Load(T, "` + root + `", wire, report)
 local saved = save.Save(T, "` + root + `", v)
 local measure = save.Measure(T, "` + root + `", v)
 print(#saved .. ":" .. (saved == wire and "same" or "diff") .. ":" .. measure)
@@ -36,7 +36,7 @@ func saveProbeFixed(module, root string) string {
 	return `local T = require("` + module + `")
 local inputs = require("inputs")
 local wire = inputs.wire
-local v = T.ReadFixedTolerant("` + root + `", wire)
+local v = T.ReadFixed("` + root + `", wire)
 local saved = T.FixedSave("` + root + `", { v })
 local measure = T.FixedMeasure("` + root + `", 1)
 print(#saved .. ":" .. (saved == wire and "same" or "diff") .. ":" .. measure)

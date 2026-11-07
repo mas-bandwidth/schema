@@ -153,19 +153,19 @@ end
 -- declares one. A supplied report receives this read's counts on success.
 function Text.LoadText(T, name, text, report, integrity)
   if report ~= nil then
-    report.malformed = false
+    report.damaged = false
     report.refused = 0
     report.unknown = 0
-    report.kindMismatch = 0
-    report.clamped = 0
+    report.kindChanged = 0
+    report.outOfRange = 0
     report.widened = 0
-    report.duplicate = 0
+    report.repeatedKey = 0
   end
   if type(text) ~= "string" then error("base64_damaged", 0) end
   local wire, why = decode(text)
   if wire == nil then error(why, 0) end
   local root = refusal.ReadStrict(T, name, wire, integrity)
-  if report ~= nil and integrity == nil then load.LoadTolerant(T, name, wire, report) end
+  if report ~= nil and integrity == nil then load.Load(T, name, wire, report) end
   return root
 end
 

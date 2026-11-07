@@ -169,12 +169,12 @@ local out = {}
 local v = T.NewFix(); v.n = 3; v.m = 4
 local file = T.WriteFixed("Fix", v)
 out.fixed_clean = strict(T.ReadFixed, "Fix", file)
-local clamped = file:sub(1, #file - 8) .. string.char(100, 0, 0, 0) .. file:sub(#file - 3)
-out.fixed_clamped = strict(T.ReadFixed, "Fix", clamped)
+local outOfRange = file:sub(1, #file - 8) .. string.char(100, 0, 0, 0) .. file:sub(#file - 3)
+out.fixed_outOfRange = strict(T.ReadFixed, "Fix", clamped)
 out.fixed_truncated = strict(T.ReadFixed, "Fix", file:sub(1, #file - 1))
 -- the tolerant twin keeps BASE's answer: the unchecked value rides
-local tv = T.ReadFixedTolerant("Fix", clamped)
-out.tolerant_fixed_clamped = tostring(tv.n)
+local tv = T.ReadFixed("Fix", clamped)
+out.tolerant_fixed_outOfRange = tostring(tv.n)
 
 local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
@@ -187,19 +187,19 @@ local function message(reader, data)
   local r = {}
   local values = reader("Fix", vocab, data, r)
   if values == nil then return "malformed" end
-  if (r.clamped or 0) > 0 then return "clamped" end
-  if r.malformed then return "malformed" end
-  if (r.kindMismatch or 0) > 0 then return "kind_mismatch" end
-  if (r.blobShared or 0) > 0 then return "blob_shared" end
+  if (r.outOfRange or 0) > 0 then return "clamped" end
+  if r.damaged then return "malformed" end
+  if (r.kindChanged or 0) > 0 then return "kind_mismatch" end
+  if (r.sharedBlob or 0) > 0 then return "blob_shared" end
   return "clean"
 end
 out.message_clean = message(T.LoadMessages, msg)
-out.message_clamped = message(T.LoadMessages, forged)
+out.message_outOfRange = message(T.LoadMessages, forged)
 out.message_truncated = message(T.LoadMessages, msg:sub(1, 1))
 -- the tolerant twin keeps BASE's answer, and a refused strict read wrote nothing
 local tr = {}
-local kept = T.LoadMessagesTolerant("Fix", vocab, forged, tr)
-out.tolerant_message_clamped = tostring(#kept) .. ":" .. tostring(kept[1] and kept[1].n)
+local kept = T.LoadMessages("Fix", vocab, forged, tr)
+out.tolerant_message_outOfRange = tostring(#kept) .. ":" .. tostring(kept[1] and kept[1].n)
 local sr = {}
 local refused = T.LoadMessages("Fix", vocab, forged, sr)
 out.strict_message_refused_count = tostring(#refused)
@@ -246,10 +246,10 @@ func TestLuaFixedAndMessageReadsAreStrict(t *testing.T) {
 	// the forged rows keep the value they stated. A strict refusal writes no
 	// record.
 	if lua["tolerant_fixed_clamped"] != "100" {
-		t.Errorf("ReadFixedTolerant answered n=%s for the clamped record, want BASE's 100", lua["tolerant_fixed_clamped"])
+		t.Errorf("ReadFixed answered n=%s for the clamped record, want BASE's 100", lua["tolerant_fixed_clamped"])
 	}
 	if lua["tolerant_message_clamped"] != "1:-1" {
-		t.Errorf("LoadMessagesTolerant answered %q for the clamped batch, want BASE's 1:-1", lua["tolerant_message_clamped"])
+		t.Errorf("LoadMessages answered %q for the clamped batch, want BASE's 1:-1", lua["tolerant_message_clamped"])
 	}
 	if lua["strict_message_refused_count"] != "0" {
 		t.Errorf("a refused LoadMessages left %s record(s) written, want 0", lua["strict_message_refused_count"])
@@ -288,7 +288,7 @@ for i = 1, T.MessageEntries do vocab[i] = {} end
 assert(T.AnnounceRead(vocab, inputs.announce, report))
 local values = T.LoadMessages("`+msg.root+`", vocab, inputs.batch, report)
 assert(values ~= nil and #values > 0, "the plain ReadMessages refused a golden")
-assert(not report.malformed, "the plain ReadMessages reported damage on a golden")
+assert(not report.damaged, "the plain ReadMessages reported damage on a golden")
 print("golden-ok")
 `)
 		announce := readFile(t, filepath.Join(repo, conn.ann))

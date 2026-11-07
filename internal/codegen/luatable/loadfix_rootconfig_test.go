@@ -65,8 +65,8 @@ func fieldByName(t *testing.T, inst *tabletext.Instance, name string) *tabletext
 
 // loadFixRootConfigCounts is the report's six counters.
 type loadFixRootConfigCounts struct {
-	unknown, kindMismatch, widened, clamped, duplicate int
-	malformed                                          bool
+	unknown, kindChanged, widened, outOfRange, repeatedKey int
+	damaged                                            bool
 }
 
 // loadFixRootConfigProbe loads one wire with the generated fixed form and
@@ -104,13 +104,13 @@ func loadFixRootConfigParse(line string) (loadFixRootConfigCounts, []byte, error
 	if f[7] != "0" {
 		return c, nil, fmt.Errorf("the Lua load refused the root: %q", line)
 	}
-	n := []*int{&c.unknown, &c.kindMismatch, &c.widened, &c.clamped, &c.duplicate}
+	n := []*int{&c.unknown, &c.kindChanged, &c.widened, &c.outOfRange, &c.repeatedKey}
 	for i, p := range n {
 		if _, err := fmt.Sscanf(f[1+i], "%d", p); err != nil {
 			return c, nil, fmt.Errorf("probe line %q field %d: %w", line, 1+i, err)
 		}
 	}
-	c.malformed = f[6] == "true"
+	c.damaged = f[6] == "true"
 	if f[8] == "none" {
 		return c, nil, fmt.Errorf("the Lua save refused the value it loaded: %q", line)
 	}
@@ -137,7 +137,7 @@ func loadFixRootConfigEngine(m *tabletext.Model, def *ir.Struct, data []byte) (l
 	c := loadFixRootConfigCounts{
 		unknown:   rep.Unknown,
 		widened:   rep.Widened,
-		malformed: rep.Refused || !ok,
+		damaged: rep.Refused || !ok,
 	}
 	enc, err := tablewire.Encode(m, inst)
 	if err != nil {

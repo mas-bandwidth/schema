@@ -24,8 +24,8 @@ import (
 )
 
 type loadFixTabledemoCounts struct {
-	unknown, kindMismatch, widened, clamped, duplicate int
-	malformed                                          bool
+	unknown, kindChanged, widened, outOfRange, repeatedKey int
+	damaged                                            bool
 }
 
 type loadFixTabledemoAnswer struct {
@@ -75,12 +75,12 @@ local load = require("load")
 local save = require("save")
 local inputs = require("inputs")
 local wire = inputs.wire
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-                 clamped = 0, widened = 0, duplicate = 0 }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+                 outOfRange = 0, widened = 0, repeatedKey = 0 }
 local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
-local v = load.LoadTolerant(T, "` + root + `", wire, report)
+local v = load.Load(T, "` + root + `", wire, report)
 local loaded = 0
 local savedHex = "none"
 if v ~= nil then
@@ -88,9 +88,9 @@ if v ~= nil then
   local b = save.Save(T, "` + root + `", v)
   if b ~= nil then savedHex = hex(b) end
 end
-print(table.concat({ loaded, report.unknown, report.kindMismatch,
-  report.widened, report.clamped, report.duplicate,
-  tostring(report.malformed), tostring(report.refused), savedHex }, "|"))
+print(table.concat({ loaded, report.unknown, report.kindChanged,
+  report.widened, report.outOfRange, report.repeatedKey,
+  tostring(report.damaged), tostring(report.refused), savedHex }, "|"))
 `
 }
 
@@ -104,7 +104,7 @@ local wire = inputs.wire
 local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
-local ok, v = pcall(T.ReadFixedTolerant, "` + root + `", wire)
+local ok, v = pcall(T.ReadFixed, "` + root + `", wire)
 local loaded = 0
 local savedHex = ""
 if ok then
@@ -125,13 +125,13 @@ func loadFixTabledemoParse(t *testing.T, line string) loadFixTabledemoAnswer {
 		t.Fatalf("the probe line has %d fields, want 9: %q", len(f), line)
 	}
 	a.loaded = f[0] == "1"
-	n := []*int{&a.counts.unknown, &a.counts.kindMismatch, &a.counts.widened, &a.counts.clamped, &a.counts.duplicate}
+	n := []*int{&a.counts.unknown, &a.counts.kindChanged, &a.counts.widened, &a.counts.outOfRange, &a.counts.repeatedKey}
 	for i, p := range n {
 		if _, err := fmt.Sscanf(f[1+i], "%d", p); err != nil {
 			t.Fatalf("the probe line %q field %d: %v", line, 1+i, err)
 		}
 	}
-	a.counts.malformed = f[6] == "true"
+	a.counts.damaged = f[6] == "true"
 	a.refused = f[7] != "0"
 	if f[8] == "none" {
 		a.saveFail = true
@@ -168,7 +168,7 @@ func loadFixTabledemoEngine(t *testing.T, m *tabletext.Model, def *ir.Struct, da
 	o.counts = loadFixTabledemoCounts{
 		unknown:   rep.Unknown,
 		widened:   rep.Widened,
-		malformed: rep.Refused || !ok,
+		damaged: rep.Refused || !ok,
 	}
 	enc, eerr := tablewire.Encode(m, inst)
 	if eerr != nil {
@@ -229,10 +229,10 @@ func TestLuaLoadTabledemoMalformedAgreesWithTheEngine(t *testing.T) {
 				t.Fatalf("seed %#016x %s: the verdict differs: Lua refused=%t, the engine refused=%t",
 					c.seed, c.name, got.refused, want.refused)
 			}
-			if want.counts.malformed {
+			if want.counts.damaged {
 				// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
 				// leg owes the refusal, and no counter or saved byte is compared
-				if !got.counts.malformed {
+				if !got.counts.damaged {
 					t.Fatalf("seed %#016x %s: the engine discards a damaged load; Lua says %+v", c.seed, c.name, got.counts)
 				}
 				return

@@ -88,13 +88,17 @@ func fixedRootEngine(t *testing.T, m *tabletext.Model, root string, data []byte)
 		}
 		verdict = "refused"
 	}
-	if rep.Refused || (!ok && err == nil) {
+	switch rep.Reason {
+	case tablewire.FixedReasonTruncated, tablewire.FixedReasonReservedNotZero, tablewire.FixedReasonIntegrityMismatch:
+		return "malformed"
+	}
+	if !ok && err == nil {
 		return "malformed" // §4: neither the instance nor other counters are defined.
 	}
 	// false with a nil error is framing damage (malformed); false with a
 	// refusal is the refusal alone, which moves no counter (§3)
 	return fmt.Sprintf("root,%d,%d,%d,%d,%d,%t,%s", rep.Unknown, 0, rep.Widened,
-		0, 0, rep.Refused || (!ok && err == nil), verdict)
+		0, 0, !ok && err == nil, verdict)
 }
 
 // checkFixedRoots runs the four damages of every instance row whose root is

@@ -94,8 +94,8 @@ local load = require("load")
 local cookwrite = require("cookwrite")
 local inputs = require("inputs")
 local hexline = require("hexline")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.LoadTolerant(T, "Root", inputs.wire, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = load.Load(T, "Root", inputs.wire, report)
 local c = v and cookwrite.Cook(T, "Root", v, nil, 1)
 if c == nil then print("REFUSED") else hexline(c) end
 `

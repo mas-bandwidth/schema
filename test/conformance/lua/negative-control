@@ -50,7 +50,7 @@ framing)
     ;;
 cycle)
     source=internal/codegen/luatable/runtime/load.lua
-    sed 's/^  if not report.malformed and D.number_nodes(T, desc, root, false) == nil then$/  if false then/' "$source" > "$out/runtime.lua"
+    sed 's/^    if not report.damaged and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.damaged = true end$/    if false then report.damaged = true end/' "$source" > "$out/runtime.lua"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac

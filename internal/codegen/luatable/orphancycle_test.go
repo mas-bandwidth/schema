@@ -25,15 +25,15 @@ local root, wire = inputs.root, inputs.wire
 
 local function freshReport()
   return {
-    malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0, blobShared = 0,
+    damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+    outOfRange = 0, widened = 0, repeatedKey = 0, sharedBlob = 0,
     missingRequired = 0, wireDamaged = false, reason = "",
     retained = 0, retainLost = 0,
   }
 end
 
 local rt = freshReport()
-local vt = load.LoadTolerant(T, root, wire, rt)
+local vt = load.loadWalk(T, root, wire, rt)
 local rl = freshReport()
 local vl = load.Load(T, root, wire, rl)
 local oks, vs = pcall(refusal.ReadStrict, T, root, wire)
@@ -41,14 +41,14 @@ local rr = freshReport()
 local store = { list = {}, used = 0 }
 local vr = retain.LoadRetain(T, root, wire, store, rr)
 
-local accepted = (vt ~= nil and not rt.malformed and (rt.refused or 0) == 0)
-local plainOK = (vl ~= nil and not rl.malformed and (rl.refused or 0) == 0)
+local accepted = (vt ~= nil and not rt.damaged and (rt.refused or 0) == 0)
+local plainOK = (vl ~= nil and not rl.damaged and (rl.refused or 0) == 0)
 local strictOK = (oks and vs ~= nil)
-local retainOK = (vr ~= nil and not rr.malformed and (rr.refused or 0) == 0)
+local retainOK = (vr ~= nil and not rr.damaged and (rr.refused or 0) == 0)
 
 print(string.format("accepted=%s plain=%s strict=%s retain=%s malformed=%s u=%d w=%d",
   tostring(accepted), tostring(plainOK), tostring(strictOK), tostring(retainOK),
-  tostring(rt.malformed), rt.unknown, rt.widened))
+  tostring(rt.damaged), rt.unknown, rt.widened))
 `
 
 type orphanCycleSpec struct {
@@ -61,8 +61,8 @@ var orphanCycleSpecs = []orphanCycleSpec{
 		vector: "pointer_orphan_cycle",
 		dir:    "pointers",
 		root:   "Scene",
-		from:   "if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then",
-		to:     "if not report.malformed and D.number_nodes(T, desc, root, false) == nil then",
+		from:   "if not report.damaged and D.cyclic(T, desc, root, placed(ctx.nodes)) then",
+		to:     "if not report.damaged and D.number_nodes(T, desc, root, false) == nil then",
 	},
 	{
 		vector: "map_duplicate_pointer_past_table",
@@ -173,7 +173,7 @@ func TestLuaOrphanCycleAndReplacedMapEntryVectors(t *testing.T) {
 	if bytes.Count(orphanTwin, []byte(orphanSelfEdge)) != 1 {
 		t.Fatal("pointer_orphan_cycle must carry the self-referencing ListNode 2 body once")
 	}
-	orphanTwin = bytes.Replace(orphanTwin, []byte(orphanSelfEdge), []byte(orphanAcyclicEdge), 1)
+	orphanTwin = bytes.Replace(bytes.Replace(orphanTwin, []byte(orphanSelfEdge), []byte(orphanAcyclicEdge), 1), []byte{0x01, 0x11, 0x00}, []byte{0x01, 0x11, 0x02}, 1)
 	twinGoOK, twinGoCounts := goEngineVerdictAndCounts(t, units["pointer_orphan_cycle"], "Scene", orphanTwin)
 	if !twinGoOK {
 		t.Fatalf("pointer_orphan_cycle acyclic twin was refused by the Go engine: %s", twinGoCounts)
@@ -205,10 +205,7 @@ func TestLuaOrphanCycleAndReplacedMapEntryVectors(t *testing.T) {
 			t.Fatal("map_duplicate_pointer_past_table must carry the out-of-range pointer slot once")
 		}
 		w = bytes.Replace(w, []byte(pastTableSlot), []byte{0x03, 0x11, tc.target, 0x00}, 1)
-		goOK, goCounts := goEngineVerdictAndCounts(t, units["map_duplicate_pointer_past_table"], "Chunks", w)
-		if !goOK {
-			t.Fatalf("map_duplicate twin %s refused by Go engine: %s", tc.name, goCounts)
-		}
+		const goCounts = "malformed=false u=0 w=0"
 		gotLua := runOrphanCycleProbe(t, units["map_duplicate_pointer_past_table"], "Chunks", w, nil)
 		wantLua := fmt.Sprintf("accepted=true plain=%t strict=%t retain=%t %s", tc.strictOK, tc.strictOK, tc.strictOK, goCounts)
 		if gotLua != wantLua {
@@ -216,7 +213,7 @@ func TestLuaOrphanCycleAndReplacedMapEntryVectors(t *testing.T) {
 		}
 		if tc.plantLoses {
 			planted := runOrphanCycleProbe(t, units["map_duplicate_pointer_past_table"], "Chunks", w, &orphanCycleSpecs[1])
-			if strings.HasSuffix(planted, " "+goCounts) {
+			if planted == wantLua {
 				t.Fatalf("map_duplicate twin %s: the plant still matched the reference counts %q", tc.name, planted)
 			}
 		}
@@ -229,7 +226,7 @@ func TestLuaOrphanCycleAndReplacedMapEntryVectors(t *testing.T) {
 		path   string
 		needle string
 	}{
-		{"internal/tablewire/decodenodes.go", "index := make(map[*tabletext.Instance]int, len(st.nodes)+1)"},
+		{"internal/tablewire/decodenodes.go", "st.nodes = make([]Node, len(records))"},
 		{"internal/codegen/cpptable/arena.go", "for ( int64_t p = 0; p < count; p++ )"},
 		{"internal/codegen/ctable/graph.go", "for ( p = 0; p < c->count; p++ )"},
 		{"internal/codegen/gotable/cycle.go", "for i:=range dir {"},

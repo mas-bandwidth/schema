@@ -70,7 +70,7 @@ local empty = T.NewRoot()
 hexline(T.WriteFixed("Root", full))
 local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
-local report = { malformed = false, refused = 0 }
+local report = { damaged = false, refused = 0 }
 assert(T.AnnounceRead(vocab, T.Announcement, report), "announcement refused")
 local saved = T.SaveMessages("Root", vocab, { full, empty })
 assert(saved ~= nil, "message batch refused")
@@ -142,7 +142,7 @@ end
 print(dump(T.ReadFixed("Root", inputs.fixed)))
 local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
-local report = { malformed = false, refused = 0 }
+local report = { damaged = false, refused = 0 }
 assert(T.AnnounceRead(vocab, T.Announcement, report), "announcement refused")
 local values = assert(T.LoadMessages("Root", vocab, inputs.message, report), "message load refused")
 print(dump(values[1]))

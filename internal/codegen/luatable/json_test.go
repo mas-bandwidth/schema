@@ -72,15 +72,15 @@ local function hex(s)
   if s == nil then return "nil" end
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
-local r1 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v1 = J.FromJsonTolerant(T, "` + root + `", inputs.text, r1)
+local r1 = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v1 = J.fromJsonWalk(T, "` + root + `", inputs.text, r1)
 local saved = save.Save(T, "` + root + `", v1)
-local r2 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v2 = load.LoadTolerant(T, "` + root + `", inputs.wire, r2)
+local r2 = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v2 = load.loadWalk(T, "` + root + `", inputs.wire, r2)
 local text = J.ToJson(T, "` + root + `", v2)
 print(hex(saved))
 print(hex(text))
-print((r1.malformed and "1" or "0") .. (r2.malformed and "1" or "0"))
+print((r1.damaged and "1" or "0") .. (r2.damaged and "1" or "0"))
 `
 }
 
@@ -94,14 +94,14 @@ local function hex(s)
   if s == nil then return "nil" end
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
-local r1 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v1 = J.FromJsonTolerant(T, "` + root + `", inputs.text, r1)
+local r1 = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v1 = J.fromJsonWalk(T, "` + root + `", inputs.text, r1)
 local saved = T.FixedSave("` + root + `", { v1 })
-local v2 = T.ReadFixedTolerant("` + root + `", inputs.wire)
+local v2 = T.ReadFixed("` + root + `", inputs.wire)
 local text = J.ToJson(T, "` + root + `", v2)
 print(hex(saved))
 print(hex(text))
-print((r1.malformed and "1" or "0") .. "0")
+print((r1.damaged and "1" or "0") .. "0")
 `
 }
 
@@ -111,15 +111,14 @@ func jsonHostileProbe(module, root string) string {
 	return `local T = require("` + module + `")
 local J = require("json")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = J.FromJsonTolerant(T, "` + root + `", inputs.text, report)
-if v == nil then report.malformed = true end
-if report.malformed then
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = J.fromJsonWalk(T, "` + root + `", inputs.text, report)
+if report.damaged then
   print("refused")
 else
   print(string.format("%d,%d,%d,%d,%d,%s,read",
-    report.unknown, report.kindMismatch, report.widened, report.clamped,
-    report.duplicate, tostring(report.malformed)))
+    report.unknown, report.kindChanged, report.widened, report.outOfRange,
+    report.repeatedKey, tostring(report.damaged)))
 end
 `
 }
@@ -330,8 +329,8 @@ table F { v float32 }
 		return `local T = require("` + module + `")
 local J = require("json")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = J.FromJsonTolerant(T, "F", inputs.text, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = J.fromJsonWalk(T, "F", inputs.text, report)
 local text = J.ToJson(T, "F", v)
 if text == nil then print("nil") else print((text:gsub(".", function(c) return string.format("%02x", c:byte()) end))) end
 `
@@ -424,11 +423,11 @@ table N
 	probe := `local T = require("` + module + `")
 local J = require("json")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = J.FromJsonTolerant(T, "N", inputs.text, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = J.fromJsonWalk(T, "N", inputs.text, report)
 local has = v ~= nil and v.blobs[7] == false and v.blobs[8] ~= nil and v.blobs[8].value == "\1\2"
 local arm = v ~= nil and v.body.tag == 1 and v.body.data == nil
-print(string.format("km=%d entries=%s arm=%s", report.kindMismatch, tostring(has), tostring(arm)))
+print(string.format("km=%d entries=%s arm=%s", report.kindChanged, tostring(has), tostring(arm)))
 local text = v and J.ToJson(T, "N", v)
 print(text or "nil")
 `
