@@ -67,7 +67,11 @@ table Graph
 // assumption.
 func discardWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 	t.Helper()
-	m := tabletext.NewModel(u)
+	// A fixed root's writer writes form 3 (docs/SPEC-TABLES.md §3.4), so the
+	// form-1 wire this gate damages is encoded through the same declaration
+	// without the fixed keyword; the reader's own model still judges it.
+	writer := loadUnitFromSource(t, strings.ReplaceAll(discardUnit, "fixed table", "table"))
+	m := tabletext.NewModel(writer)
 	inst := m.New(m.Lookup(root))
 	var r tabletext.Report
 	if !m.Read(inst, []byte(text), &r) {
@@ -82,8 +86,9 @@ func discardWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 		t.Fatalf("%s: Inner's body is not where this test expects it", root)
 	}
 	wire[at] = 37
+	reader := tabletext.NewModel(u)
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) {
+	if ok, err := tablewire.Decode(reader, reader.New(reader.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("%s: the engine does not read the vector as damage: ok=%v err=%v %+v", root, ok, err, report)
 	}
 	return wire

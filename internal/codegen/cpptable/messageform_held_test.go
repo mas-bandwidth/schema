@@ -555,7 +555,13 @@ func cppMessageBody(root, announcement, fileWire, batchWire string) string {
         { printf( "AnnounceRead refused the reference announcement\n" ); return 1; }
     @ROOT@ want; memset( &want, 0, sizeof( want ) ); @ROOT@Reset( want );
     TableReport fileReport; memset( &fileReport, 0, sizeof( fileReport ) );
-    if ( !@ROOT@Load( want, fileWire.data(), (int64_t) fileWire.size(), &fileReport ) )
+    if ( !fileWire.empty() && fileWire[0] == kTableFixedForm )
+    {
+        std::vector<TableFixedEntry> plan( 1024 );
+        if ( @ROOT@FixedLoad( &want, 1, fileWire.data(), (int64_t) fileWire.size(), plan.data(), (int32_t) plan.size(), NULL, &fileReport ) != 1 )
+            { printf( "@ROOT@FixedLoad refused the file-form golden\n" ); return 1; }
+    }
+    else if ( !@ROOT@Load( want, fileWire.data(), (int64_t) fileWire.size(), &fileReport ) )
         { printf( "@ROOT@Load refused the file-form golden\n" ); return 1; }
     @ROOT@ storage[1]; memset( storage, 0, sizeof( storage ) ); @ROOT@Reset( storage[0] );
     int64_t count = 1;
