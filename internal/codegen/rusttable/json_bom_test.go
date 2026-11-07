@@ -133,7 +133,7 @@ fn check_case(
     }
     println!(
         "CASE {name}: ok={got_ok} u={} k={} w={} c={} d={} malformed={} canon_len={} wire={got_wire_hex}",
-        rep.unknown, rep.kind_mismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed, got_canon.len()
+        rep.unknown, rep.mismatch, rep.widened, rep.oor, rep.repeated, rep.damaged, got_canon.len()
     );
     if got_ok != want_ok
         || (want_ok && (got_canon.as_slice() != want_canon || got_wire_hex != want_wire_hex))
@@ -141,11 +141,11 @@ fn check_case(
         println!(
             "MISMATCH {name} (bytes): got ok={got_ok} ({},{},{},{},{},{}) canon={:?} wire={got_wire_hex}, want ok={want_ok} ({want_u},{want_k},{want_w},{want_c},{want_d},{want_m}) canon={:?} wire={want_wire_hex}",
             rep.unknown,
-            rep.kind_mismatch,
+            rep.mismatch,
             rep.widened,
-            rep.clamped,
-            rep.duplicate,
-            rep.malformed,
+            rep.oor,
+            rep.repeated,
+            rep.damaged,
             String::from_utf8_lossy(&got_canon),
             String::from_utf8_lossy(want_canon),
         );
@@ -167,11 +167,11 @@ fn check_case(
             println!(
                 "MISMATCH {name} (str): got ok={got_s_ok} ({},{},{},{},{},{}) canon={:?} wire={got_s_wire_hex}, want ok={want_ok} ({want_u},{want_k},{want_w},{want_c},{want_d},{want_m}) canon={:?} wire={want_wire_hex}",
                 rep_str.unknown,
-                rep_str.kind_mismatch,
+                rep_str.mismatch,
                 rep_str.widened,
-                rep_str.clamped,
-                rep_str.duplicate,
-                rep_str.malformed,
+                rep_str.oor,
+                rep_str.repeated,
+                rep_str.damaged,
                 String::from_utf8_lossy(&got_s_canon),
                 String::from_utf8_lossy(want_canon),
             );

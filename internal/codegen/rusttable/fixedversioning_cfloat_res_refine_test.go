@@ -48,7 +48,7 @@ fn v_cfloat_res_refine_new_reads_old() {
         !report.refused && report.reason == TableFixedReason::None,
         "a clean NEW-READS-OLD is not a refusal: {:?}", report
     );
-    assert!(!report.malformed, "a clean backward read is not damage: {:?}", report);
+    assert!(!report.damaged, "a clean backward read is not damage: {:?}", report);
     assert_eq!(values[0].lead, 1, "the lead bracket moved: lead={}", values[0].lead);
     assert_eq!(values[0].trail, 2, "the trail bracket moved: trail={}", values[0].trail);
     assert_eq!(
@@ -57,11 +57,11 @@ fn v_cfloat_res_refine_new_reads_old() {
         values[0].aim.to_bits(), %[2]d
     );
     assert_eq!(
-        report.clamped, 0,
+        report.oor, 0,
         "a value on the reader's own grid needs no requantize, so clamped == 0: {:?}", report
     );
     assert!(
-        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
+        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
         "counters moved on a clean backward read: {:?}", report
     );
 }

@@ -52,9 +52,9 @@ func TestRustTextTotalNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, `let expected=vec!%s;let mut r=TableReport::default();let v=totals_from_json(%q,&mut r).unwrap();assert_eq!(r.clamped,10,"JSON streaming total");assert_eq!(r.clamped_field,"Totals.a");assert_eq!(totals_save(&v),expected);
-let wire=vec!%s;let mut r=TableReport::default();let back=totals_load(&wire,&mut r).unwrap();assert_eq!(r.clamped,10,"wire count plus element plus total");assert_eq!(r.clamped_field,"Totals.a");assert_eq!(totals_save(&back),expected);
-let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};let mut r=TableReport::default();let back=totals_load_retain(&wire,&mut store,&mut r).unwrap();assert_eq!(r.clamped,10);assert_eq!(totals_save_retain(&back,&mut store,&mut TableReport::default()),expected);
+	fmt.Fprintf(&b, `let expected=vec!%s;let mut r=TableReport::default();let v=totals_from_json(%q,&mut r).unwrap();assert_eq!(r.oor,10,"JSON streaming total");assert_eq!(r.oor_field,"Totals.a");assert_eq!(totals_save(&v),expected);
+let wire=vec!%s;let mut r=TableReport::default();let back=totals_load(&wire,&mut r).unwrap();assert_eq!(r.oor,10,"wire count plus element plus total");assert_eq!(r.oor_field,"Totals.a");assert_eq!(totals_save(&back),expected);
+let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};let mut r=TableReport::default();let back=totals_load_retain(&wire,&mut store,&mut r).unwrap();assert_eq!(r.oor,10);assert_eq!(totals_save_retain(&back,&mut store,&mut TableReport::default()),expected);
 `, rustByteVector(pin), input, rustByteVector(wire))
 	for _, big := range []bool{false, true} {
 		p, e := tablecook.Cook(m, expected, tablecook.Options{Big: big})
@@ -81,7 +81,7 @@ let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(
 	tail = append(tail, 0)
 	tail = binary.LittleEndian.AppendUint64(tail, ir.TableWireId("c"))
 	tail = binary.LittleEndian.AppendUint64(tail, 1)
-	fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=totals_from_json(r#"{"c":["aaaaa","x","\u0000"]}"#,&mut r).unwrap();assert_eq!(r.clamped,1);assert_eq!(v.c.len(),1);let mut r=TableReport::default();let v=totals_load(&vec!%s,&mut r).unwrap();assert_eq!(r.clamped,1);assert_eq!(v.c.len(),1);}println!("total ok");`, rustByteVector(tail))
+	fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=totals_from_json(r#"{"c":["aaaaa","x","\u0000"]}"#,&mut r).unwrap();assert_eq!(r.oor,1);assert_eq!(v.c.len(),1);let mut r=TableReport::default();let v=totals_load(&vec!%s,&mut r).unwrap();assert_eq!(r.oor,1);assert_eq!(v.c.len(),1);}println!("total ok");`, rustByteVector(tail))
 	out, e := rustConstructProbe(t, u, b.String())
 	if e != nil || !strings.Contains(out, "total ok") {
 		t.Fatalf("total native: %v\n%s", e, out)

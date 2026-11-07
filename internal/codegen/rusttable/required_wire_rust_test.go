@@ -89,7 +89,7 @@ for retaining in [false,true] {
 let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::new()};
 let mut report=TableReport::default();report.missing_required=7;
 let value=if retaining {%s_load_retain(&wire,&mut store,&mut report)} else {%s_load(&wire,&mut report)};
-if value.is_some()!=%t || report.malformed!=%t || report.refused!=%t || report.missing_required!=%d || report.missing_required_reason().as_deref().unwrap_or("")!=%q || report.kind_mismatch!=%d || report.widened!=%d {
+if value.is_some()!=%t || report.damaged!=%t || report.refused!=%t || report.missing_required!=%d || report.missing_required_reason().as_deref().unwrap_or("")!=%q || report.mismatch!=%d || report.widened!=%d {
 failures.push(format!("%s retaining={}: value={} report={:?}",retaining,value.is_some(),report));
 }
 if value.is_none() && (!store.bytes.is_empty() || !store.ids.is_empty()) {failures.push(String::from("%s retained partial state"));}

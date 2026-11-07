@@ -77,7 +77,7 @@ func TestRustRequiredJSONNative(t *testing.T) {
 		fmt.Fprintf(&body, `{
 let mut report=TableReport::default();
 let value=%s_from_json(%q,&mut report);
-if value.is_some()!=%t || report.malformed || report.kind_mismatch!=%d || report.duplicate!=%d || report.reason.name()!=%q || report.missing_required_reason().as_deref().unwrap_or("")!=%q || report.missing_required!=%d || report.refused!=%t {
+if value.is_some()!=%t || report.damaged || report.mismatch!=%d || report.repeated!=%d || report.reason.name()!=%q || report.missing_required_reason().as_deref().unwrap_or("")!=%q || report.missing_required!=%d || report.refused!=%t {
  failures.push(format!("%s: value={} report={:?}",value.is_some(),report));
 }
 println!("case %s ok");

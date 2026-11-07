@@ -66,7 +66,7 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
         !report.refused && report.reason == TableFixedReason::None,
         "a forged ordinal is not a refusal: {:?}", report
     );
-    assert!(!report.malformed, "a forged ordinal is not damage: {:?}", report);
+    assert!(!report.damaged, "a forged ordinal is not damage: {:?}", report);
     assert!(
         values[0].tier == 0,
         "an ordinal past the writer's variants lands None, not {}", values[0].tier
@@ -77,11 +77,11 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
     );
     assert!(values[0].seq == 9, "the scalar after the enum is untouched: {}", values[0].seq);
     assert_eq!(
-        report.clamped, 1,
+        report.oor, 1,
         "the bounds pass counts the forged ordinal EXACTLY once, never twice: {:?}", report
     );
     assert!(
-        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
+        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
         "no other counter moved: {:?}", report
     );
 `, forged)

@@ -45,7 +45,7 @@ func TestRustMapValueShapeNative(t *testing.T) {
 		fmt.Fprintf(&body, `{
 let mut report=TableReport::default();
 let result=maps_from_json(%q,&mut report);
-assert_eq!((result.is_some(),report.kind_mismatch,report.duplicate,report.malformed),(%t,%d,%d,%t),"map value %s");
+assert_eq!((result.is_some(),report.mismatch,report.repeated,report.damaged),(%t,%d,%d,%t),"map value %s");
 `, tc.Input, !tc.Malformed, tc.Mismatch, tc.Duplicate, tc.Malformed, tc.Name)
 		if !tc.Malformed {
 			value := m.New(u.Tables["Maps"])

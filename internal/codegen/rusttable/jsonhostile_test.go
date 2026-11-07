@@ -106,7 +106,7 @@ use variable_runtime::*;
 fn verdict(text: &[u8]) -> String {
     let mut r = TableReport::default();
     match probe_from_json_bytes(text, &mut r) {
-        Some(_) if !r.malformed => format!("{},{},{},{},{}", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate),
+        Some(_) if !r.damaged => format!("{},{},{},{},{}", r.unknown, r.mismatch, r.widened, r.oor, r.repeated),
         _ => "refused".to_string(),
     }
 }

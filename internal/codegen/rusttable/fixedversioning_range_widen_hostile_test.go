@@ -66,10 +66,10 @@ fn %[1]s() {
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
     let n = n.unwrap_or_else(|| panic!("the NEW reader REFUSED the forged file: {} {:?}", report.reason.name(), report));
     assert_eq!(n, 1, "the forged file carries one record, not {n}");
-    assert!(!report.refused && !report.malformed, "a clamped read is not a refusal: {:?}", report);
-%[4]s    assert_eq!(report.clamped, %[5]d, "one forged value, one clamp");
+    assert!(!report.refused && !report.damaged, "a clamped read is not a refusal: {:?}", report);
+%[4]s    assert_eq!(report.oor, %[5]d, "one forged value, one clamp");
     assert!(
-        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
+        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
         "a counter that must not move did: {:?}", report
     );
 }

@@ -60,11 +60,11 @@ use std::io::{self, Read, Write};
 struct Reply {
     loaded: bool,
     unknown: u64,
-    kind_mismatch: u64,
+    mismatch: u64,
     widened: u64,
-    clamped: u64,
-    duplicate: u64,
-    malformed: bool,
+    oor: u64,
+    repeated: u64,
+    damaged: bool,
     refused: bool,
     measure: i64,
     retained: u64,
@@ -116,12 +116,12 @@ macro_rules! arm {
             }
         }
         reply.unknown = report.unknown;
-        reply.kind_mismatch = report.kind_mismatch;
+        reply.mismatch = report.mismatch;
         reply.widened = report.widened;
-        reply.clamped = report.clamped;
-        reply.duplicate = report.duplicate;
-        reply.malformed = report.malformed;
-        reply.refused = report.refused;
+        reply.oor = report.oor;
+        reply.repeated = report.repeated;
+        reply.damaged = report.damaged;
+        reply.refused = report.refused || report.err().is_some();
         Some(reply)
     }};
 }
@@ -153,12 +153,12 @@ macro_rules! message_arm {
             reply.save_fail = true;
         }
         reply.unknown = report.unknown;
-        reply.kind_mismatch = report.kind_mismatch;
+        reply.mismatch = report.mismatch;
         reply.widened = report.widened;
-        reply.clamped = report.clamped;
-        reply.duplicate = report.duplicate;
-        reply.malformed = report.malformed;
-        reply.refused = report.refused;
+        reply.oor = report.oor;
+        reply.repeated = report.repeated;
+        reply.damaged = report.damaged;
+        reply.refused = report.refused || report.err().is_some();
         Some(reply)
     }};
 }
@@ -413,18 +413,18 @@ fn main() {
             // tolerant read; the loader's Option only says it decoded no
             // value. The harness's loaded bit says the region still exists.
             reply.loaded = true;
-            if reply.measure < 0 && !reply.refused { reply.malformed = true; }
+            if reply.measure < 0 && !reply.refused { reply.damaged = true; }
         }
         // loaded, unknown, kind_mismatch, widened, clamped, duplicate, malformed,
         // refused, measure (i64), retained, retain_lost, saved length
         let mut head = [0u8; 47];
         head[0] = reply.loaded as u8;
         head[1..5].copy_from_slice(&(reply.unknown as u32).to_le_bytes());
-        head[5..9].copy_from_slice(&(reply.kind_mismatch as u32).to_le_bytes());
+        head[5..9].copy_from_slice(&(reply.mismatch as u32).to_le_bytes());
         head[9..13].copy_from_slice(&(reply.widened as u32).to_le_bytes());
-        head[13..17].copy_from_slice(&(reply.clamped as u32).to_le_bytes());
-        head[17..21].copy_from_slice(&(reply.duplicate as u32).to_le_bytes());
-        head[21] = reply.malformed as u8;
+        head[13..17].copy_from_slice(&(reply.oor as u32).to_le_bytes());
+        head[17..21].copy_from_slice(&(reply.repeated as u32).to_le_bytes());
+        head[21] = reply.damaged as u8;
         head[22] = reply.refused as u8;
         head[23..31].copy_from_slice(&reply.measure.to_le_bytes());
         head[31..35].copy_from_slice(&(reply.retained as u32).to_le_bytes());

@@ -45,7 +45,7 @@ func TestRustUnboundedTextNative(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=root_from_json(%q,&mut r).unwrap();assert_eq!((r.clamped,r.kind_mismatch,r.duplicate),(%d,%d,%d),"reports%d");assert_eq!(root_to_json(&v).trim_end(),%q,"JSON%d");let wire=vec!%s;assert_eq!(root_save_checked(&v).unwrap(),wire,"wire%d");let back=root_load(&wire,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);let mut store=TableRetain{bytes:Vec::with_capacity(65536),ids:Vec::with_capacity(65536)};let back=root_load_retain(&wire,&mut store,&mut TableReport::default()).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut TableReport::default()),wire);`, input, 0, 0, 0, i, string(text), i, rustByteVector(wire), i)
+		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=root_from_json(%q,&mut r).unwrap();assert_eq!((r.oor,r.mismatch,r.repeated),(%d,%d,%d),"reports%d");assert_eq!(root_to_json(&v).trim_end(),%q,"JSON%d");let wire=vec!%s;assert_eq!(root_save_checked(&v).unwrap(),wire,"wire%d");let back=root_load(&wire,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);let mut store=TableRetain{bytes:Vec::with_capacity(65536),ids:Vec::with_capacity(65536)};let back=root_load_retain(&wire,&mut store,&mut TableReport::default()).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut TableReport::default()),wire);`, input, 0, 0, 0, i, string(text), i, rustByteVector(wire), i)
 		measured, whole, refused := tablewire.FileRegionMeasure(u, u.Tables["Root"], wire)
 		if !whole || refused {
 			t.Fatal("measure", measured, whole, refused)

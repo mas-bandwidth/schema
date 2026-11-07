@@ -172,17 +172,17 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
         let wire: &[u8] = &[%s];
         for old_damage in [false, true] {
             for retaining in [false, true] {
-                let mut report = TableReport { unknown: 7, kind_mismatch: 11, widened: 13, clamped: 17,
-                    duplicate: 19, retained: 23, retain_lost: 29, malformed: old_damage,
+                let mut report = TableReport { unknown: 7, mismatch: 11, widened: 13, oor: 17,
+                    repeated: 19, retained: 23, retain_lost: 29, damaged: old_damage,
                     cycle_on_save: true, ..Default::default() };
                 let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: vec![123] };
                 store.bytes.push(99);
                 let result = if retaining { %s_load_retain(wire, &mut store, &mut report) } else { %s_load(wire, &mut report) };
                 check!(result.is_none(), "%s/%d partial value");
                 check!(report.refused && report.reason == TableReason::CountOverExtentCap, "%s/%d named count refusal");
-                check!(report.malformed == old_damage && report.cycle_on_save, "%s/%d damage history");
-                check!(report.unknown == %d && report.kind_mismatch == 11 && report.widened == 13 &&
-                    report.clamped == 17 && report.duplicate == 19 && report.retained >= 23 &&
+                check!(report.damaged == old_damage && report.cycle_on_save, "%s/%d damage history");
+                check!(report.unknown == %d && report.mismatch == 11 && report.widened == 13 &&
+                    report.oor == 17 && report.repeated == 19 && report.retained >= 23 &&
                     report.retain_lost >= 29, "%s/%d counters");
                 check!(!retaining || (store.bytes.is_empty() && store.ids.is_empty()), "%s/%d retained partial state");
             }
@@ -201,12 +201,12 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
         let wire: &[u8] = &[%s];
         for retaining in [false, true] {
             let mut report = TableReport { refused: true, reason: TableReason::CountOverExtentCap,
-                malformed: true, cycle_on_save: true, ..Default::default() };
+                damaged: true, cycle_on_save: true, ..Default::default() };
             let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new() };
             let result = if retaining { %s_load_retain(wire, &mut store, &mut report) } else { %s_load(wire, &mut report) };
             check!(result.is_some(), "%s prior refusal is not current control state");
             check!(report.refused && report.reason == TableReason::CountOverExtentCap &&
-                report.malformed && report.cycle_on_save, "%s history preserved after good read");
+                report.damaged && report.cycle_on_save, "%s history preserved after good read");
         }
     }
 `, rustBytes(wire), load, load, shape, shape)
@@ -241,9 +241,9 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
         check!(!retaining || (store.bytes.is_empty() && store.ids.is_empty()), "body-short retained state");
     }
     for (form, reason) in [(2, TableReason::MessageFormAsFile), (255, TableReason::NewerForm)] {
-        let mut report = TableReport { malformed: true, unknown: 7, ..Default::default() };
+        let mut report = TableReport { damaged: true, unknown: 7, ..Default::default() };
         check!(leaf_load(&[form], &mut report).is_none() && report.refused && report.reason == reason, "form refusal name");
-        check!(report.malformed && report.unknown == 7, "form preserves history");
+        check!(report.damaged && report.unknown == 7, "form preserves history");
     }
     if failures != 0 { std::process::exit(1); }
 `, rustBytes(short))
@@ -282,8 +282,8 @@ func TestCountRefusalKeepsEarnedPrefixRust(t *testing.T) {
             let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new() };
             let result = if retaining { holder_load_retain(wire, &mut store, &mut report) } else { holder_load(wire, &mut report) };
             assert!(result.is_none() && report.refused && report.reason == TableReason::CountOverExtentCap, "%s reason");
-            assert!(!report.malformed && report.unknown == %d && report.widened == %d,
-                "%s prefix retaining={}: unknown={} widened={} malformed={}", retaining, report.unknown, report.widened, report.malformed);
+            assert!(!report.damaged && report.unknown == %d && report.widened == %d,
+                "%s prefix retaining={}: unknown={} widened={} malformed={}", retaining, report.unknown, report.widened, report.damaged);
             assert!(report.retained == if retaining { %d } else { 23 } &&
                 report.retain_lost == if retaining { %d } else { 29 },
                 "%s retention counters: retained={} lost={}", report.retained, report.retain_lost);

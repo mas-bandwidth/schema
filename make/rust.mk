@@ -374,8 +374,11 @@ build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 # and release proves they are GONE and the bytes are still the reference's.
 .PHONY: tables-rust-fixedform
 tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp
-	cd test/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
-	cd test/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
+	@mkdir -p build/rust-fixedform/src
+	@cp test/rust-fixedform/Cargo.toml build/rust-fixedform/Cargo.toml
+	@sed -e 's/\.kind_mismatch/.mismatch/g' -e 's/\.clamped/.oor/g' -e 's/\.malformed/.damaged/g' test/rust-fixedform/src/main.rs > build/rust-fixedform/src/main.rs
+	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
+	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE RUST LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
@@ -1016,7 +1019,7 @@ tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 .PHONY: tables-rust-wire-fuzz-negative-control
 tables-rust-wire-fuzz-negative-control: build/conformance-harness
 	@rm -rf build/rust-wire-fuzz-control && mkdir -p build/rust-wire-fuzz-control
-	@sed '/index - 2 >= self.slots.len() as u64 {/{n;s|report.malformed = true;|/* SABOTAGED */|;}' \
+	@sed '/index - 2 >= self.slots.len() as u64 {/{n;s|report.damaged = true;|/* SABOTAGED */|;}' \
 		internal/codegen/rusttable/variable.go > build/rust-wire-fuzz-control/variable.go.txt
 	@test "$$(grep -c SABOTAGED build/rust-wire-fuzz-control/variable.go.txt)" = 2 || \
 		{ echo "NEGATIVE CONTROL: the node-index sabotage did not apply twice"; exit 1; }
@@ -1554,10 +1557,10 @@ cards-rust-test: cards-rust-generate
 	@cp build/tables-generated-rust/cards/src/card.rs build/cards-rust/
 	@cp build/tables-generated-rust/cards/src/card_descriptors.rs build/cards-rust/
 	@cp tables/cards/rust/Cargo.toml build/cards-rust/
-	@cp tables/cards/rust/src/lib.rs build/cards-rust/lib.rs
-	@cp tables/cards/rust/tests/cards.rs build/cards-rust/tests.rs
+	@sed -e 's/\.kind_mismatch/.mismatch/g' -e 's/\.clamped/.oor/g' -e 's/\.duplicate/.repeated/g' -e 's/\.malformed/.damaged/g' tables/cards/rust/src/lib.rs > build/cards-rust/lib.rs
+	@sed -e 's/\.kind_mismatch/.mismatch/g' -e 's/\.clamped/.oor/g' -e 's/\.duplicate/.repeated/g' -e 's/\.malformed/.damaged/g' tables/cards/rust/tests/cards.rs > build/cards-rust/tests.rs
 	@mkdir -p build/cards-rust/src/bin
-	@cp tables/cards/rust/src/bin/cards-driver.rs build/cards-rust/src/bin/cards-driver.rs
+	@sed -e 's/\.kind_mismatch/.mismatch/g' -e 's/\.clamped/.oor/g' -e 's/\.duplicate/.repeated/g' -e 's/\.malformed/.damaged/g' tables/cards/rust/src/bin/cards-driver.rs > build/cards-rust/src/bin/cards-driver.rs
 	PATH="$(RUSTUP_BIN):$$PATH" cargo build --offline --manifest-path build/cards-rust/Cargo.toml
 	PATH="$(RUSTUP_BIN):$$PATH" cargo test --offline --manifest-path build/cards-rust/Cargo.toml
 	PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --manifest-path build/cards-rust/Cargo.toml -- -D warnings
@@ -1668,8 +1671,8 @@ conformance-negative-control-rust-framing: build/conformance-harness build/table
 	@rm -rf $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share && mkdir -p $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share
 	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/
 	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)-share/
-	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL),tblr1,if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; },if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; })
-	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL),graphdemo,if report.cycle_on_save { report.malformed = true; return None; },if false \&\& report.cycle_on_save { report.malformed = true; return None; })
+	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL),tblr1,if count > ID_TABLE_PROBE_BOUND as u64 { report.damaged = true; return None; },if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.damaged = true; return None; })
+	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL),graphdemo,if report.cycle_on_save { report.damaged = true; return None; },if false \&\& report.cycle_on_save { report.damaged = true; return None; })
 	@grep -rl 'TableNodeSlot::Built(_, n) => return Some(n.clone()),' $(RUST_FRAMING_CONTROL)-share/graphdemo | \
 		xargs sed -i.orig 's|TableNodeSlot::Built(_, n) => return Some(n.clone()),|TableNodeSlot::Built(_, _) => { report.cycle_on_save = true; return None; } /* SABOTAGED */|'
 	@grep -rq SABOTAGED $(RUST_FRAMING_CONTROL)-share/graphdemo || { echo "NEGATIVE CONTROL: the share sabotage did not apply"; exit 1; }

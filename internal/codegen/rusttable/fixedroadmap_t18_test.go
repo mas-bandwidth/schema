@@ -152,7 +152,7 @@ fn save_and_load(v: LineageRow) -> (Vec<u8>, LineageRow, TableFixedReport) {
 }
 
 fn clean(r: &TableFixedReport) -> bool {
-    !r.refused && !r.malformed && r.clamped == 0 && r.unknown == 0 && r.kind_mismatch == 0
+    !r.refused && !r.damaged && r.oor == 0 && r.unknown == 0 && r.mismatch == 0
 }
 
 fn main() {
@@ -391,7 +391,7 @@ fn say(id: &str, ok: bool, why: &str) {
 }
 
 fn clean(r: &TableFixedReport) -> bool {
-    !r.refused && !r.malformed && r.clamped == 0 && r.unknown == 0 && r.kind_mismatch == 0
+    !r.refused && !r.damaged && r.oor == 0 && r.unknown == 0 && r.mismatch == 0
 }
 
 fn arm_bytes_of_row(p: &PickRow) -> [u8; 4] {
@@ -475,7 +475,7 @@ fn main() {
     say("payload-free-arms/rust/valid-data/signal", signal_ok, "signal payload-free arm failed");
 
     // tag-past-the-arm-set: forge tag byte > 3 and non-zero arm payload bytes;
-    // load clamps tag to None (0), increments report.clamped once, and never
+    // load clamps tag to None (0), increments report.oor once, and never
     // reads the forged payload into the overlay.
     let mut forged = vec![0u8; lineage_fixed_measure(1)];
     lineage_fixed_save(&[r0], &mut forged).expect("save 1");
@@ -490,8 +490,8 @@ fn main() {
         .expect("forged tag loads with clamp");
     let clamp_ok = fn_read == 1
         && !freport.refused
-        && !freport.malformed
-        && freport.clamped == 1
+        && !freport.damaged
+        && freport.oor == 1
         && fout[0].lead == -100
         && fout[0].trail == 100
         && fout[0].pick.tag() == 0

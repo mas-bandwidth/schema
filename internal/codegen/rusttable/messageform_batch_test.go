@@ -219,7 +219,7 @@ func TestMessageFormBatchRust(t *testing.T) {
         let mut values = vec![CardRow::default(); %d];
         let mut lrep = TableReport::default();
         let (count, ok) = card_load_messages(&mut values, &vocab, &OLD, &mut lrep);
-        let counters = (lrep.unknown, lrep.kind_mismatch, lrep.widened, lrep.clamped);
+        let counters = (lrep.unknown, lrep.mismatch, lrep.widened, lrep.oor);
         let want = (%d, %d, %d, %d);
         let mut srep = TableReport::default();
         let mut buf = vec![0xa5u8; WANT.len()];
@@ -641,7 +641,7 @@ const messageBatchRefusalsMain = `
         let mut rep = TableReport::default();
         let mut values = vec![RootRow::default(); 4];
         let (count, ok) = root_load_messages(&mut values, &fresh, &wire, &mut rep);
-        say("no_vocabulary", !ok && count == 0 && rep.refused && rep.reason == TableReason::NoVocabulary && !rep.malformed && rep.unknown == 0 && values[0].a == 0,
+        say("no_vocabulary", !ok && count == 0 && rep.refused && rep.reason == TableReason::NoVocabulary && !rep.damaged && rep.unknown == 0 && values[0].a == 0,
             format!("count={count} report={rep:?}"));
     }
     {
@@ -666,7 +666,7 @@ const messageBatchRefusalsMain = `
         let mut values = vec![RootRow::default(); 2];
         let mut rep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &buf, &mut rep);
-        say("batch_too_large_read", !ok && count == 3 && rep.refused && rep.reason == TableReason::BatchTooLarge && !rep.malformed,
+        say("batch_too_large_read", !ok && count == 3 && rep.refused && rep.reason == TableReason::BatchTooLarge && !rep.damaged,
             format!("count={count} report={rep:?}"));
     }
     {
@@ -677,7 +677,7 @@ const messageBatchRefusalsMain = `
             let mut values = vec![RootRow::default(); 1];
             let mut rep = TableReport::default();
             let (count, ok) = root_load_messages(&mut values, &vocab, &[form], &mut rep);
-            all = all && !ok && count == 0 && rep.refused && rep.reason == TableReason::NewerForm && !rep.malformed;
+            all = all && !ok && count == 0 && rep.refused && rep.reason == TableReason::NewerForm && !rep.damaged;
         }
         say("newer_form", all, "a foreign form byte was not refused as newer_form".to_string());
     }
@@ -700,7 +700,7 @@ const messageBatchRefusalsMain = `
         let mut rep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &forged, &mut rep);
         let reset = values.iter().all(|v| v.a == 0);
-        say("damage_in_body_two", !ok && count == 0 && reset && rep.malformed && !rep.refused, format!("count={count} reset={reset} report={rep:?}"));
+        say("damage_in_body_two", !ok && count == 0 && reset && rep.damaged && !rep.refused, format!("count={count} reset={reset} report={rep:?}"));
     }
     {
         // "BYTES AFTER THE PAD ARE MALFORMED ... a buffer with bytes left over
@@ -712,7 +712,7 @@ const messageBatchRefusalsMain = `
         let mut rep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &padded, &mut rep);
         let reset = values[0].a == 0;
-        say("bytes_after_pad", !ok && count == 0 && reset && rep.malformed && !rep.refused, format!("count={count} reset={reset} report={rep:?}"));
+        say("bytes_after_pad", !ok && count == 0 && reset && rep.damaged && !rep.refused, format!("count={count} reset={reset} report={rep:?}"));
     }
     {
         // A buffer too short for the batch is a -1 and never a partial write.
@@ -743,7 +743,7 @@ const messageBatchRefusalsMain = `
         w_buf[0] = 2;
         w_buf[1] = 0;
         let (count, ok) = root_load_messages(&mut values, &v2, &w_buf[..2 + used], &mut rep);
-        ok_all = ok_all && ok && count == 1 && rep.unknown == 1 && !rep.malformed && values[0].a == 0;
+        ok_all = ok_all && ok && count == 1 && rep.unknown == 1 && !rep.damaged && values[0].a == 0;
         say("unknown_field_skipped", ok_all, format!("count={count} ok={ok} report={rep:?}"));
     }
     {
@@ -781,12 +781,12 @@ const messageBatchRefusalsMain = `
         let mut values = vec![RootRow::default(); 1];
         let mut rep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &forge(qcount as u64), &mut rep);
-        say("quantized_index_at_count", shaped && ok && count == 1 && !rep.malformed && values[0].d == 1.0,
+        say("quantized_index_at_count", shaped && ok && count == 1 && !rep.damaged && values[0].d == 1.0,
             format!("slot={slot} bits={qbits} count={qcount} delivered={count} ok={ok} d={} report={rep:?}", values[0].d));
         let mut values = vec![RootRow::default(); 1];
         let mut rep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &forge(255), &mut rep);
-        say("quantized_index_above_count", shaped && !ok && count == 0 && rep.malformed && !rep.refused && values[0].d == 0.0,
+        say("quantized_index_above_count", shaped && !ok && count == 0 && rep.damaged && !rep.refused && values[0].d == 0.0,
             format!("slot={slot} bits={qbits} count={qcount} delivered={count} ok={ok} d={} report={rep:?}", values[0].d));
     }
 `

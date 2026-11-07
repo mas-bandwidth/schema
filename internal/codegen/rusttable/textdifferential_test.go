@@ -173,7 +173,7 @@ fn main() {
                     Some(v) => v,
                     None => fail(&format!("instance {i}: from_json of the engine text refused")),
                 };
-                if rep.malformed || rep.refused || rep.unknown != 0 || rep.kind_mismatch != 0 || rep.clamped != 0 || rep.duplicate != 0 {
+                if rep.damaged || rep.refused || rep.unknown != 0 || rep.mismatch != 0 || rep.oor != 0 || rep.repeated != 0 {
                     fail(&format!("instance {i}: from_json of the engine text reports loss"));
                 }
                 fs::write(format!("{dir}/back-{i}.wire"), root_save(&v)).unwrap();

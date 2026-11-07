@@ -660,12 +660,12 @@ func (g *gen) emitFixedScatterField(f *ir.Field, off int64) {
 }
 
 // emitFixedScatterCount is §3.4's `count` op inline: read it, clamp it to THIS
-// reader's own bound, and count one clamped if it fired.
+// reader's own bound, and count one held if it fired.
 func (g *gen) emitFixedScatterCount(member string, at, bound int64) {
 	g.pf("    {\n")
 	g.pf("        let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", at, at+4)
 	g.pf("        let held = raw.clamp(0, %d);\n", bound)
-	g.pf("        if held != raw {\n            report.clamped += 1;\n        }\n")
+	g.pf("        if held != raw {\n            report.oor += 1;\n        }\n")
 	g.pf("        value.%s = held;\n", member)
 	g.pf("    }\n")
 }
@@ -736,12 +736,12 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 		if extent, ranged := fixedEnumExtent(f, width); ranged {
 			// AN ORDINAL PAST THE DECLARED EXTENT IS OUT OF RANGE, exactly as a
 			// union tag past the arm count is (see the union's scatter below):
-			// it lands as None and counts one clamped rather than arriving as a
+			// it lands as None and counts one held rather than arriving as a
 			// number this build has no variant for. The identity plan copies
 			// the ordinal verbatim out of a stranger's record, so the scatter is
 			// where the range is closed — the same place a count's bound is.
 			g.pf("%s    if raw > %d {\n", ind, extent)
-			g.pf("%s        report.clamped += 1;\n", ind)
+			g.pf("%s        report.oor += 1;\n", ind)
 			g.pf("%s", set(ind+"        ", "0"))
 			g.pf("%s    } else {\n", ind)
 			g.pf("%s", set(ind+"        ", held))
@@ -885,7 +885,7 @@ func (g *gen) emitFixedWriteArm(f *ir.Field, base int64, armExpr string, indent 
 	}
 }
 
-// emitFixedScatterUnion lands one union's image in the value: the TAG, clamped
+// emitFixedScatterUnion lands one union's image in the value: the TAG, held
 // to this build's own arm count, and then the arm the tag selects.
 //
 // A TAG BEYOND THE ARM COUNT LANDS AS NONE AND COUNTS ONE CLAMPED. It is the
@@ -915,9 +915,9 @@ func (g *gen) emitFixedScatterUnion(un *ir.Union) {
 	}
 	if int64(len(un.Variants)) < tagMax(tagw) {
 		g.pf("    // A TAG PAST THE ARM COUNT IS OUT OF RANGE, as a count past its bound is:\n")
-		g.pf("    // it lands as None and counts one clamped rather than selecting nothing\n")
+		g.pf("    // it lands as None and counts one held rather than selecting nothing\n")
 		g.pf("    // silently.\n")
-		g.pf("    if tag_raw > %d {\n        report.clamped += 1;\n    } else {\n        value.tag = tag_raw;\n    }\n", len(un.Variants))
+		g.pf("    if tag_raw > %d {\n        report.oor += 1;\n    } else {\n        value.tag = tag_raw;\n    }\n", len(un.Variants))
 	} else {
 		// EVERY VALUE OF THE TAG'S WIDTH NAMES AN ARM, so there is no
 		// out-of-range tag to clamp and a comparison here would be one the
@@ -965,7 +965,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.ArrayBound)
-		g.pf("%s    if held != raw {\n%s        report.clamped += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw {\n%s        report.oor += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_count = held;\n%s}\n", ind, ind)
 		if f.ArrayBound > 0 {
 			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
@@ -976,7 +976,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw {\n%s        report.clamped += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw {\n%s        report.oor += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value = [0u8; %d];\n", ind, f.Type.Size+1)
 		g.pf("%sarm.value[..%d].copy_from_slice(&b[%d..%d]);\n", ind, f.Type.Size, base+4, base+4+f.Type.Size)
@@ -985,7 +985,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw {\n%s        report.clamped += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw {\n%s        report.oor += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value = [0u16; %d];\n", ind, f.Type.Size+1)
 		g.pf("%sfor i in 0..%d {\n%s    let at = %d + 2 * i;\n", ind, f.Type.Size, ind, base+4)
@@ -995,7 +995,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw {\n%s        report.clamped += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw {\n%s        report.oor += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value.copy_from_slice(&b[%d..%d]);\n", ind, base+4, base+4+f.Type.Size)
 	default:
@@ -1129,7 +1129,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		writerClamps = append(writerClamps, i)
 		g.pf("/// LINEAGE ENTRY %d's WRITER RANGES (§4.5): every clamp counts.\n", i)
 		g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
-		g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32) {\n", fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)), st.Name)
+		g.pf("pub fn %s(value: &mut %sRow, oor: &mut i32) {\n", fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)), st.Name)
 		for _, f := range fields {
 			g.emitFixedClampField(f, "value."+f.Name, 4)
 		}
@@ -1177,7 +1177,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    /// per record (§5.4), carried onto the report after the record loop on\n")
 		g.pf("    /// a read that RETURNS (§5.9 #6).\n")
 		g.pf("    pub unknown: [u32; %d],\n", len(lineage))
-		g.pf("    pub kind_mismatch: [u32; %d],\n", len(lineage))
+		g.pf("    pub mismatch: [u32; %d],\n", len(lineage))
 		g.pf("    /// `None` on an entry whose plan fits; the refusal LOAD answers with\n")
 		g.pf("    /// when a file selects an entry whose plan does not (§5.9 #4), or whose\n")
 		g.pf("    /// recorded layout is not a parseable one at all (§5.9 #8).\n")
@@ -1190,7 +1190,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        remap: vec![vec![0u16; %s_FIXED_REMAP_CAP]; %d],\n", up, len(lineage))
 		g.pf("        count: [0usize; %d],\n", len(lineage))
 		g.pf("        unknown: [0u32; %d],\n", len(lineage))
-		g.pf("        kind_mismatch: [0u32; %d],\n", len(lineage))
+		g.pf("        mismatch: [0u32; %d],\n", len(lineage))
 		g.pf("        reason: [TableFixedReason::None; %d],\n", len(lineage))
 		g.pf("    };\n")
 		g.pf("    let mine = match TableFixedBlock::parse(&%s_FIXED_BLOCK) {\n", up)
@@ -1216,7 +1216,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            Some(n) => {\n")
 		g.pf("                out.count[i] = n;\n")
 		g.pf("                out.unknown[i] = census.unknown;\n")
-		g.pf("                out.kind_mismatch[i] = census.kind_mismatch;\n")
+		g.pf("                out.mismatch[i] = census.mismatch;\n")
 		g.pf("            }\n")
 		g.pf("            // A compile that refused BY NAME keeps its name: an entry past\n")
 		g.pf("            // the writer's record is layout_record_too_large, and only a plan\n")
@@ -1297,11 +1297,11 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    remap: &mut [u16],\n")
 	g.pf("    report: &mut TableFixedReport,\n")
 	g.pf(") -> Option<usize> {\n")
-	g.pf("    let malformed_before = report.malformed;\n")
-	g.pf("    report.malformed = false;\n")
+	g.pf("    let damaged_before = report.damaged;\n")
+	g.pf("    report.damaged = false;\n")
 	g.pf("    let read = %s(values, data, plan, remap, report);\n", fn(st.Name, "fixed_load_records"))
-	g.pf("    let damaged = report.malformed;\n")
-	g.pf("    report.malformed |= malformed_before;\n")
+	g.pf("    let damaged = report.damaged;\n")
+	g.pf("    report.damaged |= damaged_before;\n")
 	g.pf("    if damaged {\n")
 	g.pf("        for value in values.iter_mut() {\n")
 	g.pf("            %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
@@ -1316,7 +1316,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    remap: &mut [u16],\n")
 	g.pf("    report: &mut TableFixedReport,\n")
 	g.pf(") -> Option<usize> {\n")
-	g.pf("    if data.is_empty() {\n        report.malformed = true;\n        return None;\n    }\n")
+	g.pf("    if data.is_empty() {\n        report.damaged = true;\n        return None;\n    }\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
 	g.pf("    // the registry is ordered, so a byte this reader does not carry is named\n")
 	g.pf("    // by where it sits relative to this form and never by one word for both.\n")
@@ -1331,11 +1331,11 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        });\n")
 	g.pf("    }\n")
 	if st.Integrity == "crc32c" {
-		g.pf("    let Some(data) = table_integrity_body(data, 5) else { report.malformed = true; return report.refuse(TableFixedReason::IntegrityMismatch); };\n")
+		g.pf("    let Some(data) = table_integrity_body(data, 5) else { report.damaged = true; return report.refuse(TableFixedReason::IntegrityMismatch); };\n")
 	}
-	g.pf("    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {\n        report.malformed = true;\n        return None;\n    }\n")
+	g.pf("    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {\n        report.damaged = true;\n        return None;\n    }\n")
 	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
-	g.pf("    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {\n        report.malformed = true;\n        return None;\n    }\n")
+	g.pf("    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {\n        report.damaged = true;\n        return None;\n    }\n")
 	g.pf("    let block_bytes = u32::from_le_bytes(\n")
 	g.pf("        data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]\n")
 	g.pf("            .try_into()\n            .expect(\"four bytes\"),\n    ) as usize;\n")
@@ -1400,7 +1400,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        entries = &plans.entries[found][..plans.count[found]];\n")
 		g.pf("        guards = &plans.guards[found][..];\n")
 		g.pf("        table = &plans.remap[found][..];\n")
-		g.pf("        census = (plans.unknown[found], plans.kind_mismatch[found]);\n")
+		g.pf("        census = (plans.unknown[found], plans.mismatch[found]);\n")
 		g.pf("    }\n")
 	} else {
 		g.pf("    // A UNIT WITH NO LOCK has a lineage of ONE — its own layout — so the\n")
@@ -1421,7 +1421,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // the caller's slice stays in the signature as the capacity it always was.\n")
 	g.pf("    let _ = remap;\n")
 	g.pf("    if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {\n")
-	g.pf("        report.malformed = true;\n        return None;\n    }\n")
+	g.pf("        report.damaged = true;\n        return None;\n    }\n")
 	g.pf("    let n = rest.len() / record_bytes;\n")
 	g.pf("    if n > values.len() {\n        return report.refuse(TableFixedReason::BatchTooLarge);\n    }\n")
 	g.pf("    // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one\n")
@@ -1433,14 +1433,14 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);\n")
 	g.pf("    let holes = &hole_buf[..hole_n];\n")
 	g.pf("    let mut image = [0u8; %s_FIXED_BODY_BYTES];\n", up)
-	g.pf("    let (clamped_before, widened_before) = (report.clamped, report.widened);\n")
+	g.pf("    let (oor_before, widened_before) = (report.oor, report.widened);\n")
 	g.pf("    for k in 0..n {\n")
 	g.pf("        let record = &rest[k * record_bytes..(k + 1) * record_bytes];\n")
 	g.pf("        if u64::from_le_bytes(record[..8].try_into().expect(\"eight bytes\")) != hash {\n")
 	g.pf("            for value in values.iter_mut().take(k) {\n")
 	g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
 	g.pf("            }\n")
-	g.pf("            report.clamped = clamped_before;\n")
+	g.pf("            report.oor = oor_before;\n")
 	g.pf("            report.widened = widened_before;\n")
 	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
 	g.pf("        for h in holes {\n")
@@ -1461,7 +1461,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            for value in values.iter_mut().take(k + 1) {\n")
 		g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
 		g.pf("            }\n")
-		g.pf("            report.clamped = clamped_before;\n")
+		g.pf("            report.oor = oor_before;\n")
 		g.pf("            report.widened = widened_before;\n")
 		g.pf("            return report.refuse_non_finite(why);\n")
 		g.pf("        }\n")
@@ -1469,28 +1469,28 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	if len(writerClamps) > 0 {
 		g.pf("        // THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),\n")
 		g.pf("        // then this reader's own below.\n")
-		g.pf("        {\n            let mut clamped = 0i32;\n")
+		g.pf("        {\n            let mut oor = 0i32;\n")
 		if len(writerClamps) == 1 {
 			i := writerClamps[0]
-			g.pf("            if found == %d {\n                %s(&mut values[k], &mut clamped);\n            }\n",
+			g.pf("            if found == %d {\n                %s(&mut values[k], &mut oor);\n            }\n",
 				i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
 		} else {
 			g.pf("            match found {\n")
 			for _, i := range writerClamps {
-				g.pf("                %d => %s(&mut values[k], &mut clamped),\n", i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+				g.pf("                %d => %s(&mut values[k], &mut oor),\n", i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
 			}
 			g.pf("                _ => {}\n            }\n")
 		}
-		g.pf("            report.clamped += clamped as u32;\n        }\n")
+		g.pf("            report.oor += oor as u32;\n        }\n")
 	}
 	if fixedRangeClampNeeded(st) {
 		g.pf("        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("        // storage the scatter just wrote: the same pass for either plan,\n")
 		g.pf("        // and only over what a read can have written (§3.4).\n")
 		g.pf("        {\n")
-		g.pf("            let mut clamped = 0i32;\n")
+		g.pf("            let mut oor = 0i32;\n")
 		g.pf("            let mut damaged = 0i32;\n")
-		g.pf("            %s(&mut values[k], &mut clamped, &mut damaged);\n", fn(st.Name, "fixed_clamp_body"))
+		g.pf("            %s(&mut values[k], &mut oor, &mut damaged);\n", fn(st.Name, "fixed_clamp_body"))
 		g.pf("            // ILL-FORMED TEXT IN THE USED UNITS IS A REFUSAL BY NAME (§4.5,\n")
 		g.pf("            // fix 11; §5.8 row 8): it is the packet reader's verdict, this form\n")
 		g.pf("            // having no `L` to continue past. REFUSE is total, so the refusal\n")
@@ -1499,10 +1499,10 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("                for value in values.iter_mut().take(k + 1) {\n")
 		g.pf("                    %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
 		g.pf("                }\n")
-		g.pf("                report.clamped = clamped_before;\n")
+		g.pf("                report.oor = oor_before;\n")
 		g.pf("                report.widened = widened_before;\n")
 		g.pf("                return report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
-		g.pf("            report.clamped += clamped as u32;\n")
+		g.pf("            report.oor += oor as u32;\n")
 		g.pf("        }\n")
 	}
 	g.pf("    }\n")
@@ -1512,7 +1512,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // (§5.4) — and a refusal that came after would have moved a counter, where\n")
 	g.pf("    // REFUSE IS TOTAL.\n")
 	g.pf("    report.unknown += census.0;\n")
-	g.pf("    report.kind_mismatch += census.1;\n")
+	g.pf("    report.mismatch += census.1;\n")
 	g.pf("    Some(n)\n}\n\n")
 }
 
@@ -1540,7 +1540,7 @@ func (g *gen) emitFixedByteArray(b []byte) {
 // TWO OF THE THREE ARE ALREADY HELD, and they are held in the SCATTER, because
 // this port's scatter is the straight-line decode: an ENUM ORDINAL past the
 // enum's top value and a UNION TAG past the arm count both land None and count
-// one clamped there (see emitFixedScatterElement and emitFixedScatterUnion).
+// one held there (see emitFixedScatterElement and emitFixedScatterUnion).
 // They cost nothing spurious over slack or over an absent optional's payload
 // either, because the value those carry is ZERO and zero is in range for both.
 //
@@ -1645,9 +1645,9 @@ func (g *gen) emitFixedClampBody(st *ir.Struct) {
 	g.pf("/// %s's read-side bounds: every RANGED SCALAR held to its declared min\n", st.Name)
 	g.pf("/// and max, over the storage a read can have written.\n")
 	g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
-	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32, damaged: &mut i32) {\n", fn(st.Name, "fixed_clamp_body"), st.Name)
+	g.pf("pub fn %s(value: &mut %sRow, oor: &mut i32, damaged: &mut i32) {\n", fn(st.Name, "fixed_clamp_body"), st.Name)
 	// a type with only one kind of bound in it uses only one of the two
-	g.pf("    let _ = (&clamped, &damaged);\n")
+	g.pf("    let _ = (&oor, &damaged);\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value."+f.Name, 4)
 	}
@@ -1663,8 +1663,8 @@ func (g *gen) emitFixedClampUnion(un *ir.Union) {
 	g.pf("/// %s's read-side bounds: the arm THE TAG NAMES, and no other — the\n", un.Name)
 	g.pf("/// overlay behind a narrower arm is bytes nobody wrote.\n")
 	g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
-	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32, damaged: &mut i32) {\n", fn(un.Name, "fixed_clamp_body"), un.Name)
-	g.pf("    let _ = (&clamped, &damaged);\n")
+	g.pf("pub fn %s(value: &mut %sRow, oor: &mut i32, damaged: &mut i32) {\n", fn(un.Name, "fixed_clamp_body"), un.Name)
+	g.pf("    let _ = (&oor, &damaged);\n")
 	var bounded []int
 	for i, v := range un.Variants {
 		if fixedRangeClampField(v.F, map[string]bool{}) {
@@ -1841,11 +1841,11 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if fixedRangeClampNeeded(r) {
-				g.pf("%s%s(&mut %s, clamped, damaged);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
+				g.pf("%s%s(&mut %s, oor, damaged);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
 			}
 		case *ir.Union:
 			if fixedRangeClampUnion(r) {
-				g.pf("%s%s(&mut %s, clamped, damaged);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
+				g.pf("%s%s(&mut %s, oor, damaged);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
 			}
 		}
 		return
@@ -1891,13 +1891,13 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 func (g *gen) emitFixedClampSelect(lhs, lo, hi string, low, high bool, ind, note string) {
 	switch {
 	case low && high:
-		g.pf("%s*clamped += ((%s < %s) | (%s > %s)) as i32;%s\n", ind, lhs, lo, lhs, hi, note)
+		g.pf("%s*oor += ((%s < %s) | (%s > %s)) as i32;%s\n", ind, lhs, lo, lhs, hi, note)
 		g.pf("%s%s = %s.clamp(%s, %s);\n", ind, lhs, lhs, lo, hi)
 	case low:
-		g.pf("%s*clamped += (%s < %s) as i32;%s\n", ind, lhs, lo, note)
+		g.pf("%s*oor += (%s < %s) as i32;%s\n", ind, lhs, lo, note)
 		g.pf("%s%s = %s.max(%s);\n", ind, lhs, lhs, lo)
 	case high:
-		g.pf("%s*clamped += (%s > %s) as i32;%s\n", ind, lhs, hi, note)
+		g.pf("%s*oor += (%s > %s) as i32;%s\n", ind, lhs, hi, note)
 		g.pf("%s%s = %s.min(%s);\n", ind, lhs, lhs, hi)
 	}
 }

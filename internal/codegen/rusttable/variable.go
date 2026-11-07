@@ -19,7 +19,7 @@ import (
 //
 // This file emits the RUST runtime of that wire: the canonical LEB128 every
 // length, count and reference on a FILE spells (§3), the form byte, the
-// tolerant read report (§4, §5), the scalar ladder (§4), the id table, the
+// strict read report (§4, §5), the scalar ladder (§4), the id table, the
 // numbering a save derives and the node table a load gathers (§3.1), and, per
 // source file, the constant every body codec carries: each field's wire id
 // (§5) beside its kind byte (§3).
@@ -105,7 +105,7 @@ func variableModules(u *ir.Unit) map[string][]byte {
 // variableRuntimeModule emits the shared framing the variable wire's bodies
 // ride on: the canonical LEB128 reader and writer (docs/SPEC-TABLES.md §3 —
 // every length, count and reference on a FILE is this one spelling) and the
-// tolerant report the reader fills (section 4, §5).
+// strict report the reader fills (section 4, §5).
 func variableRuntimeModule(u *ir.Unit) string {
 	var b strings.Builder
 	b.WriteString(header(runtimeSourceName(u), u.Package, "the variable wire's framing (docs/SPEC-TABLES.md §3, §4, §5)"))
@@ -298,7 +298,7 @@ pub struct TableNodeGraph {
     blobs: HashMap<usize, u64>,
     /// A blob two slots name (docs/SPEC-TABLES.md §2.5): the walk met its Rc
     /// a second time, so every writer refuses the graph by name, blob_shared.
-    pub blob_shared: bool,
+    pub shared_blob: bool,
 }
 
 impl TableNodeGraph {
@@ -325,7 +325,7 @@ impl TableNodeGraph {
         if self.blobs.contains_key(&key) {
             // A BLOB IS OWNED BY ONE SLOT (§2.5): the second naming is the
             // writer's refusal, never a second record or a copy per slot
-            self.blob_shared = true;
+            self.shared_blob = true;
             return;
         }
         self.records.push(TableNodeRecord::Blob(type_id, bytes.to_vec()));
@@ -346,7 +346,7 @@ impl TableNodeGraph {
 /// One record's state in a LOAD's numbering (docs/SPEC-TABLES.md §3.1).
 pub enum TableNodeSlot {
     /// a record this root cannot place (counted unknown once, at the record) or
-    /// a text blob refused as malformed: every slot naming it reads null
+    /// a text blob refused as damaged: every slot naming it reads null
     Null,
     /// a *bytes blob record (§2.5), materialized ONCE and shared by every
     /// slot that names it
@@ -379,7 +379,7 @@ pub struct TableNodeReader {
     pub recs: Vec<(u64, usize, usize)>,
     pub slots: Vec<TableNodeSlot>,
     /// which blob records a slot has already named (§2.5): each later naming
-    /// of the same record counts blob_shared on the tolerant read
+    /// of the same record counts blob_shared on the strict read
     pub blob_named: Vec<bool>,
     /// the ROOT's descent is open while its body decodes and closed after:
     /// a slot naming the root while it is open is a cycle (§3.1)
@@ -402,7 +402,7 @@ impl TableNodeReader {
     /// damage on the root body ends the gathering scan with what it found and
     /// is counted by the body read, not here. A node table under a kind other than 12, a record
     /// that runs past its field, bytes left over, or a node_count the scan
-    /// does not match make the TABLE malformed: good is false, one malformed
+    /// does not match make the TABLE damaged: good is false, one damaged
     /// counts, and nothing in it is counted unknown, because the numbering it
     /// belonged to does not exist. A record whose type id this root cannot
     /// place keeps its index and counts unknown once; a *string blob that is
@@ -426,15 +426,15 @@ impl TableNodeReader {
                 continue;
             }
             if kind != 12 {
-                report.malformed = true;
+                report.damaged = true;
                 reader.good = false;
                 reader.recs.clear();
                 break;
             }
             // A truncated node-table length cannot borrow trailer bytes. The
             // root body still decodes its preceding fields with null nodes.
-            let Some(l) = leb_read(&wire[..end], &mut off) else { report.malformed = true; reader.good = false; reader.recs.clear(); break; };
-            if off > end || l > (end - off) as u64 { report.malformed = true; reader.good = false; reader.recs.clear(); break; }
+            let Some(l) = leb_read(&wire[..end], &mut off) else { report.damaged = true; reader.good = false; reader.recs.clear(); break; };
+            if off > end || l > (end - off) as u64 { report.damaged = true; reader.good = false; reader.recs.clear(); break; }
             let sub = off + l as usize;
             let mut recs = Vec::new();
             let mut scan_ok = true;
@@ -470,7 +470,7 @@ impl TableNodeReader {
                     if text_valid(bytes) {
                         reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         reader.slots.push(TableNodeSlot::Null);
                     }
                 } else if placeable.contains(&tid) {
@@ -484,7 +484,7 @@ impl TableNodeReader {
                 }
             }
         } else {
-            report.malformed = true;
+            report.damaged = true;
             reader.recs.clear();
         }
         Some(reader)
@@ -592,22 +592,22 @@ impl TableNodeReader {
             return None;
         }
         if index == 1 {
-            if want != self.root_type { report.kind_mismatch += 1; return None; }
+            if want != self.root_type { report.mismatch += 1; return None; }
             return Some(0);
         }
         let k = (index - 2) as usize;
         if index - 2 >= self.slots.len() as u64 {
-            report.malformed = true;
+            report.damaged = true;
             return None;
         }
         match &self.slots[k] {
             TableNodeSlot::Null => None,
-            TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.kind_mismatch += 1; None }
+            TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.mismatch += 1; None }
             TableNodeSlot::Table(t) | TableNodeSlot::Built(t, _) => {
-                if *t == want { Some(k + 1) } else { report.kind_mismatch += 1; None }
+                if *t == want { Some(k + 1) } else { report.mismatch += 1; None }
             }
             TableNodeSlot::Building => {
-                if self.recs[k].0 == want { Some(k + 1) } else { report.kind_mismatch += 1; None }
+                if self.recs[k].0 == want { Some(k + 1) } else { report.mismatch += 1; None }
             }
         }
     }
@@ -620,17 +620,17 @@ impl TableNodeReader {
             return None;
         }
         if index == 1 {
-            report.kind_mismatch += 1;
+            report.mismatch += 1;
             return None;
         }
         if index - 2 >= self.slots.len() as u64 {
-            report.malformed = true;
+            report.damaged = true;
             return None;
         }
         Some(&self.slots[(index - 2) as usize])
     }
 
-    /// Count a blob record's naming (§2.5): the tolerant read keeps the ONE
+    /// Count a blob record's naming (§2.5): the strict read keeps the ONE
     /// node every slot names and counts each naming after the first in the
     /// report's blob_shared counter.
     fn name_blob(&mut self, index: u64, report: &mut TableReport) {
@@ -639,7 +639,7 @@ impl TableNodeReader {
             self.blob_named.resize(self.slots.len(), false);
         }
         if self.blob_named[k] {
-            report.blob_shared += 1;
+            report.shared_blob += 1;
         } else {
             self.blob_named[k] = true;
         }
@@ -651,7 +651,7 @@ impl TableNodeReader {
         let b = match self.blob_record(index, report)? {
             TableNodeSlot::Null => return None,
             TableNodeSlot::Bytes(b) => b.clone(),
-            _ => { report.kind_mismatch += 1; return None; }
+            _ => { report.mismatch += 1; return None; }
         };
         self.name_blob(index, report);
         Some(b)
@@ -662,7 +662,7 @@ impl TableNodeReader {
         let s = match self.blob_record(index, report)? {
             TableNodeSlot::Null => return None,
             TableNodeSlot::Text(s) => s.clone(),
-            _ => { report.kind_mismatch += 1; return None; }
+            _ => { report.mismatch += 1; return None; }
         };
         self.name_blob(index, report);
         Some(s)

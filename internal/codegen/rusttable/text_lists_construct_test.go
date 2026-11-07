@@ -45,7 +45,7 @@ func TestRustTextListsNative(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=root_from_json(%q,&mut r).unwrap();assert_eq!((r.clamped,r.kind_mismatch),(%d,%d),"JSON counters %d");assert_eq!(root_to_json(&v).trim_end(),%q,"flat JSON %d");let wire=vec!%s;assert_eq!(root_save_checked(&v).unwrap(),wire,"wire pin %d");let back=root_load(&wire,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);assert!(root_load_measure(&wire)>0);let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};let back=root_load_retain(&wire,&mut store,&mut TableReport::default()).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut TableReport::default()),wire);`, input, 0, 0, i, string(text), i, rustByteVector(wire), i)
+		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=root_from_json(%q,&mut r).unwrap();assert_eq!((r.oor,r.mismatch),(%d,%d),"JSON counters %d");assert_eq!(root_to_json(&v).trim_end(),%q,"flat JSON %d");let wire=vec!%s;assert_eq!(root_save_checked(&v).unwrap(),wire,"wire pin %d");let back=root_load(&wire,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);assert!(root_load_measure(&wire)>0);let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};let back=root_load_retain(&wire,&mut store,&mut TableReport::default()).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut TableReport::default()),wire);`, input, 0, 0, i, string(text), i, rustByteVector(wire), i)
 		for _, big := range []bool{false, true} {
 			pin, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
 			if err != nil {
@@ -65,7 +65,7 @@ func TestRustTextListsNative(t *testing.T) {
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId("names"))
 		wire = binary.LittleEndian.AppendUint64(wire, 1)
 		bad := len(payload) < 4 || payload[3] == 0 || payload[3] == 255
-		fmt.Fprintf(&b, `{let wire=vec!%s;let mut r=TableReport::default();let v=root_load(&wire,&mut r);assert_eq!(r.malformed,%t);assert_eq!(v.is_none(),%t);if let Some(v)=v {assert_eq!(v.names.len(),1);assert_eq!(r.clamped,1);assert_eq!(r.clamped_field,"Root.names");assert!(v.names[0].value.len()<=8);}}`, rustByteVector(wire), bad, bad)
+		fmt.Fprintf(&b, `{let wire=vec!%s;let mut r=TableReport::default();let v=root_load(&wire,&mut r);assert_eq!(r.damaged,%t);assert_eq!(v.is_none(),%t);if let Some(v)=v {assert_eq!(v.names.len(),1);assert_eq!(r.oor,1);assert_eq!(r.oor_field,"Root.names");assert!(v.names[0].value.len()<=8);}}`, rustByteVector(wire), bad, bad)
 	}
 	for _, input := range []string{`{"names":["\udc00"]}`, `{"names":["\ud800\u0041"]}`, `{"\ud800":1}`} {
 		fmt.Fprintf(&b, `assert!(root_from_json(%q,&mut TableReport::default()).is_some());`, input)
@@ -74,7 +74,7 @@ func TestRustTextListsNative(t *testing.T) {
 	b.WriteString(`assert_eq!(root_from_json(r#"{"maybe":["\ud800"]}"#,&mut TableReport::default()).unwrap().maybe[0].value.as_deref(),Some("�"));
 for bad in ["123456789","a\0b"] {let mut v=Root::default();v.names.push(RootNamesText{value:bad.into()});assert!(root_save_checked(&v).is_err());for order in [1,2] {assert!(root_cook_write(&v,order).is_err());}if bad.contains('\0') {assert!(root_to_json(&v).contains("\\u0000"));}}
 let mut v=Root::default();v.names=vec![RootNamesText{value:"x".into()};4];assert!(root_save_checked(&v).is_err());
-let mut r=TableReport::default();let _=root_from_json(r#"{"names":["123456789"]}"#,&mut r);assert_eq!(r.clamped_field,"Root.names");
+let mut r=TableReport::default();let _=root_from_json(r#"{"names":["123456789"]}"#,&mut r);assert_eq!(r.oor_field,"Root.names");
 
 println!("text lists ok");`)
 	out, err := rustConstructProbe(t, u, b.String())

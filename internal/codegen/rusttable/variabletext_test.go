@@ -128,8 +128,8 @@ fn main() {
     let long_id = "x".repeat(100);
     let v5 = card_from_json(&format!("{{\"id\": {:?}}}\n", long_id), &mut r5).expect("clamp");
     assert_eq!(v5.id.len(), 64);
-    if r5.clamped < 1 {
-        panic!("over-bound string was not clamped: {}", r5.clamped);
+    if r5.oor < 1 {
+        panic!("over-bound string was not oor: {}", r5.oor);
     }
 
     println!("REFUSALS OK");

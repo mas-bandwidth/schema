@@ -57,7 +57,7 @@ fn v_count_clamp_negative() {
         !report.refused && report.reason == TableFixedReason::None,
         "a forged count is not a refusal: {:?}", report
     );
-    assert!(!report.malformed, "a forged count is not damage: {:?}", report);
+    assert!(!report.damaged, "a forged count is not damage: {:?}", report);
     assert!(
         values[0].lead == 0xAAAA_AAAA && values[0].trail == 0xBBBB_BBBB,
         "a forged count moved a neighbour: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
@@ -67,11 +67,11 @@ fn v_count_clamp_negative() {
         "the negative count clamps to ZERO, never -1, never the writer's 4, never the reader's 8"
     );
     assert_eq!(
-        report.clamped, 1,
+        report.oor, 1,
         "the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: {:?}", report
     );
     assert!(
-        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
+        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
         "counters moved on a clean clamped read: {:?}", report
     );
 }
@@ -105,7 +105,7 @@ fn v_count_clamp_past_bound() {
         !report.refused && report.reason == TableFixedReason::None,
         "a forged count is not a refusal: {:?}", report
     );
-    assert!(!report.malformed, "a forged count is not damage: {:?}", report);
+    assert!(!report.damaged, "a forged count is not damage: {:?}", report);
     assert!(
         values[0].lead == 0xAAAA_AAAA && values[0].trail == 0xBBBB_BBBB,
         "a forged count moved a neighbour: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
@@ -121,11 +121,11 @@ fn v_count_clamp_past_bound() {
         assert_eq!(values[0].vals[k], 0, "vals[{k}] past the writer's bound is not the reader's declared default");
     }
     assert_eq!(
-        report.clamped, 1,
+        report.oor, 1,
         "the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: {:?}", report
     );
     assert!(
-        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
+        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
         "counters moved on a clean clamped read: {:?}", report
     );
 }

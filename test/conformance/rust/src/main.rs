@@ -1173,11 +1173,11 @@ fn surface_report(manifest: &Manifest, out: &str) {
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
             let mut report = Default::default();
             let value = load(&data, &mut report);
-            let malformed = report.malformed || (value.is_none() && !report.refused);
+            let malformed = report.damaged || (value.is_none() && !report.refused);
             let verdict = if report.refused { "refused" } else { "read" };
             let mut text = format!(
                 "{},{},{},{},{},{},{}\n",
-                report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate, malformed, verdict
+                report.unknown, report.mismatch, report.widened, report.oor, report.repeated, malformed, verdict
             );
             if let (Some(v), false, false) = (value, report.refused, malformed) {
                 match to_json(&v) {
@@ -1207,11 +1207,11 @@ fn surface_framing(manifest: &Manifest, out: &str) {
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
             let mut report = Default::default();
             let value = load(&data, &mut report);
-            let malformed = report.malformed || (value.is_none() && !report.refused);
+            let malformed = report.damaged || (value.is_none() && !report.refused);
             let verdict = if report.refused { "refused" } else { "read" };
             let mut text = format!(
                 "{},{},{},{},{},{},{}\n",
-                report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate, malformed, verdict
+                report.unknown, report.mismatch, report.widened, report.oor, report.repeated, malformed, verdict
             );
             if let (Some(v), false, false, false) = (value, report.refused, malformed, no_value) {
                 match to_json(&v) {
@@ -1257,7 +1257,7 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
         let mut report = TableReport::default();
         let value = node_load_retain(&wire, &mut store, &mut report)
             .unwrap_or_else(|| fail(&format!("{}: retaining load refused", f[1])));
-        if report.malformed { fail(&format!("{}: retaining load malformed", f[1])); }
+        if report.damaged { fail(&format!("{}: retaining load malformed", f[1])); }
         let retained = report.retained;
         let lost = report.retain_lost;
         let unknown = report.unknown;
@@ -1402,10 +1402,10 @@ fn surface_json_hostile(manifest: &Manifest, out: &str) {
             let value = from_json(&text, &mut report);
             let r = &report;
             match value {
-                Some(v) if !r.malformed && !r.refused => {
+                Some(v) if !r.damaged && !r.refused => {
                     let mut answer = format!(
                         "{},{},{},{},{},false,read\n",
-                        r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate
+                        r.unknown, r.mismatch, r.widened, r.oor, r.repeated
                     );
                     match to_json(&v) {
                         Some(body) => answer.push_str(&body),
