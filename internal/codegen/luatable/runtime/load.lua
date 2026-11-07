@@ -1602,10 +1602,12 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
   local s = fd.shape
   if s == "bool" or s == "int" or s == "flags" or s == "float" or s == "wide" then
     if n ~= nil and kind == fd.kind then
-      -- an arm's L must BE the kind's width
+      -- an arm's L must BE the kind's width: the length does not frame its
+      -- kind, so this is framing damage (wire_damaged in §6.5's order)
       local w = width_of(kind)
       if w == 0 or n ~= w then
         report.malformed = true
+        report.wireDamaged = true
         return nil, DAMAGED
       end
     end

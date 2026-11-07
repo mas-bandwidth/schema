@@ -335,7 +335,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
         local n = d.bound or #d.keyed
         for i = 1, n do
           local ev = decode_value(T, d.elem, buf, pos + (i - 1) * elemSize, elemSize)
-          t[i] = ev == nil and false or ev
+          if ev == nil then t[i] = false else t[i] = ev end
         end
         return t, pos + size
       end
@@ -343,7 +343,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
       if n < 0 or n > d.bound then error("count_over_bound") end
       for i = 1, n do
         local ev = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
-        t[i] = ev == nil and false or ev
+        if ev == nil then t[i] = false else t[i] = ev end
       end
       return t, pos + size
     end
