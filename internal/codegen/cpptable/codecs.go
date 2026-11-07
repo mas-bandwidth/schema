@@ -2545,14 +2545,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    else\n%s    {\n", ind, ind)
 		g.emitRetainReplaced(f, ind+"    ")
 		g.pf("%s    uint64_t keep = count;\n", ind)
-		if f.IsTextList() {
-			// A TEXT LIST'S COUNT PAST ITS BOUND IS CLAMPED, NOT REFUSED, on the
-			// wire (docs/SPEC-TABLES.md §2.13): the engine keeps the bound's
-			// elements and the read lands; the text form refuses the same list.
-			g.pf("%s    if ( keep > %d ) { keep = %d; } // a text list's count clamps on the wire (§2.13)\n", ind, bound, bound)
-		} else {
-			g.pf("%s    if ( keep > %d ) { keep = %d; r.report->refused = true; r.report->refuse_reason = out_of_range;; }\n", ind, bound, bound)
-		}
+		g.pf("%s    if ( keep > %d ) { keep = %d; r.report->refused = true; r.report->refuse_reason = out_of_range;; }\n", ind, bound, bound)
 		g.pf("%s    // elements are BOUNDED by the field body: a count the length\n", ind)
 		g.pf("%s    // cannot cover is damage, which discards the whole load (§4), and\n", ind)
 		g.pf("%s    // the following fields' bytes are never fabricated into\n", ind)
@@ -2581,7 +2574,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 					g.pf("%s        if ( %s.value_length > 0 ) { spent += (int64_t) %s.value_length; }\n", ind, elem, elem)
 				}
 			}
-			g.pf("%s        if ( spent > %d ) { %sReset( %s ); break; } // | total = %d (§2.13): past the total the prefix stands and the wire read lands\n", ind, f.TextTotal, f.Type.Name, elem, f.TextTotal)
+			g.pf("%s        if ( spent > %d ) { r.report->refused = true; r.report->refuse_reason = out_of_range;; %sReset( %s ); break; } // | total = %d (§2.13)\n", ind, f.TextTotal, f.Type.Name, elem, f.TextTotal)
 		}
 		if counted {
 			g.pf("%s        decoded = i + 1;\n", ind)
