@@ -33,6 +33,7 @@ func TestSquirrelUnionElementResetsAtItsArmID(t *testing.T) {
 		t.Fatal(err)
 	}
 	unit := loadUnit(t, root, []string{"tables/messages"})
+	unit.Tables["ToolMessage"].FixedDeclared = false
 	data, err := hex.DecodeString(unionElemResetMutant)
 	if err != nil {
 		t.Fatal(err)
@@ -61,6 +62,7 @@ func TestSquirrelArmWidenedCountsOnlyADecodedPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	unit := loadUnit(t, root, []string{"tables/messages"})
+	unit.Tables["ToolMessage"].FixedDeclared = false
 	data, err := hex.DecodeString(armWidenDamagedMutant)
 	if err != nil {
 		t.Fatal(err)
@@ -96,6 +98,7 @@ func TestSquirrelIntegerWidensInto128Bits(t *testing.T) {
 		t.Fatal(err)
 	}
 	unit := loadUnit(t, root, []string{"tables/scalars"})
+	unit.Tables["SimState"].FixedDeclared = false
 	data, err := hex.DecodeString(widenInto128Mutant)
 	if err != nil {
 		t.Fatal(err)
@@ -178,6 +181,7 @@ func TestSquirrelHeaderAndUnionFieldPins(t *testing.T) {
 		t.Run(pin.name, func(t *testing.T) {
 			t.Parallel()
 			unit := loadUnit(t, root, []string{pin.unit})
+			unit.Tables[pin.root].FixedDeclared = false
 			data, err := hex.DecodeString(pin.wire)
 			if err != nil {
 				t.Fatal(err)
