@@ -37,19 +37,15 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		g.pf("int %s( %sBuilder * builder, const char * text, int64_t bytes, TableReport * report );\n", g.sym(st.Name, "from_json"), st.Name)
 		g.pf("int64_t %s( const %s * value, char * buffer, int64_t capacity, TableAllocator allocator );\n", g.sym(st.Name, "to_json"), st.Name)
-		// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF
+		// THE PLAIN NAME IS THE STRICT READ; THE STRICT READ HAS A NAME OF
 		// ITS OWN (docs/SPEC-TABLES.md §6.5, §16.2).
 		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a text the
 		// read cannot finish, or damage it stepped over, leaves the root at its
 		// declared defaults and answers 0.
-		g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json_tolerant"), st.Name)
-		g.pf("    TableReport ignored;\n    %s * root;\n    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }\n", st.Name)
-		g.pf("    if ( %s( builder, text, bytes, report ) && !report->malformed ) { return 1; }\n", g.sym(st.Name, "from_json"))
-		g.pf("    root = %s( builder ); if ( root != NULL ) { %s( root ); } /* damage discards the whole load (§4) */\n    return 0;\n}\n", g.api(st.Name, "builder_root"), g.api(st.Name, "reset"))
-		g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */\n", g.api(st.Name, "from_json"))
 		g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json"), st.Name)
-		g.pf("    TableReport ignored;\n    int decoded;\n    if ( report == NULL ) { report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
-		g.pf("    decoded = %s( builder, text, bytes, report );\n    return !table_report_strict_refuses( report, decoded );\n}\n", g.api(st.Name, "from_json_tolerant"))
+		g.pf("    TableReport ignored;\n    %s * root;\n    int decoded;\n    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n", st.Name)
+		g.pf("    decoded = %s( builder, text, bytes, report );\n    if ( !table_report_finish( report, decoded ) ) { return 1; }\n", g.sym(st.Name, "from_json"))
+		g.pf("    root = %s( builder ); if ( root != NULL ) { %s( root ); } /* a refusal discards the whole load (§4) */\n    return 0;\n}\n", g.api(st.Name, "builder_root"), g.api(st.Name, "reset"))
 		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value ) { return %s(value,NULL,0,table_default_allocator()); }\n", g.api(st.Name, "to_json_measure"), st.Name, g.sym(st.Name, "to_json"))
 		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value, char * buffer, int64_t capacity ) { return %s(value,buffer,capacity,table_default_allocator()); }\n\n", g.api(st.Name, "to_json"), st.Name, g.sym(st.Name, "to_json"))
 		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * value,char * buffer,int64_t capacity,TableAllocator allocator) { return %s(value,buffer,capacity,allocator); }\n", g.api(st.Name, "to_json_with_allocator"), st.Name, g.sym(st.Name, "to_json"))
@@ -61,20 +57,15 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	g.pf("   %sTable.c; compile it to use them. */\n", g.file.Base)
 	g.pf("int %s( %s * value, const char * text, int64_t bytes, TableReport * report );\n", g.sym(st.Name, "from_json"), st.Name)
 	g.pf("int64_t %s( const %s * value, char * buffer, int64_t capacity );\n", g.sym(st.Name, "to_json"), st.Name)
-	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
+	// THE PLAIN NAME IS THE STRICT READ; THE STRICT READ HAS A NAME OF ITS
 	// OWN (docs/SPEC-TABLES.md §6.5, §16.2).
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a text the read
 	// cannot finish, or damage it stepped over, leaves the value at its declared
 	// defaults and answers 0.
-	g.pf("static SCHEMA_UNUSED int %s( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json_tolerant"), st.Name)
-	g.pf("    TableReport ignored;\n    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }\n")
-	g.pf("    if ( %s( value, text, bytes, report ) && !report->malformed ) { return 1; }\n", g.sym(st.Name, "from_json"))
-	g.pf("    if ( value != NULL ) { %s( value ); } /* damage discards the whole load (§4) */\n    return 0;\n}\n", g.api(st.Name, "reset"))
-	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */\n", g.api(st.Name, "from_json"))
 	g.pf("static SCHEMA_UNUSED int %s( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json"), st.Name)
-	g.pf("    TableReport ignored;\n    int decoded;\n    if ( report == NULL ) { report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
-	g.pf("    decoded = %s( value, text, bytes, report );\n", g.sym(st.Name, "from_json"))
-	g.pf("    if ( table_report_strict_refuses( report, decoded ) )\n    {\n        if ( value != NULL ) { %s( value ); }\n        return 0;\n    }\n    return 1;\n}\n", g.api(st.Name, "reset"))
+	g.pf("    TableReport ignored;\n    int decoded;\n    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
+	g.pf("    decoded = %s( value, text, bytes, report );\n    if ( !table_report_finish( report, decoded ) ) { return 1; }\n", g.sym(st.Name, "from_json"))
+	g.pf("    if ( value != NULL ) { %s( value ); } /* a refusal discards the whole load (§4) */\n    return 0;\n}\n", g.api(st.Name, "reset"))
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value ) { return %s( value, NULL, 0 ); }\n", g.api(st.Name, "to_json_measure"), st.Name, g.sym(st.Name, "to_json"))
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value, char * buffer, int64_t capacity )\n{\n", g.api(st.Name, "to_json"), st.Name)
 	g.pf("    return %s( value, buffer, capacity );\n}\n\n", g.sym(st.Name, "to_json"))
@@ -114,7 +105,7 @@ const tableJsonWalkSource = `/* ---- json walk: begin ----
 
    The dialect: trailing commas are accepted on read (the authoring files
    this exists for carry them) and never written; comments are not JSON and
-   are refused; unknown keys are skipped and counted; a duplicate key is
+   are refused; unknown keys are skipped and counted; a repeated key is
    last-wins and counted; a key present with the wrong JSON type is skipped
    and counted, never coerced. */
 
@@ -1301,7 +1292,7 @@ static SCHEMA_UNUSED int32_t table_json_encode_utf8( uint32_t code, char * unit 
 
 /* Scan one JSON string into a caller buffer. Bytes are appended ONE CODE
    POINT AT A TIME — an escape's encoding, or a UTF-8 sequence read whole —
-   so a string longer than the field is clamped AT A CODE POINT BOUNDARY and
+   so a string longer than the field is out_of_range AT A CODE POINT BOUNDARY and
    never cut through a multi-byte character. Clamping is counted, never
    fatal, exactly as it is on the wire (§4). A NULL destination scans past a
    string without keeping it. */
@@ -1333,26 +1324,19 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
                     int high = table_json_hex4( in );
                     if ( high < 0 ) { in->bad = 1; return 0; }
                     uint32_t code = (uint32_t) high;
-                    if ( high >= 0xd800 && high <= 0xdbff && in->pos + 2 <= in->size &&
-                         in->text[in->pos] == '\\' && in->text[in->pos + 1] == 'u' )
+                    if ( high >= 0xd800 && high <= 0xdbff )
                     {
-                        int64_t mark = in->pos;
-                        in->pos += 2;
-                        int low = table_json_hex4( in );
-                        if ( low >= 0xdc00 && low <= 0xdfff )
+                        int low = -1;
+                        if ( in->pos + 2 <= in->size &&
+                             in->text[in->pos] == '\\' && in->text[in->pos + 1] == 'u' )
                         {
-                            code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
+                            in->pos += 2;
+                            low = table_json_hex4( in );
                         }
-                        else
-                        {
-                            in->pos = mark; // a lone lead surrogate rides as itself
-                        }
+                        if ( low < 0xdc00 || low > 0xdfff ) { in->bad = 1; return 0; }
+                        code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
                     }
-                    // a surrogate half that never found its partner has no
-                    // UTF-8 encoding: encoding it anyway would manufacture
-                    // CESU-8 — invalid UTF-8 — out of input that was valid
-                    // JSON, so it reads as the replacement character
-                    if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; }
+                    else if ( code >= 0xdc00 && code <= 0xdfff ) { in->bad = 1; return 0; }
                     unit_length = table_json_encode_utf8( code, unit );
                     break;
                 }
@@ -1410,7 +1394,7 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
 static SCHEMA_UNUSED int table_json_scan_string_as( TableJsonIn * in, char * out, int32_t capacity, int32_t * length, int text )
 {
     int32_t placed = 0;
-    int clamped = 0;
+    int out_of_range = 0;
     if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
     in->pos++;
     for ( ;; )
@@ -1423,18 +1407,18 @@ static SCHEMA_UNUSED int table_json_scan_string_as( TableJsonIn * in, char * out
         if ( out == NULL ) { if ( placed > INT32_MAX - unit_length ) { in->bad = 1; return 0; } placed += unit_length; }
         else
         {
-            if ( !clamped && placed <= capacity - unit_length )
+            if ( !out_of_range && placed <= capacity - unit_length )
             {
                 memcpy( out + placed, unit, (size_t) unit_length );
                 placed += unit_length;
             }
             else
             {
-                clamped = 1;
+                out_of_range = 1;
             }
         }
     }
-    if ( clamped ) { in->report->clamped++; }
+    if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
     if ( length != NULL ) { *length = placed; }
     return 1;
 }
@@ -1472,7 +1456,7 @@ static SCHEMA_UNUSED uint32_t table_json_decode_utf8( const char * unit, int32_t
 // table_json_scan_unit with the narrow scan, so the escape grammar and the
 // lone-surrogate rule are one grammar, and appends ONE CODE POINT AT A TIME —
 // one unit below U+10000 and a surrogate PAIR above it. A string longer than
-// the field is therefore clamped at N code units with a pair never split, and
+// the field is therefore out_of_range at N code units with a pair never split, and
 // a high surrogate left without its low half is dropped with it, which is the
 // same sentence the wire's clamp takes (§3). Clamping is counted, never fatal.
 static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * out, int32_t capacity, int32_t * length )
@@ -1480,7 +1464,7 @@ static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * 
     if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
     in->pos++;
     int32_t placed = 0;
-    int clamped = 0;
+    int out_of_range = 0;
     for ( ;; )
     {
         char unit[4];
@@ -1507,7 +1491,7 @@ static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * 
             if ( placed > INT32_MAX - units_length ) { in->bad = 1; return 0; }
             placed += units_length;
         }
-        else if ( !clamped && placed <= capacity - units_length )
+        else if ( !out_of_range && placed <= capacity - units_length )
         {
             for ( int32_t i = 0; i < units_length; i++ ) { out[placed + i] = units[i]; }
             placed += units_length;
@@ -1518,10 +1502,10 @@ static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * 
             // point does not fit, the scan stops placing. A pair is placed
             // whole or not at all, so no clamp can leave an unpaired
             // surrogate in storage.
-            clamped = 1;
+            out_of_range = 1;
         }
     }
-    if ( clamped ) { in->report->clamped++; }
+    if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
     if ( length != NULL ) { *length = placed; }
     return 1;
 }
@@ -1538,7 +1522,7 @@ static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * 
 
    Scanning the production is what makes a typo in an authoring file a
    DIAGNOSTIC rather than a value: "1-2" scans as 1 and leaves "-2" where the
-   object expects a comma, so the text is malformed — which is what §16.2
+   object expects a comma, so the text is damaged — which is what §16.2
    already promises. A permissive scan would hand "1-2" to a digit loop and
    report a clamp, and a config pipeline would never hear about it. Leading
    "+", leading zeros, ".5" and "3." are not JSON either. */
@@ -1892,7 +1876,7 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
     }
     else if ( point < -40 )
     {
-        in->report->kind_mismatch++; // finer than any F can spell
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; // finer than any F can spell
         return 1;
     }
     else
@@ -1925,7 +1909,7 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
         {
             if ( fd[k] != 0 )
             {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
                 return 1;
             }
         }
@@ -1956,13 +1940,13 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
             if ( negative && !table_json_wide_zero( raw ) ) { raw.lo = 0; raw.hi = 0; saturated = 1; }
         }
     }
-    if ( saturated ) { in->report->clamped++; }
+    if ( saturated ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
     if ( f->wide != NULL )
     {
         TableJsonWide lo = { f->wide->lo[0], f->wide->lo[1] };
         TableJsonWide hi = { f->wide->hi[0], f->wide->hi[1] };
-        if ( table_json_wide_compare( raw, lo, is_signed ) < 0 ) { raw = lo; in->report->clamped++; }
-        else if ( table_json_wide_compare( raw, hi, is_signed ) > 0 ) { raw = hi; in->report->clamped++; }
+        if ( table_json_wide_compare( raw, lo, is_signed ) < 0 ) { raw = lo; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+        else if ( table_json_wide_compare( raw, hi, is_signed ) > 0 ) { raw = hi; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
     }
     table_json_wide_store( storage, f->elem_size, raw );
     return 1;
@@ -2147,7 +2131,7 @@ static SCHEMA_UNUSED int schema_table_json_text_total_keep_( TableJsonIn * in, v
     *spent += schema_table_json_text_bytes_( p, 1, f );
     if ( *spent <= f->text_total ) { return 1; }
     f->table->reset( p );
-    in->report->clamped++;
+    in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;
     return 0;
 }
 
@@ -2196,7 +2180,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
             const TableFieldInfo * arm = arms->arms[tag].field;
             char want = arm != NULL ? table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
             if ( table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && table_json_value_shape(in) == 'z') ) {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !table_json_skip_value( in, depth+1 ) ) { return 0; }
             } else {
                 if ( arm != NULL ) {
@@ -2254,7 +2238,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( c != '"' )
             {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else
@@ -2320,20 +2304,20 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
            clean writes back. */
         if ( !table_json_finite( fvalue ) )
         {
-            in->report->kind_mismatch++;
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
         if ( f->has_range )
         {
-            if ( fvalue < f->range_min ) { fvalue = f->range_min; in->report->clamped++; }
-            else if ( fvalue > f->range_max ) { fvalue = f->range_max; in->report->clamped++; }
+            if ( fvalue < f->range_min ) { fvalue = f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+            else if ( fvalue > f->range_max ) { fvalue = f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
         }
         if ( single )
         {
             float narrow = (float) fvalue;
             if ( !table_json_finite( (double) narrow ) )
             {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
                 return 1;
             }
             memcpy( storage, &narrow, sizeof( narrow ) );
@@ -2353,10 +2337,10 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
     const TableJsonInteger number = table_json_interpret( token, length, integral );
     if ( !number.finite || number.fractional )
     {
-        in->report->kind_mismatch++;
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
         return 1;
     }
-    if ( number.saturated ) { in->report->clamped++; } // past what sixty-four bits hold
+    if ( number.saturated ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
     // The comparison is on the value's OWN scale, correctly signed past
@@ -2365,12 +2349,12 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
     if ( f->has_range )
     {
         const double scale = number.negative ? -(double) number.magnitude : (double) number.magnitude;
-        if ( scale < f->range_min ) { bounded = table_json_integer_of( f->range_min ); in->report->clamped++; }
-        else if ( scale > f->range_max ) { bounded = table_json_integer_of( f->range_max ); in->report->clamped++; }
+        if ( scale < f->range_min ) { bounded = table_json_integer_of( f->range_min ); in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+        else if ( scale > f->range_max ) { bounded = table_json_integer_of( f->range_max ); in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
     }
     int moved = 0;
     const int64_t value = table_json_integer_in_domain( bounded, is_signed, (int32_t) f->elem_size, &moved );
-    if ( moved ) { in->report->clamped++; }
+    if ( moved ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
     table_json_set_raw( storage, f->elem_size, (uint64_t) value );
     return 1;
 }
@@ -2404,19 +2388,19 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
     if ( table_json_is_bytes( f ) )
     {
         /* The JSON layer decides first (table_json_base64_step): a body that
-           is not a JSON string is malformed, and one that is JSON but carries
+           is not a JSON string is damaged, and one that is JSON but carries
            an escape or a non-ASCII character is simply not base64. Validate the
            stream and its padding before touching storage, so a body that is not
            base64 leaves the declared default. */
         int64_t mark;
         int64_t symbols = 0;
         int64_t pad = 0;
-        int malformed = 0;
+        int damaged = 0;
         int64_t at;
         int32_t placed = 0;
         uint32_t accumulator = 0;
         int32_t held = 0;
-        int clamped = 0;
+        int out_of_range = 0;
         if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
         in->pos++;
         mark = in->pos;
@@ -2430,30 +2414,30 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( c == '"' ) { break; }
             step = table_json_base64_step( in, c );
             if ( step < 0 ) { return 0; }
-            if ( step == 0 ) { malformed = 1; continue; }
-            if ( malformed ) { continue; }
+            if ( step == 0 ) { damaged = 1; continue; }
+            if ( damaged ) { continue; }
             if ( c == '=' ) { pad++; continue; }
-            if ( pad > 0 ) { malformed = 1; continue; }
+            if ( pad > 0 ) { damaged = 1; continue; }
             val = table_json_base64_value( (uint8_t) c );
-            if ( val < 0 ) { malformed = 1; continue; }
+            if ( val < 0 ) { damaged = 1; continue; }
             symbols++;
         }
-        if ( !malformed )
+        if ( !damaged )
         {
             if ( pad > 0 )
             {
-                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { malformed = 1; }
+                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { damaged = 1; }
             }
             else if ( symbols % 4 == 1 )
             {
-                malformed = 1;
+                damaged = 1;
             }
         }
-        if ( malformed )
+        if ( damaged )
         {
             /* a body that is not base64 is the wrong shape for the kind: the
                field keeps its default and the event is counted */
-            in->report->kind_mismatch++;
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
         memset( storage, 0, (size_t) f->array_bound );
@@ -2475,11 +2459,11 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
                 }
                 else
                 {
-                    clamped = 1;
+                    out_of_range = 1;
                 }
             }
         }
-        if ( clamped ) { in->report->clamped++; }
+        if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
         table_json_set_count( base, f, placed );
         return 1;
     }
@@ -2500,12 +2484,16 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
         shape = table_json_element_shape( f );
-        /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate
+        /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a repeated
            key like any other, last-wins and counted (§16.2). Tracked the way
            a table's own field keys are — a bounded, allocation-free bitmask;
            a vocabulary wider than this still reads, its repeats simply stop
            being counted. */
         memset( seen, 0, sizeof( seen ) );
+        {
+        uint64_t unplaced[64];
+        int32_t unplaced_count = 0;
+        memset( unplaced, 0, sizeof( unplaced ) );
         for ( ;; )
         {
             char c = table_json_peek( in );
@@ -2531,17 +2519,29 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( slot >= 0 && slot < 512 )
             {
                 uint64_t bit = (uint64_t) 1 << ( slot & 63 );
-                if ( ( seen[slot >> 6] & bit ) != 0 ) { in->report->duplicate++; }
+                if ( ( seen[slot >> 6] & bit ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
                 seen[slot >> 6] |= bit;
             }
             if ( slot < 0 )
             {
+                /* a key this reader cannot place is still a key: spelling
+                   it twice is a repeated key, refused like a placed one.
+                   Tracked by hash, bounded and allocation-free; past the
+                   table its repeats stop being counted. */
+                uint64_t hash = 1469598103934665603ULL;
+                int32_t ki;
+                for ( ki = 0; ki < key_length; ki++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[ki] ) * 1099511628211ULL; }
+                for ( ki = 0; ki < unplaced_count; ki++ )
+                {
+                    if ( unplaced[ki] == hash ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                }
+                if ( ki == unplaced_count && unplaced_count < 64 ) { unplaced[unplaced_count++] = hash; }
                 in->report->unknown++;
                 if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else if ( table_json_value_shape( in ) != shape && !(f->kind == 17 && table_json_value_shape(in) == 'z') )
             {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else if ( !table_json_read_scalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
@@ -2553,6 +2553,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( c == '}' ) { in->pos++; break; }
             in->bad = 1;
             return 0;
+        }
         }
         return 1;
     }
@@ -2594,19 +2595,19 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             {
                 /* the total dropped this element; one past [..N] is counted
                    as well, as the wire counts its count clamp (§2.13) */
-                if ( ++seen > f->array_bound ) { in->report->clamped++; }
+                if ( ++seen > f->array_bound ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
                 if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else if ( placed >= f->array_bound )
             {
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
-                in->report->clamped++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;
                 if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else if ( table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && table_json_value_shape(in) == 'z') )
             {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 placed++;
             }
@@ -2661,7 +2662,7 @@ static SCHEMA_UNUSED int schema_table_json_require_seen_( TableJsonIn * in, cons
 
 static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key )
 {
-    /* duplicate tracking, bounded and allocation-free: a table with more
+    /* repeated tracking, bounded and allocation-free: a table with more
        fields than this still reads, its repeats simply stop being counted */
     uint64_t seen[8];
     memset( seen, 0, sizeof( seen ) );
@@ -2692,7 +2693,7 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
             /* THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
                16.7): never a field this build lacks, always a construct it
                cannot honor. MALFORMED and refused, never counted as unknown. */
-            in->report->malformed = 1;
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;
             in->bad = 1;
             return 0;
         }
@@ -2708,7 +2709,7 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
             if ( index < 512 )
             {
                 uint64_t bit = (uint64_t) 1 << ( index & 63 );
-                if ( ( seen[index >> 6] & bit ) != 0 ) { in->report->duplicate++; }
+                if ( ( seen[index >> 6] & bit ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
                 seen[index >> 6] |= bit;
             }
             /* PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this line
@@ -2733,7 +2734,7 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
                 if ( got != table_json_shape( f ) && !(f->kind == 17 && !f->is_array && got == 'z') )
                 {
                     /* the wrong JSON type for the kind: skipped, never coerced */
-                    in->report->kind_mismatch++;
+                    in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
                     if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 }
                 else if ( !table_json_read_field( in, base, f, depth ) )
@@ -2785,7 +2786,7 @@ static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * in
     info->reset( value );
     if ( text == NULL || bytes < 0 )
     {
-        in.report->malformed = 1;
+        in.report->refused=1, in.report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;
         return 0;
     }
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
@@ -2798,7 +2799,7 @@ static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * in
     }
     if ( in.bad || !ok )
     {
-        if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = 1; }
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
         return 0;
     }
     return 1;

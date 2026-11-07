@@ -1,83 +1,57 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// DAMAGE DISCARDS THE WHOLE LOAD (Glenn, 2026-10-31; docs/SPEC-TABLES.md §4):
-// on a mutant the oracle reads as damaged, the refusal is the whole of what a
-// leg owes. The counters, the retention report and the re-saved bytes are
-// undefined there, so a leg that differs from the oracle on any of them is
-// green, and a leg that does not say malformed is red. A clean mutant is
-// compared in full, as before.
-func TestWireVerdictComparesOnlyTheRefusalOnDamage(t *testing.T) {
-	root := &wireRoot{retain: true}
-	damaged := oracleAnswer{
-		report:     Counts{Unknown: 5, KindMismatch: 1, Malformed: true},
-		encoded:    make([]byte, 209),
-		retained:   3,
-		retainLost: 1,
-	}
-	leg := legReply{
-		loaded:     true,
-		report:     Counts{Unknown: 2, Malformed: true},
-		saved:      make([]byte, 229),
-		retained:   7,
-		retainLost: 0,
-	}
-	if v := wireVerdict(root, leg, damaged, 300); v != "" {
-		t.Fatalf("a leg that refuses the damaged load is red: %s", v)
-	}
-	missed := leg
-	missed.report = Counts{Unknown: 5, KindMismatch: 1}
-	if v := wireVerdict(root, missed, damaged, 300); v == "" {
-		t.Fatal("a leg that read a damaged mutant as clean is green")
-	}
-
-	variable := &wireRoot{variable: true}
-	noRoot := legReply{loaded: false, measure: 64, report: Counts{Malformed: true}}
-	if v := wireVerdict(variable, noRoot, oracleAnswer{report: Counts{Malformed: true}, bytes: 64}, 300); v != "" {
-		t.Fatalf("a leg that hands back no root on damage is red: %s", v)
-	}
-
-	// a builder leg that completes a damaged load still owes only the refusal
-	builder := &wireRoot{builder: true}
-	if v := wireVerdict(builder, legReply{loaded: true, report: Counts{Malformed: true}}, oracleAnswer{report: Counts{Malformed: true}, builderStopped: true, encFail: true}, 300); v != "" {
-		t.Fatalf("a builder leg that refuses the damaged load is red: %s", v)
-	}
-	if v := wireVerdict(builder, legReply{loaded: true}, oracleAnswer{builderStopped: true, encFail: true}, 300); v == "" {
-		t.Fatal("a builder's completion is no longer compared on a clean mutant")
-	}
-
-	refused := oracleAnswer{report: Counts{Refused: true}, encoded: []byte{1, 0}}
-	if v := wireVerdict(root, legReply{loaded: true, report: Counts{Refused: true}, saved: []byte{1, 2, 3}}, refused, 10); v != "" {
-		t.Fatalf("a leg that refuses the form is held to saved defaults: %s", v)
-	}
-
-	clean := oracleAnswer{report: Counts{Unknown: 1}, encoded: []byte{1, 0, 0}}
-	if v := wireVerdict(root, legReply{loaded: true, report: Counts{Unknown: 1}, saved: []byte{1, 0, 1}}, clean, 10); v == "" {
-		t.Fatal("a clean mutant's saved bytes are no longer compared")
-	}
-	if v := wireVerdict(root, legReply{loaded: true, report: Counts{Unknown: 1}, saved: []byte{1, 0, 0}, retained: 1}, clean, 10); v == "" {
-		t.Fatal("a clean mutant's retention report is no longer compared")
-	}
-
-	// a fixed root whose form the reader does not carry: both sides refuse
-	// and the leg hands back no root
-	fixedRoot := &wireRoot{}
-	if v := wireVerdict(fixedRoot, legReply{loaded: false, report: Counts{Refused: true}}, oracleAnswer{report: Counts{Refused: true}}, 10); v != "" {
-		t.Fatalf("a leg that refuses a form the oracle refuses, with no root, is red: %s", v)
-	}
-	if v := wireVerdict(fixedRoot, legReply{loaded: false}, oracleAnswer{report: Counts{Refused: true}}, 10); v == "" {
-		t.Fatal("a leg that hands back no root without the refusal verdict is green")
+// The legacy pipe has several refusal flags, but the contract has one verdict.
+// Every diagnostic and undefined payload is ignored after refusal. An accepted
+// result must agree in every canonical byte, independent of all counters.
+func TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues(t *testing.T) {
+	refused := oracleAnswer{report: Counts{Refused: true}}
+	accepted := oracleAnswer{accepted: true, encoded: []byte{1, 0, 7}}
+	diagnostics := Counts{Unknown: 8, KindMismatch: 3, Widened: 2, Clamped: 5, Duplicate: 1}
+	for _, root := range []*wireRoot{{}, {variable: true}, {builder: true}, {retain: true}, {message: true}} {
+		for _, reply := range []legReply{
+			{loaded: false},
+			{loaded: true, report: Counts{Refused: true}},
+			{loaded: true, report: Counts{Malformed: true}},
+			{loaded: true, report: Counts{Refused: true, Malformed: true}},
+			{loaded: false, report: diagnostics, measure: 999999, saved: []byte{8}, retained: 17, retainLost: 2},
+		} {
+			if v := wireVerdict(root, reply, refused, 2); v != "" {
+				t.Fatal(v)
+			}
+			if v := wireVerdict(root, reply, accepted, 2); v == "" {
+				t.Fatal("refused accepted value passed")
+			}
+		}
+		good := legReply{loaded: true, report: diagnostics, measure: -1, saved: accepted.encoded, retained: 999, retainLost: 23}
+		if v := wireVerdict(root, good, accepted, 2); v != "" {
+			t.Fatal(v)
+		}
+		if v := wireVerdict(root, good, refused, 2); v == "" {
+			t.Fatal("repair counters hid an invalid acceptance")
+		}
+		good.saved = []byte{1, 0, 8}
+		if v := wireVerdict(root, good, accepted, 2); v == "" {
+			t.Fatal("changed accepted value passed")
+		}
+		good.saved, good.saveFail = nil, true
+		if v := wireVerdict(root, good, accepted, 2); v == "" {
+			t.Fatal("accepted value with no write-back passed")
+		}
 	}
 }
 
-// The BUILDER ARM RETAINS too (docs/SPEC-TABLES.md §6.6): a builder root with
-// retention on is read by the plain retaining read, and a clean seed answers
-// the retention report beside the six counters.
 func TestWireFuzzBuilderRetainOracle(t *testing.T) {
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "tblrt1", "Node", false, true)
@@ -85,7 +59,40 @@ func TestWireFuzzBuilderRetainOracle(t *testing.T) {
 		t.Fatal(err)
 	}
 	root.builder = true
-	wire, err := os.ReadFile(filepath.Join("testdata", "wire", "tables", "retain_rt2.bin"))
+	wire := wireBytes(t, "testdata/wire/tables/retain_rt2.bin")
+	answer, err := root.oracle(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := wireBytes(t, "testdata/wire/tables/retain_rt1_save.bin")
+	if !answer.accepted || !bytes.Equal(answer.encoded, want) {
+		t.Fatalf("retaining read did not preserve the pinned complete value: accepted=%t got=%x want=%x", answer.accepted, answer.encoded, want)
+	}
+}
+
+func fuzzFixtureRoot(t *testing.T, schema string, message bool) *wireRoot {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "Probe.schema")
+	if err := os.WriteFile(path, []byte(schema), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m := &Manifest{Units: []Unit{{Key: "probe", Paths: []string{path}}}}
+	root, err := newWireRoot(newUnits(m), "probe", "Root", message, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func TestWireFuzzMessageComparesEveryBody(t *testing.T) {
+	root := fuzzFixtureRoot(t, "package probe\nfixed table Root { n int32 }\n", true)
+	batch := []*tabletext.Instance{root.model.New(root.def), root.model.New(root.def)}
+	for i, input := range []string{`{"n":7}`, `{"n":41}`} {
+		if !root.model.Read(batch[i], []byte(input), &tabletext.Report{}) {
+			t.Fatal("fixture JSON")
+		}
+	}
+	wire, err := tablewire.EncodeMessages(root.model, batch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +100,84 @@ func TestWireFuzzBuilderRetainOracle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer.builderStopped || answer.report.Malformed || answer.retained == 0 {
-		t.Fatalf("builder retain oracle: %+v", answer)
+	if !answer.accepted || !bytes.Equal(answer.encoded, wire) {
+		t.Fatal("oracle lost part of an accepted message batch")
+	}
+	if !root.model.Read(batch[1], []byte(`{"n":42}`), &tabletext.Report{}) {
+		t.Fatal("second body mutation")
+	}
+	changed, err := tablewire.EncodeMessages(root.model, batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := wireVerdict(root, legReply{loaded: true, saved: changed}, answer, len(wire)); v == "" {
+		t.Fatal("second-body value mutation passed")
+	}
+	short, err := tablewire.EncodeMessage(root.model, batch[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := wireVerdict(root, legReply{loaded: true, saved: short}, answer, len(wire)); v == "" {
+		t.Fatal("first-body-only write-back passed")
+	}
+	truncated := wire[:len(wire)-1]
+	refused, err := root.oracle(truncated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refused.accepted || len(refused.encoded) != 0 {
+		t.Fatal("damaged batch produced a value")
+	}
+}
+
+// An unknown timestamp is legal evolution; unknown malformed bools and kind
+// mismatches are refusals. The independent framing keeps the valid control from
+// passing merely because a historical fixed root rejects every form-1 fixture.
+func TestWireFuzzEvolutionAndDamage(t *testing.T) {
+	root := fuzzFixtureRoot(t, "package probe\ntable Root { n int32 }\n", false)
+	file := func(kind byte, payload []byte, id string) []byte {
+		out := append([]byte{1, 1, kind}, payload...)
+		out = append(out, 0)
+		out = binary.LittleEndian.AppendUint64(out, ir.TableWireId(id))
+		return binary.LittleEndian.AppendUint64(out, 1)
+	}
+	for _, tc := range []struct {
+		name     string
+		wire     []byte
+		accepted bool
+	}{
+		{"unknown timestamp", file(36, []byte{7, 0, 0, 0, 0, 0, 0, 0}, "future"), true},
+		{"known int32", file(4, []byte{7, 0, 0, 0}, "n"), true},
+		{"timestamp mismatch", file(36, []byte{7, 0, 0, 0, 0, 0, 0, 0}, "n"), false},
+		{"unknown bool valid", file(1, []byte{1}, "future"), true},
+		{"unknown bool invalid", file(1, []byte{2}, "future"), false},
+		{"unknown bool truncated", file(1, nil, "future"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			answer, err := root.oracle(tc.wire)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if answer.accepted != tc.accepted {
+				t.Fatalf("accepted=%t want=%t", answer.accepted, tc.accepted)
+			}
+			if !tc.accepted {
+				if len(answer.encoded) != 0 {
+					t.Fatal("refusal saved defaults")
+				}
+				return
+			}
+			want := root.model.New(root.def)
+			if tc.name == "known int32" && !root.model.Read(want, []byte(`{"n":7}`), &tabletext.Report{}) {
+				t.Fatal("expected value")
+			}
+			encoded, err := tablewire.Encode(root.model, want)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(answer.encoded, encoded) {
+				t.Fatalf("accepted value differs: got %x want %x", answer.encoded, encoded)
+			}
+		})
 	}
 }

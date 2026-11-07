@@ -316,7 +316,7 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 		g.pf("// what this returns. There is no graph below it and nothing to resolve.\n")
 	}
 	g.pf("//\n")
-	g.pf("// There is ONE entry point and no tolerant twin: a build either wrote this\n")
+	g.pf("// There is ONE entry point and no strict twin: a build either wrote this\n")
 	g.pf("// file or it did not, and the build version is what says which. Validating a\n")
 	g.pf("// file whose provenance a person doubts is schema cook-check, offline,\n")
 	g.pf("// over the ATTRIBUTION part beside the data — a person's decision, never a\n")

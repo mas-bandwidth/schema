@@ -198,7 +198,7 @@ const tableRegionSource = `
                 byte* row = state.Directory + (long)(node - 1) * 16;
                 long offset = (long)NativeWord(row, 8); ulong id = (ulong)NativeWord(row + 8, 8);
                 if (offset != -1)
-                { if (id != f.PointerTypeId) { report.KindMismatch++; } else { target = offset; } }
+                { if (id != f.PointerTypeId) { Fail(report, "kind_mismatch"); } else { target = offset; } }
             }
         }
         value.SetRaw(f, index, target == long.MinValue ? 0 : (f.BlobKind == 0 ? node : unchecked((ulong)(target - (value.Slot(f, index) - value.Base)))));
@@ -242,7 +242,7 @@ const tableRegionSource = `
         Reader header = headerTail.IsEmpty ? a : new Reader(headerTail, a.Vocabulary) { Offset = 1 };
         if (!header.Var(out ulong count)) { Damage(report); return true; }
         a.Offset = Math.Min(a.Buffer.Length, header.Offset);
-        if (kind != 13) { report.KindMismatch++; return true; }
+        if (kind != 13) { return Fail(report, "kind_mismatch"); }
         // A REGION READ WHOSE COUNT THE FRAMED STORAGE CANNOT HOLD reports
         // damage and resumes after the map's L, as the Go oracle's
         // collectionCap does; only a builder's refusal stops the read.
@@ -255,16 +255,16 @@ const tableRegionSource = `
             if (!a.Slice(out Reader body)) { Damage(report); break; }
             bool keyOk = NativeScanKey(body, keyField, out NativeMapKey key, out bool mismatch, out bool entryWidened);
             if (entryWidened && !widened) { widened = true; report.Widened++; }
-            if (mismatch) { report.KindMismatch++; landed = 0; break; }
+            if (mismatch) { return Fail(report, "kind_mismatch"); }
             if (!keyOk) { Damage(report); break; }
-            if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { report.Clamped++; continue; }
+            if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
             int order = landed == 0 ? -1 : keyField.Kind == 12 ? last.Text.SequenceCompareTo(key.Text) : keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((long)last.Raw).CompareTo(unchecked((long)key.Raw)) : last.Raw.CompareTo(key.Raw);
             if (order > 0) { Damage(report); break; }
             int slot = order == 0 ? landed - 1 : landed;
             if (!NativeEnsure(ref state, value, f, slot)) { return false; }
             NativeReadBody(ref state, ref body, value.Child(f, slot), f.Table, report, true);
             if (state.Refused || report.Refused) { return false; }
-            if (order == 0) { report.Duplicate++; } else { last = key; landed++; }
+            if (order == 0) { return Fail(report, "duplicate"); } else { last = key; landed++; }
         }
         value.SetCount(f, landed); return true;
     }
@@ -278,7 +278,7 @@ const tableRegionSource = `
             if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
             { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
-            if (f.ClampWide != null) { wide = f.ClampWide(wide, report); }
+            if (f.RangeWide != null) { wide = f.RangeWide(wide, report); if (report.Refused) { return false; } }
             value.SetWide(f, index, wide); return true;
         }
         ulong raw;
@@ -298,10 +298,10 @@ const tableRegionSource = `
             { int shift = 64 - width * 8; raw = unchecked((ulong)((long)(raw << shift) >> shift)); }
             // A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on the
             // tolerant read (docs/SPEC-TABLES.md §6.5), as the Go oracle counts it.
-            if (kind == 1) { if (raw > 1) { report.Malformed = true; } raw = raw == 0 ? 0ul : 1ul; }
+            if (kind == 1 && raw > 1) { return Damage(report); }
             if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw)) { NonFinite(f, report); return true; }
             if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
-            if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
+            if (f.RangeRaw != null) { raw = f.RangeRaw(raw, report); if (report.Refused) { return false; } }
         }
         if (f.GetBuffer != null) { value.Buffer(f)[index] = (byte)raw; }
         else { value.SetRaw(f, index, raw); }
@@ -313,8 +313,7 @@ const tableRegionSource = `
         {
             Reader text=r;if(framed&&!r.Slice(out text)){return Damage(report);}
             if(!framed){r.Offset=r.Buffer.Length;}
-            int before=report.Clamped;bool good=NativeReadText(ref state, text.Buffer,value.Child(f,index),f.Table.Fields[0],report);
-            if(report.Clamped!=before){TextClamp(report,f);}return good;
+            return NativeReadText(ref state, text.Buffer,value.Child(f,index),f.Table.Fields[0],report);
         }
         if (kind == 17)
         {
@@ -326,8 +325,7 @@ const tableRegionSource = `
             Reader sub = r;
             if (framed && !r.Slice(out sub)) { return Damage(report); }
             NativeValue child = value.Child(f, index);
-            int before=report.Clamped;NativeReadBody(ref state, ref sub, child, f.Table, report, true);
-            if(f.TextList&&report.Clamped!=before){TextClamp(report,f);}
+            NativeReadBody(ref state, ref sub, child, f.Table, report, true);
             if (state.Refused || report.Refused) { return false; }
             if (sub.Offset != sub.Buffer.Length) { NativeReset(child, f.Table); Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
@@ -357,7 +355,7 @@ const tableRegionSource = `
             // Damaged framing never records a successful widening event.
             if (Widen(armKind, expected) && arm.Buffer.Length != Width(armKind))
             { Damage(report); return true; }
-            if (!Compatible(armKind, expected, report)) { return true; }
+            if (!Compatible(armKind, expected, report)) { return false; }
             union.SetTag(f, (ulong)tag);
             if (!NativeReadArm(ref state, ref arm, union.Arm(f), info.Field, armKind, report)) { union.SetTag(f, 0); }
             return true;
@@ -427,7 +425,7 @@ const tableRegionSource = `
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-            if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
+            if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
             if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return false; }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
@@ -446,11 +444,7 @@ const tableRegionSource = `
     {
         if (!TextValid(text)) { return Damage(report); }
         int keep = text.Length;
-        if (keep > f.ArrayBound)
-        {
-            keep = f.ArrayBound; report.Clamped++;
-            while (keep > 0 && (text[keep] & 0xc0) == 0x80) { keep--; }
-        }
+        if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
         if(f.Unbounded)
         {
             if(keep==0){if(value.Base!=null){NativePut(value.Slot(f),0,8);}return true;}
@@ -479,11 +473,7 @@ const tableRegionSource = `
             }
         }
         int keep = text.Length / 2;
-        if (keep > f.ArrayBound)
-        {
-            keep = f.ArrayBound; report.Clamped++;
-            if (keep > 0 && (text[keep * 2 - 1] & 0xfc) == 0xd8) { keep--; }
-        }
+        if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
         Span<char> storage = value.Chars(f);
         for (int i = 0; i < keep; i++) { storage[i] = (char)(text[i * 2] | text[i * 2 + 1] << 8); }
         value.SetCount(f, keep); return true;
@@ -510,7 +500,7 @@ const tableRegionSource = `
             Reader header = new Reader(r.Buffer.Slice(r.Offset - array.Buffer.Length + 1), r.Vocabulary);
             if (!header.Var(out ulong count)) { Damage(report); return true; }
             array.Offset = Math.Min(array.Buffer.Length, 1 + header.Offset);
-            if (!Compatible(elementKind, f.Kind, report)) { placed = false; return true; }
+            if (!Compatible(elementKind, f.Kind, report)) { placed = false; return false; }
             if (kind == 16)
             {
                 for (ulong i = 0; i < count; i++)
@@ -525,7 +515,7 @@ const tableRegionSource = `
             else
             {
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
+                if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
                 // the same rule for a list: damage, then the parent resumes
                 // after the array's L (the Go oracle's collectionCap)
                 if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return !state.Refused; }
@@ -699,8 +689,8 @@ const tableRegionSource = `
         int end = bytes.Length - 8 - (int)idsCount * 8;
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)idsCount * 8);
         Reader root = new Reader(bytes.Slice(1, end - 1), ids);
-        bool malformedBefore = report.Malformed;
-        report.Malformed = false;
+        bool damagedBefore = report.Damaged;
+        report.Damaged = false;
         bool good = NodeFrames(root, out Reader records, out int count);
         if (!good) { count = 0; Damage(report); }
         byte* data = (byte*)region; byte* directory = (byte*)attribution;
@@ -743,12 +733,12 @@ const tableRegionSource = `
         state.Next = Align(type.StorageSize, type.RegionAlign); state.End = state.Next + rootExtent;
         bool complete = NativeReadBody(ref state, ref root, new NativeValue(data, 0), type, report, false);
         // a non-finite float refuses the load and lands nothing (docs/SPEC-TABLES.md §3.3)
-        if (NonFiniteRefused(report) || report.Refused) { report.Malformed |= malformedBefore; System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
+        if (NonFiniteRefused(report) || report.Refused) { report.Damaged |= damagedBefore; System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
         // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
         if (good && RegionCyclic(data, directory, count, type, default, false)) { Damage(report); }
         // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no root, and the region holds nothing.
-        if (report.Malformed) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }
-        report.Malformed = malformedBefore;
+        if (report.Damaged) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }
+        report.Damaged = damagedBefore;
         Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped); return region;
     }
 `

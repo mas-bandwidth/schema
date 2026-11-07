@@ -14,16 +14,16 @@ const tableBuilderLoadSource = `
     public static bool LoadBuilder(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
     {
         if (report == null) { throw new ArgumentNullException(nameof(report)); }
-        bool malformedBefore = report.Malformed;
-        report.Malformed = false;
+        bool damagedBefore = report.Damaged;
+        report.Damaged = false;
         bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);
-        if (report.Malformed)
+        if (report.Damaged)
         {
             if (pointer != IntPtr.Zero && !worker.Arena.Closed) { NativeReset(new NativeValue((byte*)pointer, 0) { Mutable = true }, type); }
             if (report.Verdict != Verdict.Refused) { Finish(report, Verdict.Damaged); }
             return false;
         }
-        report.Malformed = malformedBefore;
+        report.Damaged = damagedBefore;
         return whole;
     }
     static bool LoadBuilderWalk(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)

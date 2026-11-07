@@ -78,6 +78,11 @@ func checkReflectionNames(u *ir.Unit) error {
 			return err
 		}
 		if st := structs[name]; st != nil {
+			if st.FixedDeclared && ir.TableFixedSupported(st, 0) && ir.TableFixedTypeBytes(st) <= ir.TableFixedRecordMaxBytes && ir.TableFixedWithinDepth(st) && fixedLobsterSimple(st, 0) {
+				if err := claim(name+"FixedRecordCodec", name); err != nil {
+					return err
+				}
+			}
 			for _, f := range st.Fields {
 				if f.KeyEnumRef == nil {
 					continue

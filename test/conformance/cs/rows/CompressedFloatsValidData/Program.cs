@@ -285,15 +285,14 @@ static class Program
             Fail("the reader did not accept one record: n=" + n + " reason=" + r.Reason);
             ok = false;
         }
-        if (r.Refused || r.Malformed || r.Reason != null)
+        if (r.Refused || r.Damaged || r.Reason != null)
         {
-            Fail("valid data is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+            Fail("valid data is not a refusal: reason=" + r.Reason + " malformed=" + r.Damaged);
             ok = false;
         }
-        if (r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0)
+        if (r.Unknown != 0 || r.Widened != 0)
         {
-            Fail("a counter moved on valid data: unknown=" + r.Unknown + " kind=" + r.KindMismatch
-                + " widened=" + r.Widened + " clamped=" + r.Clamped + " duplicate=" + r.Duplicate);
+            Fail("a counter moved on valid data: unknown=" + r.Unknown + " widened=" + r.Widened);
             ok = false;
         }
         if (back[0].Lead != 1u || back[0].Trail != 2u)
@@ -409,15 +408,14 @@ static class Program
             Fail("the reader took " + rn + " records, want " + values.Length + " (reason=" + r.Reason + ")");
             ok = false;
         }
-        if (r.Refused || r.Malformed || r.Reason != null)
+        if (r.Refused || r.Damaged || r.Reason != null)
         {
-            Fail("valid data is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+            Fail("valid data is not a refusal: reason=" + r.Reason + " malformed=" + r.Damaged);
             ok = false;
         }
-        if (r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0)
+        if (r.Unknown != 0 || r.Widened != 0)
         {
-            Fail("a counter moved on valid data: unknown=" + r.Unknown + " kind=" + r.KindMismatch
-                + " widened=" + r.Widened + " clamped=" + r.Clamped + " duplicate=" + r.Duplicate);
+            Fail("a counter moved on valid data: unknown=" + r.Unknown + " widened=" + r.Widened);
             ok = false;
         }
         for (int k = 0; k < values.Length; ++k)

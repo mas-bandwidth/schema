@@ -125,10 +125,10 @@ int main( void )
             printf( "%s: n=%lld refused=%d reason=%d, want %d\n", name, (long long) n, (int) r.refused, (int) r.reason, (int) want );
             return 1;
         }
-        if ( r.malformed ) { printf( "%s: malformed set — a refusal by name is not malformed\n", name ); return 1; }
-        if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
+        if ( r.damaged ) { printf( "%s: malformed set — a refusal by name is not malformed\n", name ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 )
         {
-            printf( "%s: refusal moved a counter: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", name, r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate );
+            printf( "%s: refusal moved a counter: unknown=%d widened=%d\n", name, r.unknown, r.widened );
             return 1;
         }
         const uint8_t * p = (const uint8_t *) &back;
@@ -227,8 +227,8 @@ int main( void )
 	countBody := `
     if ( n != -1 ) { printf( "lineage count: a forged count did not refuse: n=%lld\n", (long long) n ); return 1; }
     if ( !r.refused || r.reason != count_over_bound ) { printf( "lineage count: refused=%d reason=%d, want count_over_bound\n", (int) r.refused, (int) r.reason ); return 1; }
-    if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "lineage count: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "lineage count: a counter moved: out_of_range=%d unknown=%d kind_mismatch=%d widened=%d repeated=%d\n", r.refused, r.unknown, r.refused, r.widened, r.refused ); return 1; }
 `
 	countLocate := `
         static const uint8_t needle[8] = { 0xAA, 0xAA, 0xAA, 0xAA, 0x04, 0x00, 0x00, 0x00 };
@@ -272,8 +272,8 @@ int main( void )
 	lenBody := `
     if ( n != -1 ) { printf( "lineage length: a forged length did not refuse: n=%lld\n", (long long) n ); return 1; }
     if ( !r.refused || r.reason != length_over_bound ) { printf( "lineage length: refused=%d reason=%d, want length_over_bound\n", (int) r.refused, (int) r.reason ); return 1; }
-    if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "lineage length: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "lineage length: a counter moved: out_of_range=%d unknown=%d kind_mismatch=%d widened=%d repeated=%d\n", r.refused, r.unknown, r.refused, r.widened, r.refused ); return 1; }
 `
 	lenLocate := `
         static const uint8_t needle[8] = { 0xAA, 0xAA, 0xAA, 0xAA, 0x08, 0x00, 0x00, 0x00 };

@@ -121,7 +121,7 @@ static void file_row( const char * row, uint64_t from, uint64_t to, int width )
     n = cell_save( &value, wire, sizeof( wire ) );
     if ( n < 0 || patch( wire, n, from, to, width ) != 1 ) { FAIL( row, "the sentinel did not ride exactly once" ); return; }
     memset( &report, 0, sizeof( report ) );
-    if ( cell_load_tolerant( &value, wire, n, &report ) || !refused( &report ) || !cell_is_reset( &value ) )
+    if ( cell_load( &value, wire, n, &report ) || !refused( &report ) || !cell_is_reset( &value ) )
     { FAIL( row, "the tolerant read did not refuse it, or landed something" ); return; }
     sentinel( &value );
     if ( cell_load( &value, wire, n, &report ) || report.refuse_reason != SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT || !cell_is_reset( &value ) )
@@ -139,7 +139,7 @@ static void message_row( const char * row, uint64_t from, uint64_t to, int width
     n = cell_save_messages( values, 2, wire, sizeof( wire ), &report );
     if ( n < 0 || patch( wire, n, from, to, width ) != 1 ) { FAIL( row, "the sentinel did not ride exactly once" ); return; }
     memset( &report, 0, sizeof( report ) );
-    if ( cell_load_messages_tolerant( values, &count, &v, wire, n, &report ) || count != 0 || !refused( &report ) ||
+    if ( cell_load_messages( values, &count, &v, wire, n, &report ) || count != 0 || !refused( &report ) ||
          !cell_is_reset( &values[0] ) || !cell_is_reset( &values[1] ) )
     { FAIL( row, "the batch was not refused whole" ); return; }
     count = 2;
@@ -155,7 +155,7 @@ static void fixed_row( const char * row, uint64_t from, uint64_t to, int width )
     n = cell_fixed_save( values, 2, wire, sizeof( wire ) );
     if ( n < 0 || patch( wire, n, from, to, width ) != 1 ) { FAIL( row, "the sentinel did not ride exactly once" ); return; }
     memset( &report, 0, sizeof( report ) );
-    if ( cell_fixed_load_tolerant( values, 2, wire, n, NULL, 0, NULL, &report ) != -1 || !refused( &report ) ||
+    if ( cell_fixed_load( values, 2, wire, n, NULL, 0, NULL, &report ) != -1 || !refused( &report ) ||
          !cell_is_reset( &values[0] ) || !cell_is_reset( &values[1] ) || report.clamped != 0 )
     { FAIL( row, "the fixed read did not refuse the batch, or landed something" ); return; }
     if ( cell_fixed_load( values, 2, wire, n, NULL, 0, NULL, &report ) != -1 || report.refuse_reason != SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT )
@@ -183,7 +183,7 @@ static void graph_row( const char * row, uint64_t from, uint64_t to, int width )
     region = (uint8_t *) malloc( (size_t) ( need > 0 ? need : 1 ) );
     if ( need <= 0 || region == NULL ) { FAIL( row, "load_measure" ); free( region ); return; }
     memset( &report, 0, sizeof( report ) );
-    if ( node_load_tolerant( region, need, wire, n, &report ) != NULL || !refused( &report ) )
+    if ( node_load( region, need, wire, n, &report ) != NULL || !refused( &report ) )
     { FAIL( row, "the region read did not refuse it" ); free( region ); return; }
     if ( node_load( region, need, wire, n, &report ) != NULL || report.refuse_reason != SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT )
     { FAIL( row, "the strict region read did not refuse it as SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT" ); }

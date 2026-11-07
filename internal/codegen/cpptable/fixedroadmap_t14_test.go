@@ -236,7 +236,7 @@ int main() {
         printf("value moved %%08x\n", bits.u);
         return 1;
     }
-    if (r.clamped != 0) { printf("clamped\n"); return 1; }
+    if (r.refused != 0) { printf("out_of_range\n"); return 1; }
     return 0;
 }
 `, file)

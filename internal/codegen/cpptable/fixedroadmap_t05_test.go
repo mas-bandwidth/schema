@@ -6,7 +6,7 @@ package cpptable
 // (ill-formed text in the USED units). The law is docs/FIXED-FORM-ALGORITHM.md
 // §4.5's `text` row and docs/SPEC-TABLES.md §3.4:
 //
-//   `v := SLE(4, record+src)` clamped into `[0, cap]`, `COUNT clamped` if it
+//   `v := SLE(4, record+src)` out_of_range into `[0, cap]`, `COUNT out_of_range` if it
 //   fired. ... The CONTENT RULES apply to the USED UNITS and nothing else:
 //   UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`,
 //   never `2N`, an astral pair counting two. A content violation REFUSES BY
@@ -142,8 +142,8 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed || r.clamped != 0 )
-            { printf( "C3: clean-at-cap n=%lld refused=%d malformed=%d clamped=%d\n", (long long) n, (int) r.refused, (int) r.malformed, r.clamped ); return 1; }
+        if ( n != 1 || r.refused || r.damaged || r.refused != 0 )
+            { printf( "C3: clean-at-cap n=%lld refused=%d malformed=%d out_of_range=%d\n", (long long) n, (int) r.refused, (int) r.damaged, r.refused ); return 1; }
         if ( back[0].label_length != 8 || back[0].keep != 11 || back[0].narrow != 22 || back[0].renamed != 33 )
             { printf( "C3: clean-at-cap did not land: len=%d keep=%u narrow=%u renamed=%d\n", back[0].label_length, back[0].keep, (unsigned) back[0].narrow, back[0].renamed ); return 1; }
     }
@@ -155,10 +155,10 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
-            { printf( "C3: over-cap n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
-        if ( r.clamped != 0 )
-            { printf( "C3: over-cap refused but a counter moved: clamped=%d\n", r.clamped ); return 1; }
+        if ( n != -1 || !r.refused || r.damaged || r.reason != length_over_bound )
+            { printf( "C3: over-cap n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 )
+            { printf( "C3: over-cap refused but a counter moved: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
     // THE NEGATIVE END: -1 refuses length_over_bound by name.
     TableFixedPut32( word, 0xFFFFFFFFu );
@@ -166,10 +166,10 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
-            { printf( "C3: negative-end n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
-        if ( r.clamped != 0 )
-            { printf( "C3: negative-end refused but a counter moved: clamped=%d\n", r.clamped ); return 1; }
+        if ( n != -1 || !r.refused || r.damaged || r.reason != length_over_bound )
+            { printf( "C3: negative-end n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 )
+            { printf( "C3: negative-end refused but a counter moved: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
     printf( "C3 text length clamp holds\n" );
 `
@@ -208,10 +208,10 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
-            { printf( "C5: byte-vs-unit refusal n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
-        if ( r.clamped != 0 )
-            { printf( "C5: refused but a counter moved: clamped=%d\n", r.clamped ); return 1; }
+        if ( n != -1 || !r.refused || r.damaged || r.reason != length_over_bound )
+            { printf( "C5: byte-vs-unit refusal n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 )
+            { printf( "C5: refused but a counter moved: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
     // CONTENT OVER v, NEVER 2N: with the used length v=4, a lone surrogate at
     // unit 5 is PAST the walked range and the read stays clean — the check is
@@ -222,8 +222,8 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.malformed || r.refused )
-            { printf( "C5: a surrogate past v=4 was walked: n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
+        if ( n != 1 || r.damaged || r.refused )
+            { printf( "C5: a surrogate past v=4 was walked: n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.damaged, (int) r.refused ); return 1; }
     }
     // INSIDE v: the same surrogate at unit 2 with v=4 IS content the walk
     // checks — the check fires (the verdict itself is cpp/C4's; here it is that
@@ -234,7 +234,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( !( r.malformed || r.refused ) )
+        if ( !( r.damaged || r.refused ) )
             { printf( "C5: a surrogate inside v=4 was NOT content-checked\n" ); return 1; }
     }
     printf( "C5 wide code units hold\n" );
@@ -270,8 +270,8 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed )
-            { printf( "C4: a slack byte past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.malformed ); return 1; }
+        if ( n != 1 || r.refused || r.damaged )
+            { printf( "C4: a slack byte past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.damaged ); return 1; }
     }
     // ILL-FORMED CONTENT INSIDE v REFUSES BY NAME, the verdict the packet
     // reader gives (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): refused plus the
@@ -281,10 +281,10 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != TableMessageReason::text_ill_formed )
-            { printf( "C4: ill-formed content n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
-        if ( r.clamped != 0 || r.widened != 0 )
-            { printf( "C4: a refusal moved a counter: clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
+        if ( n != -1 || !r.refused || r.damaged || r.reason != TableMessageReason::text_ill_formed )
+            { printf( "C4: ill-formed content n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 )
+            { printf( "C4: a refusal moved a counter: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
     printf( "C4 text content refuses by name\n" );
 `
@@ -321,8 +321,8 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed || r.clamped != 0 )
-            { printf( "R24: 8 units, in cap: n=%lld clamped=%d\n", (long long) n, r.clamped ); return 1; }
+        if ( n != 1 || r.refused || r.damaged || r.refused != 0 )
+            { printf( "R24: 8 units, in cap: n=%lld out_of_range=%d\n", (long long) n, r.refused ); return 1; }
         if ( back[0].caption_length != 8 )
             { printf( "R24: the 8 units did not land: %d\n", back[0].caption_length ); return 1; }
     }
@@ -333,10 +333,10 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
-            { printf( "R24: 9 units should refuse: n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
-        if ( r.clamped != 0 )
-            { printf( "R24: refused but a counter moved: clamped=%d\n", r.clamped ); return 1; }
+        if ( n != -1 || !r.refused || r.damaged || r.reason != length_over_bound )
+            { printf( "R24: 9 units should refuse: n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 )
+            { printf( "R24: refused but a counter moved: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
     // SLACK IS NOT JUDGED: a lone surrogate PAST the used units is no refusal.
     TableFixedPut32( data + at - 4, 4 );
@@ -345,8 +345,8 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed )
-            { printf( "R24: a slack unit past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.malformed ); return 1; }
+        if ( n != 1 || r.refused || r.damaged )
+            { printf( "R24: a slack unit past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.damaged ); return 1; }
     }
     // ILL-FORMED TEXT IN THE USED UNITS REFUSES BY NAME (TableMessageReason::text_ill_formed).
     data[at + 10] = 'X'; data[at + 11] = 0x00;
@@ -355,10 +355,10 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != TableMessageReason::text_ill_formed )
-            { printf( "R24: ill-formed used units n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
-        if ( r.clamped != 0 || r.widened != 0 )
-            { printf( "R24: a refusal moved a counter: clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
+        if ( n != -1 || !r.refused || r.damaged || r.reason != TableMessageReason::text_ill_formed )
+            { printf( "R24: ill-formed used units n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 )
+            { printf( "R24: a refusal moved a counter: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
     // THE LENGTH REFUSAL AND THE CONTENT REFUSAL ON THE SAME RECORD: the length
     // word forged ONE PAST THE CAP (9 units) AND the used units ill-formed. The
@@ -371,10 +371,10 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
-            { printf( "R24: length+content n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
-        if ( r.clamped != 0 || r.widened != 0 )
-            { printf( "R24: the length+content refusal moved a counter: clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
+        if ( n != -1 || !r.refused || r.damaged || r.reason != length_over_bound )
+            { printf( "R24: length+content n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 )
+            { printf( "R24: the length+content refusal moved a counter: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
     printf( "R24 ill-formed used units refuse by name\n" );
 `

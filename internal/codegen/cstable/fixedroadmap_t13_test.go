@@ -70,7 +70,7 @@ const t13Body = `
 
             bool Counters(TableReport r)
             {
-                return r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0;
+                return r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0;
             }
             void Poison(T[] a) { foreach (T e in a) { e.X = 0x5A5A5A5A; e.Y = 0x5A5A5A5A; } }
             bool Untouched(T[] a) { foreach (T e in a) { if (e.X != 0x5A5A5A5A || e.Y != 0x5A5A5A5A) { return false; } } return true; }
@@ -81,7 +81,7 @@ const t13Body = `
                 Poison(back);
                 TableReport r = new TableReport();
                 long got = Schema.TFixedLoad(back, file, new TableFixedEntry[8192], r);
-                if (got != n || r.Refused || r.Malformed || r.Reason != null) { bad += ProbeLog.Fail(@NAME@, "the unbroken file did not read: n=" + got + " refused=" + r.Refused + " malformed=" + r.Malformed + " reason=" + r.Reason); }
+                if (got != n || r.Refused || r.Damaged || r.Reason != null) { bad += ProbeLog.Fail(@NAME@, "the unbroken file did not read: n=" + got + " refused=" + r.Refused + " malformed=" + r.Damaged + " reason=" + r.Reason); }
                 if (Untouched(back)) { bad += ProbeLog.Fail(@NAME@, "the unbroken read landed nothing"); }
             }
 
@@ -96,7 +96,7 @@ const t13Body = `
                 {
                     bad += ProbeLog.Fail(@NAME@, label + ": must refuse layout_malformed by name: refused=" + r.Refused + " reason=" + r.Reason + " verdict=" + r.Verdict);
                 }
-                if (r.Malformed) { bad += ProbeLog.Fail(@NAME@, label + ": refused+reason and malformed are never both set"); }
+                if (r.Damaged) { bad += ProbeLog.Fail(@NAME@, label + ": refused+reason and malformed are never both set"); }
                 if (r.LayoutHash != 0) { bad += ProbeLog.Fail(@NAME@, label + ": layout_malformed publishes no hash: 0x" + r.LayoutHash.ToString("x16")); }
                 if (Counters(r)) { bad += ProbeLog.Fail(@NAME@, label + ": a counter moved on a refusal"); }
                 if (!Untouched(back)) { bad += ProbeLog.Fail(@NAME@, label + ": the refused read wrote the destination"); }

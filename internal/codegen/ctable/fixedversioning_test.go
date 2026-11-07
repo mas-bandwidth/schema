@@ -201,7 +201,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			}
 			body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "the newer reader refused the older writer's file: n=%%lld reason=%%d\n", (long long) n, r.reason ); return 1; }
-    if ( r.reason != 0 || r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", r.reason, r.malformed ); return 1; }
+    if ( r.reason != 0 || r.refused || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", r.reason, r.refused ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
         { printf( "counters moved on a clean backward read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
     %s
@@ -242,14 +242,14 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 				// both directions (§5.7).
 				body = `
     if ( n < 1 ) { printf( "a row that moved no layout byte must READ in both directions: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
-    if ( r.reason != 0 || r.malformed ) { printf( "an equal hash is not a version: reason=%d\n", r.reason ); return 1; }
+    if ( r.reason != 0 || r.refused ) { printf( "an equal hash is not a version: reason=%d\n", r.reason ); return 1; }
 `
 			} else {
 				body = `
     if ( n != -1 ) { printf( "the older reader did not refuse the newer writer's file: n=%lld\n", (long long) n ); return 1; }
     if ( r.reason != SCHEMA_TABLE_LAYOUT_NEWER ) { printf( "a hash in no lineage entry owes layout_newer, not %d\n", r.reason ); return 1; }
     if ( r.layout_hash != want ) { printf( "layout_newer reports THE FILE'S hash\n" ); return 1; }
-    if ( r.malformed ) { printf( "a refusal by name never sets malformed too (§5.3, the joint answer)\n" ); return 1; }
+    if ( r.refused ) { printf( "a refusal by name never sets malformed too (§5.3, the joint answer)\n" ); return 1; }
     if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
         { printf( "REFUSE is total: no counter moves\n" ); return 1; }
     if ( memcmp( &back[0], &fresh, sizeof( fresh ) ) != 0 ) { printf( "REFUSE wrote destination bytes\n" ); return 1; }
@@ -282,7 +282,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 		t.Parallel()
 		// Nothing retired: the OLDEST file is at the floor and it reads.
 		out, err := cRunVersionProbe(t, newer, []string{older, mid}, 0, oldFile, `
-    if ( n < 1 || r.reason != 0 || r.malformed ) { printf( "a file AT the floor must read: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+    if ( n < 1 || r.reason != 0 || r.refused ) { printf( "a file AT the floor must read: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
 `, "")
 		if err != nil {
 			t.Fatalf("floor_at: %v\n%s", err, out)
@@ -295,7 +295,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 		out, err := cRunVersionProbe(t, newer, []string{older, mid}, 1, oldFile, `
     if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_UNSUPPORTED )
         { printf( "a file below the floor owes layout_unsupported: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
-    if ( r.malformed || r.widened != 0 || r.unknown != 0 || r.clamped != 0 ) { printf( "REFUSE is total\n" ); return 1; }
+    if ( r.refused || r.widened != 0 || r.unknown != 0 || r.clamped != 0 ) { printf( "REFUSE is total\n" ); return 1; }
 `, "")
 		if err != nil {
 			t.Fatalf("floor_below: %v\n%s", err, out)
@@ -327,7 +327,7 @@ func TestFixedVersioningHash(t *testing.T) {
 		t.Parallel()
 		out, err := cRunVersionProbe(t, newer, []string{older}, 0,
 			filepath.Join(corpus, "old_field_append.bin"), `
-    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_NEWER || r.layout_hash != 0xDEADBEEFCAFEF00Dull || r.malformed )
+    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_NEWER || r.layout_hash != 0xDEADBEEFCAFEF00Dull || r.refused )
         { printf( "hash_unknown: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
 `, "", `
     memcpy( data + kTableFixedHashAt, &(uint64_t){ 0xDEADBEEFCAFEF00Dull }, 8 );
@@ -345,7 +345,7 @@ func TestFixedVersioningHash(t *testing.T) {
 		t.Parallel()
 		out, err := cRunVersionProbe(t, newer, []string{older}, 0,
 			filepath.Join(corpus, "old_field_append.bin"), `
-    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_MALFORMED || r.malformed )
+    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_MALFORMED || r.refused )
         { printf( "hash_known_bytes_differ: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
 `, "", `
     data[kTableFixedHeaderBytes + 4] ^= 0xFF;
@@ -360,7 +360,7 @@ func TestFixedVersioningHash(t *testing.T) {
 		t.Parallel()
 		out, err := cRunVersionProbe(t, newer, []string{older}, 0,
 			filepath.Join(corpus, "new_field_append.bin"), `
-    if ( n < 1 || r.reason != 0 || r.malformed ) { printf( "hash_identity: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+    if ( n < 1 || r.reason != 0 || r.refused ) { printf( "hash_identity: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
     if ( back[0].w != 777 ) { printf( "the identity plan lost a value: %d\n", back[0].w ); return 1; }
 `, "")
 		if err != nil {
@@ -385,7 +385,7 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 			t.Parallel()
 			out, err := cRunVersionProbe(t, merged, []string{base, a, b}, 0,
 				filepath.Join(corpus, name), `
-    if ( n < 1 || r.reason != 0 || r.malformed )
+    if ( n < 1 || r.reason != 0 || r.refused )
         { printf( "both pre-merge files read on the merged build: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
 `, "")
 			if err != nil {
@@ -441,7 +441,7 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
     if ( r.clamped != 1 ) { printf( "writer_bound_count: clamped == %d, not exactly 1\n", r.clamped ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
         { printf( "writer_bound_count: a counter moved on a clean hostile read: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "writer_bound_count: a clean read refused: malformed=%d refused=%d\n", r.malformed, r.refused ); return 1; }
+    if ( r.refused || r.refused ) { printf( "writer_bound_count: a clean read refused: malformed=%d refused=%d\n", r.refused, r.refused ); return 1; }
     if ( r.reason != 0 ) { printf( "writer_bound_count: reason == %d, not 0\n", r.reason ); return 1; }
 `
 
@@ -494,8 +494,8 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 
 	body := `
     if ( n != 1 ) { printf( "forged_ordinal: the forged file reads one record, not %lld\n", (long long) n ); return 1; }
-    if ( r.refused || r.malformed || r.reason != 0 )
-        { printf( "forged_ordinal: the forged read is not a refusal: refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, r.reason ); return 1; }
+    if ( r.refused || r.refused || r.reason != 0 )
+        { printf( "forged_ordinal: the forged read is not a refusal: refused=%d malformed=%d reason=%d\n", r.refused, r.refused, r.reason ); return 1; }
     if ( back[0].tier != TIER_NONE ) { printf( "forged_ordinal: the forged ordinal lands None, not %s (%d)\n", enum_name_tier( back[0].tier ), (int) back[0].tier ); return 1; }
     if ( back[0].seq != 9 ) { printf( "forged_ordinal: the scalar after the enum must stand at 9, not %d\n", (int) back[0].seq ); return 1; }
     if ( r.clamped != 1 ) { printf( "forged_ordinal: clamped is the bounds pass's count, once per field: %d\n", r.clamped ); return 1; }
@@ -877,7 +877,7 @@ int main( void )
 %s
     return 0;
 }
-`, header, file, root, root, damage, snake+"_reset", snake+"_reset", poison, snake+"_fixed_load_tolerant", body)
+`, header, file, root, root, damage, snake+"_reset", snake+"_reset", poison, snake+"_fixed_load", body)
 	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}

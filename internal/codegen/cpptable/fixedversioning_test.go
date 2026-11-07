@@ -179,7 +179,7 @@ int main( void )
     memset( back, 0, sizeof( back ) );
     for ( int k = 0; k < 8; ++k ) { %sReset( back[k] ); }
     memset( &r, 0, sizeof( r ) );
-    n = %sFixedLoadTolerant( back, 8, data, len, plan, 4096, NULL, &r );
+    n = %sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
 %s
     return 0;
 }
@@ -289,7 +289,7 @@ var cppVersionRows = []cppVersionRow{
 // The shared body is the C leg's, translated to this leg's spellings: a clean
 // read is neither refused nor malformed (the reason is read only on a
 // refusal, docs/SPEC-TABLES.md §3.3), and the counters r.unknown,
-// r.kind_mismatch, r.clamped, r.duplicate must all stay zero. The widened
+// r.refused, r.refused, r.refused must all stay zero. The widened
 // counter is zero for an APPEND and nonzero for a WIDEN — an append the reader
 // knows is not an event (§5.9 #10). Every row whose ROOT declares the
 // `lead`/`trail` pair also asserts the oracle's brackets by name.
@@ -314,9 +314,9 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			}
 			body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "the newer reader refused the older writer's file: n=%%lld reason=%%d\n", (long long) n, (int) r.reason ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", (int) r.reason, (int) r.malformed ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
-        { printf( "counters moved on a clean backward read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
+    if ( r.damaged || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", (int) r.reason, (int) r.damaged ); return 1; }
+    if ( r.unknown != 0 )
+        { printf( "counters moved on a clean backward read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.refused, r.refused, r.refused ); return 1; }
     %s
     %s
 `, counters, bracket)
@@ -537,9 +537,9 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
     if ( n != -1 ) { printf( "writer_bound_count: a forged count past the PLAN's bound did not refuse: n=%lld\n", (long long) n ); return 1; }
     if ( !r.refused ) { printf( "writer_bound_count: refused is false\n" ); return 1; }
     if ( r.reason != count_over_bound ) { printf( "writer_bound_count: reason=%d, not count_over_bound\n", (int) r.reason ); return 1; }
-    if ( r.malformed ) { printf( "writer_bound_count: malformed set — a refusal by name is not malformed\n" ); return 1; }
-    if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "writer_bound_count: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+    if ( r.damaged ) { printf( "writer_bound_count: malformed set — a refusal by name is not malformed\n" ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "writer_bound_count: a counter moved: out_of_range=%d unknown=%d kind_mismatch=%d widened=%d repeated=%d\n", r.refused, r.unknown, r.refused, r.widened, r.refused ); return 1; }
 `
 	forge := `
     /* THE FORGE (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4): the OLD

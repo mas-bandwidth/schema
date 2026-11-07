@@ -31,9 +31,9 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
         }
     }
     if ( r.unknown != 1 ) { printf( "unknown is not exactly 1: %d\n", r.unknown ); return 1; }
-    if ( r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 )
-        { printf( "unknown_census_many: a counter moved on a clean backward read: unknown=%d km=%d w=%d c=%d dup=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "unknown_census_many: a clean read refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
+    if ( r.widened != 0 )
+        { printf( "unknown_census_many: a counter moved on a clean backward read: unknown=%d km=%d w=%d c=%d dup=%d\n", r.unknown, r.refused, r.widened, r.refused, r.refused ); return 1; }
+    if ( r.damaged || r.refused ) { printf( "unknown_census_many: a clean read refused: malformed=%d refused=%d\n", (int) r.damaged, (int) r.refused ); return 1; }
 `
 	out, err := cppRunVersionProbe(t, "unknown_census",
 		filepath.Join(corpus, "many_unknown_census.bin"), body, "")

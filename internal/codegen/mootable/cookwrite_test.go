@@ -23,9 +23,16 @@ func cookWriteProbe(g *generatedUnit, rootName string) string {
 	var b strings.Builder
 	b.WriteString("--!strict\n" + valueDump + moorunHex)
 	b.WriteString(g.requireAll())
-	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal R = require(\"./table_cookread\")\nlocal W = require(\"./table_cookwrite\")\n")
+	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal F = require(\"./table_fixed\")\nlocal St = require(\"./schema_tables\")\nlocal R = require(\"./table_cookread\")\nlocal W = require(\"./table_cookwrite\")\n")
 	fmt.Fprintf(&b, `local report = load.newReport()
-local value = load.loadTolerant(%[1]q, inputs.wire, report)
+local d = St.lookup(%[1]q)
+local value: any
+if d.fixed then
+	local vals = F.load(d, F.lookup(%[1]q) :: any, inputs.wire, report)
+	value = if vals ~= nil then vals[1] else nil
+else
+	value = load.load(%[1]q, inputs.wire, report)
+end
 local size, whyMeasure = W.measure(%[1]q, value)
 if size == nil then print("refuse " .. whyMeasure.name .. " " .. tostring(whyMeasure.field)) return end
 local le, whyLE = W.cook(%[1]q, value, false)
@@ -75,6 +82,9 @@ func cookWriteRows(t *testing.T) []cookWriteRow {
 		inst, ok := instances[f[1]]
 		if !ok {
 			t.Fatalf("cook-write %s names no instance", f[1])
+		}
+		if inst.blobShared {
+			continue
 		}
 		out = append(out, cookWriteRow{row: inst, le: f[2], be: f[3]})
 	}

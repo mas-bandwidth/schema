@@ -68,7 +68,7 @@ func cT12Header(t *testing.T, src string) string {
 // cT12Load is the emitted `<snake>_fixed_load` of the unit's root.
 func cT12Load(t *testing.T, src string) string {
 	t.Helper()
-	load := cT04Fn(cT12Header(t, src), "lineage_fixed_load_tolerant")
+	load := cT04Fn(cT12Header(t, src), "lineage_fixed_load")
 	if load == "" {
 		t.Fatal("lineage_fixed_load is not emitted")
 	}
@@ -146,11 +146,11 @@ func cT12F4(t *testing.T) {
 func cT12F7(t *testing.T) {
 	load := cT12Load(t, cT12UnitSrc)
 	cT04Has(t, load,
-		"if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }",
+		"if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }",
 		"F7 a file of no bytes at all")
 	cT04Has(t, load,
-		"if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }",
-		"F7 a file shorter than the twenty-byte header is malformed")
+		"if ( bytes < kTableFixedHeaderBytes + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }",
+		"F7 a file shorter than the twenty-byte header is refused")
 }
 
 // ---- c/C14 — "bounds pass walks live only" ---------------------------------

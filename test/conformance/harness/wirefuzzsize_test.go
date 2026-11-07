@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/hex"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // The file-form size oracle must count raw blob bodies as well as table
@@ -17,11 +19,8 @@ func TestFileWireSizeIncludesBlobRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := root.oracle(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !got.exact || got.bytes != 400 {
-		t.Fatalf("region size = %d (exact %v), want exactly 400", got.bytes, got.exact)
+	got, whole, refused := tablewire.FileRegionMeasure(root.model.Unit, root.def, data)
+	if refused || !whole || got != 400 {
+		t.Fatalf("region size = %d (whole %v, refused %v), want exactly 400", got, whole, refused)
 	}
 }

@@ -67,7 +67,7 @@ const tableWideJsonSource = `
             saturated = true;
             raw = negative ? (f.WideSigned ? sign : 0) : (f.WideSigned ? sign - 1 : UInt128.MaxValue);
         }
-        else if (point < -40) { input.Report.KindMismatch++; return true; }
+        else if (point < -40) { return RefuseText(ref input, "kind_mismatch"); }
         else
         {
             Span<byte> fractionDigits = stackalloc byte[MaxNumber + 48];
@@ -81,7 +81,7 @@ const tableWideJsonSource = `
                 for (int k = fn - 1; k >= 0; k--) { int d = fractionDigits[k] * 2 + carry; fractionDigits[k] = (byte)(d % 10); carry = d / 10; }
                 fraction = (fraction << 1) | (uint)carry;
             }
-            for (int k = 0; k < fn; k++) { if (fractionDigits[k] != 0) { input.Report.KindMismatch++; return true; } }
+            for (int k = 0; k < fn; k++) { if (fractionDigits[k] != 0) { return RefuseText(ref input, "kind_mismatch"); } }
             UInt128 whole = 0;
             for (int k = start; k < start + point && !saturated; k++)
             {
@@ -103,8 +103,8 @@ const tableWideJsonSource = `
                 if (negative && raw != 0) { raw = 0; saturated = true; }
             }
         }
-        if (saturated) { input.Report.Clamped++; }
-        if (f.ClampWide != null) { raw = f.ClampWide(raw, input.Report); }
+        if (saturated) { return RefuseText(ref input, "out_of_range"); }
+        if (f.RangeWide != null) { raw = f.RangeWide(raw, input.Report); if (input.Report.Refused) { input.Bad = true; return false; } }
         f.SetWide(owner, index, raw); return true;
     }
 `

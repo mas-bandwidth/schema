@@ -111,7 +111,7 @@ fixed table T
 	// by F=4. The low end sits ON the storage floor and is dropped (it cannot
 	// fire, TestFixedBoundsPassDropsSignedFixedEndOnTheStorageFloor); the high
 	// end is the value-unit max shifted by F and counts.
-	t04Has(t, fn, "if (value.V > 112) { value.V = 112; clamped++; }",
+	t04Has(t, fn, "if (value.V > 112) { clamped++; }",
 		"C8 the fixed-point high end is the value-unit max shifted by F")
 
 	bits := generateCS(t, `package probe
@@ -125,8 +125,8 @@ fixed table T
 	// bits(12) rides two bytes; its top is 2^12 - 1, which the storage width
 	// does not enforce, so the width clamp is emitted and counts.
 	t04Has(t, bn, "// bits(12) width clamp", "C8 the bits(N) width clamp is emitted")
-	t04Has(t, bn, "if (value.V > 4095) { value.V = 4095; clamped++; }",
-		"C8 a bits(12) clamps to 2^12 - 1 and counts")
+	t04Has(t, bn, "if (value.V > 4095) { clamped++; }",
+		"C8 a bits(12) past 2^12 - 1 counts for refusal")
 }
 
 // t04R20: R20 [verify] "§21.2's landing rules". Each clause's behavioural
@@ -152,8 +152,8 @@ func t04R20(t *testing.T) {
 	// A shorter counted array lands with the reader's slack as template zeros:
 	// the copy clamps the ragged count to the plan's (the writer's) bound and
 	// counts, so the reader's slack stays the template's zeros.
-	t04Has(t, n, "else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }",
-		"R20 a count past the writer's bound clamps and counts")
+	t04Has(t, n, "if (v < 0 || (uint)v > p.Size) { return \"count_over_bound\"; }",
+		"R20 a count past the writer's bound refuses")
 }
 
 // t04R21: R21 holds §4's float rung under the finite rule of 2026-10-27

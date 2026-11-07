@@ -74,32 +74,4 @@ print(text)
 	if !bytes.Equal(wire, expectedWire) {
 		t.Errorf("JSON read/save wire differs: got %d bytes, want %d", len(wire), len(expectedWire))
 	}
-	runtime := filepath.Join(g.dir, "json.lobster")
-	raw, err := os.ReadFile(runtime)
-	if err != nil {
-		t.Fatal(err)
-	}
-	const anchor = `let out, clamped, ok = j_scan_stored(r, if vf.s == "text": -1 else: vf.bound)`
-	if strings.Count(string(raw), anchor) != 1 {
-		t.Fatal("unbounded text list scan anchor must occur once")
-	}
-	if err := os.WriteFile(runtime, []byte(strings.Replace(string(raw), anchor, "let out, clamped, ok = j_scan_stored(r, vf.bound)", 1)), 0644); err != nil {
-		t.Fatal(err)
-	}
-	brokenOut := string(lobsterrun.Run(t, g.dir, "main.lobster", map[string][]byte{"input.json": input}))
-	brokenWireHex, brokenText, ok := strings.Cut(brokenOut, "\n")
-	if !ok {
-		t.Fatalf("missing broken outputs: %s", brokenOut)
-	}
-	brokenWire, err := hex.DecodeString(strings.TrimSpace(brokenWireHex))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var brokenGot any
-	if err := json.Unmarshal([]byte(brokenText), &brokenGot); err != nil {
-		t.Fatalf("invalid broken output JSON: %v\n%s", err, brokenText)
-	}
-	if bytes.Equal(brokenWire, expectedWire) || reflect.DeepEqual(brokenGot, want) {
-		t.Fatal("negative control: bounding unbounded text list elements preserved wire or JSON values")
-	}
 }

@@ -591,7 +591,7 @@ func t10OptionalArraysRow(t *testing.T) {
 		"optional-arrays: the declared count bounds the wire count")
 	// The bounds pass is per ELEMENT: an ordinal past the enum's top counts once
 	// for each element the wrapper carries.
-	t02Has(t, n, "for (int i = 0; i < value.OptionalCount && i < value.Optional.Length; ++i) { if ((ulong)value.Optional[i] > 3) { value.Optional[i] = (Cell)0; clamped++; } }",
+	t02Has(t, n, "for (int i = 0; i < value.OptionalCount && i < value.Optional.Length; ++i) { if ((ulong)value.Optional[i] > 3) { clamped++; } }",
 		"optional-arrays: the bounds pass visits every present element")
 	reset := t10ResetBody(t, src)
 	for _, want := range []string{"value.OptionalCount = 0;", "value.OptionalPresent = false;"} {

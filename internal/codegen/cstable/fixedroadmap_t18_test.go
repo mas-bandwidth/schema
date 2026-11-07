@@ -130,7 +130,7 @@ int Read(Probe.T v, byte[] buf, string arm)
     rep = new Probe.TableReport();
     plan = new Probe.TableFixedEntry[64];
     long n = Probe.Schema.TFixedLoad(back, buf, plan, rep);
-    if (n != 1 || rep.Refused || rep.Malformed || rep.Clamped != 0) { return Fail(arm, "clean read n=" + n + " refused=" + rep.Refused + " malformed=" + rep.Malformed + " clamped=" + rep.Clamped); }
+    if (n != 1 || rep.Refused || rep.Damaged) { return Fail(arm, "clean read n=" + n + " refused=" + rep.Refused + " damaged=" + rep.Damaged); }
     if (back.Lead != v.Lead || back.Trail != v.Trail) { return Fail(arm, "lead/trail " + back.Lead + "/" + back.Trail); }
     return 0;
 }
@@ -264,7 +264,7 @@ int Read(Probe.T v, byte[] buf, string arm)
     rep = new Probe.TableReport();
     plan = new Probe.TableFixedEntry[64];
     long n = Probe.Schema.TFixedLoad(back, buf, plan, rep);
-    if (n != 1 || rep.Refused || rep.Malformed || rep.Clamped != 0) { return Fail(arm, "clean read n=" + n + " refused=" + rep.Refused + " malformed=" + rep.Malformed + " clamped=" + rep.Clamped); }
+    if (n != 1 || rep.Refused || rep.Damaged) { return Fail(arm, "clean read n=" + n + " refused=" + rep.Refused + " damaged=" + rep.Damaged); }
     if (back.Lead != v.Lead || back.Trail != v.Trail) { return Fail(arm, "lead/trail " + back.Lead + "/" + back.Trail); }
     return 0;
 }
@@ -327,9 +327,9 @@ Probe.TableReport rep = new Probe.TableReport();
 Probe.TableFixedEntry[] plan = new Probe.TableFixedEntry[64];
 long n = Probe.Schema.TFixedLoad(back, w, plan, rep);
 if (back.Pick.Type != Probe.PickType.None) { t0 += Fail("tag " + back.Pick.Type); }
-if (rep.Clamped != 1) { t0 += Fail("clamped " + rep.Clamped); }
+if (!rep.Refused) { t0 += Fail("a tag past the arm set did not refuse"); }
 if (back.Pick.Alpha != 0) { t0 += Fail("a payload was read: " + back.Pick.Alpha); }
-if (n != 1) { t0 += Fail("n " + n); }
+if (n != -1) { t0 += Fail("n " + n); }
 if (t0 == 0) { Console.WriteLine("T18 tag-past-the-arm-set ok"); }
 `
 

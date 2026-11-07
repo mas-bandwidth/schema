@@ -17,6 +17,7 @@ func TestLobsterUnitViewGeneratedNames(t *testing.T) {
 		{"BarDescriptor", "type Payload { n int32 }\nunion Bar { one Payload }\ntype BarDescriptor { n int32 }\n"},
 		{"FooDescriptor", "table Foo { n int32 }\nconst FooDescriptor = 1\n"},
 		{"UnitView", "const UnitView = 1\n"},
+		{"FooFixedRecordCodec", "fixed table Foo { n int32 }\nconst FooFixedRecordCodec = 1\n"},
 	}
 	for _, suffix := range []string{"Slot", "At", "Each"} {
 		cases = append(cases, struct{ name, source string }{"OwnerItems" + suffix, "enum Key { One }\ntype Owner { items [Key]int32 }\nconst OwnerItems" + suffix + " = 1\n"})

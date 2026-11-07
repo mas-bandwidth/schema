@@ -69,7 +69,7 @@ func retainProbe(g *generatedUnit, rootName string, capacity int, ids int) strin
 		fmt.Sprintf(`local report = L.newReport()
 local store = R.newStore(%d, %s)
 local v = R.LoadRetain(%q, inputs.wire, report, store)
-print(string.format("%%d,%%d,%%d,%%d,%%s", R.used(store), report.retained, report.retainLost, report.unknown, tostring(report.malformed)))
+print(string.format("%%d,%%d,%%d,%%d,%%s", R.used(store), report.retained, report.retainLost, report.unknown, tostring(report.damaged)))
 if v == nil then print("NIL") return end
 local before = report.retainLost
 local out, why = R.SaveRetain(%q, v, store, report)
@@ -472,7 +472,7 @@ local report = L.newReport()
 local store = R.newStore(1024)
 local v = R.LoadRetain("Cfg", inputs.wire, report, store)
 print(v == nil, tostring(report.reason))
-local loaded = L.loadTolerant("Cfg", inputs.wire, L.newReport())
+local loaded = L.load("Cfg", inputs.wire, L.newReport())
 local ok, out, why = pcall(R.SaveRetain, "Cfg", loaded, store, report)
 local ok2, n, why2 = pcall(R.MeasureRetain, "Cfg", loaded, store)
 print(out == nil, if why ~= nil then why.name else "none", n == nil, if why2 ~= nil then why2.name else "none")

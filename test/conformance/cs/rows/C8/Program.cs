@@ -75,11 +75,16 @@ class Program
         var plan = new Bits.TableFixedEntry[64];
         long n = Bits.Schema.BitsGrowFixedLoad(back, file, plan, r);
         bool ok = true;
+        if (wantClamped > 0)
+        {
+            // A planted value past the bound refuses the whole load; nothing lands.
+            ok &= Check(n == -1 && r.Refused, what + ": an out-of-range value refuses the load");
+            return ok;
+        }
         ok &= Check(n == 1, what + ": one record");
         ok &= Check(back.V == want, $"{what}: v={back.V}, want {want}");
-        ok &= Check(r.Clamped == wantClamped, $"{what}: clamped={r.Clamped}, want {wantClamped}");
         ok &= Check(back.Lead == 0xAAAAAAAAu && back.Trail == 0xBBBBBBBBu, what + ": lead and trail intact");
-        ok &= Check(!r.Refused && !r.Malformed && r.Unknown == 0 && r.Widened == 0, what + ": no other counter moved");
+        ok &= Check(!r.Refused && !r.Damaged && r.Unknown == 0 && r.Widened == 0, what + ": no other counter moved");
         return ok;
     }
 
@@ -107,11 +112,15 @@ class Program
         var plan = new Fx.TableFixedEntry[64];
         long n = Fx.Schema.FixedIGrowFixedLoad(back, file, plan, r);
         bool ok = true;
+        if (wantClamped > 0)
+        {
+            ok &= Check(n == -1 && r.Refused, what + ": an out-of-range value refuses the load");
+            return ok;
+        }
         ok &= Check(n == 1, what + ": one record");
         ok &= Check(back.V == want, $"{what}: raw v={back.V}, want {want}");
-        ok &= Check(r.Clamped == wantClamped, $"{what}: clamped={r.Clamped}, want {wantClamped}");
         ok &= Check(back.Lead == 0xAAAAAAAAu && back.Trail == 0xBBBBBBBBu, what + ": lead and trail intact");
-        ok &= Check(!r.Refused && !r.Malformed && r.Unknown == 0 && r.Widened == 0, what + ": no other counter moved");
+        ok &= Check(!r.Refused && !r.Damaged && r.Unknown == 0 && r.Widened == 0, what + ": no other counter moved");
         return ok;
     }
 }

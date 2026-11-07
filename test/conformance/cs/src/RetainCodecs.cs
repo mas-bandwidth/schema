@@ -975,7 +975,7 @@ static partial class Program
                 if(f[5]=="short")
                 { RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],new RT.TableReport()); stores[0].Capacity=stores[0].Used-1; }
                 roots[0]=(IntPtr)RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],report);
-                if(report.Malformed || report.Refused) { return 1; }
+                if(report.Damaged || report.Refused) { return 1; }
                 using var bytes=new MemoryStream(); var save=new RT.TableReport();
                 for(int i=0;i<bodies;i++)
                 {

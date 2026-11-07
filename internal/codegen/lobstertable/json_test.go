@@ -32,13 +32,19 @@ type jsonRow struct {
 
 // lobsterVerdict is the verdict the Lobster leg owes a hostile row.
 func (r jsonRow) lobsterVerdict() string {
-	if len(r.carried) == 0 {
-		return r.verdict
+	verdict := r.verdict
+	if len(r.carried) != 0 && !slices.Contains(r.carried, "lobster") {
+		verdict = r.uncarried
 	}
-	if slices.Contains(r.carried, "lobster") {
-		return r.verdict
+	// Transitional manifests can still spell the former diagnostics tuple.
+	// A recovery in that tuple is a refusal under the one-read contract.
+	if fields := strings.Split(verdict, ","); len(fields) == 7 {
+		if fields[1] != "0" || fields[3] != "0" || fields[4] != "0" || fields[5] != "false" {
+			return "refused"
+		}
+		return "read"
 	}
-	return r.uncarried
+	return verdict
 }
 
 func jsonRows(t *testing.T) []jsonRow {
@@ -86,15 +92,17 @@ func jsonProgram(g *loadUnit, rows []jsonRow) string {
     let rep = schema_rt.LoadReport {}
     let wire = read_file("w{i}")
     assert wire
-    let rec = schema_rt.load_tolerant(root, wire, rep)
-    assert rec
+    let golden = read_file("j{i}")
+    assert golden
+    let rec = schema_rt.load(root, wire, rep)
+    if not rec:
+        print("E{i} load " + root + ": " + rep.reason)
+        return
     let text, why = schema_rt.json_write(rec)
     if why != "":
         print("E{i} write: " + why)
     else:
         assert write_file("tw{i}", text)
-    let golden = read_file("j{i}")
-    assert golden
     let rrep = schema_rt.LoadReport {}
     let back = schema_rt.json_read(root, golden, rrep)
     if back:
@@ -110,8 +118,13 @@ def hostile(root:string, i:int):
     let text = read_file("h{i}")
     assert text
     let rec = schema_rt.json_read(root, text, rep)
-    if rec and not rep.malformed:
-        print("H{i} {rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},false,read")
+    if rec:
+        let out, reason = schema_rt.json_write(rec)
+        if reason != "":
+            print("E{i} accepted JSON is not writable: " + reason)
+        else:
+            assert write_file("th{i}", out)
+        print("H{i} read")
     else:
         print("H{i} refused")
 `)
@@ -155,7 +168,7 @@ func runJsonUnit(t *testing.T, g *loadUnit, rows []jsonRow) jsonResult {
 			}
 			inputs[fmt.Sprintf("h%d", i)] = text
 		}
-		for _, p := range []string{"tw", "tr"} {
+		for _, p := range []string{"tw", "tr", "th"} {
 			_ = os.Remove(filepath.Join(g.dir, fmt.Sprintf("%s%d", p, i)))
 		}
 	}
@@ -182,6 +195,9 @@ func runJsonUnit(t *testing.T, g *loadUnit, rows []jsonRow) jsonResult {
 	}
 	for i, r := range rows {
 		if r.kind != "instance" {
+			if b, err := os.ReadFile(filepath.Join(g.dir, fmt.Sprintf("th%d", i))); err == nil {
+				res.written[i] = b
+			}
 			continue
 		}
 		if b, err := os.ReadFile(filepath.Join(g.dir, fmt.Sprintf("tw%d", i))); err == nil {
@@ -194,14 +210,19 @@ func runJsonUnit(t *testing.T, g *loadUnit, rows []jsonRow) jsonResult {
 	return res
 }
 
-// goJsonWrite is the reference engine's text of a wire: Decode, then Write,
-// closed by the newline every port's ToJson closes it with.
-func goJsonWrite(t *testing.T, u *ir.Unit, rootName string, wire []byte) []byte {
+// goJsonWrite is the reference engine's complete value as canonical text.
+// Historical fixed fixtures use their valid JSON; their old form-1 bytes
+// remain a value-projection golden, never input to the strict fixed reader.
+func goJsonWrite(t *testing.T, u *ir.Unit, rootName string, wire, golden []byte) []byte {
 	t.Helper()
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup(rootName))
 	var rep tabletext.Report
-	if _, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
+	if u.Tables[rootName].FixedDeclared {
+		if !m.Read(inst, golden, &rep) {
+			t.Fatalf("%s: reference refuses fixed fixture text", rootName)
+		}
+	} else if _, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
 		t.Fatalf("%s: the reference refuses the wire: %v", rootName, err)
 	}
 	text, err := m.Write(inst)
@@ -211,15 +232,26 @@ func goJsonWrite(t *testing.T, u *ir.Unit, rootName string, wire []byte) []byte 
 	return append(text, '\n')
 }
 
-// goJsonVerdict is the reference engine's hostile verdict for one text.
-func goJsonVerdict(u *ir.Unit, rootName string, text []byte) string {
+// goJsonRead compares the whole accepted value through canonical write-back;
+// refusal reasons and local diagnostics are not a cross-language contract.
+func goJsonRead(t *testing.T, u *ir.Unit, rootName string, text []byte) (string, []byte) {
+	t.Helper()
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup(rootName))
 	var rep tabletext.Report
 	if !m.Read(inst, text, &rep) || rep.Refused {
-		return "refused"
+		return "refused", nil
 	}
-	return fmt.Sprintf("%d,%d,%d,%d,%d,false,read", rep.Unknown, 0, rep.Widened, 0, 0)
+	out, err := m.Write(inst)
+	if err != nil {
+		t.Fatalf("reference accepted an unwritable value: %v", err)
+	}
+	return "read", append(out, '\n')
+}
+
+func goJsonVerdict(t *testing.T, u *ir.Unit, rootName string, text []byte) string {
+	verdict, _ := goJsonRead(t, u, rootName, text)
+	return verdict
 }
 
 // jsonUnits groups the rows by unit, in manifest order, and generates each.
@@ -271,7 +303,7 @@ func TestLobsterJsonMatchesTheReference(t *testing.T) {
 			if r.kind == "instance" {
 				wire, _ := os.ReadFile(filepath.Join(root, r.wire))
 				golden, _ := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", r.name+".json"))
-				want := goJsonWrite(t, g.u, r.root, wire)
+				want := goJsonWrite(t, g.u, r.root, wire, golden)
 				if string(want) != string(golden) {
 					t.Fatalf("%s: the reference's text is not the golden; the comparison is not grounded", r.name)
 				}
@@ -287,10 +319,14 @@ func TestLobsterJsonMatchesTheReference(t *testing.T) {
 				continue
 			}
 			text, _ := os.ReadFile(filepath.Join(root, r.tree, r.root+".json"))
-			goV := goJsonVerdict(g.u, r.root, text)
+			goV, want := goJsonRead(t, g.u, r.root, text)
 			got := res.verdict[i]
 			if got != goV {
 				t.Errorf("json-hostile %s: lobster %s, the reference %s", r.name, got, goV)
+				continue
+			}
+			if got == "read" && string(res.written[i]) != string(want) {
+				t.Errorf("json-hostile %s: accepted write-back differs at byte %s", r.name, divergence(string(res.written[i]), string(want)))
 				continue
 			}
 			if got != r.lobsterVerdict() {
@@ -327,20 +363,12 @@ func patchJson(t *testing.T, g *loadUnit, anchor, with string) {
 // emitted runtime in memory and requires the comparison to go red on exactly
 // the rows the patched rule decides, and nowhere else.
 //
-// READ: the one line that counts a repeated TABLE key (§16.2) stops counting,
-// so exactly the hostile rows whose duplicate comes from a table object's key
-// change verdict — every row the reference counts a duplicate for, less the
-// rows whose repeat is an enum-keyed object's slot key (keyed-*,
-// dup-key-rejected-keyed) or a map's key (*map-dup-key), each of which counts
-// on its own line.
-//
 // WRITE: the `&node` label's spelling (§16.7) changes, so exactly the
 // instances whose golden text carries a label go red.
 func TestLobsterJsonNegativeControl(t *testing.T) {
 	t.Parallel()
 	order, byUnit, gen := jsonUnits(t)
 	for _, key := range order {
-		patchJson(t, gen[key], "            if seen[index]:\n                r.report.duplicate++\n", "            if seen[index]:\n                r.report.duplicate += 0\n")
 		patchJson(t, gen[key], `        j_raw(w, "\"&node\": " + number_to_string(x.label, 10, 1))
         j_line(w, depth)`, `        j_raw(w, "\"&nod\": " + number_to_string(x.label, 10, 1))
         j_line(w, depth)`)
@@ -362,14 +390,7 @@ func TestLobsterJsonNegativeControl(t *testing.T) {
 				}
 				continue
 			}
-			text, _ := os.ReadFile(filepath.Join(root, r.tree, r.root+".json"))
-			goV := goJsonVerdict(g.u, r.root, text)
-			if goV != "refused" && !strings.Contains(r.name, "keyed") && !strings.Contains(r.name, "map-dup-key") && strings.Split(goV, ",")[4] != "0" {
-				wantRed = append(wantRed, "hostile "+r.name)
-			}
-			if res.verdict[i] != goV {
-				gotRed = append(gotRed, "hostile "+r.name)
-			}
+
 		}
 	}
 	sort.Strings(wantRed)
@@ -402,4 +423,45 @@ func referenceCount(text string) int {
 			n++
 		}
 	}
+}
+
+// TestLobsterJsonTextTotalNegativeControl takes the JSON read's text-list
+// total out (docs/SPEC-TABLES.md §2.13: every element is kept whatever the
+// bytes already spent) and requires the comparison to go red on hostile rows
+// that exercise the total, text-total-past among them, and on nothing else.
+func TestLobsterJsonTextTotalNegativeControl(t *testing.T) {
+	t.Parallel()
+	order, byUnit, gen := jsonUnits(t)
+	var gotRed []string
+	for _, key := range order {
+		if key != "featurewitnesses" {
+			continue
+		}
+		g, rows := gen[key], byUnit[key]
+		patchJson(t, g, "                if length(out) > tot.total - spent:\n", "                if false:\n")
+		res := runJsonUnit(t, g, rows)
+		for i, r := range rows {
+			if r.kind == "instance" {
+				golden, _ := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", r.name+".json"))
+				if string(res.written[i]) != string(golden) {
+					gotRed = append(gotRed, "write "+r.name)
+				}
+				continue
+			}
+			text, _ := os.ReadFile(filepath.Join(root, r.tree, r.root+".json"))
+			if res.verdict[i] != goJsonVerdict(t, g.u, r.root, text) {
+				gotRed = append(gotRed, "hostile "+r.name)
+			}
+		}
+	}
+	sort.Strings(gotRed)
+	if !slices.Contains(gotRed, "hostile text-total-past") {
+		t.Fatalf("NEGATIVE CONTROL FAILED: without the total, text-total-past still agreed (red: %v)", gotRed)
+	}
+	for _, red := range gotRed {
+		if !strings.HasPrefix(red, "hostile text-total-") {
+			t.Fatalf("NEGATIVE CONTROL FAILED: the total's sabotage also turned %q red (red: %v)", red, gotRed)
+		}
+	}
+	t.Logf("the total's sabotage went red on exactly: %s", strings.Join(gotRed, ", "))
 }

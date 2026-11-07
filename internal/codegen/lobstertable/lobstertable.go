@@ -339,6 +339,8 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 	g.Pf("    id: %s, // FNV-1a 64 of %s (§3.1)\n", idLit(ir.TableWireId(t.WireName())), t.WireName())
 	g.Pf("    table: %v,\n", t.IsTable)
 	g.Pf("    fixed: %v,\n", t.FixedDeclared)
+	g.Pf("    json_form: %v,\n", t.CarriesForm("json"))
+	g.Pf("    cook_form: %v,\n", t.CarriesForm("cook"))
 	g.Pf("    variable: %v,\n", ir.VariableTables(g.Unit)[t.Name])
 	if t.Integrity == "crc32c" {
 		g.Pf("    integrity: true,\n")
@@ -358,7 +360,6 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 	// state the region a C reader of this wire would ask for
 	g.Pf("    rsize: %d,\n", ir.RecordLayout(g.Unit, t).Size)
 	g.Pf("    ralign: %d,\n", ir.TableRegionAlign(g.Unit))
-	emitFixedFacts(g, t)
 	g.Pf("    fields: [\n")
 	guards := fieldGuards(t)
 	for i, f := range t.Fields {
@@ -379,7 +380,6 @@ func emitUnionDescriptor(g *lobster.Gen, un *ir.Union) {
 	g.Pf("// %sDescriptor — union %s as data: one entry per arm, tag order (§2.6)\n", un.Name, un.Name)
 	g.Pf("let %sDescriptor = %s.union_of(%s.UnionDescriptor {\n", un.Name, rt, rt)
 	g.Pf("    name: %s,\n", lobster.StringLit([]byte(un.Name)))
-	g.Pf("    tagw: %d,\n", ir.TableFixedUnionTagBytes(un))
 	g.Pf("    arms: [\n")
 	for i, v := range un.Variants {
 		sep := ","
@@ -497,7 +497,6 @@ func fieldDescWire(g *lobster.Gen, f *ir.Field, ordinal, tag int, wire bool) str
 	default:
 		parts = append(parts, valueDesc(g, f, true)...)
 	}
-	parts = append(parts, fixedFieldFacts(f)...)
 	return rt + ".FieldDescriptor { " + strings.Join(parts, ", ") + " }"
 }
 

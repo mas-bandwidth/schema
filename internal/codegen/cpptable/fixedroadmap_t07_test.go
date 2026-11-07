@@ -158,8 +158,10 @@ func TestFixedRoadmapCppT07Writes(t *testing.T) {
 // the comment above emitFixedClamp: "It walks only what a read can have written
 // — a counted array's LIVE elements and never its slack"). The wire is written
 // with two live elements, the second out of range, and the two unused slots
-// overlaid with 0x5A5A5A5A, an out-of-range value no writer wrote. The read's
-// clamp counter must be EXACTLY one: the live element, and never the slack.
+// overlaid with 0x5A5A5A5A, an out-of-range value no writer wrote. Under the
+// strict-only read the one live out-of-range element refuses the whole load
+// as out_of_range; the slack's poisoned slots are never walked, so they can
+// neither refuse nor land.
 func cppT07C14(t *testing.T) {
 	src := `package c14
 fixed table C14 {
@@ -186,12 +188,9 @@ fixed table C14 {
     TableReport r;
     memset( &r, 0, sizeof( r ) );
     static TableFixedEntry plan[1024];
-    const int64_t n = C14FixedLoadTolerant( &back, 1, buf, need, plan, 1024, NULL, &r );
-    if ( n != 1 ) { printf( "C14: the record did not read: n=%lld\n", (long long) n ); return 1; }
-    if ( r.clamped != 1 )
-        { printf( "C14: bounds pass walks live only: the slack's poisoned slots must not count and the one live 999 must: clamped=%d, want exactly 1\n", r.clamped ); return 1; }
-    if ( back.xs[1] != 10 )
-        { printf( "C14: the live out-of-range value did not clamp: xs[1]=%d\n", back.xs[1] ); return 1; }
+    const int64_t n = C14FixedLoad( &back, 1, buf, need, plan, 1024, NULL, &r );
+    if ( n != -1 || !r.refused || r.refuse_reason != out_of_range )
+        { printf( "C14: the live out-of-range value did not refuse out_of_range: n=%lld refused=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.refuse_reason ); return 1; }
     printf( "C14 ok\n" );
 `
 	out, err := cppT07Run(t, src, "c14", body)
@@ -236,10 +235,10 @@ fixed table W4 {
     TableReport r;
     memset( &r, 0, sizeof( r ) );
     static TableFixedEntry plan[256];
-    const int64_t n = W4FixedLoadTolerant( &back, 1, buf, need, plan, 256, NULL, &r );
+    const int64_t n = W4FixedLoad( &back, 1, buf, need, plan, 256, NULL, &r );
     if ( n != 1 ) { printf( "W4: an endpoint's garbage in the slack refused the record: n=%lld\n", (long long) n ); return 1; }
-    if ( r.clamped || r.unknown || r.kind_mismatch || r.duplicate || r.malformed || r.refused )
-        { printf( "W4: read slack unspecified: garbage in declared slack moved a counter: c=%d u=%d km=%d d=%d m=%d x=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.duplicate, (int) r.malformed, (int) r.refused ); return 1; }
+    if ( r.refused || r.unknown || r.widened || r.damaged )
+        { printf( "W4: read slack unspecified: garbage in declared slack moved a counter: u=%d w=%d m=%d x=%d\n", r.unknown, r.widened, (int) r.damaged, (int) r.refused ); return 1; }
     if ( back.label_length != 2 || back.label[0] != 'h' || back.label[1] != 'i' )
         { printf( "W4: the used text did not read\n" ); return 1; }
     if ( back.marks_count != 1 || back.marks[0] != 7 )
