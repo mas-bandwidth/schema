@@ -186,24 +186,25 @@ end
 local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
+local F = require("fixed")
 local function work(wire)
-  local ok, v = pcall(T.ReadFixedTolerant, "` + root + `", wire)
-  local loaded = ok and 1 or 0
+  local ok, rows, _, _, widened, clamped, unknown = pcall(F.load, T, "` + root + `", wire, false)
+  local loaded = (ok and rows ~= nil and rows[1] ~= nil) and 1 or 0
   local savedHex = "none"
-  if ok then
-    local sok, b = pcall(T.FixedSave, "` + root + `", { v })
+  if loaded == 1 then
+    local sok, b = pcall(T.FixedSave, "` + root + `", rows)
     if sok and b ~= nil then savedHex = hex(b) end
   end
-  local ok2, v2 = pcall(T.ReadFixedTolerant, "` + root + `", wire)
+  local ok2, rows2 = pcall(F.load, T, "` + root + `", wire, false)
   if ok ~= ok2 then error("the second fixed read answered differently") end
-  if ok2 then
-    local sok2, b2 = pcall(T.FixedSave, "` + root + `", { v2 })
+  if ok2 and rows2 ~= nil and rows2[1] ~= nil then
+    local sok2, b2 = pcall(T.FixedSave, "` + root + `", rows2)
     local s2 = "none"
     if sok2 and b2 ~= nil then s2 = hex(b2) end
     if s2 ~= savedHex then error("the second fixed read read a different value") end
   end
-  return table.concat({ loaded, 0, 0, 0, 0, 0,
-    "false", ok and 0 or 1, savedHex }, "|")
+  return table.concat({ loaded, unknown or 0, 0, widened or 0, clamped or 0, 0,
+    "false", loaded == 1 and 0 or 1, savedHex }, "|")
 end
 for i = 1, #wires do
   local ok, res = pcall(work, wires[i])
