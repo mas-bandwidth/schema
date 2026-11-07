@@ -150,7 +150,7 @@ func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	m := varMember(f)
 	one := variableElement(f)
 	kind := ir.TableWireElemKind(f)
-	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!(%s)){report.kindMismatch++;}else{if(ek!=%d)report.widened++;for(long i=0;Long.compareUnsigned(i,count)<0;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.malformed=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
+	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!(%s)){report.refuse(\"kind_mismatch\");}else{if(ek!=%d)report.widened++;for(long i=0;Long.compareUnsigned(i,count)<0;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.damaged=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
 	for i := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                    if(key==0x%016xL)slot=%d;\n", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 	}
@@ -172,14 +172,14 @@ func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	// L is malformed (docs/SPEC-TABLES.md §3.2, §4).
 	slack := ""
 	if isStruct(one) && !one.Type.Pointer {
-		slack = fmt.Sprintf("if(payload.off!=payload.limit){report.malformed=true;value=new %sVariable.Slot_%s();}", st.Name, m)
+		slack = fmt.Sprintf("if(payload.off!=payload.limit){report.damaged=true;value=new %sVariable.Slot_%s();}", st.Name, m)
 	}
 	fmt.Fprintf(b, "%sVariable.Slot_%s value=new %sVariable.Slot_%s();TableVariable.Reader payload=TableVariable.fieldPayload(body,ek);int beforeWidened=report.widened;%sVariable.%s%s(payload,value,ek,nt,report%s);if(ek!=%d)report.widened=beforeWidened;%sv.%s.set(slot,value.%s);\n", st.Name, m, st.Name, m, st.Name, method, m, args, kind, slack, m, m)
 
 	if one.Type.Pointer {
 		fmt.Fprintf(b, "                    v.%sIdx.set(slot,value.%sIdx);\n", m, m)
 	}
-	b.WriteString("                    }}}}}else{r.skip(kind);report.kindMismatch++;}\n")
+	b.WriteString("                    }}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n")
 }
 
 func writeJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
@@ -201,5 +201,5 @@ func readJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	for i, name := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                if(%q.equals(slotName))slot=%d;\n", name, i)
 	}
-	fmt.Fprintf(b, "                if(slot<0){in.rep.unknown++;in.skipValue();}else{if(seen[slot])in.rep.duplicate++;seen[slot]=true;"+st.Name+"Variable.Slot_%s value=new "+st.Name+"Variable.Slot_%s();value.%s=v.%s.get(slot);"+st.Name+"Variable.readJsonSlot_%s(in,value);v.%s.set(slot,value.%s);}int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return;}in.p++;\n", m, m, m, m, m, m, m)
+	fmt.Fprintf(b, "                if(slot<0){in.rep.unknown++;in.skipValue();}else{if(seen[slot])in.rep.refuse(\"text_damaged\");seen[slot]=true;"+st.Name+"Variable.Slot_%s value=new "+st.Name+"Variable.Slot_%s();value.%s=v.%s.get(slot);"+st.Name+"Variable.readJsonSlot_%s(in,value);v.%s.set(slot,value.%s);}int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return;}in.p++;\n", m, m, m, m, m, m, m)
 }

@@ -143,7 +143,6 @@ var cookWriteCarried = []cookWriteUnit{
 	}},
 	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
 		{"KeyedConfig", []string{"keyed_config", "keyed_default"}},
-		{"WideBlob", []string{"wide_blob"}},
 		{"RootConfig", []string{"root_full", "root_default"}},
 		{"ProfileConfig", []string{"profile_elide"}},
 		{"LoadoutConfig", []string{"loadout_full"}},
@@ -441,7 +440,7 @@ public final class COOKCLASS {
         byte[] wire = Files.readAllBytes(Path.of(args[0]));
         PKG.TableVariable.Report report = new PKG.TableVariable.Report();
         PKG.ROOTVariable.Value value = PKG.ROOTVariable.load(wire, report);
-        if (value == null || report.refused || report.malformed) throw new AssertionError("wire load");
+        if (value == null || report.refused || report.damaged) throw new AssertionError("wire load");
         long n = PKG.ROOTCook.cookMeasure(value);
         PKG.ROOTCook.MeasureReason reason = PKG.ROOTCook.cookMeasureReason(value);
         if (n < 0 || reason.bytes() != n || !reason.reason().equals("ok")) throw new AssertionError("measure");
@@ -478,7 +477,7 @@ public final class CookRefusalDriver {
     public static void main(String[] args) throws Exception {
         graphdemo.TableVariable.Report report = new graphdemo.TableVariable.Report();
         graphdemo.SceneVariable.Value value = graphdemo.SceneVariable.load(Files.readAllBytes(Path.of(args[0])), report);
-        if (value == null || report.refused || report.malformed) throw new AssertionError("wire load");
+        if (value == null || report.refused || report.damaged) throw new AssertionError("wire load");
         long valid = graphdemo.SceneCook.cookMeasure(value);
         if (valid < 1) throw new AssertionError("graph_tree did not measure");
         int bound = -1;

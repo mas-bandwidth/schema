@@ -36,7 +36,7 @@ public final class TableVariable {
     // A FLOAT IS FINITE ON EVERY TABLE WIRE (docs/SPEC-TABLES.md §3.3, the
     // packet wire's own rule): a read that meets a NaN or an
     // infinity in a float's raw bits refuses as non_finite_float, the
-    // tolerant load too, naming the first such field, and lands nothing.
+    // strict load, naming the first such field, and lands nothing.
     // Every finite float32 widens exactly through the ordinary conversion.
     public static void nonFiniteFloat(Report report, String field) {
         if (report.reason == null) {
@@ -61,17 +61,12 @@ public final class TableVariable {
     public static final long BUILD_ID = 0xFFFFFFFFFFFFFFFEL;
     public static final long VOCAB_ID = 0xFFFFFFFFFFFFFFFDL;
 
-    // The report counters of §4: unknown, kind mismatch, clamp, malformed and
-    // widened. A refusal (an unknown form byte) moves none of them. Retained and
+    // The report counters of §4: unknown and widened. Retained and
     // retain_lost (§6.6) accumulate across a retained load and save.
     public static final class Report {
         public int unknown;
-        public int kindMismatch;
-        public int clamped;
-        public boolean malformed;
+        public boolean damaged;
         public int widened;
-        public int duplicate;
-        public int blobShared;
         public int missingRequired;
         public boolean refused;
         public String reason;
@@ -88,12 +83,8 @@ public final class TableVariable {
         // call after call (a reused Measure) without a fresh object per call.
         public void reset() {
             unknown = 0;
-            kindMismatch = 0;
-            clamped = 0;
-            malformed = false;
+            damaged = false;
             widened = 0;
-            duplicate = 0;
-            blobShared = 0;
             missingRequired = 0;
             refused = false;
             reason = null;
@@ -102,6 +93,20 @@ public final class TableVariable {
             nodeRecs = null;
             nodesGood = false;
             rootTypeId = 0;
+        }
+
+        public void refuse(String why) {
+            if (!refused) {
+                refused = true;
+                reason = why;
+            }
+        }
+
+        public void refuse(String why, String field) {
+            if (!refused) {
+                refused = true;
+                reason = (field != null && !field.isEmpty()) ? (why + ": " + field) : why;
+            }
         }
     }
 
@@ -177,7 +182,7 @@ public final class TableVariable {
         // element kind, against the ENCLOSING body rather than the
         // collection's own L, as the engine reads it (internal/tablewire
         // arrayBody, §3, §4): a count that runs past L is still a count, judged
-        // with the kind byte and clamped to the bound, and the elements after
+        // with the kind byte and bounded to the limit, and the elements after
         // it then find no bytes. An unbounded list's count is read inside its
         // own L (the count refusal, §2.9).
         public long count(int outer) {
@@ -206,7 +211,7 @@ public final class TableVariable {
         }
 
         // leb reads one canonical unsigned LEB128. A non-minimal spelling or a
-        // value past 64 bits is malformed (§3). On damage the cursor stays
+        // value past 64 bits is damaged (§3). On damage the cursor stays
         // where the spelling began, exactly as the oracle's read does, so the
         // caller's "body ended at its own L" check measures the same spot.
         public long leb() {
@@ -216,14 +221,14 @@ public final class TableVariable {
             for (int i = 0; i < 10; i++) {
                 if (!has(1)) {
                     off = start;
-                    report.malformed = true;
+                    report.damaged = true;
                     fail = true;
                     return 0;
                 }
                 int b = get8();
                 if (shift == 63 && (b & 0xfe) != 0) {
                     off = start;
-                    report.malformed = true;
+                    report.damaged = true;
                     fail = true;
                     return 0;
                 }
@@ -231,7 +236,7 @@ public final class TableVariable {
                 if ((b & 0x80) == 0) {
                     if (i > 0 && b == 0) {
                         off = start;
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                         return 0;
                     }
@@ -240,7 +245,7 @@ public final class TableVariable {
                 shift += 7;
             }
             off = start;
-            report.malformed = true;
+            report.damaged = true;
             fail = true;
             return 0;
         }
@@ -252,7 +257,7 @@ public final class TableVariable {
         public long resolve(long ref) {
             int count = ids != null ? ids.length : (buf.length - 8 - idBase) >>> 3;
             if (ref <= 0 || ref > count) {
-                report.malformed = true;
+                report.damaged = true;
                 fail = true;
                 return -1;
             }
@@ -267,7 +272,7 @@ public final class TableVariable {
         public Reader body() {
             long n = leb();
             if (fail || !has((int) n)) {
-                report.malformed = true;
+                report.damaged = true;
                 fail = true;
                 return null;
             }
@@ -287,7 +292,7 @@ public final class TableVariable {
         public int bodyEnd() {
             long n = leb();
             if (fail || !has((int) n)) {
-                report.malformed = true;
+                report.damaged = true;
                 fail = true;
                 return -1;
             }
@@ -307,7 +312,7 @@ public final class TableVariable {
                     if (has(1)) {
                         off += 1;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                     }
                     break;
@@ -318,7 +323,7 @@ public final class TableVariable {
                     if (has(2)) {
                         off += 2;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                     }
                     break;
@@ -330,7 +335,7 @@ public final class TableVariable {
                     if (has(4)) {
                         off += 4;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                     }
                     break;
@@ -343,7 +348,7 @@ public final class TableVariable {
                     if (has(8)) {
                         off += 8;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                     }
                     break;
@@ -354,7 +359,7 @@ public final class TableVariable {
                     if (has(16)) {
                         off += 16;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                     }
                     break;
@@ -374,7 +379,7 @@ public final class TableVariable {
                         if (!fail && has((int) n)) {
                             off += (int) n;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             fail = true;
                         }
                         break;
@@ -390,7 +395,7 @@ public final class TableVariable {
                         long arm = leb();
                         if (!fail && arm != 0) {
                             if (!has(1)) {
-                                report.malformed = true;
+                                report.damaged = true;
                                 fail = true;
                             } else {
                                 get8();
@@ -398,7 +403,7 @@ public final class TableVariable {
                                 if (!fail && has((int) n)) {
                                     off += (int) n;
                                 } else {
-                                    report.malformed = true;
+                                    report.damaged = true;
                                     fail = true;
                                 }
                             }
@@ -406,7 +411,7 @@ public final class TableVariable {
                         break;
                     }
                 default:
-                    report.malformed = true;
+                    report.damaged = true;
                     fail = true;
             }
         }
@@ -714,7 +719,7 @@ public final class TableVariable {
     // A form byte this build does not carry is a refusal, not damage. The
     // framing checks are STRICT here (§3): a table that carries one id twice,
     // or a body whose terminator does not land at the table's first entry —
-    // bytes no field claims — is malformed for the whole wire, and open says
+    // bytes no field claims — is damaged for the whole wire, and open says
     // so before any value is read.
     public static Reader open(byte[] data, Report report) {
         if (report == null) {
@@ -737,12 +742,12 @@ public final class TableVariable {
     }
 
     // trailerBase is open's every check, made IN PLACE on the caller's bytes:
-    // the form byte, the id table's count and its duplicate ids, and the
+    // the form byte, the id table's count and its repeated ids, and the
     // body's extent (§3). It answers the offset of the table's first entry, or
     // -1 with the report moved exactly as open moves it, and allocates nothing.
     public static int trailerBase(byte[] data, Report report) {
         if (data.length < 1) {
-            report.malformed = true;
+            report.damaged = true;
             return -1;
         }
         int form = data[0] & 0xff;
@@ -753,20 +758,20 @@ public final class TableVariable {
             // message_form_as_file for a batch (form 2) handed to a file root,
             // newer_form for any other byte. A widening is not a refusal: the
             // widened counter counts it and reason stays null (§4.1). Damage
-            // is the malformed flag and names no reason.
+            // is the damaged flag and names no reason.
             report.refused = true;
             report.reason = form == 2 ? "message_form_as_file" : "newer_form";
             return -1;
         }
         if (data.length < 9) {
-            report.malformed = true;
+            report.damaged = true;
             return -1;
         }
         long count = u64(data, data.length - 8);
-        // §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+        // §3, THE DISTINCTNESS CHECK: an entry count above 4096 is damaged
         // whatever the buffer would hold
         if (count < 0 || count > 4096 || count > (data.length - 9) / 8) {
-            report.malformed = true;
+            report.damaged = true;
             return -1;
         }
         int base = data.length - 8 - (int) count * 8;
@@ -774,14 +779,14 @@ public final class TableVariable {
             long id = u64(data, base + i * 8);
             for (int j = 0; j < i; j++) {
                 if (u64(data, base + j * 8) == id) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return -1;
                 }
             }
         }
         int end = bodyExtent(data, (int) count, 1, base);
         if (end >= 0 && end != base) {
-            report.malformed = true;
+            report.damaged = true;
             return -1;
         }
         return base;
@@ -828,7 +833,7 @@ public final class TableVariable {
             return java.util.Arrays.copyOf(data, data.length - 4);
         }
         if (report != null) {
-            report.malformed = true;
+            report.damaged = true;
             report.reason = "integrity_mismatch";
         }
         return null;
@@ -1114,38 +1119,38 @@ public final class TableVariable {
 
     // nodes reads a node-table field's payload (§3.1) and returns its records.
     // A type id this reader cannot name keeps its index and counts unknown;
-    // a text blob whose content is not text counts malformed; in both, the
+    // a text blob whose content is not text counts damaged; in both, the
     // record resolves to null (its typeId is cleared) and every pointer naming
     // it reads null (§3.1, §4). Structural damage — a bad reference, a size
     // past the field, a declared count the scan does not match, or bytes left
-    // over — is malformed for the whole table and answers null.
+    // over — is damaged for the whole table and answers null.
     public static NodeRecord[] nodes(Reader r, boolean retain) {
         long declared = r.leb();
         if (r.fail || declared < 0 || declared > 0x7fffffffL) {
-            r.report.malformed = true;
+            r.report.damaged = true;
             return null;
         }
         // The node table is WHOLE or it is NOTHING (docs/SPEC-TABLES.md §3.1):
         // the records are scanned structurally FIRST, and a record that cannot
         // be read, a node_count the scan does not match, or bytes left over is
-        // malformed for the whole table with NO unknown counted — the oracle's
+        // damaged for the whole table with NO unknown counted — the oracle's
         // scanNodeRecords returns no records on a bad scan and its unknown
         // count runs only past a whole one (internal/tablewire/decodenodes.go).
         java.util.ArrayList<NodeRecord> list = new java.util.ArrayList<>();
         while (r.off < r.limit) {
             long ref = r.leb();
             if (r.fail || ref == 0) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return null;
             }
             long typeId = r.resolve(ref);
             if (r.fail) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return null;
             }
             long size = r.leb();
             if (r.fail || size < 0 || !r.has((int) size)) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return null;
             }
             byte[] body = new byte[(int) size];
@@ -1154,19 +1159,19 @@ public final class TableVariable {
             list.add(new NodeRecord(typeId, body));
         }
         if (declared != list.size()) {
-            r.report.malformed = true;
+            r.report.damaged = true;
             return null;
         }
         // Type resolution (§3.1), past the whole scan: a record whose type id
         // this reader cannot name keeps its index and counts unknown ONCE, and
-        // a text blob whose content is not text counts malformed; in both the
+        // a text blob whose content is not text counts damaged; in both the
         // record resolves to null (its type id cleared). A NODE RECORD whose
         // type id this reader cannot name is an excluded class (§6.6): the
         // retaining read counts one retain_lost and never retains it.
         for (NodeRecord rec : list) {
             if (rec.typeId == STRING_ID) {
                 if (!textValid(rec.body, 0, rec.body.length)) {
-                    r.report.malformed = true;
+                    r.report.damaged = true;
                     rec.typeId = 0;
                     rec.textMalformed = true;
                 } else {
@@ -1283,7 +1288,7 @@ public final class TableVariable {
 
     // measureNodes is the region-measure half's node-table scan (§6.5), over
     // the reader as narrowed to the node-table payload: the same framing walk
-    // as nodes() with no counters past malformed and no type-id clearing. A
+    // as nodes() with no counters past damaged and no type-id clearing. A
     // record is sized by its type id whether or not its text is well-formed:
     // a blob record adds its framed length, header and terminator, and a TABLE
     // record adds its own rounded layout plus the maps and lists its body
@@ -1299,7 +1304,7 @@ public final class TableVariable {
         m.nodeTableBytes = 0;
         long declared = r.leb();
         if (r.fail || declared < 0 || declared > 0x7fffffffL) {
-            r.report.malformed = true;
+            r.report.damaged = true;
             return;
         }
         int first = r.off;
@@ -1307,24 +1312,24 @@ public final class TableVariable {
         while (r.off < r.limit) {
             long ref = r.leb();
             if (r.fail || ref == 0) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return;
             }
             r.resolve(ref);
             if (r.fail) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return;
             }
             long size = r.leb();
             if (r.fail || size < 0 || size > (long) (r.limit - r.off)) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return;
             }
             r.off += (int) size;
             count++;
         }
         if (declared != count) {
-            r.report.malformed = true;
+            r.report.damaged = true;
             return;
         }
         r.off = first;
@@ -1376,7 +1381,7 @@ public final class TableVariable {
     // because a reader that broke at the first would read the good numbering a
     // damaged repeat was planted to hide. A field under a kind other than 12,
     // a length the body cannot cover, or a payload whose records do not scan
-    // is malformed for the whole table and marks the numbering bad (NodeTable.
+    // is damaged for the whole table and marks the numbering bad (NodeTable.
     // bad), and the scan returns the body cursor to where it began for the
     // decode itself.
     public static NodeTable readNodeTable(Reader r, Report report, boolean retain) {
@@ -1399,13 +1404,13 @@ public final class TableVariable {
             int kind = r.get8();
             if (id == NODE_ID) {
                 if (kind != 12) {
-                    report.malformed = true;
+                    report.damaged = true;
                     bad = true;
                     break;
                 }
                 long n = r.leb();
                 if (r.fail || n < 0 || !r.has((int) n)) {
-                    report.malformed = true;
+                    report.damaged = true;
                     bad = true;
                     break;
                 }
@@ -1462,7 +1467,7 @@ public final class TableVariable {
     // damage (§4); a record this reader cannot name reads null, counted once
     // at the scan; and a record of another type is a kind mismatch. target is
     // the slot's table type id, or STRING_ID / BYTES_ID for a byte buffer.
-    // Only the slots a field keeps are read: a clamped array's tail past its
+    // Only the slots a field keeps are read: an array's tail past its
     // bound is stepped over by the field's length, unread.
     static void judge(long index, Report report, long target) {
         if (!report.nodesGood || index == 0) {
@@ -1470,41 +1475,41 @@ public final class TableVariable {
         }
         if (index == 1) {
             if (target == STRING_ID || target == BYTES_ID || target != report.rootTypeId) {
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
             }
             return;
         }
         NodeRecord[] recs = report.nodeRecs;
         if (Long.compareUnsigned(index - 2, recs == null ? 0 : recs.length) >= 0) { // a reference is unsigned
-            report.malformed = true; // a reference above the entry count is damage
+            report.damaged = true; // a reference above the entry count is damage
             return;
         }
         NodeRecord rec = recs[(int) (index - 2)];
         if (rec.typeId != 0 && rec.typeId != target) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return;
         }
         if (rec.typeId != 0 && (target == STRING_ID || target == BYTES_ID)) {
             if (rec.judged) {
-                report.blobShared++;
+                report.refuse("blob_shared");
             } else {
                 rec.judged = true;
             }
         }
     }
 
-    // boolByte reads one bool byte: a byte past 1 is malformed and reads true,
+    // boolByte reads one bool byte: a byte past 1 is damaged and reads true,
     // as the engine's scalarAt reads it (§3).
     static boolean boolByte(int b, Report report) {
         if (b > 1) {
-            report.malformed = true;
+            report.damaged = true;
         }
         return b != 0;
     }
 
     // resolveString resolves one *string pointer index against the numbering
     // (§3.1): 0 is null; 1 is the ROOT — a table, not a blob, so it is a kind
-    // mismatch; an index past the records is malformed; and a record whose
+    // mismatch; an index past the records is damaged; and a record whose
     // type id is not the string id reads null, its unknown already counted at
     // the scan.
     // isSharedBlob marks a blob record named by a pointer slot and answers true
@@ -1529,11 +1534,11 @@ public final class TableVariable {
             return null;
         }
         if (index == 1) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.malformed = true;
+            report.damaged = true;
             return null;
         }
         // a record this reader cannot name (or a text record that was not
@@ -1544,7 +1549,7 @@ public final class TableVariable {
             return null;
         }
         if (rec.typeId != STRING_ID) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         return rec.value;
@@ -1552,17 +1557,17 @@ public final class TableVariable {
 
     // resolveBytes resolves one *bytes pointer index against the numbering
     // (§3.1), exactly as resolveString resolves a *string: 0 is null, 1 is the
-    // ROOT (a kind mismatch), an index past the records is malformed.
+    // ROOT (a kind mismatch), an index past the records is damaged.
     public static byte[] resolveBytes(NodeRecord[] recs, long index, Report report) {
         if (index == 0) {
             return null;
         }
         if (index == 1) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.malformed = true;
+            report.damaged = true;
             return null;
         }
         // a record this reader cannot name (or a text record that was not
@@ -1573,7 +1578,7 @@ public final class TableVariable {
             return null;
         }
         if (rec.typeId != BYTES_ID) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         return rec.bytes;
@@ -1623,7 +1628,7 @@ public final class TableVariable {
         if (text.length <= bound) return text;
         int keep = bound;
         if (keep > 0 && Character.isHighSurrogate(text[keep - 1])) keep--;
-        report.clamped++;
+        report.refuse("out_of_range");
         return java.util.Arrays.copyOf(text, keep);
     }
 
@@ -1741,11 +1746,11 @@ public final class TableVariable {
             if (root != null && targetTypeId == rootTypeId) {
                 return (T) root;
             }
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.malformed = true;
+            report.damaged = true;
             return null;
         }
         NodeRecord rec = recs[(int) (index - 2)];
@@ -1753,7 +1758,7 @@ public final class TableVariable {
             return null;
         }
         if (rec.typeId != targetTypeId) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         return (T) rec.table;
@@ -2025,10 +2030,9 @@ public final class TableVariable {
 const tableJsonRuntime = `// The TEXT FORM's runtime (docs/SPEC-TABLES.md §16): pretty JSON in and out.
 // A text is one table as one object; the writer is pretty-printed (one entry
 // per line, two-space indent) and ends with exactly one newline (§16.1); the
-// reader accepts whitespace and // and /* */ comments, tolerates unknown keys
-// (skipped and counted), a key of the wrong shape (counted), a string longer
-// than its bound (clamped at a code point boundary and counted) and a number
-// outside its range (clamped and counted) (§16.2).
+// reader accepts whitespace and // and /* */ comments, skips and counts unknown
+// keys, and refuses a key of the wrong shape, a string longer than its bound,
+// or a number outside its range (§16.2).
 public final class TableJson {
     private TableJson() {}
 
@@ -2049,7 +2053,7 @@ public final class TableJson {
     static Long readFlags(In in, String[] names) {
         if (in.peek() != '[') {
             in.skipValue();
-            in.rep.kindMismatch++;
+            in.rep.refuse("kind_mismatch");
             return null;
         }
         in.p++;
@@ -2060,7 +2064,7 @@ public final class TableJson {
                 return null;
             }
             if (in.peek() != '"') {
-                in.rep.kindMismatch++;
+                in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
                 String name = in.scanString();
@@ -2475,7 +2479,7 @@ public final class TableJson {
         }
 
         // space skips whitespace and both comment forms (§16.2). An unclosed
-        // block comment is malformed, as an unclosed string is.
+        // block comment is damaged, as an unclosed string is.
         void space() {
             while (true) {
                 if (p >= t.length) {
@@ -2548,7 +2552,7 @@ public final class TableJson {
             // shape for the kind, never stored as an infinity the writer
             // would refuse.
             if (!Double.isFinite(value)) {
-                rep.kindMismatch++;
+                rep.refuse("kind_mismatch");
                 rejected = true;
                 return 0.0;
             }
@@ -2578,7 +2582,7 @@ public final class TableJson {
             // at or past the float32 overflow midpoint into an infinity; that
             // is the wrong shape for the kind (§16.3).
             if (!Float.isFinite(value)) {
-                rep.kindMismatch++;
+                rep.refuse("kind_mismatch");
                 rejected = true;
                 return 0.0f;
             }
@@ -2636,7 +2640,7 @@ public final class TableJson {
 
         // scanString reads one JSON string, decoding escapes into a String. A
         // raw control character in the body, an invalid escape, or a lone
-        // surrogate half is malformed (§16.2); a surrogate half that never met
+        // surrogate half is damaged (§16.2); a surrogate half that never met
         // its partner reads as the replacement character (§16.3).
         public String scanString() {
             space();
@@ -2783,7 +2787,7 @@ public final class TableJson {
 
         // scanNumber reads one JSON number token (RFC 8259 §6) and reports
         // whether it is an integral spelling: no fraction, no exponent (§16.2).
-        // A token that is not a JSON number is malformed.
+        // A token that is not a JSON number is damaged.
         public String scanNumber(boolean[] integral) {
             space();
             int start = p;
@@ -2849,13 +2853,13 @@ public final class TableJson {
                     try {
                         v = Long.parseLong(tok);
                     } catch (NumberFormatException e) {
-                        rep.clamped++;
+                        rep.refuse("out_of_range");
                         return tok.charAt(0) == '-' ? min : max;
                     }
                 } else {
                     if (tok.charAt(0) == '-') {
                         if (!"-0".equals(tok)) {
-                            rep.clamped++;
+                            rep.refuse("out_of_range");
                             return min;
                         }
                         v = 0;
@@ -2863,7 +2867,7 @@ public final class TableJson {
                         try {
                             v = Long.parseUnsignedLong(tok);
                         } catch (NumberFormatException e) {
-                            rep.clamped++; // past what sixty-four bits hold
+                            rep.refuse("out_of_range"); // past what sixty-four bits hold
                             // the largest unsigned magnitude; the range checks below add
                             // a second clamp when the bound is narrower than uint64
                             v = -1L;
@@ -2880,23 +2884,23 @@ public final class TableJson {
                 }
                 if (signed) {
                     if (!Double.isFinite(d) || d != (double) (long) d) {
-                        rep.kindMismatch++;
+                        rep.refuse("kind_mismatch");
                         rejected = true;
                         return 0;
                     }
                     v = (long) d;
                 } else {
                     if (!Double.isFinite(d) || Math.rint(d) != d) {
-                        rep.kindMismatch++;
+                        rep.refuse("kind_mismatch");
                         rejected = true;
                         return 0;
                     }
                     if (d < 0.0) {
-                        rep.clamped++;
+                        rep.refuse("out_of_range");
                         return min;
                     }
                     if (d >= 18446744073709551616.0) {
-                        rep.clamped++;
+                        rep.refuse("out_of_range");
                         return max;
                     }
                     v =
@@ -2907,20 +2911,20 @@ public final class TableJson {
             }
             if (signed) {
                 if (v < min) {
-                    rep.clamped++;
+                    rep.refuse("out_of_range");
                     return min;
                 }
                 if (v > max) {
-                    rep.clamped++;
+                    rep.refuse("out_of_range");
                     return max;
                 }
             } else {
                 if (Long.compareUnsigned(v, min) < 0) {
-                    rep.clamped++;
+                    rep.refuse("out_of_range");
                     return min;
                 }
                 if (Long.compareUnsigned(v, max) > 0) {
-                    rep.clamped++;
+                    rep.refuse("out_of_range");
                     return max;
                 }
             }
@@ -2959,7 +2963,7 @@ public final class TableJson {
             if (b.length <= bound) {
                 return s;
             }
-            rep.clamped++;
+            rep.refuse("length_over_bound");
             int keep = bound;
             // back off to a code point boundary
             while (keep > 0 && (b[keep] & 0xc0) == 0x80) {
@@ -3112,7 +3116,7 @@ func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 			return nil, err
 		}
 		out[st.Name+"Variable.java"] = javaFile(u,
-			fmt.Sprintf("the variable form's tolerant load and canonical save for table %s (docs/SPEC-TABLES.md §3, §4)", st.Name),
+			fmt.Sprintf("the variable form's strict load and canonical save for table %s (docs/SPEC-TABLES.md §3, §4)", st.Name),
 			src)
 	}
 	for _, unions := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
@@ -3476,7 +3480,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	}
 	b.WriteString("            long id = r.resolve(ref);\n")
 	b.WriteString("            if (r.fail) { return false; }\n")
-	b.WriteString("            if (!r.has(1)) { report.malformed = true; return false; }\n")
+	b.WriteString("            if (!r.has(1)) { report.damaged = true; return false; }\n")
 	b.WriteString("            int kind = r.get8();\n")
 	first := true
 	for i, f := range st.Fields {
@@ -3508,9 +3512,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	} else {
 		b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
 	}
-	b.WriteString("                else { report.malformed = true; return false; }\n")
+	b.WriteString("                else { report.damaged = true; return false; }\n")
 	b.WriteString("            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {\n")
-	b.WriteString("                report.malformed = true; return false;\n")
+	b.WriteString("                report.damaged = true; return false;\n")
 	b.WriteString("            } else {\n")
 	b.WriteString("                r.skip(kind); report.unknown++;\n")
 	b.WriteString("            }\n")
@@ -3641,7 +3645,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 			fmt.Fprintf(&b, "        readFields(r, v, null, report);\n")
 			fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
 			fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
-			fmt.Fprintf(&b, "        if (report.malformed) { return null; }\n")
+			fmt.Fprintf(&b, "        if (report.damaged) { return null; }\n")
 			fmt.Fprintf(&b, "        return v;\n")
 		}
 		fmt.Fprintf(&b, "    }\n\n")
@@ -3652,7 +3656,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
 		fmt.Fprintf(&b, "                if (rec.typeId == TableVariable.STRING_ID) {\n")
 		fmt.Fprintf(&b, "                    if (!TableVariable.textValid(rec.body, 0, rec.body.length)) {\n")
-		fmt.Fprintf(&b, "                        report.malformed = true;\n")
+		fmt.Fprintf(&b, "                        report.damaged = true;\n")
 		fmt.Fprintf(&b, "                        rec.typeId = 0;\n")
 		fmt.Fprintf(&b, "                    } else {\n")
 		fmt.Fprintf(&b, "                        rec.value = new String(rec.body, StandardCharsets.UTF_8);\n")
@@ -3706,9 +3710,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "            }\n")
 		fmt.Fprintf(&b, "        }\n")
 		fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
-		fmt.Fprintf(&b, "        if (report.malformed) { return null; }\n")
+		fmt.Fprintf(&b, "        if (report.damaged) { return null; }\n")
 		fmt.Fprintf(&b, "        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)\n")
-		fmt.Fprintf(&b, "        if (TableVariable.cyclic(nt)) { report.malformed = true; return null; }\n")
+		fmt.Fprintf(&b, "        if (TableVariable.cyclic(nt)) { report.damaged = true; return null; }\n")
 		fmt.Fprintf(&b, "        return v;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	}
@@ -3734,7 +3738,7 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	align := ir.TableRegionAlign(u)
 	recordSize := ir.RecordLayout(u, st).Size
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
-	b.WriteString("    // loadMeasure sizes the region a tolerant load would need (docs/SPEC-TABLES.md §6.5).\n")
+	b.WriteString("    // loadMeasure sizes the region a strict load would need (docs/SPEC-TABLES.md §6.5).\n")
 	fmt.Fprintf(b, "    private static final long ALIGN = %d;\n", align)
 	fmt.Fprintf(b, "    private static final long RECORD_SIZE = %d;\n", recordSize)
 	b.WriteString("    private static long alignUp(long n, long a) { return (n + a - 1) & -a; }\n")
@@ -4158,10 +4162,10 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "        in.byteOrderMark();\n")
 		fmt.Fprintf(b, "        Value v = new Value();\n")
 		fmt.Fprintf(b, "        jsonReadFields(in, v);\n")
-		fmt.Fprintf(b, "        if (in.bad) { report.malformed = true; }\n")
+		fmt.Fprintf(b, "        if (in.bad) { report.damaged = true; }\n")
 		fmt.Fprintf(b, "        if (report.refused) { return null; }\n")
 		fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
-		fmt.Fprintf(b, "        if (report.malformed) { return null; }\n")
+		fmt.Fprintf(b, "        if (report.damaged) { return null; }\n")
 		fmt.Fprintf(b, "        return v;\n")
 		fmt.Fprintf(b, "    }\n\n")
 	}
@@ -4227,7 +4231,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 	fmt.Fprintf(b, "    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {\n")
 	b.WriteString("        if (in.peek() == 'n') { in.lit(\"null\"); return null; }\n")
-	b.WriteString("        if (in.peek() != '{') { in.skipValue(); in.rep.kindMismatch++; return null; }\n")
+	b.WriteString("        if (in.peek() != '{') { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); return null; }\n")
 	b.WriteString("        int start = in.p;\n")
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        in.space();\n")
@@ -4245,7 +4249,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            TableJson.LabelEntry entry = in.labels.get(labelId);\n")
 	b.WriteString("            if (entry == null || entry.open) { in.bad = true; return null; }\n")
 	b.WriteString("            if (entry.typeId == 0) { return null; }\n")
-	b.WriteString("            if (entry.typeId != targetTypeId) { in.rep.kindMismatch++; return null; }\n")
+	b.WriteString("            if (entry.typeId != targetTypeId) { in.rep.refuse(\"kind_mismatch\"); return null; }\n")
 	b.WriteString("            return (Value) entry.value;\n")
 	b.WriteString("        } else if (c == ',') {\n")
 	b.WriteString("            in.p++;\n")
@@ -4294,7 +4298,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	for i, f := range st.Fields {
 		fmt.Fprintf(b, "            if (%q.equals(key)) {\n", jsonKey(f))
 		fmt.Fprintf(b, "                boolean repeated = seenField[%d];\n", i)
-		fmt.Fprintf(b, "                if (repeated) { in.rep.duplicate++; } seenField[%d] = true;\n", i)
+		fmt.Fprintf(b, "                if (repeated) { in.rep.refuse(\"text_damaged\"); } seenField[%d] = true;\n", i)
 		// §16.2: the wrong JSON type for the kind is skipped and counted
 		// kind_mismatch, never coerced; null goes to the field's own reader,
 		// which is where a `?T` and a pointer take their absence.
@@ -4304,7 +4308,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		if f.Type.Optional {
 			present = fmt.Sprintf(" v.%sPresent = true;", varMember(f))
 		}
-		fmt.Fprintf(b, "                if (in.peek() != 'n' && !(%s)) { in.skipValue(); in.rep.kindMismatch++;%s } else {\n", variableJsonShape(f, "in.peek()"), present)
+		fmt.Fprintf(b, "                if (in.peek() != 'n' && !(%s)) { in.skipValue(); in.rep.refuse(\"kind_mismatch\");%s } else {\n", variableJsonShape(f, "in.peek()"), present)
 		// RE-ESTABLISHMENT HAPPENS ON PLACEMENT (§16.2): a repeat the walk takes
 		// replaces the first occurrence whole, at the field's defaults; only
 		// `null` on a field that takes it is a placement too.
@@ -4481,7 +4485,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 	b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
 	b.WriteString("                        if (ab >= 0 && idx >= ab) {\n")
-	b.WriteString("                            in.rep.clamped++;\n")
+	b.WriteString("                            in.rep.refuse(\"count_over_bound\");\n")
 	b.WriteString("                            in.skipValue();\n")
 	b.WriteString("                        } else {\n")
 	// the element read is the else block's body, one level deeper than the
@@ -4496,11 +4500,11 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		case ir.TBool:
 			fmt.Fprintf(b, "                        if (ec == 't') { in.lit(\"true\"); v.%s.add(true); }\n", m)
 			fmt.Fprintf(b, "                        else if (ec == 'f') { in.lit(\"false\"); v.%s.add(false); }\n", m)
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		case ir.TInt:
 			if f.Type.Timestamp {
 				fmt.Fprintf(b, "                        if (ec == '\"') { long ts = TableJson.readTimestamp(in, %q); if (!in.bad) { v.%s.add(ts); } }\n", f.Name, m)
-				b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+				b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 			} else {
 				min, max := jsonIntRange(f)
 				if f.Type.Width <= 32 {
@@ -4508,7 +4512,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 				} else {
 					fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
 				}
-				b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+				b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 			}
 		case ir.TBits:
 			min, max := jsonIntRange(f)
@@ -4517,21 +4521,21 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			} else {
 				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(false, %s, %s)); }\n", m, min, max)
 			}
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		case ir.TFloat32:
 			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number32()); }\n", m)
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		case ir.TFloat64:
 			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number()); }\n", m)
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		case ir.TString:
 			fmt.Fprintf(b, "                        if (ec == '\"') { v.%s.add(in.readString(%d)); }\n", m, f.Type.Size)
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		case ir.TNamed:
 			if un := variableUnion(f); un != nil {
 				// §16.2: an element of the wrong JSON shape is skipped and
 				// counted kind_mismatch, exactly as the field gate does.
-				fmt.Fprintf(b, "                        if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; v.%s.add(new %sVariable.Value()); } else { v.%s.add(%sVariable.readJson(in)); }\n", m, un.Name, m, un.Name)
+				fmt.Fprintf(b, "                        if (ec != '{') { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); v.%s.add(new %sVariable.Value()); } else { v.%s.add(%sVariable.readJson(in)); }\n", m, un.Name, m, un.Name)
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
@@ -4543,7 +4547,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 					b.WriteString("                            else ")
 				}
 				fmt.Fprintf(b, "{ v.%s.add(0); in.rep.unknown++; }\n", m)
-				b.WriteString("                        } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+				b.WriteString("                        } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 			case *ir.Flags:
 				fmt.Fprintf(b, "                        {Long bits=TableJson.readFlags(in,%s);v.%s.add(bits==null?0L:bits);}\n", variableFlagNames(ref), m)
 			}
@@ -4563,7 +4567,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 	b.WriteString("                        in.bad = true; break;\n")
 	b.WriteString("                    }\n")
-	b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 }
 
 func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
@@ -4752,7 +4756,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	m := varMember(f)
 	switch {
 	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(b, "                if (in.peek() == '\"') { String text = in.scanStored(); if (text != null) { char[] units = text.toCharArray(); if (!TableVariable.wideValid(units)) { in.rep.malformed = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, in.rep); } } } else { in.skipValue(); in.rep.kindMismatch++; }\n", m, m, f.Type.Size)
+		fmt.Fprintf(b, "                if (in.peek() == '\"') { String text = in.scanStored(); if (text != null) { char[] units = text.toCharArray(); if (!TableVariable.wideValid(units)) { in.rep.damaged = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, in.rep); } } } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n", m, m, f.Type.Size)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		b.WriteString("                if (in.peek() == '[') {\n")
@@ -4768,7 +4772,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 		b.WriteString("                        in.bad = true; break;\n")
 		b.WriteString("                    }\n")
-		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.IsTextList():
 		target := f.Type.Ref.(*ir.Struct)
 		valueF := ir.TextListValue(f)
@@ -4796,18 +4800,18 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			b.WriteString("                        if (full) {\n")
 			// the total dropped this element; one past [..N] is counted as
 			// well, as the wire counts its count clamp beside the total (§2.13)
-			b.WriteString("                            if (ab >= 0 && seen > ab) { in.rep.clamped++; }\n")
+			b.WriteString("                            if (ab >= 0 && seen > ab) { in.rep.refuse(\"out_of_range\"); }\n")
 			b.WriteString("                            in.skipValue();\n")
 			b.WriteString("                        } else if (ab >= 0 && placed >= ab) {\n")
 		} else {
 			b.WriteString("                        if (ab >= 0 && placed >= ab) {\n")
 		}
-		b.WriteString("                            in.rep.clamped++;\n")
+		fmt.Fprintf(b, "                            in.rep.refuse(%q);\n", "count_over_bound: "+f.TextListElem().MapEntryOf)
 		b.WriteString("                            in.skipValue();\n")
 		if optional {
 			fmt.Fprintf(b, "                        } else if (ec == 'n') {\n                            if (in.lit(\"null\")) { v.%s.add(new %sVariable.Value()); placed++; }\n", m, target.Name)
 		}
-		fmt.Fprintf(b, "                        } else if (ec != '\"') {\n                            in.skipValue(); in.rep.kindMismatch++; v.%s.add(new %sVariable.Value()); placed++;\n", m, target.Name)
+		fmt.Fprintf(b, "                        } else if (ec != '\"') {\n                            in.skipValue(); in.rep.refuse(\"kind_mismatch\"); v.%s.add(new %sVariable.Value()); placed++;\n", m, target.Name)
 		b.WriteString("                        } else {\n")
 		if valueF.Type.TextUnbounded() {
 			b.WriteString("                            String s = in.scanStored();\n")
@@ -4834,8 +4838,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 				b.WriteString("                            long elemBytes = (last == null || last.value == null) ? 0L : TableVariable.utf8Len(last.value);\n")
 			}
 			fmt.Fprintf(b, "                            if (elemBytes > %dL - spent) {\n", f.TextTotal)
-			b.WriteString("                                in.rep.clamped++;\n")
-			fmt.Fprintf(b, "                                if (in.rep.reason == null) { in.rep.reason = %q; }\n", "clamped: "+f.TextListElem().MapEntryOf)
+			fmt.Fprintf(b, "                                in.rep.refuse(%q);\n", "length_over_bound: "+f.TextListElem().MapEntryOf)
 			fmt.Fprintf(b, "                                v.%s.remove(placed - 1);\n", m)
 			b.WriteString("                                placed--;\n")
 			b.WriteString("                                full = true;\n")
@@ -4849,7 +4852,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 		b.WriteString("                        in.bad = true; break;\n")
 		b.WriteString("                    }\n")
-		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		b.WriteString("                if (in.peek() == '[') {\n")
@@ -4869,13 +4872,13 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                            // count the excess, the wire's rule (docs/SPEC-TABLES.md\n")
 		b.WriteString("                            // §4, §16.2). A definition in the dropped tail still\n")
 		b.WriteString("                            // takes its label, so a reference reads null (§16.7).\n")
-		b.WriteString("                            in.rep.clamped++;\n")
+		b.WriteString("                            in.rep.refuse(\"count_over_bound\");\n")
 		b.WriteString("                            in.skipValue();\n")
 		elemOpen := "'{'"
 		if target.JsonArray {
 			elemOpen = "'['"
 		}
-		fmt.Fprintf(b, "                        } else if (ec != %s) { in.skipValue(); in.rep.kindMismatch++; v.%s.add(new %sVariable.Value()); }\n", elemOpen, m, target.Name)
+		fmt.Fprintf(b, "                        } else if (ec != %s) { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); v.%s.add(new %sVariable.Value()); }\n", elemOpen, m, target.Name)
 		fmt.Fprintf(b, "                        else { %sVariable.Value e = new %sVariable.Value(); %sVariable.jsonReadFields(in, e); v.%s.add(e); }\n", target.Name, target.Name, target.Name, m)
 		b.WriteString("                        idx++;\n")
 		b.WriteString("                        ec = in.peek();\n")
@@ -4883,19 +4886,19 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 		b.WriteString("                        in.bad = true; break;\n")
 		b.WriteString("                    }\n")
-		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case isScalarArray(f):
 		readJsonArrayValue(b, u, st, f)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
 		fmt.Fprintf(b, "                else if (in.peek() == '\"') { v.%s = in.scanStored(); }\n", m)
-		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
 		// §16.2: a string that is not base64 is the wrong shape for *bytes —
 		// counted kind_mismatch and left null, never a broken read.
-		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { v.%s = java.util.Base64.getDecoder().decode(s); } catch (IllegalArgumentException invalid) { in.rep.kindMismatch++; v.%s = null; } } }\n", m, m)
-		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { v.%s = java.util.Base64.getDecoder().decode(s); } catch (IllegalArgumentException invalid) { in.rep.refuse(\"kind_mismatch\"); v.%s = null; } } }\n", m, m)
+		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "                v.%s = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID);\n", m, target.Name, target.Name)
@@ -4907,30 +4910,30 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		}
 		fmt.Fprintf(b, "                if (in.peek() == %s) {\n", elemOpen)
 		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s);\n", target.Name, m)
-		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.clamped++;}catch(IllegalArgumentException invalid){in.rep.kindMismatch++;}}}else {in.skipValue();in.rep.kindMismatch++;}\n", f.Type.Size, m)
+		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.refuse(\"out_of_range\");}catch(IllegalArgumentException invalid){in.rep.refuse(\"kind_mismatch\");}}}else {in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		if f.Type.TextUnbounded() {
 			fmt.Fprintf(b, "                if (in.peek() == '\"') { String s = in.scanStored(); v.%s = s == null ? \"\" : s; }\n", m)
 		} else {
 			fmt.Fprintf(b, "                if (in.peek() == '\"') { v.%s = in.readString(%d); }\n", m, f.Type.Size)
 		}
-		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TBool:
 		b.WriteString("                if (in.peek() == 't') { in.lit(\"true\"); v." + m + " = true; }\n")
 		b.WriteString("                else if (in.peek() == 'f') { in.lit(\"false\"); v." + m + " = false; }\n")
-		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TFloat32:
 		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { float placed = in.number32(); if (!in.rejected) { v.%s = placed; } }\n", m)
-		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { double placed = in.number(); if (!in.rejected) { v.%s = placed; } }\n", m)
-		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		if f.Type.Timestamp {
 			fmt.Fprintf(b, "                if (in.peek() == '\"') { long ts = TableJson.readTimestamp(in, %q); if (!in.bad) { v.%s = ts; } }\n", f.Name, m)
-			b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		} else {
 			min, max := jsonIntRange(f)
 			signed := f.Type.Signed && f.Type.Kind == ir.TInt
@@ -4939,7 +4942,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			} else {
 				fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { long placed = in.integer(%t, %s, %s); if (!in.rejected) { v.%s = placed; } }\n", signed, min, max, m)
 			}
-			b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		}
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
@@ -4951,10 +4954,10 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 				b.WriteString("                    else ")
 			}
 			fmt.Fprintf(b, "{ v.%s = 0; in.rep.unknown++; }\n", m)
-			b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		} else if _, ok := f.Type.Ref.(*ir.Flags); ok {
 			fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.integer(true, Long.MIN_VALUE, Long.MAX_VALUE); }\n", m)
-			b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		}
 	}
 }
@@ -5007,7 +5010,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	m := varMember(f)
 	switch {
 	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(b, "                if (kind == 33) { TableVariable.Reader text = r.body(); if (text != null) { if (((text.limit - text.off) & 1) != 0) { report.malformed = true; v.%s = new char[0]; } else { char[] units = new char[(text.limit - text.off) / 2]; for (int i = 0; i < units.length; i++) units[i] = (char) (text.get8() | text.get8() << 8); if (!TableVariable.wideValid(units)) { report.malformed = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, report); } } } } else { r.skip(kind); report.kindMismatch++; }\n", m, m, m, f.Type.Size)
+		fmt.Fprintf(b, "                if (kind == 33) { TableVariable.Reader text = r.body(); if (text != null) { if (((text.limit - text.off) & 1) != 0) { report.damaged = true; v.%s = new char[0]; } else { char[] units = new char[(text.limit - text.off) / 2]; for (int i = 0; i < units.length; i++) units[i] = (char) (text.get8() | text.get8() << 8); if (!TableVariable.wideValid(units)) { report.damaged = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, report); } } } } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n", m, m, m, f.Type.Size)
 	case isPointerArray(f):
 		fmt.Fprintf(b, "                if (kind == 14) {\n")
 		fmt.Fprintf(b, "                    TableVariable.Reader ar = r.body();\n")
@@ -5016,15 +5019,15 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// the count is read with the kind byte, before either is judged:
 		// a damaged count is framing damage whatever the kind (arrayBody, §4)
 		fmt.Fprintf(b, "                        long n = %s;\n", countRead(f, "ar"))
-		fmt.Fprintf(b, "                        if (!ar.fail && ek != 17) { report.kindMismatch++; } else {\n")
+		fmt.Fprintf(b, "                        if (!ar.fail && ek != 17) { report.refuse(\"kind_mismatch\"); } else {\n")
 		// EVERY DECODED POINTER SLOT KEEPS ITS ROW (docs/SPEC-TABLES.md §2.1,
 		// §3.1, §3.3): a bad node table makes every index resolve to null, but
 		// the array still decoded its slots, so the value list stays as long
 		// as the index list and a save writes one null per slot, as the fixed
 		// struct-array read below already does.
 		if f.ArrayBound > 0 {
-			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
-			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
+			fmt.Fprintf(b, "                            if (ar.fail) { /* damaged count keeps the prefix (§3, §4) */ } else {\n")
+			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(\"count_over_bound\"); }\n", f.ArrayBound, f.ArrayBound)
 			if f.Array != ir.ArrayFixed {
 				fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 				fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
@@ -5043,7 +5046,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                }\n")
 			fmt.Fprintf(b, "                            }\n")
 		} else {
-			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+			fmt.Fprintf(b, "                            if (ar.fail) { /* damaged count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
 			fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 			fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
@@ -5057,7 +5060,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
-		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		expectedEk := 13
@@ -5073,20 +5076,20 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// the count is read with the kind byte, before either is judged:
 		// a damaged count is framing damage whatever the kind (arrayBody, §4)
 		fmt.Fprintf(b, "                        long n = %s;\n", countRead(f, "ar"))
-		fmt.Fprintf(b, "                        if (!ar.fail && ek != %d) { report.kindMismatch++; } else {\n", expectedEk)
+		fmt.Fprintf(b, "                        if (!ar.fail && ek != %d) { report.refuse(\"kind_mismatch\"); } else {\n", expectedEk)
 		if f.ArrayBound > 0 {
-			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
+			fmt.Fprintf(b, "                            if (ar.fail) { /* damaged count keeps the prefix (§3, §4) */ } else {\n")
 		} else {
-			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)%s) {\n", floorDiv)
+			fmt.Fprintf(b, "                            if (ar.fail) { /* damaged count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)%s) {\n", floorDiv)
 		}
 		if retain {
 			fmt.Fprintf(b, "                                retain.discardField(path, depth, %d);\n", ordinal)
 		}
 		if f.ArrayBound > 0 {
 			if f.IsTextList() {
-				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; if (report.reason == null) { report.reason = %q; } }\n", f.ArrayBound, f.ArrayBound, "clamped: "+f.TextListElem().MapEntryOf)
+				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(%q); }\n", f.ArrayBound, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf)
 			} else {
-				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
+				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(\"count_over_bound\"); }\n", f.ArrayBound, f.ArrayBound)
 			}
 		}
 		if f.Array != ir.ArrayFixed {
@@ -5100,15 +5103,15 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                    long L = ar.leb();\n")
 			fmt.Fprintf(b, "                                    int len = (int) L;\n")
 			fmt.Fprintf(b, "                                    if (ar.fail) { break; }\n")
-			fmt.Fprintf(b, "                                    if (L < 0 || !ar.has(len)) { report.malformed = true; ar.fail = true; break; }\n")
-			fmt.Fprintf(b, "                                    if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.malformed = true; break; }\n")
+			fmt.Fprintf(b, "                                    if (L < 0 || !ar.has(len)) { report.damaged = true; ar.fail = true; break; }\n")
+			fmt.Fprintf(b, "                                    if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.damaged = true; break; }\n")
 			fmt.Fprintf(b, "                                    int keep = len;\n")
 			if !ir.TextListUnbounded(f) {
 				bound := ir.TextListValue(f).Type.Size
-				fmt.Fprintf(b, "                                    if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; if (report.reason == null) { report.reason = %q; } }\n", bound, bound, "clamped: "+f.TextListElem().MapEntryOf)
+				fmt.Fprintf(b, "                                    if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.refuse(%q); }\n", bound, bound, "length_over_bound: "+f.TextListElem().MapEntryOf)
 			}
 			if f.TextTotal > 0 {
-				fmt.Fprintf(b, "                                    if ((long) keep > %dL - spent) { report.clamped++; if (report.reason == null) { report.reason = %q; } break; }\n", f.TextTotal, "clamped: "+f.TextListElem().MapEntryOf)
+				fmt.Fprintf(b, "                                    if ((long) keep > %dL - spent) { report.refuse(%q); break; }\n", f.TextTotal, "length_over_bound: "+f.TextListElem().MapEntryOf)
 				fmt.Fprintf(b, "                                    spent += (long) keep;\n")
 			}
 			fmt.Fprintf(b, "                                    %sVariable.Value elem = new %sVariable.Value();\n", target.Name, target.Name)
@@ -5125,10 +5128,10 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			} else {
 				fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
 			}
-			fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
+			fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.damaged = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
 			if f.TextTotal > 0 {
 				fmt.Fprintf(b, "                                    long elemBytes = (elem.value == null || !elem.valuePresent) ? 0L : TableVariable.utf8Len(elem.value);\n")
-				fmt.Fprintf(b, "                                    if (elemBytes > %dL - spent) { report.clamped++; if (report.reason == null) { report.reason = %q; } break; }\n", f.TextTotal, "clamped: "+f.TextListElem().MapEntryOf)
+				fmt.Fprintf(b, "                                    if (elemBytes > %dL - spent) { report.refuse(%q); break; }\n", f.TextTotal, "length_over_bound: "+f.TextListElem().MapEntryOf)
 				fmt.Fprintf(b, "                                    spent += elemBytes;\n")
 			}
 			if f.Array == ir.ArrayFixed {
@@ -5145,7 +5148,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
-		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	case isScalarArray(f):
 		writeArrayFieldRead(b, u, st, f)
 	case f.Type.Blob() || (f.Type.Pointer && isStruct(f)):
@@ -5157,7 +5160,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			target = f.Type.Ref.(*ir.Struct).Name + "Variable.TYPE_ID"
 		}
 		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); TableVariable.judge(v.%sIdx, report, %s); }\n", m, m, target)
-		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "                if (kind == 13) {\n")
@@ -5174,12 +5177,12 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			// AN ARM WHOSE TABLE BODY'S L RUNS PAST ITS TERMINATOR reads None
 			// exactly as the oracle's union read does (docs/SPEC-TABLES.md §3):
 			// the payload stops at the terminator and the arm is not selected.
-			fmt.Fprintf(b, "                        if (br.off != br.limit) { report.malformed = true; return new Value(); }\n")
+			fmt.Fprintf(b, "                        if (br.off != br.limit) { report.damaged = true; return new Value(); }\n")
 		} else {
-			fmt.Fprintf(b, "                        if (br.off != br.limit) { report.malformed = true; v.%s = new %sVariable.Value(); } // §4: reset a nested body that did not fill its length.\n", m, target.Name)
+			fmt.Fprintf(b, "                        if (br.off != br.limit) { report.damaged = true; v.%s = new %sVariable.Value(); } // §4: reset a nested body that did not fill its length.\n", m, target.Name)
 		}
 		fmt.Fprintf(b, "                    }\n")
-		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	// bytes(N) rides the scalar-u8 array shape (§3.2), with a bounded copy.
 	// The body reads its element kind AND its count before it compares the kind
 	// (docs/SPEC-TABLES.md §3.3, §4): a count the body cannot carry is framing
@@ -5189,17 +5192,17 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	// (docs/SPEC-TABLES.md §4, "Framing damage"): the field body's L says where
 	// the next field begins, so a short array loses only its missing tail.
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.malformed=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.malformed=true;}else if(ek!=6){report.kindMismatch++;}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.clamped++;}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.malformed=true;}r.off=end;}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, f.Type.Size, m)
+		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.damaged=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.damaged=true;}else if(ek!=6){report.refuse(\"kind_mismatch\");}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.refuse(\"out_of_range\");}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.damaged=true;}r.off=end;}}else {r.skip(kind);report.refuse(\"kind_mismatch\");}\n", f.Type.Size, f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		if f.Type.TextUnbounded() {
-			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { v.%s = new String(r.buf, r.off, n, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), m)
+			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.damaged = true; v.%s = %s; } else { v.%s = new String(r.buf, r.off, n, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.damaged = true; r.fail = true; } }\n", m, variableDefault(f), m)
 		} else {
-			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
+			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.damaged = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.refuse(\"out_of_range\"); } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.damaged = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
 		}
-		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TBool:
-		fmt.Fprintf(b, "                if (kind == 1) { if (r.has(1)) { int bv = r.get8(); if (bv > 1) { report.malformed = true; } v.%s = bv != 0; } else { report.malformed = true; r.fail = true; } }\n", m)
-		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                if (kind == 1) { if (r.has(1)) { int bv = r.get8(); if (bv > 1) { report.damaged = true; } v.%s = bv != 0; } else { report.damaged = true; r.fail = true; } }\n", m)
+		fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits become
 	// a value and before the field is written (docs/SPEC-TABLES.md §3.3; Glenn,
 	// 2026-10-27, "same rule as packets"): the read names the field and the
@@ -5207,27 +5210,27 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	// (kind 10 into a float64) is the ordinary conversion, exact for every
 	// finite float32.
 	case f.Type.Kind == ir.TFloat32:
-		fmt.Fprintf(b, "                if (kind == 10) { if (r.has(4)) { int fbits = r.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = Float.intBitsToFloat(fbits); } } else { report.malformed = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
-		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                if (kind == 10) { if (r.has(4)) { int fbits = r.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = Float.intBitsToFloat(fbits); } } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
+		fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TFloat64:
-		fmt.Fprintf(b, "                if (kind == 11) { if (r.has(8)) { long fbits = r.get64(); if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = Double.longBitsToDouble(fbits); } } else { report.malformed = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
-		fmt.Fprintf(b, "                else if (kind == 10) { if (r.has(4)) { int fbits = r.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = (double) Float.intBitsToFloat(fbits); } report.widened++; } else { report.malformed = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
-		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                if (kind == 11) { if (r.has(8)) { long fbits = r.get64(); if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = Double.longBitsToDouble(fbits); } } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
+		fmt.Fprintf(b, "                else if (kind == 10) { if (r.has(4)) { int fbits = r.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = (double) Float.intBitsToFloat(fbits); } report.widened++; } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
+		fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		writeIntFieldRead(b, f, m)
 	case f.Type.Kind == ir.TNamed:
 		if _, ok := f.Type.Ref.(*ir.Enum); ok {
 			fmt.Fprintf(b, "                if (kind == 30) { long vref = r.leb(); if (!r.fail) { if (vref == 0) { v.%s = 0; } else { long vid = r.resolve(vref); if (!r.fail) { v.%s = %sEnum(vid, report); } } } }\n", m, m, m)
-			b.WriteString("                else { r.skip(kind); report.kindMismatch++; }\n")
+			b.WriteString("                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 		} else if _, ok := f.Type.Ref.(*ir.Flags); ok {
 			// a `flags` field rides the u64 rung (kind 9) and widens from the
 			// three unsigned rungs below it (§4), whatever its storage width.
 			fmt.Fprintf(b, "                if (kind == 9 || kind == 8 || kind == 7 || kind == 6) {\n")
-			fmt.Fprintf(b, "                    if (kind == 9) { if (r.has(8)) { v.%s = r.get64(); } else { report.malformed = true; r.fail = true; } }\n", m)
-			fmt.Fprintf(b, "                    else if (kind == 8) { if (r.has(4)) { v.%s = ((long) r.get32()) & 0xffffffffL; report.widened++; } else { report.malformed = true; r.fail = true; } }\n", m)
-			fmt.Fprintf(b, "                    else if (kind == 7) { if (r.has(2)) { v.%s = r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }\n", m)
-			fmt.Fprintf(b, "                    else { if (r.has(1)) { v.%s = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }\n", m)
-			b.WriteString("                } else { r.skip(kind); report.kindMismatch++; }\n")
+			fmt.Fprintf(b, "                    if (kind == 9) { if (r.has(8)) { v.%s = r.get64(); } else { report.damaged = true; r.fail = true; } }\n", m)
+			fmt.Fprintf(b, "                    else if (kind == 8) { if (r.has(4)) { v.%s = ((long) r.get32()) & 0xffffffffL; report.widened++; } else { report.damaged = true; r.fail = true; } }\n", m)
+			fmt.Fprintf(b, "                    else if (kind == 7) { if (r.has(2)) { v.%s = r.get16(); report.widened++; } else { report.damaged = true; r.fail = true; } }\n", m)
+			fmt.Fprintf(b, "                    else { if (r.has(1)) { v.%s = r.get8(); report.widened++; } else { report.damaged = true; r.fail = true; } }\n", m)
+			b.WriteString("                } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 		}
 	}
 }
@@ -5238,19 +5241,19 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	cond := variableCompatibleKinds(ek, "ek")
 	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { if (!report.refused) { report.reason = \"count_over_extent_cap\"; } report.refused = true; } else {"
 	if f.ArrayBound > 0 {
-		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
+		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.refuse(\"out_of_range\"); }", f.ArrayBound, f.ArrayBound)
 	}
 	// The header is the element kind AND the count, read before either is
 	// judged (the engine's arrayBody, §3, §4): a damaged count is framing
 	// damage whatever the kind byte says, and only a whole header of another
 	// element kind is a kind mismatch.
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); long n = %s; if (ar.fail) { } else if (!(%s)) { report.kindMismatch++; } %s if (ek != %d) { report.widened++; } ", countRead(f, "ar"), cond, countCheck, ek)
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); long n = %s; if (ar.fail) { } else if (!(%s)) { report.refuse(\"kind_mismatch\"); } %s if (ek != %d) { report.widened++; } ", countRead(f, "ar"), cond, countCheck, ek)
 	if f.Array != ir.ArrayFixed {
 		fmt.Fprintf(b, "v.%s.clear(); ", m)
 	}
 	writeArrayElemRead(b, f, m, floatOwnerName(st, f))
 	fmt.Fprintf(b, " } } } }\n")
-	fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+	fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 }
 
 // floatOwnerName names a float field for the non_finite_float refusal
@@ -5284,7 +5287,7 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(1)) { %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("1"), place("TableVariable.boolByte(ar.get8(), report)"))
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(1)) { %s; } else { report.damaged = true; ar.fail = true; break; } } }", refusePrefix("1"), place("TableVariable.boolByte(ar.get8(), report)"))
 	case ir.TInt, ir.TBits:
 		lo, hi := variableRawBounds(f)
 		clamp := ""
@@ -5296,11 +5299,11 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 	// scalar's does (docs/SPEC-TABLES.md §3.3); the walk goes on, landing the
 	// element's place with zero so the count the body carries is kept
 	case ir.TFloat32:
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("4"), owner, place("Float.intBitsToFloat(fbits)"))
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.damaged = true; ar.fail = true; break; } } }", refusePrefix("4"), owner, place("Float.intBitsToFloat(fbits)"))
 	case ir.TFloat64:
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ek == 10) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.malformed = true; ar.fail = true; break; } } else { if (ar.has(8)) { long fbits = ar.get64(); if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, %q); fbits = 0L; } %s; } else { report.malformed = true; ar.fail = true; break; } } } }", refusePrefix("ek == 10 ? 4 : 8"), owner, place("(double) Float.intBitsToFloat(fbits)"), owner, place("Double.longBitsToDouble(fbits)"))
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ek == 10) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.damaged = true; ar.fail = true; break; } } else { if (ar.has(8)) { long fbits = ar.get64(); if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, %q); fbits = 0L; } %s; } else { report.damaged = true; ar.fail = true; break; } } } }", refusePrefix("ek == 10 ? 4 : 8"), owner, place("(double) Float.intBitsToFloat(fbits)"), owner, place("Double.longBitsToDouble(fbits)"))
 	case ir.TString:
-		fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long L = ar.leb(); int len = (int) L; if (ar.fail) { break; } if (!ar.has(len)) { report.malformed = true; ar.fail = true; break; } if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.malformed = true; %s; } else { int keep = len; if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } %s; } ar.off += len; }", place(`""`), f.Type.Size, f.Type.Size, place("new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8)"))
+		fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long L = ar.leb(); int len = (int) L; if (ar.fail) { break; } if (!ar.has(len)) { report.damaged = true; ar.fail = true; break; } if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.damaged = true; %s; } else { int keep = len; if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.refuse(\"out_of_range\"); } %s; } ar.off += len; }", place(`""`), f.Type.Size, f.Type.Size, place("new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8)"))
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -5308,7 +5311,7 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 		case *ir.Flags:
 			// a WIDENED element kind (§4) is read at ITS width, not the
 			// declared mask's: one u8 element is one byte on the wire
-			fmt.Fprintf(b, "int ew = ek == 6 ? 1 : ek == 7 ? 2 : ek == 8 ? 4 : 8; %s{ for (long i = 0; i < n; i++) { if (ar.has(ew)) { %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("ew"), place("ar.unsigned(ew)"))
+			fmt.Fprintf(b, "int ew = ek == 6 ? 1 : ek == 7 ? 2 : ek == 8 ? 4 : 8; %s{ for (long i = 0; i < n; i++) { if (ar.has(ew)) { %s; } else { report.damaged = true; ar.fail = true; break; } } }", refusePrefix("ew"), place("ar.unsigned(ew)"))
 		}
 	}
 }
@@ -5360,7 +5363,7 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 		}
 	}
 	fmt.Fprintf(b, "                if (%s) {\n", cond.String())
-	fmt.Fprintf(b, "                    if (kind == %d) { if (r.has(%s)) { v.%s = %s; } else { report.malformed = true; r.fail = true; } }\n", k, has, m, read)
+	fmt.Fprintf(b, "                    if (kind == %d) { if (r.has(%s)) { v.%s = %s; } else { report.damaged = true; r.fail = true; } }\n", k, has, m, read)
 	for _, w := range widen {
 		if w == k {
 			continue
@@ -5380,7 +5383,7 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 		case 8:
 			wread, whas = "((long) r.get32()) & 0xffffffffL", "4"
 		}
-		fmt.Fprintf(b, "                    else if (kind == %d) { if (r.has(%s)) { v.%s = %s; report.widened++; } else { report.malformed = true; r.fail = true; } }\n", w, whas, m, wread)
+		fmt.Fprintf(b, "                    else if (kind == %d) { if (r.has(%s)) { v.%s = %s; report.widened++; } else { report.damaged = true; r.fail = true; } }\n", w, whas, m, wread)
 	}
 	if f.HasIntRange {
 		if f.Type.Signed && f.Type.Kind == ir.TInt {
@@ -5389,11 +5392,11 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 				min += "L"
 				max += "L"
 			}
-			fmt.Fprintf(b, "                    if (!r.fail && (v.%s < %s || v.%s > %s)) { if (v.%s < %s) { v.%s = %s; } else { v.%s = %s; } report.clamped++; }\n", m, min, m, max, m, min, m, min, m, max)
+			fmt.Fprintf(b, "                    if (!r.fail && (v.%s < %s || v.%s > %s)) { if (v.%s < %s) { v.%s = %s; } else { v.%s = %s; } report.refuse(\"out_of_range\"); }\n", m, min, m, max, m, min, m, min, m, max)
 		} else {
 			if width <= 32 {
 				min, max := f.IntMin.String()+"L", f.IntMax.String()+"L"
-				fmt.Fprintf(b, "                    if (!r.fail && (((long) v.%s & 0xffffffffL) < %s || ((long) v.%s & 0xffffffffL) > %s)) { if (((long) v.%s & 0xffffffffL) < %s) { v.%s = (int) %s; } else { v.%s = (int) %s; } report.clamped++; }\n", m, min, m, max, m, min, m, min, m, max)
+				fmt.Fprintf(b, "                    if (!r.fail && (((long) v.%s & 0xffffffffL) < %s || ((long) v.%s & 0xffffffffL) > %s)) { if (((long) v.%s & 0xffffffffL) < %s) { v.%s = (int) %s; } else { v.%s = (int) %s; } report.refuse(\"out_of_range\"); }\n", m, min, m, max, m, min, m, min, m, max)
 			} else {
 				min := f.IntMin.String() + "L"
 				if f.IntMin.Cmp(big.NewInt(math.MaxInt64)) > 0 {
@@ -5403,18 +5406,18 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 				if f.IntMax.Cmp(big.NewInt(math.MaxInt64)) > 0 {
 					max = fmt.Sprintf("0x%xL", f.IntMax)
 				}
-				fmt.Fprintf(b, "                    if (!r.fail && (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0)) { if (Long.compareUnsigned(v.%s, %s) < 0) { v.%s = %s; } else { v.%s = %s; } report.clamped++; }\n", m, min, m, max, m, min, m, min, m, max)
+				fmt.Fprintf(b, "                    if (!r.fail && (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0)) { if (Long.compareUnsigned(v.%s, %s) < 0) { v.%s = %s; } else { v.%s = %s; } report.refuse(\"out_of_range\"); }\n", m, min, m, max, m, min, m, min, m, max)
 			}
 		}
 	} else if f.Type.Kind == ir.TBits && width < 64 {
 		maxBits := (uint64(1) << uint(width)) - 1
 		if width <= 32 {
-			fmt.Fprintf(b, "                    if (!r.fail && ((long) v.%s & 0xffffffffL) > %dL) { v.%s = (int) %dL; report.clamped++; }\n", m, maxBits, m, maxBits)
+			fmt.Fprintf(b, "                    if (!r.fail && ((long) v.%s & 0xffffffffL) > %dL) { v.%s = (int) %dL; report.refuse(\"out_of_range\"); }\n", m, maxBits, m, maxBits)
 		} else {
-			fmt.Fprintf(b, "                    if (!r.fail && Long.compareUnsigned(v.%s, 0x%xL) > 0) { v.%s = 0x%xL; report.clamped++; }\n", m, maxBits, m, maxBits)
+			fmt.Fprintf(b, "                    if (!r.fail && Long.compareUnsigned(v.%s, 0x%xL) > 0) { v.%s = 0x%xL; report.refuse(\"out_of_range\"); }\n", m, maxBits, m, maxBits)
 		}
 	}
-	b.WriteString("                } else { r.skip(kind); report.kindMismatch++; }\n")
+	b.WriteString("                } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 }
 
 func writeArrayFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
