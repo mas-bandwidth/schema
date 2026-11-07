@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTableFixedCheckBody, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -342,7 +342,7 @@ for (const lane of FixedTableFixedLineagePlans) { if (lane !== null) { Object.fr
 Object.freeze(FixedTableFixedLineagePlans);
 
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
-// NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit is
+// NEVER ALLOCATES. One of these per endpoint; a layout whose plan does not fit is
 // a refusal by name.
 export function FixedTableFixedNewPlan(entryCapacity, remapCapacity) {
   return new TableFixedPlan(entryCapacity || 4096, FixedTableFixedBodyBytes, remapCapacity || 4096);
@@ -365,6 +365,9 @@ export function FixedTableFixedMeasure(count) {
 export function FixedTableFixedSave(values, count, bytes) {
   const need = FixedTableFixedMeasure(count);
   if (count < 0 || bytes === null || bytes.length < need) { return -1; }
+  // A NaN OR AN INFINITY IS REFUSED BEFORE A BYTE IS WRITTEN (docs/SPEC-TABLES.md
+  // §3.3): no form carries one, so the save answers -1 and the buffer is untouched.
+  for (let k = 0; k < count; k++) { if (!FixedTableFixedCheckBody(values[k])) { return -1; } }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
   bytes.fill(0, 0, TableFixedHeaderBytes); // the seven reserved bytes, and the rest of the header
   bytes[0] = TableFixedForm;
@@ -446,7 +449,7 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     // a plan that does not fit refuses BY NAME.
     if (lane.count > plan.capacity) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
     entries = lane.entries; entryCount = lane.count; remap = lane.remap;
-    // THE CENSUS IS ONCE PER PEER and never per record (§5.4); it lands
+    // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4); it lands
     // after the loop, on a read that RETURNS — REFUSE moves no counter.
     censusUnknown = lane.unknown; censusKind = lane.kindMismatch;
   }
@@ -547,9 +550,23 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
   if (count < 0) { return -1; }
   if (count > values.length) { TableMessageRefuse(report, "batch_too_large"); return count; }
   for (let i = 0; i < count; i++) {
-    if (!FixedTableLoadMessageBody(r, values[i])) { return i; }
+    if (!FixedTableLoadMessageBody(r, values[i])) {
+      // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
+      // §3.3), the tolerant read included: no body of it is delivered.
+      if (report.NonFiniteFloat) {
+        for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
+        TableMessageRefuse(report, "non_finite_float: " + report.NonFiniteFloat);
+        return -1;
+      }
+      // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):
+      // the count says 0 and every body the walk touched goes back to its
+      // declared defaults.
+      for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
+      return 0;
+    }
   }
-  if (!tableMessageBatchClose(r)) { return count; }
+  // damage after the last body discards the batch too (§4)
+  if (!tableMessageBatchClose(r)) { for (let j = 0; j < count; j++) { InitFixedTable(values[j]); } return 0; }
   return count;
 }
 

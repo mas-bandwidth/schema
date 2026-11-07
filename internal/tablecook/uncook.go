@@ -68,6 +68,11 @@ func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instan
 		if r.nodes[i] == nil {
 			continue
 		}
+		r.nodeBase = e.Offset
+		r.nodeEnd = h.DataLength
+		if i+1 < len(dir) {
+			r.nodeEnd = dir[i+1].Offset
+		}
 		if err := r.record(e.Offset, byTypeId[e.TypeId], r.nodes[i]); err != nil {
 			return nil, err
 		}
@@ -76,12 +81,14 @@ func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instan
 }
 
 type regionReader struct {
-	m     *tabletext.Model
-	ord   order
-	buf   []byte
-	dir   []DirectoryEntry
-	nodes []*tabletext.Instance // by directory position; nil where the entry is a blob
-	blobs []*tabletext.Blob     // by directory position; nil where the entry is a table
+	m        *tabletext.Model
+	ord      order
+	buf      []byte
+	dir      []DirectoryEntry
+	nodes    []*tabletext.Instance // by directory position; nil where the entry is a blob
+	blobs    []*tabletext.Blob     // by directory position; nil where the entry is a table
+	nodeBase int64
+	nodeEnd  int64
 }
 
 func (r *regionReader) record(base int64, st *ir.Struct, inst *tabletext.Instance) error {
@@ -109,8 +116,12 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		fv.Present = r.buf[pieces[len(pieces)-1].Offset] != 0
 	}
 	switch {
+	case f.IsMap():
+		return r.mapEntries(value.Offset, f, fv)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return r.ref(value.Offset, f, &fv.Cell)
+	case f.Type.TextUnbounded():
+		return r.text(value.Offset, f, fv)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		n := int64(int32(r.ord.Uint32(r.buf[pieces[1].Offset:])))
 		bound := f.Type.Size
@@ -151,6 +162,79 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		return r.list(value.Offset, f, fv)
 	}
 	return r.element(value.Offset, f, &fv.Cell)
+}
+
+// text reads back ONE unbounded text value (docs/SPEC-TABLES.md §2.13.1): the
+// slot's int64 self-relative delta to a blob record in the holder's own node
+// extent, or RefNull for the empty string.
+func (r *regionReader) text(at int64, f *ir.Field, fv *tabletext.Field) error {
+	delta := int64(r.ord.Uint64(r.buf[at:]))
+	if delta == RefNull {
+		fv.Cell.Str = nil
+		fv.Count = 0
+		return nil
+	}
+	if f.Type.Optional && !fv.Present {
+		return fmt.Errorf("field %s: the optional is absent and its text reference is %d, not null", f.Name, delta)
+	}
+	start, _, fits := arrayExtent(at, delta, BlobHeader, 1, r.nodeBase, r.nodeEnd)
+	if !fits || start%BlobAlign != 0 {
+		return fmt.Errorf("field %s: the text blob at %d with delta %d leaves the holder's node [%d, %d) or is not %d-aligned", f.Name, at, delta, r.nodeBase, r.nodeEnd, BlobAlign)
+	}
+	length := int64(r.ord.Uint32(r.buf[start:]))
+	if length <= 0 {
+		return fmt.Errorf("field %s: the text reference is not null and the blob's length is %d: an empty string's reference is null (docs/SPEC-TABLES.md §2.13.1)", f.Name, length)
+	}
+	need := BlobHeader + length + 1
+	if _, _, fits := arrayExtent(at, delta, need, 1, r.nodeBase, r.nodeEnd); !fits {
+		return fmt.Errorf("field %s: the text blob at %d of length %d leaves the holder's node [%d, %d)", f.Name, start, length, r.nodeBase, r.nodeEnd)
+	}
+	if r.buf[start+BlobHeader+length] != 0 {
+		return fmt.Errorf("field %s: the text blob at %d of length %d is not NUL-terminated", f.Name, start, length)
+	}
+	fv.Cell.Str = append([]byte(nil), r.buf[start+BlobHeader:start+BlobHeader+length]...)
+	fv.Count = int(length)
+	return nil
+}
+
+// mapEntries reads back ONE map (docs/SPEC-TABLES.md §2.8): the slot's int64
+// SELF-RELATIVE delta and int32 count, then the generated `{ key, value }`
+// entries at the array the delta names, in the order they lie, which a cook
+// holds ascending. A delta or a count outside the region is refused, as a
+// list's is; the key order is `schema cook-check`'s fifth clause (§7.4).
+func (r *regionReader) mapEntries(at int64, f *ir.Field, fv *tabletext.Field) error {
+	delta := int64(r.ord.Uint64(r.buf[at:]))
+	count := int64(int32(r.ord.Uint32(r.buf[at+8:])))
+	if count < 0 {
+		return fmt.Errorf("field %s: the count is %d, and an extent is never negative", f.Name, count)
+	}
+	if delta == RefNull {
+		if count != 0 {
+			return fmt.Errorf("field %s: the reference is null and the count is %d: an empty map is the only map a null names", f.Name, count)
+		}
+		fv.Entries = fv.Entries[:0]
+		return nil
+	}
+	if f.Type.Optional && !fv.Present {
+		return fmt.Errorf("field %s: the optional is absent and its map slot is (%d, %d), not (0, 0)", f.Name, delta, count)
+	}
+	if count == 0 {
+		return fmt.Errorf("field %s: the count is 0 and the reference is not null: an empty map's reference is null in every encoding", f.Name)
+	}
+	size := ir.RecordLayout(r.m.Unit, f.MapEntry).Size
+	start, _, fits := arrayExtent(at, delta, count, size, 0, int64(len(r.buf)))
+	if !fits {
+		return fmt.Errorf("field %s: the entry array at %d with delta %d, count %d and size %d leaves the region of %d bytes", f.Name, at, delta, count, size, len(r.buf))
+	}
+	fv.Entries = fv.Entries[:0]
+	for i := range count {
+		entry := r.m.NewMapEntry(f)
+		if err := r.record(start+i*size, f.MapEntry, entry); err != nil {
+			return err
+		}
+		fv.Entries = append(fv.Entries, tabletext.Cell{Tab: entry})
+	}
+	return nil
 }
 
 // list reads back ONE unbounded array (docs/SPEC-TABLES.md §2.9): the slot's
@@ -247,13 +331,21 @@ func (r *regionReader) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 		cell.B = r.buf[at] != 0
 		return nil
 	case ir.TFloat32:
-		// the widening half of §3's bit-pattern rule: a float32 NaN's payload
-		// rides in the top of the double's mantissa rather than crossing the
-		// two widths through a conversion (SPEC.md §4.3, schema#480)
-		cell.F = tablewire.WidenF32(r.ord.Uint32(r.buf[at:]))
+		// every read refuses a NaN or an infinity on its raw bits
+		// (docs/SPEC-TABLES.md §3.3), the uncook included; a finite float32
+		// widens into the float64 cell exactly
+		bits := r.ord.Uint32(r.buf[at:])
+		if !tabletext.FiniteF32(bits) {
+			return &tablewire.NonFiniteRefusal{Field: tablewire.FloatOwner(r.m, f)}
+		}
+		cell.F = float64(math.Float32frombits(bits))
 		return nil
 	case ir.TFloat64:
-		cell.F = math.Float64frombits(r.ord.Uint64(r.buf[at:]))
+		bits := r.ord.Uint64(r.buf[at:])
+		if !tabletext.FiniteF64(bits) {
+			return &tablewire.NonFiniteRefusal{Field: tablewire.FloatOwner(r.m, f)}
+		}
+		cell.F = math.Float64frombits(bits)
 		return nil
 	case ir.TInt, ir.TFixed:
 		if kind := ir.TableScalarKind(f); ir.TableKindWide(kind) {

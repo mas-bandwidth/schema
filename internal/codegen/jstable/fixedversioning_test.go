@@ -38,11 +38,13 @@ package jstable
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -71,11 +73,6 @@ type jsVersionRow struct {
 	// grown element width, which §5.9 #33 says is FOUR widen entries and never a
 	// folded run — and `widened > 0` cannot tell the two apart.
 	widenedExact int
-	// unported is a row whose schema this backend refuses to generate at all —
-	// kind 33, `wstring(N)`, is still refused in a JavaScript table
-	// (compiler/target_javascript.go, refuseWideText). It is NOT a §5 red: the
-	// row is named here, skipped by name, and owed the day the kind lands.
-	unported string
 	// check is JavaScript asserting the landed values, over `back[0]`.
 	check string
 }
@@ -87,8 +84,8 @@ var jsVersionRows = []jsVersionRow{
   // THE ELEMENT DEFAULT, past the old writer's four (§5.7's poison is what makes
   // this readable: a prefill that never ran reads 0x5A5A5A5A, not 7).
   for (let i = 4; i < 8; i++) {
-    if (back[0].Vals[i].X !== 7 || back[0].Vals[i].Y !== 9) {
-      fail("the grown slot " + i + " is not its element's declared default: " + show(back[0].Vals[i]));
+    if (back[0].vals[i].x !== 7 || back[0].vals[i].y !== 9) {
+      fail("the grown slot " + i + " is not its element's declared default: " + show(back[0].vals[i]));
     }
   }`},
 	{row: "bits_grow", widens: true},
@@ -97,10 +94,10 @@ var jsVersionRows = []jsVersionRow{
 	{row: "enum_append"},
 	{row: "enum_width", widens: true},
 	{row: "field_append", check: `
-  if (back[0].X !== 11 || back[0].Y !== 22 || back[0].Z !== 33) {
+  if (back[0].x !== 11 || back[0].y !== 22 || back[0].z !== 33) {
     fail("the old writer's values did not land: " + show(back[0]));
   }
-  if (back[0].W !== 77) {
+  if (back[0].w !== 77) {
     fail("the appended field is not its declared default: " + show(back[0]));
   }`},
 	{row: "field_deprecate", sameHash: true},
@@ -112,9 +109,9 @@ var jsVersionRows = []jsVersionRow{
   // the scalar row asserts one value and its bracket.
   const want = [-1, -128, 0, 112];
   for (let k = 0; k < want.length; k++) {
-    if (Number(back[0].Vals[k]) !== want[k]) { fail("slot " + k + " widened wrong: " + show(back[0])); }
+    if (Number(back[0].vals[k]) !== want[k]) { fail("slot " + k + " widened wrong: " + show(back[0])); }
   }
-  if (back[0].Lead !== 0xAAAAAAAA || back[0].Trail !== 0xBBBBBBBB) {
+  if (back[0].lead !== 0xAAAAAAAA || back[0].trail !== 0xBBBBBBBB) {
     fail("the row moved a neighbour: " + show(back[0]));
   }`},
 	{row: "flags_append"},
@@ -123,16 +120,16 @@ var jsVersionRows = []jsVersionRow{
   if (n !== 3) { fail("the int_widen file carries three records, not " + n); }
   const want = [-1, -32768, 32767];
   for (let k = 0; k < want.length; k++) {
-    if (Number(back[k].V) !== want[k]) { fail("record " + k + " widened wrong: " + show(back[k])); }
-    if (back[k].Lead !== 0xAAAAAAAA || back[k].Trail !== 0xBBBBBBBB) {
+    if (Number(back[k].v) !== want[k]) { fail("record " + k + " widened wrong: " + show(back[k])); }
+    if (back[k].lead !== 0xAAAAAAAA || back[k].trail !== 0xBBBBBBBB) {
       fail("record " + k + " moved a neighbour: " + show(back[k]));
     }
   }`},
 	{row: "keyed_array_enum_append", check: `
   // THE APPENDED KEYED SLOT IS ITS ELEMENT'S DECLARED DEFAULT (n = 7), exactly
   // as an appended field is, and the poison is what says the prefill ran.
-  if (back[0].Slots[3].N !== 7) {
-    fail("the appended keyed slot is not its declared default: " + show(back[0].Slots[3]));
+  if (back[0].slots[3].n !== 7) {
+    fail("the appended keyed slot is not its declared default: " + show(back[0].slots[3]));
   }`},
 	{row: "nested_append"},
 	{row: "optional_add", check: `
@@ -141,10 +138,10 @@ var jsVersionRows = []jsVersionRow{
   // IS present and the constant is the plan's. A leg that prefills the companion
   // and emits no present entry reads a value the writer sent as ABSENT — and
   // every value check still passes, which is why this one is its own line.
-  if (back[0].LinkPresent !== true) {
+  if (back[0].linkPresent !== true) {
     fail("T into ?T owes present = 1, not the fresh value's false: " + show(back[0]));
   }
-  if (back[0].Link.Value !== 777) {
+  if (back[0].link.value !== 777) {
     fail("the payload beside the present companion is the writer's value: " + show(back[0]));
   }`},
 	{row: "range_widen"},
@@ -157,12 +154,12 @@ var jsVersionRows = []jsVersionRow{
   // (§5.2's prefill sentence, §5.9 #38): Alpha.y is declared 55 and the old
   // writer never sent it. A prefill that returns at the union leaves 0 here and
   // every other assertion of this row still passes.
-  if (back[0].Pick.Type !== 1) { fail("the old writer's arm did not land: " + show(back[0])); }
-  if (back[0].Pick.Alpha.X !== 21) { fail("the arm's sent value did not land: " + show(back[0])); }
-  if (back[0].Pick.Alpha.Y !== 55) {
+  if (back[0].pick.type !== 1) { fail("the old writer's arm did not land: " + show(back[0])); }
+  if (back[0].pick.alpha.x !== 21) { fail("the arm's sent value did not land: " + show(back[0])); }
+  if (back[0].pick.alpha.y !== 55) {
     fail("the arm's reader-appended field is not its declared default: " + show(back[0]));
   }`},
-	{row: "wstring_grow", unported: "kind 33, wstring(N), is refused in a JavaScript table (schema#366 / refuseWideText)"},
+	{row: "wstring_grow"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------
@@ -170,12 +167,10 @@ var jsVersionRows = []jsVersionRow{
 func TestJSFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := jsFixedCorpus(t)
 	node := jsNode(t)
+	nonFinite := jsManifestNonFinite(t, filepath.Join(corpus, "manifest.txt"))
 	for _, r := range jsVersionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
-			if r.unported != "" {
-				t.Skipf("NOT PORTED, not a §5 red: %s", r.unported)
-			}
 			newer := jsReadSchema(t, "VNEW_"+r.row)
 			older := jsReadSchema(t, "VOLD_"+r.row)
 			table := jsFixedRootName(t, older)
@@ -187,6 +182,27 @@ func TestJSFixedVersioningNewReadsOld(t *testing.T) {
 				counters = fmt.Sprintf(`if (r.widened !== %d) {
   fail("this row owes EXACTLY %d widen entries per record (§5.9 #33: no fold across a widen), not " + r.widened);
 }`, r.widenedExact, r.widenedExact)
+			}
+			if nonFinite["old_"+r.row+".bin"] {
+				// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung),
+				// and under the finite rule of 2026-10-27 the newer reader
+				// refuses it on its raw bits before any record lands
+				// (docs/SPEC-TABLES.md §3.3): a must-refuse vector until the
+				// finite-tables plan's C++ card regenerates the corpus
+				// (tables-finite/cpp), and an ordinary row after.
+				src := fmt.Sprintf(`
+const data = readFileSync(%q);
+const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
+const report = new TableFixedReport();
+const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
+if (n !== -1 || report.refused !== TableFixedRefusal.NonFiniteFloat) {
+  fail("the non-finite float the older writer wrote was not refused as non_finite_float: n=" + n + " " + reason(report));
+}
+`, filepath.Join(corpus, "old_"+r.row+".bin"))
+				if out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src); err != nil {
+					t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
+				}
+				return
 			}
 			// THE VALUE ORACLE IS THE CORPUS MANIFEST (§5.9 #37), for EVERY row
 			// and not the two a hand-written check covered.
@@ -226,9 +242,6 @@ func TestJSFixedVersioningOldRefusesNew(t *testing.T) {
 	for _, r := range jsVersionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
-			if r.unported != "" {
-				t.Skipf("NOT PORTED, not a §5 red: %s", r.unported)
-			}
 			older := jsReadSchema(t, "VOLD_"+r.row)
 			table := jsFixedRootName(t, older)
 			file := filepath.Join(corpus, "new_"+r.row+".bin")
@@ -393,7 +406,7 @@ const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
 if (n < 1 || r.refused !== 0 || r.malformed) { fail("hash_identity: n=" + n + " " + reason(r)); }
-if (back[0].W !== 777) { fail("the identity plan lost a value: " + show(back[0])); }
+if (back[0].w !== 777) { fail("the identity plan lost a value: " + show(back[0])); }
 if (r.layoutHash !== 0n) { fail("layout_hash is zero on every path but the two layout refusals (§5.9 #15)"); }`, fresh)},
 	}
 	for _, c := range cases {
@@ -471,13 +484,13 @@ func TestJSFixedVersioningUnionArmText(t *testing.T) {
 const { writeFileSync } = await import("node:fs");
 const { PickType } = await import("./Probe.js");
 const v = new T(); InitT(v);
-v.Head = 81;
-v.Pick.Type = PickType.B;
+v.head = 81;
+v.pick.type = PickType.B;
 const LABEL = "back";
-for (let i = 0; i < LABEL.length; i++) { v.Pick.B.Label[i] = LABEL.charCodeAt(i); }
-v.Pick.B.LabelLength = LABEL.length;
-v.Pick.B.M = -12;
-v.Tail = 88;
+for (let i = 0; i < LABEL.length; i++) { v.pick.b.label[i] = LABEL.charCodeAt(i); }
+v.pick.b.labelLength = LABEL.length;
+v.pick.b.m = -12;
+v.tail = 88;
 const buf = new Uint8Array(TMeasure(1));
 if (TSave([v], 1, buf) !== buf.length) { fail("union-arm text: UT1 wrote its arm-b record"); }
 writeFileSync(%q, buf);
@@ -502,13 +515,13 @@ if (!(n === 1 && !r.malformed)) {
 }
 const got = back[0];
 let label = "";
-for (let i = 0; i < got.Pick.B.LabelLength; i++) { label += String.fromCharCode(got.Pick.B.Label[i]); }
-if (!(got.Pick.Type === PickType.B && label === "back" && got.Pick.B.M === -12)) {
+for (let i = 0; i < got.pick.b.labelLength; i++) { label += String.fromCharCode(got.pick.b.label[i]); }
+if (!(got.pick.type === PickType.B && label === "back" && got.pick.b.m === -12)) {
   fail("union-arm text: the arm's string and scalar land the other way round too — tag " +
-    got.Pick.Type + " " + JSON.stringify(label) + " " + got.Pick.B.M);
+    got.pick.type + " " + JSON.stringify(label) + " " + got.pick.b.m);
 }
-if (!(got.Head === 81 && got.Tail === 88)) {
-  fail("union-arm text: the fields either side of the union are 81/88, got " + got.Head + "/" + got.Tail);
+if (!(got.head === 81 && got.tail === 88)) {
+  fail("union-arm text: the fields either side of the union are 81/88, got " + got.head + "/" + got.tail);
 }
 `, file)
 	if out, err := jsRunVersionProbe(t, node, ut2, []string{ut1}, 0, table, read); err != nil {
@@ -541,9 +554,7 @@ if (!(got.Head === 81 && got.Tail === 88)) {
 // so that one index comes back by one. The manifest names a field AS THE WIRE
 // NAMES IT, so a `was =` rename pairs by wire id for free (§5.9 #41).
 //
-// A value form this leg cannot express as one comparison — a wstring literal —
-// is LEFT OUT BY NAME rather than weakened into a pass; every row carrying one
-// is already unported (§5.9 #44).
+// Wide literals are compared as UTF-16 code units, including surrogate pairs.
 func jsManifestChecks(t *testing.T, corpus, file string, readerSchema string) string {
 	t.Helper()
 	records, values := jsManifestRow(t, corpus, file)
@@ -719,7 +730,7 @@ func jsManifestPath(key string, renamed map[string]string) (string, bool) {
 		if to, ok := renamed[name]; ok {
 			surface = to // the wire name translated into this build's spelling
 		}
-		path += "." + ir.GoExportName(surface)
+		path += "." + js.MemberName(surface)
 		if !hasIdx {
 			continue
 		}
@@ -732,9 +743,54 @@ func jsManifestPath(key string, renamed map[string]string) (string, bool) {
 	return path, true
 }
 
-// jsManifestCompare is ONE assertion for one manifest value, or nothing where
-// the form is one this leg cannot express (a wstring literal — and every row
-// carrying one is unported, §5.9 #44).
+// jsManifestNonFiniteValue is one manifest value spelled `<decimal>|0x<bits>`,
+// the bits eight hex digits for a float32 and sixteen for a float64.
+var jsManifestNonFiniteValue = regexp.MustCompile(`^[A-Za-z0-9_.\[\]]+=[^|]*\|0x([0-9A-Fa-f]{16}|[0-9A-Fa-f]{8})$`)
+
+// jsManifestNonFinite answers the corpus files whose manifest values spell a
+// NaN or an infinity (docs/SPEC-TABLES.md §3.3): every read refuses such a
+// file as non_finite_float, so its row is a must-refuse vector and not a value
+// comparison. No manifest answers none.
+func jsManifestNonFinite(t *testing.T, path string) map[string]bool {
+	t.Helper()
+	out := map[string]bool{}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return out
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		head, values, ok := strings.Cut(line, " values=")
+		if !ok {
+			continue
+		}
+		file := ""
+		for field := range strings.FieldsSeq(head) {
+			if v, ok := strings.CutPrefix(field, "file="); ok {
+				file = v
+			}
+		}
+		for value := range strings.SplitSeq(values, ",") {
+			m := jsManifestNonFiniteValue.FindStringSubmatch(value)
+			if m == nil {
+				continue
+			}
+			bits, err := strconv.ParseUint(m[1], 16, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(m[1]) == 8 && bits&0x7F800000 == 0x7F800000 || len(m[1]) == 16 && bits&0x7FF0000000000000 == 0x7FF0000000000000 {
+				out[file] = true
+			}
+		}
+	}
+	return out
+}
+
+// jsManifestCompare emits one assertion per supported manifest value. Wide
+// literals retain their UTF-16 code units instead of passing through a byte string.
 func jsManifestCompare(path, want string) (string, bool) {
 	fail := func(cond string) (string, bool) {
 		return fmt.Sprintf("if (%s) { fail(%q + \" is \" + %s + \", and the manifest says %s\"); }\n",
@@ -744,7 +800,11 @@ func jsManifestCompare(path, want string) (string, bool) {
 	case want == "true" || want == "false":
 		return fail(fmt.Sprintf("%s !== %s", path, want))
 	case strings.HasPrefix(want, `u"`):
-		return "", false // a wstring literal: named, never weakened into a pass
+		literal := want[1:]
+		if !json.Valid([]byte(literal)) {
+			return "", false
+		}
+		return fail(fmt.Sprintf("%s.split(\"\").some((c, i) => %s[i] !== c.charCodeAt(0))", literal, path))
 	case strings.HasPrefix(want, `"`):
 		lit, err := strconv.Unquote(want)
 		if err != nil {

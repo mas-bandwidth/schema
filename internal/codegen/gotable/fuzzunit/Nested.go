@@ -3,5 +3,6 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package tabledemo — protocol id 0xba7b344f28584d33
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package tabledemo

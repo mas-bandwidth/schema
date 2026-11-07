@@ -10,7 +10,7 @@ import (
 )
 
 // A RUN OF ZERO-WIDTH ELEMENTS IS NOT A LOOP (docs/SPEC-TABLES.md §3.3). A
-// peer's announcement is untrusted, and one unknown entry announcing an array
+// endpoint's announcement is untrusted, and one unknown entry announcing an array
 // with `min = max = 0xFFFFFFFF` over an element that rides no bits used to buy
 // about 2^32 iterations of the skip walk for a few bytes of wire: kind 0 and
 // kind 32 elements because the arithmetic run did not take them, and a nested
@@ -87,8 +87,8 @@ func TestMessageSkipOfZeroWidthElementsIsBounded(t *testing.T) {
 		}
 		var report tabletext.Report
 		steps := &skipSteps{limit: limit}
-		d := &bitDecoder{m: m, v: v, report: &report, r: r, refBits: v.RefBits(), indexBits: ir.TableMessageBitsRequired(0, 1), steps: steps}
-		ok := d.root(m.New(m.Lookup("Probe")))
+		d := &bitDecoder{m: m, v: v, report: &report, r: r, refBits: v.RefBits(), steps: steps}
+		ok := d.body(m.New(m.Lookup("Probe")))
 		if steps.n >= limit {
 			t.Errorf("%s: the skip walked %d elements of a %d-byte batch before the counter stopped it", c.name, steps.n, len(data))
 			continue

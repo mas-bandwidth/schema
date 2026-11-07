@@ -126,8 +126,8 @@ pub fn fixed_table_save_message_body(w: &mut TableBitWriter, value: &FixedTableR
     !w.overflow
 }
 
-/// One FixedTable body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One FixedTable body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut FixedTableRow) -> bool {
@@ -204,13 +204,21 @@ pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], re
     2 + (w.bits / 8) as i64
 }
 
-/// LoadMessages (§3.3): one batch into the caller's storage against the PEER's
+/// LoadMessages (§3.3): one batch into the caller's storage against the ENDPOINT's
 /// announced vocabulary. The count of bodies delivered and whether the batch
-/// read whole. "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1"; "M ABOVE THE
+/// read whole. DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH (§3.3, §4):
+/// the count is zero, malformed is set, and every body of the batch goes back
+/// to its declared defaults, bytes after the pad included; "M ABOVE THE
 /// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", with the count set
-/// to the wire's M; "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY
+/// to the wire's M; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 /// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
+///
+/// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
+/// no body of it is delivered, so the count is zero, every body read so far
+/// goes back to its declared defaults, and the reason is non_finite_float.
 pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
+    report.non_finite_float = "";
+    report.non_finite_float_id = None;
     let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };
@@ -218,11 +226,26 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
         return (count, report.refuse(TableReason::BatchTooLarge));
     }
     let mut r = TableBitReader::new(&data[2..]);
-    for (i, value) in values.iter_mut().take(count).enumerate() {
-        if !fixed_table_load_message_body(&mut r, vocabulary, report, value) {
-            return (i, false);
+    for i in 0..count {
+        if !fixed_table_load_message_body(&mut r, vocabulary, report, &mut values[i]) || !report.non_finite_float.is_empty() {
+            if !report.non_finite_float.is_empty() {
+                for value in values.iter_mut().take(i + 1) {
+                    *value = fixed_table_message_default();
+                }
+                return (0, report.refuse(TableReason::NonFiniteFloat));
+            }
+            for value in values.iter_mut().take(count) {
+                *value = fixed_table_message_default();
+            }
+            return (0, false);
         }
     }
-    (count, table_message_batch_close(&mut r, report))
+    if !table_message_batch_close(&mut r, report) {
+        for value in values.iter_mut().take(count) {
+            *value = fixed_table_message_default();
+        }
+        return (0, false);
+    }
+    (count, true)
 }
 

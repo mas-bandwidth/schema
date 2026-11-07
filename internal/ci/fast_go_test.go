@@ -54,13 +54,50 @@ func TestFastLaneRunsCardAddedGoFixedFormTests(t *testing.T) {
 		}
 	}
 	if len(found) == 0 {
-		t.Fatalf("no ci-fast job that still runs on a PR into fixed-table-form runs %s under SCHEMA_SLOW/SCHEMA_REQUIRE_CORPUS (schema#1376). "+
+		t.Fatalf("no ci-fast job that still runs on a PR into dev or fixed-table-form runs %s under SCHEMA_SLOW/SCHEMA_REQUIRE_CORPUS (schema#1376). "+
 			"go-test-touched's bare `go test $PACKAGES` skips it; the go leg-gate is skipped below main; "+
 			"tables-go-fixed-form is the binary gate and tables-go-versioning's -run never names TestFixedForm. "+
 			"Invoke `make tables-go-fixedform` (or SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run TestFixedForm) from go-test-touched.",
 			cardAddedGoFixedFormTest)
 	}
 	t.Logf("card-added %s is visible to ci-fast job(s) %s", cardAddedGoFixedFormTest, strings.Join(found, ", "))
+
+	// Verify ci-fast.yml automatically triggers on stream-to-dev PRs (base=dev)
+	// as well as main promotion PRs (base=main) and fixed-table-form, while
+	// blocking fork PRs.
+	for _, base := range []string{"dev", "main", "fixed-table-form"} {
+		ev := ciEvent{
+			Name:     "pull_request",
+			Branch:   base,
+			HeadRef:  "sprint/schema-go",
+			Repo:     "mas-bandwidth/schema",
+			HeadRepo: "mas-bandwidth/schema",
+			PlanPkgs: "./internal/codegen/gotable",
+			PlanLegs: `["go"]`,
+		}
+		if ok, err := jobRunsInWorkflow(wf, "go-test-touched", ev); err != nil || !ok {
+			t.Fatalf("ci-fast.yml go-test-touched did not run on same-repo PR into %s: ok=%v err=%v", base, ok, err)
+		}
+		forkEv := ev
+		forkEv.HeadRepo = "fork/schema"
+		if ok, err := jobRunsInWorkflow(wf, "go-test-touched", forkEv); err != nil || ok {
+			t.Fatalf("ci-fast.yml go-test-touched ran on fork PR into %s: ok=%v err=%v", base, ok, err)
+		}
+	}
+	// Mutation control: dropping dev from pull_request.branches must fail the
+	// stream-to-dev PR check.
+	mutated := strings.Replace(wf, "branches: [ main, dev, fixed-table-form ]", "branches: [ main, fixed-table-form ]", 1)
+	if ok, err := jobRunsInWorkflow(mutated, "go-test-touched", ciEvent{
+		Name:     "pull_request",
+		Branch:   "dev",
+		HeadRef:  "sprint/schema-go",
+		Repo:     "mas-bandwidth/schema",
+		HeadRepo: "mas-bandwidth/schema",
+		PlanPkgs: "./internal/codegen/gotable",
+		PlanLegs: `["go"]`,
+	}); err != nil || ok {
+		t.Fatalf("dropping dev from ci-fast.yml pull_request.branches still ran stream-to-dev PR: ok=%v err=%v", ok, err)
+	}
 }
 
 // TestHyphenatedFixedFormTargetDoesNotSelectGoTests is the trap #1376 names:

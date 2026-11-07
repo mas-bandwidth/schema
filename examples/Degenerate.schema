@@ -1,38 +1,22 @@
-// Degenerate.schema — the degenerate ARRANGEMENTS (issue #203).
+// Degenerate.schema — the minimal shapes.
 //
-// Every other file here carries realistic protocol structure, and that is
-// exactly what made the corpus blind: a real shape always has enough
-// neighbouring fields to mask the arrangements an emitter's run/chunk
-// machinery keys on. A fixed scalar array that is essentially the whole
-// message; a unit whose every type is two floats and nothing else; a nested
-// struct that lands across a run boundary. The Go flat word codec wrote
-// `values [2]float64` TWICE — 32 bytes where every other language wrote 16 —
-// and every Go-to-Go round trip stayed green, because nothing in the corpus
-// had that shape.
+// Real protocols rarely declare a type that is one array and nothing else,
+// or a struct whose only field is another struct, but small projects do, and
+// a code generator has to get them right. Each type here is one such shape,
+// stripped to the bone: a fixed array as the whole message, a unit of plain
+// float pairs, and nested structs as the first, the only, or a far-offset
+// field.
 //
-// So the types here are deliberately unrealistic, and that is their whole
-// job. They are held to the same C++-pinned wire goldens as the rest of the
-// corpus, in all nine languages, on every push.
-//
-// TWO STANDING PROPERTIES OF THIS FILE. First, every type's wire width is a
-// whole number of BYTES. The legs whose emitters write a whole message into
-// a buffer (Dart, Java, Elixir) cannot append to a bit stream, so they
-// concatenate their per-message buffers; that equals what the stream legs
-// write only while no shape ends mid-byte.
-//
-// Second, no type here may pull a target's float-bits helpers in. The
-// bare-float-unit defect — an unused `math` import in generated Go — can
-// only manifest in a file with no other math consumer, so a type whose
-// floats reach those helpers belongs elsewhere. The generated-source goldens
-// pin the import block, so a change is loud.
+// Every type here is a whole number of bytes wide, and none needs a target's
+// float-bits helpers. Keep both properties if you add a type: the reasons
+// are in internal/goldens/regressions_test.go.
 
 package example
 
 // ---- a bare float unit --------------------------------------------------
 
 // Two floats and nothing else: the Vec2/Vec3/Quat shape a project declares
-// before it declares anything else. Types.schema's own Vec3 survives only
-// because that file has other float users.
+// before it declares anything else.
 type Vec2
 {
     x float64
@@ -41,8 +25,7 @@ type Vec2
 
 // ---- fixed scalar arrays ------------------------------------------------
 
-// A fixed scalar array as essentially the whole message — the arrangement
-// that wrote its elements twice.
+// A fixed scalar array as the whole message.
 type SpanF64
 {
     values [2]float64
@@ -59,21 +42,19 @@ type SpanI64
     values [2]int64
 }
 
-// [1]T: the one-element neighbour, where a loop and an unrolled element
-// differ by nothing but the emitter's decision to take either.
+// [1]T: a one-element fixed array.
 type SpanOne
 {
     values [1]uint64
 }
 
-// [N]T landing exactly on a 64-bit chunk boundary.
+// [N]T exactly 64 bits wide.
 type SpanChunk
 {
     values [4]uint16
 }
 
-// An array with a trailing field: the elements and the field are
-// consecutive statically-sized items and share whatever run holds them.
+// An array with a trailing field.
 type SpanTail
 {
     values [2]float64
@@ -89,11 +70,7 @@ type SpanTwice
 
 // ---- nested structs at the edges ----------------------------------------
 
-// Narrow on purpose: three fields under one word is the shape a parent wants
-// to place itself rather than call for. The widths sum to a whole 64-bit
-// word for the reason stated at the top of this file: every type here is a
-// byte multiple, so the nine legs agree on one golden whether their emitter
-// writes into a shared stream or a buffer per message.
+// A narrow struct: three raw-bit fields that sum to one 64-bit word.
 type Trio
 {
     a bits(20)
@@ -107,13 +84,10 @@ type TrioSole
     inner Trio
 }
 
-// A struct from ANOTHER file as the only field: Types.schema's Vec3, and the
-// corpus's one reference to it from outside its declaring file. That is what
-// makes its cpp_native mapping ride (SPEC §4.2, Native type mapping):
-// generated C++ Degenerate.h includes vec_math.h and stores ::VecMath, while
-// inside Types.h the mapping is off because the hand type derives from that
-// header (#675). Three float64s are a whole number of bytes, and Vec3's own
-// serializer in Types writes them, so no float-bits helper reaches this file.
+// A struct from ANOTHER file as the only field: Types.schema's Vec3. Because
+// it is used outside its declaring file, its cpp_native mapping applies here
+// (SPEC §4.2, Native type mapping): generated C++ for this file includes
+// vec_math.h and stores the field as ::VecMath.
 type Vec3Sole
 {
     v Vec3
@@ -126,12 +100,7 @@ type TrioFirst
     trailer bits(16)
 }
 
-// A nested struct STRADDLING a run boundary: the prefix is sized so Trio's
-// fields land on either side of the Go emitter's 384-bit run cap (flat.go,
-// maxRunBits) — the arrangement that made that emitter name a nested field
-// on the OUTER type. The prefix width is calibrated to that cap, so
-// internal/codegen/golang's own test states the property against the
-// constant; TrioSole and TrioFirst carry the cap-independent halves.
+// A nested struct after 344 bits of other fields.
 type TrioStraddle
 {
     pad0  bits(64)

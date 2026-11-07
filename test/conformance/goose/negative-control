@@ -1,0 +1,66 @@
+#!/bin/sh
+# THE GOOSE LEG's conformance negative controls (test/conformance/README.md;
+# make/goose.mk). Each mode breaks ONE clause of the Goose runtime in a COPY of
+# build/conformance-goose (nothing tracked is written to), aims the driver at
+# the copy (SCHEMA_GOOSE_GENERATED) and runs the harness over the load
+# surfaces. The control passes only when the surfaces the clause owns go
+# red and every other surface it runs stays green:
+#
+#   load    the tolerant load stops counting a field it cannot name (§4: an
+#           unknown field is skipped by its length and counted): report and
+#           retain (whose lines carry the report) go red; wire and retain-save
+#           stay green
+#
+# usage: test/conformance/goose/negative-control <mode>
+# The working directory is the repository root.
+mode=$1
+surfaces="wire report retain retain-save"
+case "$mode" in
+load)
+	file=wire_load.goose
+	from='            c.report.unknown += 1; // skipped by its length (§4)'
+	to='            // sabotaged: the unknown field is not counted'
+	red="report retain"
+	;;
+*)
+	echo "usage: $0 load" >&2
+	exit 2
+	;;
+esac
+green=$(for s in $surfaces; do case " $red " in *" $s "*) ;; *) printf '%s ' "$s" ;; esac; done)
+nc=build/goose-negative-control/$mode
+rm -rf "$nc" && mkdir -p "$nc" || exit 1
+[ -d build/conformance-goose ] || { echo "NEGATIVE CONTROL FAILED: build/conformance-goose is missing (make build/conformance-goose)"; exit 1; }
+cp -R build/conformance-goose "$nc/units" || exit 1
+changed=0
+for f in "$nc"/units/*/"$file"; do
+	[ -f "$f" ] || continue
+	FROM=$from TO=$to perl -0pi -e '$c += s/\Q$ENV{FROM}\E\n/$ENV{TO}\n/g; END { exit($c == 1 ? 0 : 1) }' "$f" ||
+		{ echo "NEGATIVE CONTROL FAILED ($mode): $f does not hold the clause exactly once: $from"; exit 1; }
+	changed=$((changed + 1))
+done
+[ "$changed" -gt 0 ] || { echo "NEGATIVE CONTROL FAILED ($mode): no unit holds $file"; exit 1; }
+cat >"$nc/driver" <<EOS
+#!/bin/sh
+if [ "\$2" = list ]; then
+	printf '%s\n' $surfaces
+	exit 0
+fi
+exec test/conformance/goose/driver "\$@"
+EOS
+chmod +x "$nc/driver"
+printf 'goose %s\n' "$nc/driver" >"$nc/drivers.txt"
+if SCHEMA_GOOSE_GENERATED=$nc/units ./build/conformance-harness run --only goose --drivers "$nc/drivers.txt" --work "$nc/work" >"$nc/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED ($mode): the sabotage left conformance green"
+	cat "$nc/log"
+	exit 1
+fi
+for s in $red; do
+	grep -Eq "^$s +FAIL" "$nc/log" ||
+		{ echo "NEGATIVE CONTROL FAILED ($mode): $s did not go red"; cat "$nc/log"; exit 1; }
+done
+for s in $green; do
+	grep -Eq "^$s +pass" "$nc/log" ||
+		{ echo "NEGATIVE CONTROL FAILED ($mode): $s did not read a pass, so the control does not localise the clause"; cat "$nc/log"; exit 1; }
+done
+echo "goose conformance negative control ($mode): caught by $red, not by $green"

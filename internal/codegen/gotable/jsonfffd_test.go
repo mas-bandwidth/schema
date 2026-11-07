@@ -68,8 +68,8 @@ func TestReaderRefusesIllFormedUTF8(t *testing.T) {
 		text := append(append([]byte("{\"s\":\""), tc.raw...), []byte("\"}")...)
 		var dst Root
 		var rep TableReport
-		if RootFromJson(&dst, text, &rep) {
-			t.Fatalf("reader %s: RootFromJson accepted ill-formed UTF-8", tc.name)
+		if RootFromJSON(&dst, text, &rep) {
+			t.Fatalf("reader %s: RootFromJSON accepted ill-formed UTF-8", tc.name)
 		}
 		if !rep.Malformed || !strings.HasPrefix(rep.Reason, "string_not_utf8") {
 			t.Fatalf("reader %s: report = %+v, want Malformed with string_not_utf8", tc.name, rep)
@@ -79,8 +79,8 @@ func TestReaderRefusesIllFormedUTF8(t *testing.T) {
 	// Well-formed E2 82 AC (U+20AC) reads cleanly.
 	var dst Root
 	var rep TableReport
-	if !RootFromJson(&dst, []byte("{\"s\":\"\xe2\x82\xac\"}"), &rep) || rep.Malformed {
-		t.Fatalf("reader E2_82_AC: RootFromJson refused well-formed UTF-8: %+v", rep)
+	if !RootFromJSON(&dst, []byte("{\"s\":\"\xe2\x82\xac\"}"), &rep) || rep.Malformed {
+		t.Fatalf("reader E2_82_AC: RootFromJSON refused well-formed UTF-8: %+v", rep)
 	}
 	if got := dst.S[:dst.SLength]; !bytes.Equal(got, []byte{0xe2, 0x82, 0xac}) {
 		t.Fatalf("reader E2_82_AC: got %x, want e282ac", got)
@@ -108,7 +108,7 @@ func TestWriterReplacesOneFffdPerMaximalSubpart(t *testing.T) {
 		copy(src.S[:], tc.raw)
 		src.SLength = int32(len(tc.raw))
 		var buf [256]byte
-		n := RootToJson(&src, buf[:])
+		n := RootToJSON(&src, buf[:])
 		out := buf[:n]
 		if got := bytes.Count(out, []byte(fffd)); got != tc.wantCount {
 			t.Fatalf("writer %s: got %d U+FFFD in %q, want %d", tc.name, got, out, tc.wantCount)

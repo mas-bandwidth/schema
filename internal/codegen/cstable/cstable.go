@@ -53,7 +53,7 @@ func tableKindWidth(kind int) int {
 		return 2
 	case tkI32, tkU32, tkF32:
 		return 4
-	case tkI64, tkU64, tkF64:
+	case tkI64, tkU64, tkF64, ir.TableKindTimestamp:
 		return 8
 	}
 	return 0
@@ -122,6 +122,8 @@ type tableGen struct {
 	schema    strings.Builder
 	indent    string // extra per-line indent while emitting inside a branch guard
 	loopDepth int    // fixed-form element loops open around the current emit (fixedLoopVar)
+	// messageS and messageU cache the unit's message closure (messageClosure).
+	messageS, messageU map[string]bool
 }
 
 // tf prints into the namespace-level region (storage classes).
@@ -233,6 +235,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			for _, st := range members {
 				g.owner = st
 				g.emitJsonSurface(st)
+				g.emitTextListSurface(st)
 			}
 			g.emitFixedForm(members)
 		}
@@ -250,7 +253,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
 	out[capitalize(u.Package)+"Region.cs"] = generateRegion(u)
 	common := &tableGen{unit: u}
-	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large }\n")
+	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large, non_finite_float, integrity_mismatch }\n")
 	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
 	return out, nil
 }
@@ -297,8 +300,11 @@ func (g *tableGen) emitRuntime() {
 	g.emitMessages()
 	g.pf("%s", tableDocNone())
 	g.pf("%s", tableBitHelpers())
-	g.pf("%s", tableJsonWalkSource)
+	if anyTableForm(g.unit, "json") {
+		g.pf("%s", tableJsonWalkSource)
+	}
 	g.pf("%s", tableWireSource)
+	g.pf("%s", tableTextListSource)
 	g.emitFixedRuntime()
 }
 
@@ -487,7 +493,7 @@ const tableKeyedStorage = `// An ENUM-KEYED array's storage: E.Max slots, ONE PE
 // key k at index k-1 — the storage SHIFTS LEFT and nothing is stored for None.
 //
 // NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE: the extent comes from the key
-// enum's own Max member, read once per closed generic type and cached, so
+// enum's largest declared member, read once per closed generic type and cached, so
 // there is no constructor argument and no constant a consumer could put one
 // out of step with.
 //
@@ -512,10 +518,20 @@ const tableKeyedStorage = `// An ENUM-KEYED array's storage: E.Max slots, ONE PE
 public sealed class TableKeyed<T, E> where E : struct, System.Enum
 {
     // the extent is the enum's, derived here and named nowhere else. C# has no
-    // compile-time enum arithmetic, so this reads the generated Max member
-    // once, at type initialization — never on a per-value path.
-    public static readonly int SlotCount =
-        (int)System.Convert.ToInt64(System.Enum.Parse(typeof(E), "Max"));
+    // compile-time enum arithmetic, so this reads the largest declared member
+    // once, at type initialization — never on a per-value path. A key enum
+    // takes no headroom, so that member's value IS its Max.
+    public static readonly int SlotCount = MaxDeclared();
+
+    static int MaxDeclared()
+    {
+        long max = 0;
+        foreach (object v in System.Enum.GetValuesAsUnderlyingType(typeof(E)))
+        {
+            max = Math.Max(max, System.Convert.ToInt64(v, System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return (int)max;
+    }
 
     public readonly T[] Slots;
 
@@ -670,6 +686,7 @@ public sealed class TableReport
     // zero, and <Name>FromJson is what raises it.
     public int Duplicate;
     public int Widened;
+    public int MissingRequired;
     // blob_shared counts each extra slot that names a blob record another slot
     // already names (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
     // node, and every writer refuses the value by that name.
@@ -677,6 +694,14 @@ public sealed class TableReport
     public int Retained, RetainLost;
     public bool Refused;
     public string Reason;
+    public string ClampedField;
+    // NonFiniteFloat names the float a read found to be a NaN or an infinity
+    // on its raw bits, as <Table>.<field> (docs/SPEC-TABLES.md §3.3): the
+    // field is not written, and the load, the tolerant one too, refuses as
+    // non_finite_float and lands nothing. The first name wins; null on every
+    // other read.
+    public string NonFiniteFloat;
+    internal string NonFiniteReason;
     public Schema.TableWire.Verdict Verdict;
     public bool Malformed;     // framing damage; decode stopped, partial result kept
     // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
@@ -725,6 +750,7 @@ public sealed class TableFieldInfo
     public byte Kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     public bool IsArray;        // fixed or counted array (bytes included)
     public bool Counted;        // a <name>Count/<name>Length companion exists
+    public bool Required;
     public bool Optional;       // a ?T field: a <name>Present bool decides whether it rides
     public int ArrayBound;      // array capacity / string max length; 0 for plain scalars
     // the STORAGE width of one element in bytes, C++'s elem_size where it has
@@ -756,16 +782,23 @@ public sealed class TableFieldInfo
     public Func<ulong, string> KeyName;
     public Func<ulong, ulong> KeyId;
 
+    // a float32/float64 field's name for a non-finite refusal (docs/SPEC-TABLES.md
+    // §3.3), <Owner>.<field>, and the whole reason; constants, so a refusing
+    // read allocates nothing. null on every other kind.
+    public string NonFiniteField, NonFiniteReason;
     // Typed callbacks retain exact integer bounds and defaults without boxing.
     public ulong DefaultRaw;
     public Func<object, bool> WireGuard;
     public int[] NativeGuardOffsets;
     public bool[] NativeGuardValues;
     public Func<ulong, TableReport, ulong> ClampRaw;
+    public Func<ulong, TableReport, ulong> ClampJsonInteger;
+    public Func<ulong, bool> RequiredValidRaw;
     public UInt128 DefaultWide;
     public int FracBits;
     public bool WideSigned;
     public Func<UInt128, TableReport, UInt128> ClampWide;
+    public Func<UInt128, bool> RequiredValidWide;
     public Func<object, int, UInt128> GetWide;
     public Action<object, int, UInt128> SetWide;
     public Func<object, char[]> GetChars;
@@ -815,7 +848,9 @@ public sealed class TableFieldInfo
     public Func<object, int, object> GetChild;
     public Action<object, int, object> SetChild;
     public Action<object, int> EnsureCount;
-    public bool Dynamic, Map;
+    public bool Dynamic, Map, TextList, Unbounded;
+    public string TextField;
+    public long TextTotal;
     public int StorageSize, StorageAlign;
     public ulong PointerTypeId;
     public byte BlobKind;
@@ -868,6 +903,9 @@ public sealed class TableTypeInfo
     public Func<object> Create;
     public int StorageSize, StorageAlign, RegionAlign;
     public bool Variable;
+    public bool Integrity;
+    public bool JsonArray;
+    internal bool HasRequired = false;
     internal int RootElemSlots;
     public Func<TableTypeInfo[]> PointerTypes;
     public Func<ulong, TableTypeInfo> PointerType;

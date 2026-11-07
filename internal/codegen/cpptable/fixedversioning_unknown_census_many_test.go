@@ -1,13 +1,13 @@
 package cpptable
 
 // §5.4 closes the second half of its own sentence: the compile census lands
-// ONCE PER PEER AND NEVER PER RECORD. The landed one-record row reads
-// old_unknown_census.bin, which holds ONE record, so "once per peer" and
+// ONCE PER ENDPOINT AND NEVER PER RECORD. The landed one-record row reads
+// old_unknown_census.bin, which holds ONE record, so "once per endpoint" and
 // "once per record" are the same number there and the clause never got a gate.
 // A per-record Unknown++ really exists (the union-tag path), so a three-record
 // file is the only read that tells the two apart. many_unknown_census.bin
 // carries THREE records of the same Census root the landed row uses; the one
-// dropped field, Item.drop, is ONE field of ONE peer, so the counter is '1'
+// dropped field, Item.drop, is ONE field of ONE endpoint, so the counter is '1'
 // EXACTLY — never 3, never '>='.
 
 import (

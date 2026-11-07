@@ -13,7 +13,7 @@ import (
 // already had: the NEW build reads `old_unknown_census.bin` through a
 // HANDED-IN lineage entry (§5.1 refuses the removal, so no lock). One record,
 // four `items` carrying `a` = 10..13 and the removed `drop`. `r.Unknown` is
-// asserted EXACTLY `== 1` because `Item.drop` is one field of one peer, so the
+// asserted EXACTLY `== 1` because `Item.drop` is one field of one endpoint, so the
 // census is 1 however many elements carry it — `4` is the divergence this row
 // exists to catch, and the exact defect rust, cpp and cs itself once carried.
 func TestFixedVersioningUnknownCensus(t *testing.T) {
@@ -41,7 +41,7 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
             }
             if (r.Unknown != 1)
             {
-                bad += ProbeLog.Fail(@NAME@, "the census is once per field per peer, not once per element: unknown=" + r.Unknown);
+                bad += ProbeLog.Fail(@NAME@, "the census is once per field per endpoint, not once per element: unknown=" + r.Unknown);
             }
             if (r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
             {

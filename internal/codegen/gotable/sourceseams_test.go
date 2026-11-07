@@ -47,11 +47,9 @@ type contentAllow struct {
 //
 // The only non-seam string replacements inside the package are:
 //   - source.go — the fail-closed helper, the definitional home of the seam
-//     machinery,
+//     machinery, and
 //   - gotable.go — indentation of a generated line, not a runtime-source seam
-//     (it rewrites the emitted text's line prefixes, never an anchor), and
-//   - retain.go — the retain family's per-half rewrite, validated on the whole
-//     by tableSourceReplace before it runs.
+//     (it rewrites the emitted text's line prefixes, never an anchor).
 //
 // The Contains/Count scan closes the sibling hole: a seam gated by probing the
 // anchor text fails open when the anchor moves, and wrapper helpers hide it.
@@ -66,9 +64,6 @@ var replaceAllow = map[string][]contentAllow{
 	},
 	"gotable.go": {
 		{"s = g.indent + strings.ReplaceAll(s, \"\\n\", \"\\n\"+g.indent)", 1, "indentation of an emitted line, not a runtime-source seam"},
-	},
-	"retain.go": {
-		{"source = strings.ReplaceAll(source, rewrites[i], rewrites[i+1])", 1, "retain family per-half rewrite, validated on the whole by tableSourceReplace above"},
 	},
 }
 
@@ -276,7 +271,7 @@ table GoalList | json = "array"
 table Holder { bases []?string(8) }
 `,
 		want: []string{
-			"tableJsonWriteTextElement", // text-list JSON writer seam
+			"tableJSONWriteTextElement", // text-list JSON writer seam
 			"tableTextClamped",          // text-list clamp name seam
 			"json_root_not_array",       // array-root read seam
 			"f.TextList == 0",           // string kind split for text lists
@@ -315,7 +310,6 @@ table Root {
 		want: []string{
 			"TableRetainReader",
 			"tableRegionLoadRetain",
-			"TableRetainMessageReader",
 		},
 	},
 	{
@@ -330,10 +324,10 @@ table Plain { names []string }
 		// the region graph's listDrop; the plain []string list reaches the
 		// unbounded text reader. Each identifier exists only through its seam.
 		want: []string{
-			"tableJsonTextTotalKeep(", // bounded read keeps the prefix within the total
-			"tableJsonTextBytes(",     // the write side sums the element bytes
+			"tableJSONTextTotalKeep(", // bounded read keeps the prefix within the total
+			"tableJSONTextBytes(",     // the write side sums the element bytes
 			"listDrop:",               // region graph's erase closure for the unbounded list
-			"tableJsonReadText(",      // the plain []string element reader
+			"tableJSONReadText(",      // the plain []string element reader
 		},
 	},
 	{

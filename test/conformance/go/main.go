@@ -256,8 +256,89 @@ func surfaceReport(lines []line, out string) error {
 		if rep.refused {
 			verdict = "refused"
 		}
-		text := fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict)
-		if err := spill(out, f[1], []byte(text)); err != nil {
+		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
+		if !rep.refused && malformed == "false" {
+			if text, err = appendValue(c, value, text, f[1]); err != nil {
+				return err
+			}
+		}
+		if err := spill(out, f[1], text); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// appendValue is the value half of a `report`, `framing` and `json-hostile`
+// answer (test/conformance/README.md): the §16 text of the value the read
+// left, after the report line. A codec with no text writer answers the line
+// alone, and the harness names the missing value.
+func appendValue(c *codec, value any, head []byte, name string) ([]byte, error) {
+	if c.toJson == nil {
+		return head, nil
+	}
+	size := c.toJsonMeasure(value)
+	if size < 0 {
+		return nil, fmt.Errorf("%s: ToJSONMeasure refused the value", name)
+	}
+	buffer := make([]byte, size)
+	if c.toJson(value, buffer) != size {
+		return nil, fmt.Errorf("%s: ToJSON did not write ToJSONMeasure's answer", name)
+	}
+	return append(head, buffer...), nil
+}
+
+// surfaceFraming is THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read
+// report as the `report` surface prints it, then the §16 text of the value the
+// read left, unless the row says `no-value` or the read was refused. A derived
+// line is `framing <case> <unit> <root> <wire> [no-value]`.
+func surfaceFraming(lines []line, out string) error {
+	for _, f := range lines {
+		if f[0] != "framing" {
+			continue
+		}
+		c := findCodec(f[2], f[3])
+		if c == nil {
+			if err := spillAbsent(out, f[1]); err != nil {
+				return err
+			}
+			continue
+		}
+		wire, err := os.ReadFile(f[4])
+		if err != nil {
+			return err
+		}
+		value := c.fresh()
+		var rep report
+		ok := c.load(value, wire, &rep)
+		malformed := "false"
+		if rep.malformed || !ok && !rep.refused {
+			malformed = "true"
+		}
+		verdict := "read"
+		if rep.refused {
+			verdict = "refused"
+		}
+		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
+		noValue := len(f) > 5 && f[5] == "no-value"
+		if !rep.refused && !noValue {
+			if c.toJson == nil {
+				if err := spillAbsent(out, f[1]); err != nil {
+					return err
+				}
+				continue
+			}
+			size := c.toJsonMeasure(value)
+			if size < 0 {
+				return fmt.Errorf("%s: ToJSONMeasure refused the value", f[1])
+			}
+			buffer := make([]byte, size)
+			if c.toJson(value, buffer) != size {
+				return fmt.Errorf("%s: ToJSON did not write ToJSONMeasure's answer", f[1])
+			}
+			text = append(text, buffer...)
+		}
+		if err := spill(out, f[1], text); err != nil {
 			return err
 		}
 	}
@@ -285,7 +366,7 @@ func surfaceJsonRead(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		if !c.fromJson(value, text, &rep) {
-			return fmt.Errorf("%s: FromJson refused the text", f[1])
+			return fmt.Errorf("%s: FromJSON refused the text", f[1])
 		}
 		size := c.measure(value)
 		if size < 0 {
@@ -325,11 +406,11 @@ func surfaceJsonWrite(lines []line, out string) error {
 		}
 		size := c.toJsonMeasure(value)
 		if size < 0 {
-			return fmt.Errorf("%s: ToJsonMeasure refused the value", f[1])
+			return fmt.Errorf("%s: ToJSONMeasure refused the value", f[1])
 		}
 		buffer := make([]byte, size)
 		if c.toJson(value, buffer) != size {
-			return fmt.Errorf("%s: ToJson did not write ToJsonMeasure's answer", f[1])
+			return fmt.Errorf("%s: ToJSON did not write ToJSONMeasure's answer", f[1])
 		}
 		if err := spill(out, f[1]+".json", buffer); err != nil {
 			return err
@@ -455,11 +536,14 @@ func surfaceJsonHostile(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		ok := c.fromJson(value, text, &rep)
-		verdict := "refused\n"
+		answer := []byte("refused\n")
 		if ok && !rep.malformed {
-			verdict = fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate)
+			answer = []byte(fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate))
+			if answer, err = appendValue(c, value, answer, f[1]); err != nil {
+				return err
+			}
 		}
-		if err := spill(out, f[1], []byte(verdict)); err != nil {
+		if err := spill(out, f[1], answer); err != nil {
 			return err
 		}
 	}
@@ -507,6 +591,8 @@ func main() {
 		run = surfaceWire
 	case "report":
 		run = surfaceReport
+	case "framing":
+		run = surfaceFraming
 	case "json-read":
 		run = surfaceJsonRead
 	case "json-write":

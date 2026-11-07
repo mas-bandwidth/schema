@@ -17,7 +17,7 @@ import (
 // field and the fixed table it breaks, rather than silently moving the table
 // to the other wire: a map (§2.8), an unbounded array (§2.9), a pointer
 // (§2.1), a byte buffer at its used size (§2.5), a guarded (`if`) field
-// (SPEC §4.5), and a nested plain `table`.
+// (SPEC §4.5), and a nested variable table.
 //
 // It also settles the class of the tables NOBODY DECLARES — the generated
 // `{ key, value }` entry of a map (§2.8). No source line carries a keyword for

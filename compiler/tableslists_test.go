@@ -54,8 +54,13 @@ func TestListsAreRefusedByNonCarriers(t *testing.T) {
 
 // TestListCarriers keeps the advertised targets in step with their codecs.
 func TestListCarriers(t *testing.T) {
-	want := []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}
-	if !slices.Equal(listTargets, want) {
+	want := []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "rust"}
+	if slices.Contains(listTargets, "squirrel") {
+		// the tagged leg (compiler/target_squirrel_lists.go) is a carrier too
+		want = append(want, "squirrel")
+	}
+	want = withMooLeg(withGooseLeg(want))
+	if !slices.Equal(gooseLegOrdered(listTargets), want) {
 		t.Fatalf("listTargets = %v, want %v", listTargets, want)
 	}
 }
@@ -103,7 +108,9 @@ func TestListRefusalNamesTheCarrier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("refuseLists accepted a list-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"a []T is c, cpp, cs, dart, elixir, go, java, js and rust only today", "Save.placements", "--lang cpp"} {
+	carriers := slices.Clone(listTargets)
+	slices.Sort(carriers)
+	for _, want := range []string{"a []T is " + englishList(carriers) + " only today", "Save.placements", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}
@@ -133,11 +140,6 @@ func TestTheToolsCookCarriesAList(t *testing.T) {
 		if strings.Contains(probe.err.Error(), "unbounded array") {
 			t.Errorf("the tool's %s refused a list-bearing unit by construct rather than reading the file: %v", probe.what, probe.err)
 		}
-	}
-	// and the MAP's tool cook half is still OWED, still refused by name
-	if _, _, _, err := c.Cook(unitFromSource(t, mapSrc), "Fleet", nil, CookOptions{}); err == nil ||
-		!strings.Contains(err.Error(), "declares a map") {
-		t.Errorf("the tool's cook did not refuse a map-bearing unit by name: %v", err)
 	}
 }
 

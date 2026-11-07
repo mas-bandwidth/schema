@@ -140,7 +140,7 @@ func init() {
 	tableCookLayoutOffset("TableChatEventRow.Speaker", unsafe.Offsetof(TableChatEventRow{}.Speaker), 4)
 	tableCookLayoutSize("TableEntityRow", unsafe.Sizeof(TableEntityRow{}), 64)
 	tableCookLayoutSize("TableEntityRow alignment", unsafe.Alignof(TableEntityRow{}), 8)
-	tableCookLayoutOffset("TableEntityRow.EntityId", unsafe.Offsetof(TableEntityRow{}.EntityId), 0)
+	tableCookLayoutOffset("TableEntityRow.EntityID", unsafe.Offsetof(TableEntityRow{}.EntityID), 0)
 	tableCookLayoutOffset("TableEntityRow.PosX", unsafe.Offsetof(TableEntityRow{}.PosX), 4)
 	tableCookLayoutOffset("TableEntityRow.PosY", unsafe.Offsetof(TableEntityRow{}.PosY), 8)
 	tableCookLayoutOffset("TableEntityRow.PosZ", unsafe.Offsetof(TableEntityRow{}.PosZ), 12)
@@ -156,7 +156,7 @@ func init() {
 	tableCookLayoutOffset("TableEntityRow.Firing", unsafe.Offsetof(TableEntityRow{}.Firing), 57)
 	tableCookLayoutSize("TableHitEventRow", unsafe.Sizeof(TableHitEventRow{}), 16)
 	tableCookLayoutSize("TableHitEventRow alignment", unsafe.Alignof(TableHitEventRow{}), 4)
-	tableCookLayoutOffset("TableHitEventRow.TargetId", unsafe.Offsetof(TableHitEventRow{}.TargetId), 0)
+	tableCookLayoutOffset("TableHitEventRow.TargetID", unsafe.Offsetof(TableHitEventRow{}.TargetID), 0)
 	tableCookLayoutOffset("TableHitEventRow.Damage", unsafe.Offsetof(TableHitEventRow{}.Damage), 4)
 	tableCookLayoutOffset("TableHitEventRow.HitKind", unsafe.Offsetof(TableHitEventRow{}.HitKind), 8)
 	tableCookLayoutOffset("TableHitEventRow.Crit", unsafe.Offsetof(TableHitEventRow{}.Crit), 12)
@@ -166,8 +166,8 @@ func init() {
 	tableCookLayoutOffset("TableMixedRow.Sequence", unsafe.Offsetof(TableMixedRow{}.Sequence), 4)
 	tableCookLayoutOffset("TableMixedRow.AckSequence", unsafe.Offsetof(TableMixedRow{}.AckSequence), 8)
 	tableCookLayoutOffset("TableMixedRow.AckBits", unsafe.Offsetof(TableMixedRow{}.AckBits), 12)
-	tableCookLayoutOffset("TableMixedRow.SessionId", unsafe.Offsetof(TableMixedRow{}.SessionId), 16)
-	tableCookLayoutOffset("TableMixedRow.ClientId", unsafe.Offsetof(TableMixedRow{}.ClientId), 24)
+	tableCookLayoutOffset("TableMixedRow.SessionID", unsafe.Offsetof(TableMixedRow{}.SessionID), 16)
+	tableCookLayoutOffset("TableMixedRow.ClientID", unsafe.Offsetof(TableMixedRow{}.ClientID), 24)
 	tableCookLayoutOffset("TableMixedRow.Nonce", unsafe.Offsetof(TableMixedRow{}.Nonce), 32)
 	tableCookLayoutOffset("TableMixedRow.WorldTime", unsafe.Offsetof(TableMixedRow{}.WorldTime), 40)
 	tableCookLayoutOffset("TableMixedRow.FrameTick", unsafe.Offsetof(TableMixedRow{}.FrameTick), 48)
@@ -192,11 +192,11 @@ func init() {
 	tableCookLayoutOffset("TableMixedRow.IdleTicks", unsafe.Offsetof(TableMixedRow{}.IdleTicks), 1344)
 	tableCookLayoutSize("TablePickupEventRow", unsafe.Sizeof(TablePickupEventRow{}), 8)
 	tableCookLayoutSize("TablePickupEventRow alignment", unsafe.Alignof(TablePickupEventRow{}), 4)
-	tableCookLayoutOffset("TablePickupEventRow.ItemId", unsafe.Offsetof(TablePickupEventRow{}.ItemId), 0)
+	tableCookLayoutOffset("TablePickupEventRow.ItemID", unsafe.Offsetof(TablePickupEventRow{}.ItemID), 0)
 	tableCookLayoutOffset("TablePickupEventRow.Amount", unsafe.Offsetof(TablePickupEventRow{}.Amount), 4)
 	tableCookLayoutSize("TableStatRow", unsafe.Sizeof(TableStatRow{}), 8)
 	tableCookLayoutSize("TableStatRow alignment", unsafe.Alignof(TableStatRow{}), 4)
-	tableCookLayoutOffset("TableStatRow.StatId", unsafe.Offsetof(TableStatRow{}.StatId), 0)
+	tableCookLayoutOffset("TableStatRow.StatID", unsafe.Offsetof(TableStatRow{}.StatID), 0)
 	tableCookLayoutOffset("TableStatRow.Delta", unsafe.Offsetof(TableStatRow{}.Delta), 4)
 }
 
@@ -621,7 +621,7 @@ func TableMixedAt(slot *int64) *TableMixedRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TableMixedCook) Type() *TableCookInfo { return &tableCookRecords[3] }
 
-const tableCookBuildVersion uint64 = 0x2cbe366e67629f61
+const tableCookBuildVersion uint64 = 0xd15cf2df295a7569
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8
@@ -660,7 +660,7 @@ func (w *tableCookWriter) header(data, nodes, align int64) {
 func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, live bool) bool {
 	for i := range t.Fields {
 		f := &t.Fields[i]
-		rides := live && tableJsonGuardHolds(p, t, f.Guard)
+		rides := live && tableJSONGuardHolds(p, t, f.Guard)
 		if f.Optional {
 			rides = rides && *(*bool)(unsafe.Add(p, f.PresentOffset))
 		}
@@ -695,7 +695,7 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
 		width := f.CookElemSize
 		for i := range used {
-			v := tableJsonGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
+			v := tableJSONGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
 			w.put(dest+int64(i)*int64(width), v, width)
 		}
 		return true
@@ -719,7 +719,7 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 	}
 	if f.Arms != nil {
 		u := f.Arms()
-		tag := tableJsonGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
+		tag := tableJSONGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
 		if tag >= uint64(len(u.Arms)) {
 			return false
 		}
@@ -743,7 +743,8 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		w.put(at+8, hi, 8)
 		return true
 	}
-	value := tableJsonGetRaw(p, f.ElemSize)
+	// A cooked float is finite (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): NaN and infinity refuse.
+	value := tableJSONGetRaw(p, f.ElemSize)
 	if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
 		return false
 	}
@@ -752,6 +753,9 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		if *(*bool)(p) {
 			value = 1
 		}
+	}
+	if f.Kind == 10 && value&0x7f800000 == 0x7f800000 || f.Kind == 11 && value&0x7ff0000000000000 == 0x7ff0000000000000 {
+		return false
 	}
 	w.put(at, value, width)
 	return true
@@ -777,7 +781,7 @@ func tableCookFixed(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order Tab
 		return false
 	}
 	w.put(64+data, 0, 8)
-	w.put(64+data+8, t.Id, 8)
+	w.put(64+data+8, t.ID, 8)
 	return true
 }
 func (w *tableCookWriter) reference(slot *int64, at int64) bool { return *slot == 0 }

@@ -144,7 +144,7 @@ func reflectionOnly(line string) bool {
 	if strings.TrimSpace(strings.TrimLeft(line, "+-")) == "" {
 		return true
 	}
-	for _, marker := range []string{"TableDocNone", "TableDoc", "Tags", "tags", "deprecated"} {
+	for _, marker := range []string{"TableDocNone", "TableDoc", "TABLE_DOC", "Tags", "tags", "deprecated"} {
 		if strings.Contains(line, marker) {
 			return true
 		}

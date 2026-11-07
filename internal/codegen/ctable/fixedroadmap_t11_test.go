@@ -236,7 +236,7 @@ func cT11OptionalScalars(t *testing.T) {
         n = @SNAKE@_fixed_save( v, 2, buf, sizeof( buf ) );
         if ( n <= 0 ) { printf( "optional-scalars: save n=%lld\n", (long long) n ); return 1; }
         memset( &r, 0, sizeof( r ) );
-        n = @SNAKE@_fixed_load( back, 2, buf, n, plan, 4096, NULL, &r );
+        n = @SNAKE@_fixed_load_tolerant( back, 2, buf, n, plan, 4096, NULL, &r );
         if ( n != 2 ) { printf( "optional-scalars: load n=%lld refused=%d reason=%d\n", (long long) n, r.refused, (int) r.reason ); return 1; }
         if ( !back[0].a_present || back[0].a != ( -2147483647 - 1 ) )
             { printf( "optional-scalars: the present scalar did not land: present=%d a=%d\n", back[0].a_present, back[0].a ); return 1; }
@@ -274,7 +274,7 @@ func cT11OptionalNesting(t *testing.T) {
         n = @SNAKE@_fixed_save( &v, 1, buf, sizeof( buf ) );
         if ( n <= 0 ) { printf( "optional-nesting: save n=%lld\n", (long long) n ); return 1; }
         memset( &r, 0, sizeof( r ) );
-        n = @SNAKE@_fixed_load( &back, 1, buf, n, plan, 4096, NULL, &r );
+        n = @SNAKE@_fixed_load_tolerant( &back, 1, buf, n, plan, 4096, NULL, &r );
         if ( n != 1 ) { printf( "optional-nesting: load n=%lld refused=%d reason=%d\n", (long long) n, r.refused, (int) r.reason ); return 1; }
         if ( !back.link_present || back.link.x != -1000 || back.link.y != 4000000000u )
             { printf( "optional-nesting: the present nested value did not land: present=%d x=%d y=%u\n", back.link_present, back.link.x, back.link.y ); return 1; }
@@ -286,7 +286,7 @@ func cT11OptionalNesting(t *testing.T) {
         if ( n <= 0 ) { printf( "optional-nesting: absent save n=%lld\n", (long long) n ); return 1; }
         memset( &back, 0, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        n = @SNAKE@_fixed_load( &back, 1, buf, n, plan, 4096, NULL, &r );
+        n = @SNAKE@_fixed_load_tolerant( &back, 1, buf, n, plan, 4096, NULL, &r );
         if ( n != 1 || back.link_present ) { printf( "optional-nesting: the absent nested value read present\n" ); return 1; }
         if ( r.clamped || r.refused || r.malformed ) { printf( "optional-nesting: a clean read moved a counter\n" ); return 1; }
     }
@@ -315,7 +315,7 @@ func cT11OptionalArrays(t *testing.T) {
         n = @SNAKE@_fixed_save( &v, 1, buf, sizeof( buf ) );
         if ( n <= 0 ) { printf( "optional-arrays: save n=%lld\n", (long long) n ); return 1; }
         memset( &r, 0, sizeof( r ) );
-        n = @SNAKE@_fixed_load( &back, 1, buf, n, plan, 4096, NULL, &r );
+        n = @SNAKE@_fixed_load_tolerant( &back, 1, buf, n, plan, 4096, NULL, &r );
         if ( n != 1 ) { printf( "optional-arrays: load n=%lld refused=%d reason=%d\n", (long long) n, r.refused, (int) r.reason ); return 1; }
         if ( !back.vals_present ) { printf( "optional-arrays: the present array read absent\n" ); return 1; }
         if ( back.vals[0] != ( -2147483647 - 1 ) || back.vals[1] != 0 || back.vals[2] != 2147483647 || back.vals[3] != -1 )
@@ -328,7 +328,7 @@ func cT11OptionalArrays(t *testing.T) {
         if ( n <= 0 ) { printf( "optional-arrays: absent save n=%lld\n", (long long) n ); return 1; }
         memset( &back, 0, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        n = @SNAKE@_fixed_load( &back, 1, buf, n, plan, 4096, NULL, &r );
+        n = @SNAKE@_fixed_load_tolerant( &back, 1, buf, n, plan, 4096, NULL, &r );
         if ( n != 1 || back.vals_present ) { printf( "optional-arrays: the absent array read present\n" ); return 1; }
         if ( r.clamped || r.refused || r.malformed ) { printf( "optional-arrays: a clean read moved a counter\n" ); return 1; }
     }
@@ -356,7 +356,7 @@ func cT11ScalarDefaults(t *testing.T) {
         n = @SNAKE@_fixed_save( &v, 1, buf, sizeof( buf ) );
         if ( n <= 0 ) { printf( "scalar-defaults: save n=%lld\n", (long long) n ); return 1; }
         memset( &r, 0, sizeof( r ) );
-        n = @SNAKE@_fixed_load( &back, 1, buf, n, plan, 4096, NULL, &r );
+        n = @SNAKE@_fixed_load_tolerant( &back, 1, buf, n, plan, 4096, NULL, &r );
         if ( n != 1 ) { printf( "scalar-defaults: load n=%lld\n", (long long) n ); return 1; }
         if ( back.a != 7 || back.b != 9 || back.m != MODE_ON || back.tail != 3 )
             { printf( "scalar-defaults: the defaults did not round-trip: a=%d b=%u m=%d tail=%u\n", back.a, back.b, (int) back.m, back.tail ); return 1; }
@@ -366,7 +366,7 @@ func cT11ScalarDefaults(t *testing.T) {
         n = @SNAKE@_fixed_save( &v, 1, buf, sizeof( buf ) );
         memset( &back, 0, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        n = @SNAKE@_fixed_load( &back, 1, buf, n, plan, 4096, NULL, &r );
+        n = @SNAKE@_fixed_load_tolerant( &back, 1, buf, n, plan, 4096, NULL, &r );
         if ( n != 1 || back.a != ( -2147483647 - 1 ) || back.b != 4294967295u || back.m != MODE_AUTO || back.tail != 4294967295u )
             { printf( "scalar-defaults: the boundary values did not round-trip: a=%d b=%u m=%d tail=%u\n", back.a, back.b, (int) back.m, back.tail ); return 1; }
         if ( r.clamped || r.refused || r.malformed ) { printf( "scalar-defaults: a clean read moved a counter\n" ); return 1; }
@@ -401,7 +401,7 @@ func cT11TextBytesFlagsDefaults(t *testing.T) {
         n = @SNAKE@_fixed_save( &v, 1, buf, sizeof( buf ) );
         if ( n <= 0 ) { printf( "text-bytes-flags-defaults: save n=%lld\n", (long long) n ); return 1; }
         memset( &r, 0, sizeof( r ) );
-        n = @SNAKE@_fixed_load( &back, 1, buf, n, plan, 4096, NULL, &r );
+        n = @SNAKE@_fixed_load_tolerant( &back, 1, buf, n, plan, 4096, NULL, &r );
         if ( n != 1 ) { printf( "text-bytes-flags-defaults: load n=%lld\n", (long long) n ); return 1; }
         if ( back.label_length != 2 || memcmp( back.label, "hi", 2 ) != 0 || back.blob_length != 2 || memcmp( back.blob, "ab", 2 ) != 0 || back.f != fmask )
             { printf( "text-bytes-flags-defaults: a declared default did not round-trip\n" ); return 1; }
@@ -413,7 +413,7 @@ func cT11TextBytesFlagsDefaults(t *testing.T) {
         n = @SNAKE@_fixed_save( &v, 1, buf, sizeof( buf ) );
         memset( &back, 0, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        n = @SNAKE@_fixed_load( &back, 1, buf, n, plan, 4096, NULL, &r );
+        n = @SNAKE@_fixed_load_tolerant( &back, 1, buf, n, plan, 4096, NULL, &r );
         if ( n != 1 || back.label_length != 8 || memcmp( back.label, "abcdefgh", 8 ) != 0 )
             { printf( "text-bytes-flags-defaults: the full string did not round-trip: len=%d\n", back.label_length ); return 1; }
         if ( back.blob_length != 4 || memcmp( back.blob, "WXYZ", 4 ) != 0 )

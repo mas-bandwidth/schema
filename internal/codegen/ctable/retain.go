@@ -18,7 +18,7 @@ func (g *tableGen) retainRuntime() string {
 	if !g.hasProbes {
 		retainOut = strings.ReplaceAll(retainOut, " if(w->check_default){w->offset=2;return 1;}\n", "")
 	}
-	return strings.NewReplacer("@DEPTH@", fmt.Sprint(g.retainDepth()), "@KNOWN@", ids.String(), "@RETAIN_OUT@", retainOut, "@RETAIN_MESSAGE@", cRetainMessage+cRetainGraph).Replace(cRetainRuntime)
+	return strings.NewReplacer("@DEPTH@", fmt.Sprint(g.retainDepth()), "@KNOWN@", ids.String(), "@RETAIN_OUT@", retainOut, "@RETAIN_GRAPH@", cRetainGraph).Replace(cRetainRuntime)
 }
 func (g *tableGen) retainDepth() int {
 	var field func(*ir.Field) int
@@ -119,7 +119,7 @@ static SCHEMA_UNUSED const void * table_retain_at(const TableRetain * retain,con
 static SCHEMA_UNUSED int table_retain_under(const TableRetain * retain,const uint8_t * record,const TableRetainPath * path,int field,uint32_t ordinal)
 {
  uint32_t depth=table_retain_u32(record+8);int32_t i;const uint8_t * steps=record+SCHEMA_TABLE_RETAIN_HEADER;
- if(path->depth<0||path->depth>SCHEMA_TABLE_RETAIN_DEPTH_MAX||table_retain_at(retain,record)!=path->at)return 0;
+ if(path->depth<0||path->depth>SCHEMA_TABLE_RETAIN_DEPTH_MAX||(path->node?table_retain_u32(record+4)!=path->node:table_retain_at(retain,record)!=path->at))return 0;
  if(depth<(uint32_t)path->depth||(field&&depth==(uint32_t)path->depth))return 0;
  for(i=0;i<path->depth;i++)if(table_retain_u32(steps+8*i)!=path->steps[i].ordinal||table_retain_u32(steps+8*i+4)!=path->steps[i].index)return 0;
  return !field||table_retain_u32(steps+8*path->depth)==ordinal;
@@ -189,7 +189,7 @@ static SCHEMA_UNUSED int table_retain_in_content(TableRetainIn * s,uint8_t kind,
  }return r->offset==end;
 }
 static SCHEMA_UNUSED int table_retain_width(uint8_t kind)
-{switch(kind){case 1:case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 10:case 22:case 27:return 4;case 5:case 9:case 11:case 23:case 28:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
+{switch(kind){case 1:case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 10:case 22:case 27:return 4;case 5:case 9:case 11:case 23:case 28:case 36:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
 static SCHEMA_UNUSED int table_retain_in_payload(TableRetainIn * s,uint8_t kind,int32_t depth)
 {
  TableReader * r=&s->input;uint64_t length;int width=table_retain_width(kind);
@@ -212,14 +212,20 @@ static SCHEMA_UNUSED uint8_t * table_retain_begin(TableRetainWalk keep,uint64_t 
 }
 static SCHEMA_UNUSED void table_retain_commit(TableRetainWalk keep,uint8_t * record,const TableRetainIn * s,TableReport * report)
 {int64_t bytes=SCHEMA_TABLE_RETAIN_HEADER+8*(int64_t)keep.path.depth+s->used;table_retain_put32(record,(uint32_t)bytes);table_retain_put32(record+12,(uint32_t)s->used);keep.retain->used+=bytes;keep.retain->count++;report->retained++;}
+/* A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+   §3.3, §6.6): kind 10's or 11's raw bits, and a NaN or an infinity refuses
+   the read as non_finite_float. Nothing is kept, the read goes on as it does
+   for a known field, and the load answers the refusal at its end. */
 static SCHEMA_UNUSED int table_retain_capture(TableReader * r,uint64_t id,uint8_t kind,TableRetainWalk keep)
 {
  TableRetainIn s;TableReader source=*r;uint8_t * record;if(!table_reader_skip(r,kind))return 0;if(!keep.retain)return 1;
+ if(kind==10||kind==11){uint64_t raw=0;int64_t i;for(i=r->offset-1;i>=source.offset;i--)raw=(raw<<8)|source.buffer[i];
+  if(kind==10?!table_bits_finite32((uint32_t)raw):!table_bits_finite64(raw)){table_non_finite_float(r->report);return 1;}}
  record=table_retain_begin(keep,id,kind,&s);if(!record){r->report->retain_lost++;return 1;}source.size=r->offset;s.input=source;
  if(!table_retain_in_payload(&s,kind,0)||s.input.offset!=source.size){r->report->retain_lost++;return 1;}table_retain_commit(keep,record,&s,r->report);return 1;
 }
 
 @RETAIN_OUT@
-@RETAIN_MESSAGE@
+@RETAIN_GRAPH@
 #endif
 `

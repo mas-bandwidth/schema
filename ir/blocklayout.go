@@ -412,8 +412,10 @@ func RegionAlignOf(aligns ...int64) int64 {
 }
 
 // TableRegionAlign is the canonical table arena alignment for the unit's
-// complete closure, including indirect records, union arms and containers.
-// Native-layout ports may use their own record alignment for wire regions.
+// complete closure, including indirect records, union arms and containers: a
+// list's element and a map's entry are laid in a holder's extent at their own
+// alignment, so the arena holds that too (CookExtentAlign). Native-layout ports
+// may use their own record alignment for wire regions.
 func TableRegionAlign(u *Unit) int64 {
 	align := RegionAlignFloor
 	for name := range TableClosure(u) {
@@ -422,7 +424,7 @@ func TableRegionAlign(u *Unit) int64 {
 			st = u.Structs[name]
 		}
 		if st != nil {
-			align = max(align, RecordLayout(u, st).Align)
+			align = max(align, RecordLayout(u, st).Align, CookExtentAlign(u, st))
 		}
 	}
 	return align
@@ -898,7 +900,11 @@ func BlockFieldOf(u *Unit, f *Field, fieldOffset int64, projection bool) BlockFi
 		return facts
 	}
 	switch {
-	case f.Type.Pointer && f.Array == ArrayNone:
+	case (f.Type.Pointer && f.Array == ArrayNone) || f.Type.TextUnbounded():
+		facts.ElemSize = pieces[0].Size
+	case f.Type.TextUnbounded():
+		// A bare text element or map key is one reference slot; its used
+		// length belongs to the referenced blob, not an inline companion.
 		facts.ElemSize = pieces[0].Size
 	case f.Type.Kind == TString:
 		// char[N+1] buffer, then the int32 used length. A string is not an

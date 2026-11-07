@@ -18,8 +18,113 @@
 // the caller's responsibility to be correct on the write side; every check
 // the reader needs is on the read side and runs in every build.
 
+using System.Runtime.CompilerServices;
+
 namespace Example
 {
+
+    // Inline fixed buffers: a struct's arrays, strings and bytes live inside it.
+    [InlineArray(1)]
+    public struct InlineBuffer1<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(2)]
+    public struct InlineBuffer2<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(3)]
+    public struct InlineBuffer3<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(4)]
+    public struct InlineBuffer4<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(6)]
+    public struct InlineBuffer6<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(7)]
+    public struct InlineBuffer7<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(8)]
+    public struct InlineBuffer8<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(9)]
+    public struct InlineBuffer9<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(10)]
+    public struct InlineBuffer10<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(12)]
+    public struct InlineBuffer12<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(16)]
+    public struct InlineBuffer16<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(17)]
+    public struct InlineBuffer17<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(20)]
+    public struct InlineBuffer20<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(64)]
+    public struct InlineBuffer64<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(255)]
+    public struct InlineBuffer255<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(256)]
+    public struct InlineBuffer256<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(2000)]
+    public struct InlineBuffer2000<T>
+    {
+        private T element0;
+    }
 
     // Schema carries every generated function and constant of the unit — C# has
     // no namespace-level functions or constants, so the static class is their

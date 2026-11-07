@@ -6,12 +6,12 @@ import (
 	"testing"
 )
 
-// docs/FIXED-FORM-ALGORITHM.md §5.4: the compile census lands once per peer
+// docs/FIXED-FORM-ALGORITHM.md §5.4: the compile census lands once per endpoint
 // AND never per record. The landed one-record row cannot close the second half
-// of that clause — with one record, once-per-peer and once-per-record are the
+// of that clause — with one record, once-per-endpoint and once-per-record are the
 // same number, 1 — so this row reads many_unknown_census.bin, THREE records of
 // the same Census root, and `r.Unknown` is asserted EXACTLY `== 1`: Item.drop
-// is one field of one peer, and a per-record Unknown++ would land 3 here.
+// is one field of one endpoint, and a per-record Unknown++ would land 3 here.
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
 	corpus := fixedCorpus(t)
 	older := readSchema(t, "VOLD_unknown_census")
@@ -40,7 +40,7 @@ func TestUnknownCensusMany(t *testing.T) {
 		t.Fatalf("counters that must not move did: %%+v", r)
 	}
 	if r.Unknown != 1 {
-		t.Fatalf("unknown == %%d, want 1: the compile census is once per peer, never per record", r.Unknown)
+		t.Fatalf("unknown == %%d, want 1: the compile census is once per endpoint, never per record", r.Unknown)
 	}
 	want := [3][4]int32{{10, 11, 12, 13}, {20, 21, 22, 23}, {30, 31, 32, 33}}
 	for i := 0; i < 3; i++ {

@@ -57,10 +57,10 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 	landing := `
 if (n !== 1) { fail("the forged file carries one record: n=" + n + " " + reason(r)); }
 if (r.refused !== 0 || r.malformed) { fail("a forged tag is not a refusal and not malformed: " + reason(r)); }
-if (back[0].Pick.Type !== 0) { fail("a forged tag lands None: " + show(back[0])); }
-if (back[0].Pick.Type === 9) { fail("a forged tag never lands the forged 9: " + show(back[0])); }
-if (back[0].Pick.Type === 1) { fail("a forged tag never lands the writer's 1: " + show(back[0])); }
-if (back[0].Seq !== 15) { fail("the neighbour after the union is untouched: " + show(back[0])); }
+if (back[0].pick.type !== 0) { fail("a forged tag lands None: " + show(back[0])); }
+if (back[0].pick.type === 9) { fail("a forged tag never lands the forged 9: " + show(back[0])); }
+if (back[0].pick.type === 1) { fail("a forged tag never lands the writer's 1: " + show(back[0])); }
+if (back[0].seq !== 15) { fail("the neighbour after the union is untouched: " + show(back[0])); }
 if (r.unknown !== 0 || r.kindMismatch !== 0 || r.widened !== 0 || r.duplicate !== 0) {
   fail("no other counter moved: " + reason(r));
 }

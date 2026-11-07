@@ -101,6 +101,14 @@ func newFixedModule(u *ir.Unit, f *ir.File, base string, home bool, homeBase str
 		wide: wide, mine: mine, lineage: lineage, imports: map[string]map[string]bool{}}
 	g.gen.unit = u
 	g.gen.need = g.needClass
+	g.gen.needTag = func(union string) {
+		if g.mine[union] {
+			return
+		}
+		if base := fixedDeclaringFile(g.unit, union); base != "" {
+			g.need(base, union+"Type")
+		}
+	}
 	return g
 }
 
@@ -208,9 +216,39 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 	return ""
 }
 
-// fixedLocalUnions finds unions with direct field-line or payload-free arms.
+// fixedLocalUnions finds unions with direct field-line, payload-free or TABLE arms.
 // Their fixed form owns its storage, including a tag-only union with no arm
 // members (SPEC-TABLES §2.6, §3.4).
+// unionStorageIsLocal reports a union whose storage class the fixed form
+// emits itself because internal/codegen/dart declares none for it; such a
+// class keeps its tag in a plain int. Every other union is the packet
+// emitter's class, whose tag is the <Union>Type extension type.
+func unionStorageIsLocal(un *ir.Union) bool {
+	for _, v := range un.Variants {
+		if v.F == nil {
+			return true // §2.6: fixed storage owns the tag-only arm, with no member.
+		}
+		if v.F.Array != ir.ArrayNone || v.F.KeyEnum != "" || v.F.Type.Kind != ir.TNamed {
+			return true
+		}
+		// A UNION WHOSE ARM IS A UNION is a table union (SPEC-TABLES §2.6):
+		// internal/codegen/dart never declares it, so its storage is this
+		// emitter's, and its arms answer to the OUTER tag through the guard
+		// chain (docs/FIXED-FORM-ALGORITHM.md §4.1).
+		if _, ok := v.F.Type.Ref.(*ir.Union); ok {
+			return true
+		}
+		// §2.6: a union with a TABLE arm is a table-closure construct
+		// (ir.Unit.TableUnions, beside Decls), so the packet emitter never
+		// emits its class. The fixed form is its only home and owns its
+		// storage, one pre-allocated table per arm (§3.4).
+		if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed && s.IsTable {
+			return true
+		}
+	}
+	return false
+}
+
 func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 	seen := map[string]bool{}
 	var out []*ir.Union
@@ -220,23 +258,7 @@ func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 		if un == nil || seen[un.Name] {
 			return
 		}
-		local := false
-		for _, v := range un.Variants {
-			if v.F == nil {
-				local = true // §2.6: fixed storage owns the tag-only arm, with no member.
-				continue
-			}
-			if v.F.Array != ir.ArrayNone || v.F.KeyEnum != "" || v.F.Type.Kind != ir.TNamed {
-				local = true
-			}
-			// A UNION WHOSE ARM IS A UNION is a table union (SPEC-TABLES §2.6):
-			// internal/codegen/dart never declares it, so its storage is this
-			// emitter's, and its arms answer to the OUTER tag through the guard
-			// chain (docs/FIXED-FORM-ALGORITHM.md §4.1).
-			if _, ok := v.F.Type.Ref.(*ir.Union); ok {
-				local = true
-			}
-		}
+		local := unionStorageIsLocal(un)
 		if local {
 			seen[un.Name] = true
 			out = append(out, un)
@@ -275,6 +297,7 @@ func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 	if g.home {
 		g.pf("%s\n", fixedRuntime)
+		g.pf("%s", integrityRuntime(g.unit))
 		// THE MESSAGE FORM'S ANNOUNCEMENT (§3.3) rides the runtime home beside
 		// the fixed runtime: the form is a fixed table's, so a unit that has a
 		// fixed root is exactly the unit whose announcement is emitted.
@@ -297,6 +320,7 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 		for _, st := range closure {
 			g.gen.emitWriteBody(st)
 			g.gen.emitDecodeBody(st)
+			g.gen.emitFiniteBody(st)
 		}
 		for _, st := range closure {
 			g.emitMessageBody(st)
@@ -320,6 +344,9 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 
 // emitRoot is one table's whole fixed-form surface.
 func (g *fixedModule) emitRoot(st *ir.Struct) {
+	if st.Integrity != "" {
+		g.needHome("tableIntegrityValid", "tableIntegrityWrite")
+	}
 	w := fixedWalkRoot(st)
 	layout := fixedLayoutBytes(w.entries)
 	hash := ir.TableFixedLayoutHash(layout, st)
@@ -334,8 +361,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.needHome("tableFixedForm", "tableFixedRun", "tableFixedFillRun",
 		"tableFixedSelect", "tableFixedLineagePlans", "TableFixedKnownLayout",
 		"TableFixedLineagePlan", "TableFixedLimits", "TableFixedPlan",
-		"TableFixedRefusal", "TableFixedReport")
-	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode")
+		"TableFixedRefusal", "TableFixedReport", "TableFixedView")
+	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode", "init"+capitalize(st.Name))
+	finite := fixedHoldsFloat(st, map[string]bool{})
+	if finite {
+		g.needHome(lower + "FixedFiniteBody")
+	}
 
 	g.pf("// ---- %s, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----\n//\n", st.Name)
 	g.pf("// A record is an eight-byte hash of the writer's LAYOUT and then the values\n")
@@ -502,9 +533,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		g.pf("    );\n\n")
 	}
 
+	writerBounds := g.emitWriterBounds(st, lower, entries, hash)
+
 	// ---- the caller's plan storage ----
 	g.pf("/// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC\n")
-	g.pf("/// NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit\n")
+	g.pf("/// NEVER ALLOCATES. One of these per endpoint; a layout whose plan does not fit\n")
 	g.pf("/// is a refusal by name.\n")
 	g.pf("TableFixedPlan %sFixedNewPlan({\n", lower)
 	g.pf("  int entryCapacity = 4096,\n")
@@ -520,14 +553,25 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("/// the records to the end of it. A FILE ALWAYS CARRIES THE LAYOUT — a file is\n")
 	g.pf("/// read by somebody who was not there when it was written.\n")
 	g.pf("int %sFixedMeasure(int count) {\n", lower)
-	sum := fmt.Sprintf("  return %sFixedHeaderBytes + count * %sFixedRecordBytes;", lower, lower)
+	extra := ""
+	if st.Integrity != "" {
+		extra = " + 4"
+	}
+	sum := fmt.Sprintf("  return %sFixedHeaderBytes + count * %sFixedRecordBytes%s;", lower, lower, extra)
 	if len(sum) <= 80 {
 		g.pf("%s\n", sum)
 	} else {
 		g.pf("  return %sFixedHeaderBytes +\n", lower)
-		g.pf("      count * %sFixedRecordBytes;\n", lower)
+		g.pf("      count * %sFixedRecordBytes%s;\n", lower, extra)
 	}
 	g.pf("}\n\n")
+
+	// ---- the caller's cached ByteData view, one per direction, reused across
+	// calls: the browse's caller passes the same buffer every iteration, so the
+	// view is built once in the warmup and the steady phase allocates nothing.
+	// The cache is the runtime's TableFixedView, a member-only class, so this
+	// library spells no private library-scope name ----
+	g.pf("final %sFixedSaveView = TableFixedView();\n\n", lower)
 
 	// ---- the write ----
 	g.pf("/// THE WRITE IS A TEMPLATE: the hash and zeros laid down first — which is\n")
@@ -538,7 +582,15 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		[]string{"List<" + st.Name + "> values", "int count", "Uint8List bytes"})
 	g.pf("  final need = %sFixedMeasure(count);\n", lower)
 	g.pf("  if (count < 0 || bytes.length < need) {\n    return -1;\n  }\n")
-	g.pf("  final view = ByteData.sublistView(bytes);\n")
+	if finite {
+		g.pf("  // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every\n")
+		g.pf("  // record is asked before the first byte is written, so a refusal\n")
+		g.pf("  // leaves the caller's bytes as they were.\n")
+		g.pf("  for (var k = 0; k < count; k++) {\n")
+		g.pf("    if (%sFixedFiniteBody(values[k]).isNotEmpty) return -1;\n", lower)
+		g.pf("  }\n")
+	}
+	g.pf("  final view = %sFixedSaveView.of(bytes);\n", lower)
 	g.pf("  // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven\n")
 	g.pf("  // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.\n")
 	g.call("  ", "", "bytes.fillRange",
@@ -562,14 +614,20 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.call("    ", "", lower+"FixedWriteBody",
 		[]string{"bytes", "view", "at + 8", "values[k]"}, ";")
 	g.pf("    at += %sFixedRecordBytes;\n", lower)
-	g.pf("  }\n  return need;\n}\n\n")
+	g.pf("  }\n")
+	if st.Integrity != "" {
+		g.pf("  tableIntegrityWrite(bytes, need - 4);\n")
+	}
+	g.pf("  return need;\n}\n\n")
+
+	g.pf("final %sFixedLoadView = TableFixedView();\n\n", lower)
 
 	// ---- the read ----
 	g.pf("/// THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
 	g.pf("/// the layout's hash is this build's own, and a plan compiled once from the\n")
 	g.pf("/// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict\n")
 	g.pf("/// flag, no fast path and no second reader to keep honest against the first,\n")
-	g.pf("/// which is the owner's own ruling — a form whose cost moved when a peer\n")
+	g.pf("/// which is the owner's own ruling — a form whose cost moved when an endpoint\n")
 	g.pf("/// shipped would be a cliff at exactly the moment a deployment cannot afford\n")
 	g.pf("/// one.\n")
 	g.pf("///\n")
@@ -585,7 +643,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  report.reset();\n")
 	g.pf("  if (byteLength < 1 || byteLength > bytes.length) {\n")
 	g.pf("    report.malformed = true;\n    return -1;\n  }\n")
-	g.pf("  final view = ByteData.sublistView(bytes);\n")
+	g.pf("  final view = %sFixedLoadView.of(bytes);\n", lower)
 	g.pf("  // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
 	g.pf("  // the registry is ordered, so a byte this reader does not carry is named\n")
 	g.pf("  // by where it sits relative to this form and never by one word for both.\n")
@@ -599,6 +657,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      _ => TableFixedRefusal.newerForm,\n")
 	g.pf("    };\n")
 	g.pf("    return -1;\n  }\n")
+	if st.Integrity != "" {
+		g.pf("  if (!tableIntegrityValid(bytes, byteLength, 5)) {\n    report.malformed = true;\n    report.refused = TableFixedRefusal.integrityMismatch;\n    return -1;\n  }\n  byteLength -= 4;\n")
+	}
 	g.pf("  if (byteLength < TableFixedLimits.layoutAt) {\n")
 	g.pf("    report.malformed = true;\n    return -1;\n  }\n")
 	g.pf("  // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
@@ -638,8 +699,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      report.refused = TableFixedRefusal.layoutMalformed;\n      return -1;\n    }\n")
 	g.pf("  }\n")
 	g.pf("  report.hash = hash; // the header's hash; digest is not on the wire\n")
-	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
-	g.pf("  // THE PLAN THIS PEER RESOLVES TO, and the record size FROM THE LOCK and\n")
+	// STEP 8: the plan this endpoint resolves to, and the record size FROM THE LOCK.
+	g.pf("  // THE PLAN THIS ENDPOINT RESOLVES TO, and the record size FROM THE LOCK and\n")
 	g.pf("  // never from the file.\n")
 	g.pf("  var entries = %sFixedIdentity;\n", lower)
 	g.pf("  var entryCount = %sFixedIdentityCount;\n", lower)
@@ -654,9 +715,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  var remap = %sFixedIdentityGuards;\n", lower)
 	g.pf("  // THE COMPILE CENSUS IS THE PLAN'S OWN NUMBERS, carried onto the report\n")
 	g.pf("  // ONCE after the record loop and only on a read that returns (§5.9 #6):\n")
-	g.pf("  // once per peer, never per record, and REFUSE moves no counter at all.\n")
+	g.pf("  // once per endpoint, never per record, and REFUSE moves no counter at all.\n")
 	g.pf("  var censusUnknown = 0;\n")
 	g.pf("  var censusKind = 0;\n")
+	if writerBounds {
+		g.pf("  %s? writerBounds;\n", fixedWriterBoundsType)
+	}
 	g.pf("  if (hash != %sFixedHash) {\n", lower)
 	g.pf("    final lane = %sFixedLineagePlans[pick];\n", lower)
 	g.pf("    if (lane.why != TableFixedRefusal.none) {\n")
@@ -670,6 +734,15 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    fills = lane.fill;\n    fillCount = lane.fillCount;\n")
 	g.pf("    remap = lane.remap;\n")
 	g.pf("    censusUnknown = lane.unknown;\n    censusKind = lane.kindMismatch;\n")
+	if writerBounds {
+		// `dart format` breaks an assignment past eighty columns after the `=`,
+		// four columns further in.
+		if one := fmt.Sprintf("    writerBounds = %sFixedWriterBounds[pick];", lower); len(one) <= 80 {
+			g.pf("%s\n", one)
+		} else {
+			g.pf("    writerBounds =\n        %sFixedWriterBounds[pick];\n", lower)
+		}
+	}
 	g.pf("  }\n")
 	g.pf("  // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout\n")
 	g.pf("  // against this build's; digest is not on the wire, so the header hash is\n")
@@ -704,9 +777,35 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      plan.image,\n      plan.imageView,\n      remap,\n      plan.conv,\n")
 	g.pf("      report,\n    );\n")
 	g.pf("    if (runWhy != TableFixedRefusal.none) {\n")
+	// a refused read hands back nothing: the records before this one go back
+	// to their defaults (docs/SPEC-TABLES.md §4)
+	g.pf("      for (var j = 0; j < k; j++) {\n")
+	g.pf("        init%s(values[j]);\n", capitalize(st.Name))
+	g.pf("      }\n")
 	g.pf("      report.refused = runWhy;\n      return -1;\n    }\n")
+	if writerBounds {
+		g.pf("    // THE WRITER'S RANGE, THEN THIS READER'S (§4.6): the lane's own pass on\n")
+		g.pf("    // the image, then the projection's clamp.\n")
+		g.pf("    writerBounds?.call(plan.imageView, report);\n")
+	}
 	g.call("    ", "", lower+"FixedDecode",
 		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
+	if finite {
+		g.pf("    // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the decode tested each\n")
+		g.pf("    // float's raw bits before it landed, and a NaN or an infinity refuses\n")
+		g.pf("    // the whole batch by name, the tolerant read included. Nothing of it is\n")
+		g.pf("    // kept: every record this call wrote goes back to its defaults.\n")
+		g.pf("    if (report.nonFiniteFloat.isNotEmpty) {\n")
+		g.pf("      final field = report.nonFiniteFloat;\n")
+		g.pf("      for (var j = 0; j <= k; j++) {\n")
+		g.pf("        init%s(values[j]);\n", capitalize(st.Name))
+		g.pf("      }\n")
+		g.pf("      report.reset();\n")
+		g.pf("      report.nonFiniteFloat = field;\n")
+		g.pf("      report.refused = TableFixedRefusal.nonFiniteFloat;\n")
+		g.pf("      return -1;\n")
+		g.pf("    }\n")
+	}
 	g.pf("    at += recordBytes;\n")
 	g.pf("  }\n")
 	g.pf("  // THE CENSUS LANDS ONCE, HERE, on a read that returns (§5.4, §5.9 #6).\n")

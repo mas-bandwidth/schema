@@ -13,24 +13,29 @@ package bench;
 public final class MixedPickupEventFixed {
     private MixedPickupEventFixed() {}
 
-    /** MixedPickupEvent's storage: public fields, every buffer allocated at construction,
-     *  which is the packet codec's own shape. Declared defaults are here and
-     *  nowhere else. */
+    /**
+     * MixedPickupEvent's storage: public fields, every buffer allocated at construction, which is
+     * the packet codec's own shape. Declared defaults are here and nowhere else.
+     */
     public static final class Value {
         /** bits(10) */
         public int itemId;
+
         /** int32 */
         public int amount;
     }
 
-    /** THE BODY IS A CONSTANT SIZE, for every value this type can hold: the
-     *  measure is a constant and not a function that reads the value (§3.4). */
+    /**
+     * THE BODY IS A CONSTANT SIZE, for every value this type can hold: the measure is a constant
+     * and not a function that reads the value (§3.4).
+     */
     public static final int bodyBytes = 8;
 
-    /** MixedPickupEvent's stores. The caller lays the template down first — the hash, then
-     *  zeros — which is also what zero-fills every byte of declared slack, so
-     *  this is a straight line of byte-width stores at constant offsets and
-     *  nothing else. */
+    /**
+     * MixedPickupEvent's stores. The caller lays the template down first — the hash, then zeros —
+     * which is also what zero-fills every byte of declared slack, so this is a straight line of
+     * byte-width stores at constant offsets and nothing else.
+     */
     public static void writeBody(byte[] b, int at, Value v) {
         assert checkWrite(v);
         TableFixed.put32(b, at + 0, v.itemId);
@@ -45,16 +50,26 @@ public final class MixedPickupEventFixed {
         return true;
     }
 
-    /** land one record image into a value. The image is this reader's own
-     *  body layout, so every offset here is a constant. */
+    /**
+     * land one record image into a value. The image is this reader's own body layout, so every
+     * offset here is a constant.
+     */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
         v.itemId = TableFixed.get32(b, at + 0);
-        if (v.itemId > 1023L) { v.itemId = (int) (1023L); r.clamped++; } // bits(10) clamps to 2^N - 1
+        if (v.itemId > 1023L) {
+            v.itemId = (int) (1023L);
+            r.clamped++;
+        } // bits(10) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
-            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 255L) { q = 255L; r.clamped++; }
+            if (q < 0L) {
+                q = 0L;
+                r.clamped++;
+            } else if (q > 255L) {
+                q = 255L;
+                r.clamped++;
+            }
             v.amount = (int) (q);
         }
     }
-
 }

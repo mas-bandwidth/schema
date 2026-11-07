@@ -3,7 +3,6 @@ package gotable
 import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"regexp"
-	"strings"
 )
 
 // Retention has its own readers, writers and id interner. The ordinary family
@@ -15,7 +14,6 @@ func (g *tableGen) emitRetainRuntime() {
 		g.pf("0x%016x,", id)
 	}
 	g.pf("}\n%s", goRetainRuntime)
-	g.emitRetainMessageRuntime()
 	source := tableSourceSpan(tableWireSource, "type TableWriter struct", "// TableOpenVerdict")
 	source = tableSourceReplace(source, "TableWriter", "TableRetainWriter", -1)
 	source = tableSourceReplace(source, "TableIds", "TableRetainIds", -1)
@@ -32,6 +30,7 @@ func (g *tableGen) emitRetainRuntime() {
 	load = tableSourceReplace(load, "root.Reset(base)", "root.Reset(base);retain.reset(base,directory)", 1)
 	load = tableSourceReplace(load, "report.Unknown+=unknown", "report.Unknown+=unknown;if retain!=nil{report.RetainLost+=unknown}", 1)
 	load = tableSourceReplace(load, "t.LoadBody(body,p)", "t.LoadBodyRetain(TableRetainReader{tableRetainPlainReader:body,Retain:retain,Path:tableRetainPath{at:p,node:uint32(k+1)}},p)", 1)
+	load = tableSourceReplace(load, "{clear(region);return nil}", "{clear(region);retain.reset(nil,nil);return nil}", 2)
 	load = tableSourceReplace(load, "root.LoadBody(r,base)", "root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader:r,Retain:retain,Path:tableRetainPath{at:base,node:1}},base)", 1)
 	g.pf("%s", load)
 	save := tableRegionSource
@@ -55,7 +54,7 @@ func (g *tableGen) emitRetainRuntime() {
 func tableRuntimeForUnit(regional bool) string {
 	s := tableRuntime()
 	if regional {
-		s = tableSourceReplace(s, "type TableTypeInfo struct {", "type TableTypeInfo struct {\nSaveBodyRetain func(*TableRetainWriter,unsafe.Pointer)bool\nLoadBodyRetain func(TableRetainReader,unsafe.Pointer)bool\nLoadMessageBodyRetain func(TableRetainMessageReader,unsafe.Pointer)(TableRetainMessageReader,bool)", 1)
+		s = tableSourceReplace(s, "type TableTypeInfo struct {", "type TableTypeInfo struct {\nSaveBodyRetain func(*TableRetainWriter,unsafe.Pointer)bool\nLoadBodyRetain func(TableRetainReader,unsafe.Pointer)bool", 1)
 	}
 	return s
 }
@@ -104,21 +103,20 @@ func retainDepth(u *ir.Unit) int {
 	return n
 }
 
-var retainBodyName = regexp.MustCompile(`\b([A-Za-z_][A-Za-z_0-9]*)(LoadMessageBody|LoadBody|MeasureBody|SaveBodyFields|SaveBody)\b`)
+var retainBodyName = regexp.MustCompile(`\b([A-Za-z_][A-Za-z_0-9]*)(LoadBody|MeasureBody|SaveBodyFields|SaveBody)\b`)
 
 func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	if st.IsTable && !st.IsMapEntry() {
-		for _, verb := range []string{"LoadRetainBuilder", "SaveRetainMessages"} {
-			g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
-		}
+		g.pf("const %sLoadRetainBuilder = %q\n", st.Name, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
 		if !ir.VariableTables(g.unit)[st.Name] {
-			// The message form is a FIXED table's (docs/SPEC-TABLES.md §3.3):
-			// "`fixed table T` may ride here, a plain `table T` may not".
-			// Retention on it is a REGION round trip (§6.6), and a fixed-class
-			// root has no region, so the form's LoadRetainMessages is refused by
-			// name beside its SaveRetainMessages refusal rather than left as a
-			// missing symbol.
-			g.pf("const %sLoadRetainMessages = %q\n", st.Name, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
+			// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3), and
+			// retention on it is a REGION round trip (§6.6) that a fixed-class
+			// root has no region for, so the form's two retaining verbs are
+			// refused by name rather than left as missing symbols. A variable
+			// table has no message form, so it has no message verb to refuse.
+			for _, verb := range []string{"SaveRetainMessages", "LoadRetainMessages"} {
+				g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
+			}
 			for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain"} {
 				g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a variable root and its region directory")
 			}
@@ -149,46 +147,16 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	side.emitTableMeasure(st)
 	side.emitTableWrite(st)
 	side.emitTableRead(st)
-	if g.surfaces.Message {
-		side.into(&side.message, func() { side.emitMessageRead(st) })
-	}
-	// The message-form reader rides only on a message surface; every other
-	// rewrite is the region body's and must be present. The whole family is
-	// validated against those stated surfaces first, so a vanished or doubled
-	// anchor panics by name (>=1, or ==0 when the surface is off) instead of
-	// silently dropping a behaviour; each half is then rewritten alone and the
-	// two halves must be the whole, byte for byte.
-	rewrites := []string{"TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
-	retained := func(source string) string {
-		source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
-		for i := 0; i < len(rewrites); i += 2 {
-			source = strings.ReplaceAll(source, rewrites[i], rewrites[i+1])
-		}
-		return source
-	}
-	haveMessage := side.message.Len() > 0
-	whole := side.body.String() + side.message.String()
-	if !retainBodyName.MatchString(whole) {
+	rewrites := []string{"TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
+	source := side.body.String()
+	if !retainBodyName.MatchString(source) {
 		panic("retaining body family has no source codecs")
 	}
-	whole = retainBodyName.ReplaceAllString(whole, "${1}${2}Retain")
+	source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
 	for i := 0; i < len(rewrites); i += 2 {
-		old, new := rewrites[i], rewrites[i+1]
-		want := -1
-		if old == "TableMessageReader" && !haveMessage {
-			want = 0
-		}
-		whole = tableSourceReplace(whole, old, new, want)
+		source = tableSourceReplace(source, rewrites[i], rewrites[i+1], -1)
 	}
-	core, message := retained(side.body.String()), retained(side.message.String())
-	if core+message != whole {
-		panic("retaining body family does not split at the message form's seam")
-	}
-	g.pf("%s", core)
-	// the retaining MESSAGE read is the message form's, beside the plain one
-	if message != "" && g.messageCarries(st) {
-		g.into(&g.message, func() { g.pf("%s", message) })
-	}
+	g.pf("%s", source)
 	g.needsMath = g.needsMath || side.needsMath
 	g.unsafeUsed = true
 }
@@ -219,8 +187,8 @@ const goRetainRuntime = `
 // whole unknown record that does not fit is dropped and counted once.
 // Maximum nesting of a retained resolved payload (SPEC-TABLES §6.6).
 const tableRetainWalkDepthMax = 64
-type TableRetainId struct { Id uint64; Slot int }
-type TableRetain struct { Bytes []byte; Ids []TableRetainId; Used int64; Count int; idUsed int; base unsafe.Pointer; directory []TableNodeDirEntry }
+type TableRetainID struct { Id uint64; Slot int }
+type TableRetain struct { Bytes []byte; Ids []TableRetainID; Used int64; Count int; idUsed int; base unsafe.Pointer; directory []TableNodeDirEntry }
 type tableRetainStep struct {ordinal,index uint32}
 type tableRetainPath struct {at unsafe.Pointer;node uint32;depth int;steps [tableRetainPathDepth]tableRetainStep}
 func(p tableRetainPath)step(ordinal,index uint32)tableRetainPath{if p.depth<len(p.steps){p.steps[p.depth]=tableRetainStep{ordinal,index}};p.depth++;return p}
@@ -239,8 +207,12 @@ func(t *TableRetain)countLost(r *TableReport){if t==nil||r==nil{return};for at:=
 type tableRetainPlainReader = TableReader
 type TableRetainReader struct {tableRetainPlainReader;Retain *TableRetain;Path tableRetainPath}
 func(r *TableRetainReader)Body()(TableRetainReader,bool){sub,ok:=r.tableRetainPlainReader.Body();return TableRetainReader{tableRetainPlainReader:sub,Retain:r.Retain,Path:r.Path},ok}
-func(r *TableRetainReader)capture(id uint64,kind uint8)bool{
+// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+// §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's or 11's raw bits, and a NaN
+// or an infinity refuses the read as non_finite_float, named <owner>.0x<id>.
+func(r *TableRetainReader)capture(id uint64,kind uint8,owner string)bool{
  at:=r.Offset;if !r.Skip(kind){return false};if r.Retain==nil{return true};t:=r.Retain;p:=r.Path
+ if kind==10&&binary.LittleEndian.Uint32(r.Buffer[at:])&0x7f800000==0x7f800000||kind==11&&binary.LittleEndian.Uint64(r.Buffer[at:])&0x7ff0000000000000==0x7ff0000000000000 {tableNonFiniteFloat(&r.Report.NonFiniteFloat,tableRetainedFloatName(owner,id));return true}
  limit:=int64(len(t.Bytes))-t.Used-int64(26+p.depth*8);if limit<0{r.Report.RetainLost++;return true};probe:=tableRetainIn{r:TableReader{Buffer:r.Buffer[at:r.Offset],Ids:r.Ids},w:TableWriter{Measuring:true},limit:limit}
  if p.depth>len(p.steps)||!probe.payload(kind,0)||probe.r.Offset!=int64(len(probe.r.Buffer)){r.Report.RetainLost++;return true}
  need:=int64(26+p.depth*8)+probe.w.Offset;if need>0xffffffff||need>int64(len(t.Bytes))-t.Used{r.Report.RetainLost++;return true}
@@ -248,6 +220,10 @@ func(r *TableRetainReader)capture(id uint64,kind uint8)bool{
  for i := range p.depth {binary.LittleEndian.PutUint32(b[26+8*i:],p.steps[i].ordinal);binary.LittleEndian.PutUint32(b[30+8*i:],p.steps[i].index)}
  write:=tableRetainIn{r:probe.r,w:TableWriter{Buffer:b[26+p.depth*8:]},limit:limit};write.r.Offset=0;if !write.payload(kind,0)||write.w.Overflow{r.Report.RetainLost++;return true};t.Used+=need;t.Count++;r.Report.Retained++;return true
 }
+
+// tableRetainedFloatName names a retained unknown float for the
+// non_finite_float refusal: the body's table and the id it cannot name.
+func tableRetainedFloatName(owner string,id uint64)string{const digits="0123456789abcdef";var hex [16]byte;for i:=15;i>=0;i-- {hex[i]=digits[id&0xf];id>>=4};return owner+".0x"+string(hex[:])}
 
 type tableRetainIn struct {r TableReader;w TableWriter;limit int64}
 func(s *tableRetainIn)room(n int64)bool{return n>=0&&n<=s.limit-s.w.Offset}
@@ -276,13 +252,13 @@ func(s *tableRetainIn)payload(kind uint8,depth int)bool{
 }
 
 type tableRetainFrame struct {numbering TableNumbering;ids TableRetainIds;writer,measure TableRetainWriter}
-type TableRetainIds struct {known TableIds;slots [tableIdCapacity]int;Numbering *TableNumbering;Retain *TableRetain;Path tableRetainPath;Count int;Overflow,Lost bool}
+type TableRetainIds struct {known TableIds;slots [tableIDCapacity]int;Numbering *TableNumbering;Retain *TableRetain;Path tableRetainPath;Count int;Overflow,Lost bool}
 func(i *TableRetainIds)Ref(id uint64)uint64{before:=i.known.Count;ref:=i.known.Ref(id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
 func(i *TableRetainIds)RefAt(ordinal int,id uint64)uint64{before:=i.known.Count;ref:=i.known.RefAt(ordinal,id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
 func(i *TableRetainIds)refAtHit(ordinal int,id uint64)uint64{before:=i.known.Count;ref:=i.known.refAtHit(ordinal,id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
-func(i *TableRetainIds)recordRef(id uint64)uint64{lo,hi:=0,len(tableRetainKnown);for lo<hi{m:=lo+(hi-lo)/2;if tableRetainKnown[m]<id{lo=m+1}else{hi=m}};if lo<len(tableRetainKnown)&&tableRetainKnown[lo]==id{return i.Ref(id)};t:=i.Retain;if t==nil{i.Lost=true;return 0};for k := range t.idUsed {if t.Ids[k].Id==id{return uint64(t.Ids[k].Slot)}};if t.idUsed==len(t.Ids){i.Lost=true;return 0};i.Count++;t.Ids[t.idUsed]=TableRetainId{id,i.Count};t.idUsed++;return uint64(i.Count)}
+func(i *TableRetainIds)recordRef(id uint64)uint64{lo,hi:=0,len(tableRetainKnown);for lo<hi{m:=lo+(hi-lo)/2;if tableRetainKnown[m]<id{lo=m+1}else{hi=m}};if lo<len(tableRetainKnown)&&tableRetainKnown[lo]==id{return i.Ref(id)};t:=i.Retain;if t==nil{i.Lost=true;return 0};for k := range t.idUsed {if t.Ids[k].ID==id{return uint64(t.Ids[k].Slot)}};if t.idUsed==len(t.Ids){i.Lost=true;return 0};i.Count++;t.Ids[t.idUsed]=TableRetainID{id,i.Count};t.idUsed++;return uint64(i.Count)}
 func(i *TableRetainIds)Truncate(mark int){for i.known.Count>0&&i.slots[i.known.Count-1]>mark{i.known.Truncate(i.known.Count-1)};if t:=i.Retain;t!=nil{for t.idUsed>0&&t.Ids[t.idUsed-1].Slot>mark{t.idUsed--}};i.Count=mark}
-func(i *TableRetainIds)trailer(w *TableRetainWriter){a,b,count:=0,0,0;if i.Retain!=nil{count=i.Retain.idUsed};for a<i.known.Count||b<count{if b==count||a<i.known.Count&&i.slots[a]<i.Retain.Ids[b].Slot{w.Put64(i.known.Values[a]);a++}else{w.Put64(i.Retain.Ids[b].Id);b++}};w.Put64(uint64(i.Count))}
+func(i *TableRetainIds)trailer(w *TableRetainWriter){a,b,count:=0,0,0;if i.Retain!=nil{count=i.Retain.idUsed};for a<i.known.Count||b<count{if b==count||a<i.known.Count&&i.slots[a]<i.Retain.Ids[b].Slot{w.Put64(i.known.Values[a]);a++}else{w.Put64(i.Retain.Ids[b].ID);b++}};w.Put64(uint64(i.Count))}
 
 type tableRetainOut struct {r TableReader;w *TableRetainWriter;ids *TableRetainIds;size int64}
 func(s *tableRetainOut)raw(n int64)bool{if !s.r.Has(n){return false};if s.w!=nil{s.w.Raw(s.r.Buffer[s.r.Offset:s.r.Offset+n])};s.r.Offset+=n;s.size+=n;return true}

@@ -111,7 +111,7 @@ int main( void )
        file. */
     memset( &back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    n = cell_fixed_load( &back, 1, wire, bytes, NULL, 0, NULL, &r );
+    n = cell_fixed_load_tolerant( &back, 1, wire, bytes, NULL, 0, NULL, &r );
     if ( n != 1 || r.refused || r.malformed )
     {
         printf( "F4 layout_malformed, truncated: the uncut file did not read clean: n=%lld refused=%d malformed=%d\n",
@@ -129,7 +129,7 @@ int main( void )
        20 + L > bytes, the record gone with the cut. The NAME, not the flag. */
     memset( &back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    n = cell_fixed_load( &back, 1, wire, kTableFixedHeaderBytes + 4 + cell_fixed_layout_bytes - 1, NULL, 0, NULL, &r );
+    n = cell_fixed_load_tolerant( &back, 1, wire, kTableFixedHeaderBytes + 4 + cell_fixed_layout_bytes - 1, NULL, 0, NULL, &r );
     if ( n != -1 )
     {
         printf( "F4 layout_malformed, truncated: a layout cut to 20+L-1 bytes did not refuse: n=%lld\n", (long long) n );
@@ -157,7 +157,7 @@ int main( void )
     table_fixed_put32( tiny + kTableFixedHeaderBytes, 1u );
     memset( &back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    n = cell_fixed_load( &back, 1, tiny, (int64_t) sizeof( tiny ), NULL, 0, NULL, &r );
+    n = cell_fixed_load_tolerant( &back, 1, tiny, (int64_t) sizeof( tiny ), NULL, 0, NULL, &r );
     if ( n != -1 )
     {
         printf( "F4 layout_malformed, truncated: a 20-byte header claiming L=1 did not refuse: n=%lld\n", (long long) n );
@@ -181,7 +181,7 @@ int main( void )
        records, no refusal, no flag. */
     memset( &back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    n = cell_fixed_load( &back, 1, wire, kTableFixedHeaderBytes + 4 + cell_fixed_layout_bytes, NULL, 0, NULL, &r );
+    n = cell_fixed_load_tolerant( &back, 1, wire, kTableFixedHeaderBytes + 4 + cell_fixed_layout_bytes, NULL, 0, NULL, &r );
     if ( n != 0 || r.refused || r.malformed )
     {
         printf( "F4 layout_malformed, truncated: exactly 20+L bytes is not truncated: n=%lld refused=%d malformed=%d\n",
@@ -194,7 +194,7 @@ int main( void )
        short cannot even carry the length field that would lie. */
     memset( &back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    n = cell_fixed_load( &back, 1, wire, kTableFixedHeaderBytes + 4 - 1, NULL, 0, NULL, &r );
+    n = cell_fixed_load_tolerant( &back, 1, wire, kTableFixedHeaderBytes + 4 - 1, NULL, 0, NULL, &r );
     if ( n != -1 )
     {
         printf( "F4 layout_malformed, truncated: a 19-byte file did not refuse: n=%lld\n", (long long) n );

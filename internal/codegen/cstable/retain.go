@@ -87,12 +87,13 @@ func (g *tableGen) emitRetainRefusals() {
 			if st.IsMapEntry() {
 				continue
 			}
-			if !variable[st.Name] {
-				why := "FIXED-class root: retain-unknown requires a variable region and its node directory (SPEC-TABLES section 6.6)."
-				g.pf("[Obsolete(%q, true)] public static IntPtr %sLoadRetain(IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { throw new NotSupportedException(); }\n", why, st.Name)
-				g.pf("[Obsolete(%q, true)] public static long %sMeasureRetain(IntPtr region, ref TableRetain retain) { throw new NotSupportedException(); }\n", why, st.Name)
-				g.pf("[Obsolete(%q, true)] public static long %sSaveRetain(IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report) { throw new NotSupportedException(); }\n", why, st.Name)
+			if variable[st.Name] {
+				continue
 			}
+			why := "FIXED-class root: retain-unknown requires a variable region and its node directory (SPEC-TABLES section 6.6)."
+			g.pf("[Obsolete(%q, true)] public static IntPtr %sLoadRetain(IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { throw new NotSupportedException(); }\n", why, st.Name)
+			g.pf("[Obsolete(%q, true)] public static long %sMeasureRetain(IntPtr region, ref TableRetain retain) { throw new NotSupportedException(); }\n", why, st.Name)
+			g.pf("[Obsolete(%q, true)] public static long %sSaveRetain(IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report) { throw new NotSupportedException(); }\n", why, st.Name)
 			g.pf("[Obsolete(\"Retention writing the MESSAGE form is refused by name; save each retained region as a file.\", true)] public static long %sSaveRetainMessages(ReadOnlySpan<IntPtr> roots, Span<TableRetain> retains, Span<byte> bytes, TableReport report) { throw new NotSupportedException(); }\n", st.Name)
 		}
 	}
@@ -271,6 +272,11 @@ const tableRetainSource = `
     {
         int mark = r.Offset;
         if (!r.Skip(kind)) { return false; }
+        // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+        // §3.3, §6.6): a NaN or an infinity refuses the read.
+        if ((kind == 10 || kind == 11) && r.Offset - mark == Width(kind) &&
+            NonFiniteBits(kind, kind == 10 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(r.Buffer.Slice(mark)) : System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(r.Buffer.Slice(mark))))
+        { NonFiniteRetained(id, report); return true; }
         if (retain == null) { return true; }
         Reader payload = new Reader(r.Buffer.Slice(mark, r.Offset - mark), r.Vocabulary);
         RetainIn probe = new RetainIn { R = payload, Limit = retain->Capacity - retain->Used - RetainHeader - 8L * path.Depth };

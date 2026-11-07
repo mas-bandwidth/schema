@@ -71,9 +71,12 @@ func t03Fixed(t *testing.T, tables map[string][]byte) string {
 	return ""
 }
 
-// t03Fn is the emitted body of one `pub fn NAME(...)`, up to its column-zero
-// closing brace.
+// t03Fn extracts one public function, following a fixed loader
+// through its checked delegation to the private record implementation.
 func t03Fn(text, name string) string {
+	if strings.HasSuffix(name, "_fixed_load") {
+		return rustFixedLoadRecords(text, name)
+	}
 	at := strings.Index(text, "pub fn "+name+"(")
 	if at < 0 {
 		return ""
@@ -435,7 +438,7 @@ fixed table T { inner Inner }
 	for _, tc := range []struct {
 		name, src, want string
 	}{
-		{"plain table", "package probe\ntable Node { x int32 }\nfixed table T { node Node }\n", "holds the plain table Node by value"},
+		{"variable table", "package probe\ntable Node { x int32 }\nfixed table T { node Node }\n", "holds the variable table Node by value"},
 		{"pointer", "package probe\ntable Node { x int32 }\nfixed table Scene { head *Node }\n", "is a pointer"},
 		{"map", "package probe\nfixed table Fleet { ships map[uint32]int32 }\n", "is a map"},
 		{"unbounded array", "package probe\nfixed table Log { entries []int32 }\n", "is an unbounded array"},

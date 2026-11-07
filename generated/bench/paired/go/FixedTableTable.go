@@ -9,7 +9,7 @@
 package bench
 
 import (
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 	"unsafe"
 )
 
@@ -159,9 +159,10 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // FixedTableLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. FixedTableLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. FixedTableLoad is the strict read; call this one by name.
 func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -196,7 +197,13 @@ func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !FixedTableLoadBody(&r, value) {
+	report.Malformed = false
+	if !FixedTableLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			FixedTableReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -211,6 +218,10 @@ func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport)
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			FixedTableReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -221,6 +232,12 @@ func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport)
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		FixedTableReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -228,7 +245,7 @@ func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport)
 // whatever FixedTableReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. FixedTableLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. FixedTableLoadTolerant also reads past an evolution event.
 func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -275,7 +292,7 @@ func MixedEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.EntityId))
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.EntityID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -361,7 +378,7 @@ func MixedEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink
 }
 
 func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
-	tableFixedPut32(b[0:], uint32(value.EntityId))
+	tableFixedPut32(b[0:], uint32(value.EntityID))
 	tableFixedPut32(b[4:], uint32(value.PosX))
 	tableFixedPut32(b[8:], uint32(value.PosY))
 	tableFixedPut32(b[12:], uint32(value.PosZ))
@@ -393,7 +410,7 @@ func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, 
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(MixedStat{}.StatId))
+		ed := dst + uint32(unsafe.Offsetof(MixedStat{}.StatID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -407,7 +424,7 @@ func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, 
 }
 
 func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
-	tableFixedPut32(b[0:], uint32(value.StatId))
+	tableFixedPut32(b[0:], uint32(value.StatID))
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
 
@@ -415,7 +432,7 @@ func MixedHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLi
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.TargetId))
+		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.TargetID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -441,7 +458,7 @@ func MixedHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLi
 }
 
 func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
-	tableFixedPut32(b[0:], uint32(value.TargetId))
+	tableFixedPut32(b[0:], uint32(value.TargetID))
 	tableFixedPut32(b[4:], uint32(value.Damage))
 	tableFixedPut32(b[8:], uint32(value.HitKind))
 	{
@@ -479,7 +496,7 @@ func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuar
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemId))
+		ed := dst + uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -493,7 +510,7 @@ func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuar
 }
 
 func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
-	tableFixedPut32(b[0:], uint32(value.ItemId))
+	tableFixedPut32(b[0:], uint32(value.ItemID))
 	tableFixedPut32(b[4:], uint32(value.Amount))
 }
 
@@ -519,13 +536,13 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	}
 	{
 		es := src + 12
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.SessionId))
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.SessionID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
 	{
 		es := src + 20
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.ClientId))
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.ClientID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -683,8 +700,8 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[0:], uint32(value.Sequence))
 	tableFixedPut32(b[4:], uint32(value.AckSequence))
 	tableFixedPut32(b[8:], uint32(value.AckBits))
-	tableFixedPut64(b[12:], uint64(value.SessionId))
-	tableFixedPut32(b[20:], uint32(value.ClientId))
+	tableFixedPut64(b[12:], uint64(value.SessionID))
+	tableFixedPut32(b[20:], uint32(value.ClientID))
 	tableFixedPut64(b[24:], uint64(value.Nonce))
 	tableFixedPut64(b[32:], uint64(value.WorldTime))
 	tableFixedPut64(b[40:], uint64(value.FrameTick))
@@ -760,8 +777,8 @@ func FixedTableFixedWriteBody(b []byte, value *FixedTable) {
 // MixedEntity's read-side bounds.
 func MixedEntityFixedClampBody(value *MixedEntity, clamped *int32) {
 	_, _ = value, clamped
-	if value.EntityId > 4095 {
-		value.EntityId = 4095
+	if value.EntityID > 4095 {
+		value.EntityID = 4095
 		(*clamped)++
 	}
 	if value.PosX < -16383 {
@@ -830,8 +847,8 @@ func MixedEntityFixedClampBody(value *MixedEntity, clamped *int32) {
 // MixedStat's read-side bounds.
 func MixedStatFixedClampBody(value *MixedStat, clamped *int32) {
 	_, _ = value, clamped
-	if value.StatId > 255 {
-		value.StatId = 255
+	if value.StatID > 255 {
+		value.StatID = 255
 		(*clamped)++
 	}
 	if value.Delta < -512 {
@@ -846,8 +863,8 @@ func MixedStatFixedClampBody(value *MixedStat, clamped *int32) {
 // MixedHitEvent's read-side bounds.
 func MixedHitEventFixedClampBody(value *MixedHitEvent, clamped *int32) {
 	_, _ = value, clamped
-	if value.TargetId > 4095 {
-		value.TargetId = 4095
+	if value.TargetID > 4095 {
+		value.TargetID = 4095
 		(*clamped)++
 	}
 	if value.Damage < 0 {
@@ -885,8 +902,8 @@ func MixedChatEventFixedClampBody(value *MixedChatEvent, clamped *int32) {
 // MixedPickupEvent's read-side bounds.
 func MixedPickupEventFixedClampBody(value *MixedPickupEvent, clamped *int32) {
 	_, _ = value, clamped
-	if value.ItemId > 1023 {
-		value.ItemId = 1023
+	if value.ItemID > 1023 {
+		value.ItemID = 1023
 		(*clamped)++
 	}
 	if value.Amount < 0 {
@@ -948,10 +965,7 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 	case MixedEventTypePickup:
 		MixedPickupEventFixedClampBody(&value.GameEvent.Pickup, clamped)
 	}
-	if value.AimX != value.AimX {
-		value.AimX = -1.0
-		(*clamped)++
-	} else if value.AimX < -1.0 {
+	if value.AimX < -1.0 {
 		value.AimX = -1.0
 		(*clamped)++
 	} else if value.AimX > 1.0 {
@@ -960,10 +974,7 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 	} else if value.AimX == 0 {
 		value.AimX = 0
 	}
-	if value.AimY != value.AimY {
-		value.AimY = -1.0
-		(*clamped)++
-	} else if value.AimY < -1.0 {
+	if value.AimY < -1.0 {
 		value.AimY = -1.0
 		(*clamped)++
 	} else if value.AimY > 1.0 {
@@ -972,10 +983,7 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 	} else if value.AimY == 0 {
 		value.AimY = 0
 	}
-	if value.AimZ != value.AimZ {
-		value.AimZ = -1.0
-		(*clamped)++
-	} else if value.AimZ < -1.0 {
+	if value.AimZ < -1.0 {
 		value.AimZ = -1.0
 		(*clamped)++
 	} else if value.AimZ > 1.0 {
@@ -1021,10 +1029,38 @@ func FixedTableFixedClampBody(value *FixedTable, clamped *int32) {
 	BenchMixedFixedClampBody(&value.Value, clamped)
 }
 
+// BenchMixedFixedFiniteBody is BenchMixed's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func BenchMixedFixedFiniteBody(value *BenchMixed) string {
+	if value.AimX-value.AimX != 0 {
+		return "BenchMixed.aim_x"
+	}
+	if value.AimY-value.AimY != 0 {
+		return "BenchMixed.aim_y"
+	}
+	if value.AimZ-value.AimZ != 0 {
+		return "BenchMixed.aim_z"
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return "BenchMixed.recoil"
+	}
+	if value.Drift-value.Drift != 0 {
+		return "BenchMixed.drift"
+	}
+	return ""
+}
+
+// FixedTableFixedFiniteBody is FixedTable's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func FixedTableFixedFiniteBody(value *FixedTable) string {
+	if why := BenchMixedFixedFiniteBody(&value.Value); why != "" {
+		return why
+	}
+	return ""
+}
+
 // MixedEntity's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func MixedEntityFixedCheckBody(value *MixedEntity) bool {
 	_ = value
-	if value.EntityId > 4095 {
+	if value.EntityID > 4095 {
 		return false
 	}
 	if value.PosX < -16383 || value.PosX > 16383 {
@@ -1063,7 +1099,7 @@ func MixedEntityFixedCheckBody(value *MixedEntity) bool {
 // MixedStat's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func MixedStatFixedCheckBody(value *MixedStat) bool {
 	_ = value
-	if value.StatId > 255 {
+	if value.StatID > 255 {
 		return false
 	}
 	if value.Delta < -512 || value.Delta > 511 {
@@ -1075,7 +1111,7 @@ func MixedStatFixedCheckBody(value *MixedStat) bool {
 // MixedHitEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func MixedHitEventFixedCheckBody(value *MixedHitEvent) bool {
 	_ = value
-	if value.TargetId > 4095 {
+	if value.TargetID > 4095 {
 		return false
 	}
 	if value.Damage < 0 || value.Damage > 4095 {
@@ -1102,7 +1138,7 @@ func MixedChatEventFixedCheckBody(value *MixedChatEvent) bool {
 // MixedPickupEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func MixedPickupEventFixedCheckBody(value *MixedPickupEvent) bool {
 	_ = value
-	if value.ItemId > 1023 {
+	if value.ItemID > 1023 {
 		return false
 	}
 	if value.Amount < 0 || value.Amount > 255 {
@@ -1196,6 +1232,12 @@ func BenchMixedFixedCheckBody(value *BenchMixed) bool {
 	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
 		return false
 	}
+	if value.Recoil-value.Recoil != 0 {
+		return false
+	}
+	if value.Drift-value.Drift != 0 {
+		return false
+	}
 	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
 		return false
 	}
@@ -1221,7 +1263,7 @@ func BenchMixedFixedCheckBody(value *BenchMixed) bool {
 }
 
 // BenchMixedFixedCheckBodyExact is BenchMixedFixedCheckBody with each string asked by
-// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).
+// tableFixedUTF8Ok: the answer for text with a byte at or past 0x80 (§3.1).
 func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
 	_ = value
 	if value.Sequence > 65535 {
@@ -1272,7 +1314,7 @@ func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
 			return false
 		}
 	}
-	if uint32(value.PlayerNameLength) > 15 || !tableFixedUtf8Ok(value.PlayerName[:value.PlayerNameLength]) {
+	if uint32(value.PlayerNameLength) > 15 || !tableFixedUTF8Ok(value.PlayerName[:value.PlayerNameLength]) {
 		return false
 	}
 	if value.PayloadLength < 0 || value.PayloadLength > 16 {
@@ -1285,6 +1327,12 @@ func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
 		return false
 	}
 	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return false
+	}
+	if value.Drift-value.Drift != 0 {
 		return false
 	}
 	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
@@ -1423,15 +1471,15 @@ var FixedTableFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(BenchMixed{}.Sequence)), 0, 0, 0, 0, 0},                                                                                      // sequence
 	{uint32(unsafe.Offsetof(BenchMixed{}.AckSequence)), 0, 0, 0, 0, 0},                                                                                   // ack_sequence
 	{uint32(unsafe.Offsetof(BenchMixed{}.AckBits)), 0, 0, 0, 0, 0},                                                                                       // ack_bits
-	{uint32(unsafe.Offsetof(BenchMixed{}.SessionId)), 0, 0, 0, 0, 0},                                                                                     // session_id
-	{uint32(unsafe.Offsetof(BenchMixed{}.ClientId)), 0, 0, 0, 0, 0},                                                                                      // client_id
+	{uint32(unsafe.Offsetof(BenchMixed{}.SessionID)), 0, 0, 0, 0, 0},                                                                                     // session_id
+	{uint32(unsafe.Offsetof(BenchMixed{}.ClientID)), 0, 0, 0, 0, 0},                                                                                      // client_id
 	{uint32(unsafe.Offsetof(BenchMixed{}.Nonce)), 0, 0, 0, 0, 0},                                                                                         // nonce
 	{uint32(unsafe.Offsetof(BenchMixed{}.WorldTime)), 0, 0, 0, 0, 0},                                                                                     // world_time
 	{uint32(unsafe.Offsetof(BenchMixed{}.FrameTick)), 0, 0, 0, 0, 0},                                                                                     // frame_tick
 	{uint32(unsafe.Offsetof(BenchMixed{}.ServerTime)), 0, 0, 0, 0, 0},                                                                                    // server_time
 	{uint32(unsafe.Offsetof(BenchMixed{}.Entities)), uint32(unsafe.Sizeof(MixedEntity{})), uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), 1, 0, 0}, // entities
 	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(MixedEntity{}.EntityId)), 0, 0, 0, 0, 0}, // entity_id
+	{uint32(unsafe.Offsetof(MixedEntity{}.EntityID)), 0, 0, 0, 0, 0}, // entity_id
 	{uint32(unsafe.Offsetof(MixedEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
 	{uint32(unsafe.Offsetof(MixedEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
 	{uint32(unsafe.Offsetof(MixedEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
@@ -1462,11 +1510,11 @@ var FixedTableFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(MixedEntity{}.Firing)), 0, 0, 0, 0, 0},                                                                               // firing
 	{uint32(unsafe.Offsetof(BenchMixed{}.Stats)), uint32(unsafe.Sizeof(MixedStat{})), uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), 1, 0, 0}, // stats
 	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(MixedStat{}.StatId)), 0, 0, 0, 0, 0}, // stat_id
+	{uint32(unsafe.Offsetof(MixedStat{}.StatID)), 0, 0, 0, 0, 0}, // stat_id
 	{uint32(unsafe.Offsetof(MixedStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
 	{uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)) + uint32(unsafe.Offsetof(MixedEvent{}.Type)), 0, 0, 0}, // game_event
 	{uint32(unsafe.Offsetof(MixedEvent{}.Hit)), 0, 0, 0, 0, 0},                                   // hit
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.TargetId)), 0, 0, 0, 0, 0},                           // target_id
+	{uint32(unsafe.Offsetof(MixedHitEvent{}.TargetID)), 0, 0, 0, 0, 0},                           // target_id
 	{uint32(unsafe.Offsetof(MixedHitEvent{}.Damage)), 0, 0, 0, 0, 0},                             // damage
 	{uint32(unsafe.Offsetof(MixedHitEvent{}.HitKind)), 0, 0, 0, 0, 0},                            // hit_kind
 	{uint32(unsafe.Offsetof(MixedHitEvent{}.Crit)), 0, 0, 0, 0, 0},                               // crit
@@ -1474,7 +1522,7 @@ var FixedTableFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(MixedChatEvent{}.Channel)), 0, 0, 0, 0, 0},                           // channel
 	{uint32(unsafe.Offsetof(MixedChatEvent{}.Speaker)), 0, 0, 0, 0, 0},                           // speaker
 	{uint32(unsafe.Offsetof(MixedEvent{}.Pickup)), 0, 0, 0, 0, 0},                                // pickup
-	{uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemId)), 0, 0, 0, 0, 0},                          // item_id
+	{uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemID)), 0, 0, 0, 0, 0},                          // item_id
 	{uint32(unsafe.Offsetof(MixedPickupEvent{}.Amount)), 0, 0, 0, 0, 0},                          // amount
 	{uint32(unsafe.Offsetof(BenchMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0, 0}, // loadout
 	{0, 0, 0, 0, 0, 0}, // element
@@ -1753,7 +1801,7 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 	entries := FixedTableFixedPlan.Entries
 	entryCount := FixedTableFixedPlan.Count
 	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
-	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := FixedTableFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
@@ -1764,7 +1812,7 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = FixedTableFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
@@ -1800,6 +1848,14 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
+		if why := FixedTableFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				FixedTableReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
+		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4).
@@ -1815,15 +1871,15 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 
 // FixedTableTableFields is FixedTable's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var FixedTableTableFields = []TableFieldInfo{
-	{Name: "value", Json: "value", TypeName: "BenchMixed", DeclaredTypeName: "BenchMixed", Id: 0x7ce4fd9430e80cea, Kind: 13, IsArray: false, Counted: false, Optional: false,
+	{Name: "value", JSON: "value", TypeName: "BenchMixed", DeclaredTypeName: "BenchMixed", ID: 0x7ce4fd9430e80cea, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FixedTable{}.Value)), ElemSize: uint32(unsafe.Sizeof(FixedTable{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1376, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: BenchMixedTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -1833,7 +1889,7 @@ var FixedTableTableFields = []TableFieldInfo{
 var FixedTableTableInfo TableTypeInfo
 
 func init() {
-	FixedTableTableInfo = TableTypeInfo{Name: "FixedTable", Size: uint32(unsafe.Sizeof(FixedTable{})), NumFields: 1, Fields: FixedTableTableFields, Reset: func(storage unsafe.Pointer) { FixedTableReset((*FixedTable)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x85df369cdca746b3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return FixedTableSaveBody(w, (*FixedTable)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return FixedTableLoadBody(&r, (*FixedTable)(p)) }, CookSize: 1376, CookAlign: 16}
+	FixedTableTableInfo = TableTypeInfo{Name: "FixedTable", Size: uint32(unsafe.Sizeof(FixedTable{})), NumFields: 1, Fields: FixedTableTableFields, Reset: func(storage unsafe.Pointer) { FixedTableReset((*FixedTable)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x85df369cdca746b3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return FixedTableSaveBody(w, (*FixedTable)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return FixedTableLoadBody(&r, (*FixedTable)(p)) }, CookSize: 1376, CookAlign: 16}
 }
 
 // FixedTableTableType returns FixedTable's reflection descriptor.

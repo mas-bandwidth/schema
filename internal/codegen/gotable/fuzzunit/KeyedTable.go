@@ -19,11 +19,11 @@ type TurretConfig = TurretConfigRow
 type HullConfig = HullConfigRow
 type KeyedConfig = KeyedConfigRow
 
-// TableEnumId: Team on the TABLE wire rides as the 64-bit hash of its VARIANT
+// TableEnumID: Team on the TABLE wire rides as the 64-bit hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
 // data still reads (mas-bandwidth/schema docs/SPEC-TABLES.md §5). None uses reference zero; hash zero remains a valid named id.
 // The bool is false when no variant names this value: no wire identity.
-func (value Team) TableEnumId() (uint64, bool) {
+func (value Team) TableEnumID() (uint64, bool) {
 	switch value {
 	case TeamNone:
 		return 0, true
@@ -56,11 +56,11 @@ func (value *Team) TableEnumValue(id uint64) bool {
 	return false // an id this build cannot name
 }
 
-// TableEnumId: Hull on the TABLE wire rides as the 64-bit hash of its VARIANT
+// TableEnumID: Hull on the TABLE wire rides as the 64-bit hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
 // data still reads (mas-bandwidth/schema docs/SPEC-TABLES.md §5). None uses reference zero; hash zero remains a valid named id.
 // The bool is false when no variant names this value: no wire identity.
-func (value Hull) TableEnumId() (uint64, bool) {
+func (value Hull) TableEnumID() (uint64, bool) {
 	switch value {
 	case HullNone:
 		return 0, true
@@ -93,11 +93,11 @@ func (value *Hull) TableEnumValue(id uint64) bool {
 	return false // an id this build cannot name
 }
 
-// TableEnumId: Weapon on the TABLE wire rides as the 64-bit hash of its VARIANT
+// TableEnumID: Weapon on the TABLE wire rides as the 64-bit hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
 // data still reads (mas-bandwidth/schema docs/SPEC-TABLES.md §5). None uses reference zero; hash zero remains a valid named id.
 // The bool is false when no variant names this value: no wire identity.
-func (value Weapon) TableEnumId() (uint64, bool) {
+func (value Weapon) TableEnumID() (uint64, bool) {
 	switch value {
 	case WeaponNone:
 		return 0, true
@@ -202,20 +202,20 @@ func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 				var hi, z uint64
 				p := value.Banner[:n]
 				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
 					hi |= x | y
 					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
 					p = p[16:]
 				}
 				if len(p) >= 8 {
-					x := tableUtf8Word(p)
+					x := tableUTF8Word(p)
 					hi |= x
 					z |= (x - 0x0101010101010101) &^ x
 					p = p[8:]
 				}
 				if len(p) > 0 {
 					if n >= 8 {
-						x := tableUtf8Word(value.Banner[n-8:])
+						x := tableUTF8Word(value.Banner[n-8:])
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
@@ -226,7 +226,7 @@ func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 						}
 					}
 				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Banner[:n]) {
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Banner[:n]) {
 					return false
 				}
 			}
@@ -339,7 +339,7 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.Banner[:])
 				value.BannerLength = 0
@@ -347,7 +347,7 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 16 {
-				keep = tableUtf8Clamp(sub.Buffer, 16)
+				keep = tableUTF8Clamp(sub.Buffer, 16)
 				r.Report.Clamped++
 			}
 			clear(value.Banner[:])
@@ -368,9 +368,10 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // TeamConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. TeamConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. TeamConfigLoad is the strict read; call this one by name.
 func TeamConfigLoadTolerant(value *TeamConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -381,12 +382,8 @@ func TeamConfigLoadTolerant(value *TeamConfig, data []byte, report *TableReport)
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -405,7 +402,13 @@ func TeamConfigLoadTolerant(value *TeamConfig, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !TeamConfigLoadBody(&r, value) {
+	report.Malformed = false
+	if !TeamConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			TeamConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -420,6 +423,10 @@ func TeamConfigLoadTolerant(value *TeamConfig, data []byte, report *TableReport)
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			TeamConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -430,6 +437,12 @@ func TeamConfigLoadTolerant(value *TeamConfig, data []byte, report *TableReport)
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		TeamConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -437,7 +450,7 @@ func TeamConfigLoadTolerant(value *TeamConfig, data []byte, report *TableReport)
 // whatever TeamConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. TeamConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. TeamConfigLoadTolerant also reads past an evolution event.
 func TeamConfigLoad(value *TeamConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -517,20 +530,20 @@ func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) boo
 				var hi, z uint64
 				p := value.Banner[:n]
 				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
 					hi |= x | y
 					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
 					p = p[16:]
 				}
 				if len(p) >= 8 {
-					x := tableUtf8Word(p)
+					x := tableUTF8Word(p)
 					hi |= x
 					z |= (x - 0x0101010101010101) &^ x
 					p = p[8:]
 				}
 				if len(p) > 0 {
 					if n >= 8 {
-						x := tableUtf8Word(value.Banner[n-8:])
+						x := tableUTF8Word(value.Banner[n-8:])
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
@@ -541,7 +554,7 @@ func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) boo
 						}
 					}
 				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Banner[:n]) {
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Banner[:n]) {
 					return false
 				}
 			}
@@ -644,7 +657,7 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.Banner[:])
 				value.BannerLength = 0
@@ -652,7 +665,7 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 16 {
-				keep = tableUtf8Clamp(sub.Buffer, 16)
+				keep = tableUTF8Clamp(sub.Buffer, 16)
 				r.Report.Clamped++
 			}
 			clear(value.Banner[:])
@@ -660,7 +673,7 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 			value.BannerLength = int32(keep)
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "TeamConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -677,6 +690,9 @@ func GunnerConfigReset(value *GunnerConfig) {
 
 func GunnerConfigMeasureBody(value *GunnerConfig, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (math.Float32bits(value.Reaction) != math.Float32bits(0.2)) && (value.Reaction-value.Reaction != 0) {
+		return -1
+	}
 	if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 		bytes += tableLebBytes(ids.refAtHit(101, 0xb75aa3662201646a)) + 1 + 4
 	} // reaction
@@ -717,6 +733,9 @@ func GunnerConfigSaveBodyFields(w *TableWriter, value *GunnerConfig) bool {
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 			if ref := w.Ids.refAtHit(101, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Reaction-value.Reaction != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Reaction))
 		}
@@ -789,11 +808,13 @@ func GunnerConfigLoadBody(r *TableReader, value *GunnerConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "GunnerConfig.reaction")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GunnerConfig.reaction")
+				} else {
+					v := math.Float32frombits(b)
+					value.Reaction = v
 				}
-				value.Reaction = v
 			}
 		case 0xa6bf719a4602b0bc: // tracking
 			if kind != 1 {
@@ -833,9 +854,10 @@ func GunnerConfigLoadBody(r *TableReader, value *GunnerConfig) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // GunnerConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. GunnerConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. GunnerConfigLoad is the strict read; call this one by name.
 func GunnerConfigLoadTolerant(value *GunnerConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -846,12 +868,8 @@ func GunnerConfigLoadTolerant(value *GunnerConfig, data []byte, report *TableRep
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -870,7 +888,13 @@ func GunnerConfigLoadTolerant(value *GunnerConfig, data []byte, report *TableRep
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !GunnerConfigLoadBody(&r, value) {
+	report.Malformed = false
+	if !GunnerConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			GunnerConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -885,6 +909,10 @@ func GunnerConfigLoadTolerant(value *GunnerConfig, data []byte, report *TableRep
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			GunnerConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -895,6 +923,12 @@ func GunnerConfigLoadTolerant(value *GunnerConfig, data []byte, report *TableRep
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		GunnerConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -902,7 +936,7 @@ func GunnerConfigLoadTolerant(value *GunnerConfig, data []byte, report *TableRep
 // whatever GunnerConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. GunnerConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. GunnerConfigLoadTolerant also reads past an evolution event.
 func GunnerConfigLoad(value *GunnerConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -959,6 +993,9 @@ func GunnerConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *GunnerConfig)
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 			if ref := w.Ids.refAtHit(101, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Reaction-value.Reaction != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Reaction))
 		}
@@ -1021,11 +1058,13 @@ func GunnerConfigLoadBodyRetain(r *TableRetainReader, value *GunnerConfig) bool 
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "GunnerConfig.reaction")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GunnerConfig.reaction")
+				} else {
+					v := math.Float32frombits(b)
+					value.Reaction = v
 				}
-				value.Reaction = v
 			}
 		case 0xa6bf719a4602b0bc: // tracking
 			if kind != 1 {
@@ -1052,7 +1091,7 @@ func GunnerConfigLoadBodyRetain(r *TableRetainReader, value *GunnerConfig) bool 
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "GunnerConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -1111,6 +1150,9 @@ func TurretConfigSaveBodyFields(w *TableWriter, value *TurretConfig) bool {
 			if ref := w.Ids.refAtHit(66, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Damage-value.Damage != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Damage))
 		}
 	}
@@ -1118,6 +1160,9 @@ func TurretConfigSaveBodyFields(w *TableWriter, value *TurretConfig) bool {
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
 			if ref := w.Ids.refAtHit(133, 0xdc2cbe6953343d48); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Cooldown-value.Cooldown != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Cooldown))
 		}
@@ -1207,11 +1252,13 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "TurretConfig.damage")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.damage")
+				} else {
+					v := math.Float32frombits(b)
+					value.Damage = v
 				}
-				value.Damage = v
 			}
 		case 0xdc2cbe6953343d48: // cooldown
 			if kind != 10 {
@@ -1227,11 +1274,13 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "TurretConfig.cooldown")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.cooldown")
+				} else {
+					v := math.Float32frombits(b)
+					value.Cooldown = v
 				}
-				value.Cooldown = v
 			}
 		case 0x40dbb648c0cd44aa: // gunner
 			if kind != 13 {
@@ -1268,9 +1317,10 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // TurretConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. TurretConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. TurretConfigLoad is the strict read; call this one by name.
 func TurretConfigLoadTolerant(value *TurretConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -1281,12 +1331,8 @@ func TurretConfigLoadTolerant(value *TurretConfig, data []byte, report *TableRep
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -1305,7 +1351,13 @@ func TurretConfigLoadTolerant(value *TurretConfig, data []byte, report *TableRep
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !TurretConfigLoadBody(&r, value) {
+	report.Malformed = false
+	if !TurretConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			TurretConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -1320,6 +1372,10 @@ func TurretConfigLoadTolerant(value *TurretConfig, data []byte, report *TableRep
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			TurretConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -1330,6 +1386,12 @@ func TurretConfigLoadTolerant(value *TurretConfig, data []byte, report *TableRep
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		TurretConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -1337,7 +1399,7 @@ func TurretConfigLoadTolerant(value *TurretConfig, data []byte, report *TableRep
 // whatever TurretConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. TurretConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. TurretConfigLoadTolerant also reads past an evolution event.
 func TurretConfigLoad(value *TurretConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -1395,6 +1457,9 @@ func TurretConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TurretConfig)
 			if ref := w.Ids.refAtHit(66, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Damage-value.Damage != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Damage))
 		}
 	}
@@ -1402,6 +1467,9 @@ func TurretConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TurretConfig)
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
 			if ref := w.Ids.refAtHit(133, 0xdc2cbe6953343d48); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Cooldown-value.Cooldown != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Cooldown))
 		}
@@ -1521,11 +1589,13 @@ func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool 
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "TurretConfig.damage")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.damage")
+				} else {
+					v := math.Float32frombits(b)
+					value.Damage = v
 				}
-				value.Damage = v
 			}
 		case 0xdc2cbe6953343d48: // cooldown
 			if kind != 10 {
@@ -1541,11 +1611,13 @@ func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool 
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "TurretConfig.cooldown")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.cooldown")
+				} else {
+					v := math.Float32frombits(b)
+					value.Cooldown = v
 				}
-				value.Cooldown = v
 			}
 		case 0x40dbb648c0cd44aa: // gunner
 			if kind != 13 {
@@ -1570,7 +1642,7 @@ func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool 
 			value.GunnerPresent = true
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "TurretConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -1630,6 +1702,9 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 			if ref := w.Ids.refAtHit(67, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Health-value.Health != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Health))
 		}
 	}
@@ -1637,6 +1712,9 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
 			if ref := w.Ids.refAtHit(20, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Mass-value.Mass != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Mass))
 		}
@@ -1653,7 +1731,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 			for i := range int(int(WeaponMax)) {
 				{
 					mark := payload6.Ids.Count
-					id, named := Weapon(i + 1).TableEnumId()
+					id, named := Weapon(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -1705,7 +1783,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 				for i := range int(int(WeaponMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Weapon(i + 1).TableEnumId()
+						id, named := Weapon(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -1758,7 +1836,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 					for i := range int(int(WeaponMax)) {
 						{
 							mark := payload9.Ids.Count
-							id, named := Weapon(i + 1).TableEnumId()
+							id, named := Weapon(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -1810,7 +1888,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 						for i := range int(int(WeaponMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Weapon(i + 1).TableEnumId()
+								id, named := Weapon(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -1906,11 +1984,13 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "HullConfig.health")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.health")
+				} else {
+					v := math.Float32frombits(b)
+					value.Health = v
 				}
-				value.Health = v
 			}
 		case 0x1f3757a2ce7b0ab1: // mass
 			if kind != 10 {
@@ -1926,11 +2006,13 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "HullConfig.mass")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.mass")
+				} else {
+					v := math.Float32frombits(b)
+					value.Mass = v
 				}
-				value.Mass = v
 			}
 		case 0x84f8260bc283608c: // turrets
 			if kind != 16 {
@@ -2003,9 +2085,10 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // HullConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. HullConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. HullConfigLoad is the strict read; call this one by name.
 func HullConfigLoadTolerant(value *HullConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -2016,12 +2099,8 @@ func HullConfigLoadTolerant(value *HullConfig, data []byte, report *TableReport)
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -2040,7 +2119,13 @@ func HullConfigLoadTolerant(value *HullConfig, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !HullConfigLoadBody(&r, value) {
+	report.Malformed = false
+	if !HullConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			HullConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -2055,6 +2140,10 @@ func HullConfigLoadTolerant(value *HullConfig, data []byte, report *TableReport)
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			HullConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -2065,6 +2154,12 @@ func HullConfigLoadTolerant(value *HullConfig, data []byte, report *TableReport)
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		HullConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -2072,7 +2167,7 @@ func HullConfigLoadTolerant(value *HullConfig, data []byte, report *TableReport)
 // whatever HullConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. HullConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. HullConfigLoadTolerant also reads past an evolution event.
 func HullConfigLoad(value *HullConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -2130,6 +2225,9 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 			if ref := w.Ids.refAtHit(67, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Health-value.Health != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Health))
 		}
 	}
@@ -2137,6 +2235,9 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
 			if ref := w.Ids.refAtHit(20, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Mass-value.Mass != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Mass))
 		}
@@ -2153,7 +2254,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 			for i := range int(int(WeaponMax)) {
 				{
 					mark := payload1.Ids.Count
-					id, named := Weapon(i + 1).TableEnumId()
+					id, named := Weapon(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -2215,7 +2316,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 				for i := range int(int(WeaponMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Weapon(i + 1).TableEnumId()
+						id, named := Weapon(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -2278,7 +2379,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 					for i := range int(int(WeaponMax)) {
 						{
 							mark := payload8.Ids.Count
-							id, named := Weapon(i + 1).TableEnumId()
+							id, named := Weapon(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -2340,7 +2441,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 						for i := range int(int(WeaponMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Weapon(i + 1).TableEnumId()
+								id, named := Weapon(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -2436,11 +2537,13 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "HullConfig.health")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.health")
+				} else {
+					v := math.Float32frombits(b)
+					value.Health = v
 				}
-				value.Health = v
 			}
 		case 0x1f3757a2ce7b0ab1: // mass
 			if kind != 10 {
@@ -2456,11 +2559,13 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "HullConfig.mass")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.mass")
+				} else {
+					v := math.Float32frombits(b)
+					value.Mass = v
 				}
-				value.Mass = v
 			}
 		case 0x84f8260bc283608c: // turrets
 			if kind != 16 {
@@ -2524,7 +2629,7 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "HullConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -2593,7 +2698,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 			for i := range int(int(TeamMax)) {
 				{
 					mark := payload14.Ids.Count
-					id, named := Team(i + 1).TableEnumId()
+					id, named := Team(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -2645,7 +2750,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Team(i + 1).TableEnumId()
+						id, named := Team(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -2698,7 +2803,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 					for i := range int(int(TeamMax)) {
 						{
 							mark := payload17.Ids.Count
-							id, named := Team(i + 1).TableEnumId()
+							id, named := Team(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -2750,7 +2855,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Team(i + 1).TableEnumId()
+								id, named := Team(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -2802,7 +2907,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 			for i := range int(int(HullMax)) {
 				{
 					mark := payload20.Ids.Count
-					id, named := Hull(i + 1).TableEnumId()
+					id, named := Hull(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -2854,7 +2959,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 				for i := range int(int(HullMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Hull(i + 1).TableEnumId()
+						id, named := Hull(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -2907,7 +3012,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 					for i := range int(int(HullMax)) {
 						{
 							mark := payload23.Ids.Count
-							id, named := Hull(i + 1).TableEnumId()
+							id, named := Hull(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -2959,7 +3064,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 						for i := range int(int(HullMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Hull(i + 1).TableEnumId()
+								id, named := Hull(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -3214,9 +3319,10 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // KeyedConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. KeyedConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. KeyedConfigLoad is the strict read; call this one by name.
 func KeyedConfigLoadTolerant(value *KeyedConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -3227,12 +3333,8 @@ func KeyedConfigLoadTolerant(value *KeyedConfig, data []byte, report *TableRepor
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -3251,7 +3353,13 @@ func KeyedConfigLoadTolerant(value *KeyedConfig, data []byte, report *TableRepor
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !KeyedConfigLoadBody(&r, value) {
+	report.Malformed = false
+	if !KeyedConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			KeyedConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -3266,6 +3374,10 @@ func KeyedConfigLoadTolerant(value *KeyedConfig, data []byte, report *TableRepor
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			KeyedConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -3276,6 +3388,12 @@ func KeyedConfigLoadTolerant(value *KeyedConfig, data []byte, report *TableRepor
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		KeyedConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -3283,7 +3401,7 @@ func KeyedConfigLoadTolerant(value *KeyedConfig, data []byte, report *TableRepor
 // whatever KeyedConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. KeyedConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. KeyedConfigLoadTolerant also reads past an evolution event.
 func KeyedConfigLoad(value *KeyedConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -3348,7 +3466,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 			for i := range int(int(TeamMax)) {
 				{
 					mark := payload1.Ids.Count
-					id, named := Team(i + 1).TableEnumId()
+					id, named := Team(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -3410,7 +3528,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Team(i + 1).TableEnumId()
+						id, named := Team(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -3473,7 +3591,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					for i := range int(int(TeamMax)) {
 						{
 							mark := payload8.Ids.Count
-							id, named := Team(i + 1).TableEnumId()
+							id, named := Team(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -3535,7 +3653,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Team(i + 1).TableEnumId()
+								id, named := Team(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -3597,7 +3715,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 			for i := range int(int(HullMax)) {
 				{
 					mark := payload15.Ids.Count
-					id, named := Hull(i + 1).TableEnumId()
+					id, named := Hull(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -3659,7 +3777,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				for i := range int(int(HullMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Hull(i + 1).TableEnumId()
+						id, named := Hull(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -3722,7 +3840,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					for i := range int(int(HullMax)) {
 						{
 							mark := payload22.Ids.Count
-							id, named := Hull(i + 1).TableEnumId()
+							id, named := Hull(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -3784,7 +3902,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						for i := range int(int(HullMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Hull(i + 1).TableEnumId()
+								id, named := Hull(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -4075,7 +4193,7 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "KeyedConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -4138,7 +4256,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 			for i := range int(int(TeamMax)) {
 				{
 					mark := payload26.Ids.Count
-					id, named := Team(i + 1).TableEnumId()
+					id, named := Team(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -4192,7 +4310,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Team(i + 1).TableEnumId()
+						id, named := Team(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -4247,7 +4365,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 					for i := range int(int(TeamMax)) {
 						{
 							mark := payload29.Ids.Count
-							id, named := Team(i + 1).TableEnumId()
+							id, named := Team(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -4301,7 +4419,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Team(i + 1).TableEnumId()
+								id, named := Team(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -4468,9 +4586,10 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 }
 
 // ScoreBoardLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. ScoreBoardLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. ScoreBoardLoad is the strict read; call this one by name.
 func ScoreBoardLoadTolerant(value *ScoreBoardRow, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -4481,12 +4600,8 @@ func ScoreBoardLoadTolerant(value *ScoreBoardRow, data []byte, report *TableRepo
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -4505,7 +4620,13 @@ func ScoreBoardLoadTolerant(value *ScoreBoardRow, data []byte, report *TableRepo
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !ScoreBoardLoadBody(&r, value) {
+	report.Malformed = false
+	if !ScoreBoardLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			ScoreBoardReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -4520,6 +4641,10 @@ func ScoreBoardLoadTolerant(value *ScoreBoardRow, data []byte, report *TableRepo
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			ScoreBoardReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -4530,6 +4655,12 @@ func ScoreBoardLoadTolerant(value *ScoreBoardRow, data []byte, report *TableRepo
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		ScoreBoardReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -4537,7 +4668,7 @@ func ScoreBoardLoadTolerant(value *ScoreBoardRow, data []byte, report *TableRepo
 // whatever ScoreBoardReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. ScoreBoardLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. ScoreBoardLoadTolerant also reads past an evolution event.
 func ScoreBoardLoad(value *ScoreBoardRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -4595,7 +4726,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 			for i := range int(int(TeamMax)) {
 				{
 					mark := payload1.Ids.Count
-					id, named := Team(i + 1).TableEnumId()
+					id, named := Team(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -4649,7 +4780,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Team(i + 1).TableEnumId()
+						id, named := Team(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -4704,7 +4835,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 					for i := range int(int(TeamMax)) {
 						{
 							mark := payload4.Ids.Count
-							id, named := Team(i + 1).TableEnumId()
+							id, named := Team(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -4758,7 +4889,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Team(i + 1).TableEnumId()
+								id, named := Team(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -4910,7 +5041,7 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "ScoreBoard") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -5122,6 +5253,56 @@ func KeyedConfigFixedClampBody(value *KeyedConfig, clamped *int32) {
 	ScoreBoardFixedClampBody(&value.Scores, clamped)
 }
 
+// GunnerConfigFixedFiniteBody is GunnerConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func GunnerConfigFixedFiniteBody(value *GunnerConfig) string {
+	if value.Reaction-value.Reaction != 0 {
+		return "GunnerConfig.reaction"
+	}
+	return ""
+}
+
+// TurretConfigFixedFiniteBody is TurretConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func TurretConfigFixedFiniteBody(value *TurretConfig) string {
+	if value.Damage-value.Damage != 0 {
+		return "TurretConfig.damage"
+	}
+	if value.Cooldown-value.Cooldown != 0 {
+		return "TurretConfig.cooldown"
+	}
+	if value.GunnerPresent {
+		if why := GunnerConfigFixedFiniteBody(&value.Gunner); why != "" {
+			return why
+		}
+	}
+	return ""
+}
+
+// HullConfigFixedFiniteBody is HullConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func HullConfigFixedFiniteBody(value *HullConfig) string {
+	if value.Health-value.Health != 0 {
+		return "HullConfig.health"
+	}
+	if value.Mass-value.Mass != 0 {
+		return "HullConfig.mass"
+	}
+	for i := range 3 {
+		if why := TurretConfigFixedFiniteBody(&value.Turrets[i]); why != "" {
+			return why
+		}
+	}
+	return ""
+}
+
+// KeyedConfigFixedFiniteBody is KeyedConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func KeyedConfigFixedFiniteBody(value *KeyedConfig) string {
+	for i := range 3 {
+		if why := HullConfigFixedFiniteBody(&value.Hulls[i]); why != "" {
+			return why
+		}
+	}
+	return ""
+}
+
 // TeamConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func TeamConfigFixedCheckBody(value *TeamConfig) bool {
 	var z, hi uint64
@@ -5166,14 +5347,57 @@ func TeamConfigFixedCheckBody(value *TeamConfig) bool {
 }
 
 // TeamConfigFixedCheckBodyExact is TeamConfigFixedCheckBody with each string asked by
-// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).
+// tableFixedUTF8Ok: the answer for text with a byte at or past 0x80 (§3.1).
 func TeamConfigFixedCheckBodyExact(value *TeamConfig) bool {
 	_ = value
 	if value.SpawnCount < 0 || value.SpawnCount > 64 {
 		return false
 	}
-	if uint32(value.BannerLength) > 16 || !tableFixedUtf8Ok(value.Banner[:value.BannerLength]) {
+	if uint32(value.BannerLength) > 16 || !tableFixedUTF8Ok(value.Banner[:value.BannerLength]) {
 		return false
+	}
+	return true
+}
+
+// GunnerConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func GunnerConfigFixedCheckBody(value *GunnerConfig) bool {
+	_ = value
+	if value.Reaction-value.Reaction != 0 {
+		return false
+	}
+	return true
+}
+
+// TurretConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func TurretConfigFixedCheckBody(value *TurretConfig) bool {
+	_ = value
+	if value.Damage-value.Damage != 0 {
+		return false
+	}
+	if value.Cooldown-value.Cooldown != 0 {
+		return false
+	}
+	if value.GunnerPresent {
+		if !GunnerConfigFixedCheckBody(&value.Gunner) {
+			return false
+		}
+	}
+	return true
+}
+
+// HullConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func HullConfigFixedCheckBody(value *HullConfig) bool {
+	_ = value
+	if value.Health-value.Health != 0 {
+		return false
+	}
+	if value.Mass-value.Mass != 0 {
+		return false
+	}
+	for i := range 3 {
+		if !TurretConfigFixedCheckBody(&value.Turrets[i]) {
+			return false
+		}
 	}
 	return true
 }
@@ -5194,6 +5418,11 @@ func KeyedConfigFixedCheckBody(value *KeyedConfig) bool {
 	_ = value
 	for i := range 3 {
 		if !TeamConfigFixedCheckBody(&value.Teams[i]) {
+			return false
+		}
+	}
+	for i := range 3 {
+		if !HullConfigFixedCheckBody(&value.Hulls[i]) {
 			return false
 		}
 	}
@@ -5418,7 +5647,7 @@ func TeamConfigFixedLoadTolerant(values []TeamConfig, data []byte, plan []TableF
 	entries := TeamConfigFixedPlan.Entries
 	entryCount := TeamConfigFixedPlan.Count
 	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
-	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := TeamConfigFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
@@ -5429,7 +5658,7 @@ func TeamConfigFixedLoadTolerant(values []TeamConfig, data []byte, plan []TableF
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = TeamConfigFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
@@ -5565,6 +5794,11 @@ func GunnerConfigFixedSave(values []GunnerConfig, buffer []byte) int64 {
 	if int64(len(buffer)) < need {
 		return -1
 	}
+	for k := range values {
+		if !GunnerConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
+	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
 	tableFixedPut64(buffer[TableFixedHashAt:], GunnerConfigFixedHash)
@@ -5672,7 +5906,7 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 	entries := GunnerConfigFixedPlan.Entries
 	entryCount := GunnerConfigFixedPlan.Count
 	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
-	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := GunnerConfigFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
@@ -5683,7 +5917,7 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = GunnerConfigFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
@@ -5718,6 +5952,14 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 		}
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
+		}
+		if why := GunnerConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				GunnerConfigReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
 		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		at = at[recordBytes:]
@@ -5828,6 +6070,11 @@ func TurretConfigFixedSave(values []TurretConfig, buffer []byte) int64 {
 	if int64(len(buffer)) < need {
 		return -1
 	}
+	for k := range values {
+		if !TurretConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
+	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
 	tableFixedPut64(buffer[TableFixedHashAt:], TurretConfigFixedHash)
@@ -5935,7 +6182,7 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 	entries := TurretConfigFixedPlan.Entries
 	entryCount := TurretConfigFixedPlan.Count
 	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
-	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := TurretConfigFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
@@ -5946,7 +6193,7 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = TurretConfigFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
@@ -5981,6 +6228,14 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 		}
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
+		}
+		if why := TurretConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				TurretConfigReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
 		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		at = at[recordBytes:]
@@ -6117,6 +6372,11 @@ func HullConfigFixedSave(values []HullConfig, buffer []byte) int64 {
 	if int64(len(buffer)) < need {
 		return -1
 	}
+	for k := range values {
+		if !HullConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
+	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
 	tableFixedPut64(buffer[TableFixedHashAt:], HullConfigFixedHash)
@@ -6224,7 +6484,7 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 	entries := HullConfigFixedPlan.Entries
 	entryCount := HullConfigFixedPlan.Count
 	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
-	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := HullConfigFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
@@ -6235,7 +6495,7 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = HullConfigFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
@@ -6270,6 +6530,14 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 		}
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
+		}
+		if why := HullConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				HullConfigReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
 		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		at = at[recordBytes:]
@@ -6597,7 +6865,7 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 	entries := KeyedConfigFixedPlan.Entries
 	entryCount := KeyedConfigFixedPlan.Count
 	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
-	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := KeyedConfigFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
@@ -6608,7 +6876,7 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = KeyedConfigFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
@@ -6644,6 +6912,14 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
+		if why := KeyedConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				KeyedConfigReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
+		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4).
@@ -6659,27 +6935,27 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 
 // TeamConfigTableFields is TeamConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TeamConfigTableFields = []TableFieldInfo{
-	{Name: "spawn_count", Json: "spawn_count", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xceec99e2d65db674, Kind: 4, IsArray: false, Counted: false, Optional: false,
+	{Name: "spawn_count", JSON: "spawn_count", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xceec99e2d65db674, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), ElemSize: uint32(unsafe.Sizeof(TeamConfig{}.SpawnCount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 64.0, RangeIntMin: 0, RangeIntMax: 64, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "banner", Json: "banner", TypeName: "string", DeclaredTypeName: "string", Id: 0xbca0dab1c7a00ccf, Kind: 12, IsArray: false, Counted: true, Optional: false,
+	{Name: "banner", JSON: "banner", TypeName: "string", DeclaredTypeName: "string", ID: 0xbca0dab1c7a00ccf, Kind: 12, IsArray: false, Counted: true, Optional: false,
 		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), ElemSize: uint32(unsafe.Sizeof(TeamConfig{}.Banner)), CountOffset: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 24, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6689,11 +6965,11 @@ var TeamConfigTableFields = []TableFieldInfo{
 var TeamConfigTableInfo TableTypeInfo
 
 func init() {
-	TeamConfigTableInfo = TableTypeInfo{Name: "TeamConfig", Size: uint32(unsafe.Sizeof(TeamConfig{})), NumFields: 2, Fields: TeamConfigTableFields, Reset: func(storage unsafe.Pointer) { TeamConfigReset((*TeamConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x1cf8555d11fb113a, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TeamConfigSaveBody(w, (*TeamConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TeamConfigLoadBody(&r, (*TeamConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	TeamConfigTableInfo = TableTypeInfo{Name: "TeamConfig", Size: uint32(unsafe.Sizeof(TeamConfig{})), NumFields: 2, Fields: TeamConfigTableFields, Reset: func(storage unsafe.Pointer) { TeamConfigReset((*TeamConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1cf8555d11fb113a, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TeamConfigSaveBody(w, (*TeamConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TeamConfigLoadBody(&r, (*TeamConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return TeamConfigSaveBodyRetain(w, (*TeamConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TeamConfigLoadBodyRetain(&r, (*TeamConfig)(p))
-	}, CookSize: 28, CookAlign: 4}
+	}, CycleIndex: 20, CycleType: tableCycleType, CookSize: 28, CookAlign: 4}
 }
 
 // TeamConfigTableType returns TeamConfig's reflection descriptor.
@@ -6701,27 +6977,27 @@ func TeamConfigTableType() *TableTypeInfo { return &TeamConfigTableInfo }
 
 // GunnerConfigTableFields is GunnerConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var GunnerConfigTableFields = []TableFieldInfo{
-	{Name: "reaction", Json: "reaction", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xb75aa3662201646a, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "reaction", JSON: "reaction", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xb75aa3662201646a, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), ElemSize: uint32(unsafe.Sizeof(GunnerConfig{}.Reaction)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "tracking", Json: "tracking", TypeName: "bool", DeclaredTypeName: "bool", Id: 0xa6bf719a4602b0bc, Kind: 1, IsArray: false, Counted: false, Optional: false,
+	{Name: "tracking", JSON: "tracking", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xa6bf719a4602b0bc, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), ElemSize: uint32(unsafe.Sizeof(GunnerConfig{}.Tracking)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6731,11 +7007,11 @@ var GunnerConfigTableFields = []TableFieldInfo{
 var GunnerConfigTableInfo TableTypeInfo
 
 func init() {
-	GunnerConfigTableInfo = TableTypeInfo{Name: "GunnerConfig", Size: uint32(unsafe.Sizeof(GunnerConfig{})), NumFields: 2, Fields: GunnerConfigTableFields, Reset: func(storage unsafe.Pointer) { GunnerConfigReset((*GunnerConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x5fcbe04615411b64, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GunnerConfigSaveBody(w, (*GunnerConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GunnerConfigLoadBody(&r, (*GunnerConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	GunnerConfigTableInfo = TableTypeInfo{Name: "GunnerConfig", Size: uint32(unsafe.Sizeof(GunnerConfig{})), NumFields: 2, Fields: GunnerConfigTableFields, Reset: func(storage unsafe.Pointer) { GunnerConfigReset((*GunnerConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x5fcbe04615411b64, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GunnerConfigSaveBody(w, (*GunnerConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GunnerConfigLoadBody(&r, (*GunnerConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return GunnerConfigSaveBodyRetain(w, (*GunnerConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return GunnerConfigLoadBodyRetain(&r, (*GunnerConfig)(p))
-	}, CookSize: 8, CookAlign: 4}
+	}, CycleIndex: 6, CycleType: tableCycleType, CookSize: 8, CookAlign: 4}
 }
 
 // GunnerConfigTableType returns GunnerConfig's reflection descriptor.
@@ -6743,39 +7019,39 @@ func GunnerConfigTableType() *TableTypeInfo { return &GunnerConfigTableInfo }
 
 // TurretConfigTableFields is TurretConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TurretConfigTableFields = []TableFieldInfo{
-	{Name: "damage", Json: "damage", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x7f6308be8ab37fc0, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "damage", JSON: "damage", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f6308be8ab37fc0, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "cooldown", Json: "cooldown", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xdc2cbe6953343d48, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "cooldown", JSON: "cooldown", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xdc2cbe6953343d48, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Cooldown)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "gunner", Json: "gunner", TypeName: "GunnerConfig", DeclaredTypeName: "GunnerConfig", Id: 0x40dbb648c0cd44aa, Kind: 13, IsArray: false, Counted: false, Optional: true,
+	{Name: "gunner", JSON: "gunner", TypeName: "GunnerConfig", DeclaredTypeName: "GunnerConfig", ID: 0x40dbb648c0cd44aa, Kind: 13, IsArray: false, Counted: false, Optional: true,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Gunner)), CountOffset: 0xffffffff, PresentOffset: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)),
 		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 16,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: GunnerConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6785,11 +7061,11 @@ var TurretConfigTableFields = []TableFieldInfo{
 var TurretConfigTableInfo TableTypeInfo
 
 func init() {
-	TurretConfigTableInfo = TableTypeInfo{Name: "TurretConfig", Size: uint32(unsafe.Sizeof(TurretConfig{})), NumFields: 3, Fields: TurretConfigTableFields, Reset: func(storage unsafe.Pointer) { TurretConfigReset((*TurretConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x469dba0c16b2ad15, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TurretConfigSaveBody(w, (*TurretConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TurretConfigLoadBody(&r, (*TurretConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	TurretConfigTableInfo = TableTypeInfo{Name: "TurretConfig", Size: uint32(unsafe.Sizeof(TurretConfig{})), NumFields: 3, Fields: TurretConfigTableFields, Reset: func(storage unsafe.Pointer) { TurretConfigReset((*TurretConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x469dba0c16b2ad15, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TurretConfigSaveBody(w, (*TurretConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TurretConfigLoadBody(&r, (*TurretConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return TurretConfigSaveBodyRetain(w, (*TurretConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TurretConfigLoadBodyRetain(&r, (*TurretConfig)(p))
-	}, CookSize: 20, CookAlign: 4}
+	}, CycleIndex: 21, CycleType: tableCycleType, CookSize: 20, CookAlign: 4}
 }
 
 // TurretConfigTableType returns TurretConfig's reflection descriptor.
@@ -6797,39 +7073,39 @@ func TurretConfigTableType() *TableTypeInfo { return &TurretConfigTableInfo }
 
 // HullConfigTableFields is HullConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var HullConfigTableFields = []TableFieldInfo{
-	{Name: "health", Json: "health", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x7f69d4b5288ba9cf, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "health", JSON: "health", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f69d4b5288ba9cf, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HullConfig{}.Health)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "mass", Json: "mass", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x1f3757a2ce7b0ab1, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "mass", JSON: "mass", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x1f3757a2ce7b0ab1, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HullConfig{}.Mass)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Mass)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "turrets", Json: "turrets", TypeName: "TurretConfig", DeclaredTypeName: "TurretConfig", Id: 0x84f8260bc283608c, Kind: 13, IsArray: true, Counted: false, Optional: false,
+	{Name: "turrets", JSON: "turrets", TypeName: "TurretConfig", DeclaredTypeName: "TurretConfig", ID: 0x84f8260bc283608c, Kind: 13, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: int32(WeaponMax), Offset: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Turrets[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 20, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Weapon", KeyName: func(v uint64) string { return EnumNameWeapon(Weapon(v)) }, KeyId: func(v uint64) uint64 { id, _ := Weapon(v).TableEnumId(); return id },
+		KeyTypeName: "Weapon", KeyName: func(v uint64) string { return EnumNameWeapon(Weapon(v)) }, KeyID: func(v uint64) uint64 { id, _ := Weapon(v).TableEnumID(); return id },
 		Arms:  nil,
 		Guard: "", Table: TurretConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6839,11 +7115,11 @@ var HullConfigTableFields = []TableFieldInfo{
 var HullConfigTableInfo TableTypeInfo
 
 func init() {
-	HullConfigTableInfo = TableTypeInfo{Name: "HullConfig", Size: uint32(unsafe.Sizeof(HullConfig{})), NumFields: 3, Fields: HullConfigTableFields, Reset: func(storage unsafe.Pointer) { HullConfigReset((*HullConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x3066b130dfbd7890, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return HullConfigSaveBody(w, (*HullConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return HullConfigLoadBody(&r, (*HullConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	HullConfigTableInfo = TableTypeInfo{Name: "HullConfig", Size: uint32(unsafe.Sizeof(HullConfig{})), NumFields: 3, Fields: HullConfigTableFields, Reset: func(storage unsafe.Pointer) { HullConfigReset((*HullConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x3066b130dfbd7890, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return HullConfigSaveBody(w, (*HullConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return HullConfigLoadBody(&r, (*HullConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return HullConfigSaveBodyRetain(w, (*HullConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return HullConfigLoadBodyRetain(&r, (*HullConfig)(p))
-	}, CookSize: 68, CookAlign: 4}
+	}, CycleIndex: 8, CycleType: tableCycleType, CookSize: 68, CookAlign: 4}
 }
 
 // HullConfigTableType returns HullConfig's reflection descriptor.
@@ -6851,39 +7127,39 @@ func HullConfigTableType() *TableTypeInfo { return &HullConfigTableInfo }
 
 // KeyedConfigTableFields is KeyedConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var KeyedConfigTableFields = []TableFieldInfo{
-	{Name: "teams", Json: "teams", TypeName: "TeamConfig", DeclaredTypeName: "TeamConfig", Id: 0xbaaeb048a5a8fa6d, Kind: 13, IsArray: true, Counted: false, Optional: false,
+	{Name: "teams", JSON: "teams", TypeName: "TeamConfig", DeclaredTypeName: "TeamConfig", ID: 0xbaaeb048a5a8fa6d, Kind: 13, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Teams[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 28, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id },
+		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyID: func(v uint64) uint64 { id, _ := Team(v).TableEnumID(); return id },
 		Arms:  nil,
 		Guard: "", Table: TeamConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "hulls", Json: "hulls", TypeName: "HullConfig", DeclaredTypeName: "HullConfig", Id: 0xce0ac3c25694d8ff, Kind: 13, IsArray: true, Counted: false, Optional: false,
+	{Name: "hulls", JSON: "hulls", TypeName: "HullConfig", DeclaredTypeName: "HullConfig", ID: 0xce0ac3c25694d8ff, Kind: 13, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: int32(HullMax), Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Hulls[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 84, CookElemSize: 68, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Hull", KeyName: func(v uint64) string { return EnumNameHull(Hull(v)) }, KeyId: func(v uint64) uint64 { id, _ := Hull(v).TableEnumId(); return id },
+		KeyTypeName: "Hull", KeyName: func(v uint64) string { return EnumNameHull(Hull(v)) }, KeyID: func(v uint64) uint64 { id, _ := Hull(v).TableEnumID(); return id },
 		Arms:  nil,
 		Guard: "", Table: HullConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "scores", Json: "scores", TypeName: "ScoreBoard", DeclaredTypeName: "ScoreBoard", Id: 0x1986b0b27400fb2, Kind: 13, IsArray: false, Counted: false, Optional: false,
+	{Name: "scores", JSON: "scores", TypeName: "ScoreBoard", DeclaredTypeName: "ScoreBoard", ID: 0x1986b0b27400fb2, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Scores)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 288, CookElemSize: 12, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: ScoreBoardTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6893,11 +7169,11 @@ var KeyedConfigTableFields = []TableFieldInfo{
 var KeyedConfigTableInfo TableTypeInfo
 
 func init() {
-	KeyedConfigTableInfo = TableTypeInfo{Name: "KeyedConfig", Size: uint32(unsafe.Sizeof(KeyedConfig{})), NumFields: 3, Fields: KeyedConfigTableFields, Reset: func(storage unsafe.Pointer) { KeyedConfigReset((*KeyedConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xd6633ae4e94deecf, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return KeyedConfigSaveBody(w, (*KeyedConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return KeyedConfigLoadBody(&r, (*KeyedConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	KeyedConfigTableInfo = TableTypeInfo{Name: "KeyedConfig", Size: uint32(unsafe.Sizeof(KeyedConfig{})), NumFields: 3, Fields: KeyedConfigTableFields, Reset: func(storage unsafe.Pointer) { KeyedConfigReset((*KeyedConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xd6633ae4e94deecf, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return KeyedConfigSaveBody(w, (*KeyedConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return KeyedConfigLoadBody(&r, (*KeyedConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return KeyedConfigSaveBodyRetain(w, (*KeyedConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return KeyedConfigLoadBodyRetain(&r, (*KeyedConfig)(p))
-	}, CookSize: 300, CookAlign: 4}
+	}, CycleIndex: 9, CycleType: tableCycleType, CookSize: 300, CookAlign: 4}
 }
 
 // KeyedConfigTableType returns KeyedConfig's reflection descriptor.
@@ -6905,15 +7181,15 @@ func KeyedConfigTableType() *TableTypeInfo { return &KeyedConfigTableInfo }
 
 // ScoreBoardTableFields is ScoreBoard's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ScoreBoardTableFields = []TableFieldInfo{
-	{Name: "per_team", Json: "per_team", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xf10fad739a0e1660, Kind: 4, IsArray: true, Counted: false, Optional: false,
+	{Name: "per_team", JSON: "per_team", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xf10fad739a0e1660, Kind: 4, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), ElemSize: uint32(unsafe.Sizeof(ScoreBoardRow{}.PerTeam[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100000.0, RangeIntMin: 0, RangeIntMax: 100000, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id },
+		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyID: func(v uint64) uint64 { id, _ := Team(v).TableEnumID(); return id },
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6923,11 +7199,11 @@ var ScoreBoardTableFields = []TableFieldInfo{
 var ScoreBoardTableInfo TableTypeInfo
 
 func init() {
-	ScoreBoardTableInfo = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoardRow{})), NumFields: 1, Fields: ScoreBoardTableFields, Reset: func(storage unsafe.Pointer) { ScoreBoardReset((*ScoreBoardRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x38b429bf239b38db, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ScoreBoardSaveBody(w, (*ScoreBoardRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ScoreBoardLoadBody(&r, (*ScoreBoardRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	ScoreBoardTableInfo = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoardRow{})), NumFields: 1, Fields: ScoreBoardTableFields, Reset: func(storage unsafe.Pointer) { ScoreBoardReset((*ScoreBoardRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x38b429bf239b38db, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ScoreBoardSaveBody(w, (*ScoreBoardRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ScoreBoardLoadBody(&r, (*ScoreBoardRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return ScoreBoardSaveBodyRetain(w, (*ScoreBoardRow)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ScoreBoardLoadBodyRetain(&r, (*ScoreBoardRow)(p))
-	}, CookSize: 12, CookAlign: 4}
+	}, CycleIndex: 18, CycleType: tableCycleType, CookSize: 12, CookAlign: 4}
 }
 
 // ScoreBoardTableType returns ScoreBoard's reflection descriptor.

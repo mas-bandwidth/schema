@@ -28,6 +28,10 @@ const tableRegionGraphSource = `
         public int* Hash;
         public int Count, Capacity;
         public bool Valid;
+        // A blob is owned by ONE slot (docs/SPEC-TABLES.md §2.5): a writer
+        // refuses a blob a second slot names (blob_shared), while Pack and
+        // Cook place the graph as they find it.
+        public bool RefuseSharedBlobs;
         public TableAllocator Allocator;
         public ReadOnlySpan<RegionNode> Nodes { get { return new ReadOnlySpan<RegionNode>(Entries, Count); } }
         static uint Mix(long at)
@@ -81,11 +85,117 @@ const tableRegionGraphSource = `
         public bool Add(ulong id)
         { if (Reference(id) != 0) { return true; } if (Count == Values.Length) { return false; } Values[Count++] = id; return true; }
     }
-    static RegionGraph RegionNumber(NativeValue root, TableTypeInfo type, TableAllocator allocator = default)
+    static RegionGraph RegionNumber(NativeValue root, TableTypeInfo type, TableAllocator allocator = default, bool refuseSharedBlobs = false)
     {
-        RegionGraph graph = new RegionGraph { Valid = true, Allocator = allocator };
+        RegionGraph graph = new RegionGraph { Valid = true, Allocator = allocator, RefuseSharedBlobs = refuseSharedBlobs };
         if (!RegionVisit(root, type, ref graph)) { graph.Dispose(); return default; }
         return graph;
+    }
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4), for the region,
+    // retaining and builder loads: KAHN'S ALGORITHM over the node directory the
+    // load already holds. The vertices are the root (position 0) and every
+    // directory entry this load placed as a table record; a byte buffer reaches
+    // nothing and takes no part. The edges are every non-null table pointer slot
+    // a node's by-value closure STORES, under a false guard too. During body
+    // reads, NativePointer writes the 1-based directory index (1 .. count) into
+    // each table pointer slot; Kahn's two passes index the directory in O(1)
+    // with no sort and no binary search, and a third pass resolves each slot to
+    // its self-relative byte offset once acyclicity holds. Every node is entered
+    // once and every slot visited three times, so the check is linear in nodes
+    // and slots, nothing recurses over the pointer graph, and a shared node is
+    // legal. A cycle anywhere, reached from the root or not, refuses the load.
+    unsafe struct RegionCycle
+    {
+        public byte* Data, Directory;
+        public bool Mutable, Releasing, Resolving;
+        public int* Indegree, Link;
+        public int Count, Head;
+        public TableTypeInfo Root;
+    }
+    static unsafe long RegionCycleOffset(ref RegionCycle c, int p) { return unchecked((long)NativeWord(c.Directory + p * 16L, 8)); }
+    static unsafe TableTypeInfo RegionCycleType(ref RegionCycle c, int p)
+    {
+        if (p == 0) { return c.Root; }
+        if (unchecked((long)NativeWord(c.Directory + p * 16L, 8)) == -1) { return null; }
+        ulong id = (ulong)NativeWord(c.Directory + p * 16L + 8, 8);
+        if ((c.Root.BytesEdge && id == BytesTypeId) || (c.Root.StringEdge && id == StringTypeId)) { return null; }
+        return c.Root.PointerType(id);
+    }
+    static unsafe bool RegionCyclic(byte* data, byte* directory, int nodes, TableTypeInfo type, TableAllocator allocator, bool mutable)
+    {
+        int count = nodes + 1;
+        int* heap = count > 512 ? (int*)allocator.Get(count * 8L) : null;
+        if (count > 512 && heap == null) { return true; }
+        Span<int> inline = count <= 512 ? stackalloc int[count * 2] : default;
+        fixed (int* pinned = inline)
+        {
+            int* scratch = count <= 512 ? pinned : heap;
+            try
+            {
+                new Span<int>(scratch, count * 2).Clear();
+                RegionCycle c = new RegionCycle { Data = data, Directory = directory, Mutable = mutable, Root = type, Indegree = scratch, Link = scratch + count, Count = count };
+                int vertices = 0;
+                for (int p = 0; p < count; p++)
+                {
+                    TableTypeInfo node = RegionCycleType(ref c, p);
+                    if (node == null) { continue; }
+                    vertices++;
+                    RegionCycleSlots(ref c, new NativeValue(data, RegionCycleOffset(ref c, p)) { Mutable = mutable }, node);
+                }
+                for (int p = 0; p < count; p++)
+                {
+                    if (RegionCycleType(ref c, p) != null && c.Indegree[p] == 0) { c.Link[p] = c.Head; c.Head = p + 1; }
+                }
+                c.Releasing = true;
+                int processed = 0;
+                while (c.Head != 0)
+                {
+                    int p = c.Head - 1; c.Head = c.Link[p]; processed++;
+                    RegionCycleSlots(ref c, new NativeValue(data, RegionCycleOffset(ref c, p)) { Mutable = mutable }, RegionCycleType(ref c, p));
+                }
+                if (processed < vertices) { return true; }
+                c.Resolving = true;
+                for (int p = 0; p < count; p++)
+                {
+                    TableTypeInfo node = RegionCycleType(ref c, p);
+                    if (node != null) { RegionCycleSlots(ref c, new NativeValue(data, RegionCycleOffset(ref c, p)) { Mutable = mutable }, node); }
+                }
+                return false;
+            }
+            finally { if (heap != null) { allocator.Release(heap); } }
+        }
+    }
+    static unsafe void RegionCycleSlots(ref RegionCycle c, NativeValue value, TableTypeInfo type)
+    {
+        foreach (TableFieldInfo f in type.Fields) { RegionCycleField(ref c, value, f); }
+    }
+    static unsafe void RegionCycleField(ref RegionCycle c, NativeValue value, TableFieldInfo f)
+    {
+        if (f == null) { return; }
+        int n = f.IsArray ? Math.Max(0, RegionCount(value, f)) : 1;
+        for (int i = 0; i < n; i++)
+        {
+            if (f.Kind == 13) { RegionCycleSlots(ref c, value.Child(f, i), f.Table); }
+            else if (f.Kind == 15)
+            {
+                NativeValue union = value.Child(f, i); ulong tag = union.Tag(f);
+                if (tag != 0 && tag <= (ulong)f.EnumMax) { RegionCycleField(ref c, union.Arm(f), f.Arms.Arms[(int)tag].Field); }
+            }
+            else if (f.Kind == 17 && f.BlobKind == 0)
+            {
+                ulong raw = value.Raw(f, i);
+                if (raw == 0 || raw > (ulong)c.Count) { continue; }
+                int t = (int)raw - 1;
+                if (c.Resolving)
+                {
+                    long target = RegionCycleOffset(ref c, t);
+                    value.SetRaw(f, i, target < 0 ? 0 : unchecked((ulong)(target - (value.Slot(f, i) - value.Base))));
+                }
+                else if (RegionCycleType(ref c, t) == null) { continue; }
+                else if (!c.Releasing) { c.Indegree[t]++; }
+                else if (--c.Indegree[t] == 0) { c.Link[t] = c.Head; c.Head = t + 1; }
+            }
+        }
     }
     static bool RegionVisit(NativeValue value, TableTypeInfo type, ref RegionGraph graph)
     {
@@ -119,7 +229,11 @@ const tableRegionGraphSource = `
                 int index = graph.Find(at);
                 if (index == 1 || index >= 2 && graph.Entries[index - 2].Open) { return false; }
                 if (index >= 2)
-                { if (graph.Entries[index - 2].TypeId != f.PointerTypeId) { return false; } continue; }
+                {
+                    if (graph.Entries[index - 2].TypeId != f.PointerTypeId) { return false; }
+                    if (f.BlobKind != 0 && graph.RefuseSharedBlobs) { return false; }
+                    continue;
+                }
                 var child = new NativeValue(value.Base, at) { Mutable = value.Mutable };
                 if (f.BlobKind != 0 && NativeWord(child.Base + at, 4) > int.MaxValue) { return false; }
                 int entry = graph.Count;

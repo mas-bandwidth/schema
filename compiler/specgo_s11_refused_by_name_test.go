@@ -56,7 +56,7 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 		},
 		{
 			name:  "Go message paragraph",
-			want:  []string{"Go's message form is fixed roots only", "no variable root gets a message reader or its region sizing"},
+			want:  []string{"Go's message form is fixed roots only", "no variable root gets a message verb"},
 			stale: []string{"spells message region sizing", "or a slice of root pointers plus one caller-owned region for a variable root"},
 		},
 		{
@@ -65,7 +65,7 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 		},
 		{
 			name: "default read refusals",
-			want: []string{"`blob_shared`", "`non_finite`", "a blob shared by two slots (§2.5, `blob_shared`)"},
+			want: []string{"`blob_shared`", "`non_finite_float`", "a blob shared by two slots (§2.5, `blob_shared`)"},
 		},
 		{
 			name: "compile-time refusals with no line",

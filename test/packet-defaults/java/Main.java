@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import java.util.Arrays;
 
 public final class Main {
+    // the Bits writer from offset 0 returns the exact wire bits (SPEC §6.1: no measure)
+    static final byte[] BITS = new byte[4096];
     static void check(boolean ok, String what) { if (!ok) throw new AssertionError(what); }
     static boolean eq(Object a, Object b) throws Exception {
         if (a == null || b == null) return a == b;
@@ -91,52 +93,52 @@ public final class Main {
         check(eq(prefix, new Prefix()), "Init restores short defaults");
         WideMask wide = new WideMask(); check(wide.high == Long.MIN_VALUE && wide.all == -1L, "bit63 and all64 defaults");
         byte[] wideBytes = new byte[16]; wideBytes[7] = (byte)128; Arrays.fill(wideBytes, 8, 16, (byte)255);
-        check(Arrays.equals(write(wide, Defaults::writeWideMask), wideBytes) && Defaults.measureWideMask(wide) == 128, "independent 64-bit wire");
+        check(Arrays.equals(write(wide, Defaults::writeWideMask), wideBytes) && Defaults.writeWideMaskBits(wide, BITS, 0) == 128, "independent 64-bit wire");
         WideMask wideOut = new WideMask(); wideOut.high = 0; wideOut.all = 0; read(wideBytes, 128, wideOut, wide, Defaults::readWideMask);
         SplitMask split = new SplitMask(); split.lead = 5; split.mask = 1L << 32; split.tail = 2;
-        check(Arrays.equals(write(split, Defaults::writeSplitMask), bytes(5,0,0,0,40)) && Defaults.measureSplitMask(split) == 38, "independent 33-bit wire");
+        check(Arrays.equals(write(split, Defaults::writeSplitMask), bytes(5,0,0,0,40)) && Defaults.writeSplitMaskBits(split, BITS, 0) == 38, "independent 33-bit wire");
         read(bytes(5,0,0,0,40), 38, new SplitMask(), split, Defaults::readSplitMask);
         Plain.Sample plain = new Plain.Sample(); put(plain.name, sample().name); plain.nameLength = 6;
         put(plain.token, sample().token); plain.tokenLength = 4; plain.caps = 5;
         check(Arrays.equals(write(plain, Plain::writeSample), write(new Sample(), Defaults::writeSample)) &&
-            Plain.measureSample(plain) == Defaults.measureSample(new Sample()), "defaultless twin");
-        golden(dir, "sample-defaults", new Sample(), zero(), sample(), Defaults::writeSample, Defaults::readSample, Defaults::measureSample);
+            Plain.writeSampleBits(plain, BITS, 0) == Defaults.writeSampleBits(new Sample(), BITS, 0), "defaultless twin");
+        golden(dir, "sample-defaults", new Sample(), zero(), sample(), Defaults::writeSample, Defaults::readSample, v -> Defaults.writeSampleBits(v, BITS, 0));
         Batch batch = new Batch(); check(eq(batch.head, sample()) && batch.countedCount == 1, "nested defaults and born count");
         for (Sample s : batch.items) check(eq(s, sample()), "fixed backing defaults");
         for (Sample s : batch.counted) check(eq(s, sample()), "counted backing defaults");
         Batch initial = new Batch(), want = new Batch(); copy(initial.counted[1], dirty()); copy(want.counted[1], dirty());
         copy(initial.counted[2], shortSample()); copy(want.counted[2], shortSample());
-        golden(dir, "batch-defaults", batch, initial, want, Defaults::writeBatch, Defaults::readBatch, Defaults::measureBatch);
+        golden(dir, "batch-defaults", batch, initial, want, Defaults::writeBatch, Defaults::readBatch, v -> Defaults.writeBatchBits(v, BITS, 0));
         ZeroCount z = new ZeroCount(); check(z.itemsCount == 0 && eq(z.items, new Sample[]{sample(),sample()}), "zero-count backing defaults");
         ZeroCount zi = new ZeroCount(), zw = new ZeroCount(); zi.itemsCount = 2;
         copy(zi.items[0], dirty()); copy(zw.items[0], dirty()); copy(zi.items[1], shortSample()); copy(zw.items[1], shortSample());
-        golden(dir, "zero-count", z, zi, zw, Defaults::writeZeroCount, Defaults::readZeroCount, Defaults::measureZeroCount);
+        golden(dir, "zero-count", z, zi, zw, Defaults::writeZeroCount, Defaults::readZeroCount, v -> Defaults.writeZeroCountBits(v, BITS, 0));
         check(new Conditional().enabled && eq(new Conditional().value, sample()), "conditional defaults");
-        golden(dir, "conditional-on", new Conditional(), new Conditional(), new Conditional(), Defaults::writeConditional, Defaults::readConditional, Defaults::measureConditional);
+        golden(dir, "conditional-on", new Conditional(), new Conditional(), new Conditional(), Defaults::writeConditional, Defaults::readConditional, v -> Defaults.writeConditionalBits(v, BITS, 0));
         Conditional off = new Conditional(), oi = new Conditional(), ow = new Conditional(); off.enabled = false;
         copy(oi.value, dirty()); ow.enabled = false; copy(ow.value, zero());
-        golden(dir, "conditional-off", off, oi, ow, Defaults::writeConditional, Defaults::readConditional, Defaults::measureConditional);
-        Choice choice = new Choice(), ci = new Choice(), cw = new Choice(); choice.type = ChoiceType.sample;
-        ci.type = ChoiceType.conditional; cw.type = ChoiceType.sample;
-        golden(dir, "choice-sample", choice, ci, cw, Defaults::writeChoice, Defaults::readChoice, Defaults::measureChoice);
-        golden(dir, "sample-short", shortSample(), dirty(), overlay(dirty(), shortSample()), Defaults::writeSample, Defaults::readSample, Defaults::measureSample);
-        golden(dir, "sample-empty", zero(), dirty(), overlay(dirty(), zero()), Defaults::writeSample, Defaults::readSample, Defaults::measureSample);
+        golden(dir, "conditional-off", off, oi, ow, Defaults::writeConditional, Defaults::readConditional, v -> Defaults.writeConditionalBits(v, BITS, 0));
+        Choice choice = new Choice(), ci = new Choice(), cw = new Choice(); choice.type = ChoiceType.SAMPLE;
+        ci.type = ChoiceType.CONDITIONAL; cw.type = ChoiceType.SAMPLE;
+        golden(dir, "choice-sample", choice, ci, cw, Defaults::writeChoice, Defaults::readChoice, v -> Defaults.writeChoiceBits(v, BITS, 0));
+        golden(dir, "sample-short", shortSample(), dirty(), overlay(dirty(), shortSample()), Defaults::writeSample, Defaults::readSample, v -> Defaults.writeSampleBits(v, BITS, 0));
+        golden(dir, "sample-empty", zero(), dirty(), overlay(dirty(), zero()), Defaults::writeSample, Defaults::readSample, v -> Defaults.writeSampleBits(v, BITS, 0));
         for (Sample sent : new Sample[]{shortSample(), zero()}) {
-            copy(choice.sample, sent); byte[] wire = write(choice, Defaults::writeChoice); int bits = Defaults.measureChoice(choice);
-            Choice output = new Choice(); output.type = ChoiceType.conditional; Sample arm = output.sample; byte[] name = arm.name;
-            Choice expected = new Choice(); expected.type = ChoiceType.sample; copy(expected.sample, overlay(sample(), sent));
+            copy(choice.sample, sent); byte[] wire = write(choice, Defaults::writeChoice); int bits = Defaults.writeChoiceBits(choice, BITS, 0);
+            Choice output = new Choice(); output.type = ChoiceType.CONDITIONAL; Sample arm = output.sample; byte[] name = arm.name;
+            Choice expected = new Choice(); expected.type = ChoiceType.SAMPLE; copy(expected.sample, overlay(sample(), sent));
             for (int attempt = 0; attempt < 2; attempt++) {
                 copy(arm, dirty()); read(wire, bits, output, expected, Defaults::readChoice);
                 check(output.sample == arm && arm.name == name, "union read retains storage");
             }
         }
-        Choice falseChoice = new Choice(); falseChoice.type = ChoiceType.conditional; falseChoice.conditional.enabled = false;
-        byte[] falseWire = write(falseChoice, Defaults::writeChoice); Choice falseWant = new Choice(); falseWant.type = ChoiceType.conditional;
+        Choice falseChoice = new Choice(); falseChoice.type = ChoiceType.CONDITIONAL; falseChoice.conditional.enabled = false;
+        byte[] falseWire = write(falseChoice, Defaults::writeChoice); Choice falseWant = new Choice(); falseWant.type = ChoiceType.CONDITIONAL;
         falseWant.conditional.enabled = false; copy(falseWant.conditional.value, zero());
-        Choice falseOut = new Choice(); falseOut.type = ChoiceType.sample;
+        Choice falseOut = new Choice(); falseOut.type = ChoiceType.SAMPLE;
         for (int attempt = 0; attempt < 2; attempt++) {
             copy(falseOut.conditional.value, dirty()); falseOut.conditional.enabled = true;
-            read(falseWire, Defaults.measureChoice(falseChoice), falseOut, falseWant, Defaults::readChoice);
+            read(falseWire, Defaults.writeChoiceBits(falseChoice, BITS, 0), falseOut, falseWant, Defaults::readChoice);
         }
         System.out.println("packet defaults Java: constructors, eight C++ goldens and reused storage OK");
     }

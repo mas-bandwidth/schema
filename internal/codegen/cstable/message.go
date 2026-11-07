@@ -20,14 +20,66 @@ func (g *tableGen) emitMessageVocabulary() {
 	g.pf("static readonly TableVocabulary tableOwnVocabulary = TableWire.OwnVocabulary(tableAnnouncement);\n\n")
 }
 
+// messageClosure names what the message form is emitted for: every fixed
+// table, and every struct and union a fixed table holds by value. Only a fixed
+// table rides the message form (docs/SPEC-TABLES.md §3.3), so a variable
+// table, and a struct or a union only variable tables hold, has no message
+// surface and no message columns.
+func messageClosure(u *ir.Unit) (structs, unions map[string]bool) {
+	structs, unions = map[string]bool{}, map[string]bool{}
+	var walk func(st *ir.Struct)
+	var field func(f *ir.Field)
+	field = func(f *ir.Field) {
+		if f == nil || f.Type.Pointer || f.Type.Kind != ir.TNamed {
+			return
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			walk(ref)
+		case *ir.Union:
+			if unions[ref.Name] {
+				return
+			}
+			unions[ref.Name] = true
+			for _, v := range ref.Variants {
+				field(v.F)
+			}
+		}
+	}
+	walk = func(st *ir.Struct) {
+		if structs[st.Name] {
+			return
+		}
+		structs[st.Name] = true
+		for _, f := range st.Fields {
+			field(f)
+		}
+	}
+	for name := range ir.TableClosure(u) {
+		if st := u.Tables[name]; st != nil && st.FixedDeclared {
+			walk(st)
+		}
+	}
+	return structs, unions
+}
+
+func (g *tableGen) messageStructs() map[string]bool {
+	if g.messageS == nil {
+		g.messageS, g.messageU = messageClosure(g.unit)
+	}
+	return g.messageS
+}
+
+func (g *tableGen) messageUnions() map[string]bool {
+	g.messageStructs()
+	return g.messageU
+}
+
 func (g *tableGen) emitMessageSurface(st *ir.Struct) {
-	if st.IsMapEntry() {
+	if st.IsMapEntry() || !g.messageStructs()[st.Name] {
 		return
 	}
 	n := st.Name
-	if ir.VariableTables(g.unit)[n] {
-		g.pf("public static long %sLoadMeasure(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes) { return TableWire.MessageLoadMeasure(%sTableType(), bytes, vocabulary); }\n", n, n)
-	}
 	g.pf("public static long %sMeasureMessages(%s[] values) { return TableWire.MessageSave(values, %sTableType(), Span<byte>.Empty, true); }\n", n, n, n)
 	g.pf("public static long %sSaveMessages(%s[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, %sTableType(), bytes, false); }\n", n, n, n)
 	g.pf("public static TableWire.Verdict %sLoadMessages(%s[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, %sTableType(), bytes, vocabulary, report, out count); }\n\n", n, n, n)
@@ -128,7 +180,7 @@ const tableMessageSource = `
             if (kind == 14 && (!r.Var(out shape.Min) || shape.Min > uint.MaxValue)) { return false; }
             if (!r.Var(out shape.Max) || shape.Max > uint.MaxValue || shape.Max < shape.Min || !r.Has(1)) { return false; }
             shape.Elem = r.Byte();
-            if (!MessageKind(shape.Elem) || shape.Elem == 12 || shape.Elem == 33) { return false; }
+            if (!MessageKind(shape.Elem) || shape.Elem == 33) { return false; }
             // An entry carries its own shape and one element shape. The C++
             // announcement reader does not recursively parse nested arrays.
             if (!element && !Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
@@ -150,10 +202,12 @@ const tableMessageSource = `
         if (bytes.Length < 9) { Damage(report); return Finish(report, Verdict.Damaged); }
         ulong count = Read64(bytes, bytes.Length - 8);
         if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
+        // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+        // claims more than 4096 entries is malformed.
+        if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }
         int end = bytes.Length - 8 - (int)count * 8;
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-        for (int i = 0; i < ids.Length; i += 8)
-        { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { Damage(report); return Finish(report, Verdict.Damaged); } } }
+        if (!DistinctVocabulary(ids)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader r = new Reader(bytes.Slice(1, end - 1), ids);
         if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader payload = default; int versions = 0, vocabularies = 0; bool terminated = false;
@@ -229,17 +283,17 @@ const tableMessageSource = `
         if (!f.Optional && f.Counted) { return f.GetCount(value) != 0; }
         return Rides(value, f);
     }
-    static void MessageBody(ref BitWriter w, object value, TableTypeInfo type, Graph graph, int indexBits)
+    static void MessageBody(ref BitWriter w, object value, TableTypeInfo type)
     {
         foreach (TableFieldInfo f in type.Fields)
         {
             if (!MessageRides(value, f)) { continue; }
             w.Put((uint)f.MessageSlot, tableOwnVocabulary.RefBits);
-            MessageField(ref w, value, f, tableOwnVocabulary.Entries[f.MessageSlot - 1].Shape, graph, indexBits);
+            MessageField(ref w, value, f, tableOwnVocabulary.Entries[f.MessageSlot - 1].Shape);
         }
         w.Put(0, tableOwnVocabulary.RefBits);
     }
-    static void MessageField(ref BitWriter w, object value, TableFieldInfo f, TableMessageShape shape, Graph graph, int indexBits)
+    static void MessageField(ref BitWriter w, object value, TableFieldInfo f, TableMessageShape shape)
     {
         if (f.IsArray)
         {
@@ -250,7 +304,7 @@ const tableMessageSource = `
             for (int i = 0; i < count; i++)
             {
                 if (f.KeyId != null) { if (DefaultElement(value, f, i)) { continue; } w.Put(NameSlot(f.KeyId((ulong)i + 1)), tableOwnVocabulary.RefBits); }
-                MessageElement(ref w, value, f, i, shape.Inner, graph, indexBits);
+                MessageElement(ref w, value, f, i, shape.Inner);
             }
         }
         else if (f.Kind == 12 || f.Kind == 33)
@@ -259,19 +313,18 @@ const tableMessageSource = `
             if (f.Kind == 12) { w.Align(); w.Raw(f.GetBuffer(value).AsSpan(0, count)); }
             else { for (int i = 0; i < count; i++) { w.Put(f.GetChars(value)[i], 16); } }
         }
-        else { MessageElement(ref w, value, f, 0, shape, graph, indexBits); }
+        else { MessageElement(ref w, value, f, 0, shape); }
     }
-    static void MessageElement(ref BitWriter w, object value, TableFieldInfo f, int i, TableMessageShape shape, Graph graph, int indexBits)
+    static void MessageElement(ref BitWriter w, object value, TableFieldInfo f, int i, TableMessageShape shape)
     {
-        if (f.Kind == 13) { MessageBody(ref w, f.GetChild(value, i), f.Table, graph, indexBits); return; }
-        if (f.Kind == 17) { w.Put(graph.Index(f.GetChild(value, i)), indexBits); return; }
+        if (f.Kind == 13) { MessageBody(ref w, f.GetChild(value, i), f.Table); return; }
         if (f.Kind == 30) { ulong raw = f.GetRaw(value, i); w.Put(raw == 0 ? 0 : NameSlot(f.VariantId(raw)), tableOwnVocabulary.RefBits); return; }
         if (f.Kind == 15)
         {
             object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
             if (tag == 0) { w.Put(0, tableOwnVocabulary.RefBits); return; }
             var arm = f.Arms.Arms[(int)tag]; w.Put((uint)arm.MessageSlot, tableOwnVocabulary.RefBits);
-            if (arm.Field != null) { MessageField(ref w, union, arm.Field, tableOwnVocabulary.Entries[arm.MessageSlot - 1].Shape, graph, indexBits); }
+            if (arm.Field != null) { MessageField(ref w, union, arm.Field, tableOwnVocabulary.Entries[arm.MessageSlot - 1].Shape); }
             return;
         }
         UInt128 bits = f.GetWide != null ? f.GetWide(value, i) : f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i);
@@ -287,43 +340,30 @@ const tableMessageSource = `
     }
     public static long MessageSave(object[] values, TableTypeInfo type, Span<byte> bytes, bool measure)
     {
-        if (values.Length < 1 || values.Length > 256) { return -1; }
-        // Validate the graph and every enum/tag before touching the output.
-        Graph[] graphs = type.Variable ? new Graph[values.Length] : null;
+        // Only a fixed table rides the message form (docs/SPEC-TABLES.md §3.3).
+        if (values.Length < 1 || values.Length > 256 || type.Variable) { return -1; }
+        // Validate every enum and tag before touching the output.
         Span<ulong> storage = stackalloc ulong[tableOwnVocabulary.Count];
         for (int i = 0; i < values.Length; i++)
         {
             if (values[i] == null) { return -1; }
-            if (type.Variable) { graphs[i] = Number(values[i], type); if (graphs[i] == null) { return -1; } }
-            Ids ids = new Ids(storage) { Graph = graphs == null ? null : graphs[i] };
-            if (!Collect(values[i], type, ref ids) || !CollectNodes(ref ids)) { return -1; }
+            Ids ids = new Ids(storage);
+            if (!Collect(values[i], type, ref ids)) { return -1; }
         }
         BitWriter probe = new BitWriter(Span<byte>.Empty, true);
-        MessageBatch(ref probe, values, type, graphs);
-        long size = (probe.At + 7) / 8;
+        MessageBatch(ref probe, values, type);
+        long size = (probe.At + 7) / 8 + (type.Integrity ? 4 : 0);
         if (measure) { return size; }
         if (size > bytes.Length) { return -1; }
         bytes.Slice(0, (int)size).Clear(); BitWriter writer = new BitWriter(bytes, false);
-        MessageBatch(ref writer, values, type, graphs); return size;
+        MessageBatch(ref writer, values, type);
+        if (type.Integrity) { BinaryPrimitives.WriteUInt32LittleEndian(bytes.Slice((int)size - 4), IntegrityCrc(bytes.Slice(0, (int)size - 4))); }
+        return size;
     }
-    static void MessageBatch(ref BitWriter w, object[] values, TableTypeInfo type, Graph[] graphs)
+    static void MessageBatch(ref BitWriter w, object[] values, TableTypeInfo type)
     {
         w.Put(2, 8); w.Put((uint)(values.Length - 1), 8);
-        for (int i = 0; i < values.Length; i++)
-        {
-            Graph graph = graphs == null ? null : graphs[i]; int indices = BitCount((ulong)(graph == null ? 1 : graph.Nodes.Count + 1));
-            if (graph != null && graph.Nodes.Count > 0)
-            {
-                w.Put(NameSlot(ulong.MaxValue), tableOwnVocabulary.RefBits); w.Put((uint)graph.Nodes.Count, 32);
-                foreach (Node node in graph.Nodes)
-                {
-                    w.Put(NameSlot(node.TypeId), tableOwnVocabulary.RefBits);
-                    if (node.BlobKind != 0) { byte[] data = ((TableBlob)node.Value).Data; w.Put((uint)data.Length, 32); w.Align(); w.Raw(data); }
-                    else { MessageBody(ref w, node.Value, node.Type, graph, indices); }
-                }
-            }
-            MessageBody(ref w, values[i], type, graph, indices);
-        }
+        for (int i = 0; i < values.Length; i++) { MessageBody(ref w, values[i], type); }
         w.Align();
     }
 `

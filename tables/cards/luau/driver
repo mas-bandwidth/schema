@@ -1,0 +1,3 @@
+#!/bin/sh
+# The host only stages inputs and collects Luau's emitted bytes.
+exec build/cards-driver-luau "$@"

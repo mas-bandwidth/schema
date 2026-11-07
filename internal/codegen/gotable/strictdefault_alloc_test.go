@@ -30,7 +30,7 @@ func varFile(fields ...[]byte) []byte {
 	w := TableWriter{Buffer: buf, Ids: &ids}
 	w.Put8(1)
 	for _, f := range fields {
-		w.Id(VarTableFields[f[0]].Id)
+		w.ID(VarTableFields[f[0]].ID)
 		w.Put8(f[1])
 		for _, b := range f[2:] {
 			w.Put8(b)
@@ -113,13 +113,13 @@ func TestPlainReadsAlloc(t *testing.T) {
 			t.Fatal("variable LoadBuilderTolerant")
 		}
 	})
-	measure("variable FromJson", func() {
-		if !VarFromJson(&vb, varJSON, &r) {
-			t.Fatal("variable FromJson")
+	measure("variable FromJSON", func() {
+		if !VarFromJSON(&vb, varJSON, &r) {
+			t.Fatal("variable FromJSON")
 		}
 	}, func() {
-		if !VarFromJsonTolerant(&vb, varJSON, &r) {
-			t.Fatal("variable FromJsonTolerant")
+		if !VarFromJSONTolerant(&vb, varJSON, &r) {
+			t.Fatal("variable FromJSONTolerant")
 		}
 	})
 	measure("fixed Load", func() {
@@ -131,13 +131,13 @@ func TestPlainReadsAlloc(t *testing.T) {
 			t.Fatal("fixed LoadTolerant")
 		}
 	})
-	measure("fixed FromJson", func() {
-		if !FixFromJson(&fv, fixJSON, &r) {
-			t.Fatal("fixed FromJson")
+	measure("fixed FromJSON", func() {
+		if !FixFromJSON(&fv, fixJSON, &r) {
+			t.Fatal("fixed FromJSON")
 		}
 	}, func() {
-		if !FixFromJsonTolerant(&fv, fixJSON, &r) {
-			t.Fatal("fixed FromJsonTolerant")
+		if !FixFromJSONTolerant(&fv, fixJSON, &r) {
+			t.Fatal("fixed FromJSONTolerant")
 		}
 	})
 	measure("fixed FixedLoad", func() {
@@ -180,9 +180,9 @@ func TestPlainReadsAlloc(t *testing.T) {
 	}{
 		{"variable Load", 0},
 		{"variable LoadBuilder", 1},
-		{"variable FromJson", 3},
+		{"variable FromJSON", 3},
 		{"fixed Load", 0},
-		{"fixed FromJson", 0},
+		{"fixed FromJSON", 0},
 		{"fixed FixedLoad", 0},
 		{"fixed LoadMessages", 0},
 	}

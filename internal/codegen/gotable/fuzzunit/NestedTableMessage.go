@@ -15,104 +15,6 @@ import (
 	"unsafe"
 )
 
-func ArchiveConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *ArchiveConfig) bool {
-	ArchiveConfigReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xa354fd1ff0c467c5:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload3 := r.Path
-					r.Path = r.Path.step(0, uint32(0))
-					if !RootConfigLoadMessageBodyRetain(r, &value.Root) {
-						return false
-					}
-					r.Path = payload3
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb1e5e28e4479a274:
-			{
-				widened := false
-				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload4 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload4.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload4.Signed(entry.Shape.Kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
-						} else if v > 100 {
-							v = 100
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
-						}
-						value.Count = int32(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
 func ArchiveConfigSaveMessageBody(w *TableMessageWriter, value *ArchiveConfig) bool {
 	{
 		probe := *w
@@ -195,11 +97,11 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
 			{
 				widened := false
@@ -276,8 +178,9 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 	}
 }
 
-// ArchiveConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// ArchiveConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // ArchiveConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // ArchiveConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -306,7 +209,9 @@ func ArchiveConfigLoadMessagesTolerant(values []ArchiveConfig, vocabulary *Table
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -314,17 +219,22 @@ func ArchiveConfigLoadMessagesTolerant(values []ArchiveConfig, vocabulary *Table
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !ArchiveConfigLoadMessageBody(&r, &values[i]) {
-			return i, false
+		if !ArchiveConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				ArchiveConfigReset(&values[j])
+			}
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			ArchiveConfigReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func init() {
-	ArchiveConfigTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := ArchiveConfigLoadMessageBodyRetain(&r, (*ArchiveConfig)(p))
-		return r, ok
-	}
 	ArchiveConfigTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return ArchiveConfigSaveMessageBody(w, (*ArchiveConfig)(p))
 	}

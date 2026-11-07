@@ -352,7 +352,17 @@ func rewriteKindMismatchBreaks(s string) string {
 	return head + mid + tail
 }
 
+// Formatting does not add a fourth semantic exception to the twin map.
+// Keep these rewrites narrow: preserve cast types, index operands and the
+// guard-link address expression while accepting both emitted spellings.
+var reCastThenParen = regexp.MustCompile(`\((u?int(?:8|16|32|64)_t)\)\s*\(`)
+var rePlanPrevious = regexp.MustCompile(`plan\[out\s*-\s*1\]`)
+var reGuardLinkAddress = regexp.MustCompile(`(const TableFixedGuardLink REF l = )\*?\s*\(\s*const TableFixedGuardLink\s*\*\s*\)\s*\(\s*const void\s*\*\s*\)\s*\(\s*\(\s*const uint8_t\s*\*\s*\)`)
+var reInlineLocal = regexp.MustCompile(`([{};])\s*(?:const\s+)?(?:u?int(?:8|16|32|64)_t|bool|int)\s+\w+\s*;`)
+
 func normalizeSyntax(s string) string {
+	s = reCastThenParen.ReplaceAllString(s, "($1) (")
+	s = rePlanPrevious.ReplaceAllString(s, "plan[out - 1]")
 	s = strings.ReplaceAll(s, "->", ".")
 	s = strings.ReplaceAll(s, ".as.", ".")
 	s = reStarClamped.ReplaceAllString(s, "$1++")
@@ -481,6 +491,7 @@ func normalizeSyntax(s string) string {
 	s = rewriteFunc(s, "inline bool TableFixedLeafSize", func(body string) string {
 		return strings.ReplaceAll(body, "default: break;", "")
 	})
+	s = reGuardLinkAddress.ReplaceAllString(s, "${1}( const TableFixedGuardLink * ) ( const void * ) ( ( const uint8_t * )")
 	more := []token{
 		{"(uint32_t) table[0]", "table[0]"},
 		{"for ( i = guarded;", "for ( int32_t i = guarded;"},
@@ -634,6 +645,8 @@ func normalizeLocals(s string) string {
 		}
 		b.WriteString(s[i:abs])
 		body := s[abs : end+1]
+		// The same uninitialized local may share a line with the opening brace.
+		body = reInlineLocal.ReplaceAllString(body, "$1")
 		body = localType.ReplaceAllString(body, "")
 		body = localInit.ReplaceAllString(body, "$1 =")
 		b.WriteString(body)
@@ -741,54 +754,9 @@ func stripPendingCBoundScan(s string) string {
 	return s
 }
 
-// The C integrity trailer (roadmap sprint-out/c-integrity-trailer-on-the-file-
-// and-fixed-forms) is not on dev, while the C++ runtime carries the crc32c
-// trailer on the fixed form (SPEC-TABLES §2.14). Until the C sibling lands,
-// compare the common runtime and leave C++'s three integrity helpers out by
-// name; they are covered against Go by the C++ integrity tests. Remove this
-// named exclusion when the C trailer lands.
-func stripPendingCIntegrity(s string) string {
-	for _, name := range []string{"schema_crc32c", "schema_integrity_holds", "schema_integrity_seal"} {
-		for {
-			i := strings.Index(s, "inline ")
-			found := -1
-			for i >= 0 {
-				line := s[i:]
-				if nl := strings.IndexByte(line, '\n'); nl >= 0 {
-					line = line[:nl]
-				}
-				if strings.Contains(line, " "+name+"(") {
-					found = i
-					break
-				}
-				next := strings.Index(s[i+1:], "inline ")
-				if next < 0 {
-					break
-				}
-				i += 1 + next
-			}
-			if found < 0 {
-				break
-			}
-			start := strings.LastIndex(s[:found], "\n") + 1
-			open := strings.Index(s[found:], "{")
-			if open < 0 {
-				break
-			}
-			end := matchingBrace(s, found+open)
-			if end < 0 {
-				break
-			}
-			s = s[:start] + s[end+1:]
-		}
-	}
-	return s
-}
-
 func canonicalize(src string) []string {
 	s := stripComments(src)
 	s = stripPendingCBoundScan(s)
-	s = stripPendingCIntegrity(s)
 	s = strings.ReplaceAll(s, "#define SCHEMA_TABLE_FIXED_NO_GUARD 0xFFFFFFFFu", "kTableFixedNoGuard = 0xFFFFFFFFu;")
 	s = strings.ReplaceAll(s, "#define SCHEMA_TABLE_FIXED_NO_GUARD 0xFFFFFFFF", "kTableFixedNoGuard = 0xFFFFFFFFu;")
 	s = stripPreprocessor(s)
@@ -813,6 +781,19 @@ func extractRuntime(src string) (string, error) {
 		start = nl + 1
 	}
 	body := src[start:]
+	// C++ appends a separate tableIntegrityRuntime after tableFixedRuntime128.
+	// It is not part of the fixed-runtime twin: C emits its corresponding
+	// integrity primitives before this slice. End at that boundary instead
+	// of deleting an expanding list of integrity function names afterward.
+	if i := strings.Index(body, "inline uint32_t schema_crc32c("); i >= 0 {
+		// Calls from integrity helpers into the fixed runtime are expected;
+		// a fixed declaration moved past this boundary must not disappear.
+		fixedDecl := regexp.MustCompile(`(?m)^\s*(?:inline\s+[^\n{;]*\b(?:TableFixed\w*|TableBits\w*|TableFloat\w*)\s*\(|(?:struct|class|enum)\s+(?:TableFixed\w*|TableBits\w*)\b|constexpr\s+[^\n{;=]*\s+kTableFixed\w*\s*=)`)
+		if fixedDecl.MatchString(body[i:]) {
+			return "", fmt.Errorf("fixed-runtime declaration after separate integrity runtime boundary")
+		}
+		body = body[:i]
+	}
 	// C ends at table_bits_to_float (after the 128-bit pair). C++ ends at the
 	// namespace close after Put128; table_bits_to_float sits BEFORE the C++ runtime.
 	if i := strings.Index(body, "table_bits_to_float"); i > 0 {

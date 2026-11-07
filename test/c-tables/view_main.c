@@ -23,6 +23,18 @@
 
 #include VIEW_HEADER
 
+/* The program is one source over every unit of the corpus, and every generated
+   name carries its unit's package (SPEC §6.3): the build names the package as
+   VIEW_PACKAGE and VIEW_PACKAGE_UPPER, and the view surface is spelled through
+   them. */
+#if !defined( VIEW_PACKAGE ) || !defined( VIEW_PACKAGE_UPPER )
+#error "VIEW_PACKAGE and VIEW_PACKAGE_UPPER must name the unit's package"
+#endif
+#define VIEW_CAT_( a, b ) a##_##b
+#define VIEW_CAT( a, b ) VIEW_CAT_( a, b )
+#define VIEW_Q( n ) VIEW_CAT( VIEW_PACKAGE, n )
+#define VIEW_QU( n ) VIEW_CAT( VIEW_PACKAGE_UPPER, n )
+
 // THE PROGRAM CLAIMS NO NAME THE UNIT MIGHT DECLARE. A schema is free to
 // declare `SchemaViewHolderProbe`, `round` or anything else, and this source is compiled
 // against every unit in the corpus, so the package is reached through an alias
@@ -64,14 +76,14 @@ static void annotation( int32_t num_tags, const char * const * tags, const char 
     fputc( '\n', stdout );
 }
 
-static void vocabulary( const char * what, const ViewVocabulary v, const char * row )
+static void vocabulary( const char * what, const VIEW_Q( view_vocabulary_t ) v, const char * row )
 {
     printf( "%s %s file=%s max=%lld bits=%d variants=%d",
             what, v.name, v.file, (long long) v.max, v.storage_bits, v.num_variants );
     annotation( v.num_tags, v.tags, v.doc );
     for ( int32_t i = 0; i < v.num_variants; i++ )
     {
-        const ViewVariant r = v.variants[i];
+        const VIEW_Q( view_variant_t ) r = v.variants[i];
         printf( "%s %s %s %llu %s id=%016llx",
                 what, v.name, row, (unsigned long long) r.value, r.name, (unsigned long long) r.id );
         annotation( r.num_tags, r.tags, r.doc );
@@ -97,20 +109,20 @@ static void vocabulary( const char * what, const ViewVocabulary v, const char * 
 
 typedef struct SchemaViewHolderProbe
 {
-    const TableTypeInfo * type;
-    const TableFieldInfo * field;
+    const VIEW_Q( table_type_info_t ) * type;
+    const VIEW_Q( table_field_info_t ) * field;
 } SchemaViewHolderProbe;
 
-static SchemaViewHolderProbe findSchemaViewHolderProbe( const UnitViewInfo * unit, const char * union_name )
+static SchemaViewHolderProbe findSchemaViewHolderProbe( const VIEW_Q( unit_view_info_t ) * unit, const char * union_name )
 {
     SchemaViewHolderProbe none = { NULL, NULL };
-    const ViewType * sets[2] = { unit->tables, unit->types };
+    const VIEW_Q( view_type_t ) * sets[2] = { unit->tables, unit->types };
     int32_t counts[2] = { unit->num_tables, unit->num_types };
     for ( int s = 0; s < 2; s++ )
     {
         for ( int32_t i = 0; i < counts[s]; i++ )
         {
-            const TableTypeInfo * type = sets[s][i].type;
+            const VIEW_Q( table_type_info_t ) * type = sets[s][i].type;
             for ( int32_t f = 0; f < type->num_fields; f++ )
             {
                 if ( type->fields[f].arms != NULL && strcmp( type->fields[f].type_name, union_name ) == 0 )
@@ -124,16 +136,16 @@ static SchemaViewHolderProbe findSchemaViewHolderProbe( const UnitViewInfo * uni
     return none;
 }
 
-static void unionVocabulary( const UnitViewInfo * unit, const ViewVocabulary v )
+static void unionVocabulary( const VIEW_Q( unit_view_info_t ) * unit, const VIEW_Q( view_vocabulary_t ) v )
 {
     printf( "union %s file=%s max=%lld bits=%d variants=%d",
             v.name, v.file, (long long) v.max, v.storage_bits, v.num_variants );
     annotation( v.num_tags, v.tags, v.doc );
     SchemaViewHolderProbe holder = findSchemaViewHolderProbe( unit, v.name );
-    const TableUnionInfo * arms = holder.type != NULL ? holder.field->arms : NULL;
+    const VIEW_Q( table_union_info_t ) * arms = holder.type != NULL ? holder.field->arms : NULL;
     for ( int32_t i = 0; i < v.num_variants; i++ )
     {
-        const ViewVariant r = v.variants[i];
+        const VIEW_Q( view_variant_t ) r = v.variants[i];
         printf( "union %s arm %llu %s id=%016llx payload=%s record=%s field=%s",
                 v.name, (unsigned long long) r.value, r.name, (unsigned long long) r.id,
                 r.payload_name == NULL ? "-" : r.payload_name,
@@ -161,14 +173,14 @@ static void unionVocabulary( const UnitViewInfo * unit, const ViewVocabulary v )
     }
 }
 
-static void declaration( const char * what, const ViewType entry )
+static void declaration( const char * what, const VIEW_Q( view_type_t ) entry )
 {
-    const TableTypeInfo * type = entry.type;
+    const VIEW_Q( table_type_info_t ) * type = entry.type;
     printf( "%s %s file=%s fields=%d", what, entry.name, entry.file, type->num_fields );
     annotation( entry.num_tags, entry.tags, entry.doc );
     for ( int32_t i = 0; i < type->num_fields; i++ )
     {
-        const TableFieldInfo f = type->fields[i];
+        const VIEW_Q( table_field_info_t ) f = type->fields[i];
         printf( "%s %s field %s json=%s type=%s id=%016llx optional=%s",
                 what, entry.name, f.name, f.json == NULL ? "-" : f.json, f.type_name,
                 (unsigned long long) f.id, f.optional ? "true" : "false" );
@@ -178,11 +190,11 @@ static void declaration( const char * what, const ViewType entry )
 
 int main()
 {
-    const UnitViewInfo * unit = unit_view();
+    const VIEW_Q( unit_view_info_t ) * unit = VIEW_Q( unit_view )();
     printf( "unit package=%s protocol=%016llx\n", unit->package, (unsigned long long) unit->protocol_id );
     for ( int32_t i = 0; i < unit->num_constants; i++ )
     {
-        const ViewConstant c = unit->constants[i];
+        const VIEW_Q( view_constant_t ) c = unit->constants[i];
         uint64_t bits = 0;
         memcpy( &bits, &c.float_value, sizeof( bits ) );
         printf( "constant %s file=%s type=%s float=%s int=%lld real=%016llx",

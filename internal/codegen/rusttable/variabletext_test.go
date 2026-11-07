@@ -39,6 +39,10 @@ func TestCardTextFormMatchesGo(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// the table enums live once per crate (table_enums.rs); empty when none
+	if err := os.WriteFile(filepath.Join(root, "table_enums.rs"), modules["table_enums.rs"], 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(cardTextProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -67,11 +71,14 @@ func TestCardTextFormMatchesGo(t *testing.T) {
 
 const cardTextProbe = `
 mod variable_runtime;
+mod table_enums;
 mod card_table;
 mod card_variable;
 
 use card_table::*;
 use variable_runtime::*;
+#[allow(unused_imports)]
+use table_enums::*;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

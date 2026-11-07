@@ -66,10 +66,10 @@ var measureMalformedSeed2Probe = `package probe
   off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
   v := RootLoadTolerant(raw[off:off+uintptr(n)], w, &rep)
   if v == nil { return false, rep, nil }
-  tn := RootToJsonMeasure(v)
+  tn := RootToJSONMeasure(v)
   if tn < 0 { return true, rep, []byte(fmt.Sprintf("unwritable %d", tn)) }
   text := make([]byte, tn)
-  if RootToJson(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
+  if RootToJSON(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
   return true, rep, text
  }
  // damages is the random-table differential's damage list (truncations,
@@ -107,7 +107,7 @@ var measureMalformedSeed2Probe = `package probe
    var b RootBuilder
    if !b.Init() { t.Fatal("init") }
    var rep TableReport
-   if !RootFromJson(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
+   if !RootFromJSON(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
    if !b.Lock() { t.Fatalf("value %d: lock", i) }
    v := b.AsConst()
    n, err := RootMeasureReason(v)
@@ -122,7 +122,7 @@ var measureMalformedSeed2Probe = `package probe
     ok, drep, text := tolerant(d)
     fmt.Fprintf(sum, "%v %v %q|", ok, drep.Malformed, text)
     m, merr := RootLoadMeasureReason(d)
-    bad := drep.Malformed || !ok
+    bad := drep.Malformed || !ok && drep.NonFiniteFloat == "" // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
     refused := m < 0
     if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
      otherReason++; hits++
@@ -207,10 +207,10 @@ var measureMalformedSeed4Probe = `package probe
   off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
   v := RootLoadTolerant(raw[off:off+uintptr(n)], w, &rep)
   if v == nil { return false, rep, nil }
-  tn := RootToJsonMeasure(v)
+  tn := RootToJSONMeasure(v)
   if tn < 0 { return true, rep, []byte(fmt.Sprintf("unwritable %d", tn)) }
   text := make([]byte, tn)
-  if RootToJson(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
+  if RootToJSON(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
   return true, rep, text
  }
  // damages is the random-table differential's damage list (truncations,
@@ -248,7 +248,7 @@ var measureMalformedSeed4Probe = `package probe
    var b RootBuilder
    if !b.Init() { t.Fatal("init") }
    var rep TableReport
-   if !RootFromJson(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
+   if !RootFromJSON(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
    if !b.Lock() { t.Fatalf("value %d: lock", i) }
    v := b.AsConst()
    n, err := RootMeasureReason(v)
@@ -263,7 +263,7 @@ var measureMalformedSeed4Probe = `package probe
     ok, drep, text := tolerant(d)
     fmt.Fprintf(sum, "%v %v %q|", ok, drep.Malformed, text)
     m, merr := RootLoadMeasureReason(d)
-    bad := drep.Malformed || !ok
+    bad := drep.Malformed || !ok && drep.NonFiniteFloat == "" // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
     refused := m < 0
     if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
      otherReason++; hits++
@@ -370,10 +370,10 @@ var measureMalformedSeed1Probe = `package probe
   off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
   v := RootLoadTolerant(raw[off:off+uintptr(n)], w, &rep)
   if v == nil { return false, rep, nil }
-  tn := RootToJsonMeasure(v)
+  tn := RootToJSONMeasure(v)
   if tn < 0 { return true, rep, []byte(fmt.Sprintf("unwritable %d", tn)) }
   text := make([]byte, tn)
-  if RootToJson(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
+  if RootToJSON(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
   return true, rep, text
  }
  // damages is the random-table differential's damage list (truncations,
@@ -411,7 +411,7 @@ var measureMalformedSeed1Probe = `package probe
    var b RootBuilder
    if !b.Init() { t.Fatal("init") }
    var rep TableReport
-   if !RootFromJson(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
+   if !RootFromJSON(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
    if !b.Lock() { t.Fatalf("value %d: lock", i) }
    v := b.AsConst()
    n, err := RootMeasureReason(v)
@@ -426,7 +426,7 @@ var measureMalformedSeed1Probe = `package probe
     ok, drep, text := tolerant(d)
     fmt.Fprintf(sum, "%v %v %q|", ok, drep.Malformed, text)
     m, merr := RootLoadMeasureReason(d)
-    bad := drep.Malformed || !ok
+    bad := drep.Malformed || !ok && drep.NonFiniteFloat == "" // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
     refused := m < 0
     if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
      otherReason++; hits++
@@ -494,7 +494,7 @@ func measureMalformedKeyedProbe() string {
   var b RootBuilder
   if !b.Init() { t.Fatal("init") }
   var rep TableReport
-  if !RootFromJson(&b, []byte(docs[1]), &rep) || !b.Lock() { t.Fatalf("from json: %+v", rep) }
+  if !RootFromJSON(&b, []byte(docs[1]), &rep) || !b.Lock() { t.Fatalf("from json: %+v", rep) }
   v := b.AsConst()
   n, err := RootMeasureReason(v)
   if err != nil { t.Fatal(err) }
@@ -543,8 +543,13 @@ func measureMalformedWStringProbe() string {
 
 // measureMalformedDigests are the tolerant load's recovery digests at BASE
 // (sprint/schema-go 454596324; the wire-bool-not-0-or-1 landing moved them), one per unit: a change to the strict measure
-// that moves any of them changed what the tolerant load recovers.
-var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "6cb634cea503ef64", 1: "3c349a4882bff250", 0: "63ddc043eeaf9665", 5: "7e55fc79c537f278"}
+// that moves any of them changed what the tolerant load recovers. Seeds 4 and 1
+// moved when table floats went finite only (SPEC-TABLES §3.3, 2026-10-27): the
+// damaged wires whose float bytes became a NaN or an infinity are now refused
+// by the tolerant load, by design, instead of landed. All five moved when
+// damage came to discard the whole load (SPEC-TABLES §4): a damaged wire that
+// had landed a partial value now leaves the builder's root at its defaults.
+var measureMalformedDigests = map[int]string{2: "4f7ea154e044e937", 4: "ea01d2327f79c3bf", 1: "a0e7f82fb137110c", 0: "cf4da4e7984c1dbc", 5: "93e76472c04be725"}
 
 func measureMalformedProbe(seed int, probe string) string {
 	return strings.Replace(probe, "@@DIGEST@@", measureMalformedDigests[seed], 1)

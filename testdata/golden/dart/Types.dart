@@ -8,67 +8,7 @@ import 'dart:typed_data';
 
 import 'Constants.dart' show maxInputsPerPacket, rotationUnits;
 import 'Enums.dart' show Pending, ShipType, Team;
-
-// One 8-byte conversion scratch under overlaid typed-data views — single
-// threaded per isolate, always consumed in the same operation that fills it.
-final Float32List _f32 = Float32List(2);
-final Uint32List _u32 = _f32.buffer.asUint32List();
-final Float64List _f64 = _f32.buffer.asFloat64List();
-final Uint64List _u64 = _f32.buffer.asUint64List();
-
-// The 32 bits of the IEEE-754 single representation of value. Non-NaN goes
-// through the hardware conversion; a NaN narrows in software — sign kept,
-// top 23 mantissa bits kept, the quiet bit forced only for the all-low-
-// payload case — so every pattern the read half produces round trips.
-@pragma('vm:prefer-inline')
-int _float32BitsFromDouble(double value) {
-  if (!value.isNaN) {
-    _f32[0] = value;
-    return _u32[0];
-  }
-  _f64[0] = value;
-  final bits64 = _u64[0];
-  final sign = (bits64 >>> 63) << 31;
-  var mantissa = (bits64 >>> 29) & 0x7fffff;
-  if (mantissa == 0) {
-    mantissa = 0x400000;
-  }
-  return sign | 0x7f800000 | mantissa;
-}
-
-// The double whose IEEE-754 single representation is bits. NaN patterns
-// widen in software (the hardware conversion quiets a signaling NaN); the
-// reader reproduces the transmitted pattern exactly.
-@pragma('vm:prefer-inline')
-double _doubleFromFloat32Bits(int bits) {
-  if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-    _u64[0] =
-        ((bits >>> 31) << 63) | 0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
-    return _f64[0];
-  }
-  _u32[0] = bits;
-  return _f32[0];
-}
-
-// The 64 bits of the IEEE-754 double representation of value — exactly the
-// bits of the Dart double — and the inverse.
-@pragma('vm:prefer-inline')
-int _float64BitsFromDouble(double value) {
-  _f64[0] = value;
-  return _u64[0];
-}
-
-@pragma('vm:prefer-inline')
-double _doubleFromFloat64Bits(int bits) {
-  _u64[0] = bits;
-  return _f64[0];
-}
-
-// Unsigned 64-bit less-than: flip the sign bit so the signed comparison
-// orders the unsigned domain (uint64 values ride bit-transparently in int).
-@pragma('vm:prefer-inline')
-bool _unsignedLessThan(int a, int b) =>
-    (a ^ 0x8000000000000000) < (b ^ 0x8000000000000000);
+import 'Schema.dart' show Schema;
 
 // type Vec3
 final class Vec3 {
@@ -107,7 +47,9 @@ int writeVec3(Vec3 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = _float64BitsFromDouble(value.x);
+  assert(value.x.isFinite);
+  assert(value.y.isFinite);
+  v = Schema.float64BitsFromDouble(value.x);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -116,7 +58,8 @@ int writeVec3(Vec3 value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.y);
+  assert(value.z.isFinite);
+  v = Schema.float64BitsFromDouble(value.y);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -125,7 +68,7 @@ int writeVec3(Vec3 value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.z);
+  v = Schema.float64BitsFromDouble(value.z);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -182,7 +125,10 @@ bool readVec3(Vec3 value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.x = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.x = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -199,7 +145,10 @@ bool readVec3(Vec3 value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.y = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.y = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -216,13 +165,12 @@ bool readVec3(Vec3 value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.z = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.z = Schema.doubleFromFloat64Bits(lo);
   return true;
 }
-
-// measureVec3 is the exact wire bits writeVec3 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureVec3(Vec3 value) => 192;
 
 // type Quat
 final class Quat {
@@ -264,7 +212,9 @@ int writeQuat(Quat value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = _float64BitsFromDouble(value.x);
+  assert(value.x.isFinite);
+  assert(value.y.isFinite);
+  v = Schema.float64BitsFromDouble(value.x);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -273,7 +223,8 @@ int writeQuat(Quat value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.y);
+  assert(value.z.isFinite);
+  v = Schema.float64BitsFromDouble(value.y);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -282,7 +233,8 @@ int writeQuat(Quat value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.z);
+  assert(value.w.isFinite);
+  v = Schema.float64BitsFromDouble(value.z);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -291,7 +243,7 @@ int writeQuat(Quat value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.w);
+  v = Schema.float64BitsFromDouble(value.w);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -348,7 +300,10 @@ bool readQuat(Quat value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.x = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.x = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -365,7 +320,10 @@ bool readQuat(Quat value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.y = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.y = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -382,7 +340,10 @@ bool readQuat(Quat value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.z = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.z = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -399,13 +360,12 @@ bool readQuat(Quat value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.w = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.w = Schema.doubleFromFloat64Bits(lo);
   return true;
 }
-
-// measureQuat is the exact wire bits writeQuat would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureQuat(Quat value) => 256;
 
 // type Handle
 final class Handle {
@@ -444,15 +404,9 @@ int writeHandle(Handle value, ByteData view) {
   var v = 0;
   assert(value.objectId >= 0);
   assert(value.objectId <= 9999);
-  v = ((value.objectId) & 0x3fff) | (((value.objectSequence) & 0xff) << 14);
+  v = (value.objectId & 0x3fff) | ((value.objectSequence & 0xff) << 14);
   scratch |= v << scratchBits;
   scratchBits += 22;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (22 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -500,10 +454,6 @@ bool readHandle(Handle value, ByteData view, int numBits) {
   value.objectSequence = v;
   return true;
 }
-
-// measureHandle is the exact wire bits writeHandle would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureHandle(Handle value) => 22;
 
 // type QuantizedPosition
 final class QuantizedPosition {
@@ -556,13 +506,7 @@ int writeQuantizedPosition(QuantizedPosition value, ByteData view) {
       (((value.y + 8388608) & 0x1ffffff) << 25);
   scratch |= v << scratchBits;
   scratchBits += 50;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (50 - scratchBits);
-  }
-  v = ((value.z + 8388608) & 0x1ffffff);
+  v = (value.z + 8388608) & 0x1ffffff;
   scratch |= v << scratchBits;
   scratchBits += 25;
   if (scratchBits >= 64) {
@@ -637,10 +581,6 @@ bool readQuantizedPosition(
   return true;
 }
 
-// measureQuantizedPosition is the exact wire bits writeQuantizedPosition would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureQuantizedPosition(QuantizedPosition value) => 75;
-
 // type QuantizedVelocity
 final class QuantizedVelocity {
   // wire [-2097152, 2097152]
@@ -692,13 +632,7 @@ int writeQuantizedVelocity(QuantizedVelocity value, ByteData view) {
       (((value.y + 2097152) & 0x7fffff) << 23);
   scratch |= v << scratchBits;
   scratchBits += 46;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (46 - scratchBits);
-  }
-  v = ((value.z + 2097152) & 0x7fffff);
+  v = (value.z + 2097152) & 0x7fffff;
   scratch |= v << scratchBits;
   scratchBits += 23;
   if (scratchBits >= 64) {
@@ -773,10 +707,6 @@ bool readQuantizedVelocity(
   return true;
 }
 
-// measureQuantizedVelocity is the exact wire bits writeQuantizedVelocity would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureQuantizedVelocity(QuantizedVelocity value) => 69;
-
 // type QuantizedRotation
 final class QuantizedRotation {
   // wire [-1024, 1024]
@@ -836,12 +766,6 @@ int writeQuantizedRotation(QuantizedRotation value, ByteData view) {
       (((value.w + 1024) & 0xfff) << 36);
   scratch |= v << scratchBits;
   scratchBits += 48;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (48 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -909,10 +833,6 @@ bool readQuantizedRotation(
   return true;
 }
 
-// measureQuantizedRotation is the exact wire bits writeQuantizedRotation would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureQuantizedRotation(QuantizedRotation value) => 48;
-
 // type RigidBody
 final class RigidBody {
   final Vec3 position = Vec3();
@@ -959,7 +879,9 @@ int writeRigidBody(RigidBody value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = _float64BitsFromDouble(value.position.x);
+  assert(value.position.x.isFinite);
+  assert(value.position.y.isFinite);
+  v = Schema.float64BitsFromDouble(value.position.x);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -968,7 +890,8 @@ int writeRigidBody(RigidBody value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.position.y);
+  assert(value.position.z.isFinite);
+  v = Schema.float64BitsFromDouble(value.position.y);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -977,7 +900,8 @@ int writeRigidBody(RigidBody value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.position.z);
+  assert(value.orientation.x.isFinite);
+  v = Schema.float64BitsFromDouble(value.position.z);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -986,7 +910,8 @@ int writeRigidBody(RigidBody value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.orientation.x);
+  assert(value.orientation.y.isFinite);
+  v = Schema.float64BitsFromDouble(value.orientation.x);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -995,7 +920,8 @@ int writeRigidBody(RigidBody value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.orientation.y);
+  assert(value.orientation.z.isFinite);
+  v = Schema.float64BitsFromDouble(value.orientation.y);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1004,7 +930,8 @@ int writeRigidBody(RigidBody value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.orientation.z);
+  assert(value.orientation.w.isFinite);
+  v = Schema.float64BitsFromDouble(value.orientation.z);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1013,7 +940,7 @@ int writeRigidBody(RigidBody value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.orientation.w);
+  v = Schema.float64BitsFromDouble(value.orientation.w);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1022,7 +949,7 @@ int writeRigidBody(RigidBody value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.atRest ? 1 : 0);
+  v = value.atRest ? 1 : 0;
   scratch |= v << scratchBits;
   scratchBits += 1;
   if (scratchBits >= 64) {
@@ -1032,7 +959,9 @@ int writeRigidBody(RigidBody value, ByteData view) {
     scratch = v >>> (1 - scratchBits);
   }
   if (!value.atRest) {
-    v = _float64BitsFromDouble(value.linearVelocity.x);
+    assert(value.linearVelocity.x.isFinite);
+    assert(value.linearVelocity.y.isFinite);
+    v = Schema.float64BitsFromDouble(value.linearVelocity.x);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1041,7 +970,8 @@ int writeRigidBody(RigidBody value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = _float64BitsFromDouble(value.linearVelocity.y);
+    assert(value.linearVelocity.z.isFinite);
+    v = Schema.float64BitsFromDouble(value.linearVelocity.y);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1050,7 +980,8 @@ int writeRigidBody(RigidBody value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = _float64BitsFromDouble(value.linearVelocity.z);
+    assert(value.angularVelocity.x.isFinite);
+    v = Schema.float64BitsFromDouble(value.linearVelocity.z);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1059,7 +990,8 @@ int writeRigidBody(RigidBody value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = _float64BitsFromDouble(value.angularVelocity.x);
+    assert(value.angularVelocity.y.isFinite);
+    v = Schema.float64BitsFromDouble(value.angularVelocity.x);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1068,7 +1000,8 @@ int writeRigidBody(RigidBody value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = _float64BitsFromDouble(value.angularVelocity.y);
+    assert(value.angularVelocity.z.isFinite);
+    v = Schema.float64BitsFromDouble(value.angularVelocity.y);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1077,7 +1010,7 @@ int writeRigidBody(RigidBody value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = _float64BitsFromDouble(value.angularVelocity.z);
+    v = Schema.float64BitsFromDouble(value.angularVelocity.z);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1135,7 +1068,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.position.x = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.position.x = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1152,7 +1088,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.position.y = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.position.y = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1169,7 +1108,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.position.z = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.position.z = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1186,7 +1128,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.orientation.x = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.orientation.x = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1203,7 +1148,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.orientation.y = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.orientation.y = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1220,7 +1168,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.orientation.z = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.orientation.z = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1237,7 +1188,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.orientation.w = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.orientation.w = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0x1;
   bitsRead += 1;
   value.atRest = v != 0;
@@ -1261,7 +1215,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
-    value.linearVelocity.x = _doubleFromFloat64Bits(lo);
+    if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    value.linearVelocity.x = Schema.doubleFromFloat64Bits(lo);
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
@@ -1278,7 +1235,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
-    value.linearVelocity.y = _doubleFromFloat64Bits(lo);
+    if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    value.linearVelocity.y = Schema.doubleFromFloat64Bits(lo);
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
@@ -1295,7 +1255,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
-    value.linearVelocity.z = _doubleFromFloat64Bits(lo);
+    if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    value.linearVelocity.z = Schema.doubleFromFloat64Bits(lo);
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
@@ -1312,7 +1275,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
-    value.angularVelocity.x = _doubleFromFloat64Bits(lo);
+    if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    value.angularVelocity.x = Schema.doubleFromFloat64Bits(lo);
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
@@ -1329,7 +1295,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
-    value.angularVelocity.y = _doubleFromFloat64Bits(lo);
+    if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    value.angularVelocity.y = Schema.doubleFromFloat64Bits(lo);
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
@@ -1346,7 +1315,10 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
-    value.angularVelocity.z = _doubleFromFloat64Bits(lo);
+    if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    value.angularVelocity.z = Schema.doubleFromFloat64Bits(lo);
   } else {
     value.linearVelocity.x = 0.0;
     value.linearVelocity.y = 0.0;
@@ -1356,17 +1328,6 @@ bool readRigidBody(RigidBody value, ByteData view, int numBits) {
     value.angularVelocity.z = 0.0;
   }
   return true;
-}
-
-// measureRigidBody is the exact wire bits writeRigidBody would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureRigidBody(RigidBody value) {
-  var bits = 0;
-  bits += 449;
-  if (!value.atRest) {
-    bits += 384;
-  }
-  return bits;
 }
 
 // type Input
@@ -1436,45 +1397,71 @@ int writeInput(Input value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v =
-      _float32BitsFromDouble(value.stickX) |
-      (_float32BitsFromDouble(value.stickY) << 32);
+  Schema.f32[0] = value.stickX;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
-  scratchBits += 64;
+  scratchBits += 32;
+  Schema.f32[0] = value.stickY;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
+  scratch |= v << scratchBits;
+  scratchBits += 32;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (64 - scratchBits);
+    scratch = v >>> (32 - scratchBits);
+  }
+  Schema.f32[0] = value.throttle;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  Schema.f32[0] = value.yaw;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  Schema.f32[0] = value.pitch;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
   }
   v =
-      _float32BitsFromDouble(value.throttle) |
-      (_float32BitsFromDouble(value.yaw) << 32);
+      (value.fire ? 1 : 0) |
+      ((value.altFire ? 1 : 0) << 1) |
+      ((value.boost ? 1 : 0) << 2) |
+      ((value.brake ? 1 : 0) << 3) |
+      ((value.aim ? 1 : 0) << 4) |
+      ((value.lockOn ? 1 : 0) << 5) |
+      ((value.zoom ? 1 : 0) << 6) |
+      ((value.ping ? 1 : 0) << 7);
   scratch |= v << scratchBits;
-  scratchBits += 64;
+  scratchBits += 8;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (64 - scratchBits);
-  }
-  v =
-      _float32BitsFromDouble(value.pitch) |
-      ((value.fire ? 1 : 0) << 32) |
-      ((value.altFire ? 1 : 0) << 33) |
-      ((value.boost ? 1 : 0) << 34) |
-      ((value.brake ? 1 : 0) << 35) |
-      ((value.aim ? 1 : 0) << 36) |
-      ((value.lockOn ? 1 : 0) << 37) |
-      ((value.zoom ? 1 : 0) << 38) |
-      ((value.ping ? 1 : 0) << 39);
-  scratch |= v << scratchBits;
-  scratchBits += 40;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (40 - scratchBits);
+    scratch = v >>> (8 - scratchBits);
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -1514,7 +1501,11 @@ bool readInput(Input value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.stickX = _doubleFromFloat32Bits(v);
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  Schema.u32[0] = v;
+  value.stickX = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1522,7 +1513,11 @@ bool readInput(Input value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.stickY = _doubleFromFloat32Bits(v);
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  Schema.u32[0] = v;
+  value.stickY = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1530,7 +1525,11 @@ bool readInput(Input value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.throttle = _doubleFromFloat32Bits(v);
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  Schema.u32[0] = v;
+  value.throttle = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1538,7 +1537,11 @@ bool readInput(Input value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.yaw = _doubleFromFloat32Bits(v);
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  Schema.u32[0] = v;
+  value.yaw = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1546,7 +1549,11 @@ bool readInput(Input value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.pitch = _doubleFromFloat32Bits(v);
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  Schema.u32[0] = v;
+  value.pitch = Schema.f32[0];
   v = (window >>> 32) & 0x1;
   bitsRead += 1;
   value.fire = v != 0;
@@ -1573,10 +1580,6 @@ bool readInput(Input value, ByteData view, int numBits) {
   value.ping = v != 0;
   return true;
 }
-
-// measureInput is the exact wire bits writeInput would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureInput(Input value) => 168;
 
 // type InputPacket
 final class InputPacket {
@@ -1625,16 +1628,10 @@ int writeInputPacket(InputPacket value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = ((value.synchronizeSequence) & 0xffff);
+  v = value.synchronizeSequence & 0xffff;
   scratch |= v << scratchBits;
   scratchBits += 16;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
-  }
-  v = (value.currentFrame);
+  v = value.currentFrame;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1645,7 +1642,7 @@ int writeInputPacket(InputPacket value, ByteData view) {
   }
   assert(value.inputsCount >= 0);
   assert(value.inputsCount <= 16);
-  v = (value.startFrame);
+  v = value.startFrame;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1654,7 +1651,7 @@ int writeInputPacket(InputPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = ((value.inputsCount) & 0x1f);
+  v = value.inputsCount & 0x1f;
   scratch |= v << scratchBits;
   scratchBits += 5;
   if (scratchBits >= 64) {
@@ -1665,45 +1662,77 @@ int writeInputPacket(InputPacket value, ByteData view) {
   }
   for (var i0 = 0; i0 < value.inputsCount; i0++) {
     final e0 = value.inputs[i0];
-    v =
-        _float32BitsFromDouble(e0.stickX) |
-        (_float32BitsFromDouble(e0.stickY) << 32);
+    Schema.f32[0] = e0.stickX;
+    v = Schema.u32[0];
+    assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
     scratch |= v << scratchBits;
-    scratchBits += 64;
+    scratchBits += 32;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (64 - scratchBits);
+      scratch = v >>> (32 - scratchBits);
+    }
+    Schema.f32[0] = e0.stickY;
+    v = Schema.u32[0];
+    assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
+    Schema.f32[0] = e0.throttle;
+    v = Schema.u32[0];
+    assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
+    Schema.f32[0] = e0.yaw;
+    v = Schema.u32[0];
+    assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
+    Schema.f32[0] = e0.pitch;
+    v = Schema.u32[0];
+    assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
     }
     v =
-        _float32BitsFromDouble(e0.throttle) |
-        (_float32BitsFromDouble(e0.yaw) << 32);
+        (e0.fire ? 1 : 0) |
+        ((e0.altFire ? 1 : 0) << 1) |
+        ((e0.boost ? 1 : 0) << 2) |
+        ((e0.brake ? 1 : 0) << 3) |
+        ((e0.aim ? 1 : 0) << 4) |
+        ((e0.lockOn ? 1 : 0) << 5) |
+        ((e0.zoom ? 1 : 0) << 6) |
+        ((e0.ping ? 1 : 0) << 7);
     scratch |= v << scratchBits;
-    scratchBits += 64;
+    scratchBits += 8;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (64 - scratchBits);
-    }
-    v =
-        _float32BitsFromDouble(e0.pitch) |
-        ((e0.fire ? 1 : 0) << 32) |
-        ((e0.altFire ? 1 : 0) << 33) |
-        ((e0.boost ? 1 : 0) << 34) |
-        ((e0.brake ? 1 : 0) << 35) |
-        ((e0.aim ? 1 : 0) << 36) |
-        ((e0.lockOn ? 1 : 0) << 37) |
-        ((e0.zoom ? 1 : 0) << 38) |
-        ((e0.ping ? 1 : 0) << 39);
-    scratch |= v << scratchBits;
-    scratchBits += 40;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (40 - scratchBits);
+      scratch = v >>> (8 - scratchBits);
     }
   }
   if (scratchBits != 0) {
@@ -1796,7 +1825,11 @@ bool readInputPacket(InputPacket value, ByteData view, int numBits) {
     }
     v = window & 0xffffffff;
     bitsRead += 32;
-    e0.stickX = _doubleFromFloat32Bits(v);
+    if ((v & 0x7f800000) == 0x7f800000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    Schema.u32[0] = v;
+    e0.stickX = Schema.f32[0];
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
@@ -1804,7 +1837,11 @@ bool readInputPacket(InputPacket value, ByteData view, int numBits) {
     }
     v = window & 0xffffffff;
     bitsRead += 32;
-    e0.stickY = _doubleFromFloat32Bits(v);
+    if ((v & 0x7f800000) == 0x7f800000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    Schema.u32[0] = v;
+    e0.stickY = Schema.f32[0];
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
@@ -1812,7 +1849,11 @@ bool readInputPacket(InputPacket value, ByteData view, int numBits) {
     }
     v = window & 0xffffffff;
     bitsRead += 32;
-    e0.throttle = _doubleFromFloat32Bits(v);
+    if ((v & 0x7f800000) == 0x7f800000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    Schema.u32[0] = v;
+    e0.throttle = Schema.f32[0];
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
@@ -1820,7 +1861,11 @@ bool readInputPacket(InputPacket value, ByteData view, int numBits) {
     }
     v = window & 0xffffffff;
     bitsRead += 32;
-    e0.yaw = _doubleFromFloat32Bits(v);
+    if ((v & 0x7f800000) == 0x7f800000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    Schema.u32[0] = v;
+    e0.yaw = Schema.f32[0];
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
@@ -1828,7 +1873,11 @@ bool readInputPacket(InputPacket value, ByteData view, int numBits) {
     }
     v = window & 0xffffffff;
     bitsRead += 32;
-    e0.pitch = _doubleFromFloat32Bits(v);
+    if ((v & 0x7f800000) == 0x7f800000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
+    Schema.u32[0] = v;
+    e0.pitch = Schema.f32[0];
     v = (window >>> 32) & 0x1;
     bitsRead += 1;
     e0.fire = v != 0;
@@ -1857,18 +1906,9 @@ bool readInputPacket(InputPacket value, ByteData view, int numBits) {
   return true;
 }
 
-// measureInputPacket is the exact wire bits writeInputPacket would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureInputPacket(InputPacket value) {
-  var bits = 0;
-  bits += 149;
-  bits += value.inputsCount * 168;
-  return bits;
-}
-
 // type ShipCreate
 final class ShipCreate {
-  int shipType = ShipType.none;
+  ShipType shipType = ShipType.none;
   final QuantizedPosition position = QuantizedPosition();
   final QuantizedRotation rotation = QuantizedRotation();
   final QuantizedVelocity linearVelocity = QuantizedVelocity();
@@ -1879,12 +1919,12 @@ final class ShipCreate {
   // ShipFlags — consumed as masks, uint64 storage (SPEC §4.2)
   int flags = 0;
 
-  int team = Team.none;
+  Team team = Team.none;
   // wire [0, 1000]
   int health = 0;
   // wire [0, 100]
   int thrust = 0;
-  int pending = Pending.none;
+  Pending pending = Pending.none;
 }
 
 // shipCreateMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -1895,30 +1935,30 @@ const int shipCreateMaxBytes = 32;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroShipCreate(ShipCreate value) {
-  value.shipType = 0;
+  value.shipType = ShipType.none;
   zeroQuantizedPosition(value.position);
   zeroQuantizedRotation(value.rotation);
   zeroQuantizedVelocity(value.linearVelocity);
   value.hasFlags = false;
   value.flags = 0;
-  value.team = 0;
+  value.team = Team.none;
   value.health = 0;
   value.thrust = 0;
-  value.pending = 0;
+  value.pending = Pending.none;
 }
 
 // Restore construction defaults in place; buffers and objects are retained.
 void initShipCreate(ShipCreate value) {
-  value.shipType = 0;
+  value.shipType = ShipType.none;
   initQuantizedPosition(value.position);
   initQuantizedRotation(value.rotation);
   initQuantizedVelocity(value.linearVelocity);
   value.hasFlags = false;
   value.flags = 0;
-  value.team = 0;
+  value.team = Team.none;
   value.health = 0;
   value.thrust = 0;
-  value.pending = 0;
+  value.pending = Pending.none;
 }
 
 // writeShipCreate packs value into view — the trusted writer (contracts asserted,
@@ -1940,17 +1980,11 @@ int writeShipCreate(ShipCreate value, ByteData view) {
   assert(value.position.z >= -8388608);
   assert(value.position.z <= 8388608);
   v =
-      ((value.shipType) & 0x7) |
+      (value.shipType & 0x7) |
       (((value.position.x + 8388608) & 0x1ffffff) << 3) |
       (((value.position.y + 8388608) & 0x1ffffff) << 28);
   scratch |= v << scratchBits;
   scratchBits += 53;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (53 - scratchBits);
-  }
   assert(value.rotation.x >= -1024);
   assert(value.rotation.x <= 1024);
   assert(value.rotation.y >= -1024);
@@ -2003,7 +2037,7 @@ int writeShipCreate(ShipCreate value, ByteData view) {
   }
   if (value.hasFlags) {
     assert(value.flags >>> 4 == 0);
-    v = ((value.flags) & 0xf);
+    v = value.flags & 0xf;
     scratch |= v << scratchBits;
     scratchBits += 4;
     if (scratchBits >= 64) {
@@ -2022,9 +2056,9 @@ int writeShipCreate(ShipCreate value, ByteData view) {
   assert(value.pending >= 0);
   assert(value.pending <= 0);
   v =
-      ((value.team) & 0x3) |
-      (((value.health) & 0x3ff) << 2) |
-      (((value.thrust) & 0x7f) << 12);
+      (value.team & 0x3) |
+      ((value.health & 0x3ff) << 2) |
+      ((value.thrust & 0x7f) << 12);
   scratch |= v << scratchBits;
   scratchBits += 19;
   if (scratchBits >= 64) {
@@ -2074,7 +2108,7 @@ bool readShipCreate(ShipCreate value, ByteData view, int numBits) {
   if (v > 5) {
     return false; // headroom above the wire range is refused
   }
-  value.shipType = v;
+  value.shipType = ShipType(v);
   v = (window >>> 3) & 0x1ffffff;
   bitsRead += 25;
   if (v > 16777216) {
@@ -2181,7 +2215,7 @@ bool readShipCreate(ShipCreate value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // headroom above the wire range is refused
   }
-  value.team = v;
+  value.team = Team(v);
   v = (window >>> 2) & 0x3ff;
   bitsRead += 10;
   if (v > 1000) {
@@ -2194,20 +2228,8 @@ bool readShipCreate(ShipCreate value, ByteData view, int numBits) {
     return false; // a smuggled offset is refused
   }
   value.thrust = v;
-  value.pending = 0;
+  value.pending = Pending.none;
   return true;
-}
-
-// measureShipCreate is the exact wire bits writeShipCreate would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureShipCreate(ShipCreate value) {
-  var bits = 0;
-  bits += 196;
-  if (value.hasFlags) {
-    bits += 4;
-  }
-  bits += 19;
-  return bits;
 }
 
 // type ExpressionProbe
@@ -2250,17 +2272,9 @@ int writeExpressionProbe(ExpressionProbe value, ByteData view) {
   assert(value.hardpointIndex <= 31);
   assert(value.spinRate >= 1024);
   assert(value.spinRate <= 2048);
-  v =
-      ((value.hardpointIndex) & 0x1f) |
-      (((value.spinRate - 1024) & 0x7ff) << 5);
+  v = (value.hardpointIndex & 0x1f) | (((value.spinRate - 1024) & 0x7ff) << 5);
   scratch |= v << scratchBits;
   scratchBits += 16;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -2308,10 +2322,6 @@ bool readExpressionProbe(ExpressionProbe value, ByteData view, int numBits) {
   value.spinRate = 1024 + v;
   return true;
 }
-
-// measureExpressionProbe is the exact wire bits writeExpressionProbe would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureExpressionProbe(ExpressionProbe value) => 16;
 
 const int floorLimit = 0x8000000000000000;
 
@@ -2367,7 +2377,7 @@ int writeExtremeProbe(ExtremeProbe value, ByteData view) {
   var v = 0;
   assert(value.floorBound <= 100);
   assert(value.doubledFloor <= 100);
-  v = (value.floorBound - 0x8000000000000000);
+  v = value.floorBound - 0x8000000000000000;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2376,8 +2386,8 @@ int writeExtremeProbe(ExtremeProbe value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  assert(!_unsignedLessThan(value.ceilingRange, 1));
-  v = (value.doubledFloor - 0x8000000000000000);
+  assert(!Schema.unsignedLessThan(value.ceilingRange, 1));
+  v = value.doubledFloor - 0x8000000000000000;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2386,7 +2396,7 @@ int writeExtremeProbe(ExtremeProbe value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.ceilingRange - 1);
+  v = value.ceilingRange - 1;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2395,7 +2405,7 @@ int writeExtremeProbe(ExtremeProbe value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.floorDefault);
+  v = value.floorDefault;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2404,7 +2414,7 @@ int writeExtremeProbe(ExtremeProbe value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.ceilingDefault);
+  v = value.ceilingDefault;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2461,7 +2471,7 @@ bool readExtremeProbe(ExtremeProbe value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  if (_unsignedLessThan(0x8000000000000064, lo)) {
+  if (Schema.unsignedLessThan(0x8000000000000064, lo)) {
     return false; // a smuggled offset is refused
   }
   value.floorBound = 0x8000000000000000 + lo;
@@ -2481,7 +2491,7 @@ bool readExtremeProbe(ExtremeProbe value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  if (_unsignedLessThan(0x8000000000000064, lo)) {
+  if (Schema.unsignedLessThan(0x8000000000000064, lo)) {
     return false; // a smuggled offset is refused
   }
   value.doubledFloor = 0x8000000000000000 + lo;
@@ -2501,7 +2511,7 @@ bool readExtremeProbe(ExtremeProbe value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  if (_unsignedLessThan(0xfffffffffffffffe, lo)) {
+  if (Schema.unsignedLessThan(0xfffffffffffffffe, lo)) {
     return false; // a smuggled offset is refused
   }
   value.ceilingRange = 1 + lo;
@@ -2541,10 +2551,6 @@ bool readExtremeProbe(ExtremeProbe value, ByteData view, int numBits) {
   value.ceilingDefault = lo;
   return true;
 }
-
-// measureExtremeProbe is the exact wire bits writeExtremeProbe would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureExtremeProbe(ExtremeProbe value) => 320;
 
 // type ExtremeRow
 final class ExtremeRow {
@@ -2591,9 +2597,9 @@ int writeExtremeRow(ExtremeRow value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   assert(value.clampedFloor <= 100);
-  assert(!_unsignedLessThan(value.clampedCeiling, 1));
-  assert(!_unsignedLessThan(0xfffffffffffffffe, value.clampedCeiling));
-  v = (value.clampedFloor - 0x8000000000000000);
+  assert(!Schema.unsignedLessThan(value.clampedCeiling, 1));
+  assert(!Schema.unsignedLessThan(0xfffffffffffffffe, value.clampedCeiling));
+  v = value.clampedFloor - 0x8000000000000000;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2602,7 +2608,7 @@ int writeExtremeRow(ExtremeRow value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.clampedCeiling - 1);
+  v = value.clampedCeiling - 1;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2611,7 +2617,7 @@ int writeExtremeRow(ExtremeRow value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.floorDef);
+  v = value.floorDef;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2620,7 +2626,7 @@ int writeExtremeRow(ExtremeRow value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.ceilingDef);
+  v = value.ceilingDef;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2677,7 +2683,7 @@ bool readExtremeRow(ExtremeRow value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  if (_unsignedLessThan(0x8000000000000064, lo)) {
+  if (Schema.unsignedLessThan(0x8000000000000064, lo)) {
     return false; // a smuggled offset is refused
   }
   value.clampedFloor = 0x8000000000000000 + lo;
@@ -2697,7 +2703,7 @@ bool readExtremeRow(ExtremeRow value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  if (_unsignedLessThan(0xfffffffffffffffd, lo)) {
+  if (Schema.unsignedLessThan(0xfffffffffffffffd, lo)) {
     return false; // a smuggled offset is refused
   }
   value.clampedCeiling = 1 + lo;
@@ -2737,7 +2743,3 @@ bool readExtremeRow(ExtremeRow value, ByteData view, int numBits) {
   value.ceilingDef = lo;
   return true;
 }
-
-// measureExtremeRow is the exact wire bits writeExtremeRow would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureExtremeRow(ExtremeRow value) => 256;

@@ -9,18 +9,6 @@
 // (hi, lo) 64-bit halves held bit-transparently in Dart ints, the family's
 // one pair shape (serialize.dart, serialize.cs).
 
-// Unsigned 128-bit less-than on bit-transparent halves.
-@pragma('vm:prefer-inline')
-bool _lessThan(int aHi, int aLo, int bHi, int bLo) => aHi == bHi
-    ? (aLo ^ 0x8000000000000000) < (bLo ^ 0x8000000000000000)
-    : (aHi ^ 0x8000000000000000) < (bHi ^ 0x8000000000000000);
-
-// 16 hex digits of a 64-bit pattern held in a signed int (toRadixString
-// would render a sign, not the pattern).
-String _hex16(int value) =>
-    (value >>> 32).toRadixString(16).padLeft(8, '0') +
-    (value & 0xffffffff).toRadixString(16).padLeft(8, '0');
-
 /// Unsigned 128-bit value as (hi, lo) 64-bit halves, each held
 /// bit-transparently in a signed Dart int.
 final class UInt128 {
@@ -38,6 +26,19 @@ final class UInt128 {
 
   /// The unsigned 128-bit maximum.
   static const UInt128 maxValue = UInt128(-1, -1);
+
+  // Unsigned 128-bit less-than on bit-transparent halves. A static member,
+  // not a library-scope private: the backend spells none (SPEC §6.1).
+  @pragma('vm:prefer-inline')
+  static bool _lessThan(int aHi, int aLo, int bHi, int bLo) => aHi == bHi
+      ? (aLo ^ 0x8000000000000000) < (bLo ^ 0x8000000000000000)
+      : (aHi ^ 0x8000000000000000) < (bHi ^ 0x8000000000000000);
+
+  // 16 hex digits of a 64-bit pattern held in a signed int (toRadixString
+  // would render a sign, not the pattern).
+  static String _hex16(int value) =>
+      (value >>> 32).toRadixString(16).padLeft(8, '0') +
+      (value & 0xffffffff).toRadixString(16).padLeft(8, '0');
 
   /// Constructs from a 64-bit value, sign-extending: matching the family
   /// pair's conversion from a signed 64-bit integer. For a non-negative
@@ -121,7 +122,7 @@ final class Int128 {
       (toUnsigned() - other.toUnsigned()).toSigned();
 
   bool operator <(Int128 other) =>
-      hi == other.hi ? _lessThan(0, lo, 0, other.lo) : hi < other.hi;
+      hi == other.hi ? UInt128._lessThan(0, lo, 0, other.lo) : hi < other.hi;
 
   bool operator >(Int128 other) => other < this;
 
@@ -137,5 +138,5 @@ final class Int128 {
   int get hashCode => Object.hash(hi, lo);
 
   @override
-  String toString() => '0x${_hex16(hi)}${_hex16(lo)}';
+  String toString() => '0x${UInt128._hex16(hi)}${UInt128._hex16(lo)}';
 }

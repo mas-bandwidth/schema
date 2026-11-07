@@ -1,0 +1,34 @@
+#!/bin/sh
+# The Luau runtime-home check (make/luau-open-gates.mk, docs/PORTING.md J2).
+# usage: check <base tree> <added tree> <joining base>
+# The added tree is the base tree's unit with one earlier-sorting schema file,
+# <joining base>.schema, joined. Every file of the base tree is in the added
+# tree under the same name, and the added tree has no file the base tree lacks
+# but the joining file's own modules (<joining base>.luau, its type surface,
+# and <joining base>Table.luau, View and Block).
+# Every schema_*.luau runtime module is byte-identical across the two trees,
+# except schema_view.luau (the unit's own declarations, held to its name).
+set -eu
+base=$1 added=$2 joining=$3
+seen=0
+for f in "$base"/*.luau; do
+	[ -e "$f" ] || { echo "RUNTIME HOME GATE FAILED: the base tree emitted no module"; exit 1; }
+	n=$(basename "$f")
+	test -f "$added/$n" || { echo "RUNTIME HOME GATE FAILED: the module $n moved when the unit gained an earlier-sorting file"; exit 1; }
+	case "$n" in
+	schema_view.luau) seen=$((seen + 1)) ;;
+	schema_*.luau)
+		seen=$((seen + 1))
+		cmp -s "$f" "$added/$n" || { echo "RUNTIME HOME GATE FAILED: the runtime module $n changed when the unit gained an earlier-sorting file"; exit 1; }
+		;;
+	esac
+done
+for f in "$added"/*.luau; do
+	n=$(basename "$f")
+	test -f "$base/$n" && continue
+	case "$n" in
+	"$joining".luau | "$joining"Table.luau | "$joining"View.luau | "$joining"Block.luau) ;;
+	*) echo "RUNTIME HOME GATE FAILED: the module $n appeared when the unit gained an earlier-sorting file"; exit 1 ;;
+	esac
+done
+[ "$seen" -gt 0 ] || { echo "RUNTIME HOME GATE FAILED: the base tree carries no schema_*.luau runtime module"; exit 1; }

@@ -19,6 +19,7 @@ const tableRegionWriteSource = `
     {
         if (!value.Guard(f)) { return false; }
         if (f.Optional) { return value.Present(f); }
+        if (f.Required) { return true; }
         if (f.Counted)
         {
             int n = value.Count(f);
@@ -33,6 +34,20 @@ const tableRegionWriteSource = `
     static int RegionCount(NativeValue value, TableFieldInfo f) { return f.Counted ? value.Count(f) : f.ArrayBound; }
     static bool RegionCollectElement(NativeValue value, TableFieldInfo f, int i, ref RegionIds ids)
     {
+        if (f.TextList && f.Kind == 12)
+        {
+            NativeValue child = value.Child(f,i); TableFieldInfo text = f.Table.Fields[0]; int count = child.Count(text);
+            return count >= 0 && count <= text.ArrayBound && TextValid(child.Buffer(text).Slice(0,count));
+        }
+        if (!f.IsArray && f.Kind == 12)
+        {
+            int count = value.Count(f);
+            return count >= 0 && count <= f.ArrayBound && TextValid(value.Buffer(f).Slice(0,count));
+        }
+        if (f.RequiredValidRaw != null && !f.RequiredValidRaw(value.Raw(f, i))) { return false; }
+        if (f.RequiredValidWide != null && !f.RequiredValidWide(value.Wide(f, i))) { return false; }
+        // a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md §3.3)
+        if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, value.Raw(f, i)); }
         if (f.Kind == 13) { return RegionCollect(value.Child(f, i), f.Table, ref ids); }
         if (f.Kind == 15)
         {
@@ -54,6 +69,7 @@ const tableRegionWriteSource = `
     {
         if (f == null) { return true; } // selected, payload-free arm
         if (f.Counted && (RegionCount(value, f) < 0 || RegionCount(value, f) > f.ArrayBound)) { return false; }
+        if (f.TextTotal>0 && !TextFitsRegion(value,f)) { return false; }
         if (!f.IsArray) { return RegionCollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < RegionCount(value, f); i++)
         {
@@ -86,6 +102,7 @@ const tableRegionWriteSource = `
     }
     static long RegionElementSize(NativeValue value, TableFieldInfo f, int i, ref RegionIds ids, bool framed)
     {
+        if (f.TextList && f.Kind == 12) { long n = value.Child(f,i).Count(f.Table.Fields[0]); return n + (framed ? VarSize((ulong)n) : 0); }
         if (f.Kind == 13)
         {
             long n = RegionBodySize(value.Child(f, i), f.Table, ref ids);
@@ -139,6 +156,11 @@ const tableRegionWriteSource = `
     }
     static void RegionWriteElement(ref Writer w, NativeValue value, TableFieldInfo f, int i, ref RegionIds ids, bool framed)
     {
+        if (f.TextList && f.Kind == 12)
+        {
+            NativeValue child=value.Child(f,i);TableFieldInfo text=f.Table.Fields[0];int count=child.Count(text);
+            if (framed) { w.Var((ulong)count); } w.Raw(child.Buffer(text).Slice(0,count)); return;
+        }
         if (f.Kind == 13)
         {
             NativeValue child = value.Child(f, i);
@@ -212,19 +234,21 @@ const tableRegionWriteSource = `
         if (pointer == IntPtr.Zero) { return -1; }
         NativeValue value = new NativeValue((byte*)pointer, 0) { Mutable = mutable };
         RegionIds ids = new RegionIds(vocabulary) { RootType = type };
-        if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator); if (!ids.Graph.Valid) { return -1; } }
+        if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator, true); if (!ids.Graph.Valid) { return -1; } }
         try
         {
             if (!RegionCollect(value, type, ref ids) || !RegionCollectNodes(ref ids)) { return -1; }
             long n = 1 + RegionBodySize(value, type, ref ids) + 8L * ids.Count + 8;
             long nodes = RegionNodesSize(ref ids);
             if (nodes != 0) { n += VarSize(ids.Reference(ulong.MaxValue)) + 1 + VarSize((ulong)nodes) + nodes; }
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             Writer w = new Writer(buffer);
             w.Byte(1); RegionWriteBody(ref w, value, type, ref ids, true);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
         finally { ids.Graph.Dispose(); }

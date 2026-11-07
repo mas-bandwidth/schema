@@ -78,7 +78,7 @@ public final class Main {
     // stay mirrored on both sides.
     static Ludicrous.LudicrousState makeState() {
         final Ludicrous.LudicrousState inp = new Ludicrous.LudicrousState();
-        inp.mode = Ludicrous.DriveMode.ludicrous;
+        inp.mode = Ludicrous.DriveMode.LUDICROUS;
         inp.probe.angle = 2981888; // +45.5 * 2^16
         inp.probe.position = -809119744; // -12346.1875 * 2^16
         inp.probe.reach = Int128.fromLong(65536000000L - 1); // raw_max - 1
@@ -101,10 +101,10 @@ public final class Main {
     public static void main(String[] args) {
         // worst-case bounds, hand-derived (SPEC §6.1 item 4) — the same
         // numbers test/ludicrous_main.cpp static_asserts
-        check(Ludicrous.fixedProbeMaxBits == 156, "FixedProbe worst case");
-        check(Ludicrous.wideProbeMaxBits == 403, "WideProbe worst case");
-        check(Ludicrous.ludicrousStateMaxBits == 1205, "LudicrousState worst case");
-        check(Ludicrous.protocolId != 0, "the unit has a protocol id");
+        check(Ludicrous.FIXED_PROBE_MAX_BITS == 156, "FixedProbe worst case");
+        check(Ludicrous.WIDE_PROBE_MAX_BITS == 403, "WideProbe worst case");
+        check(Ludicrous.LUDICROUS_STATE_MAX_BITS == 1205, "LudicrousState worst case");
+        check(Ludicrous.PROTOCOL_ID != 0, "the unit has a protocol id");
 
         // zero initialization with specified defaults (SPEC §4.2), sentinel-
         // zero composition: construction starts at DriveMode None — the null
@@ -112,7 +112,7 @@ public final class Main {
         // their declared values, one of which no 64-bit literal can spell
         {
             final Ludicrous.LudicrousState zero = new Ludicrous.LudicrousState();
-            check(zero.mode == Ludicrous.DriveMode.none, "a fresh state starts at DriveMode None");
+            check(zero.mode == Ludicrous.DriveMode.NONE, "a fresh state starts at DriveMode None");
             check(zero.probe.reach.equals(Int128.zero), "reach starts zero");
             check(zero.wide.entityId.equals(UInt128.zero), "entity_id starts zero");
             check(zero.wide.bias.equals(Int128.fromLong(-250)), "bias defaults -250");
@@ -133,11 +133,11 @@ public final class Main {
             final byte[] g = golden("ludicrous_state");
             check(bytesEqual(takenWire, takenWire.length, g),
                     "wire golden ludicrous_state — Java bytes must equal the C++-pinned bytes");
-            check((Ludicrous.measureLudicrousState(inp) + 7) >>> 3 == n, "measure vs written bytes");
+            check((Ludicrous.writeLudicrousStateBits(inp, new byte[Ludicrous.LUDICROUS_STATE_MAX_BYTES], 0) + 7) >>> 3 == n, "the Bits size vs written bytes");
 
             final Ludicrous.LudicrousState out = new Ludicrous.LudicrousState();
             check(Ludicrous.readLudicrousState(out, takenWire, n * 8), "read LudicrousState");
-            check(out.mode == Ludicrous.DriveMode.ludicrous, "mode round-trips");
+            check(out.mode == Ludicrous.DriveMode.LUDICROUS, "mode round-trips");
             check(out.probe.angle == inp.probe.angle, "angle round-trips");
             check(out.probe.position == inp.probe.position, "position round-trips");
             check(out.probe.reach.equals(inp.probe.reach), "reach round-trips");
@@ -205,24 +205,24 @@ public final class Main {
         // The whole wire is the tail byte; a port that emits ANY bits for a
         // degenerate range shifts it and fails the golden compare.
         {
-            check(Ludicrous.degenerateProbeMaxBits == 8, "three degenerate fields cost zero bits");
+            check(Ludicrous.DEGENERATE_PROBE_MAX_BITS == 8, "three degenerate fields cost zero bits");
 
             final Ludicrous.DegenerateProbe inp = new Ludicrous.DegenerateProbe();
             inp.lockedFixed = -196608; // -3 * 2^16, the ONE legal raw
             inp.lockedInt = 7;
             inp.lockedWide = Int128.fromLong(-12345678901234L);
-            inp.tail = (byte) 0xa5;
+            inp.tail = 0xa5;
 
             final int n = Ludicrous.writeDegenerateProbe(inp, writeBuf);
             check(bytesEqual(writeBuf, n, golden("degenerate_probe")), "wire golden degenerate_probe");
-            check(Ludicrous.measureDegenerateProbe(inp) == 8, "the degenerate wire is one byte");
+            check(Ludicrous.writeDegenerateProbeBits(inp, new byte[Ludicrous.DEGENERATE_PROBE_MAX_BYTES], 0) == 8, "the degenerate wire is one byte");
 
             final Ludicrous.DegenerateProbe out = new Ludicrous.DegenerateProbe();
             check(Ludicrous.readDegenerateProbe(out, java.util.Arrays.copyOf(writeBuf, n), n * 8),
                     "read DegenerateProbe");
             check(out.lockedFixed == -196608 && out.lockedInt == 7
                     && out.lockedWide.equals(Int128.fromLong(-12345678901234L))
-                    && (out.tail & 0xff) == 0xa5,
+                    && out.tail == 0xa5,
                     "DegenerateProbe round-trips — every value materialized from its range");
         }
 
@@ -230,7 +230,7 @@ public final class Main {
         // span's raw value fills uint64's HIGH HALF (above 2^63) — it rides
         // bit-transparently in long, and the C++-pinned golden is the gate.
         {
-            check(Ludicrous.unsignedProbeMaxBits == 196, "UnsignedProbe worst case");
+            check(Ludicrous.UNSIGNED_PROBE_MAX_BITS == 196, "UnsignedProbe worst case");
 
             final Ludicrous.UnsignedProbe inp = new Ludicrous.UnsignedProbe();
             inp.angle = 2981888; // +45.5 * 2^16
@@ -240,7 +240,7 @@ public final class Main {
             inp.samples[0] = 0; // raw_min
             inp.samples[1] = 1048576; // raw_max
             inp.locked = 196608; // 3 * 2^16, the ONE legal raw
-            inp.tail = (byte) 0xa5;
+            inp.tail = 0xa5;
 
             final int n = Ludicrous.writeUnsignedProbe(inp, writeBuf);
             final byte[] uWire = java.util.Arrays.copyOf(writeBuf, n);
@@ -264,7 +264,7 @@ public final class Main {
                 bad.samples[0] = 0;
                 bad.samples[1] = 1048576;
                 bad.locked = 196609;
-                bad.tail = (byte) 0xa5;
+                bad.tail = 0xa5;
                 Ludicrous.writeUnsignedProbe(bad, writeBuf);
             }, "a wrong degenerate ufixed raw must trip the writer contract");
 

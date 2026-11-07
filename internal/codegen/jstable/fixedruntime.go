@@ -62,7 +62,7 @@ export const TableFixedEntryBytes = 17;
 // the layout's own framing: the u32 entry count, and nothing else
 export const TableFixedLayoutHeaderBytes = 4;
 
-// §3.4'S RECORD BOUND, and a reader holds an untrusted peer's layout to it for
+// §3.4'S RECORD BOUND, and a reader holds an untrusted endpoint's layout to it for
 // the same reason the compiler holds a declaration to it: a record past it is
 // one this build will not decode.
 export const TableFixedRecordMaxBytes = 65536;
@@ -145,6 +145,12 @@ export const TableFixedRefusal = Object.freeze({
   // default, the verdict the packet reader gives — this form has no length to
   // continue past. It is not one of §4's six events: nothing was decoded.
   TextIllFormed: 17,
+  // A NaN OR AN INFINITY, REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md §3.3,
+  // the finite rule of 2026-10-27): the content pass refuses it before any
+  // destination write, as it refuses an ill-formed text, and every writer
+  // refuses one (the save answers -1).
+  NonFiniteFloat: 18,
+  IntegrityMismatch: 19,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -168,6 +174,8 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LayoutNewer: return "layout_newer";
     case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
+    case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";
+    case TableFixedRefusal.IntegrityMismatch: return "integrity_mismatch";
     default: return "???";
   }
 }
@@ -210,7 +218,7 @@ export function TableFixedResetReport(report) {
 }
 
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
-// NEVER ALLOCATES. A caller makes one of these per peer and hands it in; a
+// NEVER ALLOCATES. A caller makes one of these per endpoint and hands it in; a
 // layout whose plan does not fit is a refusal by name, never a growth.
 export class TableFixedPlan {
   constructor(entryCapacity, imageBytes, remapCapacity) {
@@ -240,9 +248,9 @@ export class TableFixedPlan {
     this.hostile = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
-    // THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST (§4.1): one
-    // (guard, arg, argw) link per enclosing union, pushed on the way into an
-    // arm and popped on the way out; chainAt is where it was laid in the pool,
+    // THE GUARD CHAIN being compiled, OUTERMOST FIRST (§4.1): one
+    // (guard, arg, argw) link per enclosing union arm or optional payload.
+    // Optional links use arg = -1 for nonzero presence; chainAt is its pool offset,
     // once per arm, or -1. Sized once for the layout's 64.
     this.chain = new Int32Array(65 * 3);
     this.chainLen = 0;
@@ -259,7 +267,7 @@ export class TableFixedPlan {
   }
 }
 
-// A CACHE BY HASH: "the cost of the compile is paid once per peer rather than
+// A CACHE BY HASH: "the cost of the compile is paid once per endpoint rather than
 // once per record". The caller owns this too.
 //
 // THE CACHE IS RETAINED AND IGNORED (§5.9 #16): every older plan is static now
@@ -386,7 +394,7 @@ export function TableFixedTextOk(flavour, view, at, len) {
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
 // is the only thing that differs between reading this build's own record and
 // reading anybody else's — the owner's ruling, which §3.4 quotes him on: a
-// form whose cost moved when a peer shipped would be a performance cliff at
+// form whose cost moved when an endpoint shipped would be a performance cliff at
 // exactly the moment a deployment cannot afford one.
 export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstView, remap, report) {
   const e = plan;
@@ -395,8 +403,11 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
     const guard = e[b + TableFixedLaneGuard];
     // an entry belonging to an ARM runs only under its own tag, compared at
     // ArgW bytes, never as a prefix
-    if (guard !== TableFixedNoGuard &&
-        TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (e[b + TableFixedLaneArg] >>> 0)) {
+    // A negative expected tag is an optional presence guard: any nonzero
+    // byte is present. Union guards retain their exact ordinal comparison.
+    const expected = e[b + TableFixedLaneArg];
+    if (guard !== TableFixedNoGuard && (expected === -1 ? src[srcAt + guard] === 0 :
+        TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (expected >>> 0))) {
       continue;
     }
     // AN ARM INSIDE AN ARM ANSWERS TO EVERY OUTER TAG TOO (§4.1, the guard
@@ -405,7 +416,9 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
     if (links > 1) {
       let holds = true;
       for (let j = 0, at = e[b + TableFixedLaneGuards]; j < links - 1; j++, at += 3) {
-        if (TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (remap[at + 1] >>> 0)) { holds = false; break; }
+        const expected = remap[at + 1];
+        if (expected === -1 ? src[srcAt + remap[at]] === 0 :
+            TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (expected >>> 0)) { holds = false; break; }
       }
       if (!holds) { continue; }
     }
@@ -522,17 +535,13 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         break;
       }
       case TableFixedOpWidenF: {
-        // every f32 value is exactly representable in an f64, infinities and
-        // NaN payloads included, so there is nothing to round and nothing to lose
-        const bits = TableFixedGetU32(src, s);
-        if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
-          const payload = bits & 0x007fffff;
-          TableFixedConv.setUint32(8, ((payload & 7) << 29) >>> 0, true);
-          TableFixedConv.setUint32(12, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);
-        } else {
-          TableFixedConv.setUint32(0, bits, true);
-          TableFixedConv.setFloat64(8, TableFixedConv.getFloat32(0, true), true);
-        }
+        // every finite f32 value is exactly representable in an f64, so the
+        // ordinary conversion has nothing to round and nothing to lose. A NaN
+        // or an infinity widens to one too, and the content pass over the
+        // image refuses it as non_finite_float (docs/SPEC-TABLES.md §3.3)
+        // before the projection lands a value.
+        TableFixedConv.setUint32(0, TableFixedGetU32(src, s), true);
+        TableFixedConv.setFloat64(8, TableFixedConv.getFloat32(0, true), true);
         for (let k = 0; k < 8; k++) { dst[d + k] = TableFixedConv.getUint8(8 + k); }
         report.widened++;
         break;
@@ -540,7 +549,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
       case TableFixedOpConst: {
         const v = e[b + TableFixedLaneAux];
         for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
-        // AN UNGUARDED None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
+        // A None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
         // that set lands None (already written just above) and COUNTS, so the
         // compiled plan counts it exactly as the identity plan's decode bound
         // does and the SAME forged bytes land the SAME clamped == 1 on either
@@ -549,7 +558,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // record bound at all, so the entry that reads a record byte carries
         // its own.
         const arms = e[b + TableFixedLaneMeta] & 0xff;
-        if (v === 0 && arms !== 0 && guard === TableFixedNoGuard && s + size <= src.length) {
+        if (v === 0 && arms !== 0 && s + size <= src.length) {
           let raw = 0;
           for (let k = 0; k < size; k++) { raw += src[s + k] * Math.pow(2, 8 * k); }
           if (raw > arms) { report.clamped++; }
@@ -692,7 +701,7 @@ function TableFixedTagBytes(b, i) { return TableFixedSize(b, i) - TableFixedUnio
 
 // ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
 //
-// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// A LAYOUT ARRIVES FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader
 // must parse before it knows anything at all, so every rule below runs BEFORE
 // a single record byte is touched and each refuses under its OWN NAME rather
 // than under one word for all of them (docs/SPEC-TABLES.md §3.4,
@@ -704,7 +713,7 @@ function TableFixedTagBytes(b, i) { return TableFixedSize(b, i) - TableFixedUnio
 // set is not a newer layout of THIS form — it is a layout of a form whose byte
 // this reader never saw, and there is no version of "step over it" that is
 // honest about that. layout_kind_unknown says exactly what happened, and the
-// peer is told to speak this form or a form this reader carries.
+// endpoint is told to speak this form or a form this reader carries.
 //
 // NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle:
 // an entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is
@@ -920,7 +929,7 @@ export function TableFixedParseLayout(bytes, at, length, out) {
 // ---- THE PLAN COMPILER -----------------------------------------------------
 //
 // The SAME LOOP runs over this plan as over the identity plan. What the
-// compiler does, ONCE PER PEER, is what a read would otherwise do once per
+// compiler does, ONCE PER ENDPOINT, is what a read would otherwise do once per
 // record: map the writer's ids onto this reader's fields; leave a field it
 // cannot name OUT of the plan, which is what skips it, by arithmetic that was
 // going to step past it anyway; and leave a field the writer does not carry
@@ -973,8 +982,8 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   e[b + TableFixedLaneArgW] = w;
   e[b + TableFixedLaneGuards] = 0;
   e[b + TableFixedLaneGuardCount] = 0;
-  // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY enclosing
-  // tag. Its guard lane is the chain's innermost link, and a chain past one is
+  // THE GUARD CHAIN (§4.1): an entry answers to EVERY enclosing union tag
+  // and presence flag. Its guard lane is the innermost link; a chain past one is
   // laid into the pool, once per arm, as offset+count.
   if (guard !== TableFixedNoGuard && plan.chainLen > 0) {
     const c = plan.chain;
@@ -1040,7 +1049,7 @@ function TableFixedRemapRoom(n) {
 }
 
 // THE ONE DEAD REPORT. The census — unknown and kindMismatch — is once per
-// field PER PEER and never per array element or per keyed slot (§5.4, §5.8 row
+// field PER ENDPOINT and never per array element or per keyed slot (§5.4, §5.8 row
 // 11, §5.9 #43). The entries still have to be laid down for every element, so
 // the repeats walk the same pairs into a report NOBODY READS. It is module-level
 // because the compile must not allocate per element, and it is never reset
@@ -1118,9 +1127,22 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
     return;
   }
   switch (myKind) {
-    case 35: { // the OPTIONAL wrapper: the present byte, then the payload whole
+    case 35: { // the OPTIONAL wrapper: payload ops run only when present
       TableFixedPush(plan, TableFixedOpCopy, theirAt, auxAt, 1, 0, guard, arg, 0);
-      TableFixedCompileEntry(plan, theirs, ti + 1, theirAt + 1, mine, mi + 1, dst, myAt, guard, arg, report);
+      if (plan.chainLen >= 65) { plan.overflow = true; return; }
+      const savedAt = plan.chainAt;
+      const savedArgw = plan.argw;
+      const l = plan.chainLen * 3;
+      plan.chain[l] = theirAt;
+      plan.chain[l + 1] = -1; // any nonzero presence byte, not ordinal 1
+      plan.chain[l + 2] = 1;
+      plan.chainLen++;
+      plan.chainAt = -1;
+      plan.argw = 1;
+      TableFixedCompileEntry(plan, theirs, ti + 1, theirAt + 1, mine, mi + 1, dst, myAt, theirAt, -1, report);
+      plan.chainLen--;
+      plan.chainAt = savedAt;
+      plan.argw = savedArgw;
       break;
     }
     case 13: { // a nested table: match its fields
@@ -1141,7 +1163,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const myN = myElem ? ((mySize - head) / myElem) | 0 : 0;
       if (dst[row + TableFixedDstCounted]) {
         // THE BOUND IS THE WRITER'S their_n AND NOT THE READER'S (§5.2 EMIT,
-        // bill §12.5): a count forged past what THAT peer could have written
+        // bill §12.5): a count forged past what THAT endpoint could have written
         // clamps and counts, and a reader whose own bound merely grew does not
         // let the forgery through. The reader's storage has room by §5.1.
         TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, 0);
@@ -1166,7 +1188,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const theirElemSize = TableFixedSize(theirs, theirElemAt);
       // THE FIRST MATCHED SLOT CARRIES THE CENSUS, and every slot after it is
       // quiet: a keyed array's slots are one field's storage repeated, so an
-      // unknown inside the element is ONE unknown for the peer (§5.4).
+      // unknown inside the element is ONE unknown for the endpoint (§5.4).
       let keyedCounted = false;
       for (let k = 0; k < myKeyChildren; k++) {
         for (let j = 0; j < theirKeyChildren; j++) {
@@ -1455,7 +1477,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
   plan.record = TableFixedSize(theirs, 0);
   // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING NOTHING
-  // (§5.2 PLAN): the census is once per peer, so a second walk of the same pairs
+  // (§5.2 PLAN): the census is once per endpoint, so a second walk of the same pairs
   // must not count them twice.
   plan.pass = 0;
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, report);

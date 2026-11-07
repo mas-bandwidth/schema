@@ -47,6 +47,7 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -225,7 +226,7 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			return
 		}
 	}
-	w.push(fixedLayoutEntry{id: id, kind: ir.TableWireScalarKind(f), size: size, children: 0, note: note},
+	w.push(fixedLayoutEntry{id: id, kind: ir.TableFixedLeafKind(f), size: size, children: 0, note: note},
 		fixedDst{dst: at})
 }
 
@@ -501,6 +502,9 @@ func fixedValue(name string) string { return fixedClass(name) + ".Value" }
 type fixedGen struct {
 	unit *ir.Unit
 	b    strings.Builder
+	// owner is the declaration whose scatter is being emitted, the <Owner>
+	// of a non_finite_float refusal's <Owner>.<field> (docs/SPEC-TABLES.md §3.3)
+	owner string
 	// lineage is the locked layouts per fixed table, OLDEST FIRST, as the build
 	// handed them in (§5.2). Empty is a build with no lock.
 	lineage map[string][]FixedLineageEntry
@@ -657,6 +661,7 @@ func (g *fixedGen) emitType(st *ir.Struct, root bool) {
 	g.emitBodyConstant(st, body)
 	g.emitWriteBody(st)
 	g.emitScatter(st)
+	g.emitFinite(st.Fields)
 	if root {
 		g.emitRoot(st, body)
 	}
@@ -715,6 +720,9 @@ func (g *fixedGen) emitStorageField(f *ir.Field) []string {
 		typ := fixedScalarType(f.Type)
 		g.pf("        /** %s */\n", ir.FieldTypeSpelling(f))
 		g.pf("        public final %s[] %s = new %s[%d];\n", typ, name, typ, slots)
+		if f.KeyEnum != "" {
+			g.emitKeyedAccessors(f, name, typ)
+		}
 		if fixedIsObject(f.Type) {
 			if typ == "Int128" || typ == "UInt128" {
 				ctor = append(ctor, fmt.Sprintf("            java.util.Arrays.fill(%s, %s.zero);\n", name, typ))
@@ -755,6 +763,101 @@ func (g *fixedGen) emitStorageField(f *ir.Field) []string {
 		g.pf("        public %s %s;\n", typ, name)
 	}
 	return nil
+}
+
+// emitKeyedAccessors is the fixed record's KEY FORM (docs/SPEC-TABLES.md §2.4,
+// docs/PORTING.md M5), beside the slot array and additive to it: the array is
+// still the storage every Write, Read and scatter body walks by SLOT, and these
+// are the one place a caller indexes by KEY. Java has no operator overloading,
+// so the accessor is the field's own name as an overload pair — `perTeam(key)`
+// reads, `perTeam(key, value)` stores — and the key is an `int` holding the
+// enum's value (the table leg's enums are their integer values). A CLASS
+// element (a nested record) answers the live instance and has no store, as a
+// slot of it is filled in place; an Int128/UInt128 slot is an immutable object,
+// so it keeps the store.
+func (g *fixedGen) emitKeyedAccessors(f *ir.Field, name, typ string) {
+	spell := ir.FieldTypeSpelling(f)
+	g.pf("        /** %s %s: key k is slot k-1, and None and a key past\n", spell, keyedFormMarker)
+	g.pf("         *  %s.Max are refused by name in every build. */\n", f.KeyEnum)
+	g.pf("        public %s %s(int key) {\n", typ, name)
+	g.pf("%s", javaKeyRefusal("            ", "key", f))
+	g.pf("            return %s[key - 1];\n", name)
+	g.pf("        }\n")
+	if fixedIsObject(f.Type) && typ != "Int128" && typ != "UInt128" {
+		return
+	}
+	g.pf("        /** %s %s: store key's slot, k at k-1, refusing as the read does. */\n", spell, keyedFormMarker)
+	g.pf("        public void %s(int key, %s value) {\n", name, typ)
+	g.pf("%s", javaKeyRefusal("            ", "key", f))
+	g.pf("            %s[key - 1] = value;\n", name)
+	g.pf("        }\n")
+}
+
+// keyedFormMarker opens every member the key form adds, in the fixed record and
+// in a row alike, so a test can take the key form out and hold everything else
+// byte-identical to the slot form it was added beside.
+const keyedFormMarker = "BY KEY (docs/SPEC-TABLES.md §2.4)"
+
+// javaKeyRefused is §2.4's refusal condition (docs/SPEC-TABLES.md §2.4): ONE
+// UNSIGNED COMPARE COVERS BOTH ENDS. The storage index is key - 1; None's is
+// -1, which wraps above Max unsigned, and a key past Max is >= Max. It is a
+// written compare and not `assert`, so -da (the release shape) keeps it, and it
+// is the accessor's own check rather than the JVM's ArrayIndexOutOfBounds, which
+// names an index and, over a row's wider byte[], does not fire at all.
+func javaKeyRefused(key string, max int64) string {
+	return fmt.Sprintf("Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
+}
+
+// javaKeyRefusal is the whole refusal statement (docs/SPEC-TABLES.md §2.4): it
+// throws IllegalArgumentException naming the field, the KEY, the enum and its
+// Max — never an index — so a caller reading the message knows which variant it
+// asked for and what the enum holds.
+func javaKeyRefusal(indent, key string, f *ir.Field) string {
+	e, max := f.KeyEnum, f.KeyEnumRef.Max
+	// The statement is written in the formatter's shape (#547): the argument
+	// one operand a line, the choice of message broken when it does not fit,
+	// and the closing sentence cut at words into literals that each fit, so
+	// the formatter has no literal of its own to reflow.
+	const limit = 100
+	t := indent + "    "
+	arg, op, arm := t+"        ", t+"                ", t+"                        "
+	var b strings.Builder
+	fmt.Fprintf(&b, "%sif (%s) {\n", indent, javaKeyRefused(key, max))
+	fmt.Fprintf(&b, "%sthrow new IllegalArgumentException(\n", t)
+	fmt.Fprintf(&b, "%s\"%s [%s]: key \"\n", arg, f.Name, e)
+	fmt.Fprintf(&b, "%s+ %s\n", op, key)
+	choice := fmt.Sprintf("+ (%s == 0 ? \" is None, which keys no slot\" : \" names no variant of %s\")", key, e)
+	if utf8.RuneCountInString(op+choice) <= limit {
+		fmt.Fprintf(&b, "%s%s\n", op, choice)
+	} else {
+		fmt.Fprintf(&b, "%s+ (%s == 0\n", op, key)
+		fmt.Fprintf(&b, "%s? \" is None, which keys no slot\"\n", arm)
+		fmt.Fprintf(&b, "%s: \" names no variant of %s\")\n", arm, e)
+	}
+	words := strings.SplitAfter(fmt.Sprintf("; an enum-keyed array holds one slot per named variant, keys 1 .. %s.Max (%d)", e, max), " ")
+	var parts []string
+	cur := ""
+	for i, w := range words {
+		tail := ""
+		if i == len(words)-1 {
+			tail = ");"
+		}
+		if cur != "" && utf8.RuneCountInString(op+"+ \""+cur+w+"\""+tail) > limit {
+			parts = append(parts, cur)
+			cur = ""
+		}
+		cur += w
+	}
+	parts = append(parts, cur)
+	for i, part := range parts {
+		tail := ""
+		if i == len(parts)-1 {
+			tail = ");"
+		}
+		fmt.Fprintf(&b, "%s+ \"%s\"%s\n", op, part, tail)
+	}
+	fmt.Fprintf(&b, "%s}\n", indent)
+	return b.String()
 }
 
 // fixedSlots answers how many elements a field's storage holds, and whether
@@ -1132,6 +1235,7 @@ func (g *fixedGen) emitScatter(st *ir.Struct) {
 	g.pf("    /** land one record image into a value. The image is this reader's own\n")
 	g.pf("     *  body layout, so every offset here is a constant. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
+	g.owner = st.DeclaredName()
 	off := int64(0)
 	for _, f := range st.Fields {
 		g.emitScatterField(f, off, "b", "at", "v", "r", 8)
@@ -1280,40 +1384,41 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	w := fixedStorageBytes(f.Type)
 	switch f.Type.Kind {
 	case ir.TBool:
-		// A BOOL LANDS AS `byte != 0`: a peer's 2 is true and never damage.
+		// A BOOL LANDS AS `byte != 0`: an endpoint's 2 is true and never damage.
 		g.pf("%s%s = %s[%s + %d] != 0;\n", ind, expr, buf, at, off)
 		return
-	case ir.TFloat32:
+	case ir.TFloat32, ir.TFloat64:
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+		// become a value and before the field is written (docs/SPEC-TABLES.md
+		// §3.3; Glenn, 2026-10-27, "same rule as packets"), and before any
+		// bounds: the read refuses by name as nonFiniteFloat and lands nothing
+		// past it. A compiled plan's float rung (widenf) is the ordinary
+		// conversion, which keeps a NaN a NaN, so this test is also where a
+		// widened one is refused.
+		//
 		// A RANGED FLOAT CLAMPS ON LOAD AND COUNTS, exactly as the ranged
 		// integer below does, and against THIS READER'S OWN min and max
 		// (schema#1164, ruled statement B): in the fixed form a compressed
 		// float rides AS THE FLOAT (SPEC §3.4), the bounds are DEFINITIONS in
 		// the digest and the compiled plan carries no range, so the pass can
-		// only be the reader's. `<` and `>` are IEEE comparisons on purpose: a
-		// NaN is below no min and above no max, so it survives uncounted, and
-		// a negative zero is not below a min of +0.
+		// only be the reader's. The value is finite here, so `<` and `>` see
+		// every case, and a negative zero is not below a min of +0.
+		typ, bits, get, mask, conv := "float", "int", "get32", "0x7f800000", "Float.intBitsToFloat"
+		if f.Type.Kind == ir.TFloat64 {
+			typ, bits, get, mask, conv = "double", "long", "get64", "0x7ff0000000000000L", "Double.longBitsToDouble"
+		}
+		g.pf("%s{\n", ind)
+		g.pf("%s    final %s fbits = TableFixed.%s(%s, %s + %d);\n", ind, bits, get, buf, at, off)
+		g.pf("%s    if ((fbits & %s) == %s) { %s.refuseNonFinite(%q); return; }\n", ind, mask, mask, rep, g.owner+"."+f.Name)
 		if lo, hi, ok := fixedFloatRange(owner); ok {
-			g.pf("%s{\n", ind)
-			g.pf("%s    float q = Float.intBitsToFloat(TableFixed.get32(%s, %s + %d));\n", ind, buf, at, off)
+			g.pf("%s    %s q = %s(fbits);\n", ind, typ, conv)
 			g.pf("%s    if (q < %s) { q = %s; %s.clamped++; } else if (q > %s) { q = %s; %s.clamped++; }\n",
 				ind, lo, lo, rep, hi, hi, rep)
 			g.pf("%s    %s = q;\n", ind, expr)
-			g.pf("%s}\n", ind)
-			return
+		} else {
+			g.pf("%s    %s = %s(fbits);\n", ind, expr, conv)
 		}
-		g.pf("%s%s = Float.intBitsToFloat(TableFixed.get32(%s, %s + %d));\n", ind, expr, buf, at, off)
-		return
-	case ir.TFloat64:
-		if lo, hi, ok := fixedFloatRange(owner); ok {
-			g.pf("%s{\n", ind)
-			g.pf("%s    double q = Double.longBitsToDouble(TableFixed.get64(%s, %s + %d));\n", ind, buf, at, off)
-			g.pf("%s    if (q < %s) { q = %s; %s.clamped++; } else if (q > %s) { q = %s; %s.clamped++; }\n",
-				ind, lo, lo, rep, hi, hi, rep)
-			g.pf("%s    %s = q;\n", ind, expr)
-			g.pf("%s}\n", ind)
-			return
-		}
-		g.pf("%s%s = Double.longBitsToDouble(TableFixed.get64(%s, %s + %d));\n", ind, expr, buf, at, off)
+		g.pf("%s}\n", ind)
 		return
 	}
 	if w == 16 {
@@ -1329,7 +1434,7 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	// A RANGED SCALAR CLAMPS ON LOAD AND COUNTS, straight-line code after the
 	// plan run over STORAGE (ALGORITHM §4.6's bounds pass, which is what
 	// makes one pass cover both plans): this is the READER's own half, and
-	// the lineage entry's writer bounds hold the compiled lane to the PEER's
+	// the lineage entry's writer bounds hold the compiled lane to the ENDPOINT's
 	// own declaration beside it. A FIXED-POINT'S BOUNDS ARE IN VALUE UNITS
 	// and its storage is raw, so both ends shift by F first
 	// (ir.TableRawRange); a bits(N) clamps to 2^N − 1 below, its declared
@@ -1339,6 +1444,13 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
 		g.pf("%s    if (q < %dL) { q = %dL; %s.clamped++; } else if (q > %dL) { q = %dL; %s.clamped++; }\n",
 			ind, lo, lo, rep, hi, hi, rep)
+		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
+		g.pf("%s}\n", ind)
+	} else if ulo, uhi, ok := fixedRawUnsigned64Range(owner); ok {
+		g.pf("%s{\n", ind)
+		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
+		g.pf("%s    if (Long.compareUnsigned(q, 0x%xL) < 0) { q = 0x%xL; %s.clamped++; } else if (Long.compareUnsigned(q, 0x%xL) > 0) { q = 0x%xL; %s.clamped++; }\n",
+			ind, ulo, ulo, rep, uhi, uhi, rep)
 		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
 		g.pf("%s}\n", ind)
 	} else {
@@ -1378,6 +1490,25 @@ func fixedRawRange(f *ir.Field) (int64, int64, bool) {
 		return 0, 0, false
 	}
 	return lo.Int64(), hi.Int64(), true
+}
+
+func fixedRawUnsigned64Range(f *ir.Field) (uint64, uint64, bool) {
+	if f == nil || !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
+		return 0, 0, false
+	}
+	switch f.Type.Kind {
+	case ir.TInt, ir.TBits, ir.TFixed:
+	default:
+		return 0, 0, false
+	}
+	if f.Type.Signed || f.Type.Width != 64 {
+		return 0, 0, false
+	}
+	lo, hi, ok := ir.TableRawRange(f)
+	if !ok || (lo.IsInt64() && hi.IsInt64()) || !lo.IsUint64() || !hi.IsUint64() {
+		return 0, 0, false
+	}
+	return lo.Uint64(), hi.Uint64(), true
 }
 
 func fixedNarrow(typ, expr string) string {
@@ -1449,20 +1580,21 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 		if v.F == nil {
 			continue
 		}
-		g.pf("            case %d: {\n", i+1)
-		g.emitWriteElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), 16)
+		g.pf("            case %d:\n                {\n", i+1)
+		g.emitWriteField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", 20)
 		if arm := fixedFieldBytes(v.F); arm < widest {
-			g.pf("                java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag+arm, tag+widest)
+			g.pf("                    java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag+arm, tag+widest)
 		}
-		g.pf("                break;\n            }\n")
+		g.pf("                    break;\n                }\n")
 	}
-	g.pf("            default: {\n")
-	g.pf("                java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag, tag+widest)
-	g.pf("                break;\n            }\n")
+	g.pf("            default:\n                {\n")
+	g.pf("                    java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag, tag+widest)
+	g.pf("                    break;\n                }\n")
 	g.pf("        }\n    }\n\n")
 
 	g.pf("    /** the tag, then the selected arm; an unselected arm keeps what it held. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
+	g.owner = un.Name
 	switch tag {
 	case 4:
 		g.pf("        v.type = TableFixed.get32(b, at + 0);\n")
@@ -1481,13 +1613,135 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 		if v.F == nil {
 			continue
 		}
-		g.pf("            case %d: {\n", i+1)
-		g.emitScatterElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), "r", 16, v.F)
-		g.pf("                break;\n            }\n")
+		g.pf("            case %d:\n                {\n", i+1)
+		g.emitScatterField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", "r", 20)
+		g.pf("                    break;\n                }\n")
 	}
 	g.pf("            default: break;\n")
 	g.pf("        }\n    }\n")
+	var arms []*ir.Field
+	for _, v := range un.Variants {
+		if v.F != nil {
+			arms = append(arms, v.F)
+		}
+	}
+	if fixedCarriesFloat(arms, map[string]bool{}) {
+		g.pf("\n    /** the SELECTED arm's floats are finite (docs/SPEC-TABLES.md §3.3). */\n")
+		g.pf("    static boolean finite(Value v) {\n")
+		g.pf("        switch (v.type) {\n")
+		for i, v := range un.Variants {
+			if v.F == nil || !fixedCarriesFloat([]*ir.Field{v.F}, map[string]bool{}) {
+				continue
+			}
+			g.pf("            case %d:\n", i+1)
+			g.emitFiniteField(v.F, "v", 16)
+			g.pf("                break;\n")
+		}
+		g.pf("            default:\n                break;\n")
+		g.pf("        }\n        return true;\n    }\n")
+	}
 	g.pf("}\n")
+}
+
+// fixedCarriesFloat answers whether a body of these fields holds a float32 or
+// a float64 anywhere in its closure, by value: the bodies a writer's finite
+// pass has to walk (docs/SPEC-TABLES.md §3.3).
+func fixedCarriesFloat(fields []*ir.Field, seen map[string]bool) bool {
+	for _, f := range fields {
+		switch f.Type.Kind {
+		case ir.TFloat32, ir.TFloat64:
+			return true
+		case ir.TNamed:
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				if !seen[r.Name] {
+					seen[r.Name] = true
+					if fixedCarriesFloat(r.Fields, seen) {
+						return true
+					}
+				}
+			case *ir.Union:
+				if !seen[r.Name] {
+					seen[r.Name] = true
+					for _, v := range r.Variants {
+						if v.F != nil && fixedCarriesFloat([]*ir.Field{v.F}, seen) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitFinite is the WRITER'S FINITE PASS for one type (docs/SPEC-TABLES.md
+// §3.3; Glenn, 2026-10-27, "same rule as packets"): true when every float the
+// value would store is finite. It is real code and not an assert, unlike
+// checkWrite: a NaN or an infinity is refused by every build, and save answers
+// -1 for it. A type with no float in its closure has no pass.
+func (g *fixedGen) emitFinite(fields []*ir.Field) {
+	if !fixedCarriesFloat(fields, map[string]bool{}) {
+		return
+	}
+	g.pf("    /** every float this value stores is finite (docs/SPEC-TABLES.md §3.3). */\n")
+	g.pf("    static boolean finite(Value v) {\n")
+	for _, f := range fields {
+		if fixedCarriesFloat([]*ir.Field{f}, map[string]bool{}) {
+			g.emitFiniteField(f, "v", 8)
+		}
+	}
+	g.pf("        return true;\n    }\n\n")
+}
+
+// emitFiniteField tests one field's floats: the present payload of an
+// optional, every stored slot of an array (a counted one's live count), and a
+// nested type through its own pass.
+func (g *fixedGen) emitFiniteField(f *ir.Field, val string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	name := javaName(f.Name)
+	expr := val + "." + name
+	if f.Type.Optional {
+		g.pf("%sif (%sPresent) {\n", ind, expr)
+		ind += "    "
+	}
+	element := expr
+	switch {
+	case f.KeyEnum != "":
+		g.pf("%sfor (int i = 0; i < %d; i++) {\n", ind, f.KeyEnumRef.Max)
+		element = expr + "[i]"
+	case f.Array == ir.ArrayFixed:
+		g.pf("%sfor (int i = 0; i < %d; i++) {\n", ind, f.ArrayBound)
+		element = expr + "[i]"
+	case f.Array == ir.ArrayCounted:
+		g.pf("%sfor (int i = 0; i < %sCount && i < %d; i++) {\n", ind, expr, f.ArrayBound)
+		element = expr + "[i]"
+	}
+	test := ""
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		test = "!Float.isFinite(" + element + ")"
+	case ir.TFloat64:
+		test = "!Double.isFinite(" + element + ")"
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			test = "!" + fixedClass(r.Name) + ".finite(" + element + ")"
+		case *ir.Union:
+			test = "!" + fixedClass(r.Name) + ".finite(" + element + ")"
+		}
+	}
+	inner := ind
+	if element != expr {
+		inner += "    "
+	}
+	g.pf("%sif (%s) { return false; }\n", inner, test)
+	if element != expr {
+		g.pf("%s}\n", ind)
+	}
+	if f.Type.Optional {
+		g.pf("%s}\n", ind[:len(ind)-4])
+	}
 }
 
 // ---- the root's surface ---------------------------------------------------
@@ -1542,7 +1796,8 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    //     offset  16       the layout length (u32 LE), then the layout\n")
 	g.pf("    /** write the header at the front of buffer; answers where the records start. */\n")
 	g.pf("    public static int writeHeader(byte[] buffer) {\n")
-	g.pf("        java.util.Arrays.fill(buffer, 0, TableFixed.fileHeaderBytes, (byte) 0); // the seven reserved bytes, and the rest\n")
+	g.pf("        // the seven reserved bytes, and the rest\n")
+	g.pf("        java.util.Arrays.fill(buffer, 0, TableFixed.fileHeaderBytes, (byte) 0);\n")
 	g.pf("        buffer[0] = TableFixed.form;\n")
 	g.pf("        TableFixed.put64(buffer, TableFixed.hashAt, hash);\n")
 	g.pf("        TableFixed.put32(buffer, TableFixed.fileHeaderBytes, layout.length);\n")
@@ -1552,7 +1807,11 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 
 	g.pf("    /** A FILE: the form byte, the layout, then the records to the end of it. */\n")
 	g.pf("    public static int measure(int count) {\n")
-	g.pf("        return headerBytes + count * recordBytes;\n")
+	if st.Integrity != "" {
+		g.pf("        return headerBytes + count * recordBytes + 4;\n")
+	} else {
+		g.pf("        return headerBytes + count * recordBytes;\n")
+	}
 	g.pf("    }\n\n")
 
 	g.pf("    /** THE WRITE: the header once, then per record the hash and a straight\n")
@@ -1566,13 +1825,24 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    public static int save(Value[] values, int count, byte[] buffer) {\n")
 	g.pf("        if (values == null || buffer == null || count < 0 || count > values.length) { return -1; }\n")
 	g.pf("        final int need = measure(count);\n")
-	g.pf("        if (buffer.length < need) { return -1; }\n")
+	g.pf("        if (need < 0 || buffer.length < need) { return -1; }\n")
+	if fixedCarriesFloat(st.Fields, map[string]bool{}) {
+		// A NaN OR AN INFINITY IS REFUSED BY THE WRITER (docs/SPEC-TABLES.md
+		// §3.3): every value is tested before the first byte is stored, so a
+		// refused save leaves the caller's buffer as it was.
+		g.pf("        for (int k = 0; k < count; k++) {\n")
+		g.pf("            if (!finite(values[k])) { return -1; }\n")
+		g.pf("        }\n")
+	}
 	g.pf("        int at = writeHeader(buffer);\n")
 	g.pf("        for (int k = 0; k < count; k++) {\n")
 	g.pf("            TableFixed.put64(buffer, at, hash);\n")
 	g.pf("            writeBody(buffer, at + 8, values[k]);\n")
 	g.pf("            at += recordBytes;\n")
 	g.pf("        }\n")
+	if st.Integrity != "" {
+		g.pf("        TableFixed.put32(buffer, at, TableFixed.crc32c(buffer, at));\n")
+	}
 	g.pf("        return need;\n")
 	g.pf("    }\n\n")
 
@@ -1622,6 +1892,15 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    public static int load(Value[] values, int count, byte[] data,\n")
 	g.pf("                           TableFixed.Entry[] plan, short[] remap, byte[] image,\n")
 	g.pf("                           TableFixed.Report report) {\n")
+	if st.Integrity != "" {
+		g.pf("        if (data != null && data.length >= 1 && data[0] == TableFixed.form) {\n")
+		g.pf("            if (!TableFixed.integrityHolds(data)) {\n")
+		g.pf("                report.malformed = true;\n")
+		g.pf("                return -1;\n")
+		g.pf("            }\n")
+		g.pf("            data = java.util.Arrays.copyOf(data, data.length - 4);\n")
+		g.pf("        }\n")
+	}
 	g.pf("        // STEPS 1 TO 3: the bytes are there at all, the form byte is this form,\n")
 	g.pf("        // and 20 + L is inside the file. The first is framing damage and has no\n")
 	g.pf("        // name; the other two refuse by name.\n")
@@ -1649,7 +1928,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("            if (data[head.layoutAt + i] != known_.layout[i]) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }\n")
 	g.pf("        }\n")
 	g.pf("\n")
-	g.pf("        // STEP 8: the plan this peer resolves to, and the record size FROM THE\n")
+	g.pf("        // STEP 8: the plan this endpoint resolves to, and the record size FROM THE\n")
 	g.pf("        // LOCK. The census is the plan's own numbers, carried to the bottom.\n")
 	g.pf("        TableFixed.Entry[] entries = Identity.plan;\n")
 	g.pf("        int made = Identity.plan.length;\n")
@@ -1657,7 +1936,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        int censusUnknown = 0;\n")
 	g.pf("        int censusKind = 0;\n")
 	if entryBounds != nil {
-		g.pf("        // THE WRITER'S OWN BOUNDS for the peer this file selected (ALGORITHM\n")
+		g.pf("        // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM\n")
 		g.pf("        // §4.6, bill §12.5): held after the plan run and before the scatter,\n")
 		g.pf("        // so a forged value past what the writer could have written lands\n")
 		g.pf("        // the writer's bound and counts, never this reader's wider own.\n")
@@ -1700,8 +1979,16 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        int at = head.recordsAt;\n")
 	g.pf("        // STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a\n")
 	g.pf("        // refusal has written not one destination byte.\n")
+	g.pf("        final int clampedBefore = report.clamped;\n")
+	g.pf("        final int widenedBefore = report.widened;\n")
 	g.pf("        for (int k = 0; k < n; k++) {\n")
-	g.pf("            if (TableFixed.get64(data, at) != fileHash) { report.refuse(TableFixed.Reason.noLayout); return -1; }\n")
+	g.pf("            if (TableFixed.get64(data, at) != fileHash) {\n")
+	g.pf("                for (int j = 0; j < k; j++) { scatter(defaults, 0, values[j], new TableFixed.Report()); }\n")
+	g.pf("                report.clamped = clampedBefore;\n")
+	g.pf("                report.widened = widenedBefore;\n")
+	g.pf("                report.refuse(TableFixed.Reason.noLayout);\n")
+	g.pf("                return -1;\n")
+	g.pf("            }\n")
 	g.pf("            for (int h = 0; h < holeN; h++) {\n")
 	g.pf("                final int off = hole[h * 2];\n")
 	g.pf("                final int hn = hole[h * 2 + 1];\n")
@@ -1712,11 +1999,21 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 		g.pf("            TableFixed.clampWriterBounds(writerBounds, image, report);\n")
 	}
 	g.pf("            scatter(image, 0, values[k], report);\n")
-	g.pf("            if (report.refused) { return -1; }\n")
+	g.pf("            if (report.refused) {\n")
+	g.pf("                for (int j = 0; j <= k; j++) { scatter(defaults, 0, values[j], new TableFixed.Report()); }\n")
+	g.pf("                report.clamped = clampedBefore;\n")
+	g.pf("                report.widened = widenedBefore;\n")
+	g.pf("                return -1;\n")
+	g.pf("            }\n")
+	g.pf("            // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
+	g.pf("            if (report.malformed) {\n")
+	g.pf("                for (int j = 0; j <= k; j++) { scatter(defaults, 0, values[j], new TableFixed.Report()); }\n")
+	g.pf("                return -1;\n")
+	g.pf("            }\n")
 	g.pf("            at += (int) recordSize;\n")
 	g.pf("        }\n")
 	g.pf("        // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that\n")
-	g.pf("        // RETURNS (§5.9 #6): once per peer and never per record, which is also how\n")
+	g.pf("        // RETURNS (§5.9 #6): once per endpoint and never per record, which is also how\n")
 	g.pf("        // REFUSE stays total. On a lawful lineage it lands zero, always (§5.9 #30).\n")
 	g.pf("        report.unknown += censusUnknown;\n")
 	g.pf("        report.kindMismatch += censusKind;\n")
@@ -1769,7 +2066,7 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 	g.pf("     *  stays in the lineage forever: the floor is an index cut. */\n")
 	g.pf("    public static final int floor = %d;\n\n", floor)
 	// THE WRITER'S OWN BOUNDED LEAVES, per entry (ALGORITHM §4.6, bill §12.5):
-	// the bounds pass on a compiled lane holds the PEER's declaration and never
+	// the bounds pass on a compiled lane holds the ENDPOINT's declaration and never
 	// this reader's wider own, so each entry's ranged leaves ride as data —
 	// a flat {dst, width, signed, lo, hi} per leaf, at this reader's image
 	// offsets, in the writer's raw bounds. Only entries that carry them.
@@ -1780,9 +2077,9 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 			if len(rows) == 0 {
 				continue
 			}
-			g.pf("    /** LINEAGE ENTRY %d's writer bounds: the peer's own ranged leaves,\n", i)
+			g.pf("    /** LINEAGE ENTRY %d's writer bounds: the endpoint's own ranged leaves,\n", i)
 			g.pf("     *  raw scale, at this reader's image offsets — what the compiled\n")
-			g.pf("     *  lane's bounds pass holds this peer to (ALGORITHM §4.6). */\n")
+			g.pf("     *  lane's bounds pass holds this endpoint to (ALGORITHM §4.6). */\n")
 			g.pf("    private static final long[] known%dWriterBounds = {\n", i)
 			for _, r := range rows {
 				sgn := int64(0)
@@ -1827,15 +2124,15 @@ type fixedWriterBound struct {
 	lo, hi int64
 }
 
-// fixedWriterBounds resolves every entry's ranged leaves against this reader's
-// own fields BY NAME — the match the reference's collectKnownRanges makes — so
-// the compiled lane's bounds pass can hold a peer to what IT declared and
-// never to this reader's wider own (ALGORITHM §4.6, bill §12.5). The
+// fixedWriterBounds resolves every entry's ranged leaves onto this reader's
+// own fields through ir.TableFixedWriterField — the match every leg makes — so
+// the compiled lane's bounds pass can hold an endpoint to what IT declared and
+// never to this reader's wider own (docs/FIXED-FORM-ALGORITHM.md §4.5). The
 // identity entry needs none: its writer IS this reader, and the scatter's own
-// pass holds it. A field this reader cannot name bounds nothing, and a FIXED
-// array's bound covers every slot at its stride; a counted array's live count
-// is a run-time fact a static entry does not carry, so only the fixed shape
-// rides. The answer is nil when no entry bounds anything, so a table without
+// pass holds it. A field the helper does not match bounds nothing, and a FIXED
+// array's bound covers every slot at its stride, each slot held the same as a
+// scalar; a counted array's live count is a run-time fact a static entry does
+// not carry, so only the fixed shape rides. The answer is nil when no entry bounds anything, so a table without
 // ranged writers emits no clamp at all.
 func (g *fixedGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry, hash uint64) [][]fixedWriterBound {
 	var all [][]fixedWriterBound
@@ -1846,8 +2143,8 @@ func (g *fixedGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry,
 			for _, spec := range e.Ranges {
 				at := int64(0)
 				for _, f := range st.Fields {
-					if f.Name == spec.Name {
-						rows = append(rows, fixedWriterBoundsOfField(f, at, spec.Lo, spec.Hi)...)
+					if _, ok := ir.TableFixedWriterField(f, spec); ok {
+						rows = append(rows, fixedWriterBoundsOfField(f, at, ir.TableKindSigned(spec.Kind), spec.Lo, spec.Hi)...)
 						break
 					}
 					at += fixedFieldBytes(f)
@@ -1867,19 +2164,19 @@ func (g *fixedGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry,
 
 // fixedWriterBoundsOfField spells one writer-bound spec at this reader's
 // offsets: a scalar is one row, a fixed array one per slot at its stride.
-func fixedWriterBoundsOfField(f *ir.Field, at, lo, hi int64) []fixedWriterBound {
+func fixedWriterBoundsOfField(f *ir.Field, at int64, signed bool, lo, hi int64) []fixedWriterBound {
 	if f.Array == ir.ArrayFixed {
 		stride := fixedElementBytes(f)
 		out := make([]fixedWriterBound, 0, f.ArrayBound)
 		for i := int64(0); i < f.ArrayBound; i++ {
-			out = append(out, fixedWriterBound{dst: at + i*stride, width: stride, signed: f.Type.Signed, lo: lo, hi: hi})
+			out = append(out, fixedWriterBound{dst: at + i*stride, width: stride, signed: signed, lo: lo, hi: hi})
 		}
 		return out
 	}
 	if f.Array != ir.ArrayNone {
 		return nil // a counted array walks its live count, which a static row cannot name
 	}
-	return []fixedWriterBound{{dst: at, width: fixedFieldBytes(f), signed: f.Type.Signed, lo: lo, hi: hi}}
+	return []fixedWriterBound{{dst: at, width: fixedFieldBytes(f), signed: signed, lo: lo, hi: hi}}
 }
 
 // fixedLiteralCap is where a readable byte-array literal stops being one. A
@@ -1925,15 +2222,42 @@ func (g *fixedGen) emitByteChunks(b []byte) {
 	}
 }
 
+// fixedFillRow lays one commented row of a layout literal out the way the
+// formatter does: the elements filled to the column limit, eight columns in,
+// and the comment after the last of them, which moves down a line whenever the
+// comment would not fit behind it.
+func fixedFillRow(elems, comment string) string {
+	parts := strings.Split(elems, ", ")
+	var lines []string
+	cur := ""
+	for i, p := range parts {
+		tok := p + ","
+		if i == len(parts)-1 {
+			tok += " // " + comment
+		}
+		if cur != "" && utf8.RuneCountInString(cur)+1+utf8.RuneCountInString(tok) > 100 {
+			lines = append(lines, cur)
+			cur = ""
+		}
+		if cur == "" {
+			cur = "        " + tok
+		} else {
+			cur += " " + tok
+		}
+	}
+	lines = append(lines, cur)
+	return strings.Join(lines, "\n") + "\n"
+}
+
 func (g *fixedGen) emitByteArray(b []byte, entries []fixedLayoutEntry) {
 	if len(entries) > 0 {
 		// the layout, entry by entry, so a reader of the generated source can
 		// see the walk rather than a wall of hex
-		g.pf("        %s, // %d entries\n", fixedBytesLine(b[:4]), len(entries))
+		g.pf("%s", fixedFillRow(fixedBytesLine(b[:4]), fmt.Sprintf("%d entries", len(entries))))
 		at := 4
 		for _, e := range entries {
-			g.pf("        %s, // %s: kind %d, size %d, %d %s\n",
-				fixedBytesLine(b[at:at+17]), e.note, e.kind, e.size, e.children, fixedChildWord(e.children))
+			g.pf("%s", fixedFillRow(fixedBytesLine(b[at:at+17]),
+				fmt.Sprintf("%s: kind %d, size %d, %d %s", e.note, e.kind, e.size, e.children, fixedChildWord(e.children))))
 			at += 17
 		}
 		return

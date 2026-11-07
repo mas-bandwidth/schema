@@ -13,36 +13,36 @@
 
 /* ---- the block form of table TableEntity: the open path and the descriptors ---- */
 
-static int schema_benchtable_table_entity_block_open_check_(const void * base,int64_t bytes,int64_t * used_out,TableRefuseReason * reason)
+static int schema_benchtable_table_entity_block_open_check_(const void * base,int64_t bytes,int64_t * used_out,benchtable_table_refuse_reason_t * reason)
 {
     const uint8_t * raw=(const uint8_t *)base; uint64_t magic; int64_t used=88, padding;
-    if(base==NULL) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
-    if(bytes<88) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }
-    magic=table_block_read64(raw);
-    if(magic!=table_block_magic) { return table_cook_refuse(reason,magic==table_block_byteswap64(table_block_magic) ? SCHEMA_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
-    if(table_block_read64(raw+16)!=table_block_byte_order) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
-    if(table_block_read64(raw+8)!=SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION)!=NULL; }
-    padding=(64-used%64)%64; if(padding>bytes-used) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }
-    used+=padding; if((uintptr_t)base%64!=0) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
+    if(base==NULL) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
+    if(bytes<88) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_TRUNCATED)!=NULL; }
+    magic=benchtable_table_block_read64(raw);
+    if(magic!=benchtable_table_block_magic) { return benchtable_table_cook_refuse(reason,magic==benchtable_table_block_byteswap64(benchtable_table_block_magic) ? SCHEMA_BENCHTABLE_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_BENCHTABLE_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
+    if(benchtable_table_block_read64(raw+16)!=benchtable_table_block_byte_order) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
+    if(benchtable_table_block_read64(raw+8)!=SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_WRONG_BUILD_VERSION)!=NULL; }
+    padding=(64-used%64)%64; if(padding>bytes-used) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_TRUNCATED)!=NULL; }
+    used+=padding; if((uintptr_t)base%64!=0) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
     *used_out=used; return 1;
 }
-int schema_benchtable_table_entity_block_open_ex_(TableEntityBlock * block,void * base,int64_t bytes,TableRefuseReason * reason)
+int schema_benchtable_table_entity_block_open_ex_(benchtable_table_entity_block_t * block,void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
 {
     int64_t used=0; block->base=NULL; block->projection=NULL; block->bytes=0;
     if(!schema_benchtable_table_entity_block_open_check_(base,bytes,&used,reason)) { return 0; }
-    block->base=(uint8_t *)base; block->projection=(TableEntityBlockProjection *)base; block->bytes=used; return 1;
+    block->base=(uint8_t *)base; block->projection=(benchtable_table_entity_block_projection_t *)base; block->bytes=used; return 1;
 }
-int schema_benchtable_table_entity_block_open_const_ex_(TableEntityBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason)
+int schema_benchtable_table_entity_block_open_const_ex_(benchtable_table_entity_block_const_t * block,const void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
 {
     int64_t used=0; block->base=NULL; block->projection=NULL; block->bytes=0;
     if(!schema_benchtable_table_entity_block_open_check_(base,bytes,&used,reason)) { return 0; }
-    block->base=(const uint8_t *)base; block->projection=(const TableEntityBlockProjection *)base; block->bytes=used; return 1;
+    block->base=(const uint8_t *)base; block->projection=(const benchtable_table_entity_block_projection_t *)base; block->bytes=used; return 1;
 }
-int schema_benchtable_table_entity_block_open_(TableEntityBlock * block,void * base,int64_t bytes)
+int schema_benchtable_table_entity_block_open_(benchtable_table_entity_block_t * block,void * base,int64_t bytes)
 { return schema_benchtable_table_entity_block_open_ex_(block,base,bytes,NULL); }
 /* Every record's field table, concatenated: the projection's, then each
    row's. One name for the whole graph (docs/SPEC-TABLES.md §11). */
-static const TableBlockFieldInfo schema_benchtable_table_entity_block_fields_[] = {
+static const benchtable_table_block_field_info_t schema_benchtable_table_entity_block_fields_[] = {
     /* TableEntity (the projection) */
     { "entity_id", 24u, 4u, 7, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
     { "pos_x", 28u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
@@ -60,44 +60,44 @@ static const TableBlockFieldInfo schema_benchtable_table_entity_block_fields_[] 
     { "firing", 81u, 1u, 1, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 1u, 0xffffffffu, NULL },
 };
 
-const TableBlockInfo schema_benchtable_table_entity_block_info_ = { "TableEntity", SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE, 88u, 8u, 14, schema_benchtable_table_entity_block_fields_ };
+const benchtable_table_block_info_t schema_benchtable_table_entity_block_info_ = { "TableEntity", SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE, 88u, 8u, 14, schema_benchtable_table_entity_block_fields_ };
 
 /* ---- the block form of table TableStat: the open path and the descriptors ---- */
 
-static int schema_benchtable_table_stat_block_open_check_(const void * base,int64_t bytes,int64_t * used_out,TableRefuseReason * reason)
+static int schema_benchtable_table_stat_block_open_check_(const void * base,int64_t bytes,int64_t * used_out,benchtable_table_refuse_reason_t * reason)
 {
     const uint8_t * raw=(const uint8_t *)base; uint64_t magic; int64_t used=32, padding;
-    if(base==NULL) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
-    if(bytes<32) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }
-    magic=table_block_read64(raw);
-    if(magic!=table_block_magic) { return table_cook_refuse(reason,magic==table_block_byteswap64(table_block_magic) ? SCHEMA_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
-    if(table_block_read64(raw+16)!=table_block_byte_order) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
-    if(table_block_read64(raw+8)!=SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION)!=NULL; }
-    padding=(64-used%64)%64; if(padding>bytes-used) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }
-    used+=padding; if((uintptr_t)base%64!=0) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
+    if(base==NULL) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
+    if(bytes<32) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_TRUNCATED)!=NULL; }
+    magic=benchtable_table_block_read64(raw);
+    if(magic!=benchtable_table_block_magic) { return benchtable_table_cook_refuse(reason,magic==benchtable_table_block_byteswap64(benchtable_table_block_magic) ? SCHEMA_BENCHTABLE_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_BENCHTABLE_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
+    if(benchtable_table_block_read64(raw+16)!=benchtable_table_block_byte_order) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
+    if(benchtable_table_block_read64(raw+8)!=SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_WRONG_BUILD_VERSION)!=NULL; }
+    padding=(64-used%64)%64; if(padding>bytes-used) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_TRUNCATED)!=NULL; }
+    used+=padding; if((uintptr_t)base%64!=0) { return benchtable_table_cook_refuse(reason,SCHEMA_BENCHTABLE_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
     *used_out=used; return 1;
 }
-int schema_benchtable_table_stat_block_open_ex_(TableStatBlock * block,void * base,int64_t bytes,TableRefuseReason * reason)
+int schema_benchtable_table_stat_block_open_ex_(benchtable_table_stat_block_t * block,void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
 {
     int64_t used=0; block->base=NULL; block->projection=NULL; block->bytes=0;
     if(!schema_benchtable_table_stat_block_open_check_(base,bytes,&used,reason)) { return 0; }
-    block->base=(uint8_t *)base; block->projection=(TableStatBlockProjection *)base; block->bytes=used; return 1;
+    block->base=(uint8_t *)base; block->projection=(benchtable_table_stat_block_projection_t *)base; block->bytes=used; return 1;
 }
-int schema_benchtable_table_stat_block_open_const_ex_(TableStatBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason)
+int schema_benchtable_table_stat_block_open_const_ex_(benchtable_table_stat_block_const_t * block,const void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
 {
     int64_t used=0; block->base=NULL; block->projection=NULL; block->bytes=0;
     if(!schema_benchtable_table_stat_block_open_check_(base,bytes,&used,reason)) { return 0; }
-    block->base=(const uint8_t *)base; block->projection=(const TableStatBlockProjection *)base; block->bytes=used; return 1;
+    block->base=(const uint8_t *)base; block->projection=(const benchtable_table_stat_block_projection_t *)base; block->bytes=used; return 1;
 }
-int schema_benchtable_table_stat_block_open_(TableStatBlock * block,void * base,int64_t bytes)
+int schema_benchtable_table_stat_block_open_(benchtable_table_stat_block_t * block,void * base,int64_t bytes)
 { return schema_benchtable_table_stat_block_open_ex_(block,base,bytes,NULL); }
 /* Every record's field table, concatenated: the projection's, then each
    row's. One name for the whole graph (docs/SPEC-TABLES.md §11). */
-static const TableBlockFieldInfo schema_benchtable_table_stat_block_fields_[] = {
+static const benchtable_table_block_field_info_t schema_benchtable_table_stat_block_fields_[] = {
     /* TableStat (the projection) */
     { "stat_id", 24u, 4u, 6, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
     { "delta", 28u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
 };
 
-const TableBlockInfo schema_benchtable_table_stat_block_info_ = { "TableStat", SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE, 32u, 8u, 2, schema_benchtable_table_stat_block_fields_ };
+const benchtable_table_block_info_t schema_benchtable_table_stat_block_info_ = { "TableStat", SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE, 32u, 8u, 2, schema_benchtable_table_stat_block_fields_ };
 

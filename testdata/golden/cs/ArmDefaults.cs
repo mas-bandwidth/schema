@@ -13,18 +13,15 @@ namespace Example
 {
 
     // type DefaultArm
-    public sealed class DefaultArm
+    public struct DefaultArm
     {
-        public ProbeConfig[] Entries = new ProbeConfig[2]; // used count beside it; wire count in [0, 2]
+        public InlineBuffer2<ProbeConfig> Entries; // used count beside it; wire count in [0, 2]
         public int EntriesCount;
         public byte Marker; // wire [0, 7]
 
         public DefaultArm()
         {
-            for (int i = 0; i < Entries.Length; i++)
-            {
-                Entries[i] = new ProbeConfig();
-            }
+            Schema.InitDefaultArm(ref this);
         }
     }
 
@@ -34,33 +31,36 @@ namespace Example
         None = 0,
         First = 1,
         Second = 2,
-        Count = 2, // the declared variant count (SPEC §4.2)
-        Max = 2, // the exported extent (SPEC §4.2)
     }
 
     // DefaultChoice — at most one of the arms; Type says which. Construction is the empty
     // union (None). Every read selection initializes the chosen payload from
     // construction defaults; unselected arms keep what they last held — the
     // MessageStorage reuse discipline. Consumers read the selected arm only.
-    public sealed class DefaultChoice
+    public struct DefaultChoice
     {
         public DefaultChoiceType Type;
-        public DefaultArm First = new DefaultArm();
-        public DefaultArm Second = new DefaultArm();
+        public DefaultArm First;
+        public DefaultArm Second;
     }
 
     // type DefaultChoicePacket
-    public sealed class DefaultChoicePacket
+    public struct DefaultChoicePacket
     {
-        public DefaultChoice Choice = new DefaultChoice();
+        public DefaultChoice Choice;
     }
 
     // type DefaultBulkArm
-    public sealed class DefaultBulkArm
+    public struct DefaultBulkArm
     {
-        public DefaultArm Payload = new DefaultArm();
-        public byte[] Data = new byte[2]; // bytes(2): fixed buffer, used length beside it (SPEC §4.7)
+        public DefaultArm Payload;
+        public InlineBuffer2<byte> Data; // bytes(2): fixed buffer, used length beside it (SPEC §4.7)
         public int DataLength;
+
+        public DefaultBulkArm()
+        {
+            Schema.InitDefaultBulkArm(ref this);
+        }
     }
 
     // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -69,19 +69,17 @@ namespace Example
         None = 0,
         First = 1,
         Second = 2,
-        Count = 2, // the declared variant count (SPEC §4.2)
-        Max = 2, // the exported extent (SPEC §4.2)
     }
 
     // DefaultBulkChoice — at most one of the arms; Type says which. Construction is the empty
     // union (None). Every read selection initializes the chosen payload from
     // construction defaults; unselected arms keep what they last held — the
     // MessageStorage reuse discipline. Consumers read the selected arm only.
-    public sealed class DefaultBulkChoice
+    public struct DefaultBulkChoice
     {
         public DefaultBulkChoiceType Type;
-        public DefaultBulkArm First = new DefaultBulkArm();
-        public DefaultBulkArm Second = new DefaultBulkArm();
+        public DefaultBulkArm First;
+        public DefaultBulkArm Second;
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -91,26 +89,26 @@ namespace Example
     {
         // DefaultArmMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // DefaultArmMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DefaultArmMaxBits = 77;
-        public const long DefaultArmMaxBytes = 16;
+        public const int DefaultArmMaxBits = 77;
+        public const int DefaultArmMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroDefaultArm(DefaultArm value)
+        public static void ZeroDefaultArm(ref DefaultArm value)
         {
             for (int i = 0; i < 2; i++)
             {
-                ZeroProbeConfig(value.Entries[i]);
+                ZeroProbeConfig(ref value.Entries[i]);
             }
             value.EntriesCount = 0;
             value.Marker = 0;
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitDefaultArm(DefaultArm value)
+        public static void InitDefaultArm(ref DefaultArm value)
         {
             for (int i = 0; i < 2; i++)
             {
-                InitProbeConfig(value.Entries[i]);
+                InitProbeConfig(ref value.Entries[i]);
             }
             value.EntriesCount = 0;
             value.Marker = 0;
@@ -118,17 +116,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteDefaultArm(WriteStream stream, DefaultArm value)
+        public static bool WriteDefaultArm(WriteStream stream, ref DefaultArm value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteDefaultArmBatch(ref batch, value);
+            bool result = WriteDefaultArmBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteDefaultArmBatch(ref WriteBatch batch, DefaultArm value)
+        private static bool WriteDefaultArmBatch(ref WriteBatch batch, ref DefaultArm value)
         {
             Debug.Assert(value.EntriesCount >= 0 && value.EntriesCount <= 2, "value.EntriesCount out of range [0, 2]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
@@ -140,7 +138,7 @@ namespace Example
             }
             for (int i = 0; i < value.EntriesCount; i++)
             {
-                if (!WriteProbeConfigBatch(ref batch, value.Entries[i]))
+                if (!WriteProbeConfigBatch(ref batch, ref value.Entries[i]))
                 {
                     return false;
                 }
@@ -156,17 +154,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadDefaultArm(ReadStream stream, DefaultArm value)
+        public static bool ReadDefaultArm(ReadStream stream, ref DefaultArm value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadDefaultArmBatch(ref batch, value);
+            bool result = ReadDefaultArmBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadDefaultArmBatch(ref ReadBatch batch, DefaultArm value)
+        private static bool ReadDefaultArmBatch(ref ReadBatch batch, ref DefaultArm value)
         {
             if (!batch.SerializeInt(ref value.EntriesCount, 0, 2)) // the count guards the loop (§6.3)
             {
@@ -174,7 +172,7 @@ namespace Example
             }
             for (int i = 0; i < value.EntriesCount; i++)
             {
-                if (!ReadProbeConfigBatch(ref batch, value.Entries[i]))
+                if (!ReadProbeConfigBatch(ref batch, ref value.Entries[i]))
                 {
                     return false;
                 }
@@ -190,17 +188,19 @@ namespace Example
             return true;
         }
 
-        // EnumNameDefaultChoiceType: debug/log/tooling name for any DefaultChoiceType wire value —
-        // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameDefaultChoiceType(ulong value)
+        public const DefaultChoiceType DefaultChoiceTypeMax = (DefaultChoiceType)2; // the exported extent (SPEC §4.2)
+
+        // EnumNameDefaultChoiceType: debug/log/tooling name for any DefaultChoiceType value —
+        // out-of-set values name as "???"
+        public static string EnumNameDefaultChoiceType(DefaultChoiceType value)
         {
             switch (value)
             {
-                case (ulong)DefaultChoiceType.None:
+                case DefaultChoiceType.None:
                     return "None";
-                case (ulong)DefaultChoiceType.First:
+                case DefaultChoiceType.First:
                     return "First";
-                case (ulong)DefaultChoiceType.Second:
+                case DefaultChoiceType.Second:
                     return "Second";
                 default:
                     return "???";
@@ -209,30 +209,30 @@ namespace Example
 
         // DefaultChoiceMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
         // DefaultChoiceMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DefaultChoiceMaxBits = 79;
-        public const long DefaultChoiceMaxBytes = 16;
+        public const int DefaultChoiceMaxBits = 79;
+        public const int DefaultChoiceMaxBytes = 16;
 
         // ZeroDefaultChoice resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
         // is unselected at None; an arm initializes at its next selection.
-        public static void ZeroDefaultChoice(DefaultChoice value)
+        public static void ZeroDefaultChoice(ref DefaultChoice value)
         {
             value.Type = DefaultChoiceType.None;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteDefaultChoice(WriteStream stream, DefaultChoice value)
+        public static bool WriteDefaultChoice(WriteStream stream, ref DefaultChoice value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteDefaultChoiceBatch(ref batch, value);
+            bool result = WriteDefaultChoiceBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteDefaultChoiceBatch(ref WriteBatch batch, DefaultChoice value)
+        private static bool WriteDefaultChoiceBatch(ref WriteBatch batch, ref DefaultChoice value)
         {
             uint tagValue = (uint)value.Type;
             Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
@@ -243,24 +243,24 @@ namespace Example
             switch (value.Type)
             {
                 case DefaultChoiceType.First:
-                    return WriteDefaultArmBatch(ref batch, value.First);
+                    return WriteDefaultArmBatch(ref batch, ref value.First);
                 case DefaultChoiceType.Second:
-                    return WriteDefaultArmBatch(ref batch, value.Second);
+                    return WriteDefaultArmBatch(ref batch, ref value.Second);
             }
             return true; // None — the tag is the whole wire (SPEC §4.8)
         }
 
-        public static bool ReadDefaultChoice(ReadStream stream, DefaultChoice value)
+        public static bool ReadDefaultChoice(ReadStream stream, ref DefaultChoice value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadDefaultChoiceBatch(ref batch, value);
+            bool result = ReadDefaultChoiceBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadDefaultChoiceBatch(ref ReadBatch batch, DefaultChoice value)
+        private static bool ReadDefaultChoiceBatch(ref ReadBatch batch, ref DefaultChoice value)
         {
             int tagValue = 0;
             if (!batch.SerializeInt(ref tagValue, 0, 2)) // rejects a tag above the count (SPEC §4.8)
@@ -271,66 +271,60 @@ namespace Example
             switch (value.Type)
             {
                 case DefaultChoiceType.First:
-                    InitDefaultArm(value.First); // every selection starts from construction defaults
-                    return ReadDefaultArmBatch(ref batch, value.First);
+                    InitDefaultArm(ref value.First); // every selection starts from construction defaults
+                    return ReadDefaultArmBatch(ref batch, ref value.First);
                 case DefaultChoiceType.Second:
-                    InitDefaultArm(value.Second); // every selection starts from construction defaults
-                    return ReadDefaultArmBatch(ref batch, value.Second);
+                    InitDefaultArm(ref value.Second); // every selection starts from construction defaults
+                    return ReadDefaultArmBatch(ref batch, ref value.Second);
             }
             return true; // None
         }
 
         // DefaultChoicePacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // DefaultChoicePacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DefaultChoicePacketMaxBits = 79;
-        public const long DefaultChoicePacketMaxBytes = 16;
+        public const int DefaultChoicePacketMaxBits = 79;
+        public const int DefaultChoicePacketMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroDefaultChoicePacket(DefaultChoicePacket value)
+        public static void ZeroDefaultChoicePacket(ref DefaultChoicePacket value)
         {
-            ZeroDefaultChoice(value.Choice);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitDefaultChoicePacket(DefaultChoicePacket value)
-        {
-            ZeroDefaultChoice(value.Choice);
+            ZeroDefaultChoice(ref value.Choice);
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteDefaultChoicePacket(WriteStream stream, DefaultChoicePacket value)
+        public static bool WriteDefaultChoicePacket(WriteStream stream, ref DefaultChoicePacket value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteDefaultChoicePacketBatch(ref batch, value);
+            bool result = WriteDefaultChoicePacketBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteDefaultChoicePacketBatch(ref WriteBatch batch, DefaultChoicePacket value)
+        private static bool WriteDefaultChoicePacketBatch(ref WriteBatch batch, ref DefaultChoicePacket value)
         {
-            if (!WriteDefaultChoiceBatch(ref batch, value.Choice))
+            if (!WriteDefaultChoiceBatch(ref batch, ref value.Choice))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadDefaultChoicePacket(ReadStream stream, DefaultChoicePacket value)
+        public static bool ReadDefaultChoicePacket(ReadStream stream, ref DefaultChoicePacket value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadDefaultChoicePacketBatch(ref batch, value);
+            bool result = ReadDefaultChoicePacketBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadDefaultChoicePacketBatch(ref ReadBatch batch, DefaultChoicePacket value)
+        private static bool ReadDefaultChoicePacketBatch(ref ReadBatch batch, ref DefaultChoicePacket value)
         {
-            if (!ReadDefaultChoiceBatch(ref batch, value.Choice))
+            if (!ReadDefaultChoiceBatch(ref batch, ref value.Choice))
             {
                 return false;
             }
@@ -339,31 +333,31 @@ namespace Example
 
         // DefaultBulkArmMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // DefaultBulkArmMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DefaultBulkArmMaxBits = 102;
-        public const long DefaultBulkArmMaxBytes = 16;
+        public const int DefaultBulkArmMaxBits = 102;
+        public const int DefaultBulkArmMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroDefaultBulkArm(DefaultBulkArm value)
+        public static void ZeroDefaultBulkArm(ref DefaultBulkArm value)
         {
-            ZeroDefaultArm(value.Payload);
-            Array.Clear(value.Data, 0, 2);
+            ZeroDefaultArm(ref value.Payload);
+            value.Data[..].Clear();
             value.DataLength = 0;
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitDefaultBulkArm(DefaultBulkArm value)
+        public static void InitDefaultBulkArm(ref DefaultBulkArm value)
         {
-            InitDefaultArm(value.Payload);
-            Array.Clear(value.Data, 0, 2);
+            InitDefaultArm(ref value.Payload);
+            value.Data[..].Clear();
             value.DataLength = 0;
         }
 
-        public static bool WriteDefaultBulkArm(WriteStream stream, DefaultBulkArm value)
+        public static bool WriteDefaultBulkArm(WriteStream stream, ref DefaultBulkArm value)
         {
             {
                 // scoped batch: one capture and one restore for the whole site
                 WriteBatch batch = stream.BeginBatch();
-                bool batchOk = WriteDefaultArmBatch(ref batch, value.Payload);
+                bool batchOk = WriteDefaultArmBatch(ref batch, ref value.Payload);
                 batch.End();
                 if (!batchOk)
                 {
@@ -378,19 +372,19 @@ namespace Example
                     return false;
                 }
             }
-            if (!stream.SerializeBytes(value.Data.AsSpan(0, value.DataLength)))
+            if (!stream.SerializeBytes(value.Data[..value.DataLength]))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadDefaultBulkArm(ReadStream stream, DefaultBulkArm value)
+        public static bool ReadDefaultBulkArm(ReadStream stream, ref DefaultBulkArm value)
         {
             {
                 // scoped batch: one capture and one restore for the whole site
                 ReadBatch batch = stream.BeginBatch();
-                bool batchOk = ReadDefaultArmBatch(ref batch, value.Payload);
+                bool batchOk = ReadDefaultArmBatch(ref batch, ref value.Payload);
                 batch.End();
                 if (!batchOk)
                 {
@@ -401,24 +395,26 @@ namespace Example
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.Data.AsSpan(0, value.DataLength)))
+            if (!stream.SerializeBytes(value.Data[..value.DataLength]))
             {
                 return false;
             }
             return true;
         }
 
-        // EnumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType wire value —
-        // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameDefaultBulkChoiceType(ulong value)
+        public const DefaultBulkChoiceType DefaultBulkChoiceTypeMax = (DefaultBulkChoiceType)2; // the exported extent (SPEC §4.2)
+
+        // EnumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType value —
+        // out-of-set values name as "???"
+        public static string EnumNameDefaultBulkChoiceType(DefaultBulkChoiceType value)
         {
             switch (value)
             {
-                case (ulong)DefaultBulkChoiceType.None:
+                case DefaultBulkChoiceType.None:
                     return "None";
-                case (ulong)DefaultBulkChoiceType.First:
+                case DefaultBulkChoiceType.First:
                     return "First";
-                case (ulong)DefaultBulkChoiceType.Second:
+                case DefaultBulkChoiceType.Second:
                     return "Second";
                 default:
                     return "???";
@@ -427,18 +423,18 @@ namespace Example
 
         // DefaultBulkChoiceMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
         // DefaultBulkChoiceMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DefaultBulkChoiceMaxBits = 104;
-        public const long DefaultBulkChoiceMaxBytes = 16;
+        public const int DefaultBulkChoiceMaxBits = 104;
+        public const int DefaultBulkChoiceMaxBytes = 16;
 
         // ZeroDefaultBulkChoice resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
         // is unselected at None; an arm initializes at its next selection.
-        public static void ZeroDefaultBulkChoice(DefaultBulkChoice value)
+        public static void ZeroDefaultBulkChoice(ref DefaultBulkChoice value)
         {
             value.Type = DefaultBulkChoiceType.None;
         }
 
-        public static bool WriteDefaultBulkChoice(WriteStream stream, DefaultBulkChoice value)
+        public static bool WriteDefaultBulkChoice(WriteStream stream, ref DefaultBulkChoice value)
         {
             uint tagValue = (uint)value.Type;
             Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
@@ -449,14 +445,14 @@ namespace Example
             switch (value.Type)
             {
                 case DefaultBulkChoiceType.First:
-                    return WriteDefaultBulkArm(stream, value.First);
+                    return WriteDefaultBulkArm(stream, ref value.First);
                 case DefaultBulkChoiceType.Second:
-                    return WriteDefaultBulkArm(stream, value.Second);
+                    return WriteDefaultBulkArm(stream, ref value.Second);
             }
             return true; // None — the tag is the whole wire (SPEC §4.8)
         }
 
-        public static bool ReadDefaultBulkChoice(ReadStream stream, DefaultBulkChoice value)
+        public static bool ReadDefaultBulkChoice(ReadStream stream, ref DefaultBulkChoice value)
         {
             int tagValue = 0;
             if (!stream.SerializeInt(ref tagValue, 0, 2)) // rejects a tag above the count (SPEC §4.8)
@@ -467,11 +463,11 @@ namespace Example
             switch (value.Type)
             {
                 case DefaultBulkChoiceType.First:
-                    InitDefaultBulkArm(value.First); // every selection starts from construction defaults
-                    return ReadDefaultBulkArm(stream, value.First);
+                    InitDefaultBulkArm(ref value.First); // every selection starts from construction defaults
+                    return ReadDefaultBulkArm(stream, ref value.First);
                 case DefaultBulkChoiceType.Second:
-                    InitDefaultBulkArm(value.Second); // every selection starts from construction defaults
-                    return ReadDefaultBulkArm(stream, value.Second);
+                    InitDefaultBulkArm(ref value.Second); // every selection starts from construction defaults
+                    return ReadDefaultBulkArm(stream, ref value.Second);
             }
             return true; // None
         }

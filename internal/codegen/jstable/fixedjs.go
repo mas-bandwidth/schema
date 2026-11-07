@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -88,6 +89,12 @@ func fixedSetter(t ir.FieldType) (string, bool) {
 	switch t.Kind {
 	case ir.TBool:
 		return "setUint8", false
+	case ir.TFloat32:
+		// a table float is finite (docs/SPEC-TABLES.md §3.3): the content pass
+		// refuses a NaN or an infinity on its raw bits before a load, and every
+		// finite value rides the ordinary conversion bit for bit, -0 and the
+		// subnormals included
+		return "setFloat32", true
 	case ir.TFloat64:
 		return "setFloat64", true
 	}
@@ -175,27 +182,6 @@ func (g *fixedGen) store(ind, view, at string, t ir.FieldType, expr string) {
 		g.pf("%s%s.setBigUint64(%s, BigInt.asUintN(64, %s >> 64n), true);\n", ind, view, off(at, 8), expr)
 		return
 	}
-	if t.Kind == ir.TFloat32 {
-		// SPEC-TABLES.md §3.4, §14: carry a float32 NaN's sign and 23-bit payload
-		// bit for bit rather than through setFloat32, which sets the quiet bit on
-		// a signalling NaN.
-		g.pf("%s{\n", ind)
-		g.pf("%s  const v = %s;\n", ind, expr)
-		g.pf("%s  let bits;\n", ind)
-		g.pf("%s  if (v !== v) {\n", ind)
-		g.pf("%s    TableFixedConv.setFloat64(0, v, true);\n", ind)
-		g.pf("%s    const lo = TableFixedConv.getUint32(0, true), hi = TableFixedConv.getUint32(4, true);\n", ind)
-		g.pf("%s    let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;\n", ind)
-		g.pf("%s    if (payload === 0) { payload = 0x400000; }\n", ind)
-		g.pf("%s    bits = ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;\n", ind)
-		g.pf("%s  } else {\n", ind)
-		g.pf("%s    TableFixedConv.setFloat32(0, v, true);\n", ind)
-		g.pf("%s    bits = TableFixedConv.getUint32(0, true);\n", ind)
-		g.pf("%s  }\n", ind)
-		g.pf("%s  %s.setUint32(%s, bits, true);\n", ind, view, at)
-		g.pf("%s}\n", ind)
-		return
-	}
 	call, le := fixedSetter(t)
 	if call == "" {
 		g.pf("%s// no storage image for this leaf\n", ind)
@@ -224,24 +210,6 @@ func (g *fixedGen) load(ind, lhs, view, at string, t ir.FieldType) {
 		g.pf("%s%s = (%s.getUint32(%s, true) | %s.getUint32(%s, true)) === 0\n", ind, lhs, view, off(at, 8), view, off(at, 12))
 		g.pf("%s  ? %s.getBigUint64(%s, true)\n", ind, view, at)
 		g.pf("%s  : (%s.%s(%s, true) << 64n) | %s.getBigUint64(%s, true);\n", ind, view, hi, off(at, 8), view, at)
-		return
-	}
-	if t.Kind == ir.TFloat32 {
-		// SPEC-TABLES.md §3.4, §14: widen a float32 NaN's sign and 23-bit payload
-		// into the top of the double's mantissa by bit surgery rather than through
-		// getFloat32, which sets the quiet bit on a signalling NaN.
-		g.pf("%s{\n", ind)
-		g.pf("%s  const bits = %s.getUint32(%s, true);\n", ind, view, at)
-		g.pf("%s  if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {\n", ind)
-		g.pf("%s    const payload = bits & 0x007fffff;\n", ind)
-		g.pf("%s    TableFixedConv.setUint32(4, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);\n", ind)
-		g.pf("%s    TableFixedConv.setUint32(0, ((payload & 7) << 29) >>> 0, true);\n", ind)
-		g.pf("%s    %s = TableFixedConv.getFloat64(0, true);\n", ind, lhs)
-		g.pf("%s  } else {\n", ind)
-		g.pf("%s    TableFixedConv.setUint32(0, bits, true);\n", ind)
-		g.pf("%s    %s = TableFixedConv.getFloat32(0, true);\n", ind, lhs)
-		g.pf("%s  }\n", ind)
-		g.pf("%s}\n", ind)
 		return
 	}
 	call, le := fixedGetter(t)
@@ -318,7 +286,7 @@ func (g *fixedGen) emitWriteBody(st *ir.Struct) {
 // follows it.
 func (g *fixedGen) emitWriteField(f *ir.Field, base string, at int64, val, ind string) {
 	if f.Type.Optional {
-		name := ir.GoExportName(f.Name)
+		name := js.MemberName(f.Name)
 		g.pf("%sview.setUint8(%s, %s.%sPresent ? 1 : 0);\n", ind, off(base, at), val, name)
 		g.pf("%sif (%s.%sPresent) {\n", ind, val, name)
 		g.emitWritePayload(f, base, at+fixedPresentBytes, val, ind+"  ")
@@ -329,7 +297,7 @@ func (g *fixedGen) emitWriteField(f *ir.Field, base string, at int64, val, ind s
 }
 
 func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, ind string) {
-	name := ir.GoExportName(f.Name)
+	name := js.MemberName(f.Name)
 	switch {
 	case f.KeyEnum != "":
 		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): there is no count and no
@@ -380,8 +348,8 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			return
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)
-			g.storeTag(ind, off(base, at), tag, expr+".Type")
-			g.pf("%sswitch (%s.Type) {\n", ind, expr)
+			g.storeTag(ind, off(base, at), tag, expr+".type")
+			g.pf("%sswitch (%s.type) {\n", ind, expr)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
 				if v.F != nil {
@@ -403,6 +371,115 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 		}
 	}
 	g.store(ind, "view", off(base, at), f.Type, expr)
+}
+
+// fixedFieldNeedsValueCheck covers finite floats and required scalar ranges,
+// here or anywhere below it (a struct by value, a union arm, an array).
+func fixedFieldNeedsValueCheck(f *ir.Field) bool {
+	if f == nil {
+		return false
+	}
+	if fixedIsFloat(f.Type) || (f.Required && f.HasIntRange) {
+		return true
+	}
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return slices.ContainsFunc(r.Fields, fixedFieldNeedsValueCheck)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if fixedFieldNeedsValueCheck(v.F) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitCheckBody emits <T>FixedCheckBody( value ), THE WRITER'S FINITE CHECK
+// (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go finite-only too,
+// same rule as packets"): false when any float the record would carry is a
+// NaN or an infinity, or a required scalar is outside its declared range, so the
+// save refuses (-1) before it writes a byte. Only a type that holds a float
+// or a required range gets one; other roots have nothing to check.
+func (g *fixedGen) emitCheckBody(st *ir.Struct) {
+	if !slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck) {
+		return
+	}
+	g.pf("// %s's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).\n", st.Name)
+	g.pf("export function %sFixedCheckBody(value) {\n", st.Name)
+	for _, f := range st.Fields {
+		if !fixedFieldNeedsValueCheck(f) {
+			continue
+		}
+		if f.Type.Optional {
+			name := js.MemberName(f.Name)
+			g.pf("  if (value.%sPresent) {\n", name)
+			g.emitCheckValuePayload(f, "value", "    ")
+			g.pf("  }\n")
+			continue
+		}
+		g.emitCheckValuePayload(f, "value", "  ")
+	}
+	g.pf("  return true;\n}\n\n")
+}
+
+func (g *fixedGen) emitCheckValuePayload(f *ir.Field, val, ind string) {
+	name := js.MemberName(f.Name)
+	switch {
+	case f.KeyEnum != "":
+		g.emitCheckValueLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), val+"."+name, ind)
+	case f.Array == ir.ArrayFixed:
+		g.emitCheckValueLoop(f, strconv.FormatInt(f.ArrayBound, 10), val+"."+name, ind)
+	case f.Array == ir.ArrayCounted:
+		g.emitCheckValueLoop(f, fmt.Sprintf("%s.%sCount", val, name), val+"."+name, ind)
+	default:
+		g.emitCheckValueElement(f, val+"."+name, ind)
+	}
+}
+
+func (g *fixedGen) emitCheckValueLoop(f *ir.Field, count, expr, ind string) {
+	iv := fmt.Sprintf("i%d", strings.Count(ind, "  "))
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+	g.emitCheckValueElement(f, expr+"["+iv+"]", ind+"  ")
+	g.pf("%s}\n", ind)
+}
+
+func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
+	if f.Required {
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+		} else if lo, hi, ok := ir.TableRawRange(f); ok {
+			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, jsIntLit(lo, fixedIsBig(f.Type)), expr, jsIntLit(hi, fixedIsBig(f.Type)))
+		}
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		g.pf("%sif (!Number.isFinite(Math.fround(%s))) { return false; }\n", ind, expr)
+		return
+	case ir.TFloat64:
+		g.pf("%sif (!Number.isFinite(%s)) { return false; }\n", ind, expr)
+		return
+	}
+	if f.Type.Kind != ir.TNamed {
+		return
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		g.pf("%sif (!%sFixedCheckBody(%s)) { return false; }\n", ind, r.Name, expr)
+	case *ir.Union:
+		g.pf("%sswitch (%s.type) {\n", ind, expr)
+		for i, v := range r.Variants {
+			if !fixedFieldNeedsValueCheck(v.F) {
+				continue
+			}
+			g.pf("%s  case %d: {\n", ind, i+1)
+			g.emitCheckValuePayload(v.F, expr, ind+"    ")
+			g.pf("%s    break;\n%s  }\n", ind, ind)
+		}
+		g.pf("%s  default: break;\n%s}\n", ind, ind)
+	}
 }
 
 // storeTag stores an ordinal at a width the block fixed: one, two, four — or
@@ -480,9 +557,9 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.body.Reset()
 	// THE CONTENT RULES APPLY TO THE USED UNITS BEFORE ANY DESTINATION WRITE
 	// (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.3): REFUSE is total, so a
-	// text violation in the image refuses by name before a single property of
-	// value is touched.
-	g.emitCheckTextStruct(st, "at", 0, "  ")
+	// text violation in the image, or a non-finite float (docs/SPEC-TABLES.md
+	// §3.3), refuses by name before a single property of value is touched.
+	g.emitCheckStruct(st, "at", 0, "  ")
 	g.inl, g.loops = 0, 0
 	var cur int64
 	for _, f := range st.Fields {
@@ -501,27 +578,30 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("}\n\n")
 }
 
-func fixedStructHasText(st *ir.Struct) bool {
+func fixedStructChecked(st *ir.Struct) bool {
 	if st == nil {
 		return false
 	}
-	return slices.ContainsFunc(st.Fields, fixedFieldHasText)
+	return slices.ContainsFunc(st.Fields, fixedFieldChecked)
 }
 
-func fixedFieldHasText(f *ir.Field) bool {
+// fixedFieldChecked is true for a field the content pass reads before the
+// projection: a text field (its used units, §4.5 fix 11) and a float (its raw
+// bits, docs/SPEC-TABLES.md §3.3), here or anywhere below it.
+func fixedFieldChecked(f *ir.Field) bool {
 	if f == nil {
 		return false
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || fixedIsFloat(f.Type) {
 		return true
 	}
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			return fixedStructHasText(r)
+			return fixedStructChecked(r)
 		case *ir.Union:
 			for _, v := range r.Variants {
-				if v.F != nil && fixedFieldHasText(v.F) {
+				if v.F != nil && fixedFieldChecked(v.F) {
 					return true
 				}
 			}
@@ -530,42 +610,48 @@ func fixedFieldHasText(f *ir.Field) bool {
 	return false
 }
 
-// emitCheckTextStruct walks st's text fields in view before emitDecodeField
-// writes anything into value (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.3).
-func (g *fixedGen) emitCheckTextStruct(st *ir.Struct, base string, at int64, ind string) {
-	if !fixedStructHasText(st) {
+// fixedIsFloat is true for a float32 or a float64 leaf.
+func fixedIsFloat(t ir.FieldType) bool { return t.Kind == ir.TFloat32 || t.Kind == ir.TFloat64 }
+
+// emitCheckStruct walks st's text and float fields in view before
+// emitDecodeField writes anything into value (docs/FIXED-FORM-ALGORITHM.md
+// §4.5 fix 11, §5.3): an ill-formed text refuses as text_ill_formed, and a NaN
+// or an infinity on its raw bits as non_finite_float (docs/SPEC-TABLES.md
+// §3.3). Both refusals are total: nothing of the record lands.
+func (g *fixedGen) emitCheckStruct(st *ir.Struct, base string, at int64, ind string) {
+	if !fixedStructChecked(st) {
 		return
 	}
 	cur := at
 	for _, f := range st.Fields {
-		if fixedFieldHasText(f) {
-			g.emitCheckTextField(f, base, cur, ind)
+		if fixedFieldChecked(f) {
+			g.emitCheckField(f, base, cur, ind)
 		}
 		cur += fixedFieldBytes(f)
 	}
 }
 
-func (g *fixedGen) emitCheckTextField(f *ir.Field, base string, at int64, ind string) {
+func (g *fixedGen) emitCheckField(f *ir.Field, base string, at int64, ind string) {
 	if f.Type.Optional {
 		g.pf("%sif (view.getUint8(%s) !== 0) {\n", ind, off(base, at))
-		g.emitCheckTextPayload(f, base, at+fixedPresentBytes, ind+"  ")
+		g.emitCheckPayload(f, base, at+fixedPresentBytes, ind+"  ")
 		g.pf("%s}\n", ind)
 		return
 	}
-	g.emitCheckTextPayload(f, base, at, ind)
+	g.emitCheckPayload(f, base, at, ind)
 }
 
-func (g *fixedGen) emitCheckTextPayload(f *ir.Field, base string, at int64, ind string) {
+func (g *fixedGen) emitCheckPayload(f *ir.Field, base string, at int64, ind string) {
 	switch {
 	case f.KeyEnum != "":
-		g.emitCheckTextLoop(f, base, at, strconv.FormatInt(f.KeyEnumRef.Max, 10), ind)
+		g.emitCheckLoop(f, base, at, strconv.FormatInt(f.KeyEnumRef.Max, 10), ind)
 	case f.Array == ir.ArrayFixed:
-		g.emitCheckTextLoop(f, base, at, strconv.FormatInt(f.ArrayBound, 10), ind)
+		g.emitCheckLoop(f, base, at, strconv.FormatInt(f.ArrayBound, 10), ind)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%s{\n", ind)
 		g.pf("%s  let n = view.getInt32(%s, true);\n", ind, off(base, at))
 		g.pf("%s  if (n < 0) { n = 0; } else if (n > %d) { n = %d; }\n", ind, f.ArrayBound, f.ArrayBound)
-		g.emitCheckTextLoop(f, base, at+fixedCountBytes, "n", ind+"  ")
+		g.emitCheckLoop(f, base, at+fixedCountBytes, "n", ind+"  ")
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%s{\n", ind)
@@ -582,22 +668,31 @@ func (g *fixedGen) emitCheckTextPayload(f *ir.Field, base string, at int64, ind 
 			ind, off(base, at+fixedCountBytes))
 		g.pf("%s}\n", ind)
 	default:
-		g.emitCheckTextElement(f, base, at, ind)
+		g.emitCheckElement(f, base, at, ind)
 	}
 }
 
-func (g *fixedGen) emitCheckTextLoop(f *ir.Field, base string, at int64, count, ind string) {
+func (g *fixedGen) emitCheckLoop(f *ir.Field, base string, at int64, count, ind string) {
 	elem := fixedElementBytes(f)
 	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
-	g.emitCheckTextElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, ind+"  ")
+	g.emitCheckElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, ind+"  ")
 	g.pf("%s}\n", ind)
 }
 
-func (g *fixedGen) emitCheckTextElement(f *ir.Field, base string, at int64, ind string) {
+func (g *fixedGen) emitCheckElement(f *ir.Field, base string, at int64, ind string) {
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		g.pf("%sif ((view.getUint32(%s, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }\n", ind, off(base, at))
+		return
+	case ir.TFloat64:
+		// the exponent is the high word's bits 20..30
+		g.pf("%sif ((view.getUint32(%s, true) & 0x7ff00000) === 0x7ff00000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }\n", ind, off(base, at+4))
+		return
+	}
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.emitCheckTextStruct(r, base, at, ind)
+			g.emitCheckStruct(r, base, at, ind)
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)
 			g.pf("%s{\n", ind)
@@ -605,9 +700,9 @@ func (g *fixedGen) emitCheckTextElement(f *ir.Field, base string, at int64, ind 
 			g.loadTag(ind+"  ", "tag", off(base, at), tag)
 			g.pf("%s  switch (tag) {\n", ind)
 			for i, v := range r.Variants {
-				if v.F != nil && fixedFieldHasText(v.F) {
+				if v.F != nil && fixedFieldChecked(v.F) {
 					g.pf("%s    case %d: {\n", ind, i+1)
-					g.emitCheckTextPayload(v.F, base, at+tag, ind+"      ")
+					g.emitCheckPayload(v.F, base, at+tag, ind+"      ")
 					g.pf("%s      break;\n%s    }\n", ind, ind)
 				}
 			}
@@ -621,7 +716,7 @@ func (g *fixedGen) emitCheckTextElement(f *ir.Field, base string, at int64, ind 
 // wrapper where one rides.
 //
 // A PRESENT BYTE IS A FLAG AND NOT A NUMBER: anything non-zero is present.
-// That is the same rule `bool` reads under two lines below — a peer's `true`
+// That is the same rule `bool` reads under two lines below — an endpoint's `true`
 // is allowed to be any non-zero byte, and a reader that only accepted 1 would
 // be reading a number where the wire states a flag.
 //
@@ -632,7 +727,7 @@ func (g *fixedGen) emitCheckTextElement(f *ir.Field, base string, at int64, ind 
 // which is what the prefill already says an absent field reads as.
 func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind string) {
 	if f.Type.Optional {
-		name := ir.GoExportName(f.Name)
+		name := js.MemberName(f.Name)
 		g.pf("%s%s.%sPresent = view.getUint8(%s) !== 0;\n", ind, val, name, off(base, at))
 		g.pf("%sif (%s.%sPresent) {\n", ind, val, name)
 		g.emitDecodePayload(f, base, at+fixedPresentBytes, val, ind+"  ")
@@ -645,7 +740,7 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 }
 
 func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, ind string) {
-	name := ir.GoExportName(f.Name)
+	name := js.MemberName(f.Name)
 	switch {
 	case f.KeyEnum != "":
 		g.emitDecodeLoop(f, base, at, strconv.FormatInt(f.KeyEnumRef.Max, 10), val+"."+name, ind)
@@ -659,7 +754,7 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 		g.emitDecodeLoop(f, base, at+fixedCountBytes, val+"."+name+"Count", val+"."+name, ind)
 	case f.Type.Kind == ir.TString:
 		// Content validity over the used units was checked before any write to
-		// value in emitCheckTextStruct (§4.5 fix 11, §5.3).
+		// value in emitCheckStruct (§4.5 fix 11, §5.3).
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
@@ -671,7 +766,7 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	case f.Type.Kind == ir.TWString:
 		// Content validity over the used units was checked before any write to
-		// value in emitCheckTextStruct (§4.5 fix 11, §5.3).
+		// value in emitCheckStruct (§4.5 fix 11, §5.3).
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint16(%s + %s * 2, true); }\n",
@@ -735,7 +830,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// A NESTED STRUCT IS INLINED, not called: the projection is ONE
 			// straight function, the way the flat packet reader is written. The
 			// content check already ran over this element's text at the top of
-			// the outermost decode (emitCheckTextStruct recurses), so the inlined
+			// the outermost decode (emitCheckStruct recurses), so the inlined
 			// fields are the loads alone and nothing is validated twice.
 			// <T>FixedDecode is still emitted per struct for any other caller.
 			g.inl++
@@ -751,7 +846,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			return
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)
-			g.loadTag(ind, expr+".Type", off(base, at), tag)
+			g.loadTag(ind, expr+".type", off(base, at), tag)
 			// A TAG BEYOND THE ARM COUNT LANDS AS None (0) AND COUNTS ONE
 			// clamped. It is the twin of the count and length clamps two
 			// functions down: on the IDENTITY path the whole body is ONE
@@ -773,9 +868,9 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// over the writer's arm ordinals beside the guarded consts, which is
 			// a plan-shape change and not a projection one; it is named here
 			// rather than left silent (§5.8's habit, §5.4's rule).
-			g.pf("%sif (%s.Type > %d) { %s.Type = 0; report.clamped++; }\n",
+			g.pf("%sif (%s.type > %d) { %s.type = 0; report.clamped++; }\n",
 				ind, expr, len(r.Variants), expr)
-			g.pf("%sswitch (%s.Type) {\n", ind, expr)
+			g.pf("%sswitch (%s.type) {\n", ind, expr)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
 				if v.F != nil {
@@ -908,18 +1003,20 @@ func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
 
 // emitDecodeBounds is §4.6's ranged-scalar clamp, inline: a declared min/max
 // (and a bits(N) width that does not fill storage) is held AFTER the load, on
-// the value the consumer will see. The plan never does this. Vacuous ends —
-// a bound sitting on the storage width's own limit — are dropped, because no
-// loaded value can fail them.
+// the value the consumer will see. The plan never does this. These are THIS
+// READER's bounds: a compiled lane's image was already held to its WRITER's
+// range (fixedwriterbounds.go, §4.6), so this is the second clamp of two.
+// Vacuous ends — a bound sitting on the storage width's own limit — are
+// dropped, because no loaded value can fail them.
 func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
 	// A RANGED FLOAT CLAMPS ON LOAD AND COUNTS, exactly as the ranged integer
 	// below does, and against THIS READER'S own min and max (schema#1164,
 	// ruled statement B): in the fixed form a compressed float rides AS THE
 	// FLOAT (SPEC §3.4), its bounds are DEFINITIONS in the digest, and the
 	// compiled plan carries no range at all, so the pass can only be the
-	// reader's. `<` and `>` are IEEE comparisons on purpose: a NaN is below no
-	// min and above no max, so it survives uncounted, and a negative zero is
-	// not below a min of +0.
+	// reader's. A NaN or an infinity never reaches it: the content pass refused
+	// it on its raw bits first (docs/SPEC-TABLES.md §3.3). `<` and `>` are IEEE
+	// comparisons on purpose, so a negative zero is not below a min of +0.
 	if lo, hi, ok := fixedFloatClampEnds(f); ok {
 		g.pf("%sif (%s < %s) { %s = %s; report.clamped++; } else if (%s > %s) { %s = %s; report.clamped++; }\n",
 			ind, expr, lo, expr, lo, expr, hi, expr, hi)
@@ -1084,7 +1181,7 @@ func fixedIsUnionType(t ir.FieldType) bool {
 // statement rather than printing it so a loop body can stay on one line.
 func (g *fixedGen) compositeReset(t ir.FieldType, path string) string {
 	if fixedIsUnionType(t) {
-		return path + ".Type = 0; /* None; dormant arms keep their storage */"
+		return path + ".type = 0; /* None; dormant arms keep their storage */"
 	}
 	g.require(fixedElementClass(t), t.Name)
 	return fmt.Sprintf("Init%s(%s);", fixedElementClass(t), path)
@@ -1112,7 +1209,13 @@ func (g *fixedGen) emitTableClass(st *ir.Struct) {
 	for _, f := range st.Fields {
 		g.emitFieldStorage(f, "    ", "this")
 	}
-	g.pf("  }\n}\n\n")
+	g.pf("  }\n")
+	for _, f := range st.Fields {
+		if f.KeyEnum != "" {
+			emitKeyedStatics(g.pf, st.Name, js.MemberName(f.Name), f)
+		}
+	}
+	g.pf("}\n\n")
 	g.pf("// Init%s restores fresh construction values in place, preserving storage.\n", st.Name)
 	g.pf("export function Init%s(value) {\n", st.Name)
 	for _, f := range st.Fields {
@@ -1174,7 +1277,7 @@ func fixedElementZero(f *ir.Field) string {
 }
 
 func (g *fixedGen) emitFieldStorage(f *ir.Field, ind, target string) {
-	name := ir.GoExportName(f.Name)
+	name := js.MemberName(f.Name)
 	g.require(fixedElementClass(f.Type), f.Type.Name)
 	switch {
 	case f.KeyEnum != "":
@@ -1212,7 +1315,7 @@ func (g *fixedGen) emitPresenceStorage(f *ir.Field, ind, target string) {
 		return
 	}
 	g.pf("%s%s.%sPresent = false; // ?: absent until set (docs/SPEC-TABLES.md §3.4)\n",
-		ind, target, ir.GoExportName(f.Name))
+		ind, target, js.MemberName(f.Name))
 }
 
 // emitDefaultTextBytes lays a `string(N)` or `bytes(N)` field's DECLARED
@@ -1242,7 +1345,7 @@ func (g *fixedGen) emitDefaultTextBytes(f *ir.Field, ind, target string) {
 		parts = append(parts, strconv.FormatUint(uint64(b), 10))
 	}
 	g.pf("%s%s.%s.set([%s]); // the declared default (SPEC §4.2)\n",
-		ind, target, ir.GoExportName(f.Name), strings.Join(parts, ", "))
+		ind, target, js.MemberName(f.Name), strings.Join(parts, ", "))
 }
 
 func fixedDefaultTextLength(f *ir.Field) int64 {
@@ -1277,7 +1380,7 @@ func (g *fixedGen) emitFieldReset(f *ir.Field, ind, target string) {
 // class's own Init calls it with the presence reset beside it, and the DECODE
 // calls it alone, for the payload behind a flag that says absent.
 func (g *fixedGen) emitPayloadReset(f *ir.Field, ind, target string) {
-	name := ir.GoExportName(f.Name)
+	name := js.MemberName(f.Name)
 	switch {
 	case f.KeyEnum != "", f.Array != ir.ArrayNone:
 		count := f.ArrayBound

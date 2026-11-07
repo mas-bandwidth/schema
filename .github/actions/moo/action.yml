@@ -1,0 +1,40 @@
+name: moo v1.3.0
+description: >
+  Puts the moo pin make/moo.mk names (MOO_PIN, mas-bandwidth/moo v1.3.0) at
+  dist/moo/ (moo, moo-analyze), where the leg's MOO and MOO_ANALYZE defaults
+  look. moo ships no binary release, so the pin is built from source by
+  `make dist-moo`, which refuses any other commit; the build is cached under
+  a key naming the pin, the OS and the architecture, so only the first run
+  per runner image pays for it. The cached tree is checked against the pin
+  before it is used. Needs git, cmake and a C++ compiler on the runner.
+runs:
+  using: composite
+  steps:
+    - name: the moo pin
+      id: pin
+      shell: bash
+      run: echo "pin=$(sed -n 's/^MOO_PIN *:= *//p' make/moo.mk)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: restore
+      with:
+        path: dist/moo
+        key: moo-${{ steps.pin.outputs.pin }}-${{ runner.os }}-${{ runner.arch }}
+    - name: build the moo pin (cache miss)
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: make dist-moo MOO_BUILD_JOBS="$(getconf _NPROCESSORS_ONLN)"
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: steps.restore.outputs.cache-hit != 'true'
+      with:
+        path: dist/moo
+        key: moo-${{ steps.pin.outputs.pin }}-${{ runner.os }}-${{ runner.arch }}
+    - name: the cached moo is the pin
+      shell: bash
+      run: |
+        set -euo pipefail
+        want='${{ steps.pin.outputs.pin }}'
+        got=$(cat dist/moo/PIN 2>/dev/null || true)
+        if [ "$got" != "$want" ]; then
+          echo "::error::dist/moo is moo ${got:-<none>}, not the pin $want; refusing to use it"; exit 1
+        fi
+        test -x dist/moo/moo && test -x dist/moo/moo-analyze

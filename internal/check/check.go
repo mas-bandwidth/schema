@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -1121,7 +1122,7 @@ func (c *checker) resolveBodies() {
 				// decls, never among them (docs/SPEC-TABLES.md): the packet wire,
 				// the projection and the protocol id do not know they exist
 				// THE CLASS IS DECLARED, never inferred (docs/SPEC-TABLES.md
-				// §2.2): `fixed table` is the fixed wire and a plain `table`
+				// §2.2): `fixed table` is the fixed wire and a variable table
 				// is the variable one, and checkFixedTableClosures below
 				// refuses a fixed table whose closure cannot hold the class.
 				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
@@ -1245,7 +1246,17 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 				v.Name, d.Name, prev, exported)
 			continue
 		}
+		// the Go target's struct member spells the arm with Go's
+		// initialisms (internal/goname), so two arms the shared mapping
+		// keeps apart (id, i_d) may still be one Go member
+		goSpelled := "\x00go:" + goname.Member(v.Name)
+		if prev, dup := seen[goSpelled]; dup {
+			c.errf(v.Pos, "duplicate variant %s in union %s (first at %s; names are unique AFTER export mapping — both become %s in the generated Go) (SPEC §4.8)",
+				v.Name, d.Name, prev, goname.Member(v.Name))
+			continue
+		}
 		seen[exported] = v.Pos
+		seen[goSpelled] = v.Pos
 
 		arm := c.resolveArm(d.Name, v)
 		if arm == nil && v.Arm != nil {
@@ -2153,7 +2164,7 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 			// a text list's total (docs/SPEC-TABLES.md §2.13): read and placed
 			// by resolveTextListField, and refused by name on every other field
 			if out.TextTotal == 0 {
-				c.errf(a.Pos, "field %s: total applies only to a text list — | total = N bounds the sum of a [..N]string(M) or []string(M) list's element bytes in a plain table; drop the attribute (docs/SPEC-TABLES.md §2.13, §11)", f.Name)
+				c.errf(a.Pos, "field %s: total applies only to a text list — | total = N bounds the sum of a [..N]string(M) or []string(M) list's element bytes in a variable table; drop the attribute (docs/SPEC-TABLES.md §2.13, §11)", f.Name)
 				return
 			}
 		case "was":
@@ -2281,6 +2292,10 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 		}
 		if !ir.ValidCompressedFloatParams(fmin, fmax, res) {
 			c.errf(byKey["resolution"].Pos, "field %s: compressed-float step derivation overflows or requires the upper clamp at float32 (SPEC §4.3)", f.Name)
+			return
+		}
+		if !ir.CompressedFloatDecodeFinite(fmin, fmax, res) {
+			c.errf(byKey["max"].Pos, "field %s: the top quantization step dequantizes past the largest float32, so a reader would decode an infinity (SPEC §4.3)", f.Name)
 			return
 		}
 		out.HasFloatRange = true
@@ -3589,6 +3604,10 @@ var reservedLanguages = []struct {
 	// Luau's reserved words, and its contextual keywords.
 	{"Luau", []string{"luau"}, `and break do else elseif end false for function if in local nil not or
 		repeat return then true until while continue export type typeof`},
+	// moo's reserved words: Luau's, which the deterministic fork keeps whole
+	// (mas-bandwidth/moo, Ast/src/Lexer.cpp at v1.3.0), and its contextual keywords.
+	{"moo", []string{"moo"}, `and break do else elseif end false for function if in local nil not or
+		repeat return then true until while continue export type typeof`},
 	// Squirrel 3.2's reserved words (squirrel/sqlexer.cpp).
 	{"Squirrel", []string{"squirrel"}, `while do if else break continue return null function local for foreach in
 		typeof base delete try catch throw clone yield resume switch case default this class
@@ -3819,6 +3838,14 @@ var libcNamespaceScope = func() map[string]bool {
 	return m
 }()
 
+// jsObjectMembers are the members every JavaScript object inherits that a
+// lowerCamelCase field spelling can reach (constructor from `constructor`,
+// toString from `to_string`, and so on).
+var jsObjectMembers = map[string]bool{
+	"constructor": true, "hasOwnProperty": true, "isPrototypeOf": true,
+	"propertyIsEnumerable": true, "toLocaleString": true, "toString": true, "valueOf": true,
+}
+
 // goExportName delegates to the one true mapping (ir.GoExportName), which
 // the Go backend also emits with — two names that collide under it cannot
 // coexist in one type (SPEC §4.6).
@@ -3857,9 +3884,24 @@ func (c *checker) checkTargetNames() {
 			var walkBlock func(b *ast.Block, owner string, export map[string]claim)
 			walkBlock = func(b *ast.Block, owner string, export map[string]claim) {
 				register := func(pos ast.Pos, fieldName, exp, as string) {
+					// the Go target spells members with Go's initialisms
+					// (internal/goname): ObjectId and ObjectID are two
+					// members everywhere else and ONE Go field, so the Go
+					// spelling is claimed in its own key space beside the
+					// shared one, and refused when only it collides
+					goKey := "\x00go:" + goname.Initialisms(exp)
 					prev, ok := export[exp]
+					where := "generated code"
+					if !ok {
+						if prevGo, okGo := export[goKey]; okGo && prevGo.field != fieldName {
+							prev, ok = prevGo, true
+							where = "the generated Go"
+							exp = goname.Initialisms(exp)
+						}
+					}
 					if !ok {
 						export[exp] = claim{field: fieldName, as: as}
+						export[goKey] = claim{field: fieldName, as: as}
 						return
 					}
 					if prev.field == fieldName {
@@ -3874,14 +3916,20 @@ func (c *checker) checkTargetNames() {
 						}
 						return cl.as + " of field " + cl.field
 					}
-					c.errf(pos, "%s collides with %s (both become %s in generated code) — rename at the source (SPEC §4.6)",
-						describe(claim{field: fieldName, as: as}), describe(prev), exp)
+					c.errf(pos, "%s collides with %s (both become %s in %s) — rename at the source (SPEC §4.6)",
+						describe(claim{field: fieldName, as: as}), describe(prev), exp, where)
 				}
 				for _, item := range b.Items {
 					switch item := item.(type) {
 					case *ast.Field:
 						checkEscaped(item.Name, item.Pos, "field name")
 						register(item.Pos, item.Name, goExportName(item.Name), "")
+						// JavaScript storage members are lowerCamelCase own
+						// properties of a plain class instance, so a field spelt
+						// as an Object.prototype member would shadow it
+						if jsObjectMembers[ir.DartMemberName(item.Name)] {
+							c.errf(item.Pos, "field %s becomes the JavaScript member %s, which every object inherits from Object.prototype; a field of that name shadows it — rename at the source (SPEC §4.6)", item.Name, ir.DartMemberName(item.Name))
+						}
 						if owner != "" && goExportName(item.Name) == owner {
 							c.errf(item.Pos, "field %s's exported name equals its declaring type %s — C# forbids a member sharing its enclosing type's name; rename at the source (SPEC §4.6)", item.Name, owner)
 						}
@@ -3998,12 +4046,31 @@ func (c *checker) checkClaimedNames() {
 				what, prev.what, name)
 			return
 		}
+		// Go spells top-level names with its initialisms (internal/goname),
+		// so ProbeId and ProbeID are one Go symbol: claimed in a key space
+		// of their own beside the shared one
+		// (two of the compiler's own unit-level names, one per backend's
+		// spelling of a shared runtime name, are not a user's collision)
+		goKey := "\x00go:" + goname.Initialisms(name)
+		if prev, ok := registry[goKey]; ok && (prev.pos != ast.Pos{} || pos != ast.Pos{}) {
+			c.errf(pos, "%s collides with %s — both generate the Go symbol %s; rename at the source (SPEC §4.6)",
+				what, prev.what, goname.Initialisms(name))
+			return
+		}
 		registry[name] = origin{what: what, pos: pos}
+		registry[goKey] = origin{what: what, pos: pos}
 	}
 
 	// unit-level symbols first, so every collision reports at the DECL side
 	unitPos := ast.Pos{}
 	add("ProtocolId", "the unit's generated ProtocolId", unitPos)
+	// THE JAVASCRIPT MODULE SCOPE: every generated packet module binds these
+	// beside the unit's own declarations (the runtime tier's scratch holders
+	// and text validator, the flat tier's conversion scratch, build switch and
+	// read slack), and an ES module refuses a second binding of one name.
+	for _, gen := range []string{"NUMBER_SCRATCH", "BIGINT_SCRATCH", "BOOL_SCRATCH", "SC", "PRODUCTION", "FlatReadSlack", "validText"} {
+		add(gen, "a binding every generated JavaScript packet module declares (SPEC §6.1)", unitPos)
+	}
 	// THE VIEW'S OWN UNIT-SCOPE SPELLINGS (docs/SPEC-TABLES.md §8.3, §11),
 	// refused as declaration names in EVERY unit, always. They belong to the
 	// unit rather than to a declaration, so they are claimed once at unit
@@ -4060,6 +4127,10 @@ func (c *checker) checkClaimedNames() {
 	// unit keeps `type Announce` and `const ok`, which SPEC §4.6 is the
 	// page that says so.
 	if len(c.tables) > 0 {
+		// JavaScript names the variable descriptor registry after the package.
+		// It shares module scope with declarations, unlike a nested member.
+		add(strings.ToUpper(c.unit.Package[:1])+c.unit.Package[1:]+"UnitRegistry",
+			"the generated JavaScript unit registry (docs/SPEC-TABLES.md §8.3, §11)", unitPos)
 		for _, gen := range tablenames.ClaimedWithATable() {
 			add(gen, tableRuntimeClaim(gen), unitPos)
 		}
@@ -4539,6 +4610,10 @@ var tableGeneratedVerbs = []string{
 	// per-value pass and its exact twin, each a package-level function Go emits
 	// for every fixed table, claimed on this list's own rule.
 	"FixedCheckBody", "FixedCheckBodyExact",
+	// and the read's FINITE PASS (docs/SPEC-TABLES.md §3.3), run before the
+	// bounds pass: emitted for every fixed type that holds a float, and a
+	// field gains a float as an ordinary edit, so it is claimed on the same rule.
+	"FixedFiniteBody",
 	// Go emits these package-level fixed-form image and hole data and the
 	// maximum plan capacity for each root table (docs/SPEC-TABLES.md §3.4).
 	// The bound probe is also an exported package-level helper emitted for
@@ -4851,6 +4926,24 @@ func (c *checker) reserveCPrefix(name string, pos ast.Pos) {
 // payload is a `type`. Sorted, so the diagnostics never shuffle run to run.
 func (c *checker) checkTableArmsReached(closure map[string]bool) {
 	reached := map[string]bool{}
+	// An arm reaches its named union transitively, including when the name
+	// is the element of a bounded array (§2.6). Mark before descending so
+	// shared subgraphs are visited once and rejected cycles cannot loop here.
+	var reach func(*ir.Union)
+	reach = func(un *ir.Union) {
+		if un == nil || reached[un.Name] {
+			return
+		}
+		reached[un.Name] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			if nested, ok := v.F.Type.Ref.(*ir.Union); ok {
+				reach(nested)
+			}
+		}
+	}
 	for name := range closure {
 		st := c.closureMember(name)
 		if st == nil {
@@ -4858,7 +4951,7 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 		}
 		for _, f := range st.Fields {
 			if un, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed {
-				reached[un.Name] = true
+				reach(un)
 			}
 		}
 	}
@@ -4869,7 +4962,7 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 	for union, owners := range c.unionNamedBy {
 		for _, owner := range owners {
 			if closure[owner] {
-				reached[union] = true
+				reach(c.unions[union])
 			}
 		}
 	}

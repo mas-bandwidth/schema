@@ -316,7 +316,7 @@ func TestBytesBase64(t *testing.T) {
 func TestGuardsInferNothing(t *testing.T) {
 	// Guarded.schema's Patrol, not Tables.schema's ProfileConfig: a guarded
 	// branch disqualifies a `fixed table` (docs/SPEC-TABLES.md §2.2, §3.4), so
-	// every guard in this corpus lives on a plain `table`.
+	// every guard in this corpus lives on a variable table.
 	m, inst, r := read(t, "Patrol", `{ "speed": 2.5 }`)
 	if !r.Silent() {
 		t.Fatalf("expected silence, got %+v", r)

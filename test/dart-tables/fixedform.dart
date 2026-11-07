@@ -3737,11 +3737,13 @@ void w14Check(
     'W14: $who — the root layout entry states $bodyBytes bytes (the sizeof)',
   );
   for (var i = 0; i < planCount; i++) {
-    final base = i * 9;
-    final op = plan[base];
-    final dst = plan[base + 2];
-    final size = plan[base + 3];
-    final aux = plan[base + 4];
+    // the plan's own lane count and lane names, never a typed stride: the
+    // guard chain added lanes (docs/FIXED-FORM-ALGORITHM.md §4.1)
+    final base = i * fx1home.TableFixedLane.lanes;
+    final op = plan[base + fx1home.TableFixedLane.op];
+    final dst = plan[base + fx1home.TableFixedLane.dst];
+    final size = plan[base + fx1home.TableFixedLane.size];
+    final aux = plan[base + fx1home.TableFixedLane.aux];
     check(
       dst >= 0 && dst < bodyBytes,
       'W14: $who entry $i dst $dst inside the body $bodyBytes',

@@ -3,7 +3,6 @@ package gotable
 import (
 	"fmt"
 	"math/bits"
-	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -20,12 +19,9 @@ func tableWireRuntime(u *ir.Unit) string {
 		source = tableSourceReplace(source, "type TableReader struct {", "type TableReader struct {\nNodes TableNodeMap", 1)
 		source = tableSourceReplace(source, "Ids:r.Ids, Nested:true", "Ids:r.Ids, Nested:true, Nodes:r.Nodes", 1)
 	}
-	if unitDeclaresTableKind(u, ir.TableKindF64) {
-		source = tableSourceReplace(source, "func tableUtf8Valid", tableWidenFloatSource+"func tableUtf8Valid", 1)
-	}
 	res := fmt.Sprintf(`
-const tableIdCapacity = %d
-const tableIdBuckets = %d
+const tableIDCapacity = %d
+const tableIDBuckets = %d
 `, n, buckets) + source
 	if len(ir.WideTextFields(u)) > 0 {
 		res += tableWStringSource + tableWStringWriteSource
@@ -33,67 +29,21 @@ const tableIdBuckets = %d
 	return res
 }
 
-// unitDeclaresTableKind is the declared-kind census tableWidenFloat is gated
-// on: a kind anywhere in the table closure — a field, an arm, an element or a
-// generated map-entry slot. It is a safe superset over the call sites. A
-// subset would omit a helper a codec still names.
-func unitDeclaresTableKind(u *ir.Unit, kind int) bool {
-	seen := map[*ir.Union]bool{}
-	var note func(f *ir.Field) bool
-	var walkUnion func(un *ir.Union) bool
-	note = func(f *ir.Field) bool {
-		if f == nil {
-			return false
-		}
-		if ir.TableWireScalarKind(f) == kind || ir.TableWireElemKind(f) == kind {
-			return true
-		}
-		if f.Type.Kind == ir.TNamed {
-			if un, ok := f.Type.Ref.(*ir.Union); ok {
-				return walkUnion(un)
-			}
-		}
-		return false
-	}
-	walkUnion = func(un *ir.Union) bool {
-		if un == nil || seen[un] {
-			return false
-		}
-		seen[un] = true
-		for _, v := range un.Variants {
-			if note(v.F) {
-				return true
-			}
-		}
-		return false
-	}
-	for name := range ir.TableClosure(u) {
-		st := ir.ClosureMember(u, name)
-		if st == nil {
-			continue
-		}
-		if slices.ContainsFunc(st.Fields, note) {
-			return true
-		}
-	}
-	return false
-}
-
 const tableWireSource = `
 // TableIds interns the writer's ids in first-use order. Bucket links are
 // one-based so its zero value is ready to use, including for hash zero.
 type TableIds struct {
-	Values [tableIdCapacity]uint64
-	chain [tableIdCapacity]int
-	head [tableIdBuckets]int
-	slot [tableIdCapacity]uint32
-	ordinalOf [tableIdCapacity]int32
+	Values [tableIDCapacity]uint64
+	chain [tableIDCapacity]int
+	head [tableIDBuckets]int
+	slot [tableIDCapacity]uint32
+	ordinalOf [tableIDCapacity]int32
 	Count int
 	Overflow bool
 }
 
 func (ids *TableIds) Ref(id uint64) uint64 {
-	b := (id ^ id >> 32) & (tableIdBuckets - 1)
+	b := (id ^ id >> 32) & (tableIDBuckets - 1)
 	for i := ids.head[b]; i != 0; i = ids.chain[i-1] {
 		if ids.Values[i-1] == id { return uint64(i) }
 	}
@@ -144,7 +94,7 @@ func (ids *TableIds) Truncate(mark int) {
 	for ids.Count > mark {
 		ids.Count--
 		id := ids.Values[ids.Count]
-		ids.head[(id ^ id >> 32) & (tableIdBuckets - 1)] = ids.chain[ids.Count]
+		ids.head[(id ^ id >> 32) & (tableIDBuckets - 1)] = ids.chain[ids.Count]
 		if o := ids.ordinalOf[ids.Count]; o >= 0 {
 			ids.slot[o] = 0
 		}
@@ -259,7 +209,7 @@ func (w *TableWriter) PutLeb(v uint64) {
 }
 
 func (w *TableWriter) Id(id uint64) { w.PutLeb(w.Ids.Ref(id)) }
-func (w *TableWriter) IdAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
+func (w *TableWriter) IDAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
 
 // headerPair writes a field header whose reference is one LEB byte. False
 // means the reference needs headerRest. Overflow on a short buffer is handled
@@ -441,6 +391,7 @@ func (r TableReader) EndsEarly() bool {
 
 func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
 	r := TableReader{Report:report}
+	if report != nil { report.NonFiniteFloat = "" } // this read's own refusal (docs/SPEC-TABLES.md §3.3)
 	if len(data) == 0 { return r, TableOpenDamaged }
 	if data[0] != 1 { return r, TableOpenRefused }
 	if len(data) < 9 { return r, TableOpenDamaged }
@@ -510,12 +461,12 @@ func (r *TableReader) Signed(kind uint8) int64 {
  switch tableKindBytes(kind) { case 1: return int64(int8(r.Get8())); case 2: return int64(int16(r.Get16())); case 4: return int64(int32(r.Get32())); default: return int64(r.Get64()) }
 }
 
-// tableUtf8Word is the form-1 writer's little-endian word load for its in-line
+// tableUTF8Word is the form-1 writer's little-endian word load for its in-line
 // text test (emitTextWords): a function of the runtime file, which imports
 // encoding/binary, so the generated writers in any file of the unit can call it.
-func tableUtf8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
+func tableUTF8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
 
-func tableUtf8Valid(data []byte) bool {
+func tableUTF8Valid(data []byte) bool {
 	// One pass, eight bytes a step: z gathers the zero-byte test of every word
 	// (exact: a word has a zero byte if and only if its lane is set), hi gathers
 	// the high bits. No zero and no high bit is ASCII with no NUL; a high bit
@@ -536,19 +487,10 @@ func tableUtf8Valid(data []byte) bool {
 	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
 
-func tableUtf8Clamp(data []byte, n int64) int64 {
+func tableUTF8Clamp(data []byte, n int64) int64 {
 	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 { n-- }
 	return n
 }
-`
-
-// tableWidenFloatSource is the float rung, kind 10 into kind 11. It is spliced
-// into tableWireSource only where the unit declares kind 11.
-const tableWidenFloatSource = `func tableWidenFloat(b uint32) uint64 {
- if b & 0x7f800000 == 0x7f800000 { return uint64(b >> 31) << 63 | 0x7ff0000000000000 | uint64(b & 0x7fffff) << 29 }
- return math.Float64bits(float64(math.Float32frombits(b)))
-}
-
 `
 
 // tableWStringWriteSource is the writer's text rule for wstring(N), the twin

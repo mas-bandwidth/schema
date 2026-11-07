@@ -207,28 +207,22 @@ func TestRowCoverageCorpusGate(t *testing.T) {
 			if !exists(file) {
 				missing(&fails, msg.Name, leg, "message file-form wire", msg.FileWire)
 			}
-			if !exists(message) {
+			// a named refusal row (a variable table, §3.3) has no message-form wire
+			if !msg.Refused() && !exists(message) {
 				missing(&fails, msg.Name, leg, "message message-form wire", msg.MessageWire)
 			}
 		}
 	}
 
-	// retain (file form) and retain-message (form 2): the wire the loader
-	// reads and every save the pair writes back. A save's path is the
-	// land-mark of its body, so a missing file is the row losing one body's
-	// bytes, and a comma-separated list of them is one CASE the message
-	// surface carries.
+	// retain: the wire the loader reads and the save the pair writes back.
 	for _, rc := range m.Retains {
 		wire := joinRoot(root, rc.Wire)
 		for _, leg := range legs {
 			if !exists(wire) {
 				missing(&fails, rc.Name, leg, "retain wire", rc.Wire)
 			}
-			for _, save := range rc.Saves {
-				savePath := joinRoot(root, save)
-				if !exists(savePath) {
-					missing(&fails, rc.Name, leg, "retain save", save)
-				}
+			if rc.Saves != "" && !exists(joinRoot(root, rc.Saves)) {
+				missing(&fails, rc.Name, leg, "retain save", rc.Saves)
 			}
 		}
 	}

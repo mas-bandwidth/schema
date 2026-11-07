@@ -7,9 +7,10 @@
 // binary out of literal-width segments, and reads it by matching that binary
 // and building the struct in one expression; its verdict is a tagged tuple and
 // never an exception, its writer TRUSTS the caller up to O(1) contract checks
-// that raise ArgumentError, and its floats travel bit-transparently as
-// {:nonfinite, bits} where no BEAM float term can hold the pattern. The fixed
-// form is exactly that shape with BYTE-WIDTH fields in place of bit windows:
+// that raise ArgumentError, and its floats are FINITE: a NaN or an infinity is
+// refused on write and on read as non_finite_float (docs/SPEC-TABLES.md §3.3),
+// as the packet codec refuses one. The fixed form is exactly that shape with
+// BYTE-WIDTH fields in place of bit windows:
 //
 //	THE WRITE is one binary APPENDED TO, the packet codec's `data =
 //	<<data::binary, ...>>`. Where the reference memcpy's a constant template
@@ -24,9 +25,9 @@
 //	compiled once from the writer's own layout and cached by hash lands the
 //	record onto the prefill first, and the SAME projection reads the result.
 //
-// NOTHING HERE IS TAKEN FROM FORM 1, which this backend does not carry at all
-// (schema#515): there is no field reference, no kind byte, no length, no
-// trailer and no probe anywhere in it.
+// NOTHING HERE IS TAKEN FROM FORM 1. Form 1 lives in variableform.go: field
+// references, kind bytes, lengths and the id-table trailer. This file is form
+// 3 only, so none of those appear in it.
 package elixirtable
 
 import (
@@ -35,6 +36,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -57,6 +59,10 @@ type fixedGen struct {
 	// leafLists are the walks over runs of BOUNDED leaves one type's projection
 	// asked for, emitted beside it.
 	leafLists []leafList
+	// present is the present test of the OPTIONAL scalar whose payload is
+	// being decoded, nil everywhere else: an absent optional's payload is
+	// unspecified (§3.4), so a float there is not refused as non-finite.
+	present node
 	// blank and lineStart are where the output stands, for emitLines to keep
 	// the formatter's one blank line and never two.
 	blank     bool
@@ -98,14 +104,8 @@ func generateFixed(u *ir.Unit, ns string, lineage map[string][]FixedLineageEntry
 		"            acc = guarded(acc, guard ++ [{their_at, argw}], tag ++ [j + 1], {:const, aux_at, my_tag, k + 1})\n",
 		"            acc =\n              guarded(\n                acc,\n                guard ++ [{their_at, argw}],\n                tag ++ [j + 1],\n                {:const, aux_at, my_tag, k + 1}\n              )\n")
 	rt = strings.ReplaceAll(rt,
-		"  def text(used, _default, m), do: text(used, _default, m, true)\n\n  def text(used, _default, m, present) do\n    if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}\n  end",
-		"  def text(used, default, m), do: text(used, default, m, true)\n\n  def text(used, default, m, present) do\n    if present and not text_ok?(1, used), do: {default, true}, else: {used, m}\n  end")
-	rt = strings.ReplaceAll(rt,
-		"  def wtext(used, _default, m), do: wtext(used, _default, m, true)\n\n  def wtext(used, _default, m, present) do\n    if present and not text_ok?(2, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}\n  end",
-		"  def wtext(used, default, m), do: wtext(used, default, m, true)\n\n  def wtext(used, default, m, present) do\n    if present and not text_ok?(2, used), do: {default, true}, else: {used, m}\n  end")
-	rt = strings.ReplaceAll(rt,
-		"          throw({:refuse, :text_ill_formed})",
-		"          step(rest, body, writes, %{report | malformed: true})")
+		"      entry = {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple([their_variants | remap])}\n",
+		"      entry =\n        {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi),\n         List.to_tuple([their_variants | remap])}\n")
 	out[FixedRuntimeModule+".ex"] = []byte(rt)
 	for _, f := range u.Files {
 		g := &fixedGen{unit: u, ns: ns, file: f, lineage: lineage}
@@ -278,6 +278,7 @@ func (g *fixedGen) structModule(st *ir.Struct) string {
 			fmt.Fprintf(&b, "            %s%s\n", fields[i], sep)
 		}
 	}
+	elixir.EmitKeyedAccessors(&b, st)
 	b.WriteString("end\n\n")
 	return b.String()
 }
@@ -483,7 +484,7 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Enum:
 			// THE ORDINAL IS THE VARIANT'S POSITION, from 1, and 0 is None.
-			return fmt.Sprintf("%s::little-unsigned-%d", name, r.StorageBits)
+			return fmt.Sprintf("%s.%s.to_int(%s)::little-unsigned-%d", g.ns, r.Name, name, r.StorageBits)
 		case *ir.Flags:
 			return fmt.Sprintf("%s::little-unsigned-64", name)
 		}
@@ -502,7 +503,7 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 	// a debug-only `schema_assert` on a writer's contract; the BEAM has no
 	// compile-out assert, so this port raises, which is exactly what its own
 	// packet codec does for the same field. Without it a value past the
-	// DECLARED range rides and the peer clamps it — and a value past the
+	// DECLARED range rides and the endpoint clamps it — and a value past the
 	// STORAGE WIDTH is truncated by the binary construction in silence.
 	//
 	// A DECLARED RANGE RIDES AS A NAMED CONSTANT and the storage domain as the
@@ -829,7 +830,12 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	case f.Type.Kind == ir.TWString:
 		g.readText(out, f, v, 2, present)
 	default:
+		prior := g.present
+		if f.Type.Optional {
+			g.present = present
+		}
 		g.readElement(out, f, v, f.Name)
+		g.present = prior
 	}
 }
 
@@ -900,10 +906,13 @@ func (g *fixedGen) readElements(out *rseg, f *ir.Field, v string, live node) {
 	}
 	d := g.leafDec(f, "e")
 	if d.count == nil {
-		out.stmt("l_"+v, forNode{gen: fmt.Sprintf("<<%s <- %s>>", d.spec, "b_"+v), body: d.wrap})
+		run := "b_" + v
 		if f.Array == ir.ArrayCounted {
-			out.stmt("l_"+v, call("Enum.take", raw("l_"+v), live))
+			// Slice before decoding: an unused float slot may contain any
+			// bits, including a NaN that the live finite reader must refuse.
+			run = fmt.Sprintf("binary_part(%s, 0, %d * %s)", run, elem, live.flat())
 		}
+		out.stmt("l_"+v, forNode{gen: fmt.Sprintf("<<%s <- %s>>", d.spec, run), body: d.wrap})
 		out.field(f.Name, raw("l_"+v))
 		return
 	}
@@ -999,8 +1008,9 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 		case *ir.Enum:
 			n := len(r.Variants)
 			return leafDec{
-				spec:  fmt.Sprintf("%s::little-unsigned-%d", name, r.StorageBits),
-				wrap:  rawf("if(%s <= %d, do: %s, else: 0)", name, n, name),
+				spec: fmt.Sprintf("%s::little-unsigned-%d", name, r.StorageBits),
+				wrap: call("elem", call(g.ns+"."+r.Name+".from_int",
+					rawf("if(%s <= %d, do: %s, else: 0)", name, n, name)), raw("1")),
 				count: rawf("R.past(c, %s, %d)", name, n),
 			}
 		case *ir.Flags:
@@ -1012,31 +1022,31 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 		// A BOOL LANDS AS `byte != 0`, which is what a form that writes 0 or 1
 		// and reads anything owes a hostile writer.
 		return leafDec{spec: name + "::unsigned-8", wrap: raw(name + " != 0")}
-	case ir.TFloat32:
-		// A RANGED FLOAT IS HELD TO THIS READER'S OWN BOUNDS AND COUNTED,
-		// exactly as a ranged integer below is (schema#1164, ruled statement
-		// B). R.fclamp/3 and R.fclamps/4 rather than min/max and R.clamps/4
-		// because f32_value/1 answers the TUPLE {:nonfinite, bits} for an
-		// infinity or a NaN, and a tuple sorts ABOVE every number in Erlang's
-		// term order: an unguarded comparison would clamp a NaN to the maximum
-		// and count it. Both runtime clauses guard on is_float/1.
+	case ir.TFloat32, ir.TFloat64:
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): R.f32_value/1 and
+		// R.f64_value/1 refuse a NaN or an infinity on its raw bits, before
+		// the bits become a float, so a RANGED float's bounds below only ever
+		// see a finite value. A ranged float is held to this READER'S OWN
+		// bounds and counted, exactly as a ranged integer below is
+		// (schema#1164, ruled statement B). An absent optional's payload is
+		// unspecified and takes the present test (R.f32_value/2).
+		bits, value := 32, "R.f32_value"
+		if f.Type.Kind == ir.TFloat64 {
+			bits, value = 64, "R.f64_value"
+		}
+		term := fmt.Sprintf("%s(%s)", value, name)
+		if g.present != nil {
+			term = fmt.Sprintf("%s(%s, %s)", value, name, g.present.flat())
+		}
+		spec := fmt.Sprintf("%s::little-unsigned-%d", name, bits)
 		if lo, hi, ok := fixedFloatRangeOf(f); ok {
 			return leafDec{
-				spec:  name + "::little-unsigned-32",
-				wrap:  rawf("R.fclamp(R.f32_value(%s), %s, %s)", name, lo, hi),
-				count: rawf("R.fclamps(c, R.f32_value(%s), %s, %s)", name, lo, hi),
+				spec:  spec,
+				wrap:  rawf("R.fclamp(%s, %s, %s)", term, lo, hi),
+				count: rawf("R.fclamps(c, %s, %s, %s)", term, lo, hi),
 			}
 		}
-		return leafDec{spec: name + "::little-unsigned-32", wrap: rawf("R.f32_value(%s)", name)}
-	case ir.TFloat64:
-		if lo, hi, ok := fixedFloatRangeOf(f); ok {
-			return leafDec{
-				spec:  name + "::little-unsigned-64",
-				wrap:  rawf("R.fclamp(R.f64_value(%s), %s, %s)", name, lo, hi),
-				count: rawf("R.fclamps(c, R.f64_value(%s), %s, %s)", name, lo, hi),
-			}
-		}
-		return leafDec{spec: name + "::little-unsigned-64", wrap: rawf("R.f64_value(%s)", name)}
+		return leafDec{spec: spec, wrap: raw(term)}
 	}
 	spec := fmt.Sprintf("%s::little-unsigned-%d", name, width)
 	if f.Type.Signed {
@@ -1224,12 +1234,33 @@ func suffixRseg(r rseg, suf string) rseg {
 		keys:  append([]string{}, r.keys...),
 	}
 	for _, p := range r.post {
-		out.post = append(out.post, postStmt{name: p.name, val: raw(suffixIdent(p.val.flat(), suf))})
+		out.post = append(out.post, postStmt{name: p.name, val: suffixNode(p.val, suf)})
 	}
 	for _, v := range r.vals {
-		out.vals = append(out.vals, raw(suffixIdent(v.flat(), suf)))
+		out.vals = append(out.vals, suffixNode(v, suf))
 	}
 	return out
+}
+
+// suffixNode is suffixIdent over a SHAPE rather than its flat text, so a
+// nested struct or call an unrolled element carries still breaks the
+// formatter's way when it outgrows the line.
+func suffixNode(n node, suf string) node {
+	switch v := n.(type) {
+	case structNode:
+		vals := make([]node, len(v.vals))
+		for i, x := range v.vals {
+			vals[i] = suffixNode(x, suf)
+		}
+		return structNode{mod: v.mod, keys: v.keys, vals: vals}
+	case callNode:
+		args := make([]node, len(v.args))
+		for i, x := range v.args {
+			args[i] = suffixNode(x, suf)
+		}
+		return callNode{fn: v.fn, args: args}
+	}
+	return raw(suffixIdent(n.flat(), suf))
 }
 
 // emitShortDef prints `def head, do: body`, broken after the head's comma with
@@ -1256,6 +1287,11 @@ func (t tripleNode) flat() string {
 func (t tripleNode) render(at, ind, tail int) string {
 	if one := t.flat(); fits(at, tail, one) {
 		return one
+	}
+	// a first item that fits flat keeps its line and the tuple FILLS the way
+	// any tuple does, breaking before the item that would pass the width
+	if fits(at+1, 1, t.a.flat()) {
+		return tupleNode{items: []string{t.a.flat(), t.b.flat(), t.c.flat()}}.render(at, ind, tail)
 	}
 	return "{" + t.a.render(at+1, ind+1, tail+2+len(t.b.flat())+2+len(t.c.flat())) + ", " + t.b.flat() + ", " + t.c.flat() + "}"
 }
@@ -1355,10 +1391,12 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 	snake := ir.RustSnake(u.Name)
 	tag := fixedUnionTagBytes(u)
 	widest := int64(0)
+	hasPayload := false
 	for _, v := range u.Variants {
 		if v.F == nil {
 			continue
 		}
+		hasPayload = true
 		if n := fixedFieldBytes(v.F); n > widest {
 			widest = n
 		}
@@ -1368,43 +1406,102 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 	g.pf("  # union %s: the TAG ORDINAL at its own storage width, then the WIDEST ARM,\n", u.Name)
 	g.pf("  # the slack behind a narrower arm zero-filled. TAG 0 IS None.\n")
 	g.emitShortDef(fmt.Sprintf("def %s_fixed_write_arm(value)", snake), fmt.Sprintf("%s_fixed_write_into(value, <<>>)", snake))
+	// THE VALUE IS THE PACKET PORT'S: nil for None, {:arm, payload}, or a
+	// payload-free arm's bare atom. The first case is the tag and the
+	// contract check; the second writes the arm it names.
 	g.pf("  def %s_fixed_write_into(value, acc) do\n", snake)
-	g.pf("    acc = <<acc::binary, value.type::little-unsigned-%d>>\n\n", tag*8)
-	g.pf("    case value.type do\n")
-	arms := make([]caseArm, 0, len(u.Variants)+1)
+	g.pf("    tag =\n")
+	g.pf("      case value do\n")
+	g.pf("        nil ->\n          0\n\n")
 	for i, v := range u.Variants {
+		if v.F == nil {
+			g.pf("        %s ->\n          %d\n\n", elixir.EnumAtom(v.Name), i+1)
+			continue
+		}
+		g.pf("        {%s, _} ->\n          %d\n\n", elixir.EnumAtom(v.Name), i+1)
+	}
+	g.pf("        other ->\n")
+	g.pf("          raise ArgumentError, \"not a value of union %s: #{inspect(other)}\"\n", u.Name)
+	g.pf("      end\n\n")
+	g.pf("    acc = <<acc::binary, tag::little-unsigned-%d>>\n\n", tag*8)
+	g.pf("    case value do\n")
+	arms := make([]caseArm, 0, len(u.Variants)+1)
+	for _, v := range u.Variants {
 		if v.F == nil {
 			continue
 		}
-		arms = append(arms, caseArm{label: fmt.Sprintf("%d", i+1), body: g.armWriter(v.F, "value."+v.Name, widest-fixedFieldBytes(v.F))})
+		local := "v_" + v.Name
+		arms = append(arms, caseArm{label: fmt.Sprintf("{%s, %s}", elixir.EnumAtom(v.Name), local),
+			body: g.armWriter(u, v.F, local, v.Name, widest-fixedFieldBytes(v.F))})
 	}
 	arms = append(arms, caseArm{label: "_", body: rawf("<<acc::binary, 0::size(%d)-unit(8)>>", widest)})
 	g.emitArms(arms, 6)
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 
+	for _, v := range u.Variants {
+		if v.F == nil || v.F.Array == ir.ArrayNone {
+			continue
+		}
+		armFn := fmt.Sprintf("%s_fixed_write_%s", snake, ir.RustSnake(v.Name))
+		g.pf("  defp %s(v_%s, acc) do\n", armFn, v.Name)
+		g.emitLines(g.writeStatements(g.writePayload(v.F, "value"), 4))
+		g.pf("    acc\n")
+		g.pf("  end\n\n")
+	}
+
 	g.pf("  # union %s's projection: the tag, then the arm it names and no other. A TAG\n", u.Name)
 	g.pf("  # BEYOND THE DECLARED ARMS lands None and counts one `clamped`.\n")
-	g.pf("  def %s_fixed_decode(<<tag::little-unsigned-%d, arm::binary>>, c, m \\\\ false) do\n", snake, tag*8)
+	armVar := "arm"
+	if !hasPayload {
+		armVar = "_arm"
+	}
+	g.pf("  def %s_fixed_decode(<<tag::little-unsigned-%d, %s::binary>>, c, m \\\\ false) do\n", snake, tag*8, armVar)
 	g.pf("    case tag do\n")
 	first := true
 	for i, v := range u.Variants {
-		if v.F == nil {
-			continue
-		}
 		if !first {
 			g.pf("\n")
 		}
 		first = false
 		g.pf("      %d ->\n", i+1)
+		if v.F == nil {
+			g.pf("        {%s, c, m}\n", elixir.EnumAtom(v.Name))
+			continue
+		}
 		for _, l := range g.armDecode(v.F, u, v.Name, i+1) {
 			g.pf("        %s\n", l)
 		}
 	}
-	g.pf("\n      0 ->\n        {%%%s.%s{}, c, m}\n", g.ns, u.Name)
-	g.pf("\n      _ ->\n        {%%%s.%s{}, c + 1, m}\n", g.ns, u.Name)
+	g.pf("\n      0 ->\n        {nil, c, m}\n")
+	g.pf("\n      _ ->\n        {nil, c + 1, m}\n")
 	g.pf("    end\n")
 	g.pf("  end\n\n")
+
+	g.leafLists = nil
+	for _, v := range u.Variants {
+		if v.F == nil || !unionArmNeedsDecodeHelper(v.F) {
+			continue
+		}
+		armFn := fmt.Sprintf("%s_fixed_decode_%s", snake, ir.RustSnake(v.Name))
+		var r rseg
+		g.readPayload(&r, v.F, v.Name, raw("true"))
+		g.emitMatchHead("defp", armFn, r.match, []string{"c", "m"}, 2, "_::binary", nil)
+		g.emitPost(r.post, 4)
+		g.pf("    %s\n", triple(r.vals[0], raw("c"), raw("m")).render(4, 4, 0))
+		g.pf("  end\n\n")
+	}
+	for _, l := range g.leafLists {
+		g.emitForwardListBase("defp", l.name)
+		if k := listUnrollK(l.bytes); k > 1 {
+			g.emitUnrolledLeafList(l, k)
+		}
+		g.emitMatchHead("defp", l.name, []string{l.spec}, []string{"n", "c", "m"}, 2, "rest::binary", nil)
+		g.emitLines(g.assign("{tail, c, m}", call(l.name, raw("rest"), raw("n - 1"), l.count, raw("m")), 4))
+		g.pf("    {[%s | tail], c, m}\n", l.wrap.flat())
+		g.pf("  end\n\n")
+	}
+	g.leafLists = nil
 
 	g.pf("  # A RUN OF %s: the LIVE elements walked into a list, the count beside it.\n", u.Name)
 	g.emitForwardListBase("def", snake+"_fixed_list")
@@ -1413,6 +1510,17 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 	g.pf("    {tail, c, m} = %s_fixed_list(rest, n - 1, c, m)\n", snake)
 	g.pf("    {[v | tail], c, m}\n")
 	g.pf("  end\n\n")
+}
+
+func unionArmNeedsDecodeHelper(f *ir.Field) bool {
+	if f.Array != ir.ArrayNone {
+		return true
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TWString, ir.TBytes:
+		return true
+	}
+	return false
 }
 
 // caseArm is one arm of a generated `case`: its pattern and its body.
@@ -1450,8 +1558,38 @@ func (g *fixedGen) emitArms(arms []caseArm, col int) {
 
 // armWriter is ONE arm's bytes appended to `acc`, then the slack out to the
 // widest arm as a zero segment.
-func (g *fixedGen) armWriter(f *ir.Field, name string, slack int64) node {
-	if f.Type.Kind == ir.TNamed {
+func (g *fixedGen) armWriter(u *ir.Union, f *ir.Field, name, armName string, slack int64) node {
+	if f.Array != ir.ArrayNone {
+		into := fmt.Sprintf("%s_fixed_write_%s(%s, acc)", ir.RustSnake(u.Name), ir.RustSnake(armName), name)
+		if slack == 0 {
+			return raw(into)
+		}
+		return binNode{segs: []string{into + "::binary", fmt.Sprintf("0::size(%d)-unit(8)", slack)}}
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		segs := []string{
+			"acc::binary",
+			fmt.Sprintf("byte_size(%s)::little-signed-32", name),
+			fmt.Sprintf("%s::binary", name),
+			fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, f.Type.Size),
+		}
+		if slack > 0 {
+			segs = append(segs, fmt.Sprintf("0::size(%d)-unit(8)", slack))
+		}
+		return binNode{segs: segs}
+	case ir.TWString:
+		segs := []string{
+			"acc::binary",
+			fmt.Sprintf("div(byte_size(%s), 2)::little-signed-32", name),
+			fmt.Sprintf("%s::binary", name),
+			fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, 2*f.Type.Size),
+		}
+		if slack > 0 {
+			segs = append(segs, fmt.Sprintf("0::size(%d)-unit(8)", slack))
+		}
+		return binNode{segs: segs}
+	case ir.TNamed:
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			into := fmt.Sprintf("%s%s_fixed_write_into(%s, acc)", g.moduleOf(r), ir.RustSnake(r.Name), name)
 			if slack == 0 {
@@ -1482,12 +1620,18 @@ func (g *fixedGen) armWriter(f *ir.Field, name string, slack int64) node {
 // armDecode is one arm's lines: the arm's value out of `arm`, and the union
 // struct naming it, with the count moved by whatever the arm bounds.
 func (g *fixedGen) armDecode(f *ir.Field, u *ir.Union, field string, tag int) []string {
-	mod := g.ns + "." + u.Name
+	arm := elixir.EnumAtom(field)
+	if unionArmNeedsDecodeHelper(f) {
+		return []string{
+			fmt.Sprintf("{v, c, m} = %s_fixed_decode_%s(arm, c, m)", ir.RustSnake(u.Name), ir.RustSnake(field)),
+			fmt.Sprintf("{{%s, v}, c, m}", arm),
+		}
+	}
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			return []string{
 				fmt.Sprintf("{v, c, m} = %s(arm, c, m)", g.decodeName(r)),
-				fmt.Sprintf("{%%%s{type: %d, %s: v}, c, m}", mod, tag, field),
+				fmt.Sprintf("{{%s, v}, c, m}", arm),
 			}
 		}
 		// AN ARM THAT IS ITSELF A UNION DECODES THROUGH THAT UNION'S OWN
@@ -1497,7 +1641,7 @@ func (g *fixedGen) armDecode(f *ir.Field, u *ir.Union, field string, tag int) []
 		if r, ok := f.Type.Ref.(*ir.Union); ok {
 			return []string{
 				fmt.Sprintf("{v, c, m} = %s%s_fixed_decode(arm, c, m)", g.unionModule(r), ir.RustSnake(r.Name)),
-				fmt.Sprintf("{%%%s{type: %d, %s: v}, c, m}", mod, tag, field),
+				fmt.Sprintf("{{%s, v}, c, m}", arm),
 			}
 		}
 	}
@@ -1506,7 +1650,7 @@ func (g *fixedGen) armDecode(f *ir.Field, u *ir.Union, field string, tag int) []
 	if d.count != nil {
 		lines = append(lines, "c = "+d.count.flat())
 	}
-	return append(lines, fmt.Sprintf("{%%%s{type: %d, %s: %s}, c, m}", mod, tag, field, d.wrap.flat()))
+	return append(lines, fmt.Sprintf("{{%s, %s}, c, m}", arm, d.wrap.flat()))
 }
 
 // ---------------------------------------------------------------------------
@@ -1606,6 +1750,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # THE RETIRED HASHES and the operator's own sentence for each, which is what\n")
 	g.pf("  # `:layout_unsupported` means in words.\n")
 	g.pf("  @%s_retired [%s]\n\n", snake, strings.Join(retired, ", "))
+	writerBounds := g.emitWriterBounds(st, snake, lineage, hash)
 
 	g.pf("  def %s_fixed_body_bytes, do: @%s_body_bytes\n", snake, snake)
 	g.pf("  def %s_fixed_record_bytes, do: @%s_record_bytes\n", snake, snake)
@@ -1624,6 +1769,9 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  def %s_fixed_measure(count) do\n", snake)
 	head := fmt.Sprintf("R.file_header_bytes() + byte_size(@%s_layout) +", snake)
 	tail := fmt.Sprintf("count * @%s_record_bytes", snake)
+	if st.Integrity != "" {
+		tail += " + 4"
+	}
 	if fits(4, 0, head+" "+tail) {
 		g.pf("    %s %s\n", head, tail)
 	} else {
@@ -1636,7 +1784,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # pass, no id interning, no trailer, no second walk and no flatten: a file\n")
 	g.pf("  # of records is one binary every record was appended to in place.\n")
 	g.pf("  def %s_fixed_record(value) do\n", snake)
-	g.pf("    %s_fixed_write_into(value, <<@%s_hash::little-unsigned-64>>)\n", snake, snake)
+	g.pf("    %s\n", call(snake+"_fixed_write_into", raw("value"), rawf("<<@%s_hash::little-unsigned-64>>", snake)).render(4, 4, 0))
 	g.pf("  end\n\n")
 
 	g.pf("  def %s_fixed_save(values) when is_list(values) do\n", snake)
@@ -1645,12 +1793,21 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 		fmt.Sprintf("@%s_layout::binary", snake),
 	}}, 4))
 	g.emitLines([]string{""})
-	g.pf("    R.each(values, head, fn value, acc ->\n")
-	g.pf("      %s\n", call(snake+"_fixed_write_into", raw("value"), rawf("<<acc::binary, @%s_hash::little-unsigned-64>>", snake)).render(6, 6, 0))
-	g.pf("    end)\n")
+	indent := 4
+	if st.Integrity != "" {
+		g.pf("    data =\n")
+		indent = 6
+	}
+	pad := strings.Repeat(" ", indent)
+	g.pf("%sR.each(values, head, fn value, acc ->\n", pad)
+	g.pf("%s  %s\n", pad, call(snake+"_fixed_write_into", raw("value"), rawf("<<acc::binary, @%s_hash::little-unsigned-64>>", snake)).render(indent+2, indent+2, 0))
+	g.pf("%send)\n", pad)
+	if st.Integrity != "" {
+		g.pf("\n    R.integrity_seal(data)\n")
+	}
 	g.pf("  end\n\n")
 
-	g.emitLoad(st, snake)
+	g.emitLoad(st, snake, writerBounds)
 }
 
 // emitLoad prints the root's reader: the form byte, the layout, the plan the
@@ -1658,7 +1815,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 // path for a record this build wrote — the identity plan is data, and the same
 // `R.run` walks it (Glenn, 2026-09-10: "one codepath always, whether version
 // matches or not"). The verdict is a tagged tuple and never an exception.
-func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
+func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("  @doc \"\"\"\n")
 	g.pf("  Read a form-3 FILE of %s records.\n\n", st.Name)
 	g.pf("  `{:ok, values, report}` or `{:error, reason, report}`, the reason BY NAME.\n")
@@ -1668,6 +1825,15 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  another, and the only thing that differs is which plan it was handed.\n")
 	g.pf("  \"\"\"\n")
 	g.pf("  def %s_fixed_load(data, opts \\\\ []) when is_binary(data) do\n", snake)
+	if st.Integrity != "" {
+		g.pf("    with {:ok, body} <- R.integrity_open(data, 3) do\n")
+		g.pf("      %s_fixed_load_raw(body, opts)\n", snake)
+		g.pf("    else\n      {:error, :integrity_mismatch} ->\n")
+		g.pf("        report = %%{R.report() | malformed: true}\n")
+		g.pf("        {:error, :integrity_mismatch, Map.put(report, :reason, \"integrity_mismatch\")}\n")
+		g.pf("    end\n  end\n\n")
+		g.pf("  defp %s_fixed_load_raw(data, opts) do\n", snake)
+	}
 	g.pf("    report = R.report()\n\n")
 	g.pf("    # A FORM BYTE THIS BUILD DOES NOT CARRY IS A REFUSAL BY NAME and never\n")
 	g.pf("    # damage: nothing is decoded and no counter moves. The registry is\n")
@@ -1717,16 +1883,24 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  defp %s_fixed_lane(i, records, hash, report, cap, bcap, copy) do\n", snake)
 	g.pf("    case R.lineage_lane(__MODULE__, :%s, i) do\n", snake)
 	g.pf("      :identity ->\n")
-	g.pf("        %s\n", call(snake+"_fixed_run",
-		rawf("@%s_plan", snake), rawf("@%s_body_bytes", snake), raw("records"), raw("hash"),
-		raw("report"), raw("copy"), raw("bcap"), raw("{0, 0}")).render(8, 8, 0))
+	identityArgs := []node{rawf("@%s_plan", snake), rawf("@%s_body_bytes", snake), raw("records"), raw("hash"),
+		raw("report"), raw("copy"), raw("bcap"), raw("{0, 0}")}
+	laneArgs := []node{raw("plan"), raw("size"), raw("records"), raw("hash"), raw("report"), raw("copy"),
+		raw("bcap"), raw("{u, k}")}
+	if writerBounds {
+		// THE LANE'S WRITER RANGES RIDE WITH ITS CENSUS: both are facts of the
+		// lineage entry the file selected, fixed when the build laid it down.
+		identityArgs[len(identityArgs)-1] = raw("{0, 0, []}")
+		laneArgs[len(laneArgs)-1] = rawf("{u, k, %s_fixed_writer_bounds(i)}", snake)
+	}
+	g.pf("        %s\n", call(snake+"_fixed_run", identityArgs...).render(8, 8, 0))
 	g.pf("\n")
 	g.pf("      {:ok, _plan, _size, made, _u, _k} when made > cap ->\n")
 	g.pf("        # THE DECLARED CAPACITY A BUILD HOLDS AN ENTRY TO IS REAL (§5.9 #4) and\n")
 	g.pf("        # the NAME is the contract (§5.9 #5).\n")
 	g.pf("        {:error, :plan_too_large, report}\n\n")
 	g.pf("      {:ok, plan, size, _made, u, k} ->\n")
-	g.pf("        %s_fixed_run(plan, size, records, hash, report, copy, bcap, {u, k})\n\n", snake)
+	g.pf("        %s\n\n", call(snake+"_fixed_run", laneArgs...).render(8, 8, 0))
 	g.pf("      {:error, why} ->\n")
 	g.pf("        {:error, why, report}\n")
 	g.pf("    end\n")
@@ -1736,7 +1910,11 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  # a byte is landed. Neither plan clamps a ranged integer: the generated\n")
 	g.pf("  # projection holds the bound after the loop, the same pass for either plan.\n")
 	g.pf("  defp %s_fixed_run(plan, size, records, hash, report, copy, bcap, census) do\n", snake)
-	g.pf("    {census_u, census_k} = census\n\n")
+	if writerBounds {
+		g.pf("    {census_u, census_k, bounds} = census\n\n")
+	} else {
+		g.pf("    {census_u, census_k} = census\n\n")
+	}
 	g.pf("    # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,\n")
 	g.pf("    # and a batch past the caller's room is a REFUSAL BY NAME. Step 9 runs\n")
 	g.pf("    # first and owns the ragged tail, so a `rest` that is not a whole number\n")
@@ -1751,12 +1929,27 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("           {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
 	g.pf("        {values, report} =\n")
 	g.pf("          Enum.map_reduce(bodies, report, fn body, report ->\n")
-	g.pf("            {image, report} = R.run(plan, R.detach(body, copy), @%s_prefill, report)\n", snake)
-	g.pf("            {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
-	g.pf("            {value, R.damaged(R.clamped(report, c), m)}\n")
+	// the formatter breaks a match past column 98 after its `=`, and a
+	// multi-line expression takes a blank line after it
+	if run := fmt.Sprintf("            {image, report} = R.run(plan, R.detach(body, copy), @%s_prefill, report)", snake); exWidth(run) <= exLineLimit {
+		g.pf("%s\n", run)
+	} else {
+		g.pf("            {image, report} =\n")
+		g.pf("              R.run(plan, R.detach(body, copy), @%s_prefill, report)\n\n", snake)
+	}
+	if writerBounds {
+		// THE WRITER'S RANGE, THEN THIS READER'S (§4.6): the lane's own
+		// ranges on the image, then the projection's clamp.
+		g.pf("            {image, w} = R.writer_bounds(image, bounds)\n")
+		g.pf("            {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
+		g.pf("            {value, R.damaged(R.clamped(report, c + w), m)}\n")
+	} else {
+		g.pf("            {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
+		g.pf("            {value, R.damaged(R.clamped(report, c), m)}\n")
+	}
 	g.pf("          end)\n\n")
 	g.pf("        # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that\n")
-	g.pf("        # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a\n")
+	g.pf("        # RETURNS (§5.9 #6): §5.4 says once per endpoint and never per record, and a\n")
 	g.pf("        # refusal that came after would have moved a counter.\n")
 	g.pf("        {:ok, values, R.census(report, census_u, census_k)}\n")
 	g.pf("      else\n")

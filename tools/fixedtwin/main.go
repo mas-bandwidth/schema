@@ -29,7 +29,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "fixedtwin: %v\n", err)
 		os.Exit(1)
 	}
-	leftover, err := compareHeaders(string(cSrc), string(cppSrc))
+	cPlain, err := dequalifyC(string(cSrc), ".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fixedtwin: %v\n", err)
+		os.Exit(1)
+	}
+	leftover, err := compareHeaders(cPlain, string(cppSrc))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fixedtwin: %v\n", err)
 		os.Exit(1)

@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 #include <new>
 
 #include "serialize.h"
@@ -28,7 +28,7 @@ namespace benchtable {
 #if defined( _MSC_VER )
 #define SCHEMA_WRITE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_WRITE_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_WRITE_INLINE inline
 #endif
@@ -47,7 +47,7 @@ namespace benchtable {
 #if defined( _MSC_VER )
 #define SCHEMA_READ_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_READ_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_READ_INLINE inline
 #endif
@@ -129,20 +129,20 @@ SCHEMA_WRITE_INLINE bool WriteTableEvent( serialize::WriteStream & stream, const
 SCHEMA_READ_INLINE bool ReadTableEvent( serialize::ReadStream & stream, TableEvent & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, 3 ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 3 ); // TableEventType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = TableEventType( tag_value );
     switch ( value.type )
     {
         case TableEventType::None:
             return true;
         case TableEventType::Hit:
-            ::new ( (void*) &value.hit ) TableHitEvent{};
+            ::new ( static_cast<void *>( &value.hit ) ) TableHitEvent{};
             return ReadTableHitEvent( stream, value.hit );
         case TableEventType::Chat:
-            ::new ( (void*) &value.chat ) TableChatEvent{};
+            ::new ( static_cast<void *>( &value.chat ) ) TableChatEvent{};
             return ReadTableChatEvent( stream, value.chat );
         case TableEventType::Pickup:
-            ::new ( (void*) &value.pickup ) TablePickupEvent{};
+            ::new ( static_cast<void *>( &value.pickup ) ) TablePickupEvent{};
             return ReadTablePickupEvent( stream, value.pickup );
     }
     return false;

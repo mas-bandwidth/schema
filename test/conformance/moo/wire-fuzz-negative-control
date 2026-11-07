@@ -1,0 +1,88 @@
+#!/bin/sh
+# THE MOO LEG's WIRE-FUZZ NEGATIVE CONTROL (make/moo-fuzz.mk,
+# tables-moo-wire-fuzz-negative-control; make/negative-controls.json, the
+# moo-tables group). The pipe differential tables-moo-wire-fuzz runs has to be
+# able to go red, so this plants one reader bug in a SCRATCH copy of the
+# generated units and requires the harness to fail on exactly that bug.
+#
+# The plant: in every unit's table_load.moo, a string field whose frame length
+# runs past its body stops the body WITHOUT counting it malformed
+# (docs/SPEC-TABLES.md §3). The anchor must match exactly once per copy, or
+# the control refuses. The harness must stop on a report divergence whose only
+# moved counter is malformed: the leg says false, the Go oracle says true.
+#
+# The committed driver runs unchanged over the planted units through
+# SCHEMA_MOO_GENERATED; nothing outside build/moo-wire-fuzz-nc is written.
+#
+# The working directory is the repository root; make/moo-fuzz.mk builds the
+# harness, the units and the native host first.
+#
+# usage: sh test/conformance/moo/wire-fuzz-negative-control
+set -eu
+
+out=build/moo-wire-fuzz-nc
+for need in build/conformance-harness "${MOOFUZZHOST:-build/moofuzzhost/moofuzzhost}" build/conformance-moo; do
+	if [ ! -e "$need" ]; then
+		echo "NEGATIVE CONTROL FAILED: $need is missing (make tables-moo-wire-fuzz-negative-control builds it)" >&2
+		exit 1
+	fi
+done
+rm -rf "$out"
+mkdir -p "$out"
+cp -R build/conformance-moo "$out/conformance-moo"
+
+anchor='\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then\n\t\t\t_report\.malformed = true\n\t\t\treturn false'
+planted=0
+for f in "$out"/conformance-moo/*/table_load.moo; do
+	n=$(perl -0ne "my \$c = () = /$anchor/g; print \$c" "$f")
+	if [ "$n" -ne 1 ]; then
+		echo "NEGATIVE CONTROL FAILED: the sabotage anchor appears $n times in $f, want 1" >&2
+		exit 1
+	fi
+	perl -0pi -e 's/(\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then\n)\t\t\t_report\.malformed = true\n/$1/' "$f"
+	planted=$((planted + 1))
+done
+if [ "$planted" -lt 1 ]; then
+	echo "NEGATIVE CONTROL FAILED: no generated table_load.moo to plant in" >&2
+	exit 1
+fi
+
+if SCHEMA_MOO_GENERATED="$out/conformance-moo" MOOFUZZ_STAGE="$out/stage" \
+	build/conformance-harness wire-fuzz --driver test/conformance/moo/wirefuzz-driver \
+	--seed 1 --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
+	cat "$out/log"
+	echo "NEGATIVE CONTROL FAILED: a load that does not count a string frame past its body left the wire fuzz green" >&2
+	exit 1
+fi
+# EXACTLY the plant's row. The oracle reads the mutant as damaged and the leg
+# does not: under the discard rule (docs/SPEC-TABLES.md §4, damage discards the
+# whole load) the harness names the leg's report beside the oracle's malformed
+# verdict; a harness that still compares the whole report names both tuples
+# (unknown, kind_mismatch, widened, clamped, duplicate, malformed, verdict),
+# which must be equal in every field but the sixth. Either way the leg's sixth
+# field is false.
+line=$(grep '^harness: FAILED after [0-9]* mutants: ' "$out/log" || true)
+case "$line" in
+*"the oracle discards a damaged load (malformed); the leg says "*)
+	leg=$(printf '%s\n' "$line" | sed -n 's/.*the leg says \([^ ]*\)$/\1/p')
+	ok=$([ -n "$leg" ] && [ "$(printf '%s' "$leg" | cut -d, -f6)" = false ] && echo yes || echo no)
+	;;
+*"the report differs: "*)
+	leg=$(printf '%s\n' "$line" | sed -n 's/.*the leg says \([^ ]*\), the oracle says .*/\1/p')
+	oracle=$(printf '%s\n' "$line" | sed -n 's/.*the oracle says \([^ ]*\)$/\1/p')
+	ok=no
+	if [ -n "$leg" ] && [ -n "$oracle" ] \
+		&& [ "$(printf '%s' "$leg" | cut -d, -f6)" = false ] \
+		&& [ "$(printf '%s' "$oracle" | cut -d, -f6)" = true ] \
+		&& [ "$(printf '%s' "$leg" | cut -d, -f1-5,7-)" = "$(printf '%s' "$oracle" | cut -d, -f1-5,7-)" ]; then
+		ok=yes
+	fi
+	;;
+*) ok=no ;;
+esac
+if [ "$ok" != yes ]; then
+	cat "$out/log"
+	echo "NEGATIVE CONTROL FAILED: the wire fuzz went red, but not on the malformed count the plant removed" >&2
+	exit 1
+fi
+echo "moo wire-fuzz negative control: planted in $planted table_load.moo copies; the harness stops on the malformed count the plant removed"

@@ -43,6 +43,19 @@ if (process.argv[2] !== "wire-fuzz") {
   graphCook = await load("pointers/GraphCook.js");
 }
 
+// JSON is a byte protocol at the file boundary. Replacement decoding would
+// hide malformed input from the generated string-based reader.
+const jsonUTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+function readJsonTextFile(path) {
+  const bytes = readFileSync(path);
+  try {
+    return jsonUTF8.decode(bytes);
+  } catch (error) {
+    if (error instanceof TypeError && error.code === "ERR_ENCODING_INVALID_ENCODED_DATA") { return null; }
+    throw error;
+  }
+}
+
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
 function readManifest(path) {
@@ -550,7 +563,7 @@ function surfaceReason(kindName, lines, outDir) {
 // carries the unit's `TableVocabulary` and `AnnounceRead`; the table module
 // carries the root's `LoadMessages`, `MeasureMessages` and `SaveMessages`
 // verbs (docs/SPEC-TABLES.md §3.3). A row whose unit this backend cannot
-// generate, or whose root is a plain `table` the form refuses by name, is
+// generate, or whose root is a variable table, which has no message form, is
 // answered `<case>.absent` beside where the answer would go.
 const messageRows = [
   ["backenddemo", "LoginRequest", "backend/BackenddemoTable.js", "backend/BackendTable.js"],
@@ -560,7 +573,6 @@ const messageRows = [
   ["vocabdemo", "Wide00", "vocab/VocabdemoTable.js", "vocab/VocabTable.js"],
   ["vocab9demo", "Wide19", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
   ["vocab9demo", "Wide00", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
-  ["graphdemo", "Scene", "pointers/GraphdemoTable.js", "pointers/GraphTable.js"],
 ];
 
 function messageRow(unit, root) {
@@ -572,13 +584,12 @@ function messageRow(unit, root) {
 
 // A LEG THAT CANNOT ANSWER ONE CASE SAYS SO BESIDE WHERE THE ANSWER WOULD GO,
 // `<case>.absent`, and the matrix counts it (test/conformance/README.md, "Exit
-// codes"). The JavaScript table backend emits the form-2 verbs for its FIXED
-// roots only, so a message row whose unit cannot be generated for this backend
-// (docs/SPEC-TABLES.md §11) or whose root is a plain `table` the form refuses
-// by name (§3.3) is such a case; the surface itself is answered, so the matrix
-// counts the rows rather than the feature.
+// codes"). The message form is fixed tables only (docs/SPEC-TABLES.md §3.3),
+// so a message row whose unit cannot be generated for this backend (§11) or
+// whose root is a variable table is such a case; the surface itself is
+// answered, so the matrix counts the rows rather than the feature.
 function messageAbsent(outDir, name, reason) {
-  writeFileSync(join(outDir, name + ".absent"), reason + "\n");
+  writeFileSync(join(outDir, name + ".absent"), reason);
 }
 
 async function surfaceMessage(lines, outDir) {
@@ -588,7 +599,7 @@ async function surfaceMessage(lines, outDir) {
     const conn = connections.find((c) => c[1] === f[2]);
     if (conn === undefined) { fail("message " + f[1] + " names no connection " + f[2]); }
     const row = messageRow(conn[2], f[3]);
-    if (row === null) { messageAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3"); continue; }
+    if (row === null) { messageAbsent(outDir, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"); continue; }
     let runtime, unit;
     try {
       runtime = await load(row[2]);
@@ -601,7 +612,7 @@ async function surfaceMessage(lines, outDir) {
     const measureMessages = unit[f[3] + "MeasureMessages"];
     const saveMessages = unit[f[3] + "SaveMessages"];
     if (loadMessages === undefined || measureMessages === undefined || saveMessages === undefined) {
-      messageAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3");
+      messageAbsent(outDir, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
       continue;
     }
     // AnnounceRead the connection's announcement into one direction's
@@ -634,13 +645,15 @@ async function surfaceMessage(lines, outDir) {
 // corpus's SimState (scalars, tblscalars2: fixed/ufixed and 128-bit kinds),
 // the wide-text corpus's Caption and Stamp (widedemo) and the message corpus's
 // ToolMessage (messagedemo), each through its unit's
-// <Package>Variable.js. Every other
-// case is answered `<case>.absent` beside where the answer would go — a root
-// whose unit this leg does not generate (tables/lists, which the compiler
-// refuses for js whole because of its array of unions), or one its variable
-// wire does not carry (a union, a map, an optional, an enum-keyed array) —
-// which the matrix counts as the row of work that is left, never as a pass.
+// <Package>Variable.js, and the stream, list, backend, vocabulary and
+// evolution-pair units below. A case whose pair is not here is answered
+// `<case>.absent` beside where the answer would go, which the matrix counts as
+// the row of work that is left, never as a pass. The table is the manifest's
+// instance and report pairs less a named uncarried set (empty today), and
+// TestWireRowsConformanceJavaScript (internal/codegen/jstable) holds it there.
 const wireRows = [
+  ["featurewitnesses", "Root", "features/FeaturewitnessesVariable.js"],
+  ["featurewitnesses", "ArrayRoot", "features/FeaturewitnessesVariable.js"],
   ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
@@ -684,14 +697,47 @@ const wireRows = [
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
+  // the stream corpus (§2.6, §3): a union arm that is a table, the parts
+  // array and the chain, and the report rows its forged counts owe
+  ["streamdemo", "Feed", "stream/StreamdemoVariable.js"],
+  // the list corpus (§2.3, §3): arrays of tables, of unions, of maps and of
+  // scalars, nested and shared, and the evolved Save reading a widened list
+  ["listdemo", "Album", "lists/ListdemoVariable.js"],
+  ["listdemo", "Army", "lists/ListdemoVariable.js"],
+  ["listdemo", "Mixed", "lists/ListdemoVariable.js"],
+  ["listdemo", "Save", "lists/ListdemoVariable.js"],
+  ["listdemo", "Sheet", "lists/ListdemoVariable.js"],
+  ["listdemo", "Unbounded", "lists/ListdemoVariable.js"],
+  // the extent's alignment is its arrays' (§2.8, §6.2): 128-bit elements in
+  // holders aligned eight, the widelist unit
+  ["widelist", "Wide", "widelist/WidelistdemoVariable.js"],
+  // the message roots on the file form (§3.3): the backend unit's three and
+  // the wide-vocabulary units' roots on both sides of the one-byte boundary
+  ["backenddemo", "LoginRequest", "backend/BackenddemoVariable.js"],
+  ["backenddemo", "MatchResult", "backend/BackenddemoVariable.js"],
+  ["backenddemo", "StorePurchase", "backend/BackenddemoVariable.js"],
+  ["vocabdemo", "Wide00", "vocab/VocabdemoVariable.js"],
+  ["vocabdemo", "Wide09", "vocab/VocabdemoVariable.js"],
+  ["vocab9demo", "Wide00", "vocab9/Vocab9demoVariable.js"],
+  ["vocab9demo", "Wide19", "vocab9/Vocab9demoVariable.js"],
+  // the evolution pairs (§4): a union arm moved and reshaped (A1 read as A2),
+  // a key's kind changed both ways (K1/K2), a member list grown and shrunk
+  // (M1/M2), and a chain read by a type that did not write it (P1/P3 as P2)
+  ["tblm1", "Msg", "m1/Tblm1Variable.js"],
+  ["tblm2", "Msg", "m2/Tblm2Variable.js"],
+  ["tbla2", "Root", "a2/Tbla2Variable.js"],
+  ["tblk1", "Root", "k1/Tblk1Variable.js"],
+  ["tblk2", "Root", "k2/Tblk2Variable.js"],
+  ["tblp2", "Chain", "p2/Tblp2Variable.js"],
+  // a pointer under a false guard and inside an absent optional over a
+  // variable closure is no edge (§2.3, §3.1)
+  ["tblg1", "Guarded", "g1/Tblg1Variable.js"],
 ];
 
-// fuzzUnits binds the roster units no wire row or text surface names
-// (tbla2, tblk1, tblk2, tblp2): the wire-fuzz arm alone reads it, so the text
-// and wire-read arms, which need ToJson and FromJson, stay as they are. tblg1
-// is not bound: G1 declares an optional over a variable closure, which this
-// target refuses until its turn (docs/SPEC-TABLES.md §2.3), so its roots
-// answer absent and make/js.mk's pinned absent count names them.
+// fuzzUnits binds the roster units no text surface names (tbla2, tblk1,
+// tblk2, tblp2) for the wire-fuzz arm. They are wire rows too, which
+// wireFuzzCodec reads first, so this table is the arm's own statement of them;
+// tblg1 is bound through wireRows alone.
 const fuzzUnits = {
   tbla2: "a2/Tbla2Variable.js",
   tblk1: "k1/Tblk1Variable.js", tblk2: "k2/Tblk2Variable.js",
@@ -793,6 +839,7 @@ async function codecOf(unit, root, path) {
 // answer `<case>.absent`, which the matrix counts as the row of work that is
 // left, never as a pass.
 const textUnits = {
+  featurewitnesses: "features/FeaturewitnessesVariable.js",
   tabledemo: "examples/TabledemoVariable.js",
   graphdemo: "pointers/GraphdemoVariable.js",
   blobdemo: "blobs/BlobdemoVariable.js",
@@ -812,6 +859,7 @@ const textUnits = {
   tblm1: "m1/Tblm1Variable.js", tblm2: "m2/Tblm2Variable.js",
   widedemo: "wide/WideVariable.js",
   listdemo: "lists/ListdemoVariable.js",
+  widelist: "widelist/WidelistdemoVariable.js",
 };
 
 async function textCodec(unit, root) {
@@ -857,15 +905,61 @@ async function surfaceWire(lines, outDir) {
   }
 }
 
+// The report line, then the §16 text of the value the read left when the read
+// reads. A root this leg carries no text writer for answers the line alone
+// beside `<case>.absent`: the verdict is held and the value is the missing
+// feature (test/conformance/README.md).
 async function surfaceReport(lines, outDir) {
   for (const f of kind(lines, "report")) {
     const codec = await wireCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
-    const ok = codec.load(new Uint8Array(readFileSync(f[4])), r) !== null;
+    const wire = new Uint8Array(readFileSync(f[4]));
+    const ok = codec.load(wire, r) !== null;
     const malformed = r.malformed || (!ok && !r.refused);
     const verdict = r.refused ? "refused" : "read";
-    writeFileSync(join(outDir, f[1]), [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, malformed, verdict].join(",") + "\n");
+    let answer = [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, malformed, verdict].join(",") + "\n";
+    if (ok && !r.refused && !malformed) {
+      const text = await valueText(f[2], f[3], wire);
+      if (text === null) { wireAbsent(outDir, f[1]); } else { answer += text; }
+    }
+    writeFileSync(join(outDir, f[1]), answer);
+  }
+}
+
+// valueText is the §16 text of the value a tolerant read of the wire leaves,
+// through the root's text codec, or null when this leg writes no text for it.
+async function valueText(unit, root, wire) {
+  const codec = await textCodec(unit, root);
+  if (codec === null) { return null; }
+  const v = codec.load(wire, codec.report());
+  if (v === null) { fail(unit + "." + root + ": the text codec's load refused a wire the report read"); }
+  const text = codec.toJson(v);
+  if (text === null) { fail(unit + "." + root + ": ToJson refused the value"); }
+  return text;
+}
+
+// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+// `report` surface prints it, then the §16 text of the value the read left,
+// unless the row says `no-value` or the read was refused or damaged (damaged
+// input is discarded whole and owes the refusal alone, docs/SPEC-TABLES.md §4).
+// A derived line is `framing <case> <unit> <root> <wire> [no-value]`.
+async function surfaceFraming(lines, outDir) {
+  for (const f of kind(lines, "framing")) {
+    const codec = await textCodec(f[2], f[3]);
+    if (codec === null) { wireAbsent(outDir, f[1]); continue; }
+    const noValue = f.length > 5 && f[5] === "no-value";
+    const r = codec.report();
+    const v = codec.load(new Uint8Array(readFileSync(f[4])), r);
+    const malformed = r.malformed || (v === null && !r.refused);
+    const verdict = r.refused ? "refused" : "read";
+    let answer = [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, malformed, verdict].join(",") + "\n";
+    if (v !== null && !r.refused && !malformed && !noValue) {
+      const text = codec.toJson(v);
+      if (text === null) { fail(f[1] + ": ToJson refused the value"); }
+      answer += text;
+    }
+    writeFileSync(join(outDir, f[1]), answer);
   }
 }
 
@@ -875,7 +969,9 @@ async function surfaceJsonRead(lines, outDir) {
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
-    const v = codec.fromJson(readFileSync(join("testdata/conformance/tables/json", f[1] + ".json"), "utf8"), r);
+    const text = readJsonTextFile(join("testdata/conformance/tables/json", f[1] + ".json"));
+    if (text === null) { fail(f[1] + ": invalid UTF-8 in JSON"); }
+    const v = codec.fromJson(text, r);
     if (r.malformed) { fail(f[1] + ": FromJson refused the text"); }
     const saved = codec.save(v);
     if (saved === null) { fail(f[1] + ": save refused the value"); }
@@ -898,17 +994,23 @@ async function surfaceJsonWrite(lines, outDir) {
 
 // json-hostile: one tree per rule the text form states (docs/SPEC-TABLES.md
 // §16.2, §16.3, §17.5), the text at <tree>/<root>.json as `schema pack` reads
-// it. The answer is the REPORT the read produces, or `refused`.
+// it. The answer is the REPORT the read produces, then the §16 text of the
+// value it left, or `refused`.
 async function surfaceJsonHostile(lines, outDir) {
   for (const f of kind(lines, "json-hostile")) {
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
-    const v = codec.fromJson(readFileSync(join(f[4], f[3] + ".json"), "utf8"), r);
-    const verdict = v === null || v === undefined || r.malformed || r.refused
-      ? "refused"
-      : [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, false, "read"].join(",");
-    writeFileSync(join(outDir, f[1]), verdict + "\n");
+    const text = readJsonTextFile(join(f[4], f[3] + ".json"));
+    if (text === null) { writeFileSync(join(outDir, f[1]), "refused\n"); continue; }
+    const v = codec.fromJson(text, r);
+    if (v === null || v === undefined || r.malformed || r.refused) {
+      writeFileSync(join(outDir, f[1]), "refused\n");
+      continue;
+    }
+    const value = codec.toJson(v);
+    if (value === null) { fail(f[1] + ": ToJson refused the value"); }
+    writeFileSync(join(outDir, f[1]), [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, false, "read"].join(",") + "\n" + value);
   }
 }
 
@@ -935,6 +1037,27 @@ const cookWriteRows = [
   ["streamdemo", "Feed", "stream/StreamdemoVariable.js"],
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
+  // maps and lists (docs/PORTING.md M19): the holder's sixteen bytes, the
+  // entries and elements in its node extent, pre-order
+  ["mapdemo", "Cells", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Chunks", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Crews", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Depth", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Docs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Fleet", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Pairs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Runs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Slots", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Spans", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Text", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Trails", "maps/MapdemoVariable.js"],
+  ["listdemo", "Album", "lists/ListdemoVariable.js"],
+  ["listdemo", "Army", "lists/ListdemoVariable.js"],
+  ["listdemo", "Mixed", "lists/ListdemoVariable.js"],
+  ["listdemo", "Save", "lists/ListdemoVariable.js"],
+  ["listdemo", "Sheet", "lists/ListdemoVariable.js"],
+  ["listdemo", "Unbounded", "lists/ListdemoVariable.js"],
+  ["widelist", "Wide", "widelist/WidelistdemoVariable.js"],
 ];
 
 function cookWriteAbsent(outDir, name) {
@@ -997,14 +1120,7 @@ async function surfaceRetain(lines, outDir, saves) {
   const capacityBytes = 1 << 20;
   const fullIds = 1 << 17;
   for (const f of lines) {
-    if (f[0] !== "retain" && f[0] !== "retain-message") { continue; }
-    if (f[0] === "retain-message") {
-      // A retain-message row's root is a plain `table` (RT1's Node), which
-      // carries no message verbs: a form-2 SaveRetain refuses by name (§3.3),
-      // so the row is absent here and the reason names the clause.
-      retainAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3");
-      continue;
-    }
+    if (f[0] !== "retain") { continue; }
     // retain <case> <unit> <root> <wire> <capacity> <ids>
     const codec = await retainCodec(f[2], f[3]);
     if (codec === null) {
@@ -1098,6 +1214,68 @@ async function wireFuzz() {
         roster[i] = { ...codec, retain: retain === 1 };
         known[i] = 1;
       }
+    } else if (form === 2 && retain === 0) {
+      const row = messageRow(unit, root);
+      if (row !== null) {
+        if (!existsSync(resolve(generated, row[2])) || !existsSync(resolve(generated, row[3]))) {
+          fail(unit + "." + root + ": the message wire-fuzz module is missing");
+        }
+        const runtime = await load(row[2]);
+        const m = await load(row[3]);
+        const loadMessages = m[root + "LoadMessages"];
+        const measureMessages = m[root + "MeasureMessages"];
+        const saveMessages = m[root + "SaveMessages"];
+        const initRoot = runtime["Init" + root];
+        const RootClass = runtime[root];
+        if (typeof loadMessages !== "function" || typeof measureMessages !== "function" ||
+            typeof saveMessages !== "function" || typeof initRoot !== "function" ||
+            typeof RootClass !== "function") {
+          fail(unit + "." + root + ": the message wire surface is missing from " + row[3]);
+        }
+        const vocabulary = new runtime.TableVocabulary();
+        vocabulary.Init(new Array(runtime.TableMessageEntriesHere));
+        if (!runtime.AnnounceRead(vocabulary, runtime.TableMessageAnnouncement, {})) {
+          fail(unit + "." + root + ": own announcement was refused");
+        }
+        const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new RootClass());
+        const single = [values[0]];
+        roster[i] = {
+          message: true,
+          run(wire) {
+            for (let j = 0; j < values.length; j++) { initRoot(values[j]); }
+            const rep = {};
+            const n = loadMessages(values, vocabulary, wire, rep);
+            const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat);
+            const malformed = Boolean(rep.Malformed) || (n < 1 && !refused);
+            let saved = null;
+            const ignored = {};
+            const size = measureMessages(single, ignored);
+            if (size >= 0) {
+              const out = new Uint8Array(size);
+              if (saveMessages(single, out, ignored) === size) {
+                saved = out;
+              }
+            }
+            return {
+              loaded: true,
+              saved,
+              report: {
+                reason: rep.Reason ?? "",
+                unknown: rep.Unknown | 0,
+                kindMismatch: rep.KindMismatch | 0,
+                widened: rep.Widened | 0,
+                clamped: rep.Clamped | 0,
+                duplicate: 0,
+                malformed,
+                refused,
+                retained: 0,
+                retainLost: 0,
+              },
+            };
+          },
+        };
+        known[i] = 1;
+      }
     }
   }
   writeSync(1, known);
@@ -1114,34 +1292,41 @@ async function wireFuzz() {
 
     let loaded = false, measure = -1, saved = null;
     const report = { reason: "", unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
-    if (codec !== null) {
+    if (codec !== null && codec.message) {
+      const res = codec.run(wire);
+      loaded = res.loaded;
+      saved = res.saved;
+      Object.assign(report, res.report);
+    } else if (codec !== null) {
       measure = codec.loadMeasure(wire);
-      if (measure >= 0) {
-        const rep = codec.report();
-        let card = null;
-        if (codec.retain) {
-          const retainStore = codec.retainStore();
-          card = codec.loadRetain(wire, retainStore, rep);
-          loaded = card !== null;
-          if (loaded) {
-            saved = codec.saveRetain(card, retainStore, rep);
-          }
-        } else {
-          card = codec.load(wire, rep);
-          loaded = card !== null;
-          if (loaded) { saved = codec.save(card); }
+      // Measurement and loading are independent observations; even an
+      // unframed file must reach Load so its damage report is preserved.
+      const rep = codec.report();
+      let card = null;
+      if (codec.retain) {
+        const retainStore = codec.retainStore();
+        card = codec.loadRetain(wire, retainStore, rep);
+        loaded = card !== null;
+        if (loaded) {
+          saved = codec.saveRetain(card, retainStore, rep);
         }
-        report.unknown = rep.unknown;
-        report.kindMismatch = rep.kindMismatch;
-        report.widened = rep.widened;
-        report.clamped = rep.clamped;
-        report.duplicate = rep.duplicate;
-        report.malformed = rep.malformed;
-        report.refused = rep.refused;
-        report.retained = rep.retained;
-        report.retainLost = rep.retainLost;
-        report.reason = rep.reason;
+      } else {
+        card = codec.load(wire, rep);
+        loaded = card !== null;
+        if (loaded) { saved = codec.save(card); }
       }
+      report.unknown = rep.unknown;
+      report.kindMismatch = rep.kindMismatch;
+      report.widened = rep.widened;
+      report.clamped = rep.clamped;
+      report.duplicate = rep.duplicate;
+      report.malformed = rep.malformed;
+      // Storage-cap rejection is an out-of-band builder failure, not a
+      // wire-form refusal in the shared report protocol.
+      report.refused = rep.refused && rep.reason !== "count_over_extent_cap";
+      report.retained = rep.retained;
+      report.retainLost = rep.retainLost;
+      report.reason = rep.reason;
     }
 
     // EVERY REPLY IS FLUSHED BEFORE THE NEXT MUTANT IS READ
@@ -1190,7 +1375,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1205,6 +1390,7 @@ const outDir = args[2];
 switch (surface) {
   case "wire": await surfaceWire(lines, outDir); break;
   case "report": await surfaceReport(lines, outDir); break;
+  case "framing": await surfaceFraming(lines, outDir); break;
   case "retain": await surfaceRetain(lines, outDir, false); break;
   case "retain-save": await surfaceRetain(lines, outDir, true); break;
   case "json-read": await surfaceJsonRead(lines, outDir); break;

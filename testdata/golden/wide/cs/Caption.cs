@@ -43,18 +43,11 @@ namespace Wide
 
         // LineMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // LineMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long LineMaxBits = 131;
-        public const long LineMaxBytes = 24;
+        public const int LineMaxBits = 131;
+        public const int LineMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroLine(Line value)
-        {
-            Array.Clear(value.Text, 0, 4);
-            value.TextLength = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitLine(Line value)
         {
             Array.Clear(value.Text, 0, 4);
             value.TextLength = 0;

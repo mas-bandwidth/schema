@@ -24,6 +24,10 @@
 #include "arms/NestTable.h"
 #include "arms/RingTable.h"
 
+/* THE PLAIN NAMES ARE COMPARED. C's plain <name>_load and C++'s plain Load are
+   both the STRICT read (docs/SPEC-TABLES.md §6.5): each refuses what the strict
+   read refuses and hands back no root, and the C driver's unit.h calls the
+   plain name under SCHEMA_C_COLLECTIONS_FUZZ. */
 #define REFERENCE_CODEC(NS,TYPE) \
 static const NS::TYPE * reference_##NS##_##TYPE; \
 static void * reference_storage_##NS##_##TYPE() { free((void *)reference_##NS##_##TYPE); reference_##NS##_##TYPE=NULL; return &reference_##NS##_##TYPE; } \

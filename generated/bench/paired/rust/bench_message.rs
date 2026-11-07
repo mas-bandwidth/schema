@@ -146,8 +146,8 @@ pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntit
     !w.overflow
 }
 
-/// One MixedEntity body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One MixedEntity body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedEntityRow) -> bool {
@@ -495,8 +495,8 @@ pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow
     !w.overflow
 }
 
-/// One MixedStat body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One MixedStat body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedStatRow) -> bool {
@@ -597,8 +597,8 @@ pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHi
     !w.overflow
 }
 
-/// One MixedHitEvent body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One MixedHitEvent body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedHitEventRow) -> bool {
@@ -727,8 +727,8 @@ pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedC
     !w.overflow
 }
 
-/// One MixedChatEvent body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One MixedChatEvent body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedChatEventRow) -> bool {
@@ -821,8 +821,8 @@ pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &Mixe
     !w.overflow
 }
 
-/// One MixedPickupEvent body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One MixedPickupEvent body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedPickupEventRow) -> bool {
@@ -1106,30 +1106,35 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     {
         if value.aim_x != d.aim_x {
             w.put(16, TABLE_MESSAGE_REF_BITS);
+            if !value.aim_x.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_x.to_bits() as u64, 0);
         }
     }
     {
         if value.aim_y != d.aim_y {
             w.put(17, TABLE_MESSAGE_REF_BITS);
+            if !value.aim_y.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_y.to_bits() as u64, 0);
         }
     }
     {
         if value.aim_z != d.aim_z {
             w.put(18, TABLE_MESSAGE_REF_BITS);
+            if !value.aim_z.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_z.to_bits() as u64, 0);
         }
     }
     {
-        if value.recoil != d.recoil {
+        if value.recoil.to_bits() != d.recoil.to_bits() {
             w.put(19, TABLE_MESSAGE_REF_BITS);
+            if !value.recoil.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.recoil.to_bits() as u64, 0);
         }
     }
     {
-        if value.drift != d.drift {
+        if value.drift.to_bits() != d.drift.to_bits() {
             w.put(20, TABLE_MESSAGE_REF_BITS);
+            if !value.drift.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.drift.to_bits(), 0);
         }
     }
@@ -1179,8 +1184,8 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     !w.overflow
 }
 
-/// One BenchMixed body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One BenchMixed body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut BenchMixedRow) -> bool {
@@ -1588,7 +1593,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
-                        let mut x = f32::from_bits(lo as u32);
+                        let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_x"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.clamped += 1; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.clamped += 1; }
                         value.aim_x = x;
                     }
@@ -1605,7 +1610,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
-                        let mut x = f32::from_bits(lo as u32);
+                        let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_y"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.clamped += 1; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.clamped += 1; }
                         value.aim_y = x;
                     }
@@ -1622,7 +1627,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
-                        let mut x = f32::from_bits(lo as u32);
+                        let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_z"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.clamped += 1; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.clamped += 1; }
                         value.aim_z = x;
                     }
@@ -1639,7 +1644,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
-                        let mut x = f32::from_bits(lo as u32);
+                        let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.recoil"); 0.0 };
                         value.recoil = x;
                     }
                     if widened { report.widened += 1; }
@@ -1659,7 +1664,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
-                        let mut x = if entry.kind == 10 { f64::from_bits(table_message_widen_f32(lo as u32)) } else { f64::from_bits(lo) };
+                        let mut x = if entry.kind == 10 { if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite("BenchMixed.drift"); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite("BenchMixed.drift"); 0.0 };
                         value.drift = x;
                     }
                     if widened { report.widened += 1; }

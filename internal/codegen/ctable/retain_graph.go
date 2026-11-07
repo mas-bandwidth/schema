@@ -38,7 +38,6 @@ func (g *tableGen) emitRetainRoots(members []*ir.Struct) {
 			continue
 		}
 		g.emitRetainFileRoot(st)
-		g.emitRetainMessageRoot(st)
 	}
 }
 func (g *tableGen) emitRetainFileRoot(st *ir.Struct) {
@@ -60,7 +59,11 @@ func (g *tableGen) emitRetainFileRoot(st *ir.Struct) {
 	g.body.WriteString(previous)
 	g.body.WriteString(retainedCode(code, names, g.sym(n, "load_graph")))
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region,int64_t region_bytes,const uint8_t * wire,int64_t wire_bytes,TableRetain * retain,TableReport * report)\n{\n", n, g.api(n, "load_retain"))
-	g.pf(" TableReport ignored={0};TableReader reader;TableNodeMap nodes;TableNodeDirEntry * directory;TableRegionSink place;TableSink sink;TableRetainWalk retention;int64_t data,records,total;\n if(report==NULL)report=&ignored;table_retain_reset(retain,NULL,NULL);\n if(!table_wire_open(&reader,wire,wire_bytes,report))return NULL;total=%s(&reader,&data,&records);\n if(total<0||region==NULL||region_bytes<total||((uintptr_t)region&(kTableAlign-1))){report->malformed=1;return NULL;}\n memset(region,0,(size_t)total);directory=(TableNodeDirEntry *)(void *)(region+data);directory[0].offset=0;directory[0].type_id=UINT64_C(0x%016x);\n memset(&nodes,0,sizeof(nodes));nodes.base=region;nodes.entries=directory;nodes.count=(uint64_t)records+1;place.base=region;place.capacity=data;place.used=%s(&reader);sink.region=&place;sink.worker=NULL;\n table_retain_reset(retain,&nodes,region);memset(&retention,0,sizeof(retention));retention.retain=retain;retention.path=table_retain_root(region,1);\n if(!%s(&reader,(%s *)(void *)region,&nodes,directory,&sink,retention))return NULL;return (const %s *)(const void *)region;\n}\n", g.sym(n, "load_layout"), ir.TableWireId(st.WireName()), g.sym(n, "wire_storage"), g.sym(n, "load_graph_retain"), n, n)
+	g.pf(" TableReport ignored={0};TableReader reader;TableNodeMap nodes;TableNodeDirEntry * directory;TableRegionSink place;TableSink sink;TableRetainWalk retention;int64_t data,records,total;int malformed_before,reason_before;int32_t non_finite_before;\n if(report==NULL)report=&ignored;malformed_before=report->malformed;reason_before=report->reason;non_finite_before=report->non_finite_floats;report->malformed=0;table_retain_reset(retain,NULL,NULL);\n")
+	if st.Integrity != "" {
+		g.pf(" if(wire_bytes>0&&wire!=NULL&&wire[0]==1&&!schema_table_integrity_holds_(wire,wire_bytes)){report->malformed=1;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return NULL;}\n if(wire_bytes>0&&wire!=NULL&&wire[0]==1)wire_bytes-=4;\n")
+	}
+	g.pf(" if(!table_wire_open(&reader,wire,wire_bytes,report)){report->malformed=report->malformed||malformed_before;return NULL;}total=%s(&reader,&data,&records);report->reason=(TableRefuseReason)reason_before;\n if(total<0){\n  %sBuilder builder;TableNodeScan scan;TableReader body;uint64_t id;%s * root;\n  if(region!=NULL&&region_bytes>0&&(((uintptr_t)region&(kTableAlign-1))==0))memset(region,0,(size_t)region_bytes);\n  records=0;scan=table_node_scan_begin(&reader);while(table_node_scan_next(&scan,&id,&body))records++;\n  if(records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1||!%s(&builder)){report->malformed=1;return NULL;}\n  root=%s(&builder);directory=(TableNodeDirEntry *)table_allocate(builder.arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));\n  if(root==NULL||directory==NULL){table_release(builder.arena.allocator,directory);%s(&builder);report->malformed=1;return NULL;}\n  directory[0].offset=(uint64_t)builder.root_ref.value;directory[0].type_id=UINT64_C(0x%016x);\n  memset(&nodes,0,sizeof(nodes));nodes.entries=directory;nodes.count=(uint64_t)records+1;nodes.arena=1;sink.region=NULL;sink.worker=&builder.main;\n  table_retain_reset(retain,&nodes,NULL);memset(&retention,0,sizeof(retention));retention.retain=retain;retention.path=table_retain_root(root,1);\n  (void)%s(&reader,root,&nodes,directory,&sink,retention);\n  table_release(builder.arena.allocator,directory);%s(&builder);table_retain_reset(retain,NULL,NULL);\n  if(table_non_finite_refused(report,non_finite_before)){report->malformed=report->malformed||malformed_before;return NULL;}\n  if(nodes.refused&&!report->malformed){report->refused=1;report->reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;report->refuse_reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;report->malformed=malformed_before;return NULL;}\n  report->malformed=1;return NULL;\n }\n if(region==NULL||region_bytes<total||((uintptr_t)region&(kTableAlign-1))){report->malformed=1;return NULL;}\n memset(region,0,(size_t)total);directory=(TableNodeDirEntry *)(void *)(region+data);directory[0].offset=0;directory[0].type_id=UINT64_C(0x%016x);\n memset(&nodes,0,sizeof(nodes));nodes.base=region;nodes.entries=directory;nodes.count=(uint64_t)records+1;place.base=region;place.capacity=data;place.used=%s(&reader);sink.region=&place;sink.worker=NULL;\n table_retain_reset(retain,&nodes,region);memset(&retention,0,sizeof(retention));retention.retain=retain;retention.path=table_retain_root(region,1);\n if(!%s(&reader,(%s *)(void *)region,&nodes,directory,&sink,retention)||report->malformed){report->malformed=report->malformed||malformed_before;memset(region,0,(size_t)total);table_retain_reset(retain,NULL,NULL);return NULL;} /* damage discards the whole load, the retention store too (§4) */\n report->malformed=report->malformed||malformed_before;return (const %s *)(const void *)region;\n}\n", g.sym(n, "load_layout"), n, n, g.api(n, "builder_init"), g.api(n, "builder_root"), g.api(n, "builder_shutdown"), ir.TableWireId(st.WireName()), g.sym(n, "load_graph_retain"), g.api(n, "builder_shutdown"), ir.TableWireId(st.WireName()), g.sym(n, "wire_storage"), g.sym(n, "load_graph_retain"), n, n)
 	dispatch := g.sym(n, "retain_save_node")
 	g.pf("static SCHEMA_UNUSED int %s(TableWriter * w,const void * value,uint64_t id,TableRetainWalk retention)\n{\n switch(id){\n", dispatch)
 	seen := map[string]bool{}
@@ -81,30 +84,17 @@ func (g *tableGen) emitRetainFileRoot(st *ir.Struct) {
 		}
 	}
 	g.pf(" default:return 0;\n }\n}\n")
-	g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain,TableAllocator allocator)\n{if(!root)return -1;return table_retain_graph_save(root,&%s,retain,NULL,INT64_MAX,NULL,allocator,%s);}\n", g.api(n, "measure_retain_with_allocator"), n, g.graphType(n), dispatch)
-	g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain)\n{return %s(root,retain,table_default_allocator());}\n", g.api(n, "measure_retain"), n, g.api(n, "measure_retain_with_allocator"))
-	g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain,uint8_t * buffer,int64_t capacity,TableReport * report,TableAllocator allocator)\n{if(!root||!buffer||capacity<0||!report)return -1;return table_retain_graph_save(root,&%s,retain,buffer,capacity,report,allocator,%s);}\n", g.api(n, "save_retain_with_allocator"), n, g.graphType(n), dispatch)
-	g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain,uint8_t * buffer,int64_t capacity,TableReport * report)\n{return %s(root,retain,buffer,capacity,report,table_default_allocator());}\n", g.api(n, "save_retain"), n, g.api(n, "save_retain_with_allocator"))
-}
-
-func (g *tableGen) emitRetainMessageRoot(st *ir.Struct) {
-	n := st.Name
-	previous := g.body.String()
-	g.body.Reset()
-	g.retain = true
-	g.emitMessageGraphLoad(st)
-	g.retain = false
-	names := map[string]string{g.sym(n, "message_load_into"): g.sym(n, "message_load_into_retain")}
-	for name := range ir.TableClosure(g.unit) {
-		fn := g.api(name, "load_message_body")
-		names[fn] = fn + "_retain"
+	if st.Integrity != "" {
+		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain,TableAllocator allocator)\n{if(!root)return -1;return schema_table_integrity_seal_(NULL,table_retain_graph_save(root,&%s,retain,NULL,INT64_MAX,NULL,allocator,%s));}\n", g.api(n, "measure_retain_with_allocator"), n, g.graphType(n), dispatch)
+		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain)\n{return %s(root,retain,table_default_allocator());}\n", g.api(n, "measure_retain"), n, g.api(n, "measure_retain_with_allocator"))
+		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain,uint8_t * buffer,int64_t capacity,TableReport * report,TableAllocator allocator)\n{if(!root||!buffer||capacity<4||!report)return -1;return schema_table_integrity_seal_(buffer,table_retain_graph_save(root,&%s,retain,buffer,capacity-4,report,allocator,%s));}\n", g.api(n, "save_retain_with_allocator"), n, g.graphType(n), dispatch)
+		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain,uint8_t * buffer,int64_t capacity,TableReport * report)\n{return %s(root,retain,buffer,capacity,report,table_default_allocator());}\n", g.api(n, "save_retain"), n, g.api(n, "save_retain_with_allocator"))
+	} else {
+		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain,TableAllocator allocator)\n{if(!root)return -1;return table_retain_graph_save(root,&%s,retain,NULL,INT64_MAX,NULL,allocator,%s);}\n", g.api(n, "measure_retain_with_allocator"), n, g.graphType(n), dispatch)
+		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain)\n{return %s(root,retain,table_default_allocator());}\n", g.api(n, "measure_retain"), n, g.api(n, "measure_retain_with_allocator"))
+		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain,uint8_t * buffer,int64_t capacity,TableReport * report,TableAllocator allocator)\n{if(!root||!buffer||capacity<0||!report)return -1;return table_retain_graph_save(root,&%s,retain,buffer,capacity,report,allocator,%s);}\n", g.api(n, "save_retain_with_allocator"), n, g.graphType(n), dispatch)
+		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain,uint8_t * buffer,int64_t capacity,TableReport * report)\n{return %s(root,retain,buffer,capacity,report,table_default_allocator());}\n", g.api(n, "save_retain"), n, g.api(n, "save_retain_with_allocator"))
 	}
-	code := g.body.String()
-	g.body.Reset()
-	g.body.WriteString(previous)
-	g.body.WriteString(retainedCode(code, names, g.sym(n, "message_load_into")))
-	g.pf("static SCHEMA_UNUSED int %s(const %s ** roots,int64_t * count,uint8_t * region,int64_t region_bytes,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableRetain * retains,TableReport * report)\n{\n", g.api(n, "load_retain_messages"), n)
-	g.pf(" TableReport ignored={0};TableMessageReader r;TableRetainWalk retention;int64_t bodies,capacity,used=0,i;if(!report)report=&ignored;\n if(!roots||!count){report->malformed=1;return 0;}capacity=*count;*count=0;bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n if(!region||region_bytes<0||((uintptr_t)region&(kTableAlign-1))){report->malformed=1;return 0;}memset(region,0,(size_t)region_bytes);\n for(i=0;i<bodies;i++){roots[i]=NULL;memset(&retention,0,sizeof(retention));retention.retain=retains?retains+i:NULL;table_retain_reset(retention.retain,NULL,NULL);if(!%s(&r,region,region_bytes,&used,roots+i,retention))return 0;(*count)++;}return table_message_close(&r);\n}\n", g.sym(n, "message_load_into_retain"))
 }
 
 // C99 has no variadic templates. The diagnostic bit-field is instantiated only
@@ -114,10 +104,11 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 		if st.IsMapEntry() {
 			continue
 		}
-		if !g.isVar(st.Name) {
-			for _, verb := range []string{"load_retain", "measure_retain", "save_retain", "load_retain_messages"} {
-				g.pf("/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */\n#define %s(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))\n", g.api(st.Name, verb))
-			}
+		if g.isVar(st.Name) {
+			continue
+		}
+		for _, verb := range []string{"load_retain", "measure_retain", "save_retain", "load_retain_messages"} {
+			g.pf("/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */\n#define %s(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))\n", g.api(st.Name, verb))
 		}
 		g.pf("/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */\n#define %s(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))\n", g.api(st.Name, "save_retain_messages"))
 	}

@@ -92,10 +92,11 @@ set and a pass measuring anything else would render as a pass it is not. **Fast
 mode is the diagnostic and takes any non-empty subset of the known legs**, which
 is `cpp,c,go,cs,elixir`, plus table-only `rust` asked alone: it publishes
 nothing and seals nothing, and it is where a leg that is not in a published
-pass yet is measured at all. The Elixir leg is exactly that today — it carries
-the FIXED form (form 3) and no other table wire (form 1 is deferred to
-schema#515), so its table rows are named `bench_fixed` and it is not part of a
-confirmation pass. `rust` is table-only (see below) and is never mixed with a
+pass yet is measured at all. The Elixir leg is exactly that today. This driver's
+runner measures the FIXED form (form 3), so its table rows are named
+`bench_fixed` and it is not part of a confirmation pass; the variable form
+(form 1) of the board's `TableMixed` is measured by its own runner under the
+tables board (`bench/tables/elixir/leg`), against that corpus's id. `rust` is table-only (see below) and is never mixed with a
 paired request.
 
 An interpreted leg has no compiled artifact, so what stands in place of a hashed
@@ -189,6 +190,19 @@ import no runtime at all. Filling the driver's second wire with a fabricated
 packet row would be inventing a measurement, so the driver accepts a table-only
 row instead. `NODE` names the interpreter.
 
+`dart` is the fourth, table-only for java's reason: `bench/dart/main.dart` is the
+TYPE BOARD's packet runner, with neither `--gate` nor `--iterations`, and the
+paired set is the four the board is defined over. Dart's packet number is the
+type board's, from its own runner over the same sixty-four records. The table
+leg, `bench/tables/dart/table_main.dart`, is compiled by `dart compile exe` into
+`build/paired/table-dart` — the AOT form, the one that ships — with the generated
+unit (`generated/bench/paired/dart`) compiled into it, so like rust it runs as
+the driver's own build product. This runner is the fixed form alone: the paired
+corpus's `fixed table` root has no form-1 codec, and the variable form of the
+board's `TableMixed` is measured by its own runner under the tables board
+(`bench/tables/dart/leg`, `bench/tables/README.md`), against that corpus's id. `DART` names the SDK (the repository-local pin
+under `dist/` when it is there, as in make/dart.mk; CI passes `DART=dart`).
+
     go run ./bench/paired -mode build -langs rust   generate, build, gate the leg
     go run ./bench/paired -mode gate  -langs rust   the no-clock gate alone
     go run ./bench/paired -mode fast  -langs rust -fast-rounds 3 -noise-note "..."
@@ -201,8 +215,12 @@ row instead. `NODE` names the interpreter.
     go run ./bench/paired -mode gate  -langs js     the no-clock gate alone
     go run ./bench/paired -mode fast  -langs js -fast-rounds 3 -noise-note "..."
 
+    go run ./bench/paired -mode build -langs dart   generate, compile exe, then gate the leg
+    go run ./bench/paired -mode gate  -langs dart   the no-clock gate alone
+    go run ./bench/paired -mode fast  -langs dart -fast-rounds 3 -noise-note "..."
+
 A request is one shape or the other and never a mixture: `-langs rust` (or
-`-langs java`, or `-langs js`) is asked for alone, `-mode run` refuses it, and
+`-langs java`, `-langs js` or `-langs dart`) is asked for alone, `-mode run` refuses it, and
 its fast summary prints the table wire's own cost with **NO RATIO** written
 where the percentages would be. Because none of these ports has a form-1 table
 wire — the fixed form is the first for each — each leg measures the FIXED form
@@ -458,9 +476,9 @@ owes a hand-written arm. Glenn's ruling neither relaxes nor restates it; nothing
 multiplies the two together any more.
 
 A leg with no runner is NAMED with its reason in `nine.sh`'s own vocabulary and
-never estimated. Eight table runners exist under `bench/tables/` today; Dart's
-fixed-form leg has landed and its bench runner has not, so the ninth line is a
-named refusal until it does.
+never estimated. Nine table runners exist under `bench/tables/` today, Dart's
+(`bench/tables/dart`) the last to land, so no line of the nine is a named
+refusal on this tree; the vocabulary stays for a leg branch that lacks one.
 
 This mode publishes nothing and seals nothing until a confirmation pass carries
 it: like fast mode it is the diagnostic, and the certified sitting is still

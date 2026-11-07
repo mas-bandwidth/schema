@@ -11,7 +11,7 @@ import (
 // §5.8 row 11, unknown_census: the NEW reader (Item.drop REMOVED) reads the OLD
 // writer's lawful old_unknown_census.bin through the handed-in lineage entry.
 // Four elements each carry a and the removed drop, but drop is ONE field of ONE
-// peer (Item), so the compile census counts it ONCE: unknown == 1, and a leg
+// endpoint (Item), so the compile census counts it ONCE: unknown == 1, and a leg
 // that counts once per ELEMENT lands 4 and passes a >= 1 read. The check
 // asserts == 1 exactly, never >= 1.
 
@@ -22,7 +22,7 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
 /// §5.8 row 11, unknown_census: the NEW reader (Item.drop removed) reads the OLD
 /// writer's lawful old_unknown_census.bin through the handed-in lineage entry.
 /// Four elements each carry a and the removed drop, but drop is ONE field of ONE
-/// peer (Item), so the compile census counts it ONCE: unknown == 1, and a leg
+/// endpoint (Item), so the compile census counts it ONCE: unknown == 1, and a leg
 /// that counts once per ELEMENT would land 4 and pass a >= 1 read.
 #[test]
 fn v_unknown_census_new_reads_old() {
@@ -43,7 +43,7 @@ fn v_unknown_census_new_reads_old() {
     assert!(!report.malformed, "a clean backward read is not damage: {:?}", report);
     assert_eq!(
         report.unknown, 1,
-        "unknown == {}, want 1: Item.drop is ONE field of ONE peer, not one per element", report.unknown
+        "unknown == {}, want 1: Item.drop is ONE field of ONE endpoint, not one per element", report.unknown
     );
     assert!(
         report.kind_mismatch == 0 && report.widened == 0 && report.clamped == 0,

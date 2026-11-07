@@ -83,6 +83,11 @@
 #include "SharedTable.h"
 #include "MigrateTable.h"
 #include "ReportTable.h"
+#include "K1Table.h"
+#include "K2Table.h"
+#include "G1Table.h"
+#include "WidesTable.h"
+#include "FeaturesTable.h"
 
 struct Reply
 {
@@ -250,9 +255,9 @@ struct VariableRetain
 };
 
 #define FIXED( unit_key, ns, type ) \
-    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport>::run<ns::type##Load, ns::type##Measure, ns::type##Save> }
+    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport>::run<ns::type##LoadTolerant, ns::type##Measure, ns::type##Save> }
 #define VARIABLE( unit_key, ns, type ) \
-    { unit_key, #type, 1, 0, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
+    { unit_key, #type, 1, 0, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##LoadTolerant, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
 #define RETAIN( unit_key, ns, type ) \
     { unit_key, #type, 1, 1, VariableRetain<ns::type, ns::TableReport, ns::TableRetain, ns::TableAllocator, ns::TableRefuseReason>::run< \
         ns::type##LoadMeasure, ns::type##LoadRetain, ns::type##MeasureRetain, ns::type##SaveRetain, ns::TableDefaultAllocator> }
@@ -322,56 +327,10 @@ struct FixedMessage
     }
 };
 
-// one VARIABLE-class root under the message form: the batch's ONE region is
-// sized from the wire and the vocabulary, exactly as a file's is sized from
-// the file
-template <typename T, typename Report, typename Vocabulary, typename Entry, int64_t entries_here, typename Allocator>
-struct VariableMessage
-{
-    template <int64_t ( *announce_measure )(), int64_t ( *announce )( uint8_t *, int64_t ),
-              bool ( *announce_read )( Vocabulary &, const uint8_t *, int64_t, Report * ),
-              int64_t ( *load_measure )( const Vocabulary &, const uint8_t *, int64_t, int64_t * ),
-              bool ( *load )( const T **, int64_t *, uint8_t *, int64_t, const Vocabulary &, const uint8_t *, int64_t, Report * ),
-              int64_t ( *measure )( const T * const *, int64_t, Report *, Allocator ),
-              int64_t ( *save )( const T * const *, int64_t, uint8_t *, int64_t, Report *, Allocator ),
-              Allocator ( *default_allocator )()>
-    static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
-    {
-        const Vocabulary * vocabulary = announced_to_itself<Vocabulary, Entry, Report>( entries_here, announce_measure, announce, announce_read );
-        int64_t need = load_measure( *vocabulary, wire, bytes, NULL );
-        reply.measure = need;
-        uint8_t * region = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );
-        Report report;
-        static const T * roots[256];
-        for ( int i = 0; i < 256; i++ ) { roots[i] = NULL; }
-        int64_t count = 256; // room for the wire's M: a batch is never refused for capacity here
-        load( roots, &count, region, need, *vocabulary, wire, bytes, &report );
-        copy_report( report, reply );
-        reply.loaded = roots[0] != NULL;
-        reply.saved = -1;
-        if ( roots[0] != NULL )
-        {
-            Report ignored;
-            int64_t size = measure( roots, 1, &ignored, default_allocator() );
-            if ( size >= 0 )
-            {
-                reply.bytes = (uint8_t *) malloc( size > 0 ? (size_t) size : 1 );
-                if ( save( roots, 1, reply.bytes, size, &ignored, default_allocator() ) == size ) { reply.saved = size; }
-                else { free( reply.bytes ); reply.bytes = NULL; }
-            }
-        }
-        free( region );
-    }
-};
-
 #define MESSAGE( unit_key, ns, type ) \
     { unit_key, #type, 2, 0, FixedMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere>::run< \
         ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
         ns::type##LoadMessages, ns::type##MeasureMessages, ns::type##SaveMessages> }
-#define MESSAGE_VARIABLE( unit_key, ns, type ) \
-    { unit_key, #type, 2, 0, VariableMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere, ns::TableAllocator>::run< \
-        ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
-        ns::type##LoadMeasure, ns::type##LoadMessages, ns::type##MeasureMessages, ns::type##SaveMessages, ns::TableDefaultAllocator> }
 
 static const Codec codecs[] = {
     FIXED( "tabledemo", tabledemo, RootConfig ),
@@ -400,8 +359,12 @@ static const Codec codecs[] = {
     FIXED( "backenddemo", backenddemo, LoginRequest ),
     FIXED( "backenddemo", backenddemo, MatchResult ),
     FIXED( "backenddemo", backenddemo, StorePurchase ),
+    FIXED( "tblk1", tblk1, Root ),
+    FIXED( "tblk2", tblk2, Root ),
     FIXED( "vocabdemo", vocabdemo, Wide00 ),
     FIXED( "vocabdemo", vocabdemo, Wide09 ),
+    FIXED( "vocab9demo", vocab9demo, Wide00 ),
+    FIXED( "vocab9demo", vocab9demo, Wide19 ),
     // WIDE TEXT (docs/SPEC-TABLES.md §3, kind 33): the seeds that carry the
     // kind at a field, at a `type` a table reaches, at an element and at a
     // union arm, so the ill-formed-wide-text and odd-`L` passes have all four
@@ -436,8 +399,12 @@ static const Codec codecs[] = {
     VARIABLE( "blobdemo", blobdemo, Catalog ),
     VARIABLE( "tblp2", tblp2, Chain ),
     VARIABLE( "streamdemo", streamdemo, Feed ),
+    VARIABLE( "tblg1", tblg1, Guarded ),
     VARIABLE( "tblw1", tblw1, Fleet ),
     VARIABLE( "tblw2", tblw2, Fleet ),
+    VARIABLE( "widelist", widelistdemo, Wide ),
+    VARIABLE( "featurewitnesses", featurewitnesses, Root ),
+    VARIABLE( "featurewitnesses", featurewitnesses, ArrayRoot ),
     // and the same roots under the MESSAGE form (docs/SPEC-TABLES.md §3.3),
     // one entry per message the corpus pins
     MESSAGE( "backenddemo", backenddemo, LoginRequest ),
@@ -447,22 +414,38 @@ static const Codec codecs[] = {
     MESSAGE( "vocabdemo", vocabdemo, Wide09 ),
     MESSAGE( "vocab9demo", vocab9demo, Wide00 ),
     MESSAGE( "vocab9demo", vocab9demo, Wide19 ),
-    MESSAGE_VARIABLE( "graphdemo", graphdemo, Scene ),
-    // AND THE BLOB UNIT UNDER THE MESSAGE FORM (docs/SPEC-TABLES.md §2.5,
-    // §3.1, §3.3): `Catalog`'s numbering reaches a *string blob through `note`
-    // and a *bytes blob through `thumb`, which is the only root on this roster
-    // that can PLACE a text blob record, and so the only one whose wire can
-    // carry the content rule §3.1 states at a node.
-    MESSAGE_VARIABLE( "blobdemo", blobdemo, Catalog ),
     // AND THE SAME VARIABLE-CLASS FILE ROOTS THROUGH THE RETAIN FAMILY
     // (docs/SPEC-TABLES.md §6.6). RETENTION IS THE VARIABLE CLASS'S: a
-    // fixed-class root's LoadRetain is refused by name, and a form-2
-    // SaveRetain refuses by name (§3.3), so neither is an entry here.
+    // fixed-class root's LoadRetain is refused by name, so it is not an entry
+    // here.
+    RETAIN( "blobdemo", blobdemo, Catalog ),
     RETAIN( "graphdemo", graphdemo, Scene ),
-    RETAIN( "tblp2", tblp2, Chain ),
+    RETAIN( "listdemo", listdemo, Album ),
+    RETAIN( "listdemo", listdemo, Army ),
+    RETAIN( "listdemo", listdemo, Mixed ),
+    RETAIN( "listdemo", listdemo, Save ),
+    RETAIN( "listdemo", listdemo, Sheet ),
+    RETAIN( "listdemo", listdemo, Unbounded ),
+    RETAIN( "mapdemo", mapdemo, Cells ),
+    RETAIN( "mapdemo", mapdemo, Chunks ),
+    RETAIN( "mapdemo", mapdemo, Crews ),
+    RETAIN( "mapdemo", mapdemo, Depth ),
+    RETAIN( "mapdemo", mapdemo, Docs ),
+    RETAIN( "mapdemo", mapdemo, Fleet ),
+    RETAIN( "mapdemo", mapdemo, Pairs ),
+    RETAIN( "mapdemo", mapdemo, Runs ),
+    RETAIN( "mapdemo", mapdemo, Slots ),
+    RETAIN( "mapdemo", mapdemo, Spans ),
+    RETAIN( "mapdemo", mapdemo, Text ),
+    RETAIN( "mapdemo", mapdemo, Trails ),
     RETAIN( "streamdemo", streamdemo, Feed ),
+    RETAIN( "tblg1", tblg1, Guarded ),
+    RETAIN( "tblp2", tblp2, Chain ),
     RETAIN( "tblw1", tblw1, Fleet ),
     RETAIN( "tblw2", tblw2, Fleet ),
+    RETAIN( "widelist", widelistdemo, Wide ),
+    RETAIN( "featurewitnesses", featurewitnesses, Root ),
+    RETAIN( "featurewitnesses", featurewitnesses, ArrayRoot ),
 };
 
 static bool read_exact( void * to, size_t n )

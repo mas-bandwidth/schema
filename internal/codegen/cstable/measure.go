@@ -15,26 +15,28 @@ const tableLoadMeasureSource = `
     }
     static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason)
     {
+        if(f.Unbounded){Reader text=r;if(framed&&!r.Slice(out text)){r.Offset=r.Buffer.Length;return true;}if(text.Buffer.Length>0){at=Align(at,8)+Align(9L+text.Buffer.Length,8);}if(!framed){r.Offset=r.Buffer.Length;}return true;}
         if (f.IsArray)
         {
             Reader a = r;
-            if (framed && !r.Slice(out a)) { return true; }
+            if (framed && !r.Slice(out a)) { r.Offset = r.Buffer.Length; return true; }
             if (!a.Has(2)) { return true; }
             byte sourceKind = a.Byte();
             if (sourceKind != f.Kind && !Widen(sourceKind, f.Kind) || !a.Var(out ulong n)) { return true; }
             if (f.Dynamic)
             {
                 if (n > int.MaxValue) { reason = "count_over_extent_cap"; return false; }
-                int floor = sourceKind == 13 ? 2 : sourceKind == 15 || sourceKind == 17 || sourceKind == 30 ? 1 : Width(sourceKind);
+                int floor = sourceKind == 13 ? 2 : sourceKind == 12 || sourceKind == 15 || sourceKind == 17 || sourceKind == 30 ? 1 : Width(sourceKind);
                 if (floor < 1 || n > (ulong)((a.Buffer.Length - a.Offset) / floor)) { reason = "count_over_length"; return false; }
                 at = Align(at, f.StorageAlign) + (long)n * f.StorageSize;
             }
-            for (ulong i = 0; i < n; i++)
+            for (ulong i = 0; i < n && a.Has(1); i++)
             {
                 Reader source = a;
                 if (f.KeyId != null)
                 { if (!a.Var(out _) || !a.Slice(out source)) { break; } }
-                if (f.Kind == 13)
+                if (f.TextList && sourceKind == 12) { if (!a.Slice(out Reader text)) { break; } if(f.Table.Fields[0].Unbounded && text.Buffer.Length>0){at=Align(at,8)+Align(9L+text.Buffer.Length,8);} }
+                else if (f.Kind == 13)
                 {
                     Reader element = source;
                     if (f.KeyId == null && !a.Slice(out element)) { break; }
@@ -53,18 +55,27 @@ const tableLoadMeasureSource = `
         if (f.Kind == 13)
         {
             Reader body = r;
-            if (framed && !r.Slice(out body)) { return true; }
+            if (framed && !r.Slice(out body)) { r.Offset = r.Buffer.Length; return true; }
             return ExtentBody(body, f.Table, ref at, ref reason);
         }
         if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason); }
-        if (framed) { r.Skip(f.Kind); } else { r.Offset = r.Buffer.Length; }
+        // A value the skip cannot honour ENDS the record's scan, as the reference scan's
+        // does: the reader goes to its end rather than resuming at the bytes after it.
+        if (!framed || !r.Skip(f.Kind)) { r.Offset = r.Buffer.Length; }
         return true;
     }
     static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
     {
-        if (!r.Ref(out ulong reference, out ulong id) || reference == 0 || !r.Has(1)) { return true; }
+        // A frame that does not parse ENDS the record's scan, as the reference
+        // scan's does (internal/tablewire/extent.go): the reader goes to its
+        // end rather than resuming at the bytes after a length or a reference
+        // it could not honour, which would read a payload as fields and
+        // measure storage the framing never commanded.
+        if (!r.Ref(out ulong reference, out ulong id)) { r.Offset = r.Buffer.Length; return true; }
+        if (reference == 0) { return true; }
+        if (!r.Has(1)) { r.Offset = r.Buffer.Length; return true; }
         r.Byte(); // the framing scan follows a named arm even if its value kind mismatches
-        if (!r.Slice(out Reader body)) { return true; }
+        if (!r.Slice(out Reader body)) { r.Offset = r.Buffer.Length; return true; }
         int tag = FindVariant(f, id, false);
         if (tag == 0) { return true; }
         TableFieldInfo arm = f.Arms.Arms[tag].Field;
@@ -102,13 +113,16 @@ const tableLoadMeasureSource = `
         reason = null;
         if (bytes.Length < 1) { return -1; }
         if (bytes[0] != 1) { reason = "unknown_form"; return -1; }
+        if (type.Integrity && !IntegrityRead(ref bytes)) { reason = "integrity_mismatch"; return -1; }
         if (bytes.Length < 9) { return -1; }
         ulong count = Read64(bytes, bytes.Length - 8);
         if (count > (ulong)(bytes.Length - 9) / 8) { return -1; }
+        // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+        // claims more than 4096 entries is malformed.
+        if (count > 4096) { return -1; }
         int end = bytes.Length - 8 - (int)count * 8;
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-        for (int i = 0; i < ids.Length; i += 8)
-        { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { return -1; } } }
+        if (!DistinctVocabulary(ids)) { return -1; }
         Reader root = new Reader(bytes.Slice(1, end - 1), ids);
         if (EndsEarly(root)) { return -1; }
         long extent = 0;

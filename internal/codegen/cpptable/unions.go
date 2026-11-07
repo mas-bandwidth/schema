@@ -46,7 +46,6 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 	for i, v := range un.Variants {
 		g.pf("    %s = %d,\n", ir.GoExportName(v.Name), i+1)
 	}
-	g.pf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(un.Variants))
 	g.pf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(un.Variants))
 	g.pf("};\n\n")
 	// the tag enum's name surface is a declared enum's, member for member, and

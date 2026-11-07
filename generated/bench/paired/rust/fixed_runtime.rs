@@ -36,6 +36,62 @@ pub const TABLE_FIXED_HASH_AT: usize = 8;
 // not the record the reference lays down. The wrapper pins the alignment, and
 // `.0` is the integer.
 
+/// A MAP'S OR A LIST'S SIXTEEN-BYTE SLOT in a cooked record (docs/SPEC-TABLES.md
+/// §2.8, §2.9, §7.2): an int64 SELF-RELATIVE delta from the slot to its array,
+/// which rides in the holder's node extent, and the int32 count. An empty
+/// container is the null reference and a zero count.
+#[repr(C)]
+pub struct TableCookSpan<T> {
+    pub reference: i64,
+    pub count: i32,
+    pub padding: i32,
+    _element: core::marker::PhantomData<T>,
+}
+
+impl<T> Clone for TableCookSpan<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for TableCookSpan<T> {}
+
+impl<T> Default for TableCookSpan<T> {
+    fn default() -> Self {
+        TableCookSpan { reference: 0, count: 0, padding: 0, _element: core::marker::PhantomData }
+    }
+}
+
+impl<T> TableCookSpan<T> {
+    /// How many elements the container holds.
+    pub fn len(&self) -> usize {
+        self.count.max(0) as usize
+    }
+
+    /// Whether the container is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// The array, in place: one add and no copy.
+    ///
+    /// # Safety
+    /// The slot must sit in a cook whose region holds the array its delta
+    /// names (a cook is trusted input, §7).
+    pub unsafe fn as_slice(&self) -> &[T] {
+        if self.reference == 0 || self.count <= 0 {
+            return &[];
+        }
+        unsafe {
+            let at = (self as *const Self as *const u8).offset(self.reference as isize) as *const T;
+            core::slice::from_raw_parts(at, self.count as usize)
+        }
+    }
+}
+
+const _: () = assert!(core::mem::size_of::<TableCookSpan<u64>>() == 16);
+const _: () = assert!(core::mem::align_of::<TableCookSpan<u8>>() == 8);
+
 /// An unsigned 128-bit row slot, sixteen bytes aligned sixteen everywhere.
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -199,6 +255,11 @@ pub enum TableFixedReason {
     /// continue past. The reference zeroes the field and sets malformed
     /// instead, which §5.8 row 8 names as the thing this page overrules.
     TextIllFormed,
+    /// A FLOAT WHOSE BITS ARE A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3,
+    /// the same rule as the packet wire's, SPEC.md §4.3): the read's finite pass refuses the batch, the report naming the field
+    /// in non_finite_float, and nothing lands. The writer refuses one too.
+    NonFiniteFloat,
+    IntegrityMismatch,
 }
 
 impl TableFixedReason {
@@ -223,6 +284,8 @@ impl TableFixedReason {
             Self::LayoutRecordTooLarge => "layout_record_too_large",
             Self::LayoutTooDeep => "layout_too_deep",
             Self::TextIllFormed => "text_ill_formed",
+            Self::NonFiniteFloat => "non_finite_float",
+            Self::IntegrityMismatch => "integrity_mismatch",
         }
     }
 }
@@ -239,6 +302,9 @@ pub struct TableFixedReport {
     pub malformed: bool,
     pub refused: bool,
     pub reason: TableFixedReason,
+    /// THE FIELD A non_finite_float REFUSAL NAMES (docs/SPEC-TABLES.md §3.3),
+    /// <Owner>.<field>; "" on every other read.
+    pub non_finite_float: &'static str,
     /// THE FILE'S OWN HASH, on the two layout refusals that report it
     /// (§5.3's condition table, §5.9 #7): `layout_newer` carries it and
     /// nothing else, and `layout_unsupported` carries it too, because the
@@ -259,7 +325,16 @@ impl TableFixedReport {
         self.refused = true;
         self.reason = reason;
         self.layout_hash = 0;
+        self.non_finite_float = "";
         None
+    }
+
+    /// THE FINITE REFUSAL (docs/SPEC-TABLES.md §3.3), naming the first
+    /// non-finite float the read's finite pass met.
+    pub fn refuse_non_finite<T>(&mut self, field: &'static str) -> Option<T> {
+        let out = self.refuse(TableFixedReason::NonFiniteFloat);
+        self.non_finite_float = field;
+        out
     }
 
     /// A LAYOUT REFUSAL, which reports THE FILE'S HASH beside the name: the
@@ -406,7 +481,7 @@ fn signed_kind(kind: u8) -> bool {
 // A READ IS THE HOLES OF THIS PLAN, THIS LOOP, AND NOTHING ELSE. Which plan it
 // was handed is the only thing that differs between reading this build's own
 // record and reading anybody else's, which is the owner's ruling that this
-// form's cost must not move when a peer ships. The prefill copies defaults into
+// form's cost must not move when an endpoint ships. The prefill copies defaults into
 // exactly the dest ranges the plan does not write; identity's list is empty.
 //
 // EVERY REACH INTO `src` IS CHECKED, because `src` is framed by a stranger's
@@ -566,23 +641,12 @@ pub fn table_fixed_run(
                     report.malformed = true;
                     return;
                 }
-                // f32 INTO f64, EXACT: A NaN'S PAYLOAD IS DATA AND RIDES ON THE
-                // BITS. The hardware conversion QUIETS a signalling NaN and can
-                // drop a payload bit, so the widened double is assembled by hand
-                // for every all-ones exponent: the sign is carried, the exponent
-                // becomes f64's all-ones, and the 23-bit mantissa shifts left by
-                // 29 to become the 52-bit one, which carries the quiet bit as
-                // the writer wrote it (§4, docs/PORTING.md's FU ruling). Every
-                // other exponent converts exactly, so the hardware path is the
-                // value and nothing else.
+                // THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md
+                // §3.3, §4): exact for every finite f32. A NaN stays a NaN and an
+                // infinity an infinity, and the read's FINITE PASS refuses either
+                // as non_finite_float once the record lands, before the bounds.
                 let bits = u32::from_le_bytes(src[s..s + 4].try_into().expect("four bytes"));
-                let wide: u64 = if bits & 0x7f80_0000 == 0x7f80_0000 && bits & 0x007f_ffff != 0 {
-                    (u64::from(bits >> 31) << 63)
-                        | 0x7ff0_0000_0000_0000
-                        | (u64::from(bits & 0x007f_ffff) << 29)
-                } else {
-                    f64::from(f32::from_bits(bits)).to_bits()
-                };
+                let wide = f64::from(f32::from_bits(bits)).to_bits();
                 image[d..d + 8].copy_from_slice(&wide.to_le_bytes());
                 report.widened += 1;
             }
@@ -899,8 +963,8 @@ impl<'a> TableFixedBlock<'a> {
                 if first_size == 0 {
                     return Err(TableFixedReason::LayoutSizeMismatch);
                 }
-                let bare = (e.size % first_size) == 0;
-                let counted = e.size >= 4 && ((e.size - 4) % first_size) == 0;
+                let bare = e.size.is_multiple_of(first_size);
+                let counted = e.size >= 4 && (e.size - 4).is_multiple_of(first_size);
                 if !bare && !counted {
                     return Err(TableFixedReason::LayoutSizeMismatch);
                 }
@@ -909,7 +973,7 @@ impl<'a> TableFixedBlock<'a> {
                 if e.children != 2 || first_kind != 30 {
                     return Err(TableFixedReason::LayoutKindInvalid);
                 }
-                if second_size == 0 || (e.size % second_size) != 0 {
+                if second_size == 0 || !e.size.is_multiple_of(second_size) {
                     return Err(TableFixedReason::LayoutSizeMismatch);
                 }
                 if (e.size / second_size) < first_children {
@@ -944,7 +1008,7 @@ impl<'a> TableFixedBlock<'a> {
                 if e.children != 0 {
                     return Err(TableFixedReason::LayoutKindInvalid);
                 }
-                if e.size < 4 || ((e.size - 4) % 2) != 0 {
+                if e.size < 4 || !(e.size - 4).is_multiple_of(2) {
                     return Err(TableFixedReason::LayoutSizeMismatch);
                 }
             }
@@ -981,7 +1045,7 @@ impl<'a> TableFixedBlock<'a> {
 // ---- THE PLAN COMPILER ------------------------------------------------------
 //
 // The SAME LOOP runs over this plan as over the identity plan. What the
-// compiler does, ONCE PER PEER, is what a read would otherwise do once per
+// compiler does, ONCE PER ENDPOINT, is what a read would otherwise do once per
 // record: map the writer's ids onto this reader's fields; leave a field it
 // cannot name OUT of the plan, which is what skips it, by arithmetic that was
 // going to step past it anyway; and leave a field the writer does not carry out
@@ -1206,10 +1270,10 @@ pub fn table_fixed_compile(
 
 /// Walks a TABLE's children on both sides, matching by id.
 //
-// The census flag is whether THIS entry is the FIRST time the peer's field is
+// The census flag is whether THIS entry is the FIRST time the writer's field is
 // seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-// ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
-// peer field dropped from a [4]Item is counted four times and the report says
+// ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
+// writer's field dropped from a [4]Item is counted four times and the report says
 // 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11).
 fn match_children(
     c: &mut Compiler,
@@ -1381,7 +1445,7 @@ fn compile_entry(
             if head != 0 {
                 // THE COUNT'S BOUND IS THE WRITER'S, carried by the plan (bill
                 // §12.5, §5.2's EMIT at kind 14): a count forged past what THAT
-                // PEER could have written clamps and counts, and a count the
+                // ENDPOINT could have written clamps and counts, and a count the
                 // reader merely grew room for does not. The min is not the
                 // rule — it is the floor under a lock that is not monotone,
                 // which is a build bug and never a wire event.

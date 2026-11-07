@@ -302,9 +302,9 @@ fixed table T { inner Inner }
 	rows := []struct {
 		name, want, src string
 	}{
-		{"a plain table by value", "plain table Node",
+		{"a variable table by value", "variable table Node",
 			"package probe\n\ntable Node { x int32 }\n\nfixed table T { node Node }\n"},
-		{"a plain table in an array", "plain table Ship",
+		{"a variable table in an array", "variable table Ship",
 			"package probe\n\ntable Ship { hp int32 }\n\nfixed table T { ships [..4]Ship }\n"},
 		{"a pointer", "is a pointer",
 			"package probe\n\ntable Node { x int32 }\n\nfixed table T { head *Node }\n"},

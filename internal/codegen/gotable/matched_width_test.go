@@ -146,10 +146,10 @@ func TestWidenArmReadsWireWidth(t *testing.T) {
 	buf := make([]byte, 256)
 	w := TableWriter{Buffer: buf, Ids: &ids}
 	w.Put8(1)
-	w.Id(RootTableFields[0].Id)
+	w.ID(RootTableFields[0].ID)
 	w.Put8(6)
 	w.Put8(9)
-	w.Id(RootTableFields[1].Id)
+	w.ID(RootTableFields[1].ID)
 	w.Put8(2)
 	w.Put8(7)
 	got := finish(&w)
@@ -165,7 +165,7 @@ func TestMatchedWidthMismatchSkips(t *testing.T) {
 	buf := make([]byte, 256)
 	w := TableWriter{Buffer: buf, Ids: &ids}
 	w.Put8(1)
-	w.Id(RootTableFields[1].Id)
+	w.ID(RootTableFields[1].ID)
 	w.Put8(1)
 	w.Put8(1)
 	got := finish(&w)

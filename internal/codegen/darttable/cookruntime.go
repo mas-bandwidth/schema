@@ -14,9 +14,9 @@ import "fmt"
 func cookRuntimeSource(buildVersion uint64, withBuildVersion bool) string {
 	s := ""
 	if withBuildVersion {
-		s = fmt.Sprintf(cookBuildVersionTemplate, buildVersion)
+		s = fmt.Sprintf(cookBuildVersionTemplate, buildVersion) + dartRefuseReasonSource
 	}
-	return s + cookRuntimeCore
+	return s + cookRuntimeCore + dartCookWriteReport
 }
 
 const cookBuildVersionTemplate = `
@@ -52,11 +52,32 @@ int tableCookRead64(ByteData view, int at) {
   return value;
 }
 
+// A wide kind's RAW integer (§3, §15) read at its storage width. The cooked
+// form is little-endian, and a fixed or 128-bit value is sixteen bytes at its
+// own alignment in a record.
+BigInt tableCookGetWide(ByteData view, int at, int width, bool signed) {
+  var x = BigInt.zero;
+  for (var i = width - 1; i >= 0; i--) {
+    x = (x << 8) | BigInt.from(view.getUint8(at + i));
+  }
+  return signed ? x.toSigned(width * 8) : x;
+}
+
 // What a deref answers when it is not an offset (§6.3). NULL IS A DELTA OF
 // ZERO, and outside is Dart's own addition: C++ needs no bound because a
 // pointer past the region is the caller's problem at the dereference, and in
 // Dart the read after it would be an escaping RangeError — which is not a
 // refusal.
+int tableCookTextStart(ByteData view,int slot) {
+ if(slot<0||slot>view.lengthInBytes-8)return -1;
+ final delta=view.getInt64(slot,Endian.little);
+ if(delta==0||delta < -slot||delta > view.lengthInBytes-slot-8)return -1;
+ final at=slot+delta;
+ final n=view.getUint32(at,Endian.little);
+ if(n>view.lengthInBytes-at-9)return -1;
+ return at;
+}
+
 abstract final class TableCookRef {
   static const int none = -1;
   static const int outside = -2;
@@ -93,6 +114,7 @@ final class TableCookFieldInfo {
   final int arrayBound;
   // an eight-byte SIGNED self-relative reference slot (§6.3)
   final bool isPointer;
+  final bool unboundedText;
   // the int32 used-length companion, or -1
   final int countOffset;
   // the bool presence companion of a ?T, or -1
@@ -122,6 +144,7 @@ final class TableCookFieldInfo {
     required this.isArray,
     required this.arrayBound,
     required this.isPointer,
+    this.unboundedText = false,
     required this.countOffset,
     required this.presentOffset,
     required this.storage,

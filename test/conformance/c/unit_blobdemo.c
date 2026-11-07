@@ -1,4 +1,6 @@
 #include "AssetsTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE blobdemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER BLOBDEMO
 #include "unit.h"
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Catalog,catalog)
 const ConformanceCodec * conformance_codecs_blobdemo(int * count)

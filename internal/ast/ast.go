@@ -66,7 +66,7 @@ type TableDecl struct {
 	// Fixed is the `fixed table` spelling (docs/SPEC-TABLES.md §2.2): the
 	// declaration DECLARES the fixed class rather than leaving it to be
 	// guessed, and the compiler refuses anything in the table's by-value
-	// closure that would make a body variable size. A plain `table` is the
+	// closure that would make a body variable size. A variable table is the
 	// VARIABLE wire always, whatever its fields happen to be.
 	Fixed bool
 	Attrs []Attr

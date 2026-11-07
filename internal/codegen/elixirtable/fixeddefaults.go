@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -223,9 +224,9 @@ func (g *fixedGen) fixedElemDefaultTerm(f *ir.Field) string {
 		case *ir.Struct:
 			return fmt.Sprintf("%%%s.%s{}", g.ns, r.Name)
 		case *ir.Union:
-			return fmt.Sprintf("%%%s.%s{}", g.ns, r.Name)
+			return "nil" // None
 		case *ir.Enum:
-			return fixedEnumDefault(f, r).String()
+			return elixir.EnumTerm(r, fixedEnumDefault(f, r).Int64())
 		case *ir.Flags:
 			if f.HasDefault && f.DefInt != nil {
 				return f.DefInt.String()
@@ -246,7 +247,11 @@ func (g *fixedGen) fixedElemDefaultTerm(f *ir.Field) string {
 		return fixedBinaryLiteral(f.DefBytes, 0)
 	case ir.TFloat32, ir.TFloat64:
 		if f.HasDefault {
-			return fixedFloatLiteral(f.DefFloat)
+			value := f.DefFloat
+			if f.Type.Kind == ir.TFloat32 {
+				value = float64(float32(value))
+			}
+			return fixedFloatLiteral(value)
 		}
 		return "0.0"
 	}

@@ -117,6 +117,7 @@ namespace Blockhome
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + PartRowBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -124,6 +125,7 @@ namespace Blockhome
             PartRowWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -236,6 +238,7 @@ namespace Blockhome
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + PartFrameBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -243,6 +246,7 @@ namespace Blockhome
             PartFrameWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -290,6 +294,7 @@ namespace Blockhome
                 info.Create = delegate { return new global::Blockhome.PartRow(); };
                 info.StorageSize = 352; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -328,6 +333,7 @@ namespace Blockhome
                 info.Create = delegate { return new global::Blockhome.PartFrame(); };
                 info.StorageSize = 11280; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 32;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -422,6 +428,40 @@ namespace Blockhome
                     PartRowFixedWriteBody(b.Slice(12 + i * 340), value.Parts[i]);
                 }
             }
+        }
+
+        // PartRow's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
+        // <Owner>.<field>, or null.
+        public static string PartRowFixedFiniteBody(PartRow value)
+        {
+            if (value == null) return null;
+            {
+                string why = ArmorConfigFixedFiniteBody(value.Armor);
+                if (why != null) return why;
+            }
+            {
+                string why = GunnerSettingsFixedFiniteBody(value.Gunner);
+                if (why != null) return why;
+            }
+            return null;
+        }
+
+        // PartFrame's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
+        // <Owner>.<field>, or null.
+        public static string PartFrameFixedFiniteBody(PartFrame value)
+        {
+            if (value == null) return null;
+            if (value.Parts != null)
+            {
+                for (int i = 0; i < value.PartsCount && i < value.Parts.Length; ++i)
+                {
+                    {
+                        string why = PartRowFixedFiniteBody(value.Parts[i]);
+                        if (why != null) return why;
+                    }
+                }
+            }
+            return null;
         }
 
         // ---- PartRow, the fixed form ----
@@ -904,7 +944,7 @@ namespace Blockhome
                                 int at = (int)p.Src + e * sw;
                                 if (p.Sign == 2)
                                 {
-                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
                                     BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                     continue;
                                 }
@@ -1012,7 +1052,7 @@ namespace Blockhome
                     case TableFixedWire.WidenF:
                         {
                             float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                            PartRowFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            PartRowFixedSetDouble(dst, p.Dst, (double)f);
                             if (report != null) { report.Widened++; }
                             break;
                         }
@@ -1183,13 +1223,14 @@ namespace Blockhome
 
         public static long PartRowFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + PartRowFixedLayoutBytes + count * PartRowFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + PartRowFixedLayoutBytes + count * PartRowFixedRecordBytes + 0;
         }
 
         public static long PartRowFixedSave(ReadOnlySpan<PartRow> values, Span<byte> buffer)
         {
             long need = PartRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (PartRowFixedFiniteBody(values[k]) != null) { return -1; } }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PartRowFixedHash);
@@ -1303,7 +1344,7 @@ namespace Blockhome
                 entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
                 planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
-                // the plan this peer selected. It reads no layout and compiles
+                // the plan this endpoint selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
                 // path; the PLAN is, and the plan is the build's.
                 int slotN = PartRowFixedSlots.Length;
@@ -1313,7 +1354,7 @@ namespace Blockhome
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, PartRowFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindMismatch;
@@ -1336,7 +1377,8 @@ namespace Blockhome
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new PartRow(); }
@@ -1347,7 +1389,15 @@ namespace Blockhome
                 string run_why = PartRowFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string finite_why = PartRowFixedFiniteBody(values[k]);
+                if (finite_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (report != null) { report.Clamped += forgedOrdinal; }
@@ -11117,7 +11167,7 @@ namespace Blockhome
                                 int at = (int)p.Src + e * sw;
                                 if (p.Sign == 2)
                                 {
-                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
                                     BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                     continue;
                                 }
@@ -11225,7 +11275,7 @@ namespace Blockhome
                     case TableFixedWire.WidenF:
                         {
                             float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                            PartFrameFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            PartFrameFixedSetDouble(dst, p.Dst, (double)f);
                             if (report != null) { report.Widened++; }
                             break;
                         }
@@ -14067,13 +14117,14 @@ namespace Blockhome
 
         public static long PartFrameFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + PartFrameFixedLayoutBytes + count * PartFrameFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + PartFrameFixedLayoutBytes + count * PartFrameFixedRecordBytes + 0;
         }
 
         public static long PartFrameFixedSave(ReadOnlySpan<PartFrame> values, Span<byte> buffer)
         {
             long need = PartFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (PartFrameFixedFiniteBody(values[k]) != null) { return -1; } }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PartFrameFixedHash);
@@ -14187,7 +14238,7 @@ namespace Blockhome
                 entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
                 planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
-                // the plan this peer selected. It reads no layout and compiles
+                // the plan this endpoint selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
                 // path; the PLAN is, and the plan is the build's.
                 int slotN = PartFrameFixedSlots.Length;
@@ -14197,7 +14248,7 @@ namespace Blockhome
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, PartFrameFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindMismatch;
@@ -14220,7 +14271,8 @@ namespace Blockhome
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new PartFrame(); }
@@ -14231,7 +14283,15 @@ namespace Blockhome
                 string run_why = PartFrameFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string finite_why = PartFrameFixedFiniteBody(values[k]);
+                if (finite_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (report != null) { report.Clamped += forgedOrdinal; }

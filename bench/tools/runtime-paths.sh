@@ -165,7 +165,7 @@ EOF
         cp bench/go/go.mod "$RT_OVR/go.bench.mod"
         go mod edit \
             -replace "example=$ABS_ROOT/generated/go" \
-            -replace "github.com/mas-bandwidth/serialize.go=$ABS_SERIALIZE_GO" \
+            -replace "github.com/mas-bandwidth/serialize.go/v2=$ABS_SERIALIZE_GO" \
             "$RT_OVR/go.bench.mod"
         GO_MODFILE_ARG="-modfile=$ABS_ROOT/$RT_OVR/go.bench.mod"
     fi
@@ -190,7 +190,7 @@ EOF
     fi
 }
 
-# verify_runtime <cpp|c|go|rust|cs|js|java|dart|elixir> — the §3.5
+# verify_runtime <cpp|c|go|rust|cs|js|java|dart|elixir|goose|lobster|luau> — the §3.5
 # fail-closed check.
 #   stdout: the toolchain-resolved absolute runtime path (verified)
 #   return: 0 verified; 2 nothing to verify in this invocation — the leg
@@ -223,7 +223,7 @@ verify_runtime() {
             return 1; }
         got="$(cd bench/go && go list $GO_MODFILE_ARG -m \
             -f '{{if .Replace}}{{.Replace.Dir}}{{else}}{{.Dir}}{{end}}' \
-            github.com/mas-bandwidth/serialize.go 2>/dev/null)"
+            github.com/mas-bandwidth/serialize.go/v2 2>/dev/null)"
         got="$(rp_dir "$got" || true)"
         if [ -z "$got" ] || [ "$got" != "$want" ]; then
             echo "go: the build resolves serialize.go to '${got:-<unresolvable>}' but the preamble would record SERIALIZE_GO=$SERIALIZE_GO ($want)" >&2
@@ -326,8 +326,11 @@ EOF
         echo "$got"
         ;;
 
-    java|dart|elixir)
-        # The codegen-only legs. schema's backends for these languages emit
+    java|dart|elixir|goose|lobster|luau)
+        # The codegen-only legs (goose: its runtime, serialize.goose, is
+        # vendored into the generated unit at the pin docs/PORT-GOOSE.md names;
+        # lobster: the generated unit carries its vendored serialize.lobster
+        # beside it, pinned by SERIALIZE_PIN). schema's backends for these languages emit
         # self-contained code with no runtime library, so the legs build from
         # the repo's own generated sources with no runtime checkout — there
         # is nothing for the §3.5 guard to verify or misrecord, and no

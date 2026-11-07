@@ -235,11 +235,11 @@ fixed table T
     grades [1..4]Grade
     label  string(8)
 }
-`, `v.Grades[0] = 2; v.Grades[1] = 0; v.Grades[2] = 1; v.GradesCount = 3;
-v.Label = new Uint8Array([104, 105]); v.LabelLength = 2;`,
-		`if (back[0].GradesCount !== 3) { fail("GradesCount " + back[0].GradesCount); }
-if (back[0].Grades[0] !== 2 || back[0].Grades[2] !== 1) { fail("grades " + show(back[0].Grades)); }
-if (back[0].LabelLength !== 2 || back[0].Label[0] !== 104) { fail("label " + back[0].LabelLength); }`)
+`, `v.grades[0] = 2; v.grades[1] = 0; v.grades[2] = 1; v.gradesCount = 3;
+v.label = new Uint8Array([104, 105]); v.labelLength = 2;`,
+		`if (back[0].gradesCount !== 3) { fail("GradesCount " + back[0].gradesCount); }
+if (back[0].grades[0] !== 2 || back[0].grades[2] !== 1) { fail("grades " + show(back[0].grades)); }
+if (back[0].labelLength !== 2 || back[0].label[0] !== 104) { fail("label " + back[0].labelLength); }`)
 }
 
 // js/R27 [verify] "the manifest is the wire". build/fixedform-corpus/manifest.txt
@@ -359,7 +359,7 @@ fixed table T
     grades [1..4]Grade
 }
 `, `const v = new T(); InitT(v);
-v.Grades[0] = 1; v.GradesCount = 1;
+v.grades[0] = 1; v.gradesCount = 1;
 const good = new Uint8Array(TFixedMeasure(1));
 if (TFixedSave([v], 1, good) !== good.length) { fail("save failed"); }
 
@@ -380,7 +380,7 @@ over[rec + 8] = 200;
 const counted = [new T()]; InitT(counted[0]);
 const rc = new TableFixedReport();
 if (TFixedLoad(counted, 1, over, over.length, TFixedNewPlan(4096, 4096), rc) !== 1) { fail("the over-count record did not load"); }
-if (counted[0].GradesCount !== 4) { fail("the count was not clamped to the declared bound: " + counted[0].GradesCount); }
+if (counted[0].gradesCount !== 4) { fail("the count was not clamped to the declared bound: " + counted[0].gradesCount); }
 if (rc.clamped < 1) { fail("the clamp was not counted"); }
 // an ordinal past the enum's top lands the None ordinal AND counts.
 const ord = good.slice();
@@ -388,7 +388,7 @@ ord[rec + 12] = 9;
 const sanitized = [new T()]; InitT(sanitized[0]);
 const ro = new TableFixedReport();
 if (TFixedLoad(sanitized, 1, ord, ord.length, TFixedNewPlan(4096, 4096), ro) !== 1) { fail("the bad-ordinal record did not load"); }
-if (sanitized[0].Grades[0] !== 0) { fail("an ordinal past the enum's top did not land None: " + sanitized[0].Grades[0]); }
+if (sanitized[0].grades[0] !== 0) { fail("an ordinal past the enum's top did not land None: " + sanitized[0].grades[0]); }
 if (ro.clamped < 1) { fail("the ordinal clamp was not counted"); }
 `)
 }
@@ -398,7 +398,7 @@ if (ro.clamped < 1) { fail("the ordinal clamp was not counted"); }
 // own tag, compared at its own width — so a wrong plan lands nothing. The run
 // tampers a record's own hash and reads the named refusal.
 func t08P4(t *testing.T) {
-	t08Play(t, t02Flat, `const v = new T(); InitT(v); v.X = 7; v.Y = 9;
+	t08Play(t, t02Flat, `const v = new T(); InitT(v); v.x = 7; v.y = 9;
 const good = new Uint8Array(TFixedMeasure(1));
 TFixedSave([v], 1, good);
 const rec = 20 + TFixedLayoutCopy().length;
@@ -426,11 +426,11 @@ fixed table T
     c int32
     d int64
 }
-`, `v.A = -128; v.B = -32768; v.C = -2147483648; v.D = -9223372036854775808n;`,
-		`if (back[0].A !== -128) { fail("A " + back[0].A); }
-if (back[0].B !== -32768) { fail("B " + back[0].B); }
-if (back[0].C !== -2147483648) { fail("C " + back[0].C); }
-if (back[0].D !== -9223372036854775808n) { fail("D " + back[0].D); }`)
+`, `v.a = -128; v.b = -32768; v.c = -2147483648; v.d = -9223372036854775808n;`,
+		`if (back[0].a !== -128) { fail("A " + back[0].a); }
+if (back[0].b !== -32768) { fail("B " + back[0].b); }
+if (back[0].c !== -2147483648) { fail("C " + back[0].c); }
+if (back[0].d !== -9223372036854775808n) { fail("D " + back[0].d); }`)
 }
 
 // unsigned-integers/js/valid-data [capability]: uint8..uint64 ride at their
@@ -446,11 +446,11 @@ fixed table T
     c uint32
     d uint64
 }
-`, `v.A = 255; v.B = 65535; v.C = 4294967295; v.D = 18446744073709551615n;`,
-		`if (back[0].A !== 255) { fail("A " + back[0].A); }
-if (back[0].B !== 65535) { fail("B " + back[0].B); }
-if (back[0].C !== 4294967295) { fail("C " + back[0].C); }
-if (back[0].D !== 18446744073709551615n) { fail("D " + back[0].D); }`)
+`, `v.a = 255; v.b = 65535; v.c = 4294967295; v.d = 18446744073709551615n;`,
+		`if (back[0].a !== 255) { fail("A " + back[0].a); }
+if (back[0].b !== 65535) { fail("B " + back[0].b); }
+if (back[0].c !== 4294967295) { fail("C " + back[0].c); }
+if (back[0].d !== 18446744073709551615n) { fail("D " + back[0].d); }`)
 }
 
 // flags-values/js/valid-data [capability]: a flags mask rides as the raw
@@ -465,8 +465,8 @@ fixed table T
 {
     m Marks
 }
-`, `v.M = 3n;`,
-		`if (back[0].M !== 3n) { fail("the raw mask did not round-trip: " + back[0].M); }`)
+`, `v.m = 3n;`,
+		`if (back[0].m !== 3n) { fail("the raw mask did not round-trip: " + back[0].m); }`)
 }
 
 // keyed-arrays/js/valid-data [capability]: an enum-keyed array writes EVERY
@@ -485,9 +485,9 @@ fixed table T
     slots [Tier]Qty
 }
 `
-	t08RoundTrip(t, src, `v.Slots[0].N = 7; v.Slots[1].N = 0; v.Slots[2].N = -3;`,
-		`if (back[0].Slots[0].N !== 7 || back[0].Slots[1].N !== 0 || back[0].Slots[2].N !== -3) {
-  fail("the keyed slots did not round-trip: " + show(back[0].Slots));
+	t08RoundTrip(t, src, `v.slots[0].n = 7; v.slots[1].n = 0; v.slots[2].n = -3;`,
+		`if (back[0].slots[0].n !== 7 || back[0].slots[1].n !== 0 || back[0].slots[2].n !== -3) {
+  fail("the keyed slots did not round-trip: " + show(back[0].slots));
 }`)
 	if got := t08LayoutKind(t, unitFrom(t, src), "T", "slots"); got != ir.TableKindKeyed {
 		t.Errorf("keyed: layout kind = %d, want %d (keyed)", got, ir.TableKindKeyed)
@@ -515,7 +515,7 @@ fixed table T
 {
     grid [Tier]Inner
 }
-`, `v.Grid[0].Slots[1].N = 42; v.Grid[2].Slots[0].N = 5;`,
-		`if (back[0].Grid[0].Slots[1].N !== 42) { fail("nested slot [0][1] " + show(back[0].Grid)); }
-if (back[0].Grid[2].Slots[0].N !== 5) { fail("nested slot [2][0] " + show(back[0].Grid)); }`)
+`, `v.grid[0].slots[1].n = 42; v.grid[2].slots[0].n = 5;`,
+		`if (back[0].grid[0].slots[1].n !== 42) { fail("nested slot [0][1] " + show(back[0].grid)); }
+if (back[0].grid[2].slots[0].n !== 5) { fail("nested slot [2][0] " + show(back[0].grid)); }`)
 }

@@ -51,6 +51,8 @@
 #include "FG1Table.h"
 #include "FE1Table.h"
 #include "FE2Table.h"
+#include "VOLD_float_widenTable.h"
+#include "VNEW_float_widenTable.h"
 
 // ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
 // THE VERSIONING LAW'S NUMBERS ROW (test/tables/versioning_numbers.cpp,
@@ -2470,10 +2472,12 @@ static void manifest_case( const char * ) {}
 //                    not 65535, and INT16_MIN lands -32768 and not 32768. A
 //                    zero-extending port is a port that passes every self-write
 //                    pin in the tree and fails here.
-//   THE FLOAT RUNG   `heat float32` read into FU2's `float64`, ON THE BITS: the
-//                    23 payload bits ride in the top of the double's 52, sign
-//                    and all, and a SIGNALLING NaN stays signalling. Every
-//                    hardware `(double) f` quiets it, which is the defect.
+//   THE FLOAT RUNG   `heat float32` read into FU2's `float64`: a subnormal, a
+//                    -0 and 1.5, each widened to exactly its own value, sign
+//                    and all. Floats are finite only (docs/SPEC-TABLES.md
+//                    §3.3), so the ordinary conversion is the whole rung; the
+//                    NaN the corpus once carried is now a record forged from
+//                    old_float_widen.bin and refused (fu_refusal_case).
 //
 // Both rungs are counted: two widened per record and no other counter moved.
 
@@ -2501,33 +2505,66 @@ static std::vector<uint8_t> slurp( const char * dir, const char * name, bool & o
 static uint32_t bits32( float f ) { uint32_t b; std::memcpy( (void *) &b, &f, 4 ); return b; }
 static uint64_t bits64( double d ) { uint64_t b; std::memcpy( (void *) &b, &d, 8 ); return b; }
 
-// WHAT THIS FORM'S FLOAT RUNG ACTUALLY DOES TO A NaN, stated as arithmetic so
-// the claim is readable rather than inherited from the machine: the sign rides,
-// the 23 payload bits ride at the top of the double's 52 — AND THE QUIET BIT
-// COMES BACK SET, because `kTableFixedWidenF` is a plain `(double) f`
-// (internal/codegen/cpptable/fixedruntime.go:323) and every hardware convert
-// quiets.
-//
-// THAT IS NOT WHAT §4's OWN HELPER DOES. `TableWidenF32`, the rung on every
-// other projection, carries the comment "since the hardware conversion would
-// set the quiet bit" and does the bit surgery to keep a signalling NaN
-// signalling; test/tables/floatnan_main.cpp pins THAT answer over F1/F2. So the
-// same rung has two answers depending on the form, and FU1.schema's own note
-// ("which the reference's `(double) f` QUIETS") predicted this one. The oracle
-// pins what the reference does TODAY and names the divergence; which of the two
-// is the ruling is schema#876's to settle, and the day it settles this constant
-// is the one line that moves.
-static uint64_t widened_f32_nan( uint32_t narrow )
+// THE FLOAT RUNG ON A FINITE VALUE: the ordinary conversion, exact for every
+// float32 (docs/SPEC-TABLES.md §3.3, §4)
+static uint64_t widened_f32( uint32_t narrow )
 {
-    return ( (uint64_t) ( narrow >> 31 ) << 63 ) | 0x7FF8000000000000ull
-         | ( (uint64_t) ( narrow & 0x007FFFFFu ) << 29 );
+    float f;
+    std::memcpy( (void *) &f, &narrow, 4 );
+    return bits64( (double) f );
+}
+
+// THE HAND-MADE REFUSAL RECORD (docs/SPEC-TABLES.md §3.3): the reference's
+// old_float_widen.bin with `v` FORGED to a signalling NaN, 0x7F8ABCDE, which no
+// writer writes. The OLD reader's identity plan and the NEW reader's compiled
+// widenf plan both refuse it as non_finite_float, and nothing of it lands. The
+// forge is made here and not in the shared corpus, because every leg reads
+// that corpus whole and a leg owes the refusal on its own finite-tables card.
+static void fu_refusal_case( const char * dir )
+{
+    bool have = false;
+    std::vector<uint8_t> file = slurp( dir, "old_float_widen.bin", have );
+    if ( !have ) { return; }
+    const uint32_t kWritten = 0xC49A5200u; // -1234.5625f, what the reference wrote (fixedform_dump.cpp)
+    const uint32_t kSignalling = 0x7F8ABCDEu;
+    bool found = false;
+    for ( size_t i = 0; i + 4 <= file.size() && !found; ++i )
+    {
+        const uint32_t w = (uint32_t) file[i] | (uint32_t) file[i + 1] << 8 | (uint32_t) file[i + 2] << 16 | (uint32_t) file[i + 3] << 24;
+        if ( w == kWritten )
+        {
+            for ( int b = 0; b < 4; ++b ) { file[i + (size_t) b] = (uint8_t) ( kSignalling >> ( 8 * b ) ); }
+            found = true;
+        }
+    }
+    check( found, "old_float_widen: the reference's float32 is where the record holds it" );
+    {
+        vold_float_widen::FloatWiden back[1];
+        vold_float_widen::FloatWidenReset( back[0] );
+        vold_float_widen::TableReport r;
+        std::vector<vold_float_widen::TableFixedEntry> plan( 1024 );
+        const int64_t n = vold_float_widen::FloatWidenFixedLoadTolerant( back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r );
+        check( n == -1 && r.refused && r.reason == vold_float_widen::non_finite_float && r.refuse_reason == vold_float_widen::non_finite_float,
+               "forged old_float_widen: the identity plan refuses the NaN as non_finite_float" );
+        check( back[0].lead == 1u && back[0].trail == 2u, "forged old_float_widen: nothing lands on the identity plan" );
+    }
+    {
+        vnew_float_widen::FloatWiden back[1];
+        vnew_float_widen::FloatWidenReset( back[0] );
+        vnew_float_widen::TableReport r;
+        std::vector<vnew_float_widen::TableFixedEntry> plan( 1024 );
+        const int64_t n = vnew_float_widen::FloatWidenFixedLoad( back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r );
+        check( n == -1 && r.refused && r.reason == vnew_float_widen::non_finite_float && r.refuse_reason == vnew_float_widen::non_finite_float,
+               "forged old_float_widen: the compiled widenf plan refuses it too, strict" );
+        check( back[0].lead == 1u && back[0].trail == 2u, "forged old_float_widen: nothing lands on the compiled plan" );
+    }
 }
 
 static void fu_oracle_case( const char * dir )
 {
     // the three records fu1_file() in test/tables/fixedform_dump.cpp writes, as
     // values: a leg that reads the file gets this same table
-    const uint32_t heat_bits[3] = { 0x7F800001u, 0xFFA5A5A5u, 0x3FC00000u /* 1.5f */ };
+    const uint32_t heat_bits[3] = { 0x00000001u /* the smallest subnormal */, 0x80000000u /* -0 */, 0x3FC00000u /* 1.5f */ };
     const int32_t mark_wide[3] = { -1, -32768, 32767 };
 
     bool have = false;
@@ -2556,10 +2593,8 @@ static void fu_oracle_case( const char * dir )
         for ( int i = 0; i < 3; ++i )
         {
             check( back[i].mark == (int16_t) mark_wide[i], "oracle fu1: identity, `mark` at its own width" );
-            check( bits32( back[i].heat ) == heat_bits[i], "oracle fu1: identity, `heat`'s BITS, NaN payload and all" );
+            check( bits32( back[i].heat ) == heat_bits[i], "oracle fu1: identity, `heat`'s BITS, the subnormal and the -0's sign included" );
         }
-        check( ( bits32( back[0].heat ) & 0x00400000u ) == 0,
-               "oracle fu1: identity, the signalling NaN is STILL SIGNALLING" );
         check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
                "oracle fu1: identity, a clean read moves no counter" );
 
@@ -2580,32 +2615,17 @@ static void fu_oracle_case( const char * dir )
                    "SIGNED RUNG: int16 into int32, SIGN-EXTENDED — -1 is -1 and never 65535" );
             check( wide[i].extra == 11, "oracle fu1: compiled, `extra` takes its declared default" );
         }
-        // THE FLOAT RUNG on the two NaNs: the payload and the sign ride, the
-        // quiet bit comes back set (see widened_f32_nan above)
-        check( bits64( wide[0].heat ) == widened_f32_nan( heat_bits[0] ),
-               "FLOAT RUNG: f32 into f64, the smallest NaN payload rides in the top of the 52" );
-        check( bits64( wide[1].heat ) == widened_f32_nan( heat_bits[1] ),
-               "FLOAT RUNG: f32 into f64, a NEGATIVE NaN's sign and rich payload ride" );
-        // THE 22 PAYLOAD BITS BELOW THE QUIET BIT SURVIVE EXACTLY, at the top of
-        // the double's 52 — that much both answers agree on. The 23rd, the f32
-        // QUIET BIT, lands on the double's quiet bit and comes back SET, so it
-        // is the ONE bit of the payload this form does not carry across: a
-        // signalling NaN arrives quiet and nothing in the report says so.
-        check( ( ( bits64( wide[0].heat ) >> 29 ) & 0x003FFFFFull ) == ( heat_bits[0] & 0x003FFFFFu ) &&
-               ( ( bits64( wide[1].heat ) >> 29 ) & 0x003FFFFFull ) == ( heat_bits[1] & 0x003FFFFFu ),
-               "FLOAT RUNG: the 22 payload bits below the quiet bit are where the narrow width had them" );
-        check( ( heat_bits[0] & 0x00400000u ) == 0 && ( heat_bits[1] & 0x00400000u ) == 0,
-               "FLOAT RUNG: both written NaNs are SIGNALLING at the narrow width" );
-        check( ( bits64( wide[1].heat ) >> 63 ) == 1, "FLOAT RUNG: a negative NaN keeps its sign" );
-        // THE DIVERGENCE, PINNED BY NAME: this form quiets and §4's own
-        // TableWidenF32 does not (test/tables/floatnan_main.cpp). Pinned so the
-        // day it is ruled on, a test says so rather than a port discovering it.
-        check( ( bits64( wide[0].heat ) & 0x0008000000000000ull ) != 0,
-               "FLOAT RUNG, THE FIXED FORM'S ANSWER: `(double) f` QUIETS the signalling NaN — "
-               "§4's TableWidenF32 keeps it signalling, so the rung has two answers (schema#876)" );
-        // AND AN ORDINARY FLOAT, where the conversion is the whole of the rung
-        check( wide[2].heat == 1.5, "FLOAT RUNG: an ordinary float widens to the same number" );
-        check( bits64( wide[2].heat ) == 0x3FF8000000000000ull, "FLOAT RUNG: 1.5 widens to 1.5's bits" );
+        // THE FLOAT RUNG: each finite float32 widens to exactly its own value
+        for ( int i = 0; i < 3; ++i )
+        {
+            check( bits64( wide[i].heat ) == widened_f32( heat_bits[i] ),
+                   "FLOAT RUNG: f32 into f64 is exact — the subnormal, the -0 and 1.5 land as themselves" );
+        }
+        check( bits64( wide[0].heat ) == 0x36A0000000000000ull,
+               "FLOAT RUNG: the smallest float32 subnormal is a NORMAL double, 2^-149" );
+        check( bits64( wide[1].heat ) == 0x8000000000000000ull, "FLOAT RUNG: a -0 keeps its sign" );
+        check( wide[2].heat == 1.5 && bits64( wide[2].heat ) == 0x3FF8000000000000ull,
+               "FLOAT RUNG: 1.5 widens to 1.5's bits" );
         // TWO WIDENED PER RECORD AND NOTHING ELSE: `extra` is a field the writer
         // does not carry, which is the prefill's business and no counter's, and
         // FU1 carries no field FU2 cannot name
@@ -2631,8 +2651,8 @@ static void fu_oracle_case( const char * dir )
                back[0].pick.labelled.label_length == 4 && std::strcmp( back[0].pick.labelled.label, "wide" ) == 0 &&
                back[0].pick.labelled.trail == 222,
                "oracle fu2: identity, the SECOND arm's text" );
-        check( bits64( back[0].heat ) == 0x7FF00DEFACED0001ull,
-               "oracle fu2: identity, a signalling NaN at sixty-four bits rides as its bits" );
+        check( bits64( back[0].heat ) == 0x800FFFFFFFFFFFFFull,
+               "oracle fu2: identity, a negative subnormal at sixty-four bits rides as its bits" );
         check( back[1].pick.type == tblfu2::PickType::Plain && back[1].pick.plain.n == 404 &&
                back[1].mark == 70000 && back[1].heat == -2.25 && back[1].extra == -11 && back[1].tail == 22,
                "oracle fu2: identity, the FIRST arm" );
@@ -2678,6 +2698,7 @@ int main( int argc, char ** argv )
     union_text_case();
     text_under_arm_case();
     fu_oracle_case( corpus );
+    fu_refusal_case( corpus );
     owed7_nested_union_outer_tag_case();
     owed8_width8_ordinal_read_whole_case();
     owed10_no_layout_writes_nothing_case();

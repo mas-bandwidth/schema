@@ -16,7 +16,7 @@ import (
 //     the total and the stored value does not move (AppendAbsent, which adds
 //     nothing to the sum, is still taken); Save and Measure return -1 for a
 //     value past it, a bounded list and an unbounded one, a nested table's
-//     included; ToJsonMeasure returns -1; the retaining save returns -1;
+//     included; ToJSONMeasure returns -1; the retaining save returns -1;
 //   - THE READERS: a wire written by a table with the same field ids and no
 //     total (Wide), past the total on each list in turn, reads with the
 //     longest prefix within the total kept, the rest dropped, clamped counted
@@ -130,7 +130,7 @@ func fill(t *testing.T, b *LBuilder) *L {
 }
 
 func TestTextListTotal(t *testing.T) {
-	if LTableFields[0].Id != WideTableFields[0].Id || LTableFields[3].Id != WideTableFields[3].Id {
+	if LTableFields[0].ID != WideTableFields[0].ID || LTableFields[3].ID != WideTableFields[3].ID {
 		t.Fatal("L and Wide do not share field ids: the cross-build reads below would read nothing")
 	}
 
@@ -181,18 +181,18 @@ func TestTextListTotal(t *testing.T) {
 	if back, err := LLoadText(b64, nil); err != nil || !bytes.Equal(resave(t, back), wire) {
 		t.Fatalf("base64 round trip %v", err)
 	}
-	jn := LToJsonMeasure(got)
+	jn := LToJSONMeasure(got)
 	if jn < 0 {
-		t.Fatal("ToJsonMeasure refused a value within the total")
+		t.Fatal("ToJSONMeasure refused a value within the total")
 	}
 	jtext := make([]byte, jn)
-	LToJson(got, jtext)
+	LToJSON(got, jtext)
 	var jb LBuilder
 	jb.Init()
 	defer jb.Shutdown()
 	report = TableReport{}
-	if !LFromJson(&jb, jtext, &report) || report != (TableReport{}) {
-		t.Fatalf("FromJson %+v\n%s", report, jtext)
+	if !LFromJSON(&jb, jtext, &report) || report != (TableReport{}) {
+		t.Fatalf("FromJSON %+v\n%s", report, jtext)
 	}
 	jw := make([]byte, LMeasure(jb.GetRoot(), &jb.Arena))
 	LSave(jb.GetRoot(), jw, &jb.Arena)
@@ -271,22 +271,22 @@ func TestTextListTotal(t *testing.T) {
 	if HolderMeasure(hv, &hb.Arena) >= 0 || HolderSave(hv, make([]byte, 1<<12), &hb.Arena) >= 0 {
 		t.Fatal("a nested list past the total was written")
 	}
-	// ToJson refuses it, a bounded list and an unbounded one
+	// ToJSON refuses it, a bounded list and an unbounded one
 	got.Names[got.NamesCount] = got.Names[0]
 	got.NamesCount++
-	if LToJsonMeasure(got) >= 0 {
-		t.Fatal("ToJsonMeasure took a bounded list past the total")
+	if LToJSONMeasure(got) >= 0 {
+		t.Fatal("ToJSONMeasure took a bounded list past the total")
 	}
 	got.NamesCount--
 	gp := got.Repos.At(1)
 	copy(gp.Value[:], "ijklm")
 	gp.ValueLength = 5
-	if LToJsonMeasure(got) >= 0 {
-		t.Fatal("ToJsonMeasure took an unbounded list past the total")
+	if LToJSONMeasure(got) >= 0 {
+		t.Fatal("ToJSONMeasure took an unbounded list past the total")
 	}
 	gp.ValueLength = 4
-	if LToJsonMeasure(got) < 0 {
-		t.Fatal("restored value refused by ToJsonMeasure")
+	if LToJSONMeasure(got) < 0 {
+		t.Fatal("restored value refused by ToJSONMeasure")
 	}
 	// the retaining save
 	var retain TableRetain
@@ -395,8 +395,8 @@ func TestTextListTotal(t *testing.T) {
 		var jb LBuilder
 		jb.Init()
 		report = TableReport{}
-		if !LFromJsonTolerant(&jb, []byte(c.text), &report) || report.Clamped != 1 || report.Malformed || report.ClampedField != "L."+c.field {
-			t.Fatalf("%s FromJson %+v", c.field, report)
+		if !LFromJSONTolerant(&jb, []byte(c.text), &report) || report.Clamped != 1 || report.Malformed || report.ClampedField != "L."+c.field {
+			t.Fatalf("%s FromJSON %+v", c.field, report)
 		}
 		if err := report.Err(); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), "L."+c.field) {
 			t.Fatalf("%s JSON report.Err %v", c.field, err)

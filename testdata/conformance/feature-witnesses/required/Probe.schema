@@ -1,0 +1,7 @@
+package probe
+
+table Root {
+ a int32
+ b int32 | required
+ c int32 | required
+}

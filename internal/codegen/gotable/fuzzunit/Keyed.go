@@ -3,24 +3,27 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package tabledemo — protocol id 0xba7b344f28584d33
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package tabledemo
 
-// Team — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
+// Team is an enum: None = 0, then the variants densely from 1; the wire carries
+// [0, 3].
 type Team uint8
 
+// The Team variants. TeamMax is the highest value a read accepts.
 const (
 	TeamNone  Team = 0
 	TeamRed   Team = 1
 	TeamBlue  Team = 2
 	TeamGreen Team = 3
-	TeamMax   Team = 3 // the exported extent (SPEC §4.2)
+	TeamMax   Team = 3
 )
 
-// EnumNameTeam: debug/log/tooling name for any Team wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameTeam(value Team) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to TeamMax).
+func (v Team) String() string {
+	switch v {
 	case TeamNone:
 		return "None"
 	case TeamRed:
@@ -33,21 +36,30 @@ func EnumNameTeam(value Team) string {
 	return "???"
 }
 
-// Hull — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
+// EnumNameTeam returns the variant name of value, or "???" for a value outside
+// the declared variants. It is value.String() under the name every target gives
+// its debug-name function.
+func EnumNameTeam(value Team) string {
+	return value.String()
+}
+
+// Hull is an enum: None = 0, then the variants densely from 1; the wire carries
+// [0, 3].
 type Hull uint8
 
+// The Hull variants. HullMax is the highest value a read accepts.
 const (
 	HullNone        Hull = 0
 	HullInterceptor Hull = 1
 	HullGunship     Hull = 2
 	HullFreighter   Hull = 3
-	HullMax         Hull = 3 // the exported extent (SPEC §4.2)
+	HullMax         Hull = 3
 )
 
-// EnumNameHull: debug/log/tooling name for any Hull wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameHull(value Hull) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to HullMax).
+func (v Hull) String() string {
+	switch v {
 	case HullNone:
 		return "None"
 	case HullInterceptor:
@@ -60,21 +72,30 @@ func EnumNameHull(value Hull) string {
 	return "???"
 }
 
-// Weapon — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
+// EnumNameHull returns the variant name of value, or "???" for a value outside
+// the declared variants. It is value.String() under the name every target gives
+// its debug-name function.
+func EnumNameHull(value Hull) string {
+	return value.String()
+}
+
+// Weapon is an enum: None = 0, then the variants densely from 1; the wire
+// carries [0, 3].
 type Weapon uint8
 
+// The Weapon variants. WeaponMax is the highest value a read accepts.
 const (
 	WeaponNone    Weapon = 0
 	WeaponCannon  Weapon = 1
 	WeaponMissile Weapon = 2
 	WeaponMine    Weapon = 3
-	WeaponMax     Weapon = 3 // the exported extent (SPEC §4.2)
+	WeaponMax     Weapon = 3
 )
 
-// EnumNameWeapon: debug/log/tooling name for any Weapon wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameWeapon(value Weapon) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to WeaponMax).
+func (v Weapon) String() string {
+	switch v {
 	case WeaponNone:
 		return "None"
 	case WeaponCannon:
@@ -87,12 +108,31 @@ func EnumNameWeapon(value Weapon) string {
 	return "???"
 }
 
-// type ScoreBoard
+// EnumNameWeapon returns the variant name of value, or "???" for a value
+// outside the declared variants. It is value.String() under the name every
+// target gives its debug-name function.
+func EnumNameWeapon(value Weapon) string {
+	return value.String()
+}
+
+// ScoreBoard is the storage of schema type ScoreBoard; WriteScoreBoard and
+// ReadScoreBoard carry it on the wire.
 type ScoreBoard struct {
 	PerTeam [3]int32 // wire [0, 100000]
 }
 
-// ScoreBoardMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ScoreBoardMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ScoreBoardMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ScoreBoardMaxBits = 51
+
+// ScoreBoardMaxBytes is ScoreBoardMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ScoreBoardMaxBytes = 8
+
+// WriteScoreBoard writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
+
+// ReadScoreBoard reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.

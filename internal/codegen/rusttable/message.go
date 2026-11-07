@@ -370,7 +370,7 @@ fn announce_read_once(
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3).
     if vocabulary.strict && vocabulary.build_version != BUILD_VERSION {
-        report.build_version_peer = vocabulary.build_version;
+        report.build_version_remote = vocabulary.build_version;
         report.build_version_own = BUILD_VERSION;
         return report.refuse(TableReason::BuildVersionMismatch);
     }
@@ -410,8 +410,8 @@ fn announce_read_once(
             for other in filled.iter() {
                 let other_len = (other.shape.max - other.shape.min) as usize;
                 if other_len == at - began
-                    && &vocabulary_bytes[other.shape.min as usize..other.shape.max as usize]
-                        == &vocabulary_bytes[began..at]
+                    && vocabulary_bytes[other.shape.min as usize..other.shape.max as usize]
+                        == vocabulary_bytes[began..at]
                 {
                     report.malformed = true;
                     return false;
@@ -500,15 +500,15 @@ fn bits_required(count: usize) -> u32 {
 }
 
 fn known_kind(kind: u8) -> bool {
-    kind == 0 || (kind >= 1 && kind <= 17) || (kind >= 18 && kind <= 29) || (kind >= 30 && kind <= 33)
+    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=33).contains(&kind) || kind == 36
 }
 
 fn integer_kind(kind: u8) -> bool {
-    (kind >= 2 && kind <= 9) || kind == 18 || kind == 19
+    (2..=9).contains(&kind) || kind == 18 || kind == 19
 }
 
 fn fixed_kind(kind: u8) -> bool {
-    kind >= 20 && kind <= 29
+    (20..=29).contains(&kind)
 }
 
 /// The widest ranged value a kind can carry, its own storage width (§3.3): a
@@ -527,7 +527,7 @@ fn kind_bits(kind: u8) -> u64 {
 /// (§3.3): the step count, the delta and the width. False is a non-conforming
 /// triple, which on the announcement is a hostile width.
 fn quantization(qmin: f32, qmax: f32, qres: f32) -> (u32, f32, u64, bool) {
-    if !(qmin < qmax) || !(qres > 0.0) {
+    if qmin.is_nan() || qmax.is_nan() || qmin >= qmax || qres.is_nan() || qres <= 0.0 {
         return (0, 0.0, 0, false);
     }
     let delta = qmax - qmin;
@@ -535,7 +535,7 @@ fn quantization(qmin: f32, qmax: f32, qres: f32) -> (u32, f32, u64, bool) {
     if delta.is_nan() || values.is_nan() {
         return (0, 0.0, 0, false);
     }
-    if !(values >= 1.0) {
+    if values.is_nan() || values < 1.0 {
         values = 1.0;
     } else if values > 4294967040.0 {
         values = 4294967040.0;
@@ -617,7 +617,7 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
             if !ok {
                 return (s, false);
             }
-            if kind >= 2 && kind <= 5 {
+            if (2..=5).contains(&kind) {
                 s.base_lo = (v >> 1) ^ (0u64.wrapping_sub(v & 1));
             } else {
                 s.base_lo = v;
@@ -698,7 +698,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => skip_width(bytes, at, 1),
         3 | 7 | 21 | 26 => skip_width(bytes, at, 2),
         4 | 8 | 10 | 22 | 27 => skip_width(bytes, at, 4),
-        5 | 9 | 11 | 23 | 28 => skip_width(bytes, at, 8),
+        5 | 9 | 11 | 23 | 28 | 36 => skip_width(bytes, at, 8),
         18 | 19 | 24 | 29 => skip_width(bytes, at, 16),
         // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and
         // stop
@@ -792,6 +792,14 @@ pub enum TableReason {
     InvalidValue,
     AllocationFailed,
     WireDamaged,
+    /// A FLOAT WHOSE BITS ARE A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3,
+    /// the same rule as the packet wire's, SPEC.md §4.3): every read refuses one, the tolerant read included, and every writer
+    /// refuses to emit one. The report names the field in non_finite_float.
+    NonFiniteFloat,
+    JsonRootNotArray,
+    TimestampNotRfc3339,
+    IntegrityMismatch,
+    MissingRequired,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -826,6 +834,11 @@ impl TableReason {
             TableReason::InvalidValue => "invalid_value",
             TableReason::AllocationFailed => "allocation_failed",
             TableReason::WireDamaged => "wire_damaged",
+            TableReason::NonFiniteFloat => "non_finite_float",
+            TableReason::JsonRootNotArray => "json_root_not_array",
+            TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
+            TableReason::IntegrityMismatch => "integrity_mismatch",
+            TableReason::MissingRequired => "missing_required",
         }
     }
 }
@@ -842,16 +855,18 @@ impl TableReason {
 /// §4's events: the form byte this reader does not carry (§3), or one of the
 /// message form's refusals BY NAME, whose reason the message form records
 /// (nothing is decoded, no counter moves, and malformed does not fire, §3.3).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct TableReport {
     pub unknown: u64,
     pub kind_mismatch: u64,
     pub widened: u64,
     pub clamped: u64,
+    pub clamped_field: &'static str,
     pub duplicate: u64,
     pub malformed: bool,
     pub refused: bool,
-    /// Pointer cycles remain readable but cannot be serialized by the builder (§3.1).
+    /// The read met a pointer naming an OPEN node, a cycle no writer produces
+    /// (§3.1): the load refuses whole, and a builder save refuses it as data_cycle.
     pub cycle_on_save: bool,
     /// A BLOB NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5): the tolerant
     /// read keeps the one node and counts each extra naming here; every writer
@@ -868,17 +883,77 @@ pub struct TableReport {
     /// The message form's refusal by name and the two build versions its
     /// strict check compared (§3.3); None and zero on the variable form.
     pub reason: TableReason,
-    pub build_version_peer: u64,
+    pub build_version_remote: u64,
     pub build_version_own: u64,
+    /// THE FIRST NON-FINITE FLOAT A READ MET (docs/SPEC-TABLES.md §3.3): its
+    /// <Table>.<field>, and "" when there was none. A read that names one
+    /// refuses as non_finite_float and lands nothing, the tolerant read
+    /// included. For a RETAINED UNKNOWN float (§6.6) it is the body's table
+    /// and non_finite_float_id is the id the reader cannot name.
+    pub non_finite_float: &'static str,
+    pub non_finite_float_id: Option<u64>,
+    /// A named text-form diagnostic, empty after a clean read.
+    pub text_error: &'static str,
+    /// Bodies refused because an active required field was absent (§4).
+    pub missing_required: u64,
+    /// The current refusal's names, in field declaration order.
+    pub missing_required_fields: String,
 }
 
 impl TableReport {
+    pub fn missing_required_reason(&self) -> Option<String> {
+        if self.missing_required_fields.is_empty() { None }
+        else { Some(format!("missing_required: {}", self.missing_required_fields)) }
+    }
+
     pub fn refuse(&mut self, reason: TableReason) -> bool {
         self.malformed = false;
         self.refused = true;
         self.reason = reason;
         false
     }
+
+    /// Names a float whose raw bits are a NaN or an infinity (§3.3). The first
+    /// name a read records wins.
+    pub fn non_finite(&mut self, field: &'static str) {
+        if self.non_finite_float.is_empty() {
+            self.non_finite_float = field;
+        }
+    }
+
+    /// Names a RETAINED UNKNOWN float of a float kind whose bits are a NaN or
+    /// an infinity (§3.3, §6.6): tested like a known field, refused alike.
+    pub fn non_finite_unknown(&mut self, owner: &'static str, id: u64) {
+        if self.non_finite_float.is_empty() {
+            self.non_finite_float = owner;
+            self.non_finite_float_id = Some(id);
+        }
+    }
+
+    /// The refusal's reason as the Go reference spells it,
+    /// "non_finite_float: <Table>.<field>" ("<Table>.0x<id>" for a retained
+    /// unknown), or None when no non-finite float was named.
+    pub fn non_finite_float_reason(&self) -> Option<String> {
+        if self.non_finite_float.is_empty() {
+            return None;
+        }
+        Some(match self.non_finite_float_id {
+            Some(id) => format!("non_finite_float: {}.0x{:016x}", self.non_finite_float, id),
+            None => format!("non_finite_float: {}", self.non_finite_float),
+        })
+    }
+}
+
+/// THE RAW-BITS TEST EVERY READ RUNS (docs/SPEC-TABLES.md §3.3): an exponent
+/// of all ones is a NaN (any sign, any payload) or an infinity, and nothing
+/// else is. -0 and the subnormals are values.
+pub const fn table_finite_f32(bits: u32) -> bool {
+    bits & 0x7F80_0000 != 0x7F80_0000
+}
+
+/// table_finite_f32 at sixty-four bits.
+pub const fn table_finite_f64(bits: u64) -> bool {
+    bits & 0x7FF0_0000_0000_0000 != 0x7FF0_0000_0000_0000
 }
 
 `

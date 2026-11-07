@@ -6,7 +6,7 @@
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
-// write/read/measure functions per type, zero runtime dependencies.
+// write/read functions per type, zero runtime dependencies.
 //
 // write<Name>(value, view) -> bytes written. The writer TRUSTS the caller
 // (the C++ stance): contracts are asserted — active under --enable-asserts,
@@ -19,8 +19,8 @@
 // tags — and NEVER throw on hostile bytes. No slack past the payload is
 // required: the reader prices its 64-bit windows inside the buffer.
 //
-// measure<Name>(value) -> exact wire bits for that value (trusted, like
-// the writer). zero<Name>(value) -> the §5 zero form.
+// zero<Name>(value) -> the §5 zero form. There is no measure function
+// (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.

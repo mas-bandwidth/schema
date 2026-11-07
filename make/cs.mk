@@ -125,6 +125,7 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema
 	$(1) generate --lang cs --out $(2)/w2 test/tables/W2.schema
 	$(1) generate --lang cs --out $(2)/lists tables/lists
+	$(1) generate --lang cs --out $(2)/widelist tables/widelist
 	$(1) generate --lang cs --out $(2)/maps tables/maps
 	$(1) generate --lang cs --out $(2)/stream tables/stream
 	$(1) generate --lang cs --out $(2)/g1 test/tables/G1.schema
@@ -141,9 +142,10 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/cscollections1 test/tables/CsCollections1.schema
 	$(1) generate --lang cs --out $(2)/cscollections2 test/tables/CsCollections2.schema
 	$(1) generate --lang cs --out $(2)/ut test/tables/UT.schema
+	$(1) generate --lang cs --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 endef
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema examples-wide/Caption.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema examples-wide/Caption.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-cs
 	$(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
 	@touch $@
@@ -167,11 +169,16 @@ tables-cs-standalone: build/tables-generated-cs/.stamp
 
 .PHONY: tables-cs-variable-surface
 tables-cs-variable-surface: build/tables-generated-cs/.stamp
-	@for verb in LoadMeasure Load Save Measure LoadMessages SaveMessages Cook CookMeasure; do \
+	@for verb in LoadMeasure Load Save Measure Cook CookMeasure; do \
 		grep -Fq "Scene$$verb(" build/tables-generated-cs/pointers/*Table.cs || \
 			{ echo "VARIABLE SURFACE GATE FAILED: Scene$$verb is absent"; exit 1; }; \
 	done
-	@echo "tables C# variable surface: pointered roots carry file, message and cook verbs"
+	@for verb in LoadMessages SaveMessages MeasureMessages LoadRetainMessages SaveRetainMessages; do \
+		if grep -Fq "Scene$$verb(" build/tables-generated-cs/pointers/*.cs; then \
+			echo "VARIABLE SURFACE GATE FAILED: Scene$$verb is emitted, and the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)"; exit 1; \
+		fi; \
+	done
+	@echo "tables C# variable surface: pointered roots carry file and cook verbs and no message verb"
 
 # ---------------------------------------------------------------------------
 # THE COOK's C# READ SIDE (docs/SPEC-TABLES.md §7) --------------------------------
@@ -332,6 +339,146 @@ tables-cook-open-cs-walk-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED" build/cook-open-cs-walk/log
 	@echo "negative control: a walk in Open turns the C# open-cost gate RED"
 
+# THE BYTE-ORDER CONTROL (docs/PORTING.md I7, the refuse half): the sabotage
+# (tools/sabotage, cook-open-order-cs) makes the magic stop refusing, so a cook
+# of the other byte order falls through to a later guard and is refused under
+# that guard's name. tables-cook-open-cs's `refuse` verb requires the refusal to
+# name the order, foreign_order, and must go RED.
+.PHONY: tables-cook-open-cs-order-negative-control
+tables-cook-open-cs-order-negative-control: build/cook-open/.stamp
+	@rm -rf build/cook-open-cs-order && mkdir -p build/cook-open-cs-order
+	@go run ./tools/sabotage -name cook-open-order-cs -out build/cook-open-cs-order/cook.gotext internal/codegen/cstable/cook.go
+	@printf '{"Replace":{"%s/internal/codegen/cstable/cook.go":"%s/build/cook-open-cs-order/cook.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cook-open-cs-order/overlay.json
+	@go build -overlay=build/cook-open-cs-order/overlay.json -o build/cook-open-cs-order/schema ./cmd/schema
+	./build/cook-open-cs-order/schema generate --lang cs --out build/cook-open-cs-order/gen tables/pointers
+	@if ( cd test/cs-cook && $(DOTNET) build -v q --nologo \
+			-p:CookGeneratedDir=../../build/cook-open-cs-order/gen \
+			-p:BaseOutputPath=../../build/cook-open-cs-order/bin/ \
+			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-order/obj/ \
+			> ../../build/cook-open-cs-order/build.log 2>&1 ); then :; else \
+		echo "NEGATIVE CONTROL FAILED: the sabotaged emitter's output does not compile"; \
+		cat build/cook-open-cs-order/build.log; exit 1; \
+	fi
+	@if ( cd test/cs-cook && $(DOTNET) run --no-build \
+			-p:CookGeneratedDir=../../build/cook-open-cs-order/gen \
+			-p:BaseOutputPath=../../build/cook-open-cs-order/bin/ \
+			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-order/obj/ \
+			-- refuse Scene ../../build/cook-open/Scene-be.cook > ../../build/cook-open-cs-order/log 2>&1 ); then \
+		echo "NEGATIVE CONTROL FAILED: the refuse verb stayed green with the magic's refusal removed"; cat build/cook-open-cs-order/log; exit 1; \
+	fi
+	@grep -q "not foreign_order" build/cook-open-cs-order/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the refuse verb went red, but not on the order's name"; cat build/cook-open-cs-order/log; exit 1; }
+	@grep -m1 "not foreign_order" build/cook-open-cs-order/log
+	@echo "negative control: a magic that does not refuse turns the C# cross-endian refusal RED"
+
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, C# side:
+# docs/USAGE.md's C# cook example (between the cs-table-usage markers) is
+# pulled out of the page, compiled against tables/pointers generated afresh and
+# run over the Scene cook fixture. Its control moves SceneCook.Open in the
+# generated source and requires the page to stop compiling, naming it.
+.PHONY: tables-cs-usage tables-cs-usage-negative-control
+tables-cs-usage: bin/schema build/cook-open/.stamp
+	sh test/cs-cook/usage "$(DOTNET)"
+
+tables-cs-usage-negative-control: bin/schema build/cook-open/.stamp
+	sh test/cs-cook/usage "$(DOTNET)" control
+
+test-cs: tables-cs-usage
+
+# M12 (docs/PORTING.md): every multi-byte wire access in the generated C# is an
+# explicit little-endian call or a guarded flat-array copy
+# (test/cs-tables/byte-order). Its control puts one fixed-form flat array read
+# back to an unguarded host-order bulk copy in the emitter (tools/sabotage,
+# table-cs-host-order-read) and requires the scan RED, naming it: every round
+# trip on a little-endian host stays green under that sabotage, which is why the
+# gate is a scan.
+.PHONY: tables-cs-byte-order tables-cs-byte-order-negative-control
+tables-cs-byte-order: build/tables-generated-cs/.stamp
+	sh test/cs-tables/byte-order build/tables-generated-cs
+
+tables-cs-byte-order-negative-control: bin/schema
+	@rm -rf build/cs-byte-order-nc && mkdir -p build/cs-byte-order-nc
+	@go run ./tools/sabotage -name table-cs-host-order-read -out build/cs-byte-order-nc/fixedform.gotext internal/codegen/cstable/fixedform.go
+	@printf '{"Replace":{"%s/internal/codegen/cstable/fixedform.go":"%s/build/cs-byte-order-nc/fixedform.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cs-byte-order-nc/overlay.json
+	@go build -overlay=build/cs-byte-order-nc/overlay.json -o build/cs-byte-order-nc/schema ./cmd/schema
+	./build/cs-byte-order-nc/schema generate --lang cs --out build/cs-byte-order-nc/gen/examples tables/examples
+	@if sh test/cs-tables/byte-order build/cs-byte-order-nc/gen > build/cs-byte-order-nc/log 2>&1; then \
+		cat build/cs-byte-order-nc/log; echo "NEGATIVE CONTROL FAILED: an unguarded host-order wire copy passed the byte-order scan"; exit 1; \
+	fi
+	@grep -q "SABOTAGED: host order" build/cs-byte-order-nc/log || \
+		{ cat build/cs-byte-order-nc/log; echo "NEGATIVE CONTROL FAILED: the scan went red, but not on the planted copy"; exit 1; }
+	@echo "negative control: an unguarded host-order fixed-form copy in the emitter turns tables-cs-byte-order red"
+
+test-cs: tables-cs-byte-order
+
+# I4 (docs/PORTING.md) — PER-CASE ABSENT, C# side. The C# driver answers a case
+# it cannot answer with <case>.absent (test/conformance/cs/src/Program.cs:
+# SpillAbsent, and the wire surface's blob_shared rows), and the harness counts
+# it while the rest of the surface passes: `wire pass N/N +Ma`. The gate runs
+# the C# leg's table surfaces alone and requires that line. Its control builds
+# the driver from a copy whose per-case absent answers are removed and requires
+# the wire surface RED: a case with no answer at all is a failure, never a pass.
+CS_ABSENT := build/conformance-cs-absent
+.PHONY: conformance-cs-absent conformance-cs-absent-negative-control
+conformance-cs-absent: build-conformance-cs build/conformance-harness
+	@mkdir -p $(CS_ABSENT)
+	@printf 'cs %s test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll\n' "$(DOTNET)" > $(CS_ABSENT)/drivers
+	./build/conformance-harness run --drivers $(CS_ABSENT)/drivers --work $(CS_ABSENT)/run > $(CS_ABSENT)/log 2>&1 || { cat $(CS_ABSENT)/log; exit 1; }
+	@grep -Eq '^wire +pass [0-9]+/[0-9]+ \+[0-9]+a' $(CS_ABSENT)/log || \
+		{ cat $(CS_ABSENT)/log; echo "conformance-cs-absent FAILED: the C# wire surface counts no per-case absent"; exit 1; }
+	@grep -E '^wire ' $(CS_ABSENT)/log
+
+conformance-cs-absent-negative-control: build-conformance-cs build/conformance-harness
+	@rm -rf $(CS_ABSENT)-nc && mkdir -p $(CS_ABSENT)-nc/proj
+	@cp -R test/conformance/cs/src test/conformance/cs/schemaconformance.csproj $(CS_ABSENT)-nc/proj/
+	@sed -e 's|File.WriteAllBytes(Path.Combine(outDir, name + ".absent"), new byte\[0\]);|/* SABOTAGED: no per-case answer */|' \
+	     -e 's|File.WriteAllText(Path.Combine(outDir, f\[1\] + ".absent"), "blob_shared");|/* SABOTAGED: no per-case answer */|' \
+		test/conformance/cs/src/Program.cs > $(CS_ABSENT)-nc/proj/src/Program.cs
+	@test $$(grep -c 'SABOTAGED: no per-case answer' $(CS_ABSENT)-nc/proj/src/Program.cs) = 2 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both absent writes"; exit 1; }
+	@$(DOTNET) build $(CS_ABSENT)-nc/proj --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/build/tables-generated-cs \
+		-p:CardsGeneratedDir=$(CURDIR)/build/tables-generated-cs/cards -o $(CS_ABSENT)-nc/checker > $(CS_ABSENT)-nc/build.log 2>&1 || \
+		{ cat $(CS_ABSENT)-nc/build.log; echo "NEGATIVE CONTROL FAILED: the sabotaged driver does not compile"; exit 1; }
+	@printf 'cs %s %s/checker/schemaconformance.dll\n' "$(DOTNET)" "$(CS_ABSENT)-nc" > $(CS_ABSENT)-nc/drivers
+	@if ./build/conformance-harness run --drivers $(CS_ABSENT)-nc/drivers --work $(CS_ABSENT)-nc/run > $(CS_ABSENT)-nc/log 2>&1; then \
+		cat $(CS_ABSENT)-nc/log; echo "NEGATIVE CONTROL FAILED: a case with no answer left the C# wire surface green"; exit 1; \
+	fi
+	@grep -Eq '^wire +FAIL' $(CS_ABSENT)-nc/log || \
+		{ cat $(CS_ABSENT)-nc/log; echo "NEGATIVE CONTROL FAILED: the run went red, but not on the wire surface"; exit 1; }
+	@grep -E '^wire ' $(CS_ABSENT)-nc/log
+	@echo "negative control: removing the C# driver's per-case absent answers turns the wire surface red"
+
+test-cs: conformance-cs-absent
+
+# THE FRAMING SURFACE, its C# leg (docs/LAYERS/1-framing.md): the C# driver
+# answers every framing row and passes it, none absent
+# (test/conformance/framing/gate). Its negative control builds the driver
+# against a copy of the generated C# tree with the id table's 4096-entry cap
+# (§3, rule F6) taken out of the file read, and requires the framing surface to
+# go RED on frame_entries_4097.
+CS_FRAMING_CONTROL := build/conformance-cs-framing-control
+.PHONY: conformance-cs-framing conformance-negative-control-cs-framing
+conformance-cs-framing: build-conformance-cs build/conformance-harness
+	sh test/conformance/framing/gate cs "$(DOTNET) $(CURDIR)/test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll" build/conformance-cs-framing
+conformance-negative-control-cs-framing: build-conformance-cs build/conformance-harness
+	@rm -rf $(CS_FRAMING_CONTROL) && mkdir -p $(CS_FRAMING_CONTROL)
+	@cp -R build/tables-generated-cs $(CS_FRAMING_CONTROL)/generated
+	@files=$$(grep -rlF 'if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }' $(CS_FRAMING_CONTROL)/generated); \
+		[ -n "$$files" ] || { echo "NEGATIVE CONTROL: the 4096-entry cap sabotage matches no generated line"; exit 1; }; \
+		perl -pi -e 's/\Qif (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }\E/if (false) { \/* SABOTAGED: no id-table cap *\/ }/g' $$files
+	@grep -rqF 'SABOTAGED: no id-table cap' $(CS_FRAMING_CONTROL)/generated || { echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
+	@perl -pi -e 's/\Qif (mark == 1) { return true; }\E/if (mark == 1 && n < 0) { return true; \/* SABOTAGED: no cycle check *\/ }/g' $(CS_FRAMING_CONTROL)/generated/pointers/*.cs
+	@grep -rqF 'SABOTAGED: no cycle check' $(CS_FRAMING_CONTROL)/generated/pointers || { echo "NEGATIVE CONTROL: the cycle sabotage did not apply"; exit 1; }
+	@$(DOTNET) build test/conformance/cs --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/$(CS_FRAMING_CONTROL)/generated \
+		-p:CardsGeneratedDir=$(CURDIR)/$(CS_FRAMING_CONTROL)/generated/cards -p:BaseIntermediateOutputPath=$(CURDIR)/$(CS_FRAMING_CONTROL)/obj/ \
+		-o $(CS_FRAMING_CONTROL)/checker > $(CS_FRAMING_CONTROL)/build.log 2>&1 || \
+		{ cat $(CS_FRAMING_CONTROL)/build.log; echo "NEGATIVE CONTROL: the sabotaged driver does not compile"; exit 1; }
+	sh test/conformance/framing/gate cs "$(DOTNET) $(CURDIR)/$(CS_FRAMING_CONTROL)/checker/schemaconformance.dll" \
+		$(CS_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
+test-cs: conformance-cs-framing
+
 generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/cs
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
@@ -430,6 +577,73 @@ tables-cs-leg-debug: build/tables-generated-cs/.stamp
 tables-cs-leg-release: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release
 
+# THE LEG'S NEGATIVE CONTROLS (docs/PORTING.md M5, M6, M10, M14, M17 and M19,
+# and the native region writer's shared-blob refusal, docs/SPEC-TABLES.md §2.5).
+# Each takes ONE rule out of the C# emitter (tools/sabotage, through a go build
+# -overlay, so no tracked file is written), regenerates every unit the leg
+# compiles from that compiler into a tree of its own, builds the leg against it
+# in its own obj and bin, and requires the leg to go red ON THAT RULE'S CHECK. A
+# sabotage that does not compile is not a control that went red, and the
+# control says so rather than passing.
+#   $(1) the control's name, $(2) the emitter file, $(3) the sabotage,
+#   $(4) the leg's failure text it requires (grep -E)
+define cs_leg_sabotage
+	@rm -rf build/cs-leg-$(1) && mkdir -p build/cs-leg-$(1)
+	@go run ./tools/sabotage -name $(3) -out build/cs-leg-$(1)/source.gotext internal/codegen/cstable/$(2)
+	@printf '{"Replace":{"%s/internal/codegen/cstable/$(2)":"%s/build/cs-leg-$(1)/source.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cs-leg-$(1)/overlay.json
+	@go build -overlay=build/cs-leg-$(1)/overlay.json -o build/cs-leg-$(1)/schema ./cmd/schema
+	$(call tables_generate_cs,./build/cs-leg-$(1)/schema,build/cs-leg-$(1)/gen)
+	@( cd test/cs-tables && $(DOTNET) build -v q --nologo -p:TablesGeneratedDir=$(CURDIR)/build/cs-leg-$(1)/gen \
+		-p:BaseOutputPath=$(CURDIR)/build/cs-leg-$(1)/bin/ -p:BaseIntermediateOutputPath=$(CURDIR)/build/cs-leg-$(1)/obj/ ) \
+		> build/cs-leg-$(1)/build.log 2>&1 || \
+		{ cat build/cs-leg-$(1)/build.log; echo "NEGATIVE CONTROL FAILED: the $(1) sabotage does not compile"; exit 1; }
+	@if ( cd test/cs-tables && $(DOTNET) $(CURDIR)/build/cs-leg-$(1)/bin/Debug/net10.0/schematablestest.dll ) \
+		> build/cs-leg-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: tables-cs-leg stayed green with the $(1) rule removed"; exit 1; \
+	fi
+	@grep -Eq '$(4)' build/cs-leg-$(1)/log || \
+		{ tail -40 build/cs-leg-$(1)/log; echo "NEGATIVE CONTROL FAILED: tables-cs-leg went red, but not on the $(1) rule"; exit 1; }
+	@grep -Em3 '$(4)' build/cs-leg-$(1)/log
+	@echo "negative control: removing the $(1) rule turns tables-cs-leg red on its own check"
+endef
+
+.PHONY: tables-cs-leg-keyed-negative-control tables-cs-leg-identity-negative-control tables-cs-leg-allocator-negative-control \
+	tables-cs-leg-label-negative-control tables-cs-leg-blob-span-negative-control tables-cs-leg-map-order-negative-control \
+	tables-cs-leg-region-blob-shared-negative-control
+tables-cs-leg-keyed-negative-control: bin/schema
+	$(call cs_leg_sabotage,keyed,cstable.go,table-cs-keyed-none-only,FAILED: keyed indexer: past Max|IndexOutOfRangeException)
+tables-cs-leg-identity-negative-control: bin/schema
+	$(call cs_leg_sabotage,identity,variable.go,table-cs-identity-map,FAILED: list_shared (measured wire length|re-encodes reference bytes))
+tables-cs-leg-allocator-negative-control: bin/schema
+	$(call cs_leg_sabotage,allocator,allocator.go,table-cs-allocator-free,FAILED: native file numbering uses balanced caller hooks)
+tables-cs-leg-label-negative-control: bin/schema
+	$(call cs_leg_sabotage,label,variablejson.go,table-cs-text-label,FAILED: list_shared text)
+tables-cs-leg-blob-span-negative-control: bin/schema
+	$(call cs_leg_sabotage,blob-span,builder.go,table-cs-blob-span,FAILED: large blob keeps its bytes after later allocations)
+tables-cs-leg-map-order-negative-control: bin/schema
+	$(call cs_leg_sabotage,map-order,buildercollections.go,table-cs-map-insert-order,FAILED: map iteration is ordered by signed key)
+tables-cs-leg-region-blob-shared-negative-control: bin/schema
+	$(call cs_leg_sabotage,region-blob-shared,regionwrite.go,table-cs-region-blob-shared,FAILED: blob_shared native region writer refuses the shared blob)
+
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), one control per C#
+# load entry point that holds the discard: the managed load, the native region
+# load (the retaining load is derived from it), and the builder load. Each takes
+# that discard out, and the leg's TestDamageDiscardsTheWholeLoad must go red on
+# the body damaged inside a nested body, which the walk otherwise reads past.
+.PHONY: tables-cs-leg-discard-negative-control tables-cs-leg-region-discard-negative-control tables-cs-leg-builder-discard-negative-control \
+	tables-cs-leg-cycle-negative-control tables-cs-leg-region-cycle-negative-control
+tables-cs-leg-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,discard,wire.go,table-cs-discard,FAILED: damage discards the whole load: nested (fixed|variable): managed load answered true on damage)
+tables-cs-leg-region-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,region-discard,region.go,table-cs-region-discard,FAILED: damage discards the whole load: nested variable: (region|retaining) load handed back a root on damage)
+tables-cs-leg-builder-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,builder-discard,builderload.go,table-cs-builder-discard,FAILED: damage discards the whole load: nested variable: builder load answered true on damage)
+tables-cs-leg-cycle-negative-control: bin/schema
+	$(call cs_leg_sabotage,cycle,variable.go,table-cs-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: managed load answers false)
+tables-cs-leg-region-cycle-negative-control: bin/schema
+	$(call cs_leg_sabotage,region-cycle,regiongraph.go,table-cs-region-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: (region|retaining|builder) load)
+
 # THE C# PER-PATH ALLOCATION GATE (docs/PORTING.md I1, docs/SPEC-TABLES.md
 # "What allocates, and what never does"). C# joins Go's testing.AllocsPerRun
 # and Java's getCurrentThreadAllocatedBytes with the runtime's own per-thread
@@ -473,21 +687,21 @@ tables-cs-alloc-runtime-negative-control: build/tables-generated-cs/.stamp
 
 # THE C# TABLES SOAK (docs/PORTING.md I9, issue #416): loops Load with a
 # supplied report, Load with no report, Measure, Save and the round trip over
-# the tabledemo root for SOAK_SECONDS of real time (3600 s at release, 20 s in
-# `make test`), reads GC.GetAllocatedBytesForCurrentThread at every sample, and
-# fails if the byte count moves after warmup, reporting managed-heap and
-# working-set drift beside it as the weaker instrument that sees retention.
+# the tabledemo root for TABLES_CS_SOAK_ITERATIONS passes (a count, not a
+# clock: about an hour at release, the short form in `make test`), reads
+# GC.GetAllocatedBytesForCurrentThread at every sample, and fails if the byte
+# count moves after warmup, reporting managed-heap and working-set drift beside it as the weaker instrument that sees retention.
 # Its negative control plants a matched short-lived allocation per iteration
 # (allocated and dropped so the GC reclaims it) and requires the count gate to
 # go red while the managed-heap drift line stays green.
 .PHONY: tables-cs-soak tables-cs-soak-negative-control
 tables-cs-soak: build/tables-generated-cs/.stamp
-	cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" $(DOTNET) run -c Release -- soak $(SOAK_SECONDS)
+	cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" $(DOTNET) run -c Release -- soak $(TABLES_CS_SOAK_ITERATIONS)
 
 tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
 	@mkdir -p build/cs-soak-control
 	@cd test/cs-tables && $(DOTNET) build -c Release --nologo -v quiet
-	@if ( cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" SCHEMA_CS_SOAK_PLANT=1 $(DOTNET) run -c Release --no-build -- soak 2 ) > build/cs-soak-control/log 2>&1; then \
+	@if ( cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" SCHEMA_CS_SOAK_PLANT=1 $(DOTNET) run -c Release --no-build -- soak 65536 ) > build/cs-soak-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a short-lived allocation per iteration left the C# soak green"; \
 		cat build/cs-soak-control/log; exit 1; \
 	fi
@@ -533,7 +747,7 @@ tables-cs-fixed-t13:
 
 .PHONY: tables-cs-fixed-t18
 tables-cs-fixed-t18:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapCSharpT18UnionArms'
+	DOTNET="$(DOTNET)" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout=0 -v -run 'TestFixedRoadmapCSharpT18UnionArms'
 	@echo 'tables C# fixed-t18: direct and payload-free union arms round-trip, tag-only arm storage'
 
 test-cs: tables-cs-fixed-t18
@@ -552,8 +766,8 @@ test-cs: tables-cs-fixed-rows
 .PHONY: tables-cs-json-differential tables-cs-json-differential-negative-control
 tables-cs-json-differential:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential \
-		'TestCsTextDifferential' \
-		./internal/codegen/cstable -run '^TestCsTextDifferential$$' -count=1 -timeout 600s
+		'TestCsTextDifferential TestJsonLeadingBOMBoundaryCS' \
+		./internal/codegen/cstable -run '^(TestCsTextDifferential|TestJsonLeadingBOMBoundaryCS)$$' -count=1 -timeout 600s
 	@grep -h 'cs text differential: ' build/slowgate/tables-cs-json-differential.log | sed 's/^ *//'
 tables-cs-json-differential-negative-control:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential-negative-control \
@@ -575,12 +789,9 @@ tables-cs-fixed-roadmap:
 # t01's framing rows read the C++ reference's bytes; under
 # SCHEMA_REQUIRE_CORPUS=1 a missing corpus is a failure, not a skip. The
 # -run pattern is pinned by TestCsFixedRowsTargetCoversEveryRoadmapTest: any
-# row added later without being named here goes red. Owed-gap skips that stay
-# skips (not toolchain absences) are cs/W16, cs/R28 (fixedroadmap_t07_test.go),
-# message_graph_tree and connection_retain_conn/connection_graph_conn (no leg
-# links the sibling ../serialize.cs runtime yet; messageform_held_test.go);
-# -v keeps every skip in this target's log, and they are named in the pull
-# request.
+# row added later without being named here goes red. The graph connection
+# links the actual packet runtime and verifies its pinned announcement bytes;
+# a missing runtime is a failure. Verbose output retains every native verdict.
 .PHONY: tables-cs-fixed-rows
 tables-cs-fixed-rows: tables-fixedform-corpus
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT14CompressedFloats|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
@@ -606,9 +817,13 @@ tables-cs-retain-negative-control: bin/schema
 tables-cs-pack-negative-control: bin/schema
 	sh test/cs-tables/pack-negative-control "$(DOTNET)"
 
-.PHONY: tables-cs-message-blob-endian-negative-control
-tables-cs-message-blob-endian-negative-control: bin/schema
-	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
+# THE FINITE RULE'S CONTROL (docs/SPEC-TABLES.md §3.3): the form-1 read's
+# raw-bits test, the fixed read's finite pass and the form-1 writer's refusal,
+# each sabotaged in turn through a go build -overlay, must each turn exactly
+# their own vector of one probe red.
+.PHONY: tables-cs-finite-float-negative-control
+tables-cs-finite-float-negative-control: bin/schema
+	sh test/cs-tables/finite-negative-control "$(DOTNET)"
 
 # J1 — ACCESSOR AND DESCRIPTOR AGREEMENT (docs/PORTING.md, schema#421), the C#
 # half. The generated managed class's public fields and the generated
@@ -646,8 +861,14 @@ tables-cs-release:
 	$(MAKE) tables-cs-soak-negative-control
 	$(MAKE) tables-cs-retain-negative-control
 	$(MAKE) tables-cs-pack-negative-control
-	$(MAKE) tables-cs-message-blob-endian-negative-control
 	$(MAKE) conformance-negative-control-cs
+	$(MAKE) tables-cs-leg-keyed-negative-control tables-cs-leg-identity-negative-control tables-cs-leg-allocator-negative-control
+	$(MAKE) tables-cs-leg-label-negative-control tables-cs-leg-blob-span-negative-control tables-cs-leg-map-order-negative-control
+	$(MAKE) tables-cs-leg-region-blob-shared-negative-control conformance-cs-absent-negative-control
+	$(MAKE) tables-cs-leg-discard-negative-control tables-cs-leg-region-discard-negative-control tables-cs-leg-builder-discard-negative-control
+	$(MAKE) tables-cs-leg-cycle-negative-control tables-cs-leg-region-cycle-negative-control
+	$(MAKE) tables-cook-open-cs-order-negative-control tables-cs-usage-negative-control tables-cs-byte-order-negative-control
+	$(MAKE) conformance-negative-control-cs-framing
 
 # J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
 # The C# table leg's `--gate` verb round-trips all 64 corpus variants and
@@ -860,7 +1081,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-leg
 	$(MAKE) tables-cs-alloc
 	$(MAKE) tables-cs-alloc-runtime-negative-control
-	$(MAKE) tables-cs-soak SOAK_SECONDS=20
+	$(MAKE) tables-cs-soak TABLES_CS_SOAK_ITERATIONS=1048576
 	$(MAKE) tables-cs-soak-negative-control
 	$(MAKE) tables-cs-versioning
 	$(MAKE) tables-cs-wire-fuzz
@@ -869,7 +1090,6 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-retain-fuzz
 	$(MAKE) tables-cs-retain-negative-control
 	$(MAKE) tables-cs-pack-negative-control
-	$(MAKE) tables-cs-message-blob-endian-negative-control
 	$(MAKE) tables-cs-fixedform-arm-negative-control
 	$(MAKE) conformance-negative-control-cs
 	$(MAKE) tables-cook-open-cs
@@ -939,6 +1159,30 @@ packet-wide-cs-negative-control: packet-wide-cs
 	@echo 'packet wide C# negative control: removed pairing fails bit-flip agreement'
 
 test-cs: packet-wide-cs packet-wide-cs-negative-control
+
+# THE FINITE-FLOAT CONTROL (SPEC §4.3, serialize format 2.0). test/cs's
+# TestFiniteFloats requires a non-finite float32/float64 packet read to be
+# refused as non_finite_float. This builds test/cs with serialize.cs's per-rule
+# switch (-p:SerializeConformanceControls=true) and deletes one finite rule at a
+# time: the run must go red on exactly that rule's read vectors, the list in
+# test/cs/finite-controls/<rule>.expected, and with no rule deleted it stays green.
+.PHONY: packet-finite-cs-negative-control
+packet-finite-cs-negative-control: toolchain-cs generated/cs/.stamp generated/bench/cs/.stamp
+	$(DOTNET) build test/cs/schematest.csproj -c Debug -p:SerializeConformanceControls=true \
+		--artifacts-path build/packet-finite/cs-negative --nologo -v quiet
+	cd test/cs && $(DOTNET) ../../build/packet-finite/cs-negative/bin/schematest/debug/schematest.dll
+	@for rule in float-finite double-finite; do \
+		if ( cd test/cs && SERIALIZE_CS_DELETED_RULE=$$rule $(DOTNET) ../../build/packet-finite/cs-negative/bin/schematest/debug/schematest.dll ) \
+			> build/packet-finite/cs-negative/$$rule.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: C# packet reads passed with $$rule deleted"; exit 1; fi; \
+		grep '^FAILED: ' build/packet-finite/cs-negative/$$rule.log > build/packet-finite/cs-negative/$$rule.got || true; \
+		if ! diff -u test/cs/finite-controls/$$rule.expected build/packet-finite/cs-negative/$$rule.got; then \
+			echo "NEGATIVE CONTROL FAILED: deleting $$rule did not fail exactly its vectors"; \
+			cat build/packet-finite/cs-negative/$$rule.log; exit 1; fi; \
+	done
+	@echo 'packet finite-float C# negative control: each deleted rule fails exactly its read vectors'
+
+test-cs: packet-finite-cs-negative-control
 
 # THE CARDS UNIT'S C# LEG (docs/SPEC-TABLES.md §2): the card record as a
 # generated variable table with an owning facade (tables/cards/cs) and the
@@ -1097,3 +1341,7 @@ cards-cs-retain-negative-control: build-conformance-cs build/conformance-harness
 	@echo 'cards C# negative control: dropping the Card retention turns exactly the retain arm red'
 
 test-cs: cards-cs-retain-negative-control
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-cs/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

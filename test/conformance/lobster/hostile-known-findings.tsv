@@ -1,0 +1,5 @@
+# THE LOBSTER HOSTILE-CORPUS RUN'S CARRIED FINDINGS (make/lobster-hostile.mk;
+# test/conformance/lobster/hostile). One name<TAB>finding per line: a case the
+# Lobster port owes. The runner fails on a disagreement no line names, and on a
+# line whose case has gone green, so the list cannot rot. Empty: every case of
+# every carrier agrees with the engine.

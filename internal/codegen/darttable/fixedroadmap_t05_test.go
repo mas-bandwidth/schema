@@ -184,7 +184,7 @@ fixed table T
 		t.Error("E8: the `| deprecated` marker is not on the IR field")
 	}
 	if got, want := len(fixedWalkRoot(depTable).entries), len(fixedWalkRoot(findTable(t, unitFrom(t, plain), "T")).entries); got != want {
-		t.Errorf("E8: the deprecated field's slot did not stay: %d walked entries, want the plain table's %d", got, want)
+		t.Errorf("E8: the deprecated field's slot did not stay: %d walked entries, want the variable table's %d", got, want)
 	}
 	// THE DEPRECATED FIELD IS STILL A PLAN ENTRY: the identity walk copies its
 	// slot, so a reader reads what the writer left there and nothing skips it.
@@ -239,10 +239,10 @@ fixed table T
 		"R19 unknown counts an UNNAMED writer field, never a record")
 	// THE CENSUS LANDS ONCE, AFTER THE LOOP, and comes from the plan's own
 	// numbers: a lawful lineage's plan names every field, so it is zero.
-	t05Has(t, src, "report.unknown += censusUnknown;", "R19 the census lands once per peer")
-	t05Has(t, src, "report.kindMismatch += censusKind;", "R19 kind_mismatch lands once per peer")
+	t05Has(t, src, "report.unknown += censusUnknown;", "R19 the census lands once per endpoint")
+	t05Has(t, src, "report.kindMismatch += censusKind;", "R19 kind_mismatch lands once per endpoint")
 	if n := strings.Count(src, "report.unknown += censusUnknown;"); n != 1 {
-		t.Errorf("R19: the census lands %d times, want once per peer", n)
+		t.Errorf("R19: the census lands %d times, want once per endpoint", n)
 	}
 	// WIDENED MOVES ONLY WHERE A KIND GREW, AND CLAMPED ONLY WHERE A LENGTH OR
 	// BOUND WAS OUT OF RANGE — the ops, not the loop.
@@ -271,30 +271,40 @@ func t05E9(t *testing.T) {
 	if n := strings.Count(runtime, "duplicate"); n != 2 {
 		t.Errorf("E9: `duplicate` occurs %d times in the runtime, want the declaration and the reset only", n)
 	}
-	if n := strings.Count(t05Emitted(t, `package probe
+	// This is a FIXED report invariant. The variable form's JSON reader has
+	// its own duplicate-key ledger (§16.3), so count only the fixed library.
+	// The message form's TableReport is emitted in that library too (its
+	// §4 lane rides beside the fixed report's), so its one declaration is
+	// the third occurrence; neither raises.
+	u := unitFrom(t, `package probe
 
 fixed table T
 {
     x int32
 }
-`), "duplicate"); n != 2 {
-		t.Errorf("E9: `duplicate` occurs %d times in the emitted unit, want the report lane only", n)
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if n := strings.Count(string(files[runtimeHome(u)+"Fixed.dart"]), "duplicate"); n != 3 {
+		t.Errorf("E9: `duplicate` occurs %d times in the fixed library, want the fixed report lane and the message lane", n)
 	}
 }
 
 // ---- dart/R16 ---------------------------------------------------------------
 
 // t05R16 holds dart/R16 to §5.4's counters, each asserted by the site that owns
-// it: the census ONCE per peer after the loop, `widened` once per entry per
+// it: the census ONCE per endpoint after the loop, `widened` once per entry per
 // record, `clamped` once per entry per record for a count and a text length,
 // and the bounds pass's count of a FORGED ORDINAL remapped to None on BOTH
 // plans. `copy` and `present` land their value and move nothing.
 func t05R16(t *testing.T) {
 	runtime := t05Runtime()
-	// unknown: once per peer at COMPILE, after the record loop, and never per
+	// unknown: once per endpoint at COMPILE, after the record loop, and never per
 	// record (§5.4, §5.9 #6).
 	t05Has(t, runtime, "if (!named && census) {\n        report.unknown++;\n      }",
-		"R16 unknown is once per field of a peer at COMPILE")
+		"R16 unknown is once per field of an endpoint at COMPILE")
 	t05Has(t, runtime, "report.kindMismatch++;", "R16 kind_mismatch is once per moved pair at COMPILE")
 	// widened: once per entry per record.
 	for _, name := range []string{"widen", "widenFloat"} {
@@ -327,7 +337,7 @@ fixed table T
 `)
 	t05Has(t, identity, "report.clamped++;",
 		"R16 the identity plan's ordinal bounds pass counts a forged ordinal")
-	t05Has(t, identity, "= 0;\n    report.clamped++;", "R16 a forged ordinal lands None and counts")
+	t05Has(t, identity, "= Tier.none;\n    report.clamped++;", "R16 a forged ordinal lands None and counts")
 	// A FOLDED ELEMENT RUN IS ONE and a widened run is never folded, so the
 	// coalescer merges COPY entries and nothing else (§5.4's "per ENTRY",
 	// §5.9 #33).
@@ -453,7 +463,7 @@ fixed table T
 }
 `)
 	t05Has(t, emitted, "final runWhy = tableFixedRun(", "C4 the load reads the run's refusal")
-	t05Has(t, emitted, "if (runWhy != TableFixedRefusal.none) {\n      report.refused = runWhy;\n      return -1;\n    }",
+	t05Has(t, emitted, "if (runWhy != TableFixedRefusal.none) {\n      for (var j = 0; j < k; j++) {\n        initT(values[j]);\n      }\n      report.refused = runWhy;\n      return -1;\n    }",
 		"C4 the load refuses the whole read by name")
 }
 

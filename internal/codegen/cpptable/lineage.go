@@ -88,32 +88,32 @@ func loadUnitLock(u *ir.Unit) *lockfile.Unit {
 	return lock
 }
 
-// loadFixturePeers returns older schema units this generate may COMPILE plans
+// loadFixtureRemotes returns older schema units this generate may COMPILE plans
 // from when the unit has no lock. Callers must pass lock == nil before
 // invoking this: a locked unit with a sibling the convention can name would
 // otherwise append a non-oldest-first entry past the identity. The VOLD_/VNEW_
 // pairs, the numbered evolution set, and fixtureLineage sit beside each other,
 // so a NEW generate reads the OLD schema and bakes its hash and layout bytes.
-func loadFixturePeers(u *ir.Unit) []*ir.Unit {
+func loadFixtureRemotes(u *ir.Unit) []*ir.Unit {
 	if u == nil || len(u.Files) == 0 || u.Files[0].Path == "" {
 		return nil
 	}
-	paths := fixturePeerPaths(u.Files[0].Path)
+	paths := fixtureRemotePaths(u.Files[0].Path)
 	if len(paths) == 0 {
 		return nil
 	}
 	var out []*ir.Unit
 	for _, p := range paths {
-		peer, err := loadPeerUnit(p)
-		if err != nil || peer == nil {
+		endpoint, err := loadRemoteUnit(p)
+		if err != nil || endpoint == nil {
 			continue
 		}
-		out = append(out, peer)
+		out = append(out, endpoint)
 	}
 	return out
 }
 
-func fixturePeerPaths(schemaPath string) []string {
+func fixtureRemotePaths(schemaPath string) []string {
 	dir := filepath.Dir(schemaPath)
 	base := strings.TrimSuffix(filepath.Base(schemaPath), ".schema")
 	seen := map[string]bool{}
@@ -211,7 +211,7 @@ func lineageRank(path string) int {
 	return 50
 }
 
-func loadPeerUnit(path string) (*ir.Unit, error) {
+func loadRemoteUnit(path string) (*ir.Unit, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -271,13 +271,20 @@ func (g *tableGen) lineageEntries(st *ir.Struct) []fixedKnown {
 		h := ir.TableFixedLayoutHash(layout, src)
 		add(h, layout, 8+ir.TableFixedTypeBytes(src), note, collectKnownRanges(g.unit, st, src))
 	}
-	for _, peer := range g.lineagePeers {
-		addFromUnit(peer, peerTable(peer, want), peer.Package)
+	for _, endpoint := range g.lineageRemotes {
+		addFromUnit(endpoint, remoteTable(endpoint, want), endpoint.Package)
 	}
 	addFromUnit(g.unit, st, "identity")
 	return out
 }
 
+// collectKnownRanges lays one older writer's ranged leaves onto the READER's
+// storage (docs/FIXED-FORM-ALGORITHM.md §4.5): the leaves and the match are
+// the shared helpers' (ir.TableFixedWriterRanges, ir.TableFixedWriterField),
+// so this reference holds the same fields every leg holds. A scalar is one
+// row; a fixed array is one row per element at its stride, each element held
+// to the writer's range the same as a scalar. The bounds are the writer's, on
+// the raw scale.
 func collectKnownRanges(readerU *ir.Unit, reader, writer *ir.Struct) []fixedKnownRange {
 	if readerU == nil || reader == nil || writer == nil {
 		return nil
@@ -287,59 +294,40 @@ func collectKnownRanges(readerU *ir.Unit, reader, writer *ir.Struct) []fixedKnow
 		return nil
 	}
 	var out []fixedKnownRange
-	for i := range rl.Fields {
-		fl := &rl.Fields[i]
-		if fl.Field == nil {
-			continue
+	for _, r := range ir.TableFixedWriterRanges(writer) {
+		for i := range rl.Fields {
+			fl := &rl.Fields[i]
+			if fl.Field == nil {
+				continue
+			}
+			if _, ok := ir.TableFixedWriterField(fl.Field, r); !ok {
+				continue
+			}
+			w := ir.TableFixedStorageBytes(fl.Field.Type)
+			sgn := uint8(0)
+			if ir.TableKindSigned(r.Kind) {
+				sgn = 1
+			}
+			slots := int64(1)
+			if fl.Field.Array == ir.ArrayFixed {
+				slots = fl.Field.ArrayBound
+			}
+			for k := int64(0); k < slots; k++ {
+				out = append(out, fixedKnownRange{
+					dst:    uint32(fl.Offset + k*w),
+					width:  uint8(w),
+					signed: sgn,
+					lo:     r.Lo,
+					hi:     r.Hi,
+				})
+			}
+			break
 		}
-		wf := knownRangeField(writer, fl.Field.Name)
-		if wf == nil || !wf.HasIntRange || !fl.Field.HasIntRange {
-			continue
-		}
-		w := ir.TableFixedStorageBytes(wf.Type)
-		if w <= 0 || w > 8 || ir.TableFixedStorageBytes(fl.Field.Type) != w {
-			continue
-		}
-		if ir.TableScalarKind(wf) != ir.TableScalarKind(fl.Field) {
-			continue
-		}
-		sgn := uint8(0)
-		if ir.TableKindSigned(ir.TableScalarKind(wf)) {
-			sgn = 1
-		}
-		// THE WRITER'S BOUNDS ON THE RAW SCALE (schema#1811): the pass compares
-		// the stored raw, so a fixed field's whole-unit bounds are shifted by F
-		// first (ir.TableRawRange, the helper every other clamp uses). A bound
-		// that does not fit the int64 lanes bounds nothing here: skip it rather
-		// than clamp to a zero it never declared.
-		lo, hi, ok := ir.TableRawRange(wf)
-		if !ok || !lo.IsInt64() || !hi.IsInt64() {
-			continue
-		}
-		out = append(out, fixedKnownRange{
-			dst:    uint32(fl.Offset),
-			width:  uint8(w),
-			signed: sgn,
-			lo:     lo.Int64(),
-			hi:     hi.Int64(),
-		})
 	}
 	return out
 }
 
-func knownRangeField(st *ir.Struct, name string) *ir.Field {
-	if st == nil {
-		return nil
-	}
-	for _, f := range st.Fields {
-		if f != nil && f.Name == name {
-			return f
-		}
-	}
-	return nil
-}
-
-func peerTable(u *ir.Unit, wireName string) *ir.Struct {
+func remoteTable(u *ir.Unit, wireName string) *ir.Struct {
 	if u == nil {
 		return nil
 	}

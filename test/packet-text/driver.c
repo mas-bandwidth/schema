@@ -5,6 +5,8 @@
 
 #ifdef __cplusplus
 using namespace packettext;
+/* the C spelling of the type the shared body names (SPEC §6.3) */
+typedef Narrow packettext_narrow_t;
 #endif
 
 static void print_hex( const unsigned char * bytes, int length )
@@ -23,7 +25,7 @@ int main( void )
         uint32_t storage[64] = {0}, encoded[64] = {0};
         unsigned char * data = (unsigned char *) storage;
         int i, size = strcmp( line, "-" ) == 0 ? 0 : (int) strlen( line ) / 2;
-        Narrow value;
+        packettext_narrow_t value;
         memset( value.text, 0x7f, sizeof( value.text ) );
         for ( i = 0; i < size; i++ )
         {
@@ -46,10 +48,10 @@ int main( void )
         long long consumed, written;
         int count;
         serialize_read_stream_init( &r, data, size );
-        if ( !read_narrow( &r, &value ) ) { puts( "REFUSE" ); continue; }
+        if ( !packettext_read_narrow( &r, &value ) ) { puts( "REFUSE" ); continue; }
         consumed = (long long) serialize_read_bits_processed( &r );
         serialize_write_stream_init( &w, (unsigned char *) encoded, sizeof( encoded ) );
-        if ( !write_narrow( &w, &value ) ) { return 3; }
+        if ( !packettext_write_narrow( &w, &value ) ) { return 3; }
         serialize_write_flush( &w );
         written = (long long) serialize_write_bits_processed( &w );
         count = serialize_write_bytes_processed( &w );

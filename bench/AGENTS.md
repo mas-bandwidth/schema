@@ -11,8 +11,11 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `dart/` | Dart runner | `bench/run.sh --only dart` | `bench/run.sh --only dart` |
 | `elixir/` | Elixir runner | `bench/run.sh --only elixir` | `bench/run.sh --only elixir` |
 | `go/` | Go runner | `bench/run.sh --only go` | `bench/run.sh --only go` |
+| `goose/` | Goose runner | `bench/run.sh --only goose` | `bench/run.sh --only goose` |
 | `java/` | Java runner | `bench/run.sh --only java` | `bench/run.sh --only java` |
 | `js/` | JavaScript runner | `bench/run.sh --only js` | `bench/run.sh --only js` |
+| `lobster/` | Lobster runner | `make bench-lobster-gate` | `bench/run.sh --only lobster` |
+| `luau/` | Luau runner | `make bench-luau-gate` | `bench/run.sh --only luau` |
 | `paired/` | paired before/after + fixed-form bytes | `make bench-paired-check` | `make bench-paired-gate` |
 | `results/` | committed CSV ledgers | `none` | `bench/run.sh` |
 | `rust/` | Rust runner | `bench/run.sh --only rust` | `bench/run.sh --only rust` |

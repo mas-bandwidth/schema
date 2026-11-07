@@ -1,0 +1,168 @@
+#!/bin/sh
+# The Go leg's negative controls for the porting register's proof cells
+# (docs/PORTING.md M5, M11, M14, I12, J4, J6). Each one sabotages the code its
+# gate guards -- the emitter, or the generated unit the gate compiles -- through
+# a `go build -overlay` / `go test -overlay` replacement, so no tracked file is
+# ever written to (the clean modes write their regenerated unit into a scratch
+# copy under build/), and then requires
+# the gate to go red on its own words.
+#
+#   keyed-none   the generated TableKeyed loses its None compare (M5)
+#   keyed-max    the generated TableKeyed loses its past-E.Max compare (M5)
+#   keyed-shift  the generated TableKeyed indexes slot k instead of k-1 (M5)
+#   layout       the block init's layout refusal stops refusing (M11)
+#   graph-label  the text writer stops labeling a shared node `&node' (M14)
+#   usage        the generated unit docs/USAGE.md's example names renames its
+#                strict read (I12)
+#   clean-vet    the emitter writes a printf call one argument short (J4)
+#   clean-format the emitter skips go/format (J4)
+#   cards        the Go card renderer writes one byte differently (J6)
+set -eu
+
+mode=$1
+root=$(pwd)
+out=build/go-proof-control-$mode
+rm -rf "$out"
+mkdir -p "$out"
+
+# overlay_one FILE SED_SCRIPT: a sabotaged copy of FILE in $out, refused when
+# the sed script patched nothing, and the overlay entry for it.
+entries=""
+overlay_one() {
+    file=$1
+    copy="$out/$(echo "$file" | tr '/' '_').gotext"
+    sed "$2" "$file" > "$copy"
+    if cmp -s "$file" "$copy"; then
+        echo "NEGATIVE CONTROL FAILED ($mode): the sabotage patched nothing in $file" >&2
+        exit 1
+    fi
+    entry=$(printf '"%s/%s":"%s/%s"' "$root" "$file" "$root" "$copy")
+    if [ -z "$entries" ]; then entries=$entry; else entries="$entries,$entry"; fi
+}
+overlay_write() {
+    printf '{"Replace":{%s}}\n' "$entries" > "$out/overlay.json"
+}
+
+# expect_red LOG WORDS...: the gate went red (the caller already required a
+# nonzero exit) and said so in its own words.
+expect_words() {
+    log=$1
+    shift
+    for w in "$@"; do
+        if ! grep -Fq -- "$w" "$log"; then
+            echo "NEGATIVE CONTROL FAILED ($mode): the gate went red, but not on: $w" >&2
+            cat "$log" >&2
+            exit 1
+        fi
+    done
+}
+
+run_red() {
+    log=$1
+    shift
+    if "$@" > "$log" 2>&1; then
+        echo "NEGATIVE CONTROL FAILED ($mode): the sabotage left the gate GREEN" >&2
+        cat "$log" >&2
+        exit 1
+    fi
+}
+
+keyed_file() {
+    grep -l 'func TableKeyed\[T any\]' build/tables-generated-go/examples/*.go
+}
+
+case "$mode" in
+keyed-none)
+    overlay_one "$(keyed_file)" 's/if key <= 0 || key > len(slots) {/if key > len(slots) { \/\/ SABOTAGED: None is not refused/'
+    overlay_write
+    run_red "$out/log" sh -c "cd test/go-tables && go test -count=1 -overlay '$root/$out/overlay.json' -run '^TestKeyed' ."
+    expect_words "$out/log" '--- FAIL: TestKeyedRefusesNone' 'None keyed a slot'
+    if grep -Fq -- '--- FAIL: TestKeyedRefusesPastMax' "$out/log"; then
+        echo "NEGATIVE CONTROL FAILED ($mode): the None sabotage also turned the past-Max row red" >&2; exit 1
+    fi
+    ;;
+keyed-max)
+    overlay_one "$(keyed_file)" 's/if key <= 0 || key > len(slots) {/if key <= 0 { \/\/ SABOTAGED: past E.Max is not refused/'
+    overlay_write
+    run_red "$out/log" sh -c "cd test/go-tables && go test -count=1 -overlay '$root/$out/overlay.json' -run '^TestKeyed' ."
+    expect_words "$out/log" '--- FAIL: TestKeyedRefusesPastMax' 'nothing is stored past E.Max'
+    if grep -Fq -- '--- FAIL: TestKeyedRefusesNone' "$out/log"; then
+        echo "NEGATIVE CONTROL FAILED ($mode): the past-Max sabotage also turned the None row red" >&2; exit 1
+    fi
+    ;;
+keyed-shift)
+    overlay_one "$(keyed_file)" 's/return &slots\[key-1\]/return \&slots[key%len(slots)] \/\/ SABOTAGED: no shift/'
+    overlay_write
+    run_red "$out/log" sh -c "cd test/go-tables && go test -count=1 -overlay '$root/$out/overlay.json' -run '^TestKeyed' ."
+    expect_words "$out/log" '--- FAIL: TestKeyedPlacesByKey' 'not the key'
+    ;;
+layout)
+    # both refusing helpers of the emitted init stop panicking: a runtime
+    # whose struct disagrees with the compiler's model is no longer refused
+    overlay_one internal/codegen/gotable/block.go 's|g.hf("\\t\\tpanic(fmt.Sprintf(\\"schema block layout: |g.hf("\\t\\t_ = (fmt.Sprintf(\\"SABOTAGED schema block layout: |'
+    overlay_write
+    run_red "$out/log" env SCHEMA_SLOW=1 go test -count=1 -overlay "$root/$out/overlay.json" ./internal/codegen/gotable -run '^TestBlockLayoutContractRefusesADisagreeingRuntime$'
+    expect_words "$out/log" 'a runtime whose layout disagrees with the compiler'
+    ;;
+graph-label)
+    # a node two pointers share is written as two plain copies: no `&node'
+    # definition, no reference, and the text no longer carries the identity
+    overlay_one internal/codegen/gotable/jsongraph.go 's/ if entry.refs<2{return tableJSONWriteValue(/ if entry.refs<2||entry.refs>0 \/* SABOTAGED *\/{return tableJSONWriteValue(/'
+    overlay_write
+    run_red "$out/log" env SCHEMA_SLOW=1 go test -count=1 -overlay "$root/$out/overlay.json" ./internal/codegen/gotable -run '^TestRegionGraphs$'
+    expect_words "$out/log" '--- FAIL: TestRegionGraphs' 'text sharing'
+    ;;
+usage)
+    # the unit the page's example imports (graphdemo, tables/pointers) spells
+    # its strict read differently: the documented surface no longer compiles
+    f=$(grep -l '^func SceneReadStrict(' build/tables-generated-go/pointers/*.go)
+    overlay_one "$f" 's/^func SceneReadStrict(/func SceneReadStrictSABOTAGED(/'
+    overlay_write
+    # GOFLAGS carries the overlay into the go vet and go run TestUsage spawns
+    run_red "$out/log" sh -c "cd test/go-tables && GOFLAGS='-overlay=$root/$out/overlay.json' go test -count=1 -run '^TestUsage\$' ."
+    expect_words "$out/log" '--- FAIL: TestUsage' 'documented Go surface does not vet' 'SceneReadStrict'
+    ;;
+clean-vet|clean-format)
+    # the emitter is sabotaged and one unit regenerated from it into a copy
+    # at the corpus's own depth, so its go.mod's relative replaces still hold;
+    # the gate's own recipe then runs over that copy
+    if [ "$mode" = clean-vet ]; then
+        # the block init's size refusal loses the argument its last verb reads
+        overlay_one internal/codegen/gotable/block.go '0,/, what, got, want))/s//, what, got)) \/\/ SABOTAGED/'
+        words='reads arg #3, but call has 2 args'
+    else
+        # the emitter hands back its text without go/format
+        overlay_one internal/codegen/gotable/gotable.go 's/src, err := format.Source(\[\]byte(repoPrefix(h.String())))/src, err := []byte(repoPrefix(h.String())), error(nil) \/\/ SABOTAGED: no go\/format/'
+        words='noncanonical generated Go'
+    fi
+    overlay_write
+    go build -overlay "$root/$out/overlay.json" -o "$out/schema" ./cmd/schema
+    units=build/go-proof-units-$mode
+    rm -rf "$units"
+    "$out/schema" generate --lang go --out "$units/vocab" tables/vocab
+    cp build/tables-generated-go/vocab/go.mod "$units/vocab/go.mod"
+    run_red "$out/log" make --no-print-directory tables-go-clean-units GO_CLEAN_UNITS="$units/vocab"
+    rm -rf "$units"
+    expect_words "$out/log" "$words"
+    ;;
+cards)
+    # the Go card renderer -- the reference every leg's card check is held
+    # to -- writes a header line's separator one space wider; the load
+    # surface, which renders nothing, must stay green
+    overlay_one build/tables-generated-go/cards/render.go 's/^\tout.WriteString(": ")$/\tout.WriteString(":  ") \/\/ SABOTAGED/'
+    overlay_write
+    (cd build/tables-generated-go/cards/cmd/cards-driver && go build -overlay "$root/$out/overlay.json" -o "$root/$out/driver" .)
+    run_red "$out/log" ./build/conformance-harness cards --corpus tables/cards/conformance --driver "$out/driver" --require "${CARDS_REQUIRE:?CARDS_REQUIRE names the surfaces}"
+    if ! grep -Eq 'cards render .*FAIL' "$out/log"; then
+        echo "NEGATIVE CONTROL FAILED ($mode): render did not go red" >&2; cat "$out/log" >&2; exit 1
+    fi
+    if ! grep -Eq 'cards load pass' "$out/log"; then
+        echo "NEGATIVE CONTROL FAILED ($mode): load went red too, so the check is not reading the render" >&2; cat "$out/log" >&2; exit 1
+    fi
+    ;;
+*)
+    echo "unknown control: $mode" >&2
+    exit 1
+    ;;
+esac
+echo "Go negative control ($mode): the sabotage turned its gate red on its own words"

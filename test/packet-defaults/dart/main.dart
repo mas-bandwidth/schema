@@ -123,6 +123,21 @@ d.Sample overlay(d.Sample initial, d.Sample sent) {
   return initial;
 }
 
+// There is no measure function (SPEC §6.1): a wire's exact bit length is the
+// fewest bits its reader accepts, and that lies inside the last byte write
+// reported (count bytes). -1 when no length there reads.
+int exactBits<T>(
+  bool Function(T, ByteData, int) read,
+  T Function() fresh,
+  ByteData view,
+  int count,
+) {
+  for (var bits = count == 0 ? 0 : count * 8 - 7; bits <= count * 8; bits++) {
+    if (read(fresh(), view, bits)) return bits;
+  }
+  return -1;
+}
+
 Uint8List write<T>(T value, int Function(T, ByteData) encode) {
   final data = Uint8List(4096);
   final n = encode(value, ByteData.sublistView(data));
@@ -149,12 +164,14 @@ void golden<T extends Object>(
   T Function() want,
   int Function(T, ByteData) encode,
   bool Function(T, ByteData, int) decode,
-  int Function(T) measure,
 ) {
   final bytes = File('$dir/$name.bin').readAsBytesSync();
   final bits = int.parse(File('$dir/$name.bits').readAsStringSync().trim());
+  final wrote = write(value, encode);
   check(
-    equal(write(value, encode), bytes) && measure(value) == bits,
+    equal(wrote, bytes) &&
+        exactBits(decode, initial, ByteData.sublistView(wrote), wrote.length) ==
+            bits,
     'C++ byte/bit pin $name',
   );
   read(bytes, bits, initial(), want(), decode);
@@ -242,7 +259,13 @@ void main(List<String> args) {
   wideBytes[7] = 128;
   check(
     equal(write(wide, d.writeWideMask), wideBytes) &&
-        d.measureWideMask(wide) == 128,
+        exactBits(
+              d.readWideMask,
+              d.WideMask.new,
+              ByteData.sublistView(wideBytes),
+              wideBytes.length,
+            ) ==
+            128,
     'independent 64-bit wire',
   );
   read(
@@ -261,7 +284,13 @@ void main(List<String> args) {
   final splitBytes = Uint8List.fromList([5, 0, 0, 0, 40]);
   check(
     equal(write(split, d.writeSplitMask), splitBytes) &&
-        d.measureSplitMask(split) == 38,
+        exactBits(
+              d.readSplitMask,
+              d.SplitMask.new,
+              ByteData.sublistView(splitBytes),
+              splitBytes.length,
+            ) ==
+            38,
     'independent 33-bit wire',
   );
   read(splitBytes, 38, d.SplitMask(), split, d.readSplitMask);
@@ -272,8 +301,7 @@ void main(List<String> args) {
   plain.name.setAll(0, sample().name);
   plain.token.setAll(0, sample().token);
   check(
-    equal(write(plain, p.writeSample), write(d.Sample(), d.writeSample)) &&
-        p.measureSample(plain) == d.measureSample(d.Sample()),
+    equal(write(plain, p.writeSample), write(d.Sample(), d.writeSample)),
     'defaultless twin',
   );
   golden(
@@ -284,7 +312,6 @@ void main(List<String> args) {
     sample,
     d.writeSample,
     d.readSample,
-    d.measureSample,
   );
   final batch = d.Batch();
   check(
@@ -302,7 +329,6 @@ void main(List<String> args) {
     reusedBatch,
     d.writeBatch,
     d.readBatch,
-    d.measureBatch,
   );
   final z = d.ZeroCount();
   check(
@@ -317,7 +343,6 @@ void main(List<String> args) {
     () => reusedZero(0),
     d.writeZeroCount,
     d.readZeroCount,
-    d.measureZeroCount,
   );
   check(
     d.Conditional().enabled && equal(d.Conditional().value, sample()),
@@ -331,7 +356,6 @@ void main(List<String> args) {
     d.Conditional.new,
     d.writeConditional,
     d.readConditional,
-    d.measureConditional,
   );
   final off = d.Conditional()..enabled = false;
   d.Conditional offWant() {
@@ -348,7 +372,6 @@ void main(List<String> args) {
     offWant,
     d.writeConditional,
     d.readConditional,
-    d.measureConditional,
   );
   golden(
     dir,
@@ -358,7 +381,6 @@ void main(List<String> args) {
     sampleChoice,
     d.writeChoice,
     d.readChoice,
-    d.measureChoice,
   );
   golden(
     dir,
@@ -368,7 +390,6 @@ void main(List<String> args) {
     () => overlay(dirty(), short()),
     d.writeSample,
     d.readSample,
-    d.measureSample,
   );
   golden(
     dir,
@@ -378,7 +399,6 @@ void main(List<String> args) {
     () => overlay(dirty(), zero()),
     d.writeSample,
     d.readSample,
-    d.measureSample,
   );
   for (final sent in [short(), zero()]) {
     final value = sampleChoice();
@@ -390,7 +410,13 @@ void main(List<String> args) {
     copy(want.sample, overlay(sample(), sent));
     for (var attempt = 0; attempt < 2; attempt++) {
       copy(selected, dirty());
-      read(wire, d.measureChoice(value), output, want, d.readChoice);
+      final bits = exactBits(
+        d.readChoice,
+        d.Choice.new,
+        ByteData.sublistView(wire),
+        wire.length,
+      );
+      read(wire, bits, output, want, d.readChoice);
       check(
         identical(output.sample, selected) && identical(selected.name, buffer),
         'selection retains storage',
@@ -407,7 +433,13 @@ void main(List<String> args) {
   for (var attempt = 0; attempt < 2; attempt++) {
     output.conditional.enabled = true;
     copy(output.conditional.value, dirty());
-    read(wire, d.measureChoice(offChoice), output, want, d.readChoice);
+    final bits = exactBits(
+      d.readChoice,
+      d.Choice.new,
+      ByteData.sublistView(wire),
+      wire.length,
+    );
+    read(wire, bits, output, want, d.readChoice);
   }
   print(
     'packet defaults Dart: constructors, eight C++ goldens and reused storage OK',

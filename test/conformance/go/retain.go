@@ -13,20 +13,10 @@ func surfaceRetain(lines []line, out string) error     { return retainSurface(li
 func surfaceRetainSave(lines []line, out string) error { return retainSurface(lines, out, true) }
 func retainSurface(lines []line, out string, saves bool) error {
 	for _, f := range lines {
-		if f[0] != "retain" && f[0] != "retain-message" {
+		if f[0] != "retain" {
 			continue
 		}
 		if saves && f[len(f)-1] == "-" {
-			continue
-		}
-		if f[0] == "retain-message" {
-			// A retain-message row's root is a plain `table` — `Node` in RT1,
-			// the only root this surface names — which carries no message verbs
-			// (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride the
-			// form), so the driver answers ABSENT and names the reason.
-			if err := spillAbsentReason(out, f[1], "plain table: §3.3"); err != nil {
-				return err
-			}
 			continue
 		}
 		if f[2] != "tblrt1" || f[3] != "Node" {
@@ -53,7 +43,7 @@ func retainSurface(lines []line, out string, saves bool) error {
 				return err
 			}
 		}
-		store := tblrt1.TableRetain{Bytes: make([]byte, capacity), Ids: make([]tblrt1.TableRetainId, idCapacity)}
+		store := tblrt1.TableRetain{Bytes: make([]byte, capacity), Ids: make([]tblrt1.TableRetainID, idCapacity)}
 		var report tblrt1.TableReport
 		if f[5] == "short" {
 			if tblrt1.NodeLoadRetain(region, wire, &store, &report) == nil {

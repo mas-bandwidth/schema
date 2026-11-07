@@ -133,18 +133,18 @@ fixed table Opt
     grade ?Grade
     trail uint32 = 2
 }
-`, "Opt", `  v = %Probe.Opt{lead: 7, tier_present: true, tier: -2147483648, grade_present: true, grade: 3, trail: 9}
+`, "Opt", `  v = %Probe.Opt{lead: 7, tier_present: true, tier: -2147483648, grade_present: true, grade: :gold, trail: 9}
   {:ok, [r], _} = load(save([v]))
   check(r.tier_present == true and r.tier == -2147483648, "present boundary scalar did not land: #{inspect({r.tier_present, r.tier})}")
-  check(r.grade_present == true and r.grade == 3, "present enum ordinal did not land: #{inspect({r.grade_present, r.grade})}")
+  check(r.grade_present == true and r.grade == :gold, "present enum ordinal did not land: #{inspect({r.grade_present, r.grade})}")
   check(r.lead == 7 and r.trail == 9, "the brackets either side of the optionals moved: #{inspect({r.lead, r.trail})}")
-  h = %Probe.Opt{lead: 7, tier_present: true, tier: 2147483647, grade_present: true, grade: 1, trail: 9}
+  h = %Probe.Opt{lead: 7, tier_present: true, tier: 2147483647, grade_present: true, grade: :bronze, trail: 9}
   {:ok, [rh], _} = load(save([h]))
-  check(rh.tier == 2147483647 and rh.grade == 1, "the other boundary did not land: #{inspect({rh.tier, rh.grade})}")
+  check(rh.tier == 2147483647 and rh.grade == :bronze, "the other boundary did not land: #{inspect({rh.tier, rh.grade})}")
   a = %Probe.Opt{lead: 7, tier_present: false, grade_present: false, trail: 9}
   {:ok, [ra], _} = load(save([a]))
   check(ra.tier_present == false and ra.grade_present == false, "an absent optional came back present: #{inspect({ra.tier_present, ra.grade_present})}")
-  check(ra.tier == 0 and ra.grade == 0, "an absent optional did not read its declared default: #{inspect({ra.tier, ra.grade})}")
+  check(ra.tier == 0 and ra.grade == :none, "an absent optional did not read its declared default: #{inspect({ra.tier, ra.grade})}")
   check(ra.lead == 7 and ra.trail == 9, "an absent optional moved its neighbours: #{inspect({ra.lead, ra.trail})}")`)
 }
 
@@ -199,14 +199,14 @@ fixed table Cfg
 `, "Cfg", `  d = %Probe.Cfg{}
   {:ok, [rd], _} = load(save([d]))
   check(rd.count == 7, "the declared scalar default did not read back: #{inspect(rd.count)}")
-  check(rd.grade == 2, "the declared enum default did not read back: #{inspect(rd.grade)}")
+  check(rd.grade == :silver, "the declared enum default did not read back: #{inspect(rd.grade)}")
   check(rd.ranged == 3, "the declared ranged default did not read back: #{inspect(rd.ranged)}")
-  lo = %Probe.Cfg{count: -2147483648, grade: 3, ranged: 0}
+  lo = %Probe.Cfg{count: -2147483648, grade: :gold, ranged: 0}
   {:ok, [rlo], _} = load(save([lo]))
-  check(rlo.count == -2147483648 and rlo.grade == 3 and rlo.ranged == 0, "the lower boundary did not land: #{inspect(rlo)}")
-  hi = %Probe.Cfg{count: 2147483647, grade: 1, ranged: 10}
+  check(rlo.count == -2147483648 and rlo.grade == :gold and rlo.ranged == 0, "the lower boundary did not land: #{inspect(rlo)}")
+  hi = %Probe.Cfg{count: 2147483647, grade: :bronze, ranged: 10}
   {:ok, [rhi], _} = load(save([hi]))
-  check(rhi.count == 2147483647 and rhi.grade == 1 and rhi.ranged == 10, "the upper boundary did not land: #{inspect(rhi)}")`)
+  check(rhi.count == 2147483647 and rhi.grade == :bronze and rhi.ranged == 10, "the upper boundary did not land: #{inspect(rhi)}")`)
 }
 
 // ---- text-bytes-flags-defaults ---------------------------------------------

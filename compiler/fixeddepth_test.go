@@ -139,16 +139,16 @@ func TestFixedDepthFarPastTheBoundIsStillNamed(t *testing.T) {
 	}
 }
 
-// A PLAIN `table` IS THE VARIABLE WIRE BY DECLARATION, so the bound has nothing
+// A VARIABLE table IS THE VARIABLE WIRE BY DECLARATION, so the bound has nothing
 // to say about the depth it nests.
 func TestFixedDepthSaysNothingAboutAPlainTable(t *testing.T) {
 	u, warns := depthUnit(t, deepSchema("table", ir.TableFixedMaxDepth+8))
 	if w := ir.TableFixedDepthBounds(u); len(w) != 0 {
-		t.Fatalf("a plain table is not a fixed root: %v", w)
+		t.Fatalf("a variable table is not a fixed root: %v", w)
 	}
 	for _, w := range warns {
 		if strings.Contains(w, "depth bound") {
-			t.Errorf("a plain table was held to the fixed form's depth bound: %s", w)
+			t.Errorf("a variable table was held to the fixed form's depth bound: %s", w)
 		}
 	}
 }
@@ -173,7 +173,7 @@ func TestFixedLayoutDepthReadsTheBytes(t *testing.T) {
 
 // fixedDepthLegs is every leg that emits the fixed form, and the point of the
 // test below is that the list has no exceptions in it.
-var fixedDepthLegs = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}
+var fixedDepthLegs = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "rust"}
 
 // fixedDepthTableMark matches a symbol the fixed form names AFTER THE TABLE —
 // `deep_fixed_save`, `DeepFixedPlan`, `deepFixedLoad`, `DEEP_FIXED_HASH`. It is
@@ -181,7 +181,9 @@ var fixedDepthLegs = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", 
 // deliberately not the runtime's own `table_fixed_*` surface: every leg emits
 // that whether or not any table uses it, which is exactly how five legs dropped
 // the form for years without a test noticing.
-var fixedDepthTableMark = regexp.MustCompile(`(?i)\b(deep_fixed|DeepFixed|deepFixed|DEEP_FIXED)[A-Za-z_]*\b`)
+// C spells it under the unit's package (fixdepth_deep_fixed_save, SPEC §6.3),
+// so a leading underscore is a boundary too.
+var fixedDepthTableMark = regexp.MustCompile(`(?i)(?:\b|_)(deep_fixed|DeepFixed|deepFixed|DEEP_FIXED)[A-Za-z_]*\b`)
 
 func fixedDepthMarks(t *testing.T, lang string, u *ir.Unit) int {
 	t.Helper()

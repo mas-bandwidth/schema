@@ -35,8 +35,8 @@ func (g *tableGen) emitMessageWrite(st *ir.Struct) {
 		g.pf("}\n")
 	}
 	g.pf("w.Put(0,TableMessageRefBitsHere);return !w.Overflow\n}\n")
-	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-	// "`fixed table T` may ride here, a plain `table T` may not".
+	// THE MESSAGE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): the
+	// batch is a fixed root's, and a variable table has no message form.
 	if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
 		return
 	}
@@ -61,7 +61,7 @@ func (g *tableGen) emitMessageRides(f *ir.Field, expr, ind string) string {
 		g.emitMessageKeyedCount(f, expr, ind)
 		return "pairs>0"
 	}
-	if isStructRef(f.Type) && !f.Type.Pointer && f.Array == ir.ArrayNone && !f.IsMap() && !f.IsList() {
+	if isStructRef(f.Type) && f.Array == ir.ArrayNone {
 		g.pf("%sprobe:=*w;probe.Measuring=true;probe.Bits=0;if !%sSaveMessageBody(&probe,&%s){return false}\n", ind, f.Type.Name, expr)
 		return "probe.Bits>TableMessageRefBitsHere"
 	}
@@ -74,7 +74,7 @@ func messageElement(f *ir.Field) *ir.Field {
 	e.KeyEnumRef = nil
 	e.Type.Optional = false
 	e.Required = false
-	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
+	if f.Type.Kind == ir.TBytes {
 		e.Type = ir.FieldType{Kind: ir.TInt, Width: 8}
 	}
 	return &e
@@ -88,21 +88,12 @@ func (g *tableGen) emitMessageKeyedCount(f *ir.Field, expr, ind string) {
 func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
 	g.emitStorageCheck(f, expr, ind)
 	switch {
-	case f.IsList() || f.IsMap():
-		desc := g.mapDescriptor(f)
-		g.pf("%sw.Put(uint64(%s.Count),32);field:=%s;if field.Kind==6{w.Align()};cursor:=tableMapCursor((*tableContainer)(unsafe.Pointer(&%s)),field,w.Numbering.arena);defer cursor.Release();for i:=int32(0);i<%s.Count;i++ {p:=(*%s)(cursor.Next());if p==nil{return false}\n", ind, expr, desc, expr, expr, containerElementType(g.unit, f))
-		e := messageElement(f)
-		if f.IsMap() {
-			e = &ir.Field{Type: ir.FieldType{Kind: ir.TNamed, Name: f.MapEntry.Name, Ref: f.MapEntry}}
-		}
-		g.emitMessageValue(e, ir.TableVocabularyEntry{Kind: entry.Shape.Elem, Shape: *entry.Shape.Inner}, "(*p)", ind+"\t")
-		g.pf("%s}\n", ind)
-	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer:
+	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		count := fmt.Sprint(f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
 			count = expr + "Count"
 		}
-		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
+		if f.Type.Kind == ir.TBytes {
 			count = expr + "Length"
 		}
 		if f.KeyEnum != "" {
@@ -121,12 +112,10 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		e := messageElement(f)
 		if f.KeyEnum != "" {
 			cond := g.emitMessageRides(e, expr+"[i]", ind+"\t")
-			g.pf("%sif !(%s){continue};id,named:=%s(i+1).TableEnumId();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)\n", ind, cond, f.KeyEnum)
+			g.pf("%sif !(%s){continue};id,named:=%s(i+1).TableEnumID();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)\n", ind, cond, f.KeyEnum)
 		}
 		g.emitMessageValue(e, ir.TableVocabularyEntry{Kind: entry.Shape.Elem, Shape: *entry.Shape.Inner}, expr+"[i]", ind+"\t")
 		g.pf("%s}\n", ind)
-	case f.Type.Pointer:
-		g.pf("%sif %s==0{w.Put(0,w.IndexBits)}else{index,ok:=w.Numbering.Index(&%s);if !ok{return false};w.Put(index,w.IndexBits)}\n", ind, expr, expr)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sw.Put(uint64(%sLength),%d);w.Raw(%s[:%sLength])\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
 	case f.Type.Kind == ir.TWString:
@@ -149,19 +138,24 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 			// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15).
 			g.pf("%sif %s.TableEnumDeprecated(){return false}\n", ind, expr)
 		}
-		g.pf("%sif %s==%sNone{w.Put(0,TableMessageRefBitsHere)}else{id,named:=%s.TableEnumId();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)}\n", ind, expr, f.Type.Name, expr)
+		g.pf("%sif %s==%sNone{w.Put(0,TableMessageRefBitsHere)}else{id,named:=%s.TableEnumID();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)}\n", ind, expr, f.Type.Name, expr)
 	default:
 		lo, hi := "uint64("+expr+")", "uint64(0)"
 		switch entry.Kind {
 		case 1:
 			g.pf("%sif %s {w.Put(1,1)}else{w.Put(0,1)}\n", ind, expr)
 			return
-		case 10:
+		case 10, 11:
+			// A NaN OR AN INFINITY IS REFUSED, never quantized or clamped
+			// (docs/SPEC-TABLES.md §3.3, both special-values rules): the writer
+			// answers false before the quantizer runs, so measure and save
+			// both return -1.
 			g.needsMath = true
-			lo = "uint64(math.Float32bits(" + expr + "))"
-		case 11:
-			g.needsMath = true
+			g.pf("%sif %s-%s != 0 {return false}\n", ind, expr, expr)
 			lo = "math.Float64bits(" + expr + ")"
+			if entry.Kind == 10 {
+				lo = "uint64(math.Float32bits(" + expr + "))"
+			}
 		default:
 			if ir.TableKindWidth(int(entry.Kind)) == 16 {
 				lo = expr + ".Lo"

@@ -430,8 +430,8 @@ from this projection rather than carried in it.
   variant, or a union arm. **A `//` block above the same item stays an
   ordinary comment and never reaches a descriptor**, and that is the whole
   reason the marker exists: a schema tree is full of working notes written
-  directly above things — 166 such lines, above a declaration, a field, a
-  variant or an arm, in 40 of this repo's 47 corpus files — and under an
+  directly above things — above a declaration, a field, a variant or an
+  arm, throughout this repo's own corpus — and under an
   implicit rule every one of them would become a descriptor string, a comment
   in nine generated languages, and read-only data in the binary of every game
   that links the table headers (SPEC-TABLES.md §8.1). What a build carries is
@@ -481,7 +481,8 @@ from this projection rather than carried in it.
   `UpperCamelCase`, enum variants `UpperCamelCase`, fields
   `lower_snake_case`, constants `UpperCamelCase`. The compiler does not
   enforce case; the corpus and all documentation follow it.
-- **The register is Go-inspired.** Types are declared with `type`, not
+- **The register borrows Go's declaration order and scalar names; the brace
+  style and layout are the language's own (below).** Types are declared with `type`, not
   `struct`; declarations put the name first, then the type; scalar names are
   Go's (`float32` and `float64`, never `float`/`double`); `if` and `switch`
   take no parentheses; array bounds are a prefix (`[..MaxObjects]ObjectState`);
@@ -833,8 +834,8 @@ FloatExpr   = float expression over float literals, int literals and const names
     because mask tests are how flag state is consumed, **plus the `Count`
     constant** — the declared variant count, the one `.Count` in the
     language — the spelling is each target's own, and all nine emit it:
-    `CapsCount` in C++, C#, Go and JS; `CAPS_COUNT` in C and Rust;
-    `capsCount` in Dart and Java; `caps_count/0` in Elixir.
+    `CapsCount` in C++, C#, Go and JS; `CAPS_COUNT` in C, Rust and Java;
+    `capsCount` in Dart; `caps_count/0` in Elixir.
     **`flags` is a
     contextual keyword, not reserved** — it introduces a declaration at file
     scope only, so a *field* named `flags` stays fully legal; declarations at
@@ -851,7 +852,7 @@ FloatExpr   = float expression over float literals, int literals and const names
     an `enum`'s is, would drop every bit above the older build's own last one
     on the way in, and nothing could report it, because a mask is the wire's
     one positional vocabulary and no counter can see a bit that is not there
-    (SPEC-TABLES.md §4.1). The cost is fifty-six bytes of storage nobody uses
+    (SPEC-TABLES.md §4.1). The cost is fifty-six bits of storage nobody uses
     in a three-variant declaration, and it buys the one property the
     append-at-the-end law is worth having.
   - **The derived-range rule:** a field that indexes a declared set derives
@@ -1168,8 +1169,9 @@ a language rule — the language does not enforce entry 0's meaning.
 **The extent is exported.** Every generated enum surface — each declared
 enum and the generated `<Union>Type` tag enums — carries its
 extent as a member named `Max` in the target's own convention: `E::Max`
-(C++), `E.Max` (C#), `EMax` (Go), `E::MAX` (Rust), `E.Max` (JS), `E_MAX`
-(C), `E.max` (Dart and Java), `E.max/0` (Elixir). Its value is the enum's
+(C++), `Schema.EMax` (C#, a typed constant beside the enum, never a member
+a variant's value could alias), `EMax` (Go), `E::MAX` (Rust), `EMax` (JS), `E_MAX`
+(C), `E.max` (Dart), `E.MAX` (Java), `E.max/0` (Elixir). Its value is the enum's
 max — the same number `E.Max` names in schema
 expressions (§4.2): the highest wire-legal value, which under the
 sentinel-zero convention is the count of real variants. Application code
@@ -1215,19 +1217,31 @@ it (§4.6).
 - **Length prefixes** (`string(N)`, `wstring(N)`, `bytes(N)`, `[..N]T`,
   `[Min..N]T`) are ranged integers over their declared count range, per the
   rows below.
-- **A BARE FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO
-  CANONICALISATION.** A `float32` is the 32 bits it holds and a `float64` the
-  64, whatever they spell: a negative zero, an infinity, a quiet NaN, a
-  SIGNALLING NaN, a NaN with any payload. No writer normalizes one and no
-  reader repairs one, so the pattern that goes in is the pattern that comes
-  out, in every target. **A backend that holds a `float32` in a WIDER cell
-  carries the pattern BIT FOR BIT and never through a float conversion**: the
-  hardware conversion between the two widths sets the quiet bit on a
-  signalling NaN and drops a payload the narrower cell would have kept, and
-  byte identity across the targets fails on exactly those values. The
-  technique is a row in docs/PORTING.md, and the corpus pins the patterns a
-  conversion would move. A *quantized* `float32` is a different field: its
-  wire is the step index and not the pattern, per its row below.
+- **A BARE FLOAT IS FINITE, AND RIDES AS ITS IEEE-754 BIT PATTERN.** This is
+  serialize format 2.0's rule (Glenn, 2026-10-22: float and double carry
+  finite values only, in every language), and the packet wire inherits it
+  through the runtimes. A `float32` is the 32 bits it holds and a `float64`
+  the 64, for every finite value, NEGATIVE ZERO AND THE SUBNORMALS INCLUDED:
+  those stay bit exact, and no writer normalizes one. A NaN (any sign, any
+  payload, quiet or signalling) and both infinities are not values of the
+  type: a writer refuses one (the runtime asserts or fails, as an
+  out-of-range integer does) and a reader refuses one on its raw bits with
+  the reason `non_finite_float`, before the field is written. Every finite
+  `float32` widens to `float64` exactly, so a backend that holds a `float32`
+  in a wider cell may use the ordinary conversion. **Backend status:** C++
+  (serialize v2.1.3), C (serialize.c v2.0.2), Rust (serialize.rs v5.0.0),
+  JavaScript (serialize.js v2.0.1), Go (serialize.go v2.1.1), C#
+  (serialize.cs v2.0.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
+  through their serialize runtime,
+  and Java, Dart and Elixir in their own generated float codecs. Lua
+  (serialize.lua v2.1.1) enforces it through its vendored serialize runtime:
+  a write traps naming `non_finite_float`, a read refuses with it. Luau
+  (serialize.luau v2.1.3) enforces it through its vendored serialize
+  runtime: a write traps naming the finite rule, a read refuses with
+  `non_finite_float`. Every packet target enforces it. A
+  *quantized* `float32` is a different field: its wire is the step index and
+  not the pattern, per its row below. The table forms take the same rule
+  (SPEC-TABLES.md §3.3; Glenn, 2026-10-27).
 
 The wire encodings are exactly classic serialize's — each row names its
 classic twin, which is the wire oracle for the stated model.
@@ -1242,9 +1256,9 @@ classic twin, which is the wire oracle for the stated model.
 | `f fixed(I, F) | min = A, max = B` (range required; **signed**) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (§4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
 | `f ufixed(I, F) | min = A, max = B` (range required; **unsigned**) | UQ I.F: no sign bit, whole-unit domain [0, 2^I); storage is an UNSIGNED integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the unsigned domain and int64 (so I ≥ 63 clamps to int64's ceiling); the wire law is fixed's own — raw − (A << F) in bitlen(B − A) + F bits, A == B costs ZERO bits, read rejects above the raw range, round trip EXACT. The raw values of wide formats legitimately fill uint64's HIGH HALF (above 2^63): every route through a signed-typed runtime API is a bit-exact cast or zero-extension, never sign extension, and the corpus pins that byte-for-byte | `serialize_fixed` (unsigned storage — the codec is storage-generic) |
 | `f bool` | 1 bit | `serialize_bool` |
-| `f float32` | 32 raw IEEE-754 bits — the pattern, with no canonicalisation: a signalling NaN and a NaN payload ride through unchanged, and a backend holding the field in a wider cell moves the pattern by bit surgery | `serialize_float` |
-| `f float64` | 64 raw bits (low dword first) — the pattern, with no canonicalisation, exactly as `float32`'s row | `serialize_double` |
-| `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
+| `f float32` | 32 raw IEEE-754 bits of a FINITE value — the pattern, `-0` and subnormals bit exact; a NaN or an infinity is refused on write and refused on read as `non_finite_float` | `serialize_float` |
+| `f float64` | 64 raw bits (low dword first) of a FINITE value, exactly as `float32`'s row | `serialize_double` |
+| `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count, and a dequantized value that is not finite as `non_finite_float` | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
 | `f Weapon` (an enum) | minimal bits for [0, max], max being the variant count; read rejects above max, so an unnamed value never reaches the object | `serialize_int` over [0, max] |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or the widened max); every pattern legal; storage `uint64` in every target | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
@@ -1253,7 +1267,7 @@ classic twin, which is the wire oracle for the stated model.
 | `reserved(Bits)` | zeros; read rejects nonzero | `serialize_bits` + compare |
 | `align` | zero-pad to the next byte boundary; read rejects nonzero padding | `serialize_align` |
 | `f string(N)` | length in [0, N], align, then the used bytes — N = max length; the bound sizes the length prefix's bits | `serialize_string` with buffer N + 1 |
-| `f wstring(N)` | length in [0, N], **no alignment**, then one 32-bit group per UTF-16 code unit. N is the max length in CODE UNITS, and the bound sizes the length prefix's bits (§4.12) | `serialize_wstring` with buffer N + 1 |
+| `f wstring(N)` | length in [0, N], **no alignment**, then one 32-bit group per UTF-16 code unit. N is the max length in CODE UNITS, and the bound sizes the length prefix's bits (§4.12) | format 1.1's `serialize_wstring` with buffer N + 1 (removed in format 2.0; the generated code composes the same bits from `serialize_int` and `serialize_bits`, §4.12) |
 | `f bytes(N)` | identical shape: length in [0, N], align, then the used bytes | `serialize_int` + `serialize_bytes` |
 | `f [N]T` | N elements, back to back | element per element |
 | `f [..N]T` / `f [Min..N]T` | count in [Min, N] encoded relative to Min, then that many elements | `serialize_int` + the element loop |
@@ -1268,8 +1282,9 @@ the door is held open by the reserved `column` token (§4.11, schema#554) and no
 byte moves today.
 
 **Wire fidelity.** For every legal write, the bits are identical to the named
-classic twins. **Classic `serialize_wstring` is the normative twin for
-`wstring(N)`**: serialize.modern's `wstring_` inserts an `align` between the
+classic twins. **Classic `serialize_wstring` (format 1.1) is the normative
+twin for `wstring(N)`**, a description of the bytes rather than a call
+(format 2.0 removed it; §4.12): serialize.modern's `wstring_` inserts an `align` between the
 length and the code units, and that alignment is the one thing schema does
 not do (§4.12). On the *read* side, schema's generated readers enforce the
 language's validation rules uniformly (e.g. the interior-null rule of §4.7
@@ -1277,10 +1292,10 @@ and the UTF-16 well-formedness rules of §4.12), which can be stricter than a
 hand-written classic reader; acceptance is uniform across the targets, which
 is what the conformance gates check.
 
-**The count-range cap is lifted.** serialize.modern caps `array_n`'s count
+**The count-range cap is lifted: `[..N]T` is bounded only by what the
+count's integer range can express.** serialize.modern caps `array_n`'s count
 range at 16 because each possible count is a separately spliced compile-time
-path. schema's generated code uses an honest loop (§6.2), so `[..N]T` is
-bounded only by what the count's integer range can express.
+path; schema's generated code uses an honest loop (§6.2), so it needs no cap.
 
 ### 4.4 Decisions: `if` — and `switch` is not in v1
 
@@ -1404,7 +1419,18 @@ All compile errors with positions:
   must reach zero.
 
   **A count outside [A, B] on the WRITE is caller error, and it is a
-  write-side contract like every other (§5).** That is not a compile error
+  write-side contract like every other (§5).** The count asserts in DEBUG
+  ONLY in each target
+  whose language has that idiom — `serialize_assert` in C++ and C,
+  `debug_assert!` in Rust, `Debug.Assert` in C#, `assert` in Java and Dart,
+  and the checked side of JavaScript's checked/production fork — and is
+  refused in every build only where the language has no such idiom: Go
+  returns `serialize.ErrValueOutOfRange` and Elixir raises `ArgumentError`.
+  The READ is untouched: a decoded count outside [A, B] fails the read in
+  every build, in all nine. What such a write leaves on the wire, where it
+  completes at all, is DEFINED BUT UNSPECIFIED: a reader may refuse it, or
+  may accept some other message.
+  The write-side contract is not a compile error
   but the other half of the same rule, and it is stated here because it is
   the rule generated code cites. The count guards the element loop and the
   pack subtracts the low bound, so a count below A wraps to a large unsigned
@@ -1416,19 +1442,10 @@ All compile errors with positions:
   past its bound already carries, and it is the ruling's intent rather than
   an oversight of it — the debug build's assert is where a bad count is meant
   to be caught, which is why every target catches it there and why no target
-  catches it in release. What such a write leaves on the wire, where it
-  completes at all, is DEFINED BUT UNSPECIFIED: a reader may refuse it, or
-  may accept some other message.
+  catches it in release.
   Settled 2026-09-07: "consistency matters. writing packets
   correctness is the caller's responsibility, and it is our duty to catch it
-  with asserts in debug." So the count asserts in DEBUG ONLY in each target
-  whose language has that idiom — `serialize_assert` in C++ and C,
-  `debug_assert!` in Rust, `Debug.Assert` in C#, `assert` in Java and Dart,
-  and the checked side of JavaScript's checked/production fork — and is
-  refused in every build only where the language has no such idiom: Go
-  returns `serialize.ErrValueOutOfRange` and Elixir raises `ArgumentError`.
-  The READ is untouched: a decoded count outside [A, B] fails the read in
-  every build, in all nine.
+  with asserts in debug."
 - **Attribute discipline:** an unknown attribute key, a key repeated, an
   attribute on a type that does not take it, `min` without `max`, and
   `resolution` without both bounds are compile errors, each naming the field
@@ -1449,7 +1466,13 @@ All compile errors with positions:
   rather than a silent infinity; the checker still carries the NaN arm as
   defense in depth. The derived float32 subtraction and division must also
   remain positive and at most `4294967040`, the runtime's upper clamp; a
-  triple that overflows or requires that clamp is refused. Fractional counts
+  triple that overflows or requires that clamp is refused. The top step must
+  dequantize to a finite float32 in the reader's own arithmetic,
+  `float32(1 * delta) + min`: every parameter can be finite and that add can
+  still round past the largest float32 (`min = 3 * 2^103`, `max` the largest
+  float32), and such a triple is refused. A reader still refuses a dequantized
+  value that is not finite, as `non_finite_float`, wherever the declaration
+  reaches it unchecked (a hostile announcement, §3.3 of SPEC-TABLES). Fractional counts
   below one legitimately encode one step. Codec widths use
   `ir.CompressedFloatParams`' float32 arithmetic. The projection's `steps`
   token retains its historical float64 formula, alongside all three original
@@ -1642,11 +1665,12 @@ rule.
 For every legal write the wire bits are identical to `serialize_string` over
 a buffer of N + 1.
 
-**Generated-code consequence, stated so no backend discovers it late:** the
-runtimes' `serialize_string` is the **wire oracle** for `string(N)`, not
-necessarily the emitted call. **All nine backends compose the framing from
+**All nine backends compose the framing from
 primitives** — length over [0, N], then align, then raw bytes — and none
-emits a runtime string call. C# and Rust have no alternative: the §6.1
+emits a runtime string call. This is a generated-code consequence, stated so
+no backend discovers it late: the
+runtimes' `serialize_string` is the **wire oracle** for `string(N)`, not
+necessarily the emitted call. C# and Rust have no alternative: the §6.1
 storage rules make the runtime string method unusable there — C# stores a
 byte buffer but `SerializeString` takes `ref string`; Rust stores a byte
 buffer but `serialize_string` takes `&mut String`, which allocates.
@@ -1808,10 +1832,10 @@ union Value
   | cs | `EnumNameWeaponFireType(ulong)` |
   | dart | `enumNameWeaponFireType(int)` |
   | elixir | `enum_name_weapon_fire_type/1` |
-  | go | `EnumNameWeaponFireType(uint64)` |
+  | go | `EnumNameWeaponFireType(WeaponFireType)`, which returns its `String()` |
   | java | `enumNameWeaponFireType(long)` |
   | js | `EnumNameWeaponFireType(value)` |
-  | rust | `enum_name_weapon_fire_type` |
+  | rust | `enum_name_weapon_fire_type`; `as_str()` and `Display` too |
 
 - **A TABLE-CLOSURE union's tag shape carries the same surface.** It is a
   different emitter, written beside the tables rather than among the packet
@@ -1902,9 +1926,11 @@ union Value
   SPEC-TABLES.md §2.6's**, which states the companion an arm may need and
   the payload-free arm, whose whole surface is its tag value.
   C mirrors it with its named `as` union. Both omit that storage union when
-  no arm has a payload. Go, C#, JS, Dart, Java and Elixir lay the tag beside
+  no arm has a payload. Go, C#, JS, Dart and Java lay the tag beside
   one pre-allocated arm per payload-bearing variant —
-  nothing heap-allocates per value. Rust holds the value as a real
+  nothing heap-allocates per value. Elixir, where no term is mutable and
+  pre-allocated storage buys nothing, holds the value as `nil` (None),
+  `{:arm, payload}`, or a payload-free arm's bare atom. Rust holds the value as a real
   `enum <Union> { None, Box(BoxCollider), ... }`, `None` the default — and
   STILL emits the `<Union>Type` tag newtype beside it: the tag surface
   (constants, `Max`) is uniform across targets whatever the value
@@ -2068,9 +2094,9 @@ prefix's bits and it sizes the storage. A `wstring` field takes no
 attributes and no `= default` (§4.2), and `wstring(N)` with N below 2 is a
 compile error, the same floor `string(N)` carries (§4.6).
 
-**Backend status.** All nine packet targets carry the storage, groups and
-read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart and Elixir.
-C++ also carries table kind `33`. The other eight targets refuse wide text
+**Backend status.** All ten packet targets carry the storage, groups and
+read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart, Elixir and
+Squirrel. C++ and Squirrel also carry table kind `33` in every table form. The other eight targets refuse wide text
 reachable from a table by name (SPEC-TABLES.md §3); an unrelated table in the
 same unit does not prevent a packet type from carrying wide text. `*wstring`,
 the unbounded twin, is specified ahead of implementation and no backend emits
@@ -2098,6 +2124,13 @@ the one thing schema does not do. The classic twin for the row is
 `serialize_wstring` over a buffer of N + 1, whose length field is
 `serialize_int( length, 0, buffer_size - 1 )` and whose first group begins
 at the bit immediately after it.
+
+**No runtime call carries it.** serialize format 2.0 removed `wstring` and
+its wire form from every runtime. Schema's `wstring(N)` does not depend on
+it: in every target the generated code composes the field itself, the
+length as a ranged integer and each code unit as a 32-bit group, so the
+bytes above are unchanged by any runtime upgrade. The format 1.1
+`serialize_wstring` stays the description of those bytes, not a call.
 
 **Validation: what every generated reader enforces, uniformly.** The rules
 are stated once here and hold in all nine targets, in every build mode, in
@@ -2150,10 +2183,9 @@ used length in code units (SPEC-TABLES.md §7.2), and its text form is a JSON
 string transcoded at the boundary (SPEC-TABLES.md §16.2). **The validation
 above holds on both, and only the SHAPE of the refusal differs.** A packet
 read is terminal, so an unpaired surrogate, a zero code unit or a group above
-`0xFFFF` fails the read and stops it. A table read is tolerant and
-length-framed, so the same content is FRAMING-CLASS DAMAGE there: the field
-reads its declared default, one `malformed` counts, and the parent reads on
-past `L` (SPEC-TABLES.md §3, §4). **Neither reader accepts it**, which is what
+`0xFFFF` fails the read and stops it. On a table read the same content is
+DAMAGE, and damage refuses the whole load as `malformed` (SPEC-TABLES.md §3,
+§4). **Neither reader accepts it**, which is what
 keeps the paragraph above true as written — every generated reader enforces
 these rules, in all nine targets, in every build mode — and what lets the table
 wire's `Save` check the used length alone, because ill-formed text never
@@ -2174,9 +2206,8 @@ guards the copy, and **a zero code unit among the used units is refused**,
 exactly as §4.7 refuses the interior null and symmetric with the reader's
 zero-group refusal. **The table wire's `Save` checks the used length and
 nothing about the content**, which is the shape kind `12` already has there:
-ill-formed text is a READ-side verdict on that wire, framing-class damage the
-reader answers with the declared default and one `malformed`
-(SPEC-TABLES.md §3). Surrogate pairing is NOT checked on write. It is a writer
+ill-formed text is a READ-side verdict on that wire, damage the reader answers
+by refusing the whole load as `malformed` (SPEC-TABLES.md §3, §4). Surrogate pairing is NOT checked on write. It is a writer
 obligation whose enforcement is the reader on the other end, which refuses
 an unpaired surrogate under the rules above. A code unit above `0xFFFF`
 cannot be written at all, because the storage holds 16 bits per unit in
@@ -2390,9 +2421,12 @@ deliberate, not an oversight — "For each language, do not force this in. If
 the language simply doesn't have this concept (Golang) then it is not
 something we can do. ... The bottom line is that a user of schema/serialize
 in that languages should feel that the implementation is native to their
-language and how it is used in best practice." (2026-09-07). **No target
-panics and none throws**: Elixir's raise is the only unwinding path in the
-nine, and it is the BEAM's own.
+language and how it is used in best practice." (2026-09-07). **No contract
+check panics or throws**: Elixir's raise is the only unwinding path a check
+takes in the nine, and it is the BEAM's own. A contract a release build no
+longer checks is still the caller's to keep, and breaking it is not defined
+to be quiet: in C#, a count past an array's capacity reaches the indexer, and
+the CLR's bounds check throws `IndexOutOfRangeException`.
 
 **There is no exception to the tier split.** Settled 2026-09-07: "No runtime
 should ever promise to keep checks in writing packets (asserts) in release
@@ -2498,7 +2532,8 @@ Per `type`, per target:
    | `[Min..N]T` | as `[..N]T`, count born at Min and validated to [Min, N] | as `[..N]T` | as `[..N]T` | as `[..N]T` |
    | `f Inner` (a named type) | `Inner` | `Inner` | `Inner` | `Inner` |
 
-   The C target mirrors the C++ storage rules in C's own types; JavaScript
+   The C target mirrors the C++ storage rules in C's own types (`bool` is
+   C99's, from `<stdbool.h>`); JavaScript
    storage is `Number` for wire widths of 32 bits or fewer and `BigInt` for
    64 and 128 (the serialize.js value-domain seam). `wstring(N)` storage in
    all nine targets, and the conversion rule each one carries at the
@@ -2509,13 +2544,22 @@ Per `type`, per target:
    buffer is fixed at its declared capacity with a used length/count beside
    it — no Go slices as storage, no Rust `Vec`, no growing containers.
 
-   An enum's representation is the target's choice — today an integer-backed
-   named type in every target (a Rust newtype, C#'s `enum E : uint`). Nothing
+   An enum's representation is the target's choice — an integer-backed named
+   type in every target but Elixir (a Rust newtype, C#'s `enum E : uint`, Dart's
+   `extension type const E(int _value) implements int`, which is erased to
+   the int and so costs nothing, holds every wire-legal value including `| max`
+   headroom as `E(n)`, and types the fields, union tags and table accessors
+   that store it). In Elixir a value is an ATOM (`:none` for 0, the variant's
+   snake_case otherwise, an unnamed `| max = K` headroom value the integer
+   itself) and `E.to_int/1` / `E.from_int/1` convert at the wire. Nothing
    on the wire requires it: a wire value above max is refused on read (§4.2),
    so no unnamed enum value is ever representable on the read side.
 
 2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in
-   wire order.
+   wire order. In Go, `Write<T>` returns `error` alone and the size written
+   is the stream's own running count, `stream.BitsProcessed()` (bytes after
+   `Flush`): a nested write's count is the enclosing stream's position, so a
+   second return value would only repeat that counter at every call site.
 3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full
    validation, in each target's native error idiom — the list is exhaustive
    at all nine: `int` 1/0 in C, `bool` in C++, Dart and Java, `bool` +
@@ -2524,7 +2568,20 @@ Per `type`, per target:
    (generated validation refusals return `false` latching nothing, so callers
    tell the two channels apart exactly as in C#). The consumed size (§5)
    surfaces per target idiom — a success value that carries bits consumed
-   where the idiom allows, an out-parameter where it does not.
+   where the idiom allows, an out-parameter where it does not. **In ELIXIR it
+   is a SECOND ENTRY and not a second argument**, a binary carrying no
+   position: `read_<name>_bits(data, num_bits)` returns `{:ok, value,
+   bits_read}` or `:error`, and `read_<name>/2` is that function with the count
+   dropped. Both are generated for every `type` and every `union`, the verdict
+   and the refusals identical; `read_<name>_bits` is what frames a second
+   object behind the first in one buffer, the next one beginning at
+   `div(bits_read + 7, 8)` bytes in. The name is claimed like any other
+   generated name, so a `type FrameBits` beside a `type Frame` is refused
+   rather than silently taking the same binding (§4.11). **In JAVA it is a
+   second entry too**: `read<Name>Bits(value, data, bitOffset, numBits)`
+   returns the bit position after the value, or `-1`, and its twin
+   `write<Name>Bits(value, data, bitOffset)` writes from any bit; `read<Name>`
+   and `write<Name>` are the offset-0 forms.
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the
    schema, with worst-case (7-bit) padding assumed at each alignment point.
    Size write buffers from `MaxBytes`; conservative is correct for a buffer
@@ -2532,15 +2589,18 @@ Per `type`, per target:
    every serialize runtime requires.**
 5. **`ProtocolId`** — one constant per unit (§3).
 6. **For a `union` declaration (§4.8):** the `<Union>Type` tag enum
-   (`None = 0`, then the variants in declared order, then `Max`)
-   with its debug-name function, the value
+   (`None = 0`, then the variants in declared order) with its `Max`
+   extent in the §4.2 spelling — a member of the enum's own scope in C++,
+   Rust, Dart, Java and Elixir, a separate constant beside it in C#, Go,
+   JS and C — and its debug-name function, the value
    representation in each language's own idiom, and
    `Write<Union>`/`Read<Union>` with the tag framing — representation per
    target, behavior identical.
 
 **Generated symbol naming:** functions attach per target idiom — C:
-lower_snake free functions `write_ship_create(stream, value)`, with
-`schema_`-prefixed internal helpers; C++: free
+lower_snake free functions carrying the package prefix,
+`example_write_ship_create(stream, value)` for `package example`, with
+`schema_<package>_`-prefixed internal helpers; C++: free
 functions `WriteShip(...)` in `namespace <package>`; C#: `static class
 Schema` members in `namespace <Package>`; Go: free functions
 `WriteShip(stream, &ship)` in package `<package>` (no overloading — the type
@@ -2548,11 +2608,20 @@ name is in the function name in every target, for uniformity); Rust: module
 functions in `mod <package>`; JS: exported free functions
 `WriteShip(stream, value)`, one ES module per schema file. The `package`
 ident maps to the target's namespace/module/package concept verbatim. JS
-storage members are PascalCase via the same mapping as the Go target — not
-camelCase — so the checker's collision registry covers JS with zero new
-rules; the generated function names are the family's own
-`WriteX`/`ReadX`/`ZeroX` (the runtime's methods stay camelCase —
-the seam is the stream parameter).
+storage members are the language's own lowerCamelCase — `object_id` is
+`objectId`, its companions `textLength`/`itemsCount`, a union's tag
+`type` — the first-letter-lowered form of the PascalCase field mapping
+(without Go's initialisms, below), so two fields collide in JS exactly when
+they collide under that mapping and the checker's existing registry covers
+them; the checker adds only the JS-specific claims (a field
+spelt as an `Object.prototype` member, and the module-scope bindings every
+generated module declares). The generated function names are the family's
+own `WriteX`/`ReadX`/`ZeroX`, target first like the runtime tier's
+`WriteX(stream, value)`: the flat tier is `WriteXFlat(view, value)` and
+`ReadXFlat(view, numBits, value)`. Go then spells the schema's words in every
+generated name with Go's initialisms, `object_id` as `ObjectID`, `ProbeId` as
+`ProbeID`, `ProtocolId` as `ProtocolID`; the checker claims that spelling
+too, so two names it would merge are refused.
 
 **There is no generated measure function.** `Write` returns the actual size,
 `MaxBytes` sizes buffers, and that covers the real uses. Anyone who genuinely
@@ -2639,21 +2708,35 @@ or a file per declaration where the language demands one.
   variables, so the reflection descriptors and the text form's generic walk
   are DEFINED in the `.c` and only declared in the header, and a translation
   unit that includes the header for the wire codecs pays for neither.
-  **Every external the table backend emits carries the package** —
-  `schema_<package>_<type>_<what>_` — because C has no namespace and two
-  units whose type names collide have to LINK together, which is what the
-  conformance driver itself does. The name-first surface SPEC-TABLES.md §11
-  states is `static` in the header and forwards to them, and it is **spelled in
-  the convention this target's PACKET half already uses** — types PascalCase,
-  functions and file-scope constants snake_case, macros SCREAMING_SNAKE under
-  `SCHEMA_` — so §11's `<Name>Load` is `<name>_load` here, `<name>_from_json`,
-  `<name>_table_type`, `<name>_block_open`. §11 names the SUFFIX SET a
-  declaration may not collide with; each target spells that set in its own
-  language, exactly as Rust spells it `<name>_load` and Go, C# and C++ spell it
-  `<Name>Load`. A table half that spelled C++'s casing in C would be the only
-  place in this compiler where two halves of one target disagree. Two units
-  still cannot be included into ONE translation unit, which is the C target's
-  standing limit and unchanged by tables.
+  **EVERY NAME A C UNIT DECLARES CARRIES ITS PACKAGE**, because C has no
+  namespace: a type is `<package>_<snake>_t` (`Vec3` is `example_vec3_t`), a
+  function or file-scope object `<package>_<name>` (`example_write_vec3`,
+  `example_ship_config_load`), a macro, enumerator or other constant
+  `<PACKAGE>_<NAME>` (`EXAMPLE_MAX_OBJECTS`, `EXAMPLE_SHIP_TYPE_BOMBER`,
+  `EXAMPLE_PROTOCOL_ID`), and a name under the reserved prefix takes the
+  package after it (`SCHEMA_EXAMPLE_…`, `schema_example_…`). The table
+  runtime is spelled the same way — `example_table_report_t`,
+  `example_table_writer_t` — because its types are shaped by the unit (the
+  id vocabulary is sized by the unit's ids, a pointered unit's reader carries
+  members a value-only unit's does not), so two units hold two different
+  definitions of them. Comments, string literals and member names keep the
+  schema's spellings, so reflection and the text form are unchanged, and so is
+  every wire byte. The name-first surface SPEC-TABLES.md §11 states is
+  therefore `<package>_<name>_load`, `<package>_<name>_from_json`,
+  `<package>_<name>_table_type`, `<package>_<name>_block_open`. What is the SAME
+  TEXT in every unit — `SCHEMA_UNUSED`, the inlining and alignment macros, the
+  compile-time assert, the flag-name and UTF-8 helpers — lives in ONE shared
+  header, `SchemaRuntime.h`, emitted beside every unit byte-identically and
+  defined once per translation unit; it carries `SCHEMA_RUNTIME_VERSION`, a
+  hash of its own text, and every generated header checks it with a hard
+  `#error`, so two units from compilers whose shared runtimes differ refuse to
+  meet in one translation unit rather than one silently using the other's.
+  **Two units' headers may therefore share one translation unit** —
+  `test/c-two-units` builds two generations of one schema into one under
+  `-Werror` and carries a value across them — and their `.c` files link into
+  one program. The qualification is one pass over both emitters' output
+  (`internal/codegen/cqualify`), which refuses by name a unit whose names
+  would collide after it.
   **The C target reserves `SCHEMA_` and `schema_`**, and it is the one place a
   generated name and a declared name meet with no compiler between them:
   constants, enum variants and flag masks are all `#define`s here, so a
@@ -2711,15 +2794,25 @@ or a file per declaration where the language demands one.
   per translation unit behind a guard; the home is named for the PACKAGE on
   §19.2's rule for every port. Every unit emits one further file per unit,
   `<Package>View.cs`, on the same terms as the C++ pair above.
+  **A `type` and a union are structs** (.NET 8 or later, C# 12 or later):
+  fixed arrays, strings and bytes live inline as `[InlineArray]` buffers,
+  nothing allocates per value, and `Write`/`Read`/`Zero`/`Init` take the
+  value by `ref`. Assigning a value copies it. `new T()` is the construction
+  form — a type with a specified default gets a constructor that runs
+  `InitT` — while `default(T)` and a fresh array element are the §5 zero
+  form until `InitT` runs on them. Until the table surface takes its values
+  by ref, a unit that declares tables keeps its declarations as sealed
+  classes.
 - **Dart:** one library per schema file, cross-file `import`s derived from
   actual references, with `show` clauses naming exactly the symbols used. A
   unit that declares TABLES grows two further libraries per schema file —
   `<Base>Block.dart` and `<Base>Cook.dart` (the two accelerators,
   SPEC-TABLES.md §19 and §7) — plus one RUNTIME HOME per unit and per surface,
   `<Package>Block.dart` and `<Package>Cook.dart`, which the per-file libraries
-  import. Dart emits no table-wire library (`<Base>Table.dart`): its port of
-  the table wire wrote the form that preceded the id-table wire and was
-  removed; schema#514 brings the current wire to Dart. **A Dart library
+  import. The id-table wire and the text form ride one library per unit,
+  `<Package>Wire.dart`; the fixed form rides `<Base>Fixed.dart` with its home
+  `<Package>Fixed.dart`, and reflection the optional `<Package>View.dart`
+  (SPEC-TABLES.md §3, §3.4, §8, §16). **A Dart library
   IS a file**, so a runtime shared across a unit's files must be public, and
   the home is named for the PACKAGE on §19.2's rule for every port: a runtime
   that lived in whichever file sorted first would relocate whole the day a
@@ -2727,7 +2820,12 @@ or a file per declaration where the language demands one.
   name at all** — a schema identifier may begin with an underscore, so a
   generated `_foo` at top level would be a collision no registry covers
   (SPEC-TABLES.md §11). A table-free unit grows none of it, and its packet
-  libraries are byte-identical either way.
+  libraries are byte-identical either way. The packet libraries' shared
+  helpers (the float conversion scratch, the compressed-float rounding, the
+  unsigned compare, the UTF-8 check) are static members of one class,
+  `Schema`, in one support library per unit, `Schema.dart`, which each
+  packet library imports with `show Schema`; `Schema` is a name every unit
+  already claims, and the library's text is the same in every unit.
 - **Java:** one `.java` file per schema file for the packet half, in
   `package <package>`. A unit that declares TABLES FANS OUT: **a public Java
   type lives in a file of its own name**, so the two accelerators are one
@@ -2746,7 +2844,14 @@ or a file per declaration where the language demands one.
   wire to Java. A table-free unit grows none of it.
 - **Elixir:** one `.ex` file per schema file, carrying one `defmodule` per
   declaration under the unit's own namespace plus the file-scope module
-  `<Ns>.<Base>` for constants, flags masks and the file's codecs. A unit that
+  `<Ns>.<Base>` for constants, flags masks and the file's codecs, and one
+  per-UNIT support module `<Ns>.PacketRuntime` (`PacketRuntime.ex`, a claimed
+  name) holding the helpers every file's codecs import. When a
+  declaration (type, enum, union or union tag module) of the unit already takes
+  `<Ns>.<Base>`, the file-scope module steps aside to `<Ns>.<Base>File`; a
+  fixed table whose value struct the table backend emits as `<Ns>.<Base>`
+  (SPEC-TABLES.md §3.4) forces the same step-aside, and a declaration that also
+  takes the stepped-aside name is still refused. A unit that
   declares TABLES grows the two ACCELERATORS' READ side per schema file —
   `<Base>Block.ex` (SPEC-TABLES.md §19) and `<Base>Cook.ex` (§7) — and two
   per-UNIT runtimes, `BlockRuntime.ex` and `CookRuntime.ex`. It emits no
@@ -2771,14 +2876,21 @@ or a file per declaration where the language demands one.
   every wire call is a method on the stream parameter, so no wiring file
   exists and this tier's checked/production fork stays where it lives, in the
   runtime's own load-time mode selection: the runtime-tier module reads no
-  `NODE_ENV` of its own. Beside it, **every schema file that declares types
-  also emits `<Base>Flat.js`** — the FLAT tier, a single-word bitpacker
+  `NODE_ENV` of its own. An enum's or a tag's frozen variant object holds
+  its variants only — the extent is the module constant `<Name>Max` — so
+  `Object.values` enumerates variants. Beside it, **every schema file that
+  declares types or unions also emits `<Base>Flat.js`** — the FLAT tier, a single-word bitpacker
   inlined at every field with no runtime import at all, held byte-identical
   to the runtime tier by a standing gate. That tier owns the fork itself:
   `NODE_ENV` is read ONCE at module load, exactly as `serialize.js`'s own
   `src/mode.js` does, and whole write variants are selected at export, so a
   bundler that statically replaces `NODE_ENV` tree-shakes the checked writers
-  out. The READ side is never configurable in either tier. A unit that
+  out; a writer with no contract to check is one function for both builds.
+  The READ side is never configurable in either tier. **Every packet module
+  ships its TypeScript declarations beside it** — `<Base>.d.ts` and
+  `<Base>Flat.d.ts`, emitted from the same IR walk, accepted by `tsc
+  --strict` and by `tsc --checkJs` consumers; a table-tier module carries
+  none yet, and a declaration naming a table class types it `object`. A unit that
   declares TABLES emits three further modules per
   schema file — `<Base>Table.js` for the table wire's codecs, its reflection
   descriptors and its TEXT FORM (SPEC-TABLES.md §16), and `<Base>Block.js`
@@ -2838,6 +2950,15 @@ always-inline demand (plain `inline` where a compiler has no spelling for
 it), because a fallible read chain otherwise decays below the inliner's
 cold-callsite threshold.
 
+"Sequential field operations" is the C and C++ shape, not every port's.
+Rust, Go, C#, Dart, Elixir, Java and the JavaScript flat form fold each
+maximal run of fixed-width fields into whole words at generation time:
+values are packed with literal shifts and masks and handed over a word at a
+time, and a read unpacks them the same way behind one bounds check per word.
+The wire is bit-identical to the per-field form; the source shows packed
+words instead of one call per field, and Rust names each word's field bit
+spans in a comment beside it.
+
 What this buys: generated source stays small and reviewable, count ranges
 need no cap, and the backends stay simple enough to verify against each
 other. What it forgoes: the last-mile instruction-level guarantees of the TMP
@@ -2855,8 +2976,13 @@ and write through a serialize-family runtime:
 | | C | C++ | C# | Go | JavaScript | Rust |
 |---|---|---|---|---|---|---|
 | emits against | `serialize_write_stream_t`/`serialize_read_stream_t` free functions | `WriteStream`/`ReadStream` methods (or `serialize_*`-equivalent calls) | sealed `WriteStream`/`ReadStream` (`ref` params, `bool` returns + sticky `Error`) | `WriteStream`/`ReadStream` concrete types (no interface dispatch) | methods on the stream parameter — generated JS never imports the runtime | `WriteStream`/`ReadStream` via the `Stream` trait, monomorphized |
-| error idiom | `int` 1/0 early-out; the stream latches the error | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `bool` early-out; validation failures return false without latching, stream failures latch on `stream.error` | `?` propagation of `serialize::Error` |
+| error idiom | `int` 1/0 early-out; the stream latches the error, generated validation refusals included (`serialize_read_fail`) | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `bool` early-out; validation failures return false without latching, stream failures latch on `stream.error` | `?` propagation of `serialize::Error` |
 | buffer contract | write buffers multiple of 8; read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (asserted); read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (throws); reader takes (buffer, bytes), no slack required | write buffers multiple of 8; ≥7 bytes read slack for the fast path | caller-owned DataViews; the flat tier requires ≥8 bytes read slack past the payload | write buffers multiple of 8; ≥8 bytes read slack for the fast path |
+
+JavaScript is typed by declaration files rather than JSDoc: each packet
+module ships `<Base>.d.ts` (and `<Base>Flat.d.ts`) beside it (§6.1), with the
+stream parameter typed structurally by the serialize.js methods the code
+calls.
 
 The three self-contained targets — no runtime library, so there is no stream
 object to emit against; the bit reader and writer live in the generated code:
@@ -2865,7 +2991,15 @@ object to emit against; the bit reader and writer live in the generated code:
 |---|---|---|---|
 | emits against | free functions over a caller-owned `ByteData` view | `static` methods on the file's class over a caller-owned `byte[]` | module functions over a binary; read and write thread the output, scratch and bit position as rebound accumulators — no stream struct |
 | error idiom | `bool` early-out | `boolean` early-out | `{:ok, value}` or `:error`; the body throws `:invalid` to a catch at the surface |
-| buffer contract | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | the writer returns the binary; read buffers need NO slack past the payload |
+| buffer contract | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | write buffers hold `<NAME>_MAX_BYTES` (a multiple of 8); read buffers need NO slack past the payload | `write_<name>!/1` returns the binary and raises `ArgumentError` on a contract violation, `write_<name>/1` returns `{:ok, binary}` or `{:error, message}`; read buffers need NO slack past the payload |
+
+**Dart runs on the VM, AOT and dart2wasm, not on dart2js.** The generated
+Dart holds 64-bit values bit-transparently in `int` and moves them through
+`ByteData.getUint64`/`setUint64` and `Uint64List` views. dart2wasm has a
+64-bit `int` and compiles and runs it; dart2js has neither 64-bit integers
+nor those typed-data members, and it refuses the output at compile time (the
+protocol id, a 64-bit literal, is the first error). A web build of a
+schema unit takes dart2wasm, or the JavaScript target.
 
 ## 7. The compiler
 

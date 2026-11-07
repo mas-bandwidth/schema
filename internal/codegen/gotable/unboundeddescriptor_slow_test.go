@@ -149,13 +149,13 @@ func TestRoundTrip(t *testing.T) {
 	every(t, "base64", back, nil)
 
 	// JSON (§16.2)
-	jn := RootToJsonMeasure(v)
+	jn := RootToJSONMeasure(v)
 	if jn < 0 {
-		t.Fatal("ToJsonMeasure refused")
+		t.Fatal("ToJSONMeasure refused")
 	}
 	js := make([]byte, jn)
-	if RootToJson(v, js) != jn {
-		t.Fatal("ToJson")
+	if RootToJSON(v, js) != jn {
+		t.Fatal("ToJSON")
 	}
 	var jb RootBuilder
 	if !jb.Init() {
@@ -163,8 +163,8 @@ func TestRoundTrip(t *testing.T) {
 	}
 	defer jb.Shutdown()
 	report = TableReport{}
-	if !RootFromJson(&jb, js, &report) || report != (TableReport{}) {
-		t.Fatalf("FromJson %+v", report)
+	if !RootFromJSON(&jb, js, &report) || report != (TableReport{}) {
+		t.Fatalf("FromJSON %+v", report)
 	}
 	if !jb.Lock() {
 		t.Fatal("json lock")

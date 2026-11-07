@@ -183,7 +183,7 @@ func TestMapsAndUnionArmsOnTheTableWireRust(t *testing.T) {
 		}
 		var names []string
 		for name, data := range modules {
-			if name == VariableRuntimeModule+".rs" || strings.HasSuffix(name, "_table.rs") {
+			if name == VariableRuntimeModule+".rs" || name == TableEnumsModule+".rs" || strings.HasSuffix(name, "_table.rs") {
 				if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
 					t.Fatal(err)
 				}

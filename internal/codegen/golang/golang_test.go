@@ -118,25 +118,23 @@ func TestEnumExtentEmitted(t *testing.T) {
 	}
 
 	goFiles, goErr := Generate(u)
-	// go/format aligns const blocks, so the symbol and its value are asserted
-	// as separate needles rather than one whitespace-sensitive line
-	addTarget("Go", goFiles, goErr,
-		expectation{"WeaponMax", 1},
-		expectation{"ShapeTypeMax", 1},
-		expectation{"= 15 // the exported extent (SPEC §4.2)", 1},
-		expectation{"= 2 // the exported extent (SPEC §4.2)", 1})
+	// go/format aligns const blocks, so the columns are collapsed and each
+	// extent is asserted as its whole declaration line
+	addTarget("Go", collapseColumns(goFiles), goErr,
+		expectation{"WeaponMax Weapon = 15\n", 1},
+		expectation{"ShapeTypeMax ShapeType = 2\n", 1})
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
 		expectation{"pub const MAX: Weapon = Weapon(15);", 1},
 		expectation{"pub const MAX: ShapeType = ShapeType(2);", 1})
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
-		expectation{"Max = 15,", 1}, // Weapon
-		expectation{"Max = 2,", 1})  // ShapeType
+		expectation{"public const Weapon WeaponMax = (Weapon)15;", 1},
+		expectation{"public const ShapeType ShapeTypeMax = (ShapeType)2;", 1})
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,
-		expectation{"Max: 15,", 1},
-		expectation{"Max: 2,", 1})
+		expectation{"export const WeaponMax = 15;", 1},
+		expectation{"export const ShapeTypeMax = 2;", 1})
 	cFiles, cErr := cgen.Generate(u)
 	addTarget("C", cFiles, cErr,
 		expectation{"#define WEAPON_MAX 15", 1},
@@ -160,11 +158,10 @@ func TestEnumExtentEmitted(t *testing.T) {
 }
 
 // An enum has no Count (SPEC §4.2, the 2026-09-13 ruling): its declared
-// variant count is its Max, and Go emits no <E>Count. The other targets below
-// still emit their Count, which the owner has parked; the Go expectation is
-// the inverse of what this test used to pin. Without headroom the two numbers
-// coincide; under | max = K they part, so both enums are pinned here and
-// Count < Max is asserted on the widened one.
+// variant count is its Max, and no target emits an enum Count: every
+// expectation below pins the Count spelling at zero and the Max at one. Both
+// enums are pinned, the widened one (| max = K) asserting Max past its
+// variants.
 func TestEnumDeclaredCountEmitted(t *testing.T) {
 	src := "package t\n\n" +
 		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
@@ -207,46 +204,44 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 	addTarget("Go", collapseColumns(goFiles), goErr,
 		expectation{"WeaponCount", 0},
 		expectation{"TeamCount", 0},
-		expectation{"WeaponMax Weapon = 15 // the exported extent (SPEC §4.2)", 1})
+		expectation{"WeaponMax Weapon = 15\n", 1})
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
-		expectation{"pub const COUNT: Weapon = Weapon(2);", 1},
-		expectation{"pub const COUNT: Team = Team(3);", 1},
+		expectation{"pub const COUNT:", 0},
 		expectation{"pub const MAX: Weapon = Weapon(15);", 1})
 	csFiles, csErr := csharp.Generate(u)
+	// C# exports no enum Count (SPEC §4.2: an enum's one number is its Max),
+	// and Max is a typed constant beside the enum, never an aliasing member
 	addTarget("C#", csFiles, csErr,
-		expectation{"Count = 2,", 1},
-		expectation{"Count = 3,", 1},
-		expectation{"Max = 15,", 1})
+		expectation{"Count = ", 0},
+		expectation{"public const Weapon WeaponMax = (Weapon)15;", 1})
 	jsFiles, jsErr := js.Generate(u)
+	// JS: the extent is a module constant beside the frozen object, and, as
+	// in Go, there is no enum Count (SPEC §4.2)
 	addTarget("JS", jsFiles, jsErr,
-		expectation{"Count: 2,", 1},
-		expectation{"Count: 3,", 1},
-		expectation{"Max: 15,", 1})
+		expectation{"WeaponCount", 0},
+		expectation{"TeamCount", 0},
+		expectation{"export const WeaponMax = 15;", 1})
 	cFiles, cErr := cgen.Generate(u)
 	addTarget("C", cFiles, cErr,
-		expectation{"#define WEAPON_COUNT 2", 1},
-		expectation{"#define TEAM_COUNT 3", 1},
+		expectation{"WEAPON_COUNT", 0},
+		expectation{"TEAM_COUNT", 0},
 		expectation{"#define WEAPON_MAX 15", 1})
 	cppFiles, cppErr := cpp.Generate(u)
 	addTarget("C++", cppFiles, cppErr,
-		expectation{"Count = 2,", 1},
-		expectation{"Count = 3,", 1},
+		expectation{"Count = ", 0},
 		expectation{"Max = 15,", 1})
 	dartFiles, dartErr := dart.Generate(u)
 	addTarget("Dart", dartFiles, dartErr,
-		expectation{"static const int count = 2;", 1},
-		expectation{"static const int count = 3;", 1},
+		expectation{"static const int count", 0},
 		expectation{"static const int max = 15;", 1})
 	javaFiles, javaErr := java.Generate(u)
 	addTarget("Java", javaFiles, javaErr,
-		expectation{"public static final byte count = 2;", 1},
-		expectation{"public static final byte count = 3;", 1},
-		expectation{"public static final byte max = 15;", 1})
+		expectation{" COUNT = ", 0},
+		expectation{"public static final byte MAX = 15;", 1})
 	elixirFiles, elixirErr := elixir.Generate(u)
 	addTarget("Elixir", elixirFiles, elixirErr,
-		expectation{"def count, do: 2", 1},
-		expectation{"def count, do: 3", 1},
+		expectation{"def count", 0},
 		expectation{"def max, do: 15", 1})
 
 	for _, tgt := range targets {
@@ -301,9 +296,9 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 	}
 
 	goFiles, goErr := Generate(u)
-	addTarget("Go", goFiles, goErr,
+	addTarget("Go", collapseColumns(goFiles), goErr,
 		expectation{"type ShapeType uint8", 1},
-		expectation{"ShapeTypeMax", 1},
+		expectation{"ShapeTypeMax ShapeType = 2\n", 1},
 		expectation{"type Shape struct", 1},
 		expectation{"func WriteShape(stream *serialize.WriteStream, value *Shape) error", 1},
 		expectation{"func ReadShape(stream *serialize.ReadStream, value *Shape) error", 1},
@@ -319,11 +314,11 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
 		expectation{"public enum ShapeType", 1},
-		expectation{"public sealed class Shape", 1},
-		expectation{"public static bool WriteShape(WriteStream stream, Shape value)", 1},
-		expectation{"public static bool ReadShape(ReadStream stream, Shape value)", 1},
-		expectation{"public static void ZeroShape(Shape value)", 1},
-		expectation{"public const long ShapeMaxBits = 18;", 1})
+		expectation{"public struct Shape", 1},
+		expectation{"public static bool WriteShape(WriteStream stream, ref Shape value)", 1},
+		expectation{"public static bool ReadShape(ReadStream stream, ref Shape value)", 1},
+		expectation{"public static void ZeroShape(ref Shape value)", 1},
+		expectation{"public const int ShapeMaxBits = 18;", 1})
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,
 		expectation{"export const ShapeType = Object.freeze({", 1},
@@ -336,13 +331,13 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 	addTarget("C", cFiles, cErr,
 		expectation{"typedef uint8_t ShapeType;", 1},
 		expectation{"#define SHAPE_TYPE_MAX 2", 1},
-		expectation{"typedef struct Shape {", 1},
+		expectation{"typedef struct Shape\n{", 1},
 		expectation{"int write_shape( serialize_write_stream_t * stream, const Shape * value )", 1},
 		expectation{"int read_shape( serialize_read_stream_t * stream, Shape * value )", 1},
 		expectation{"#define SHAPE_MAX_BITS 18", 1})
 	cppFiles, cppErr := cpp.Generate(u)
 	addTarget("C++", cppFiles, cppErr,
-		expectation{"enum class ShapeType : uint8_t {", 1},
+		expectation{"enum class ShapeType : uint8_t\n{", 1},
 		expectation{"struct Shape\n{", 1},
 		expectation{"SCHEMA_WRITE_INLINE bool WriteShape( serialize::WriteStream & stream, const Shape & value )", 1},
 		expectation{"SCHEMA_READ_INLINE bool ReadShape( serialize::ReadStream & stream, Shape & value )", 1},
@@ -497,7 +492,7 @@ func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
 	// A fixed scalar array whose elements each fill a whole chunk: flattening
 	// removes no stream call, so the run falls back — over ONE item.
 	files := generateGo(t, "Span", "package t\n\ntype Pair { values [2]float64 }\n")
-	if got := countAcross(files, "for i := int(0); i < 2; i++ {"); got != 2 {
+	if got := countAcross(files, "for i := 0; i < 2; i++ {"); got != 2 {
 		t.Errorf("[2]float64 emitted %d element loops, want 2 (one write, one read) — "+
 			"a fallback over pieces emits the loop once per element and doubles the wire", got)
 	}
@@ -557,7 +552,7 @@ func TestEnumNameTakesTheEnumType(t *testing.T) {
 		"union WeaponFire\n{\n    laser LaserFire\n}\n\n"+
 		"type FireCommand\n{\n    fire WeaponFire\n}\n")
 	runtime := slowtest.SerializeGo(t, "../../../")
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	files["probe.go"] = []byte("package typed\n\n" +
 		"func probe(ship *Ship, command *FireCommand) (string, string) {\n" +
 		"\treturn EnumNameShipType(ship.ShipType), EnumNameWeaponFireType(command.Fire.Type)\n" +
@@ -631,7 +626,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 func TestClampTopOfRange(t *testing.T) {
@@ -659,7 +654,7 @@ func TestClampTopOfRange(t *testing.T) {
 `, steps, reference, reference)
 
 	runtime := slowtest.SerializeGo(t, "../../../")
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	files["clamp_test.go"] = []byte(probe)
 
 	dir := t.TempDir()
@@ -672,5 +667,51 @@ func TestClampTopOfRange(t *testing.T) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the clamped writer failed its probe: %v\n%s", err, out)
+	}
+}
+
+// TestGoFlatFloatsAreFiniteOnly pins SPEC §4.3's finite rule where the Go
+// target owns it. A flat run places a bare float's bits itself and never
+// reaches serialize.go's SerializeFloat32/64, so the generated writer must
+// refuse a NaN or an infinity, and the generated reader a pattern whose
+// exponent field is all ones, each with serialize.ErrNonFiniteFloat. A
+// single-float struct keeps the per-field form, whose runtime call carries
+// the rule, and emits no guard of its own. make packet-finite-go runs the
+// vectors and packet-finite-go-negative-control proves each guard is load
+// bearing.
+func TestGoFlatFloatsAreFiniteOnly(t *testing.T) {
+	t.Parallel()
+	files := generateGo(t, "Finite", "package t\n\n"+
+		"type Flat\n{\n    a float32\n    b float64\n    c bool\n}\n\n"+
+		"type Single\n{\n    x float32\n}\n")
+	want := map[string][]string{
+		"func WriteFlat(": {
+			"\tif math.Float32bits(value.A)&0x7f800000 == 0x7f800000 {",
+			"\tif math.Float64bits(value.B)&0x7ff0000000000000 == 0x7ff0000000000000 {",
+		},
+		"func ReadFlat(": {
+			"\tif v0&0x7f800000 == 0x7f800000 {",
+			"\tif v1&0x7ff0000000000000 == 0x7ff0000000000000 {",
+		},
+	}
+	for decl, guards := range want {
+		body := funcBody(t, files, decl)
+		for _, guard := range guards {
+			if !strings.Contains(body, guard) {
+				t.Errorf("%s emits no finite guard %q\n%s", decl, guard, body)
+			}
+		}
+		if got := strings.Count(body, "return serialize.ErrNonFiniteFloat"); got != 2 {
+			t.Errorf("%s refuses non_finite_float %d times, want one per float field\n%s", decl, got, body)
+		}
+	}
+	for _, decl := range []string{"func WriteSingle(", "func ReadSingle("} {
+		body := funcBody(t, files, decl)
+		if !strings.Contains(body, "stream.SerializeFloat32(&value.X)") {
+			t.Errorf("%s left the per-field form, so the shape under test did not arise\n%s", decl, body)
+		}
+		if strings.Contains(body, "ErrNonFiniteFloat") {
+			t.Errorf("%s guards a float the runtime already refuses\n%s", decl, body)
+		}
 	}
 }

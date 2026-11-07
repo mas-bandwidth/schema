@@ -179,14 +179,14 @@ func t09Run(t *testing.T, schema, probe string) {
 		// The emitted unit IMPORTS the sibling runtime only for a 128-bit
 		// storage; every module mentions it in the header comment, so match the
 		// import path, not the bare word.
-		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go"`) {
+		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go/v2"`) {
 			needSerialize = true
 		}
 	}
 	mod := "module probe\n\ngo 1.26\n"
 	if needSerialize {
 		runtime := slowtest.SerializeGo(t, "../../../")
-		mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
+		mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime)
 	}
 	out := map[string][]byte{"go.mod": []byte(mod), "values_test.go": []byte(probe)}
 	maps.Copy(out, files)
@@ -312,7 +312,7 @@ fixed table T {
 		},
 		// Signed 128: two's complement, 16 bytes, the high lane set at the type
 		// minimum and all ones at the maximum.
-		probe: t09Source("\t\"testing\"\n\n\tserialize \"github.com/mas-bandwidth/serialize.go\"\n", `
+		probe: t09Source("\t\"testing\"\n\n\tserialize \"github.com/mas-bandwidth/serialize.go/v2\"\n", `
 func TestSigned128(t *testing.T) {
 	for _, v := range []T{
 		{A: serialize.Int128{Lo: 0, Hi: 0x8000000000000000}},
@@ -335,7 +335,7 @@ fixed table T {
 		fields: []t09Field{
 			{"a", ir.TableKindU128, 16, "serialize.Uint128"},
 		},
-		probe: t09Source("\t\"testing\"\n\n\tserialize \"github.com/mas-bandwidth/serialize.go\"\n", `
+		probe: t09Source("\t\"testing\"\n\n\tserialize \"github.com/mas-bandwidth/serialize.go/v2\"\n", `
 func TestUnsigned128(t *testing.T) {
 	for _, v := range []T{
 		{A: serialize.Uint128{Lo: 0xFFFFFFFFFFFFFFFF, Hi: 0xFFFFFFFFFFFFFFFF}},

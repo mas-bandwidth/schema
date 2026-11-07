@@ -27,17 +27,17 @@ func (c *checker) resolveTextListField(owner string, f *ast.Field, inTable bool)
 		return nil
 	}
 	spelling := textListSpelling(f)
-	route := "declare the field in a plain `table` body"
+	route := "declare the field in a variable table body"
 	st := c.tables[owner]
 	switch {
 	case !inTable:
 		c.errf(f.Pos, "field %s: %s is a text list, and a text list is a VARIABLE-table construct — a `type`'s wire is positional and carries no array of text (SPEC.md §4.6); %s (docs/SPEC-TABLES.md §2.13, §11)", f.Name, spelling, route)
 		return nil
 	case c.arm != "":
-		c.errf(f.Pos, "%s: a text list is not an arm — wrap the list in a plain table and make THAT the arm (docs/SPEC-TABLES.md §2.13, §2.6, §11)", c.arm)
+		c.errf(f.Pos, "%s: a text list is not an arm — wrap the list in a variable table and make THAT the arm (docs/SPEC-TABLES.md §2.13, §2.6, §11)", c.arm)
 		return nil
 	case st == nil:
-		c.errf(f.Pos, "field %s: %s is a text list, and a text list is not a map value — wrap it in a plain table and make that the value (docs/SPEC-TABLES.md §2.13, §2.8, §11)", f.Name, spelling)
+		c.errf(f.Pos, "field %s: %s is a text list, and a text list is not a map value — wrap it in a variable table and make that the value (docs/SPEC-TABLES.md §2.13, §2.8, §11)", f.Name, spelling)
 		return nil
 	case st.FixedDeclared:
 		c.errf(f.Pos, "fixed table %s: field %s is a text list (%s), and a text list is a VARIABLE-table construct — its count and its elements vary, which a fixed record cannot hold; %s, or drop `fixed` from %s (docs/SPEC-TABLES.md §2.2, §2.13, §11)", owner, f.Name, spelling, route, owner)
@@ -202,13 +202,13 @@ func (c *checker) refuseBareString(owner string, f *ast.Field, inTable bool) {
 	st := c.tables[owner]
 	switch {
 	case c.arm != "":
-		c.errf(f.Type.Pos, "%s: a bare `string` is not an arm — unbounded text is a plain table's text-list element ([]string) or map key (map[string]V) and nothing else; declare string(N) for inline text or *string for a buffer at its used size (docs/SPEC-TABLES.md §2.13.1, §2.6, §11)", c.arm)
+		c.errf(f.Type.Pos, "%s: a bare `string` is not an arm — unbounded text is a variable table's text-list element ([]string) or map key (map[string]V) and nothing else; declare string(N) for inline text or *string for a buffer at its used size (docs/SPEC-TABLES.md §2.13.1, §2.6, §11)", c.arm)
 	case c.mapValue:
 		c.errf(f.Type.Pos, "field %s: a map VALUE of bare `string` is refused — unbounded text is a text-list element or a map KEY; declare the value string(N) or *string, or wrap the text in a table (docs/SPEC-TABLES.md §2.13.1, §2.8, §11)", f.Name)
 	case !inTable:
-		c.errf(f.Type.Pos, "field %s: a bare `string` in a `type` body or a packet is refused — the type wire carries no unbounded text (SPEC.md §4.6); declare string(N), or move the field to a plain `table` (docs/SPEC-TABLES.md §2.13.1, §11)", f.Name)
+		c.errf(f.Type.Pos, "field %s: a bare `string` in a `type` body or a packet is refused — the type wire carries no unbounded text (SPEC.md §4.6); declare string(N), or move the field to a variable table (docs/SPEC-TABLES.md §2.13.1, §11)", f.Name)
 	case st != nil && st.FixedDeclared:
-		c.errf(f.Type.Pos, "fixed table %s: field %s is a bare `string`, and unbounded text is a VARIABLE-table construct — declare string(N), or drop `fixed` from %s and hold the text as []string or a map[string]V key in a plain `table` (docs/SPEC-TABLES.md §2.13.1, §2.2, §11)", owner, f.Name, owner)
+		c.errf(f.Type.Pos, "fixed table %s: field %s is a bare `string`, and unbounded text is a VARIABLE-table construct — declare string(N), or drop `fixed` from %s and hold the text as []string or a map[string]V key in a variable table (docs/SPEC-TABLES.md §2.13.1, §2.2, §11)", owner, f.Name, owner)
 	default:
 		c.errf(f.Type.Pos, "field %s: a bare `string` has no bound, and only a text-list element ([]string, [..N]string) and a map key (map[string]V) may be unbounded text; declare string(N) for inline text, or *string for a buffer at its used size (docs/SPEC-TABLES.md §2.13.1, §2.5, §11)", f.Name)
 	}

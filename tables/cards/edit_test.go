@@ -38,7 +38,7 @@ func buildCfg(t *testing.T, c cardCfg) *Record {
 	if c.id == "" {
 		c.id = "x"
 	}
-	setStr(root.Id[:], &root.IdLength, c.id)
+	setStr(root.ID[:], &root.IDLength, c.id)
 	root.Tier = c.tier
 	root.Priority = c.priority
 	root.Column = c.column

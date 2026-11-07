@@ -232,7 +232,7 @@ func (p *parser) parseDecl(doc string, docPos ast.Pos, hasDoc bool) {
 		// (docs/SPEC-TABLES.md): field identity by name hash, unknown fields
 		// skipped, absent fields defaulted. The body grammar is the type
 		// body's; the qualification carries tags and the `was` rename
-		// (docs/SPEC-TABLES.md §5). A plain `table` is the VARIABLE wire
+		// (docs/SPEC-TABLES.md §5). A variable table is the VARIABLE wire
 		// always; `fixed table` declares the fixed class (§2.2). The BLOCK
 		// FORM (docs/SPEC-TABLES.md §19) declares nothing at all: every fixed
 		// table has one, emitted on the side, so there is no marker to parse.
@@ -289,7 +289,7 @@ func (p *parser) parseDecl(doc string, docPos ast.Pos, hasDoc bool) {
 			// contexts is refused at file scope: build contexts are not
 			// part of the language — every field of a type is identical
 			// on every side of the wire.
-			p.errf(t.Pos, "contexts are not part of the language — a type's fields are identical on every peer (SPEC §4.2)")
+			p.errf(t.Pos, "contexts are not part of the language — a type's fields are identical on every endpoint (SPEC §4.2)")
 			p.skipDecl()
 		case "union":
 			p.advance()

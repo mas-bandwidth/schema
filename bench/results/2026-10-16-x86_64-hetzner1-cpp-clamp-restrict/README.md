@@ -31,7 +31,7 @@ header builds all four forms by `-D`. The scratch emitter was never committed. T
 emitter keeps the qualifier only, since no compiler's best form uses the local counter.
 
 The exploration ran the runner's `--read-arm` directly, with the driver's flag line
-(`exploration/explore.sh`, `explore-run.sh`). It used 5 rounds of 2,000,000 records per
+(two scratch scripts, since removed). It used 5 rounds of 2,000,000 records per
 sample, pinned with `taskset -c 6`, after a quiet wait (machine busy 0.5%, load1 0.87).
 The rows are in `exploration/hetzner1-rows.csv`. Best and worst ns/record across 5 rounds:
 
@@ -110,4 +110,4 @@ scalar, and why the g++ `__restrict` build is slower.
 ## Files
 
 - `gcc-sitting-{1,2}/`, `clang-sitting-{1,2}/`: `READ.md` (the board), `read.json`, `build.json`, `control-{start,end}-packet.csv`, `round-*-cpp-read.csv`, and `window-summary.json`. The summary records the window verdict, span and phases, and the sha256 of the full `window.json`, which is kept outside the tree.
-- `exploration/`: the four-form rows from hetzner1 and mini-m5-1, the scratch emitter diff, and the two scripts.
+- `exploration/`: the four-form rows from hetzner1 and mini-m5-1 and the scratch emitter diff. The two scratch scripts (`explore.sh`, `explore-run.sh`) were removed from the tree because `make shape-gate` refuses hand-written measurement outside the sanctioned bench; they are in git history at `66d571b6d246e99971431c31cc443564471ab34a`.

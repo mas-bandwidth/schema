@@ -135,7 +135,7 @@ abstract final class TableFixedLimits {
   // the u32 entry count, and nothing else
   static const int layoutHeaderBytes = 4;
 
-  /// §3.4's RECORD CEILING, and a reader holds an untrusted peer's layout to
+  /// §3.4's RECORD CEILING, and a reader holds an untrusted endpoint's layout to
   /// it for the reason the compiler holds a declaration to it: a record past
   /// it is one this build will not decode.
   static const int recordMaxBytes = 65536;
@@ -188,6 +188,12 @@ abstract final class TableFixedRefusal {
   /// disagree). Both text kinds and the compiled plan's text op answer it.
   static const int textIllFormed = 17; // ill-formed text in the USED units
 
+  /// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the same rule as packets):
+  /// a NaN or an infinity in a record refuses the whole
+  /// read by name, the report naming the field, and nothing lands.
+  static const int nonFiniteFloat = 18;
+  static const int integrityMismatch = 19;
+
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
     switch (refusal) {
@@ -227,6 +233,10 @@ abstract final class TableFixedRefusal {
         return 'layout_unsupported';
       case textIllFormed:
         return 'text_ill_formed';
+      case integrityMismatch:
+        return 'integrity_mismatch';
+      case nonFiniteFloat:
+        return 'non_finite_float';
       default:
         return '???';
     }
@@ -244,9 +254,14 @@ final class TableFixedReport {
   int widened = 0;
   int duplicate = 0;
 
-  /// the layout hash the record carried, so an application can ask a peer for
+  /// the layout hash the record carried, so an application can ask an endpoint for
   /// the layout a 'no_layout' refusal names
   int hash = 0;
+
+  /// THE FLOAT a 'non_finite_float' refusal names, as <Table>.<field>: the
+  /// first cell whose raw bits the read found to be a NaN or an infinity
+  /// (docs/SPEC-TABLES.md §3.3), '' on every other path.
+  String nonFiniteFloat = '';
 
   /// THE FILE'S HASH, and the LAST member of the report: it is set by the two
   /// LAYOUT refusals — 'layout_newer' and 'layout_unsupported' — and is zero on
@@ -264,12 +279,35 @@ final class TableFixedReport {
     duplicate = 0;
     hash = 0;
     layoutHash = 0;
+    nonFiniteFloat = '';
+  }
+
+  /// Names the first non-finite float a decode met; the load then refuses.
+  void refuseNonFiniteFloat(String field) {
+    if (nonFiniteFloat.isEmpty) nonFiniteFloat = field;
   }
 }
 
 /// A LAYOUT VIEW is the bytes and the entry count. Every read of an entry is
 /// arithmetic on the seventeen-byte stride, so nothing is parsed twice and
 /// nothing is materialised.
+/// ONE CACHED ByteData VIEW of the caller's buffer, rebuilt only when the
+/// buffer changes: a Load or Save over the same buffer every frame allocates
+/// nothing after the first call (the tables soak's scavenge gate).
+final class TableFixedView {
+  ByteData? _view;
+  Uint8List? _bytes;
+
+  @pragma('vm:prefer-inline')
+  ByteData of(Uint8List bytes) {
+    if (!identical(_bytes, bytes)) {
+      _view = ByteData.sublistView(bytes);
+      _bytes = bytes;
+    }
+    return _view!;
+  }
+}
+
 final class TableFixedLayout {
   ByteData? view;
   int at = 0;
@@ -329,6 +367,31 @@ final class TableFixedLayout {
   }
 
   int tagBytes(int i) => size(i) - unionArmBytes(i);
+
+  /// A FLOAT32 CELL RIDES AS ITS BITS (docs/FIXED-FORM-ALGORITHM.md §3.1: the
+  /// cell stores what the record held; SPEC-TABLES §3: no canonicalisation of
+  /// a float). A table float is FINITE (docs/SPEC-TABLES.md §3.3): the save's
+  /// finite pass refuses a NaN or an infinity before the first byte and every
+  /// read refuses one on its raw bits before it reaches these, so both are the
+  /// ordinary conversion, exact for every finite value, -0 and the subnormals
+  /// included. A generated float32 store or load converts through these two
+  /// and nowhere else (TestFixedFloat32CellsStoreBitsNotDoubles).
+  static final Float32List _f32 = Float32List(1);
+  static final Uint32List _f32Words = _f32.buffer.asUint32List();
+
+  /// the float32 bits of a finite double holding a float32 value
+  @pragma('vm:prefer-inline')
+  static int float32Bits(double value) {
+    _f32[0] = value;
+    return _f32Words[0];
+  }
+
+  /// the double a finite float32 cell's bits widen to, exactly
+  @pragma('vm:prefer-inline')
+  static double float32Value(int bits) {
+    _f32Words[0] = bits;
+    return _f32[0];
+  }
 
   /// THE HASH is fnv1a64 over the layout's bytes exactly as written, and it is
   /// the eight bytes every record carries. A Dart int is a full 64-bit two's
@@ -607,7 +670,7 @@ final class TableFixedLayout {
   }
 
   /// THE WHOLE OF WHAT A READER TRUSTS A LAYOUT ON. A LAYOUT ARRIVES FROM AN
-  /// UNTRUSTED PEER and it is the one structure a reader must parse before it
+  /// UNTRUSTED ENDPOINT and it is the one structure a reader must parse before it
   /// knows anything at all, so every rule runs BEFORE a single record byte is
   /// touched and each refuses under its OWN NAME. A layout that fails any of
   /// them SETS NOTHING: no plan is compiled, no counter moves, 'malformed'
@@ -668,7 +731,7 @@ final class TableFixedLayout {
 }
 
 /// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
-/// NEVER ALLOCATES. A caller makes one of these per peer and hands it in; a
+/// NEVER ALLOCATES. A caller makes one of these per endpoint and hands it in; a
 /// layout whose plan does not fit is a refusal by name, never a growth.
 final class TableFixedPlan {
   TableFixedPlan(int entryCapacity, int imageBytes, int remapCapacity)
@@ -756,7 +819,7 @@ final class TableFixedPlan {
   final ByteData conv = ByteData(16);
 }
 
-/// A CACHE BY HASH: "the cost of the compile is paid once per peer rather than
+/// A CACHE BY HASH: "the cost of the compile is paid once per endpoint rather than
 /// once per record". The caller owns this too — and under §5 THERE IS NOTHING
 /// LEFT TO CACHE: every plan is laid down by the build from the lock's bytes,
 /// so no load compiles and no load can miss. The type stays because §5.6
@@ -973,7 +1036,7 @@ int tableFixedTagAt(Uint8List source, int at, int argw) {
 /// THE ONE READ LOOP. A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE.
 /// Which plan it is handed is the only thing that differs between reading this
 /// build's own record and reading anybody else's — the owner's ruling, which
-/// §3.4 quotes him on: a form whose cost moved when a peer shipped would be a
+/// §3.4 quotes him on: a form whose cost moved when an endpoint shipped would be a
 /// performance cliff at exactly the moment a deployment cannot afford one.
 ///
 /// A RUN IS A SMALL, KNOWN NUMBER OF BYTES. The C++ reference writes the copy
@@ -1124,26 +1187,15 @@ int tableFixedRun(
         report.widened++;
         break;
       case TableFixedOp.widenFloat:
-        // widenF IS THE BIT-EXACT WIDENING (§4's float rung, §5.2's table):
-        // a plain conversion is exact for every exponent but the all-ones
-        // one. The hardware conversion QUIETS a signalling NaN and can drop a
-        // payload bit, so an all-ones exponent with a non-zero payload is
-        // assembled by hand — f64's all-ones exponent, and the f32 mantissa's
-        // 23 bits shifted up by 29 — and the quiet bit is carried as the
-        // writer wrote it. Every other exponent converts exactly.
-        final bits = sourceView.getUint32(s, Endian.little);
-        if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x007fffff) != 0) {
-          final sign = (bits & 0x80000000) << 32; // the f64 sign bit
-          final exp = 0x7ff0000000000000; // f64's all-ones exponent
-          final mant = (bits & 0x007fffff) << 29; // 23 bits up to 52
-          conv.setUint64(0, sign | exp | mant, Endian.little);
-        } else {
-          conv.setFloat64(
-            0,
-            sourceView.getFloat32(s, Endian.little),
-            Endian.little,
-          );
-        }
+        // widenF IS THE ORDINARY CONVERSION (§4's float rung, §5.2's table;
+        // docs/SPEC-TABLES.md §3.3): exact for every finite float32. A NaN
+        // stays a NaN and an infinity an infinity, and the decode's raw-bits
+        // test on the widened cell refuses either as non_finite_float.
+        conv.setFloat64(
+          0,
+          sourceView.getFloat32(s, Endian.little),
+          Endian.little,
+        );
         for (var k = 0; k < 8; k++) {
           image[d + k] = conv.getUint8(k);
         }
@@ -1282,7 +1334,7 @@ void tableFixedFillRun(
 }
 
 /// THE PLAN COMPILER. The SAME LOOP runs over this plan as over the identity
-/// plan. What the compiler does, ONCE PER PEER, is what a read would otherwise
+/// plan. What the compiler does, ONCE PER ENDPOINT, is what a read would otherwise
 /// do once per record: map the writer's ids onto this reader's fields; leave a
 /// field it cannot name OUT of the plan, which is what skips it, by arithmetic
 /// that was going to step past it anyway; and leave a field the writer does
@@ -1616,7 +1668,7 @@ abstract final class TableFixedCompiler {
         final myN = myElem != 0 ? (mySize - head) ~/ myElem : 0;
         if (dst[row + TableFixedLane.dstCounted] != 0) {
           // THE COUNT'S BOUND IS THE WRITER'S, CARRIED BY THE PLAN (§5.2's
-          // EMIT, bill §12.5): a count forged past what THIS PEER could have
+          // EMIT, bill §12.5): a count forged past what THIS ENDPOINT could have
           // written clamps and counts, and a count the reader merely has more
           // room for does not. A monotone lineage only ever grows a bound, so
           // the writer's is never the looser of the two.
@@ -1635,8 +1687,8 @@ abstract final class TableFixedCompiler {
         final theirBase = theirAt + head;
         final elems = theirN < myN ? theirN : myN;
         for (var i = 0; i < elems; i++) {
-          // THE CENSUS IS ONCE PER FIELD PER PEER (§5.4), never once per
-          // ELEMENT: the four elements of an array are ONE field of ONE peer,
+          // THE CENSUS IS ONCE PER FIELD PER ENDPOINT (§5.4), never once per
+          // ELEMENT: the four elements of an array are ONE field of ONE endpoint,
           // so only element 0 carries the census into the walk. A leg that
           // censuses every element lands the element count (§5.8 row 11).
           compileEntry(
@@ -2002,7 +2054,7 @@ abstract final class TableFixedCompiler {
   }
 
   /// compile builds the plan for ANOTHER writer's layout against my own and
-  /// answers how many entries it wrote, or -1 when it did not fit. The peer's
+  /// answers how many entries it wrote, or -1 when it did not fit. The endpoint's
   /// layout must already have passed TableFixedLayout.parse. THE PREFILL'S
   /// RANGES are worked out here, once: the type's value bytes minus everything
   /// this plan lands.
@@ -2031,7 +2083,7 @@ abstract final class TableFixedCompiler {
     plan.fillCount = 0;
     plan.argw = 1;
     // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING
-    // NOTHING (§5.2 PLAN, §5.9 #42): the census is once per peer, so a second
+    // NOTHING (§5.2 PLAN, §5.9 #42): the census is once per endpoint, so a second
     // walk of the same pairs must not count them twice — the second report is
     // quiet and thrown away.
     plan.pass = 0;

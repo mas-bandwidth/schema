@@ -1,0 +1,52 @@
+[
+  {
+    "name": "empty",
+    "root": "GoalList",
+    "input": "[]"
+  },
+  {
+    "name": "populated",
+    "root": "GoalList",
+    "input": "[{\"x\":3},{\"x\":7}]"
+  },
+  {
+    "name": "bounded",
+    "root": "GoalList",
+    "input": "[{\"x\":3},{\"x\":7},{\"x\":11}]"
+  },
+  {
+    "name": "wrong-root",
+    "root": "GoalList",
+    "input": "{\"goals\":[{\"x\":3}]}"
+  },
+  {
+    "name": "damaged",
+    "root": "GoalList",
+    "input": "[{\"x\":3}"
+  },
+  {
+    "name": "nested",
+    "root": "Holder",
+    "input": "{\"group\":[{\"x\":9}],\"groups\":[[{\"x\":2}],[]]}"
+  },
+  {
+    "name": "nested-map",
+    "root": "Holder",
+    "input": "{\"by_name\":{\"a\":[{\"x\":5}],\"b\":[]}}"
+  },
+  {
+    "name": "optional-present",
+    "root": "Holder",
+    "input": "{\"maybe\":[{\"x\":13}]}"
+  },
+  {
+    "name": "optional-absent",
+    "root": "Holder",
+    "input": "{\"maybe\":null}"
+  },
+  {
+    "name": "wrong-nested",
+    "root": "Holder",
+    "input": "{\"group\":{\"goals\":[{\"x\":3}]}}"
+  }
+]

@@ -333,6 +333,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nunion U {\n    u Box\n}\ntype Box { x uint8 }\n"},
 		{name: "union variants colliding after export mapping", want: "both become BoxA",
 			src: "package t\nunion U {\n    box_a Box\n    boxA Box\n}\ntype Box { x uint8 }\n"},
+		{name: "union variants colliding after Go initialisms", want: "both become ID in the generated Go",
+			src: "package t\nunion U {\n    id Box\n    i_d Box\n}\ntype Box { x uint8 }\n"},
 		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an enum, a
 		// scalar, a string, an array, a pointer and a union are arms, and
 		// what refuses them OUTSIDE a table closure is the closure rule —
@@ -424,6 +426,10 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { class uint8 }\n"},
 		{name: "Go export-casing collision", want: "both become AtRest",
 			src: "package t\ntype T {\n    at_rest bool\n    atRest bool\n}\n"},
+		{name: "Go initialism collision", want: "both become ObjectID in the generated Go",
+			src: "package t\ntype T {\n    object_id bool\n    object_i_d bool\n}\n"},
+		{name: "Go initialism collision between declarations", want: "both generate the Go symbol ProbeID",
+			src: "package t\nconst ProbeId = 1\nconst ProbeID = 2\n"},
 		{name: "a decl collides with an enum's flat variant constant (Go)", want: "variant constant",
 			src: "package t\nenum Team { Red }\ntype TeamRed { x uint8 }\n"},
 		{name: "a decl collides with a flags mask constant", want: "mask constant",
@@ -448,6 +454,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x float32 | min = 1.0, max = 1.00000001, resolution = 0.000000001 }\n"},
 		{name: "resolution collapses to zero at float32", want: "collapses to zero at float32",
 			src: "package t\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1e-46 }\n"},
+		{name: "top quantization step dequantizes to an infinity", want: "dequantizes past the largest float32",
+			src: "package t\ntype Edge { x float32 = 30423614405477505635920876929024.0 | min = 30423614405477505635920876929024.0, max = 340282346638528859811704183484516925440.0, resolution = 1e36 }\n"},
 
 		// ---- package names that cannot compile (the compile fuzzer's
 		// `package exit` specimen). Without the rule, the
@@ -708,6 +716,10 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		// and beside a table alike: the claim is the registry's list and
 		// nothing wider, so a name that merely starts with the same word is
 		// untouched (docs/SPEC-TABLES.md §11).
+		// THE TOP STEP AT THE LARGEST FLOAT32 IS FINITE from a zero min: the
+		// finite-decode refusal reaches only a top step that rounds past it.
+		{name: "a compressed float whose top step is the largest float32",
+			src: "package t\ntype Edge { x float32 | min = 0.0, max = 340282346638528859811704183484516925440.0, resolution = 1e36 }\n"},
 		{name: "near-miss spellings of the table runtime's names",
 			src: "package t\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
 		// THE BITS-ENTRY CLAIM IS EXACT (schema#584): read_frame_bits is

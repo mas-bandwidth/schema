@@ -15,6 +15,8 @@
 
 #include "RenderBlock.h"
 #include "PaddedBlock.h"
+#define SCHEMA_CONFORMANCE_PACKAGE blockdemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER BLOCKDEMO
 #include "unit.h"
 
 /* ---- the shared leaf spellings ---- */
@@ -103,13 +105,13 @@ static void dump_join( char * out, size_t size, const char * prefix, const char 
 /* One record's leaves, at two spaces, in descriptor order. `storage` is the
    record's own base. Out-of-line arrays are the caller's business: they are a
    section of their own, not a leaf. */
-static int dump_record( ConformanceText * out, const uint8_t * storage, const TableBlockInfo * info, const char * path )
+static int dump_record( ConformanceText * out, const uint8_t * storage, const blockdemo_table_block_info_t * info, const char * path )
 {
     int i;
     if ( info == NULL ) { fprintf( stderr, "driver: a descriptor names no record\n" ); return 0; }
     for ( i = 0; i < info->num_fields; i++ )
     {
-        const TableBlockFieldInfo * f = &info->fields[i];
+        const blockdemo_table_block_field_info_t * f = &info->fields[i];
         char name[512];
         char at[576];
         if ( f->out_of_line ) { continue; }
@@ -173,7 +175,7 @@ static int dump_record( ConformanceText * out, const uint8_t * storage, const Ta
 
 /* the whole dump of one opened block: the projection's own fields, then every
    out-of-line array in declaration order, row by row */
-static int dump_block( ConformanceText * out, const uint8_t * base, const TableBlockInfo * info )
+static int dump_block( ConformanceText * out, const uint8_t * base, const blockdemo_table_block_info_t * info )
 {
     char header[256];
     int i;
@@ -183,10 +185,10 @@ static int dump_block( ConformanceText * out, const uint8_t * base, const TableB
 
     for ( i = 0; i < info->num_fields; i++ )
     {
-        const TableBlockFieldInfo * f = &info->fields[i];
+        const blockdemo_table_block_field_info_t * f = &info->fields[i];
         uint64_t offset_of = 0;
         uint32_t count = 0, stride = 0;
-        const TableBlockInfo * row;
+        const blockdemo_table_block_info_t * row;
         uint32_t r;
         if ( !f->out_of_line ) { continue; }
         memcpy( &offset_of, base + f->offset_of_offset, 8 );
@@ -217,13 +219,13 @@ int conformance_block_open_reason( const char * name, const uint8_t * data, size
     if ( !conformance_buffer_create( &buffer, data, bytes, extent, pointer ) ) { return 0; }
     if ( strncmp( name, "block_render", 12 ) == 0 )
     {
-        RenderFrameBlock block;
-        opened = render_frame_block_open_ex( &block, buffer.base, buffer.bytes,reason );
+        blockdemo_render_frame_block_t block;
+        opened = blockdemo_render_frame_block_open_ex( &block, buffer.base, buffer.bytes,reason );
     }
     else if ( strncmp( name, "block_padded", 12 ) == 0 )
     {
-        PaddedFrameBlock block;
-        opened = padded_frame_block_open_ex( &block, buffer.base, buffer.bytes,reason );
+        blockdemo_padded_frame_block_t block;
+        opened = blockdemo_padded_frame_block_open_ex( &block, buffer.base, buffer.bytes,reason );
     }
     else
     {
@@ -242,15 +244,15 @@ int conformance_block_dump( const char * name, const uint8_t * data, size_t byte
     if ( !conformance_buffer_create( &buffer, data, bytes, -1, 0 ) ) { return 0; }
     if ( strncmp( name, "block_render", 12 ) == 0 )
     {
-        RenderFrameBlock block;
-        ok = render_frame_block_open( &block, buffer.base, buffer.bytes ) &&
-             dump_block( out, block.base, render_frame_block_type() );
+        blockdemo_render_frame_block_t block;
+        ok = blockdemo_render_frame_block_open( &block, buffer.base, buffer.bytes ) &&
+             dump_block( out, block.base, blockdemo_render_frame_block_type() );
     }
     else if ( strncmp( name, "block_padded", 12 ) == 0 )
     {
-        PaddedFrameBlock block;
-        ok = padded_frame_block_open( &block, buffer.base, buffer.bytes ) &&
-             dump_block( out, block.base, padded_frame_block_type() );
+        blockdemo_padded_frame_block_t block;
+        ok = blockdemo_padded_frame_block_open( &block, buffer.base, buffer.bytes ) &&
+             dump_block( out, block.base, blockdemo_padded_frame_block_type() );
     }
     else
     {

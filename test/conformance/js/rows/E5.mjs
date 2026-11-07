@@ -124,10 +124,10 @@ function makeP1ChainBytes(nameStr, value, tagStr) {
   
   p3.ChainFixedDecode(chain, new DataView(buf.buffer), 0, report);
   
-  assert(chain.NameLength === 9, `P3: name_length = 9 (got ${chain.NameLength})`);
-  assert(chain.LinkPresent === true, `P3: link_present = true (got ${chain.LinkPresent})`);
-  assert(chain.Link.Value === 77, `P3: link.value = 77 (got ${chain.Link.Value})`);
-  assert(chain.Link.TagLength === 5, `P3: link.tag_length = 5 (got ${chain.Link.TagLength})`);
+  assert(chain.nameLength === 9, `P3: name_length = 9 (got ${chain.nameLength})`);
+  assert(chain.linkPresent === true, `P3: link_present = true (got ${chain.linkPresent})`);
+  assert(chain.link.value === 77, `P3: link.value = 77 (got ${chain.link.value})`);
+  assert(chain.link.tagLength === 5, `P3: link.tag_length = 5 (got ${chain.link.tagLength})`);
   assert(report.refused === 0, `P3: refused = 0 (got ${report.refused})`);
 }
 
@@ -140,9 +140,9 @@ function makeP1ChainBytes(nameStr, value, tagStr) {
   
   p3.ChainFixedDecode(chain, new DataView(buf.buffer), 0, report);
   
-  assert(chain.NameLength === 6, `P3 absent: name_length = 6 (got ${chain.NameLength})`);
-  assert(chain.LinkPresent === false, `P3 absent: link_present = false (got ${chain.LinkPresent})`);
-  assert(chain.Link.Value === 0, `P3 absent: link.value = 0 (got ${chain.Link.Value})`);
+  assert(chain.nameLength === 6, `P3 absent: name_length = 6 (got ${chain.nameLength})`);
+  assert(chain.linkPresent === false, `P3 absent: link_present = false (got ${chain.linkPresent})`);
+  assert(chain.link.value === 0, `P3 absent: link.value = 0 (got ${chain.link.value})`);
   assert(report.refused === 0, `P3 absent: refused = 0 (got ${report.refused})`);
 }
 
@@ -155,9 +155,9 @@ function makeP1ChainBytes(nameStr, value, tagStr) {
   
   p1.ChainFixedDecode(chain, new DataView(buf.buffer), 0, report);
   
-  assert(chain.NameLength === 10, `P1: name_length = 10 (got ${chain.NameLength})`);
-  assert(chain.Link.Value === 88, `P1: link.value = 88 (got ${chain.Link.Value})`);
-  assert(chain.Link.TagLength === 6, `P1: link.tag_length = 6 (got ${chain.Link.TagLength})`);
+  assert(chain.nameLength === 10, `P1: name_length = 10 (got ${chain.nameLength})`);
+  assert(chain.link.value === 88, `P1: link.value = 88 (got ${chain.link.value})`);
+  assert(chain.link.tagLength === 6, `P1: link.tag_length = 6 (got ${chain.link.tagLength})`);
   assert(report.refused === 0, `P1: refused = 0 (got ${report.refused})`);
 }
 

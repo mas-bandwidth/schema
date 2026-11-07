@@ -33,7 +33,7 @@ func TestCFixedFormUnder20Bytes(t *testing.T) {
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_field_append")
 	file := filepath.Join(corpus, "new_field_append.bin")
-	load := ir.RustSnake(cFixedRootName(t, cUnitOf(t, newer))) + "_fixed_load"
+	load := ir.RustSnake(cFixedRootName(t, cUnitOf(t, newer))) + "_fixed_load_tolerant"
 
 	body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "under20: the full-length file did not read: n=%%lld reason=%%d\n", (long long) n, r.reason ); return 1; }

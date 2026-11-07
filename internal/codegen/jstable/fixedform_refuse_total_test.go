@@ -47,13 +47,13 @@ func TestFixedJsTextRefusalIsTotal(t *testing.T) {
   return n;
 }`
 	const baseDecode = `export function FixedTableFixedDecode(value, view, at, report) {
-  value.Sequence = view.getUint32(at, true);
+  value.sequence = view.getUint32(at, true);
   {
     let n = view.getInt32(at + 1126, true);
     if (n < 0) { n = 0; report.clamped++; } else if (n > 15) { n = 15; report.clamped++; }
-    value.PlayerNameLength = n;
+    value.playerNameLength = n;
   }
-  if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 1130, value.PlayerNameLength)) { report.refused = TableFixedRefusal.TextIllFormed; return; }
+  if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 1130, value.playerNameLength)) { report.refused = TableFixedRefusal.TextIllFormed; return; }
 }`
 	if f1, f2 := checkFixedRefuseIsTotal(baseLoad, baseDecode); f1 == "" || f2 == "" {
 		t.Fatalf("negative control failed to detect both BASE faults: loopFault=%q decodeFault=%q", f1, f2)

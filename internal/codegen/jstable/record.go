@@ -30,47 +30,68 @@ import (
 // unit can take it.
 func recordName(name string) string { return name + "Row" }
 
-// jsF32Reader is the ONE module-level function every float32 accessor of a
-// unit calls: the block home defines it (blockRuntime), or the cook home where
-// the unit has no block form (cookRuntime), and every other module that reads
-// a float32 imports it from there.
-const jsF32Reader = "TableBlockReadF32"
+// jsF32Reader and jsF64Reader are the ONE module-level float read per width
+// every float accessor of a unit calls: the block home defines them
+// (blockRuntime), or the cook home where the unit has no block form
+// (cookRuntime), and every other module that reads a float imports them from
+// there. jsNonFiniteFloat is the latch's query beside them.
+const (
+	jsF32Reader      = "TableBlockReadF32"
+	jsF64Reader      = "TableBlockReadF64"
+	jsNonFiniteFloat = "TableBlockNonFiniteFloat"
+)
 
-// jsF32ReaderSource is that function's text, emitted ONCE per unit.
+// jsFloatReaders are the runtime float symbols a module imports from its home
+// when its own accessors call them.
+var jsFloatReaders = []string{jsF32Reader, jsF64Reader}
+
+// jsF32ReaderSource is the readers' text, emitted ONCE per unit.
 //
-// It was an arrow built and run at EVERY read — `((b) => {...})(bits)` — and a
-// closure created per call is a heap allocation, with a fresh DataView and
-// ArrayBuffer(8) on top for a NaN: 246 bytes per iteration on the block walk,
-// against docs/PORTING.md M1 (the read path allocates nothing) and the gate
-// I9 holds it to (`make tables-js-alloc`). Hoisted here it allocates nothing;
-// the NaN branch's scratch is built once, at module scope.
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+// "tables go finite-only too, same rule as packets"). A block or cook open is
+// O(1) and walks no field (§7, §13.4), so it is THE ACCESSOR that meets a
+// non-finite float, and it refuses one: the raw bits are tested before they
+// become a number, the field's <Owner>.<field> name is LATCHED ON THE VIEW
+// (the first name wins) and the accessor answers +0, never the value. The
+// latch is a WeakMap keyed by the DataView, so a finite read touches no
+// property of the view, changes no shape and allocates nothing; only the
+// refusal writes it. TableBlockNonFiniteFloat(view) answers the latched name,
+// "" while every float the view's accessors read was finite.
 //
-// THE VALUE IS UNCHANGED, bit for bit (docs/PORTING.md M21): a NaN moves its
-// sign and 23 payload bits into the TOP of the double's mantissa by bit
-// surgery, never through a hardware float32 conversion that would set the
-// quiet bit, and every other pattern takes the exact arithmetic it took inline.
-// Only the INTEGER crosses into the call (docs/PORTING.md M3); the double
-// comes back out of it, which is the per-language allowance JavaScript takes
-// here for performance (Glenn, 2026-10-15) — test/js-tables/main.mjs's float32
-// oracle check proves no value moved, and the allocation gate proves the cost.
+// The readers were once an arrow built and run at EVERY read, and a closure
+// created per call is a heap allocation: 246 bytes per iteration on the block
+// walk, against docs/PORTING.md M1 (the read path allocates nothing) and the
+// gate I9 holds it to (`make tables-js-alloc`). As module-level functions they
+// allocate nothing. The double comes back out of the call, which is the
+// per-language allowance JavaScript takes here for performance (docs/PORTING.md
+// M3; Glenn, 2026-10-15), and the allocation gate proves the cost.
 func jsF32ReaderSource() string {
-	return `// ONE float32 read for every float32 accessor of the unit (docs/PORTING.md
-// M1, M3, M21): the 32 bits cross in as an integer, and a NaN keeps its
-// payload by bit surgery through a scratch built ONCE, here, never per read.
-// One module-scope binding, claimed in internal/tablenames.
-export const ` + jsF32Reader + ` = (() => {
-  const scratch = new DataView(new ArrayBuffer(8));
-  return function ` + jsF32Reader + `(b) {
-    if ((b & 0x7f800000) === 0x7f800000 && (b & 0x007fffff) !== 0) {
-      const p = b & 0x007fffff;
-      scratch.setUint32(4, ((b & 0x80000000) | 0x7ff00000 | (p >>> 3)) >>> 0, true);
-      scratch.setUint32(0, ((p & 7) << 29) >>> 0, true);
-      return scratch.getFloat64(0, true);
-    }
-    const s = b < 0 ? -1 : 1, e = (b >>> 23) & 0xff, m = b & 0x007fffff;
-    return e === 0 ? s * m * 1.401298464324817e-45 : e === 0xff ? s * Infinity : s * (m | 0x00800000) * (2 ** (e - 150));
-  };
-})();
+	return `// THE FLOAT READS for every float accessor of the unit (docs/SPEC-TABLES.md
+// §3.3; docs/PORTING.md M1, M3): the raw bits are tested in place, a NaN or an
+// infinity is refused as non_finite_float and LATCHED ON THE VIEW with the
+// field named, and the accessor answers +0 for it, never the value. A finite
+// read allocates nothing: the refusal is a statement and the +0 a literal, so
+// the reader's answer stays an unboxed double (a call's answer in that branch
+// boxed every finite read, 44 bytes a walk on make tables-js-alloc).
+// Module-scope bindings, claimed in internal/tablenames.
+const TableBlockLatch = new WeakMap();
+function TableBlockRefuseFloat(view, field) {
+  if (!TableBlockLatch.has(view)) { TableBlockLatch.set(view, field); }
+}
+// the <Owner>.<field> of the first non-finite float an accessor met over view,
+// "" when there was none
+export function ` + jsNonFiniteFloat + `(view) {
+  const field = TableBlockLatch.get(view);
+  return field === undefined ? "" : field;
+}
+export function ` + jsF32Reader + `(view, at, field) {
+  if ((view.getUint32(at, true) & 0x7f800000) === 0x7f800000) { TableBlockRefuseFloat(view, field); return 0; }
+  return view.getFloat32(at, true);
+}
+export function ` + jsF64Reader + `(view, at, field) {
+  if ((view.getUint32(at + 4, true) & 0x7ff00000) === 0x7ff00000) { TableBlockRefuseFloat(view, field); return 0; }
+  return view.getFloat64(at, true);
+}
 
 `
 }
@@ -79,16 +100,18 @@ export const ` + jsF32Reader + ` = (() => {
 // field, by the WIRE KIND the descriptors carry and the STORAGE width the
 // layout model gives it — the same pair the canonical row dump reads with, so
 // the generated accessor and a reflective walk cannot disagree about a byte.
-func jsScalarRead(kind int, elemSize int64, at string) string {
+//
+// A float reads through the unit's module-level reader for its width
+// (jsF32ReaderSource), which refuses a non-finite one and latches `field`, the
+// <Owner>.<field> name, on the view; nothing is built at the call site.
+func jsScalarRead(kind int, elemSize int64, at, field string) string {
 	switch kind {
 	case tkBool:
 		return fmt.Sprintf("view.getUint8(%s) !== 0", at)
 	case tkF32:
-		// the 32 bits cross as an INTEGER into the unit's one module-level
-		// conversion (jsF32ReaderSource); nothing is built at the call site
-		return fmt.Sprintf("%s(view.getUint32(%s, true) | 0)", jsF32Reader, at)
+		return fmt.Sprintf("%s(view, %s, %s)", jsF32Reader, at, jsStr(field))
 	case tkF64:
-		return fmt.Sprintf("view.getFloat64(%s, true)", at)
+		return fmt.Sprintf("%s(view, %s, %s)", jsF64Reader, at, jsStr(field))
 	case tkI8, tkI16, tkI32, tkI64:
 		switch elemSize {
 		case 1:
@@ -167,6 +190,11 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 		if f.Type.Kind == ir.TBytes {
 			kind = tkU8
 		}
+		if f.IsList() || f.IsMap() {
+			emitRowHolder(pf, u, name, f, pieces[0].Offset)
+			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %sDelta(view, at)", f.Name, member))
+			continue
+		}
 		switch {
 		case f.Type.Pointer:
 			// A *T SLOT IS EIGHT BYTES (docs/SPEC-TABLES.md §6.3, §7.2), holding
@@ -176,6 +204,13 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			pf("  function %sSlot(at) { return at + %d; }\n", member, fl.Offset)
 			pf("  function %sDelta(view, at) { return view.getBigInt64(at + %d, true); }\n", member, fl.Offset)
 			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %sDelta(view, at)", f.Name, member))
+		case f.Type.TextUnbounded():
+			pf("  function %sSlot(at) { return at + %d; }\n", member, fl.Offset)
+			pf("  function %sDelta(view, at) { return view.getBigInt64(at + %d, true); }\n", member, fl.Offset)
+			pf("  function %sTarget(view, at) { const slot = at + %d; const delta = view.getInt32(slot + 4, true) * 4294967296 + view.getUint32(slot, true); return delta === 0 ? -1 : slot + delta; }\n", member, fl.Offset)
+			pf("  function %sLength(view, at) { const blob = %sTarget(view, at); return blob < 0 ? 0 : view.getUint32(blob, true); }\n", member, member)
+			pf("  function %s(bytes, view, at) { const blob = %sTarget(view, at); return blob < 0 ? bytes.subarray(0,0) : bytes.subarray(blob + 8, blob + 8 + view.getUint32(blob, true)); }\n", member, member)
+			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %s(bytes, view, at)", f.Name, member))
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			pf("  function %sLength(view, at) { return view.getInt32(at + %d, true); }\n", member, pieces[1].Offset)
 			pf("  function %s(bytes, view, at) {\n", member)
@@ -200,7 +235,7 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 				elem = fl.Size
 			}
 			pf("  function %s(view, at, i = 0) { return %s; }\n", member,
-				jsScalarRead(kind, elem, fmt.Sprintf("at + %d + i * %d", fl.Offset, elem)))
+				jsScalarRead(kind, elem, fmt.Sprintf("at + %d + i * %d", fl.Offset, elem), name+"."+f.Name))
 			if isFlagsField(f) {
 				// the mask's accessor answers a BigInt, one allocation per read;
 				// this one answers whether ONE bit is set and allocates nothing
@@ -233,9 +268,18 @@ func recordMembers(u *ir.Unit, ml *ir.MemberLayout) []string {
 		f := fl.Field
 		member := ir.GoExportName(f.Name)
 		facts := ir.BlockFieldOf(u, f, fl.Offset, false)
+		if f.IsList() || f.IsMap() {
+			out = append(out, member+"Slot", member+"Delta", member+"Count", member+"Stride", member+"At")
+			if rowFindKey(f) != nil {
+				out = append(out, member+"Find")
+			}
+			continue
+		}
 		switch {
 		case f.Type.Pointer:
 			out = append(out, member+"Slot", member+"Delta")
+		case f.Type.TextUnbounded():
+			out = append(out, member, member+"Length", member+"Slot", member+"Delta")
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			out = append(out, member, member+"Length")
 		case isClassRef(f.Type) && f.Type.Kind == ir.TNamed:
@@ -254,4 +298,110 @@ func recordMembers(u *ir.Unit, ml *ir.MemberLayout) []string {
 		}
 	}
 	return out
+}
+
+// emitRowHolder is a LIST's or a MAP's sixteen-byte holder (docs/SPEC-TABLES.md
+// §2.8, §2.9, §7.2; docs/PORTING.md M19): the slot holds the SIGNED
+// SELF-RELATIVE delta to the element array in the holder's node extent (zero
+// for an empty one) and the int32 count beside it. `<F>At(view, at, i)` is the
+// i-th element's offset IN PLACE: the slot's own offset plus the delta plus i
+// strides, one add and one multiply, with nothing parsed and nothing copied.
+// The delta is read as its two 32-bit halves, so the span allocates nothing
+// (a cook's references stay below 2^53, the region's own bound). A MAP adds
+// `<F>Find`, a binary search over the ascending entries where they lie.
+func emitRowHolder(pf func(string, ...any), u *ir.Unit, owner string, f *ir.Field, slot int64) {
+	member := ir.GoExportName(f.Name)
+	var stride int64
+	if f.IsMap() {
+		stride = ir.RecordLayout(u, f.MapEntry).Size
+	} else {
+		stride, _ = ir.ListElementLayout(u, f)
+	}
+	pf("  // %s: the holder's slot, its delta and its count; %sAt is element i where it lies (§2.8, §2.9)\n",
+		ir.FieldTypeSpelling(f), member)
+	pf("  function %sSlot(at) { return at + %d; }\n", member, slot)
+	pf("  function %sDelta(view, at) { return view.getBigInt64(at + %d, true); }\n", member, slot)
+	pf("  function %sCount(view, at) { const n = view.getInt32(at + %d, true); return n < 0 ? 0 : n; }\n", member, slot+8)
+	pf("  const %sStride = %d;\n", member, stride)
+	pf("  function %sAt(view, at, i = 0) {\n", member)
+	pf("    return at + %d + view.getInt32(at + %d, true) * 4294967296 + view.getUint32(at + %d, true) + i * %d;\n",
+		slot, slot+4, slot, stride)
+	pf("  }\n")
+	key := rowFindKey(f)
+	if key == nil {
+		return
+	}
+	entry := ir.RecordLayout(u, f.MapEntry)
+	var keyAt int64
+	for _, efl := range entry.Fields {
+		if efl.Field == key {
+			keyAt = efl.Offset
+		}
+	}
+	pieces := ir.FieldPieces(u, key, keyAt)
+	pf("  // the entry whose key is `key`, where the entries lie, or -1: a binary search over\n")
+	pf("  // the ascending array (§2.8), floor(log2 n) + 1 key compares and no allocation.\n")
+	if key.Type.Kind == ir.TString {
+		pf("  // `key` is the key's UTF-8 bytes, ordered as bytes, unsigned, a prefix first.\n")
+		pf("  function %sFind(bytes, view, at, key) {\n", member)
+		pf("    const base = %sAt(view, at, 0);\n", member)
+		pf("    let low = 0, high = %sCount(view, at);\n", member)
+		pf("    while (low < high) {\n")
+		pf("      const mid = (low + high) >>> 1;\n")
+		pf("      const e = base + mid * %d;\n", stride)
+		if key.Type.TextUnbounded() {
+			pf("      const slot = e + %d; const delta = view.getInt32(slot + 4, true) * 4294967296 + view.getUint32(slot, true);\n", pieces[0].Offset)
+			pf("      const text = delta === 0 ? 0 : slot + delta + 8; const used = delta === 0 ? 0 : view.getUint32(text - 8, true);\n")
+		} else {
+			pf("      let used = view.getInt32(e + %d, true);\n", pieces[1].Offset)
+			pf("      if (!(used >= 0) || used > %d) { used = 0; }\n", key.Type.Size)
+			pf("      const text = e + %d;\n", pieces[0].Offset)
+		}
+		pf("      const m = used < key.length ? used : key.length;\n")
+		pf("      let order = 0;\n")
+		pf("      for (let i = 0; i < m && order === 0; i++) { order = bytes[text + i] - key[i]; }\n")
+		pf("      if (order === 0) { order = used - key.length; }\n")
+		pf("      if (order === 0) { return e; }\n")
+		pf("      if (order < 0) { low = mid + 1; } else { high = mid; }\n")
+		pf("    }\n")
+		pf("    return -1;\n")
+		pf("  }\n")
+		return
+	}
+	width := pieces[0].Size
+	want := "Number(key)"
+	if width == 8 {
+		want = `typeof key === "bigint" ? key : BigInt(key)`
+	}
+	pf("  // `key` is the integer, ordered by value (signed for a signed kind).\n")
+	pf("  function %sFind(view, at, key) {\n", member)
+	pf("    const want = %s;\n", want)
+	pf("    const base = %sAt(view, at, 0);\n", member)
+	pf("    let low = 0, high = %sCount(view, at);\n", member)
+	pf("    while (low < high) {\n")
+	pf("      const mid = (low + high) >>> 1;\n")
+	pf("      const e = base + mid * %d;\n", stride)
+	pf("      const k = %s;\n", jsScalarRead(tableScalarKind(key), width, fmt.Sprintf("e + %d", pieces[0].Offset), owner+"."+f.Name))
+	pf("      if (k === want) { return e; }\n")
+	pf("      if (k < want) { low = mid + 1; } else { high = mid; }\n")
+	pf("    }\n")
+	pf("    return -1;\n")
+	pf("  }\n")
+}
+
+// rowFindKey is a map's key when the cooked entry array can be searched in
+// place: a bounded string(N), compared as bytes, or an integer up to 64 bits.
+// A list has none.
+func rowFindKey(f *ir.Field) *ir.Field {
+	if !f.IsMap() {
+		return nil
+	}
+	key := ir.MapKeyField(f)
+	switch {
+	case key.Type.Kind == ir.TString && !key.Type.Pointer && (key.Type.TextUnbounded() || key.Type.Size > 0):
+		return key
+	case key.Type.Kind == ir.TInt && key.Type.Width <= 64:
+		return key
+	}
+	return nil
 }

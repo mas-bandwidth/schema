@@ -60,7 +60,7 @@ namespace Tabledemo
             if (v.Count != 1)
             {
                 w.HeaderAt(97, 0xb1e5e28e4479a274ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.Count, 4);
+                w.Fixed(unchecked((ulong)(long)(v.Count)), 4);
             }
             w.Var(0);
         }
@@ -84,6 +84,7 @@ namespace Tabledemo
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + ArchiveConfigBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -91,6 +92,7 @@ namespace Tabledemo
             ArchiveConfigWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -138,6 +140,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.ArchiveConfig(); };
                 info.StorageSize = 1488; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -145,7 +148,7 @@ namespace Tabledemo
                 info.Fields = new TableFieldInfo[]
                 {
                     new TableFieldInfo { Name = "root", Json = "root", TypeName = "RootConfig", Id = 0xa354fd1ff0c467c5, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RootConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.ArchiveConfig)o).Root; }, MessageSlot = 1, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1480, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ArchiveConfig)o; TableReset(value.Root); } },
-                    new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.ArchiveConfig)o).Count; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ArchiveConfig)o).Count = unchecked((int)(long)r); }, MessageSlot = 2, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x64ul)), Ordinal = 1, NativeOffset = 1480, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ArchiveConfig)o; value.Count = 1; }, DefaultRaw = (ulong)(long)1, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100) { r.Clamped++; v = 100; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.ArchiveConfig)o).Count)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ArchiveConfig)o).Count = unchecked((int)(long)r); }, MessageSlot = 2, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x64ul)), Ordinal = 1, NativeOffset = 1480, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ArchiveConfig)o; value.Count = 1; }, DefaultRaw = unchecked((ulong)(long)(1)), ClampJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L) { r.Clamped++; v = 0L; } else if (v > 100L) { r.Clamped++; v = 100L; } return unchecked((ulong)v); }, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100) { r.Clamped++; v = 100; } return unchecked((ulong)(long)(v)); } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.ArchiveConfig)o); };
                 info.Doc = TableDocNone;
@@ -204,6 +207,18 @@ namespace Tabledemo
             RootConfigFixedClampBody(value.Root, ref clamped);
             if (value.Count < 0) { value.Count = 0; clamped++; }
             else if (value.Count > 100) { value.Count = 100; clamped++; }
+        }
+
+        // ArchiveConfig's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
+        // <Owner>.<field>, or null.
+        public static string ArchiveConfigFixedFiniteBody(ArchiveConfig value)
+        {
+            if (value == null) return null;
+            {
+                string why = RootConfigFixedFiniteBody(value.Root);
+                if (why != null) return why;
+            }
+            return null;
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -467,13 +482,13 @@ namespace Tabledemo
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Port = unchecked((ushort)v), reset: (t) => { t.Root.Profiles[0].Port = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Epoch = unchecked((ulong)v), reset: (t) => { t.Root.Profiles[0].Epoch = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[0].Precision = d, reset: (t) => { t.Root.Profiles[0].Precision = 0.0; }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Ratings.Length * 4))).CopyTo(t.Root.Profiles[0].Ratings); }, reset: (t) => { if (t.Root.Profiles[0].Ratings != null) Array.Clear(t.Root.Profiles[0].Ratings, 0, t.Root.Profiles[0].Ratings.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Ratings != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Ratings.Length * 4)), t.Root.Profiles[0].Ratings); }, reset: (t) => { if (t.Root.Profiles[0].Ratings != null) Array.Clear(t.Root.Profiles[0].Ratings, 0, t.Root.Profiles[0].Ratings.Length); }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].HasLoadout = v != 0, reset: (t) => { t.Root.Profiles[0].HasLoadout = false; }),
             new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { t.Root.Profiles[0].Loadout.Grade = (Grade)v; }, reset: (t) => { t.Root.Profiles[0].Loadout.Grade = global::Tabledemo.Grade.Silver; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[0].Loadout.GradesCount = 0; }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[0].Loadout.Grades != null) Array.Clear(t.Root.Profiles[0].Loadout.Grades, 0, t.Root.Profiles[0].Loadout.Grades.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[0].Loadout.Podium != null) Array.Clear(t.Root.Profiles[0].Loadout.Podium, 0, t.Root.Profiles[0].Loadout.Podium.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[0].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Loadout.Grades != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Grades.Length * 1)), t.Root.Profiles[0].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[0].Loadout.Grades != null) Array.Clear(t.Root.Profiles[0].Loadout.Grades, 0, t.Root.Profiles[0].Loadout.Grades.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Loadout.Podium != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Podium.Length * 1)), t.Root.Profiles[0].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[0].Loadout.Podium != null) Array.Clear(t.Root.Profiles[0].Loadout.Podium, 0, t.Root.Profiles[0].Loadout.Podium.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Perks = (global::Tabledemo.Perks)v, reset: (t) => { t.Root.Profiles[0].Loadout.Perks = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Penetration = 1; }),
@@ -527,13 +542,13 @@ namespace Tabledemo
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Port = unchecked((ushort)v), reset: (t) => { t.Root.Profiles[1].Port = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Epoch = unchecked((ulong)v), reset: (t) => { t.Root.Profiles[1].Epoch = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[1].Precision = d, reset: (t) => { t.Root.Profiles[1].Precision = 0.0; }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Ratings.Length * 4))).CopyTo(t.Root.Profiles[1].Ratings); }, reset: (t) => { if (t.Root.Profiles[1].Ratings != null) Array.Clear(t.Root.Profiles[1].Ratings, 0, t.Root.Profiles[1].Ratings.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Ratings != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Ratings.Length * 4)), t.Root.Profiles[1].Ratings); }, reset: (t) => { if (t.Root.Profiles[1].Ratings != null) Array.Clear(t.Root.Profiles[1].Ratings, 0, t.Root.Profiles[1].Ratings.Length); }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].HasLoadout = v != 0, reset: (t) => { t.Root.Profiles[1].HasLoadout = false; }),
             new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { t.Root.Profiles[1].Loadout.Grade = (Grade)v; }, reset: (t) => { t.Root.Profiles[1].Loadout.Grade = global::Tabledemo.Grade.Silver; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[1].Loadout.GradesCount = 0; }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[1].Loadout.Grades != null) Array.Clear(t.Root.Profiles[1].Loadout.Grades, 0, t.Root.Profiles[1].Loadout.Grades.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[1].Loadout.Podium != null) Array.Clear(t.Root.Profiles[1].Loadout.Podium, 0, t.Root.Profiles[1].Loadout.Podium.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[1].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Loadout.Grades != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Grades.Length * 1)), t.Root.Profiles[1].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[1].Loadout.Grades != null) Array.Clear(t.Root.Profiles[1].Loadout.Grades, 0, t.Root.Profiles[1].Loadout.Grades.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Loadout.Podium != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Podium.Length * 1)), t.Root.Profiles[1].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[1].Loadout.Podium != null) Array.Clear(t.Root.Profiles[1].Loadout.Podium, 0, t.Root.Profiles[1].Loadout.Podium.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Perks = (global::Tabledemo.Perks)v, reset: (t) => { t.Root.Profiles[1].Loadout.Perks = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Penetration = 1; }),
@@ -587,13 +602,13 @@ namespace Tabledemo
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Port = unchecked((ushort)v), reset: (t) => { t.Root.Profiles[2].Port = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Epoch = unchecked((ulong)v), reset: (t) => { t.Root.Profiles[2].Epoch = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[2].Precision = d, reset: (t) => { t.Root.Profiles[2].Precision = 0.0; }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Ratings.Length * 4))).CopyTo(t.Root.Profiles[2].Ratings); }, reset: (t) => { if (t.Root.Profiles[2].Ratings != null) Array.Clear(t.Root.Profiles[2].Ratings, 0, t.Root.Profiles[2].Ratings.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Ratings != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Ratings.Length * 4)), t.Root.Profiles[2].Ratings); }, reset: (t) => { if (t.Root.Profiles[2].Ratings != null) Array.Clear(t.Root.Profiles[2].Ratings, 0, t.Root.Profiles[2].Ratings.Length); }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].HasLoadout = v != 0, reset: (t) => { t.Root.Profiles[2].HasLoadout = false; }),
             new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { t.Root.Profiles[2].Loadout.Grade = (Grade)v; }, reset: (t) => { t.Root.Profiles[2].Loadout.Grade = global::Tabledemo.Grade.Silver; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[2].Loadout.GradesCount = 0; }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[2].Loadout.Grades != null) Array.Clear(t.Root.Profiles[2].Loadout.Grades, 0, t.Root.Profiles[2].Loadout.Grades.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[2].Loadout.Podium != null) Array.Clear(t.Root.Profiles[2].Loadout.Podium, 0, t.Root.Profiles[2].Loadout.Podium.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[2].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Loadout.Grades != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Grades.Length * 1)), t.Root.Profiles[2].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[2].Loadout.Grades != null) Array.Clear(t.Root.Profiles[2].Loadout.Grades, 0, t.Root.Profiles[2].Loadout.Grades.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Loadout.Podium != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Podium.Length * 1)), t.Root.Profiles[2].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[2].Loadout.Podium != null) Array.Clear(t.Root.Profiles[2].Loadout.Podium, 0, t.Root.Profiles[2].Loadout.Podium.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Perks = (global::Tabledemo.Perks)v, reset: (t) => { t.Root.Profiles[2].Loadout.Perks = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Penetration = 1; }),
@@ -647,13 +662,13 @@ namespace Tabledemo
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Port = unchecked((ushort)v), reset: (t) => { t.Root.Profiles[3].Port = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Epoch = unchecked((ulong)v), reset: (t) => { t.Root.Profiles[3].Epoch = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[3].Precision = d, reset: (t) => { t.Root.Profiles[3].Precision = 0.0; }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Ratings.Length * 4))).CopyTo(t.Root.Profiles[3].Ratings); }, reset: (t) => { if (t.Root.Profiles[3].Ratings != null) Array.Clear(t.Root.Profiles[3].Ratings, 0, t.Root.Profiles[3].Ratings.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Ratings != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Ratings.Length * 4)), t.Root.Profiles[3].Ratings); }, reset: (t) => { if (t.Root.Profiles[3].Ratings != null) Array.Clear(t.Root.Profiles[3].Ratings, 0, t.Root.Profiles[3].Ratings.Length); }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].HasLoadout = v != 0, reset: (t) => { t.Root.Profiles[3].HasLoadout = false; }),
             new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { t.Root.Profiles[3].Loadout.Grade = (Grade)v; }, reset: (t) => { t.Root.Profiles[3].Loadout.Grade = global::Tabledemo.Grade.Silver; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[3].Loadout.GradesCount = 0; }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[3].Loadout.Grades != null) Array.Clear(t.Root.Profiles[3].Loadout.Grades, 0, t.Root.Profiles[3].Loadout.Grades.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[3].Loadout.Podium != null) Array.Clear(t.Root.Profiles[3].Loadout.Podium, 0, t.Root.Profiles[3].Loadout.Podium.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[3].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Loadout.Grades != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Grades.Length * 1)), t.Root.Profiles[3].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[3].Loadout.Grades != null) Array.Clear(t.Root.Profiles[3].Loadout.Grades, 0, t.Root.Profiles[3].Loadout.Grades.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Loadout.Podium != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Podium.Length * 1)), t.Root.Profiles[3].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[3].Loadout.Podium != null) Array.Clear(t.Root.Profiles[3].Loadout.Podium, 0, t.Root.Profiles[3].Loadout.Podium.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Perks = (global::Tabledemo.Perks)v, reset: (t) => { t.Root.Profiles[3].Loadout.Perks = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Penetration = 1; }),
@@ -782,7 +797,7 @@ namespace Tabledemo
                 case 81: t.Root.Profiles[0].HasLoadout = v != 0; break;
                 case 82: { t.Root.Profiles[0].Loadout.Grade = (Grade)v; } break;
                 case 83: t.Root.Profiles[0].Loadout.GradesCount = (int)v; break;
-                case 86: t.Root.Profiles[0].Loadout.Perks = v; break;
+                case 86: t.Root.Profiles[0].Loadout.Perks = (global::Tabledemo.Perks)v; break;
                 case 87: t.Root.Profiles[0].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 88: t.Root.Profiles[0].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 89: t.Root.Profiles[0].Loadout.Primary.Penetration = unchecked((int)v); break;
@@ -837,7 +852,7 @@ namespace Tabledemo
                 case 141: t.Root.Profiles[1].HasLoadout = v != 0; break;
                 case 142: { t.Root.Profiles[1].Loadout.Grade = (Grade)v; } break;
                 case 143: t.Root.Profiles[1].Loadout.GradesCount = (int)v; break;
-                case 146: t.Root.Profiles[1].Loadout.Perks = v; break;
+                case 146: t.Root.Profiles[1].Loadout.Perks = (global::Tabledemo.Perks)v; break;
                 case 147: t.Root.Profiles[1].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 148: t.Root.Profiles[1].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 149: t.Root.Profiles[1].Loadout.Primary.Penetration = unchecked((int)v); break;
@@ -892,7 +907,7 @@ namespace Tabledemo
                 case 201: t.Root.Profiles[2].HasLoadout = v != 0; break;
                 case 202: { t.Root.Profiles[2].Loadout.Grade = (Grade)v; } break;
                 case 203: t.Root.Profiles[2].Loadout.GradesCount = (int)v; break;
-                case 206: t.Root.Profiles[2].Loadout.Perks = v; break;
+                case 206: t.Root.Profiles[2].Loadout.Perks = (global::Tabledemo.Perks)v; break;
                 case 207: t.Root.Profiles[2].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 208: t.Root.Profiles[2].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 209: t.Root.Profiles[2].Loadout.Primary.Penetration = unchecked((int)v); break;
@@ -947,7 +962,7 @@ namespace Tabledemo
                 case 261: t.Root.Profiles[3].HasLoadout = v != 0; break;
                 case 262: { t.Root.Profiles[3].Loadout.Grade = (Grade)v; } break;
                 case 263: t.Root.Profiles[3].Loadout.GradesCount = (int)v; break;
-                case 266: t.Root.Profiles[3].Loadout.Perks = v; break;
+                case 266: t.Root.Profiles[3].Loadout.Perks = (global::Tabledemo.Perks)v; break;
                 case 267: t.Root.Profiles[3].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 268: t.Root.Profiles[3].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 269: t.Root.Profiles[3].Loadout.Primary.Penetration = unchecked((int)v); break;
@@ -1113,24 +1128,24 @@ namespace Tabledemo
                 case 1: { if (t.Root.VersionNote != null) b.Slice(0, Math.Min(b.Length, t.Root.VersionNote.Length)).CopyTo(t.Root.VersionNote); } break;
                 case 69: { if (t.Root.Profiles[0].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Name.Length)).CopyTo(t.Root.Profiles[0].Name); } break;
                 case 71: { if (t.Root.Profiles[0].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Icon.Length)).CopyTo(t.Root.Profiles[0].Icon); } break;
-                case 80: { if (t.Root.Profiles[0].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Ratings.Length * 4))).CopyTo(t.Root.Profiles[0].Ratings); } break;
-                case 84: { if (t.Root.Profiles[0].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Grades); } break;
-                case 85: { if (t.Root.Profiles[0].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Podium); } break;
+                case 80: { if (t.Root.Profiles[0].Ratings != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Ratings.Length * 4)), t.Root.Profiles[0].Ratings); } break;
+                case 84: { if (t.Root.Profiles[0].Loadout.Grades != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Grades.Length * 1)), t.Root.Profiles[0].Loadout.Grades); } break;
+                case 85: { if (t.Root.Profiles[0].Loadout.Podium != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Podium.Length * 1)), t.Root.Profiles[0].Loadout.Podium); } break;
                 case 129: { if (t.Root.Profiles[1].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Name.Length)).CopyTo(t.Root.Profiles[1].Name); } break;
                 case 131: { if (t.Root.Profiles[1].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Icon.Length)).CopyTo(t.Root.Profiles[1].Icon); } break;
-                case 140: { if (t.Root.Profiles[1].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Ratings.Length * 4))).CopyTo(t.Root.Profiles[1].Ratings); } break;
-                case 144: { if (t.Root.Profiles[1].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Grades); } break;
-                case 145: { if (t.Root.Profiles[1].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Podium); } break;
+                case 140: { if (t.Root.Profiles[1].Ratings != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Ratings.Length * 4)), t.Root.Profiles[1].Ratings); } break;
+                case 144: { if (t.Root.Profiles[1].Loadout.Grades != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Grades.Length * 1)), t.Root.Profiles[1].Loadout.Grades); } break;
+                case 145: { if (t.Root.Profiles[1].Loadout.Podium != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Podium.Length * 1)), t.Root.Profiles[1].Loadout.Podium); } break;
                 case 189: { if (t.Root.Profiles[2].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Name.Length)).CopyTo(t.Root.Profiles[2].Name); } break;
                 case 191: { if (t.Root.Profiles[2].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Icon.Length)).CopyTo(t.Root.Profiles[2].Icon); } break;
-                case 200: { if (t.Root.Profiles[2].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Ratings.Length * 4))).CopyTo(t.Root.Profiles[2].Ratings); } break;
-                case 204: { if (t.Root.Profiles[2].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Grades); } break;
-                case 205: { if (t.Root.Profiles[2].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Podium); } break;
+                case 200: { if (t.Root.Profiles[2].Ratings != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Ratings.Length * 4)), t.Root.Profiles[2].Ratings); } break;
+                case 204: { if (t.Root.Profiles[2].Loadout.Grades != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Grades.Length * 1)), t.Root.Profiles[2].Loadout.Grades); } break;
+                case 205: { if (t.Root.Profiles[2].Loadout.Podium != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Podium.Length * 1)), t.Root.Profiles[2].Loadout.Podium); } break;
                 case 249: { if (t.Root.Profiles[3].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Name.Length)).CopyTo(t.Root.Profiles[3].Name); } break;
                 case 251: { if (t.Root.Profiles[3].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Icon.Length)).CopyTo(t.Root.Profiles[3].Icon); } break;
-                case 260: { if (t.Root.Profiles[3].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Ratings.Length * 4))).CopyTo(t.Root.Profiles[3].Ratings); } break;
-                case 264: { if (t.Root.Profiles[3].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Grades); } break;
-                case 265: { if (t.Root.Profiles[3].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Podium); } break;
+                case 260: { if (t.Root.Profiles[3].Ratings != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Ratings.Length * 4)), t.Root.Profiles[3].Ratings); } break;
+                case 264: { if (t.Root.Profiles[3].Loadout.Grades != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Grades.Length * 1)), t.Root.Profiles[3].Loadout.Grades); } break;
+                case 265: { if (t.Root.Profiles[3].Loadout.Podium != null) TableFixedWire.ReadLittle<Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Podium.Length * 1)), t.Root.Profiles[3].Loadout.Podium); } break;
                 default: break;
             }
         }
@@ -1526,7 +1541,7 @@ namespace Tabledemo
                                 int at = (int)p.Src + e * sw;
                                 if (p.Sign == 2)
                                 {
-                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
                                     BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                     continue;
                                 }
@@ -1634,7 +1649,7 @@ namespace Tabledemo
                     case TableFixedWire.WidenF:
                         {
                             float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                            ArchiveConfigFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            ArchiveConfigFixedSetDouble(dst, p.Dst, (double)f);
                             if (report != null) { report.Widened++; }
                             break;
                         }
@@ -2072,13 +2087,14 @@ namespace Tabledemo
 
         public static long ArchiveConfigFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + ArchiveConfigFixedLayoutBytes + count * ArchiveConfigFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + ArchiveConfigFixedLayoutBytes + count * ArchiveConfigFixedRecordBytes + 0;
         }
 
         public static long ArchiveConfigFixedSave(ReadOnlySpan<ArchiveConfig> values, Span<byte> buffer)
         {
             long need = ArchiveConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (ArchiveConfigFixedFiniteBody(values[k]) != null) { return -1; } }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), ArchiveConfigFixedHash);
@@ -2192,7 +2208,7 @@ namespace Tabledemo
                 entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
                 planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
-                // the plan this peer selected. It reads no layout and compiles
+                // the plan this endpoint selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
                 // path; the PLAN is, and the plan is the build's.
                 int slotN = ArchiveConfigFixedSlots.Length;
@@ -2202,7 +2218,7 @@ namespace Tabledemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, ArchiveConfigFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindMismatch;
@@ -2225,7 +2241,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new ArchiveConfig(); }
@@ -2236,7 +2253,15 @@ namespace Tabledemo
                 string run_why = ArchiveConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string finite_why = ArchiveConfigFixedFiniteBody(values[k]);
+                if (finite_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 ArchiveConfigFixedClamp(values[k], report);

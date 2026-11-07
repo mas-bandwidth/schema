@@ -3,24 +3,27 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package tabledemo — protocol id 0xba7b344f28584d33
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package tabledemo
 
-// ShipType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
+// ShipType is an enum: None = 0, then the variants densely from 1; the wire
+// carries [0, 3].
 type ShipType uint8
 
+// The ShipType variants. ShipTypeMax is the highest value a read accepts.
 const (
 	ShipTypeNone    ShipType = 0
 	ShipTypeFighter ShipType = 1
 	ShipTypeBomber  ShipType = 2
 	ShipTypeScout   ShipType = 3
-	ShipTypeMax     ShipType = 3 // the exported extent (SPEC §4.2)
+	ShipTypeMax     ShipType = 3
 )
 
-// EnumNameShipType: debug/log/tooling name for any ShipType wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameShipType(value ShipType) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to ShipTypeMax).
+func (v ShipType) String() string {
+	switch v {
 	case ShipTypeNone:
 		return "None"
 	case ShipTypeFighter:
@@ -33,21 +36,30 @@ func EnumNameShipType(value ShipType) string {
 	return "???"
 }
 
-// Difficulty — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
+// EnumNameShipType returns the variant name of value, or "???" for a value
+// outside the declared variants. It is value.String() under the name every
+// target gives its debug-name function.
+func EnumNameShipType(value ShipType) string {
+	return value.String()
+}
+
+// Difficulty is an enum: None = 0, then the variants densely from 1; the wire
+// carries [0, 3].
 type Difficulty uint8
 
+// The Difficulty variants. DifficultyMax is the highest value a read accepts.
 const (
 	DifficultyNone   Difficulty = 0
 	DifficultyEasy   Difficulty = 1
 	DifficultyNormal Difficulty = 2
 	DifficultyHard   Difficulty = 3
-	DifficultyMax    Difficulty = 3 // the exported extent (SPEC §4.2)
+	DifficultyMax    Difficulty = 3
 )
 
-// EnumNameDifficulty: debug/log/tooling name for any Difficulty wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameDifficulty(value Difficulty) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to DifficultyMax).
+func (v Difficulty) String() string {
+	switch v {
 	case DifficultyNone:
 		return "None"
 	case DifficultyEasy:
@@ -58,4 +70,11 @@ func EnumNameDifficulty(value Difficulty) string {
 		return "Hard"
 	}
 	return "???"
+}
+
+// EnumNameDifficulty returns the variant name of value, or "???" for a value
+// outside the declared variants. It is value.String() under the name every
+// target gives its debug-name function.
+func EnumNameDifficulty(value Difficulty) string {
+	return value.String()
 }

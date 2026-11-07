@@ -1,0 +1,5 @@
+FAILED: finite: a float32 read of quiet NaN (0x7FC00000) is refused as non_finite_float, the field unwritten
+FAILED: finite: a float32 read of signalling NaN (0x7F800001) is refused as non_finite_float, the field unwritten
+FAILED: finite: a float32 read of negative NaN with a payload (0xFFC00123) is refused as non_finite_float, the field unwritten
+FAILED: finite: a float32 read of +inf (0x7F800000) is refused as non_finite_float, the field unwritten
+FAILED: finite: a float32 read of -inf (0xFF800000) is refused as non_finite_float, the field unwritten

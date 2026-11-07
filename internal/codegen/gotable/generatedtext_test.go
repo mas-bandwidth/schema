@@ -125,7 +125,7 @@ func headerNamesRealSource(f *ast.File, src string, valid map[string]bool, pkg s
 
 func importsSerialize(f *ast.File) bool {
 	for _, im := range f.Imports {
-		if im.Path != nil && strings.Trim(im.Path.Value, `"`) == "github.com/mas-bandwidth/serialize.go" {
+		if im.Path != nil && strings.Trim(im.Path.Value, `"`) == "github.com/mas-bandwidth/serialize.go/v2" {
 			return true
 		}
 	}

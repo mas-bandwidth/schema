@@ -1,5 +1,7 @@
 /* the tblp1 unit's codecs (test/tables/P1.schema). */
 #include "P1Table.h"
+#define SCHEMA_CONFORMANCE_PACKAGE tblp1
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER TBLP1
 #include "unit.h"
 
 SCHEMA_CONFORMANCE_CODEC( Chain, chain )

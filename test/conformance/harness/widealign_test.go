@@ -41,17 +41,5 @@ func TestWideRegionFramingAlignment(t *testing.T) {
 	if root.align != 16 || root.rootStorage != 32 || root.maxStorage != 16 || !answer.exact || answer.bytes != 80 {
 		t.Fatalf("wide framing: align=%d root=%d node=%d answer=%+v", root.align, root.rootStorage, root.maxStorage, answer)
 	}
-	message, err := newWireRoot(roster, "wideprobe", "Root", true, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	batch, err := tablewire.EncodeMessage(root.model, value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	answer, err = message.oracle(batch)
-	if err != nil || !answer.exact || answer.bytes != 80 {
-		t.Fatalf("message framing: %+v %v", answer, err)
-	}
 
 }

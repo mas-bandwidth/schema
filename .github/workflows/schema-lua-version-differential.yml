@@ -1,0 +1,86 @@
+name: Schema Lua version differential
+
+# THE LUA VERSION DIFFERENTIAL (Glenn, 2026-10-18; make/schema-lua-version-
+# differential.mk). The Lua port emits one algorithm for Lua 5.1, 5.3, 5.4 and
+# LuaJIT; this workflow runs the shared conformance corpus under all four and
+# requires 5.3 and 5.4 to agree while 5.1 and LuaJIT refuse by name.
+#
+# WHEN, by cost. The differential builds four interpreters from their official
+# sources and runs four conformance passes: HEAVY, so it runs on the nightly
+# schedule and on workflow_dispatch, with a 20-minute budget. The fast half is
+# the static test that holds this workflow and the gate's pins to their shape;
+# it runs on a push or pull request that touches the gate and stays well inside
+# the one-minute budget (a checkout, setup-go, and one package of Go tests).
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form ]
+    paths:
+      - 'make/schema-lua-version-differential.mk'
+      - 'make/lua.mk'
+      - 'make/lua-conformance.mk'
+      - 'test/conformance/lua/**'
+      - 'internal/codegen/lua/**'
+      - 'internal/codegen/luatable/**'
+      - 'internal/ci/schema_lua_version_differential_test.go'
+      - '.github/workflows/schema-lua-version-differential.yml'
+  pull_request:
+    paths:
+      - 'make/schema-lua-version-differential.mk'
+      - 'make/lua.mk'
+      - 'make/lua-conformance.mk'
+      - 'test/conformance/lua/**'
+      - 'internal/codegen/lua/**'
+      - 'internal/codegen/luatable/**'
+      - 'internal/ci/schema_lua_version_differential_test.go'
+      - '.github/workflows/schema-lua-version-differential.yml'
+  schedule:
+    - cron: '40 6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=readonly
+
+jobs:
+  static:
+    name: the gate's pins and schedule
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test ./internal/ci -run 'LuaVersionDifferential' -count=1 -timeout 600s
+
+  differential:
+    name: Lua 5.1 / 5.3 / 5.4 / LuaJIT differential
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make schema-lua-version-differential
+
+  negative-control:
+    name: the planted 5.3-only divergence is caught
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make schema-lua-version-differential-negative-control

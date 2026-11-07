@@ -226,9 +226,9 @@ func TestListTextReadsEveryElement(t *testing.T) {
 	}
 }
 
-// TestListCountOverLengthIsFramingDamage is §2.9's first overflow row on the
-// BUILDER side: a count the body cannot cover lands the prefix the body
-// covers, counts `malformed`, and the parent reads on past the field's L.
+// TestListCountOverLength is §2.9's first overflow row on the BUILDER side: a
+// count the body cannot cover is framing damage, and damage discards the
+// whole load (§4).
 func TestListCountOverLength(t *testing.T) {
 	m := listModel(t, listUnit)
 	wire, err := tablewire.Encode(m, place(t, m, "Save", `{ "scores": [ 10, 20, 30 ] }`))
@@ -245,17 +245,15 @@ func TestListCountOverLength(t *testing.T) {
 	damaged[at+1] = 30
 	back := m.New(m.Lookup("Save"))
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, back, damaged, &r); !ok || err != nil {
-		t.Fatalf("the walk stopped rather than reporting: ok=%v err=%v", ok, err)
+	if ok, err := tablewire.Decode(m, back, damaged, &r); ok || err != nil {
+		t.Fatalf("a damaged load is refused: ok=%v err=%v", ok, err)
 	}
 	if !r.Malformed {
 		t.Fatal("a count the body cannot cover is framing damage (§2.9, §4)")
 	}
-	if r.Clamped != 0 {
-		t.Fatalf("clamped cannot fire on a list's count (§2.9): %d", r.Clamped)
-	}
-	if got := fieldByName(t, back, "scores").Count; got != 3 {
-		t.Fatalf("the prefix the body covers lands: %d of 3", got)
+	// DAMAGE DISCARDS THE WHOLE LOAD (§4): nothing the body covered lands
+	if got := fieldByName(t, back, "scores").Count; got != 0 {
+		t.Fatalf("a damaged load handed back %d scores", got)
 	}
 }
 

@@ -1,14 +1,14 @@
 package javatable
 
 // This closes the second half of docs/FIXED-FORM-ALGORITHM.md §5.4: the compile
-// census lands ONCE PER PEER AND NEVER PER RECORD. The landed one-record row
+// census lands ONCE PER ENDPOINT AND NEVER PER RECORD. The landed one-record row
 // reads `old_unknown_census.bin`, which holds ONE record — and with one record
-// "once per peer" and "once per record" are the SAME NUMBER, 1, so that half of
+// "once per endpoint" and "once per record" are the SAME NUMBER, 1, so that half of
 // the clause has never been under a gate. A per-record Unknown++ really exists
 // in these runtimes (the union-tag path) and only a three-record file sees it.
 //
-// `unknown` is asserted EXACTLY == 1: `Item.drop` is ONE field of ONE peer, so
-// three records of the same peer owe the same one, never 3 and never >=.
+// `unknown` is asserted EXACTLY == 1: `Item.drop` is ONE field of ONE endpoint, so
+// three records of the same endpoint owe the same one, never 3 and never >=.
 import (
 	"fmt"
 	"os"
@@ -33,9 +33,9 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
 	b := builds["reads"]
 
 	// A PROBE OF THIS ROW'S OWN, because the shared one reads a single record.
-	// The NEW reader dropped Item.drop; the one older peer is VOLD, handed in as
+	// The NEW reader dropped Item.drop; the one older endpoint is VOLD, handed in as
 	// a lineage entry exactly as the landed one-record row does. The probe reads
-	// THREE records of that peer and prints each record's own lead, trail and
+	// THREE records of that endpoint and prints each record's own lead, trail and
 	// four a values, so a reader that lost, duplicated or reordered a record is
 	// visible, not just the census.
 	const class = "Probe_census_many"
@@ -127,7 +127,7 @@ public final class %[1]s {
 		t.Errorf("READ1: a counter that must not move did: %v", reads["READ1"])
 	}
 	if u := num("READ1", "unknown"); u != 1 {
-		t.Errorf("READ1: unknown=%d, want 1 — Item.drop is ONE field of ONE peer, once per peer and never per record",
+		t.Errorf("READ1: unknown=%d, want 1 — Item.drop is ONE field of ONE endpoint, once per endpoint and never per record",
 			u)
 	}
 

@@ -29,7 +29,7 @@ func TestExact(t *testing.T) {
 	var v Big
 	var r TableReport
 	text := []byte("{\"n\":9007199254740994,\"m\":-9223372036854775808,\"u\":18446744073709551615}")
-	if !BigFromJsonTolerant(&v, text, &r) || v.N != 9007199254740993 || v.M != -9223372036854775807 || v.U != 18446744073709551614 {
+	if !BigFromJSONTolerant(&v, text, &r) || v.N != 9007199254740993 || v.M != -9223372036854775807 || v.U != 18446744073709551614 {
 		t.Fatalf("clamp read %+v report %+v", v, r)
 	}
 	v = Big{}
@@ -49,12 +49,12 @@ func TestExact(t *testing.T) {
 		}
 	}
 	a, c := make([]byte, 4096), make([]byte, 4096)
-	na, nc := BigToJson(&v, a), BigToJson(&v, c)
+	na, nc := BigToJSON(&v, a), BigToJSON(&v, c)
 	if na < 0 || nc != na || !bytes.Equal(a[:na], c[:nc]) {
 		t.Fatalf("text encode")
 	}
 	var got Big
-	if !BigFromJson(&got, a[:na], &r) || got.N != v.N || got.M != v.M || got.U != v.U {
+	if !BigFromJSON(&got, a[:na], &r) || got.N != v.N || got.M != v.M || got.U != v.U {
 		t.Fatalf("text roundtrip %+v", got)
 	}
 }

@@ -17,47 +17,17 @@ use std::rc::Rc;
 const ID_TABLE_PROBE_BOUND: usize = 4096;
 #[allow(dead_code)]
 const ID_TABLE_PROBE_SLOTS: usize = 8192;
-
-/// MixedWeapon — an enum on the variable wire (docs/SPEC-TABLES.md §3, §5).
-#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
-pub enum MixedWeapon {
-    #[default]
-    None,
-    Fists,
-    Pistol,
-    Shotgun,
-    Rifle,
-    Sniper,
-    Smg,
-    Rocket,
-    Grenade,
-    Plasma,
-    Railgun,
-    Flamer,
-    Mine,
-    Turret,
-    Drone,
-    Repair,
-}
+use super::table_enums::*;
 
 /// MixedChatEvent — a variable-table storage struct (docs/SPEC-TABLES.md §3).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MixedChatEvent {
     pub channel: i32,
     pub speaker: u16,
 }
 
-impl Default for MixedChatEvent {
-    fn default() -> Self {
-        MixedChatEvent {
-            channel: 0i32,
-            speaker: 0u16,
-        }
-    }
-}
-
 /// MixedEntity — a variable-table storage struct (docs/SPEC-TABLES.md §3).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MixedEntity {
     pub entity_id: u16,
     pub pos_x: i32,
@@ -75,29 +45,8 @@ pub struct MixedEntity {
     pub firing: bool,
 }
 
-impl Default for MixedEntity {
-    fn default() -> Self {
-        MixedEntity {
-            entity_id: 0u16,
-            pos_x: 0i32,
-            pos_y: 0i32,
-            pos_z: 0i32,
-            yaw: 0u16,
-            pitch: 0u16,
-            vel_x: 0i32,
-            vel_y: 0i32,
-            vel_z: 0i32,
-            health: 0i32,
-            weapon: MixedWeapon::None,
-            damage: 0u64,
-            moving: false,
-            firing: false,
-        }
-    }
-}
-
 /// MixedHitEvent — a variable-table storage struct (docs/SPEC-TABLES.md §3).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MixedHitEvent {
     pub target_id: u16,
     pub damage: i32,
@@ -105,47 +54,18 @@ pub struct MixedHitEvent {
     pub crit: bool,
 }
 
-impl Default for MixedHitEvent {
-    fn default() -> Self {
-        MixedHitEvent {
-            target_id: 0u16,
-            damage: 0i32,
-            hit_kind: 0i32,
-            crit: false,
-        }
-    }
-}
-
 /// MixedPickupEvent — a variable-table storage struct (docs/SPEC-TABLES.md §3).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MixedPickupEvent {
     pub item_id: u16,
     pub amount: i32,
 }
 
-impl Default for MixedPickupEvent {
-    fn default() -> Self {
-        MixedPickupEvent {
-            item_id: 0u16,
-            amount: 0i32,
-        }
-    }
-}
-
 /// MixedStat — a variable-table storage struct (docs/SPEC-TABLES.md §3).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MixedStat {
     pub stat_id: u8,
     pub delta: i32,
-}
-
-impl Default for MixedStat {
-    fn default() -> Self {
-        MixedStat {
-            stat_id: 0u8,
-            delta: 0i32,
-        }
-    }
 }
 
 /// mixed_chat_event_number — the numbering walk over one MixedChatEvent body (docs/SPEC-TABLES.md §3.1).
@@ -182,12 +102,12 @@ pub fn mixed_chat_event_save_body(v: &MixedChatEvent, out: &mut Vec<u8>, ids: &m
     if v.channel != 0i32 {
         leb_write(out, ids.id_ref(0xa5013e9ad5caeda4));
         out.push(4);
-        out.extend_from_slice(&(v.channel as i32).to_le_bytes());
+        out.extend_from_slice(&v.channel.to_le_bytes());
     }
     if v.speaker != 0u16 {
         leb_write(out, ids.id_ref(0xfbf1ac4d96ebd022));
         out.push(7);
-        out.extend_from_slice(&(v.speaker as u16).to_le_bytes());
+        out.extend_from_slice(&v.speaker.to_le_bytes());
     }
 }
 
@@ -200,52 +120,52 @@ pub fn mixed_entity_save_body(v: &MixedEntity, out: &mut Vec<u8>, ids: &mut IdTa
     if v.entity_id != 0u16 {
         leb_write(out, ids.id_ref(0x23fcfd6678e36712));
         out.push(7);
-        out.extend_from_slice(&(v.entity_id as u16).to_le_bytes());
+        out.extend_from_slice(&v.entity_id.to_le_bytes());
     }
     if v.pos_x != 0i32 {
         leb_write(out, ids.id_ref(0xcb4b37357667310e));
         out.push(4);
-        out.extend_from_slice(&(v.pos_x as i32).to_le_bytes());
+        out.extend_from_slice(&v.pos_x.to_le_bytes());
     }
     if v.pos_y != 0i32 {
         leb_write(out, ids.id_ref(0xcb4b3835766732c1));
         out.push(4);
-        out.extend_from_slice(&(v.pos_y as i32).to_le_bytes());
+        out.extend_from_slice(&v.pos_y.to_le_bytes());
     }
     if v.pos_z != 0i32 {
         leb_write(out, ids.id_ref(0xcb4b353576672da8));
         out.push(4);
-        out.extend_from_slice(&(v.pos_z as i32).to_le_bytes());
+        out.extend_from_slice(&v.pos_z.to_le_bytes());
     }
     if v.yaw != 0u16 {
         leb_write(out, ids.id_ref(0xb54d8e19798e16e8));
         out.push(7);
-        out.extend_from_slice(&(v.yaw as u16).to_le_bytes());
+        out.extend_from_slice(&v.yaw.to_le_bytes());
     }
     if v.pitch != 0u16 {
         leb_write(out, ids.id_ref(0x53a9f665a90cc1b1));
         out.push(7);
-        out.extend_from_slice(&(v.pitch as u16).to_le_bytes());
+        out.extend_from_slice(&v.pitch.to_le_bytes());
     }
     if v.vel_x != 0i32 {
         leb_write(out, ids.id_ref(0x6cede6b6eb60ee67));
         out.push(4);
-        out.extend_from_slice(&(v.vel_x as i32).to_le_bytes());
+        out.extend_from_slice(&v.vel_x.to_le_bytes());
     }
     if v.vel_y != 0i32 {
         leb_write(out, ids.id_ref(0x6cede5b6eb60ecb4));
         out.push(4);
-        out.extend_from_slice(&(v.vel_y as i32).to_le_bytes());
+        out.extend_from_slice(&v.vel_y.to_le_bytes());
     }
     if v.vel_z != 0i32 {
         leb_write(out, ids.id_ref(0x6cede8b6eb60f1cd));
         out.push(4);
-        out.extend_from_slice(&(v.vel_z as i32).to_le_bytes());
+        out.extend_from_slice(&v.vel_z.to_le_bytes());
     }
     if v.health != 0i32 {
         leb_write(out, ids.id_ref(0x7f69d4b5288ba9cf));
         out.push(4);
-        out.extend_from_slice(&(v.health as i32).to_le_bytes());
+        out.extend_from_slice(&v.health.to_le_bytes());
     }
     if v.weapon != MixedWeapon::None {
         leb_write(out, ids.id_ref(0xa0b610205f2c6e01));
@@ -256,7 +176,7 @@ pub fn mixed_entity_save_body(v: &MixedEntity, out: &mut Vec<u8>, ids: &mut IdTa
     if v.damage != 0u64 {
         leb_write(out, ids.id_ref(0x7f6308be8ab37fc0));
         out.push(9);
-        out.extend_from_slice(&(v.damage as u64).to_le_bytes());
+        out.extend_from_slice(&v.damage.to_le_bytes());
     }
     if v.moving {
         leb_write(out, ids.id_ref(0x11a44fc1d1243da7));
@@ -279,17 +199,17 @@ pub fn mixed_hit_event_save_body(v: &MixedHitEvent, out: &mut Vec<u8>, ids: &mut
     if v.target_id != 0u16 {
         leb_write(out, ids.id_ref(0xb7bc9ac015a25050));
         out.push(7);
-        out.extend_from_slice(&(v.target_id as u16).to_le_bytes());
+        out.extend_from_slice(&v.target_id.to_le_bytes());
     }
     if v.damage != 0i32 {
         leb_write(out, ids.id_ref(0x7f6308be8ab37fc0));
         out.push(4);
-        out.extend_from_slice(&(v.damage as i32).to_le_bytes());
+        out.extend_from_slice(&v.damage.to_le_bytes());
     }
     if v.hit_kind != 0i32 {
         leb_write(out, ids.id_ref(0x01fbc365b059b925));
         out.push(4);
-        out.extend_from_slice(&(v.hit_kind as i32).to_le_bytes());
+        out.extend_from_slice(&v.hit_kind.to_le_bytes());
     }
     if v.crit {
         leb_write(out, ids.id_ref(0x126167908c9aa52d));
@@ -307,12 +227,12 @@ pub fn mixed_pickup_event_save_body(v: &MixedPickupEvent, out: &mut Vec<u8>, ids
     if v.item_id != 0u16 {
         leb_write(out, ids.id_ref(0x9e7fd06d864fbd56));
         out.push(7);
-        out.extend_from_slice(&(v.item_id as u16).to_le_bytes());
+        out.extend_from_slice(&v.item_id.to_le_bytes());
     }
     if v.amount != 0i32 {
         leb_write(out, ids.id_ref(0x8113fe7ea2b16969));
         out.push(4);
-        out.extend_from_slice(&(v.amount as i32).to_le_bytes());
+        out.extend_from_slice(&v.amount.to_le_bytes());
     }
 }
 
@@ -325,12 +245,12 @@ pub fn mixed_stat_save_body(v: &MixedStat, out: &mut Vec<u8>, ids: &mut IdTable,
     if v.stat_id != 0u8 {
         leb_write(out, ids.id_ref(0x80ab75f0866dbf65));
         out.push(6);
-        out.extend_from_slice(&(v.stat_id as u8).to_le_bytes());
+        out.extend_from_slice(&v.stat_id.to_le_bytes());
     }
     if v.delta != 0i32 {
         leb_write(out, ids.id_ref(0x52076675ec13a0c1));
         out.push(4);
-        out.extend_from_slice(&(v.delta as i32).to_le_bytes());
+        out.extend_from_slice(&v.delta.to_le_bytes());
     }
 }
 
@@ -382,6 +302,7 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
                 if let Some(ret) = retain.as_deref_mut() {
+                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedChatEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
                         Some(resolved) => {
                             let need = 17 + 8 * path.depth as usize + resolved.len();
@@ -528,10 +449,10 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 else {
                     let Some(vref) = leb_read(wire, off) else { report.malformed = true; return false; };
                     if *off > end { report.malformed = true; return false; }
-                    if vref == 0 { v.weapon = MixedWeapon::None; }
+                    v.weapon = if vref == 0 { MixedWeapon::None }
                     else if vref as usize > ids.len() { report.malformed = true; return false; }
                     else {
-                        v.weapon = match ids[vref as usize - 1] {
+                        match ids[vref as usize - 1] {
                             0xa790eee12766cf0c => MixedWeapon::Fists,
                             0x9fbfefa835da8476 => MixedWeapon::Pistol,
                             0x188bbb1783928a95 => MixedWeapon::Shotgun,
@@ -548,8 +469,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                             0x2cc8282fb0de8831 => MixedWeapon::Drone,
                             0x20bada21bc8cb334 => MixedWeapon::Repair,
                             _ => { report.unknown += 1; if retain.is_some() { report.retain_lost += 1; } MixedWeapon::None },
-                        };
-                    }
+                        }
+                    };
                 }
             }
             0x7f6308be8ab37fc0 => {
@@ -557,7 +478,7 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
                     if kind != 9 { report.widened += 1; }
                     let x = raw;
-                    v.damage = x as u64;
+                    v.damage = x;
                 } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
             }
             0x11a44fc1d1243da7 => {
@@ -581,6 +502,7 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
                 if let Some(ret) = retain.as_deref_mut() {
+                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedEntity", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
                         Some(resolved) => {
                             let need = 17 + 8 * path.depth as usize + resolved.len();
@@ -672,6 +594,7 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
                 if let Some(ret) = retain.as_deref_mut() {
+                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedHitEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
                         Some(resolved) => {
                             let need = 17 + 8 * path.depth as usize + resolved.len();
@@ -746,6 +669,7 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
                 if let Some(ret) = retain.as_deref_mut() {
+                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedPickupEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
                         Some(resolved) => {
                             let need = 17 + 8 * path.depth as usize + resolved.len();
@@ -820,6 +744,7 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
                 if let Some(ret) = retain.as_deref_mut() {
+                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedStat", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
                         Some(resolved) => {
                             let need = 17 + 8 * path.depth as usize + resolved.len();
@@ -847,7 +772,8 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
 }
 
 /// The body of one table record of the numbering, by its type id (docs/SPEC-TABLES.md §3.1).
-#[allow(dead_code, unused_variables, unused_mut)]
+// one arm per node type the unit can place: zero or one is a real shape
+#[allow(dead_code, unused_variables, unused_mut, clippy::too_many_arguments, clippy::match_single_binding, clippy::single_match)]
 fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids: &mut IdTable, g: &TableNodeGraph, mut retain: Option<&mut TableRetain>, mut report: Option<&mut TableReport>, path: TableRetainPath) {
     match type_id {
         _ => {}
@@ -855,13 +781,100 @@ fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids
     out.push(0); // the record body's zero reference
 }
 
-/// Decode record k of the numbering into its table, ONCE (docs/SPEC-TABLES.md
-/// §3.1): every later slot naming it shares the one node. A record that names
-/// itself while its own body decodes is a cycle no writer produces and this
-/// storage cannot hold: that slot reads null and one malformed counts. On a
-/// retaining load an unknown field inside a node body counts retain_lost: the
-/// store carries no path into a node (§6.6).
-#[allow(dead_code, unused_variables, unused_mut)]
+#[doc(hidden)]
+impl MixedChatEvent {
+    #[allow(dead_code, unused_variables)]
+    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    }
+
+    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
+    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {
+    }
+}
+
+#[doc(hidden)]
+impl MixedEntity {
+    #[allow(dead_code, unused_variables)]
+    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    }
+
+    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
+    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {
+    }
+}
+
+#[doc(hidden)]
+impl MixedHitEvent {
+    #[allow(dead_code, unused_variables)]
+    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    }
+
+    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
+    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {
+    }
+}
+
+#[doc(hidden)]
+impl MixedPickupEvent {
+    #[allow(dead_code, unused_variables)]
+    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    }
+
+    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
+    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {
+    }
+}
+
+#[doc(hidden)]
+impl MixedStat {
+    #[allow(dead_code, unused_variables)]
+    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    }
+
+    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
+    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {
+    }
+}
+
+#[allow(dead_code, unused_variables, clippy::match_single_binding)]
+fn variable_node_stub_alloc(type_id: u64) -> Option<Rc<dyn Any>> {
+    match type_id {
+        _ => None,
+    }
+}
+
+#[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]
+fn variable_node_decode(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) {
+    let (type_id, start, end) = nodes.recs[k];
+    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new() };
+    let retaining = nodes.retaining;
+    let node: Option<Rc<dyn Any>> = match type_id {
+        _ => None,
+    };
+    if let Some(n) = &node { retain_bind_node(&mut sink, n); }
+    nodes.decoded[k] = node;
+    nodes.retained.extend_from_slice(&sink.bytes);
+}
+
+#[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::single_match)]
+fn variable_node_edges(type_id: u64, node: &Rc<dyn Any>, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    match type_id {
+        _ => {}
+    }
+}
+
+#[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::single_match)]
+fn variable_node_link_record(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) {
+    let Some(raw) = nodes.decoded[k].take() else { return; };
+    let type_id = nodes.recs[k].0;
+    match type_id {
+        _ => {}
+    }
+}
+
+/// Finalize record k of the numbering into its shared Rc (docs/SPEC-TABLES.md
+/// §3.1): every later slot naming it shares the one node.
+#[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]
 fn variable_node_build(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) -> Option<Rc<dyn Any>> {
     match &nodes.slots[k] {
         TableNodeSlot::Built(_, n) => return Some(n.clone()),
@@ -869,66 +882,14 @@ fn variable_node_build(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k:
         TableNodeSlot::Building => { report.cycle_on_save = true; return None; }
         _ => return None,
     }
-    let (type_id, start, end) = nodes.recs[k];
-    nodes.slots[k] = TableNodeSlot::Building;
-    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new() };
-    let retaining = nodes.retaining;
-    let node: Option<Rc<dyn Any>> = match type_id {
-        _ => None,
-    };
+    let (type_id, _, _) = nodes.recs[k];
+    let node = nodes.decoded[k].take();
     nodes.slots[k] = match &node { Some(n) => TableNodeSlot::Built(type_id, n.clone()), None => TableNodeSlot::Null };
-    if let Some(n) = &node { retain_bind_node(&mut sink, n); }
-    nodes.retained.extend_from_slice(&sink.bytes);
     node
 }
 
 
 // ---- the JSON text form (docs/SPEC-TABLES.md §16, §16.2, §16.7) ----
-#[allow(dead_code)]
-pub fn mixed_weapon_json_name(v: MixedWeapon) -> &'static str {
-    match v {
-        MixedWeapon::None => "None",
-        MixedWeapon::Fists => "Fists",
-        MixedWeapon::Pistol => "Pistol",
-        MixedWeapon::Shotgun => "Shotgun",
-        MixedWeapon::Rifle => "Rifle",
-        MixedWeapon::Sniper => "Sniper",
-        MixedWeapon::Smg => "Smg",
-        MixedWeapon::Rocket => "Rocket",
-        MixedWeapon::Grenade => "Grenade",
-        MixedWeapon::Plasma => "Plasma",
-        MixedWeapon::Railgun => "Railgun",
-        MixedWeapon::Flamer => "Flamer",
-        MixedWeapon::Mine => "Mine",
-        MixedWeapon::Turret => "Turret",
-        MixedWeapon::Drone => "Drone",
-        MixedWeapon::Repair => "Repair",
-    }
-}
-
-#[allow(dead_code)]
-pub fn mixed_weapon_from_json_name(s: &str) -> Option<MixedWeapon> {
-    match s {
-        "None" => Some(MixedWeapon::None),
-        "Fists" => Some(MixedWeapon::Fists),
-        "Pistol" => Some(MixedWeapon::Pistol),
-        "Shotgun" => Some(MixedWeapon::Shotgun),
-        "Rifle" => Some(MixedWeapon::Rifle),
-        "Sniper" => Some(MixedWeapon::Sniper),
-        "Smg" => Some(MixedWeapon::Smg),
-        "Rocket" => Some(MixedWeapon::Rocket),
-        "Grenade" => Some(MixedWeapon::Grenade),
-        "Plasma" => Some(MixedWeapon::Plasma),
-        "Railgun" => Some(MixedWeapon::Railgun),
-        "Flamer" => Some(MixedWeapon::Flamer),
-        "Mine" => Some(MixedWeapon::Mine),
-        "Turret" => Some(MixedWeapon::Turret),
-        "Drone" => Some(MixedWeapon::Drone),
-        "Repair" => Some(MixedWeapon::Repair),
-        _ => None,
-    }
-}
-
 #[allow(unused_variables, dead_code)]
 pub fn mixed_chat_event_json_count(v: &MixedChatEvent, w: &mut Jw) {
 }
@@ -1066,14 +1027,14 @@ pub fn mixed_entity_json_write(v: &MixedEntity, w: &mut Jw, depth: usize, label:
         if bits == 0 { w.out.push_str("[]"); } else {
             w.out.push('[');
             let mut first = true;
-            for bit in 0..64usize {
+            for (bit, name) in NAMES.iter().enumerate() {
                 if bits & (1u64 << bit) == 0 { continue; }
-                if bit >= NAMES.len() { w.refused = true; break; }
                 if !first { w.out.push(','); }
                 first = false;
                 json_newline(&mut w.out, depth + 1 + 1);
-                json_escape(NAMES[bit], &mut w.out);
+                json_escape(name, &mut w.out);
             }
+            if bits >> 8 != 0 { w.refused = true; }
             json_newline(&mut w.out, depth + 1);
             w.out.push(']');
         }
@@ -1198,8 +1159,8 @@ pub fn mixed_stat_json_write(v: &MixedStat, w: &mut Jw, depth: usize, label: u64
 #[allow(dead_code)]
 pub fn mixed_chat_event_json_read(jr: &mut Jr, v: &mut MixedChatEvent) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_chat_event_json_fields(jr, v, None);
@@ -1218,7 +1179,9 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1254,11 +1217,13 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1271,7 +1236,11 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedChatEvent::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedChatEvent::default();
+                let _ = mixed_chat_event_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1310,8 +1279,8 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
 #[allow(dead_code)]
 pub fn mixed_entity_json_read(jr: &mut Jr, v: &mut MixedEntity) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_entity_json_fields(jr, v, None);
@@ -1330,7 +1299,9 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1495,11 +1466,13 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1512,7 +1485,11 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedEntity::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedEntity::default();
+                let _ = mixed_entity_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1551,8 +1528,8 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
 #[allow(dead_code)]
 pub fn mixed_hit_event_json_read(jr: &mut Jr, v: &mut MixedHitEvent) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_hit_event_json_fields(jr, v, None);
@@ -1571,7 +1548,9 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1623,11 +1602,13 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1640,7 +1621,11 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedHitEvent::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedHitEvent::default();
+                let _ = mixed_hit_event_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1679,8 +1664,8 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
 #[allow(dead_code)]
 pub fn mixed_pickup_event_json_read(jr: &mut Jr, v: &mut MixedPickupEvent) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_pickup_event_json_fields(jr, v, None);
@@ -1699,7 +1684,9 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1735,11 +1722,13 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1752,7 +1741,11 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedPickupEvent::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedPickupEvent::default();
+                let _ = mixed_pickup_event_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1791,8 +1784,8 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
 #[allow(dead_code)]
 pub fn mixed_stat_json_read(jr: &mut Jr, v: &mut MixedStat) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_stat_json_fields(jr, v, None);
@@ -1811,7 +1804,9 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1847,11 +1842,13 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1864,7 +1861,11 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedStat::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedStat::default();
+                let _ = mixed_stat_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1898,5 +1899,71 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
         }
         _ => { jr.kind_mismatch += 1; jr.skip_value(); None }
     }
+}
+
+// ---- the COOK WRITE side from the storage value (docs/SPEC-TABLES.md §7.6) ----
+
+/// mixed_chat_event_cook_body — one MixedChatEvent record (8 bytes, aligned 4) at `at` in the region
+/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte
+/// order, every byte the fields do not cover left zero.
+#[cfg(feature = "cook")]
+#[allow(unused_variables, clippy::identity_op)]
+pub fn mixed_chat_event_cook_body(v: &MixedChatEvent, w: &mut TableRegionWriter, at: i64) {
+    w.put(at, v.channel as u64, 4);
+    w.put(at + 4, v.speaker as u64, 4);
+}
+
+/// mixed_entity_cook_body — one MixedEntity record (64 bytes, aligned 8) at `at` in the region
+/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte
+/// order, every byte the fields do not cover left zero.
+#[cfg(feature = "cook")]
+#[allow(unused_variables, clippy::identity_op)]
+pub fn mixed_entity_cook_body(v: &MixedEntity, w: &mut TableRegionWriter, at: i64) {
+    w.put(at, v.entity_id as u64, 4);
+    w.put(at + 4, v.pos_x as u64, 4);
+    w.put(at + 8, v.pos_y as u64, 4);
+    w.put(at + 12, v.pos_z as u64, 4);
+    w.put(at + 16, v.yaw as u64, 4);
+    w.put(at + 20, v.pitch as u64, 4);
+    w.put(at + 24, v.vel_x as u64, 4);
+    w.put(at + 28, v.vel_y as u64, 4);
+    w.put(at + 32, v.vel_z as u64, 4);
+    w.put(at + 36, v.health as u64, 4);
+    w.put(at + 40, v.weapon as u64, 1);
+    w.put(at + 48, v.damage, 8);
+    w.put(at + 56, if v.moving { 1 } else { 0 }, 1);
+    w.put(at + 57, if v.firing { 1 } else { 0 }, 1);
+}
+
+/// mixed_hit_event_cook_body — one MixedHitEvent record (16 bytes, aligned 4) at `at` in the region
+/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte
+/// order, every byte the fields do not cover left zero.
+#[cfg(feature = "cook")]
+#[allow(unused_variables, clippy::identity_op)]
+pub fn mixed_hit_event_cook_body(v: &MixedHitEvent, w: &mut TableRegionWriter, at: i64) {
+    w.put(at, v.target_id as u64, 4);
+    w.put(at + 4, v.damage as u64, 4);
+    w.put(at + 8, v.hit_kind as u64, 4);
+    w.put(at + 12, if v.crit { 1 } else { 0 }, 1);
+}
+
+/// mixed_pickup_event_cook_body — one MixedPickupEvent record (8 bytes, aligned 4) at `at` in the region
+/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte
+/// order, every byte the fields do not cover left zero.
+#[cfg(feature = "cook")]
+#[allow(unused_variables, clippy::identity_op)]
+pub fn mixed_pickup_event_cook_body(v: &MixedPickupEvent, w: &mut TableRegionWriter, at: i64) {
+    w.put(at, v.item_id as u64, 4);
+    w.put(at + 4, v.amount as u64, 4);
+}
+
+/// mixed_stat_cook_body — one MixedStat record (8 bytes, aligned 4) at `at` in the region
+/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte
+/// order, every byte the fields do not cover left zero.
+#[cfg(feature = "cook")]
+#[allow(unused_variables, clippy::identity_op)]
+pub fn mixed_stat_cook_body(v: &MixedStat, w: &mut TableRegionWriter, at: i64) {
+    w.put(at, v.stat_id as u64, 4);
+    w.put(at + 4, v.delta as u64, 4);
 }
 

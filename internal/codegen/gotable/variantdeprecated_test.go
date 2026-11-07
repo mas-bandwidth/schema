@@ -68,9 +68,9 @@ func TestLiveWritesAndReads(t *testing.T) {
 	Announce(announcement)
 	if err := os.WriteFile(dir+"/announce", announcement, 0o600); err != nil { t.Fatal(err) }
 	// JSON/text.
-	jn := RootToJsonMeasure(&v)
+	jn := RootToJSONMeasure(&v)
 	text := make([]byte, jn)
-	if RootToJson(&v, text) != jn { t.Fatal("to json") }
+	if RootToJSON(&v, text) != jn { t.Fatal("to json") }
 	if err := os.WriteFile(dir+"/json", text, 0o600); err != nil { t.Fatal(err) }
 
 	// THE REVERSED WITNESS: the same bytes read with Bomber LIVE yield Bomber.
@@ -97,7 +97,7 @@ func TestLiveWritesAndReads(t *testing.T) {
 	}
 	var jv Root
 	r = TableReport{}
-	if !RootFromJson(&jv, text, &r) || r != (TableReport{}) || jv.Ship != ShipBomber || jv.Fleet[0] != ShipBomber {
+	if !RootFromJSON(&jv, text, &r) || r != (TableReport{}) || jv.Ship != ShipBomber || jv.Fleet[0] != ShipBomber {
 		t.Fatalf("live json witness: %+v %+v", jv, r)
 	}
 }
@@ -159,7 +159,7 @@ func TestDeprecatedReadsDefaultAndWritersRefuse(t *testing.T) {
 	// JSON/TEXT.
 	var jv Root
 	r = TableReport{}
-	if !RootFromJson(&jv, text, &r) { t.Fatalf("deprecated json refused: %+v", r) }
+	if !RootFromJSON(&jv, text, &r) { t.Fatalf("deprecated json refused: %+v", r) }
 	if r.Unknown != 0 || r.Clamped != 0 || r.KindMismatch != 0 || r.Malformed {
 		t.Fatalf("deprecated json counted an event: %+v", r)
 	}
@@ -177,8 +177,8 @@ func TestDeprecatedReadsDefaultAndWritersRefuse(t *testing.T) {
 	if n := RootFixedSave([]Root{bad}, make([]byte, 4096)); n != -1 { t.Fatalf("FixedSave accepted a deprecated variant: %d", n) }
 	if _, err := RootFixedSaveReason([]Root{bad}, make([]byte, 4096)); err != TableRefuseInvalidValue { t.Fatalf("FixedSaveReason: %v", err) }
 	if n := RootSaveMessages([]*Root{&bad}, make([]byte, 4096), nil); n != -1 { t.Fatalf("SaveMessages accepted a deprecated variant: %d", n) }
-	if n := RootToJsonMeasure(&bad); n != -1 { t.Fatalf("ToJsonMeasure accepted a deprecated variant: %d", n) }
-	if n := RootToJson(&bad, make([]byte, 4096)); n != -1 { t.Fatalf("ToJson accepted a deprecated variant: %d", n) }
+	if n := RootToJSONMeasure(&bad); n != -1 { t.Fatalf("ToJSONMeasure accepted a deprecated variant: %d", n) }
+	if n := RootToJSON(&bad, make([]byte, 4096)); n != -1 { t.Fatalf("ToJSON accepted a deprecated variant: %d", n) }
 	if RootCookFrom(&bad, make([]byte, 1<<20), TableByteOrderLittle) { t.Fatal("CookFrom accepted a deprecated variant") }
 
 	// An ARRAY element is the caller's value too.

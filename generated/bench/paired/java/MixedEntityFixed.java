@@ -13,48 +13,65 @@ package bench;
 public final class MixedEntityFixed {
     private MixedEntityFixed() {}
 
-    /** MixedEntity's storage: public fields, every buffer allocated at construction,
-     *  which is the packet codec's own shape. Declared defaults are here and
-     *  nowhere else. */
+    /**
+     * MixedEntity's storage: public fields, every buffer allocated at construction, which is the
+     * packet codec's own shape. Declared defaults are here and nowhere else.
+     */
     public static final class Value {
         /** bits(12) */
         public int entityId;
+
         /** int32 */
         public int posX;
+
         /** int32 */
         public int posY;
+
         /** int32 */
         public int posZ;
+
         /** bits(9) */
         public int yaw;
+
         /** bits(9) */
         public int pitch;
+
         /** int32 */
         public int velX;
+
         /** int32 */
         public int velY;
+
         /** int32 */
         public int velZ;
+
         /** int32 */
         public int health;
+
         /** MixedWeapon */
         public byte weapon;
+
         /** MixedDamage */
         public long damage;
+
         /** bool */
         public boolean moving;
+
         /** bool */
         public boolean firing;
     }
 
-    /** THE BODY IS A CONSTANT SIZE, for every value this type can hold: the
-     *  measure is a constant and not a function that reads the value (§3.4). */
+    /**
+     * THE BODY IS A CONSTANT SIZE, for every value this type can hold: the measure is a constant
+     * and not a function that reads the value (§3.4).
+     */
     public static final int bodyBytes = 51;
 
-    /** MixedEntity's stores. The caller lays the template down first — the hash, then
-     *  zeros — which is also what zero-fills every byte of declared slack, so
-     *  this is a straight line of byte-width stores at constant offsets and
-     *  nothing else. */
+    /**
+     * MixedEntity's stores. The caller lays the template down first — the hash, then zeros — which
+     * is also what zero-fills every byte of declared slack, so this is a straight line of
+     * byte-width stores at constant offsets and nothing else.
+     */
     public static void writeBody(byte[] b, int at, Value v) {
         assert checkWrite(v);
         TableFixed.put32(b, at + 0, v.entityId);
@@ -81,58 +98,113 @@ public final class MixedEntityFixed {
         return true;
     }
 
-    /** land one record image into a value. The image is this reader's own
-     *  body layout, so every offset here is a constant. */
+    /**
+     * land one record image into a value. The image is this reader's own body layout, so every
+     * offset here is a constant.
+     */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
         v.entityId = TableFixed.get32(b, at + 0);
-        if (v.entityId > 4095L) { v.entityId = (int) (4095L); r.clamped++; } // bits(12) clamps to 2^N - 1
+        if (v.entityId > 4095L) {
+            v.entityId = (int) (4095L);
+            r.clamped++;
+        } // bits(12) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
-            if (q < -16383L) { q = -16383L; r.clamped++; } else if (q > 16383L) { q = 16383L; r.clamped++; }
+            if (q < -16383L) {
+                q = -16383L;
+                r.clamped++;
+            } else if (q > 16383L) {
+                q = 16383L;
+                r.clamped++;
+            }
             v.posX = (int) (q);
         }
         {
             long q = TableFixed.get32(b, at + 8);
-            if (q < -16383L) { q = -16383L; r.clamped++; } else if (q > 16383L) { q = 16383L; r.clamped++; }
+            if (q < -16383L) {
+                q = -16383L;
+                r.clamped++;
+            } else if (q > 16383L) {
+                q = 16383L;
+                r.clamped++;
+            }
             v.posY = (int) (q);
         }
         {
             long q = TableFixed.get32(b, at + 12);
-            if (q < -16383L) { q = -16383L; r.clamped++; } else if (q > 16383L) { q = 16383L; r.clamped++; }
+            if (q < -16383L) {
+                q = -16383L;
+                r.clamped++;
+            } else if (q > 16383L) {
+                q = 16383L;
+                r.clamped++;
+            }
             v.posZ = (int) (q);
         }
         v.yaw = TableFixed.get32(b, at + 16);
-        if (v.yaw > 511L) { v.yaw = (int) (511L); r.clamped++; } // bits(9) clamps to 2^N - 1
+        if (v.yaw > 511L) {
+            v.yaw = (int) (511L);
+            r.clamped++;
+        } // bits(9) clamps to 2^N - 1
         v.pitch = TableFixed.get32(b, at + 20);
-        if (v.pitch > 511L) { v.pitch = (int) (511L); r.clamped++; } // bits(9) clamps to 2^N - 1
+        if (v.pitch > 511L) {
+            v.pitch = (int) (511L);
+            r.clamped++;
+        } // bits(9) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 24);
-            if (q < -2048L) { q = -2048L; r.clamped++; } else if (q > 2047L) { q = 2047L; r.clamped++; }
+            if (q < -2048L) {
+                q = -2048L;
+                r.clamped++;
+            } else if (q > 2047L) {
+                q = 2047L;
+                r.clamped++;
+            }
             v.velX = (int) (q);
         }
         {
             long q = TableFixed.get32(b, at + 28);
-            if (q < -2048L) { q = -2048L; r.clamped++; } else if (q > 2047L) { q = 2047L; r.clamped++; }
+            if (q < -2048L) {
+                q = -2048L;
+                r.clamped++;
+            } else if (q > 2047L) {
+                q = 2047L;
+                r.clamped++;
+            }
             v.velY = (int) (q);
         }
         {
             long q = TableFixed.get32(b, at + 32);
-            if (q < -2048L) { q = -2048L; r.clamped++; } else if (q > 2047L) { q = 2047L; r.clamped++; }
+            if (q < -2048L) {
+                q = -2048L;
+                r.clamped++;
+            } else if (q > 2047L) {
+                q = 2047L;
+                r.clamped++;
+            }
             v.velZ = (int) (q);
         }
         {
             long q = TableFixed.get32(b, at + 36);
-            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 1000L) { q = 1000L; r.clamped++; }
+            if (q < 0L) {
+                q = 0L;
+                r.clamped++;
+            } else if (q > 1000L) {
+                q = 1000L;
+                r.clamped++;
+            }
             v.health = (int) (q);
         }
         {
             long q = (b[at + 40] & 0xFF);
-            if (q > 15L) { q = 0L; r.clamped++; }
+            if (q > 15L) {
+                q = 0L;
+                r.clamped++;
+            }
             v.weapon = (byte) (q);
         }
         v.damage = TableFixed.get64(b, at + 41);
         v.moving = b[at + 49] != 0;
         v.firing = b[at + 50] != 0;
     }
-
 }

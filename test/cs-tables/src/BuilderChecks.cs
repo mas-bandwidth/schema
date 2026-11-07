@@ -47,6 +47,14 @@ static partial class Program
                 G.TableArena.SetReference(ref tail->Next,next); tail=next;
             }
             G.TableBlobSlot blob=builder.AllocString(100000); Check(blob.Pointer!=IntPtr.Zero && blob.Length==100000 && blob.Data[100000]==0,"large blob spans slabs and terminates");
+            // a node larger than a slab takes its own span (docs/PORTING.md M17): the
+            // nodes allocated after it never land inside its bytes
+            if(blob.Pointer!=IntPtr.Zero)
+            {
+                new Span<byte>(blob.Data,100000).Fill(0x5a);
+                for(int i=0;i<4096;i++) { builder.Alloc<G.ListNodeRow>()->Value=i; }
+                Check(new ReadOnlySpan<byte>(blob.Data,100000).IndexOfAnyExcept((byte)0x5a)<0,"large blob keeps its bytes after later allocations");
+            }
             G.TableBlobSlot wide=builder.AllocWString(35000); Check(wide.Pointer!=IntPtr.Zero && wide.Length==35000 && wide.Bytes.Length==70000 && wide.Data[70000]==0 && wide.Data[70001]==0,"wide blob allocation uses code units and terminates");
             var workers=new G.TableWorker[4]; var held=new IntPtr[4];
             for(int i=0;i<workers.Length;i++) { workers[i]=builder.CreateWorker(); }
@@ -118,9 +126,9 @@ static partial class Program
         using(var builder=new L.SaveBuilder())
         {
             var report=new L.TableReport();
-            Check(L.Schema.SaveLoadBuilder(builder,shortList,report) && report.Malformed && !report.Refused && report.Clamped==0,"builder decodes a short list prefix as damage");
+            Check(!L.Schema.SaveLoadBuilder(builder,shortList,report) && report.Malformed && !report.Refused && report.Clamped==0,"builder refuses a short list as damage");
             var list=builder.CreateWorker().List<int>(ref builder.GetRoot()->Scores,L.Schema.SaveTableType().Fields[2]);
-            Check(list.Count==1 && *list.At(0)==42,"builder retains the decoded prefix");
+            Check(list.Count==0,"builder discards the whole damaged load");
         }
         byte[] cappedList=Fixture(Join(new byte[] {1,6,5,2,14,6,4},Var((ulong)int.MaxValue+1),new byte[] {3,6,7,0}),"before","scores","after");
         using(var builder=new L.SaveBuilder())
@@ -138,7 +146,7 @@ static partial class Program
         using(var builder=new M.FleetBuilder())
         {
             var report=new M.TableReport();
-            Check(M.Schema.FleetLoadBuilder(builder,shortMap,report) && report.Malformed && !report.Refused && report.Clamped==0 && builder.GetRoot()->Tiers.Count==0,"builder map at the count cap decodes only the available prefix");
+            Check(!M.Schema.FleetLoadBuilder(builder,shortMap,report) && report.Malformed && !report.Refused && report.Clamped==0 && builder.GetRoot()->Tiers.Count==0,"builder map at the count cap is damage and discards the whole load");
         }
         byte[] loaded=ReadGolden("list_scalars"); long size=L.Schema.SaveLoadMeasure(loaded);
         byte* source=(byte*)NativeMemory.AlignedAlloc((nuint)(size+64),64);

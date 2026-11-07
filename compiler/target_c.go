@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cqualify"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ctable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -27,6 +29,20 @@ func (t cTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 // ctable opens no file and a build ships a reader for every layout the lock
 // records.
 func (cTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+	files, err := emitC(u, lineage)
+	if err != nil {
+		return nil, err
+	}
+	// C has no namespace: every name the unit declares takes its package
+	// here, once, across both emitters' files (internal/codegen/cqualify)
+	return cqualify.Qualify(files, u.Package)
+}
+
+// emitC is both emitters' output in the schema's own spellings, before the
+// package qualifies it — valid C on its own, and the form the emitter-shape
+// tests read, so a test of WHAT is emitted does not also restate HOW the
+// namespace spells it.
+func emitC(u *ir.Unit, lineage *FixedLineage) (map[string][]byte, error) {
 	// C carries packet and table wide text.
 	if err := refuseWideText(u, "c"); err != nil {
 		return nil, err
@@ -55,6 +71,9 @@ func (cTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (ma
 		return nil, err
 	}
 	for name, data := range tables {
+		if prev, dup := files[name]; dup && name == ccommon.RuntimeHeaderName && string(prev) == string(data) {
+			continue
+		}
 		if _, dup := files[name]; dup {
 			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table header; rename one file (docs/SPEC-TABLES.md)", name)
 		}

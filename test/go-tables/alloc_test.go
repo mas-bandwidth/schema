@@ -133,19 +133,19 @@ func TestAllocationGateCanGoRed(t *testing.T) {
 // descriptors, so a value handed to it through an `any`, a closure that
 // captured a slot, or a number formatted through `fmt` rather than `strconv`'s
 // Append* would each allocate without moving a byte of output.
-func TestToJsonAllocatesNothing(t *testing.T) {
+func TestToJSONAllocatesNothing(t *testing.T) {
 	bytes := wire(t, representative)
 	var value tabledemo.RootConfig
 	var report tabledemo.TableReport
 	if !tabledemo.RootConfigLoad(&value, bytes, &report) {
 		t.Fatal("the golden does not load")
 	}
-	buffer := make([]byte, tabledemo.RootConfigToJsonMeasure(&value))
+	buffer := make([]byte, tabledemo.RootConfigToJSONMeasure(&value))
 	if n := testing.AllocsPerRun(200, func() {
-		if tabledemo.RootConfigToJsonMeasure(&value) != int64(len(buffer)) {
+		if tabledemo.RootConfigToJSONMeasure(&value) != int64(len(buffer)) {
 			t.Fatal("measure is not stable")
 		}
-		if tabledemo.RootConfigToJson(&value, buffer) != int64(len(buffer)) {
+		if tabledemo.RootConfigToJSON(&value, buffer) != int64(len(buffer)) {
 			t.Fatal("write did not fill measure's answer")
 		}
 	}); n != 0 {
@@ -153,20 +153,20 @@ func TestToJsonAllocatesNothing(t *testing.T) {
 	}
 }
 
-func TestFromJsonAllocatesNothing(t *testing.T) {
+func TestFromJSONAllocatesNothing(t *testing.T) {
 	bytes := wire(t, representative)
 	var value tabledemo.RootConfig
 	var report tabledemo.TableReport
 	if !tabledemo.RootConfigLoad(&value, bytes, &report) {
 		t.Fatal("the golden does not load")
 	}
-	text := make([]byte, tabledemo.RootConfigToJsonMeasure(&value))
-	tabledemo.RootConfigToJson(&value, text)
+	text := make([]byte, tabledemo.RootConfigToJSONMeasure(&value))
+	tabledemo.RootConfigToJSON(&value, text)
 
 	var parsed tabledemo.RootConfig
 	if n := testing.AllocsPerRun(200, func() {
 		report = tabledemo.TableReport{}
-		if !tabledemo.RootConfigFromJson(&parsed, text, &report) {
+		if !tabledemo.RootConfigFromJSON(&parsed, text, &report) {
 			t.Fatal("the text this port wrote does not read back")
 		}
 	}); n != 0 {

@@ -51,7 +51,7 @@ func t05Has(t *testing.T, files map[string]string, file, want, what string) {
 	if !ok {
 		t.Fatalf("%s: the emitter wrote no %s", what, file)
 	}
-	if !strings.Contains(src, want) {
+	if !javaCarries(src, want) {
 		t.Errorf("%s: %s does not carry %q", what, file, want)
 	}
 }
@@ -93,7 +93,7 @@ func t05C1(t *testing.T) {
 
 // t05C2 is C2 "count clamp v>Max": the same op's "else if v > size then v :=
 // size, COUNT clamped", against the bound THE DECLARATION CARRIES — the OLD
-// unit's `[..4]` and the NEW unit's `[..8]` — never a bound of the peer's.
+// unit's `[..4]` and the NEW unit's `[..8]` — never a bound of the endpoint's.
 func t05C2(t *testing.T) {
 	old := t05Files(t, "VOLD_array_bounded_grow.schema")
 	t05Has(t, old, "ArrayBoundedGrowFixed.java",
@@ -253,7 +253,13 @@ func t05R30(t *testing.T) {
 		"Float.floatToRawIntBits(v.aim)",
 		"R30 the writer stores the raw float32 bits, never a quantized index (SPEC-TABLES §3.4)")
 	t05Has(t, files, "CfloatRangeWidenFixed.java",
-		"Float.intBitsToFloat(TableFixed.get32(b, at + 4))",
+		"final int fbits = TableFixed.get32(b, at + 4);",
+		"R30 the reader reads the float32's raw bits whole before its bounds pass")
+	t05Has(t, files, "CfloatRangeWidenFixed.java",
+		"r.refuseNonFinite(\"CfloatRangeWiden.aim\");",
+		"R30 a NaN or an infinity is refused by name before the bounds pass, never clamped (SPEC-TABLES §3.3)")
+	t05Has(t, files, "CfloatRangeWidenFixed.java",
+		"float q = Float.intBitsToFloat(fbits);",
 		"R30 the reader lands the float32 whole before its bounds pass")
 	// THE READER'S OWN BOUNDS, at the widened range's min and max.
 	t05Has(t, files, "CfloatRangeWidenFixed.java",
@@ -347,7 +353,7 @@ func t05R31(t *testing.T) {
 		"public long arg2;",
 		"public byte argw2;",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the plan's lanes are not full width — %q is not emitted", want)
 		}
 	}
@@ -360,7 +366,7 @@ func t05R31(t *testing.T) {
 		"final int gw2 = guardWidth(p.argw2);",
 		"if (tagAt(src, srcAt + p.guard2, gw2) != p.arg2) { continue; }",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the guard compare is not at the tag's own width — %q is not emitted", want)
 		}
 	}
@@ -375,7 +381,7 @@ func t05R31(t *testing.T) {
 		"if (chainAt < 0) { chainAt = layGuards(); }",
 		"if (p.gcount > 2 && !chainHolds(p, src, srcAt, srcLength, report)) {",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the outer tag is not conjoined on a second guard lane — %q is not emitted", want)
 		}
 	}
@@ -396,7 +402,7 @@ func t05R31(t *testing.T) {
 		"remap[at] = (short) n;",
 		"if (n < 0 || n > 65535) { overflow = true; return 0; }",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the remap table's length word is not emitted — %q is not present", want)
 		}
 	}

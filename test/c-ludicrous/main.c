@@ -60,13 +60,13 @@ static void golden_wire( const char * name, const unsigned char * data, int byte
     }
 }
 
-static LudicrousState state_instance( void )
+static ludicrous_ludicrous_state_t state_instance( void )
 {
     /* new_ludicrous_state() installs the SPECIFIED defaults — wide.bias and
        wide.seed stay at theirs and ride the wire as written */
-    LudicrousState in = new_ludicrous_state();
+    ludicrous_ludicrous_state_t in = ludicrous_new_ludicrous_state();
 
-    in.mode = DRIVE_MODE_LUDICROUS;
+    in.mode = LUDICROUS_DRIVE_MODE_LUDICROUS;
     in.probe.angle = 2981888;                        /* +45.5 * 2^16 */
     in.probe.position = -809119744LL;                /* -12346.1875 * 2^16 */
     in.probe.reach = serialize_int128_from_int64( 65536000000LL - 1 );
@@ -96,17 +96,17 @@ int main( void )
 
     /* ---- the pinned state, targeted ---- */
     {
-        LudicrousState in = state_instance();
-        LudicrousState out;
+        ludicrous_ludicrous_state_t in = state_instance();
+        ludicrous_ludicrous_state_t out;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_ludicrous_state( &w, &in ), "write LudicrousState" );
+        check( ludicrous_write_ludicrous_state( &w, &in ), "write LudicrousState" );
         serialize_write_flush( &w );
         golden_wire( "ludicrous_state", buffer, serialize_write_bytes_processed( &w ) );
 
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_ludicrous_state( &r, &out ), "read LudicrousState" );
+        check( ludicrous_read_ludicrous_state( &r, &out ), "read LudicrousState" );
         check( out.probe.angle == in.probe.angle, "fixed(16,16) round-trips exactly" );
         check( out.probe.position == in.probe.position, "fixed(48,16) round-trips exactly" );
         check( serialize_int128_equal( out.probe.reach, in.probe.reach ), "fixed(112,16) round-trips exactly" );
@@ -124,19 +124,19 @@ int main( void )
 
     /* ---- the untargeted branch: the guard keeps target_id off the wire ---- */
     {
-        LudicrousState in = state_instance();
-        LudicrousState out;
+        ludicrous_ludicrous_state_t in = state_instance();
+        ludicrous_ludicrous_state_t out;
 
         in.has_target = 0;
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_ludicrous_state( &w, &in ), "write LudicrousState untargeted" );
+        check( ludicrous_write_ludicrous_state( &w, &in ), "write LudicrousState untargeted" );
         serialize_write_flush( &w );
         golden_wire( "ludicrous_state_untargeted", buffer, serialize_write_bytes_processed( &w ) );
 
         memset( &out, 0, sizeof( out ) );
         out.target_id = serialize_uint128_make( 9, 9 );   /* dirty — the read must zero it */
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_ludicrous_state( &r, &out ), "read LudicrousState untargeted" );
+        check( ludicrous_read_ludicrous_state( &r, &out ), "read LudicrousState untargeted" );
         check( !out.has_target, "has_target reads false" );
         check( serialize_uint128_equal( out.target_id, serialize_uint128_make( 0, 0 ) ),
                "the untaken branch zeroes the 128-bit member (SPEC §5)" );
@@ -146,7 +146,7 @@ int main( void )
        The whole wire is the tail byte; a port that emits ANY bits for a
        degenerate range shifts it and fails the golden compare. */
     {
-        DegenerateProbe in, out;
+        ludicrous_degenerate_probe_t in, out;
         memset( &in, 0, sizeof( in ) );
         in.locked_fixed = -196608;                 /* -3 * 2^16, the ONE legal raw */
         in.locked_int = 7;
@@ -154,14 +154,14 @@ int main( void )
         in.tail = 0xA5;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_degenerate_probe( &w, &in ), "write DegenerateProbe" );
+        check( ludicrous_write_degenerate_probe( &w, &in ), "write DegenerateProbe" );
         serialize_write_flush( &w );
         check( serialize_write_bytes_processed( &w ) == 1, "three degenerate fields cost zero bits" );
         golden_wire( "degenerate_probe", buffer, serialize_write_bytes_processed( &w ) );
 
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_degenerate_probe( &r, &out ), "read DegenerateProbe" );
+        check( ludicrous_read_degenerate_probe( &r, &out ), "read DegenerateProbe" );
         check( out.locked_fixed == -196608, "degenerate fixed materializes from the range alone" );
         check( out.locked_int == 7, "degenerate int materializes" );
         check( serialize_int128_equal( out.locked_wide, serialize_int128_from_int64( -12345678901234LL ) ),
@@ -177,7 +177,7 @@ int main( void )
        fixed128 entry's low lane — and this byte-compare against the
        C++-pinned golden is the gate. Values mirror test/ludicrous_main.cpp. */
     {
-        UnsignedProbe in, out;
+        ludicrous_unsigned_probe_t in, out;
         int i;
         memset( &in, 0, sizeof( in ) );
         in.angle = 2981888;                                          /* +45.5 * 2^16 */
@@ -190,14 +190,14 @@ int main( void )
         in.tail = 0xA5;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_unsigned_probe( &w, &in ), "write UnsignedProbe" );
+        check( ludicrous_write_unsigned_probe( &w, &in ), "write UnsignedProbe" );
         serialize_write_flush( &w );
         check( serialize_write_bytes_processed( &w ) == 25, "UnsignedProbe wire is 196 bits = 25 bytes" );
         golden_wire( "unsigned_probe", buffer, serialize_write_bytes_processed( &w ) );
 
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_unsigned_probe( &r, &out ), "read UnsignedProbe" );
+        check( ludicrous_read_unsigned_probe( &r, &out ), "read UnsignedProbe" );
         check( out.angle == 2981888, "ufixed(16,16) round-trips exactly" );
         check( out.span == 0xFFFFFFFFFFFF0000ULL, "ufixed(48,16) round-trips the uint64 high half bit-exact" );
         check( serialize_uint128_equal( out.reach, serialize_uint128_make( 0, 131071999999ULL ) ),
@@ -222,7 +222,7 @@ int main( void )
         {
             unsigned char hostile[25 + 8];      /* + 8: read buffer allocations extend 8 bytes past the data */
             serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-            check( write_unsigned_probe( &w, &in ), "write UnsignedProbe for the hostile image" );
+            check( ludicrous_write_unsigned_probe( &w, &in ), "write UnsignedProbe for the hostile image" );
             serialize_write_flush( &w );
             memcpy( hostile, buffer, 25 );
             for ( i = 25; i < 89; i++ )
@@ -231,7 +231,7 @@ int main( void )
             }
             memset( &out, 0, sizeof( out ) );
             serialize_read_stream_init( &r, hostile, 25 );
-            check( !read_unsigned_probe( &r, &out ), "a smuggled ufixed high-half offset is REJECTED" );
+            check( !ludicrous_read_unsigned_probe( &r, &out ), "a smuggled ufixed high-half offset is REJECTED" );
         }
     }
 

@@ -32,27 +32,26 @@ import (
 // emitter's own reserved marker (SCHEMA_UNUSED, schema_utf8_valid_), spelled
 // the way the generated externals are, and no schema identifier can be it.
 func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, cRuntimeSrc), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, cRuntimeSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Include a fixed unit to check the allocation-free runtime as well.
-	fixed, err := New().Generate(unitFromSource(t, runtimeSrc), "c", Options{})
+	fixed, err := generateCUnqualified(unitFromSource(t, runtimeSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for name, data := range fixed {
 		files["fixed-"+name] = data
 	}
-	// AND A UNIT THAT DECLARES THE GATED CONSTRUCTS. Three of this backend's
+	// AND A UNIT THAT DECLARES THE GATED CONSTRUCTS. Two of this backend's
 	// runtime blocks follow a CENSUS and are emitted only into a unit that
-	// declares what reaches them — kind 33's UTF-16 helpers, the float rung
-	// table_wire_widen_f32, and the byte buffer's own surface
-	// (compiler/tabledeadc_test.go). The registry's claim is that the C
-	// backend defines those names SOMEWHERE, so the scan is taken over a
-	// corpus that declares all three; a scan over a unit that declares none
+	// declares what reaches them — kind 33's UTF-16 helpers and the byte
+	// buffer's own surface (compiler/tabledeadc_test.go). The registry's claim
+	// is that the C backend defines those names SOMEWHERE, so the scan is
+	// taken over a corpus that declares both; a scan over a unit that declares none
 	// would read a gate as an unclaimed registration.
-	census, err := New().Generate(unitFromSource(t, cCensusRuntimeSrc), "c", Options{})
+	census, err := generateCUnqualified(unitFromSource(t, cCensusRuntimeSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +89,7 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 // cFiles generates the C target's whole output for one source.
 func cFiles(t *testing.T, src string) map[string][]byte {
 	t.Helper()
-	files, err := New().Generate(unitFromSource(t, src), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, src))
 	if err != nil {
 		t.Fatalf("--lang c: %v", err)
 	}
@@ -148,8 +147,7 @@ func TestCTableRuntimeNameScanGoesRed(t *testing.T) {
 // beside the packet sources for a unit with tables, and adds NOTHING for one
 // without — the same contract the cpp and cs targets hold.
 func TestCEmitsTableSources(t *testing.T) {
-	c := New()
-	with, err := c.Generate(unitFromSource(t, tableSrc), "c", Options{})
+	with, err := generateCUnqualified(unitFromSource(t, tableSrc))
 	if err != nil {
 		t.Fatalf("--lang c: %v", err)
 	}
@@ -158,7 +156,7 @@ func TestCEmitsTableSources(t *testing.T) {
 			t.Fatalf("--lang c emitted no %s for a unit with tables; got %d files", want, len(with))
 		}
 	}
-	without, err := c.Generate(unitFromSource(t, packetSrc), "c", Options{})
+	without, err := generateCUnqualified(unitFromSource(t, packetSrc))
 	if err != nil {
 		t.Fatalf("--lang c: %v", err)
 	}
@@ -170,7 +168,7 @@ func TestCEmitsTableSources(t *testing.T) {
 	}
 	// and the PACKET half is byte-identical with the tables there and gone:
 	// the table surface is emitted beside it, never woven into it
-	packetOnly, err := c.Generate(unitFromSource(t, packetSrc), "c", Options{})
+	packetOnly, err := generateCUnqualified(unitFromSource(t, packetSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +187,7 @@ func TestCEmitsTableSources(t *testing.T) {
 // conformance driver itself does. C has no namespace, so the property is held
 // by the spelling: every external the table backend emits carries the package.
 func TestCExternalsCarryThePackage(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, tableSrc), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, tableSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +259,7 @@ table Collections { items []Node
 // force-inlines it, because it is called once per nested body to decide elision
 // and its result is a number, so it neither holds the cursor nor merges stores.
 func TestCForceInlineStopsAtTheVariableClass(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, cRuntimeSrc), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, cRuntimeSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +305,7 @@ func TestCForceInlineStopsAtTheVariableClass(t *testing.T) {
 // probe it guarantees, and id compare rather than hash-only. There is no
 // pairwise arm left to fall back to.
 func TestCTableOpenDistinctnessIsBounded(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, runtimeSrc), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, runtimeSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +387,7 @@ table ZqqNode
 //     silent rewrite (the repro cases live in internal/check's break-the-
 //     language suite).
 func TestCGeneratorMacrosAreOwned(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, cMacroSrc), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, cMacroSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,9 +416,10 @@ func TestCGeneratorMacrosAreOwned(t *testing.T) {
 			// reserved, and internal/check refuses a declaration spelling it
 		case tablenames.Registered(name):
 			// a registered runtime name, refused by the §11 claim
-		case name == "ZQQPKG_PROTOCOL_ID":
-			// the packet emitter's per-unit id; its claim is the packet
-			// emitter's own business and predates the table backend
+		case name == "PROTOCOL_ID":
+			// the packet emitter's per-unit id, ZQQPKG_PROTOCOL_ID once the
+			// package qualifies it; internal/check claims the spelling for
+			// every unit (its Rust form), so no declaration can take it
 		default:
 			t.Errorf("the generated C defines the macro %s, which is neither under the reserved "+
 				"SCHEMA_ prefix nor a registered runtime name — a schema declaring it would silently "+
@@ -454,7 +453,7 @@ fixed table RenderFrame
     dynamic_props [..8]RenderShip
 }
 `
-	files, err := New().Generate(unitFromSource(t, src), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, src))
 	if err != nil {
 		t.Fatal(err)
 	}

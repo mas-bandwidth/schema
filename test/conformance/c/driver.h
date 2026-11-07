@@ -1,15 +1,11 @@
 /* THE C CONFORMANCE DRIVER's shared surface (test/conformance/README.md).
  *
- * C HAS NO NAMESPACES, so the seven units this driver reads cannot meet in one
- * translation unit: tblv1's Cfg and tblv2's Cfg declare the same struct name,
- * and every unit's <Base>Table.h defines the same TableReport, TableWriter and
- * TableReader. Each unit therefore gets a translation unit of its own, which
+ * Each unit this driver reads gets a translation unit of its own, which
  * includes only its own headers and hands the surfaces back through the ERASED
- * shapes below. main.c includes no generated header at all.
- *
- * That is what a real C consumer of two schema units does, and the generated
- * externals are spelled schema_<package>_<type>_<what>_ precisely so those
- * translation units link together. */
+ * shapes below; main.c includes no generated header at all. That keeps the
+ * matrix one row per unit. It is no longer forced: every name a C unit
+ * declares carries its package (SPEC §6.3), so units link together and their
+ * headers may share a translation unit too (test/c-two-units). */
 
 #ifndef SCHEMA_CONFORMANCE_DRIVER_H
 #define SCHEMA_CONFORMANCE_DRIVER_H
@@ -27,9 +23,9 @@
 #define SCHEMA_CONFORMANCE_UNUSED
 #endif
 
-/* Each unit declares its OWN TableReport — the generated surface is not
- * namespaced (§6.1) — so the driver carries one report shape of its own and
- * each row copies into it. Five counters is the whole of §4's report. */
+/* Each unit declares its OWN report type (<package>_table_report_t), so the
+ * driver carries one report shape of its own and each row copies into it.
+ * Five counters is the whole of §4's report. */
 typedef struct ConformanceReport
 {
     int unknown, kind_mismatch, clamped, duplicate;
@@ -87,7 +83,7 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_text_add( ConformanceText * ou
     conformance_text_raw( out, s, strlen( s ) );
 }
 
-int conformance_retain(int message,const uint8_t * announcement,int64_t announcement_bytes,const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes);
+int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes);
 
 /* the per-unit entry points, each defined in that unit's own translation unit */
 const ConformanceCodec * conformance_codecs_armdemo(int * count);
@@ -120,6 +116,8 @@ const ConformanceCodec * conformance_codecs_tblp3( int * count );
 const ConformanceCodec * conformance_codecs_widedemo( int * count );
 const ConformanceCodec * conformance_codecs_scalars( int * count );
 const ConformanceCodec * conformance_codecs_tblscalars2( int * count );
+const ConformanceCodec * conformance_codecs_widelist( int * count );
+const ConformanceCodec * conformance_codecs_featurewitnesses( int * count );
 
 /* the BLOCK unit (blockdemo): open one image at the extent and pointer the
  * caller claims, and read every row out of the descriptors */

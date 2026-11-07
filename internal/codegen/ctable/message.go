@@ -7,7 +7,53 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-func tableMessageForm(u *ir.Unit, variable, hasProbes bool) string {
+// messageClosure names what the message form's codecs are emitted for: every
+// fixed table, and every struct and union a fixed table holds by value. Only
+// a fixed table rides the message form (docs/SPEC-TABLES.md §3.3), so a
+// variable table, and a struct or a union only variable tables hold, has no
+// message codec.
+func messageClosure(u *ir.Unit) (structs, unions map[string]bool) {
+	structs, unions = map[string]bool{}, map[string]bool{}
+	var walk func(st *ir.Struct)
+	var field func(f *ir.Field)
+	field = func(f *ir.Field) {
+		if f == nil || f.Type.Pointer || f.Type.Kind != ir.TNamed {
+			return
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			walk(ref)
+		case *ir.Union:
+			if unions[ref.Name] {
+				return
+			}
+			unions[ref.Name] = true
+			for _, v := range ref.Variants {
+				field(v.F)
+			}
+		}
+	}
+	walk = func(st *ir.Struct) {
+		if structs[st.Name] {
+			return
+		}
+		structs[st.Name] = true
+		for _, f := range st.Fields {
+			field(f)
+		}
+	}
+	for name := range ir.TableClosure(u) {
+		if st := u.Tables[name]; st != nil && st.FixedDeclared && !st.IsMapEntry() {
+			walk(st)
+		}
+	}
+	return structs, unions
+}
+
+// tableMessageForm is the message form's runtime (docs/SPEC-TABLES.md §3.3).
+// Only a fixed table rides the message form, so the runtime holds no node
+// numbering and no node map.
+func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	var b strings.Builder
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
 	entries, announcement := ir.TableVocabulary(u), ir.TableAnnouncement(u)
@@ -17,25 +63,16 @@ func tableMessageForm(u *ir.Unit, variable, hasProbes bool) string {
 		fmt.Fprintf(&b, "0x%02x,", v)
 	}
 	b.WriteString("};\n")
-	nodes := ""
-	if variable {
-		nodes = "TableNumbering * nodes; int64_t index_bits;"
-	}
 	checkDefault := ""
 	if hasProbes {
 		checkDefault = ",check_default"
 	}
 	bits := strings.ReplaceAll(cMessageBits, "@CHECK_DEFAULT@", checkDefault)
-	b.WriteString(strings.ReplaceAll(bits, "@NODES@", nodes))
+	b.WriteString(bits)
 	b.WriteString(cMessageNumbers)
 	b.WriteString(cMessageShape)
 	b.WriteString(cMessageAnnounce)
-	readNodes := ""
-	if variable {
-		readNodes = "TableNodeMap * nodes;"
-	}
-	b.WriteString(strings.ReplaceAll(cMessageRead, "@NODES@", readNodes))
-	b.WriteString(cMessageNodes)
+	b.WriteString(cMessageRead)
 	b.WriteString("\n#endif\n")
 	return b.String()
 }
@@ -43,7 +80,7 @@ func tableMessageForm(u *ir.Unit, variable, hasProbes bool) string {
 // A null output performs exactly the same walk as a save, counting bits.
 // Reads and writes touch only the bytes occupied by the requested value.
 const cMessageBits = `
-typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow@CHECK_DEFAULT@; @NODES@ } TableBitWriter;
+typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow@CHECK_DEFAULT@; } TableBitWriter;
 typedef struct TableBitReader { const uint8_t * buffer; int64_t bits,offset; } TableBitReader;
 static SCHEMA_UNUSED TableBitWriter table_bit_writer(uint8_t * buffer,int64_t capacity)
 { TableBitWriter w;memset(&w,0,sizeof(w));w.buffer=buffer;w.capacity=capacity;return w; }
@@ -137,7 +174,7 @@ static SCHEMA_UNUSED int table_message_leb(const uint8_t * in,int64_t size,int64
 }
 static SCHEMA_UNUSED int64_t table_message_value_bits(uint8_t kind,uint8_t packing,int64_t bits)
 {
- if(kind==1)return 1;if(kind==11)return 64;if(kind==10)return packing==2?bits:32;
+ if(kind==1)return 1;if(kind==11||kind==36)return 64;if(kind==10)return packing==2?bits:32;
  if(table_message_integer_kind(kind)||table_message_fixed_kind(kind))return packing==1?bits:table_message_kind_bits(kind);
  return -1;
 }
@@ -265,7 +302,7 @@ static SCHEMA_UNUSED int64_t table_message_kind_bits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64;
         default: return 128;
     }
 }
@@ -331,7 +368,7 @@ static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind 
 
 static SCHEMA_UNUSED int table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 `

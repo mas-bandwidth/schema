@@ -62,7 +62,7 @@ fixed table Fox { x int32 }
 	for _, forbidden := range []string{
 		"type PongCook", "func PongOpen", "func PongAt",
 		"func PongCookFrom", "func PongCookMeasure",
-		"func PongFromJson", "func PongToJson",
+		"func PongFromJSON", "func PongToJSON",
 		"type PongBlock", "func PongBlockOpen",
 	} {
 		if strings.Contains(wireOnlySrc, forbidden) {
@@ -93,10 +93,10 @@ fixed table FoxAll
 	for _, want := range []string{
 		"type PingCook struct", "func PingOpen(", "func PingAt(",
 		"func PingCookFrom(", "func PingCookMeasure(",
-		"func PingFromJson(", "func PingToJson(",
+		"func PingFromJSON(", "func PingToJSON(",
 		"type FoxAllBlock struct", "func FoxAllBlockOpen(",
 		"type FoxAllCook struct", "func FoxAllOpen(",
-		"func FoxAllFromJson(", "func FoxAllToJson(",
+		"func FoxAllFromJSON(", "func FoxAllToJSON(",
 	} {
 		if !strings.Contains(mixedSrc, want) {
 			t.Errorf("multi-table unit missing expected member %q for undeclared table", want)
@@ -105,12 +105,12 @@ fixed table FoxAll
 	for _, forbidden := range []string{
 		"type PongCook", "func PongOpen(", "func PongAt(",
 		"func PongCookFrom(", "func PongCookMeasure(",
-		"func PongFromJson(", "func PongToJson(",
+		"func PongFromJSON(", "func PongToJSON(",
 		"type PongBlock", "func PongBlockOpen(",
 		"type FoxWireBlock", "func FoxWireBlockOpen(",
 		"type FoxWireCook", "func FoxWireOpen(", "func FoxWireAt(",
 		"func FoxWireCookFrom(", "func FoxWireCookMeasure(",
-		"func FoxWireFromJson(", "func FoxWireToJson(",
+		"func FoxWireFromJSON(", "func FoxWireToJSON(",
 	} {
 		if strings.Contains(mixedSrc, forbidden) {
 			t.Errorf("multi-table unit leaked omitted form member %q for wire-only table", forbidden)
@@ -240,7 +240,7 @@ fixed table Ping
 `
 	type carries struct{ json, cook, block bool }
 	marks := func(name string) (json, cook, block string) {
-		return "func " + name + "FromJson(", "func " + name + "CookFrom(", "type " + name + "Block"
+		return "func " + name + "FromJSON(", "func " + name + "CookFrom(", "type " + name + "Block"
 	}
 	for _, tc := range []struct {
 		name    string

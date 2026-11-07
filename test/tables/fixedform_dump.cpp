@@ -141,11 +141,14 @@ struct ManifestRow
     long long records = 0;
     std::vector<std::string> values;
     std::string forged; // the forged=<path>@<byte>=<value> field, empty when none
+    std::string expect; // the expect=<path>=<value>,...,clamped=<n> field, empty when none
 };
 
 static std::vector<ManifestRow> g_manifest;     // the rows, in the order written
 static std::vector<std::string> g_values;       // the row being written
 static std::string g_forged;                    // the pending row's forged= field, if any
+static std::string g_expect;                    // the pending row's expect= field, if any
+static std::string g_row;                       // the pending row's row=, when the file name says more than the row
 
 // `v[0].nested.a` -> `r0.nested.a`, and a subscript that is a LOOP VARIABLE or
 // an enum takes the value the call site hands over, in order, so the path holds
@@ -405,8 +408,17 @@ static void man_finish( const char * file, const char * root, long long records 
     r.root = root;
     r.records = records;
     man_row_and_side( r.file, r.row, r.side );
+    // A forged file whose name tells it from a sibling forge of the same row
+    // (hostile_range_widen_array.bin) still reads that row's pair: g_row names it.
+    if ( !g_row.empty() )
+    {
+        r.row = g_row;
+        g_row.clear();
+    }
     r.forged = g_forged;
     g_forged.clear();
+    r.expect = g_expect;
+    g_expect.clear();
     r.values.swap( g_values );
     g_manifest.push_back( r );
 }
@@ -429,6 +441,14 @@ static bool man_write( const char * dir )
                            r.file.c_str(), r.row.c_str(), r.side.c_str(), r.root.c_str(), r.records, r.forged.c_str() );
         }
         text += head;
+        // `expect=` is what the NEW reader LANDS from a forged file: the values
+        // the reference read back and the `clamped` count its report holds. It
+        // sits between the head and `values=`, so a parser that knows only the
+        // head fields still finds `values=` where it always was.
+        if ( !r.expect.empty() )
+        {
+            text.insert( text.size() - std::strlen( "values=" ), "expect=" + r.expect + " " );
+        }
         for ( size_t k = 0; k < r.values.size(); ++k )
         {
             if ( k != 0 ) { text += ","; }
@@ -462,9 +482,9 @@ static bool emit( const char * dir, const char * name, const std::vector<T> & va
 }
 
 
-// A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, §4, schema#480), so
-// a SIGNALLING NaN has to be put in place through its bits: a literal would be
-// quieted by the compiler before the writer ever saw it.
+// A FLOAT IS FINITE AND RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3,
+// §3.3), so a -0 and a subnormal are put in place through their bits, where a
+// literal's spelling cannot be mistaken for the value meant.
 static float float_from_bits( uint32_t bits ) { float f; std::memcpy( (void *) &f, &bits, 4 ); return f; }
 static double double_from_bits( uint64_t bits ) { double d; std::memcpy( (void *) &d, &bits, 8 ); return d; }
 
@@ -706,11 +726,15 @@ static bool fxw_file( const char * dir )
 //                        the SIGN-EXTENDED read into FU2's `int32` has a true
 //                        case at both ends and a false one: a leg that zero-
 //                        extends lands 65535 for -1 and cannot hide it
-//   THE FLOAT RUNG       `heat float32` as a SIGNALLING NaN with the smallest
-//                        payload, as a negative signalling NaN with a rich one,
-//                        and as an ordinary 1.5 beside them — the rung where a
-//                        leg that widens through a hardware conversion quiets
-//                        the NaN and loses the payload
+//   THE FLOAT RUNG       `heat float32` as the SMALLEST SUBNORMAL, as -0, and
+//                        as an ordinary 1.5 beside them — finite values only
+//                        (docs/SPEC-TABLES.md §3.3, 2026-10-27), the two a
+//                        widening that renormalized wrongly or dropped a sign
+//                        would move. A NaN is not a value of the type, and no
+//                        file here carries one: the corpus is what every leg
+//                        reads whole, so the hand-made refusal record is
+//                        forged by each leg's own test from old_float_widen.bin
+//                        (test/tables/fixedform_main.cpp, fu_refusal_case)
 //   THE TWO FORGED BYTES `flag` and `note`'s presence, which §3.4 spells as one
 //                        byte that is true when it is NOT ZERO; the writer puts
 //                        1 here and the leg's own forging case does the rest
@@ -731,7 +755,7 @@ static bool fu1_file( const char * dir )
     MS( v[0].pick.labelled.trail, 202 );
     MS( v[0].tail, 11 );
     MS( v[0].mark, -1 );                                   // the rung's headline case
-    MS( v[0].heat, float_from_bits( 0x7F800001u ) );       // signalling, smallest payload
+    MS( v[0].heat, float_from_bits( 0x00000001u ) );       // the smallest subnormal
 
     // the FIRST arm, a bare scalar, and the optional ABSENT
     tblfu1::FuRootReset( v[1] );
@@ -742,7 +766,7 @@ static bool fu1_file( const char * dir )
     MS( v[1].pick.plain.n, 303 );
     MS( v[1].tail, 12 );
     MS( v[1].mark, -32768 );                               // INT16_MIN: every sign bit set
-    MS( v[1].heat, float_from_bits( 0xFFA5A5A5u ) );       // negative, signalling, rich payload
+    MS( v[1].heat, float_from_bits( 0x80000000u ) );       // -0: the sign is the whole value
 
     // the SECOND arm again with its text WHOLLY UNUSED, so the eight bytes of
     // the span are slack and a positive `mark` gives the sign rung a false case
@@ -756,7 +780,7 @@ static bool fu1_file( const char * dir )
     MS( v[2].pick.labelled.trail, 606 );
     MS( v[2].tail, 13 );
     MS( v[2].mark, 32767 );                                // INT16_MAX: positive, nothing to extend
-    MS( v[2].heat, 1.5f );                                 // an ordinary float beside the NaNs
+    MS( v[2].heat, 1.5f );                                 // an ordinary float beside them
 
     return emit( dir, "fu1.bin", v, tblfu1::FuRootFixedMeasure, tblfu1::FuRootFixedSave );
 }
@@ -781,7 +805,7 @@ static bool fu2_file( const char * dir )
     MS( v[0].pick.labelled.trail, 222 );
     MS( v[0].tail, 21 );
     MS( v[0].mark, -70000 );                               // past everything an int16 holds
-    MS( v[0].heat, double_from_bits( 0x7FF00DEFACED0001ull ) ); // signalling at sixty-four bits
+    MS( v[0].heat, double_from_bits( 0x800FFFFFFFFFFFFFull ) ); // the largest negative subnormal at sixty-four bits
     MS( v[0].extra, 909 );
 
     tblfu2::FuRootReset( v[1] );
@@ -888,10 +912,14 @@ static bool versioning_numbers_files( const char * dir )
     VROW( vnew_uint_widen, UintWiden, "new_uint_widen.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 0xDEADBEEFu ); MS( v[0].trail, 0xBBBBBBBBu ); );
 
-    // A SIGNALLING NaN WITH A PAYLOAD: the bits are the value (the FU ruling)
+    // A NEGATIVE FLOAT WITH A RICH MANTISSA AND A SHORT EXACT DECIMAL: finite,
+    // so the bits are the value and the rung is the ordinary conversion
+    // (docs/SPEC-TABLES.md §3.3). Its decimal is the same at both widths, which
+    // is what a leg comparing two builds by decimal needs; the subnormal and the
+    // -0 ride in fu1/fu2's `heat`.
     {
-        const uint32_t kSignalling = 0x7F8ABCDEu;
-        float f; std::memcpy( (void *) &f, &kSignalling, 4 );
+        const uint32_t kWritten = 0xC49A5200u; // -1234.5625f
+        float f; std::memcpy( (void *) &f, &kWritten, 4 );
         VROW( vold_float_widen, FloatWiden, "old_float_widen.bin",
               MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, f ); MS( v[0].trail, 0xBBBBBBBBu ); );
     }
@@ -902,6 +930,180 @@ static bool versioning_numbers_files( const char * dir )
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 100 ); MS( v[0].trail, 0xBBBBBBBBu ); );
     VROW( vnew_range_widen, RangeWiden, "new_range_widen.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 150 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+
+    // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5, bill
+    // §12.5). hostile_range_widen.bin is old_range_widen's bytes with `v`
+    // forged to 150: outside the OLD writer's | 0..100, INSIDE the NEW reader's
+    // | 0..200, so only damage can put it there. The NEW reader clamps it to the
+    // WRITER's max 100 and counts `clamped` exactly once; a reader that clamps
+    // to its own range lands 150 uncounted. The lock refuses a narrowed range,
+    // so the writer's range always lies inside the reader's and this is the one
+    // place the two readings part. Unlike a compressed float (the cfloat rows
+    // above), an integer range is carried in the plan, so the writer's bound
+    // survives the resolve.
+    //
+    // `values=` is what the OLD writer wrote, before the forge; `expect=` is
+    // what this reference's own NEW reader landed from the forged bytes, and
+    // the dump refuses to write the row unless that is 100, counted once.
+    {
+        std::vector<vold_range_widen::RangeWiden> v( 1 );
+        vold_range_widen::RangeWidenReset( v[0] );
+        MS( v[0].lead, 1u );
+        MS( v[0].v, 100 );
+        MS( v[0].trail, 2u );
+        const int64_t v_at = vold_range_widen::kTableFixedHeaderBytes + 4
+                           + vold_range_widen::RangeWidenFixedLayoutBytes + 8 + 4;
+        std::vector<uint8_t> out( (size_t) vold_range_widen::RangeWidenFixedMeasure( 1 ) );
+        if ( vold_range_widen::RangeWidenFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+        {
+            std::fprintf( stderr, "hostile_range_widen.bin: save refused\n" );
+            g_values.clear();
+            return false;
+        }
+        const int32_t forged = 150;
+        vold_range_widen::TableFixedPut32( out.data() + v_at, (uint32_t) forged );
+        vnew_range_widen::RangeWiden back;
+        vnew_range_widen::RangeWidenReset( back );
+        vnew_range_widen::TableReport r;
+        std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
+        const int64_t n = vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, out.data(), (int64_t) out.size(),
+                                                                         plan.data(), 4096, NULL, &r );
+        if ( n != 1 || back.v != 100 || r.clamped != 1 || back.lead != 1 || back.trail != 2 )
+        {
+            std::fprintf( stderr, "hostile_range_widen.bin: the reference's NEW reader landed n=%lld v=%d clamped=%lld, want 1 record, v == 100 (the WRITER's max), clamped == 1\n",
+                          (long long) n, (int) back.v, (long long) r.clamped );
+            g_values.clear();
+            return false;
+        }
+        char forge[96];
+        std::snprintf( forge, sizeof( forge ), "r0.v@%lld=%s", (long long) v_at, man_text( forged ).c_str() );
+        g_forged = forge;
+        g_expect = "r0.lead=" + man_text( back.lead ) + ",r0.v=" + man_text( back.v )
+                 + ",r0.trail=" + man_text( back.trail ) + ",clamped=" + man_text( (long long) r.clamped );
+        man_finish( "hostile_range_widen.bin", "RangeWiden", 1 );
+        if ( !spill( dir, "hostile_range_widen.bin", out ) ) { return false; }
+    }
+
+    // THE WRITER'S RANGE HOLDS EVERY ELEMENT OF A RANGED FIXED ARRAY, the same as
+    // a scalar (docs/FIXED-FORM-ALGORITHM.md §4.5). hostile_range_widen_array.bin
+    // is old_range_widen's bytes (`vals [4]int32 | 0..100`) with `vals[2]`
+    // forged to 150: outside the writer's range, inside the NEW reader's
+    // `| 0..200`. The NEW reader lands the WRITER's max 100 in that slot, leaves
+    // the other three where the writer put them, and counts `clamped` exactly
+    // once. A reader that holds only scalars, or only the first slot, lands 150
+    // uncounted.
+    {
+        std::vector<vold_range_widen::RangeWiden> v( 1 );
+        vold_range_widen::RangeWidenReset( v[0] );
+        MS( v[0].lead, 1u );
+        MS( v[0].v, 100 );
+        MS( v[0].vals[0], 10 );
+        MS( v[0].vals[1], 20 );
+        MS( v[0].vals[2], 30 );
+        MS( v[0].vals[3], 40 );
+        MS( v[0].u, 500u );
+        MS( v[0].trail, 2u );
+        // the record body is lead, v, vals[4], u, trail
+        const int64_t vals2_at = vold_range_widen::kTableFixedHeaderBytes + 4
+                               + vold_range_widen::RangeWidenFixedLayoutBytes + 8 + 4 + 4 + 2 * 4;
+        std::vector<uint8_t> out( (size_t) vold_range_widen::RangeWidenFixedMeasure( 1 ) );
+        if ( vold_range_widen::RangeWidenFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+        {
+            std::fprintf( stderr, "hostile_range_widen_array.bin: save refused\n" );
+            g_values.clear();
+            return false;
+        }
+        if ( vold_range_widen::TableFixedGet32( out.data() + vals2_at ) != 30u )
+        {
+            std::fprintf( stderr, "hostile_range_widen_array.bin: vals[2] is not at byte %lld\n", (long long) vals2_at );
+            g_values.clear();
+            return false;
+        }
+        const int32_t forged = 150;
+        vold_range_widen::TableFixedPut32( out.data() + vals2_at, (uint32_t) forged );
+        vnew_range_widen::RangeWiden back;
+        vnew_range_widen::RangeWidenReset( back );
+        vnew_range_widen::TableReport r;
+        std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
+        const int64_t n = vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, out.data(), (int64_t) out.size(),
+                                                                         plan.data(), 4096, NULL, &r );
+        if ( n != 1 || back.vals[0] != 10 || back.vals[1] != 20 || back.vals[2] != 100 || back.vals[3] != 40
+             || r.clamped != 1 || back.lead != 1 || back.v != 100 || back.u != 500u || back.trail != 2 )
+        {
+            std::fprintf( stderr, "hostile_range_widen_array.bin: the reference's NEW reader landed n=%lld vals=%d,%d,%d,%d clamped=%lld, want 1 record, vals == 10,20,100,40 (the WRITER's max in slot 2), clamped == 1\n",
+                          (long long) n, (int) back.vals[0], (int) back.vals[1], (int) back.vals[2], (int) back.vals[3], (long long) r.clamped );
+            g_values.clear();
+            return false;
+        }
+        char forge[96];
+        std::snprintf( forge, sizeof( forge ), "r0.vals[2]@%lld=%s", (long long) vals2_at, man_text( forged ).c_str() );
+        g_forged = forge;
+        g_expect = "r0.lead=" + man_text( back.lead ) + ",r0.v=" + man_text( back.v );
+        for ( int i = 0; i < 4; ++i )
+        {
+            g_expect += ",r0.vals[" + std::to_string( i ) + "]=" + man_text( back.vals[i] );
+        }
+        g_expect += ",r0.u=" + man_text( (unsigned long long) back.u ) + ",r0.trail=" + man_text( back.trail )
+                  + ",clamped=" + man_text( (long long) r.clamped );
+        g_row = "range_widen";
+        man_finish( "hostile_range_widen_array.bin", "RangeWiden", 1 );
+        if ( !spill( dir, "hostile_range_widen_array.bin", out ) ) { return false; }
+    }
+
+    // AN UNSIGNED FIELD COMPARES UNSIGNED (docs/FIXED-FORM-ALGORITHM.md §4.5).
+    // hostile_range_widen_u64.bin is old_range_widen's bytes (`u uint64 |
+    // 10..1000`) with `u` forged to 2^63 + 7: past the writer's max as a uint64,
+    // and a NEGATIVE number to a reader that compares it as an int64. The NEW
+    // reader (`| 0..2000`) lands the WRITER's max 1000 and counts `clamped`
+    // exactly once; a signed comparison lands the writer's min 10 instead.
+    {
+        std::vector<vold_range_widen::RangeWiden> v( 1 );
+        vold_range_widen::RangeWidenReset( v[0] );
+        MS( v[0].lead, 1u );
+        MS( v[0].v, 100 );
+        MS( v[0].u, 500u );
+        MS( v[0].trail, 2u );
+        // the record body is lead, v, vals[4], u, trail
+        const int64_t u_at = vold_range_widen::kTableFixedHeaderBytes + 4
+                           + vold_range_widen::RangeWidenFixedLayoutBytes + 8 + 4 + 4 + 4 * 4;
+        std::vector<uint8_t> out( (size_t) vold_range_widen::RangeWidenFixedMeasure( 1 ) );
+        if ( vold_range_widen::RangeWidenFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+        {
+            std::fprintf( stderr, "hostile_range_widen_u64.bin: save refused\n" );
+            g_values.clear();
+            return false;
+        }
+        if ( vold_range_widen::TableFixedGet64( out.data() + u_at ) != 500u )
+        {
+            std::fprintf( stderr, "hostile_range_widen_u64.bin: u is not at byte %lld\n", (long long) u_at );
+            g_values.clear();
+            return false;
+        }
+        const uint64_t forged = ( 1ull << 63 ) + 7u;
+        vold_range_widen::TableFixedPut64( out.data() + u_at, forged );
+        vnew_range_widen::RangeWiden back;
+        vnew_range_widen::RangeWidenReset( back );
+        vnew_range_widen::TableReport r;
+        std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
+        const int64_t n = vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, out.data(), (int64_t) out.size(),
+                                                                         plan.data(), 4096, NULL, &r );
+        if ( n != 1 || back.u != 1000u || r.clamped != 1 || back.lead != 1 || back.v != 100 || back.trail != 2 )
+        {
+            std::fprintf( stderr, "hostile_range_widen_u64.bin: the reference's NEW reader landed n=%lld u=%llu clamped=%lld, want 1 record, u == 1000 (the WRITER's max), clamped == 1\n",
+                          (long long) n, (unsigned long long) back.u, (long long) r.clamped );
+            g_values.clear();
+            return false;
+        }
+        char forge[96];
+        std::snprintf( forge, sizeof( forge ), "r0.u@%lld=%s", (long long) u_at, man_text( (unsigned long long) forged ).c_str() );
+        g_forged = forge;
+        g_expect = "r0.lead=" + man_text( back.lead ) + ",r0.v=" + man_text( back.v )
+                 + ",r0.u=" + man_text( (unsigned long long) back.u ) + ",r0.trail=" + man_text( back.trail )
+                 + ",clamped=" + man_text( (long long) r.clamped );
+        g_row = "range_widen";
+        man_finish( "hostile_range_widen_u64.bin", "RangeWiden", 1 );
+        if ( !spill( dir, "hostile_range_widen_u64.bin", out ) ) { return false; }
+    }
 
     // §5.8 — `cfloat_range_widen`: a compressed float's range widened -1..1 to
     // -2..2. The field rides AS THE FLOAT (SPEC §3.4), so min, max and

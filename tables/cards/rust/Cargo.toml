@@ -6,4 +6,10 @@ edition = "2024"
 [lib]
 path = "lib.rs"
 
+# The cooked form's cargo feature, which the generated variable modules gate
+# their cook writer on (docs/SPEC-TABLES.md §7.6). The facade is the wire and
+# text layer, so it is declared and left OFF: none of the cooked form compiles.
+[features]
+cook = []
+
 [dependencies]

@@ -67,13 +67,25 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 		"",
 	}, "\n"))
 
+	// make's test line is every registered leg in make/*.mk order; zz sorts
+	// last, so the planted tree's line is the unplanted one plus test-zz.
+	var testLine string
+	for line := range strings.SplitSeq(before["make"], "\n") {
+		if strings.HasPrefix(line, "test:") {
+			testLine = strings.TrimRight(line, " ")
+		}
+	}
+	if testLine == "" {
+		t.Fatalf("make registry names no test line before the plant:\n%s", before["make"])
+	}
+
 	after := discover(t, tree)
 	want := map[string]string{
 		"harness":     "zz",
 		"matrix":      `"lang":"zz"`,
 		"matrix-keys": `"zztool":""`, // every row carries every key
 		"bench":       "zz,bench_table,write",
-		"make":        "test: test-c test-cs test-dart test-elixir test-go test-java test-js test-rust test-zz",
+		"make":        testLine + " test-zz",
 		"make-conf":   "build/conformance-zz",
 		"make-bench":  "generated/bench/tables/zz/.stamp",
 		"make-golden": "update-goldens-zz",
@@ -86,7 +98,7 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 	}
 	// a CI row with no driver behind it is refused, not run
 	writeFile(t, filepath.Join(tree, "test", "conformance", "zy", "ci.json"), `{"targets": "build/conformance-zy"}`+"\n")
-	if _, err := matrix(filepath.Join(tree, "test", "conformance")); err == nil || !strings.Contains(err.Error(), "zy") {
+	if _, err := matrix(filepath.Join(tree, "test", "conformance"), false); err == nil || !strings.Contains(err.Error(), "zy") {
 		t.Errorf("a ci.json with no driver was not refused: %v", err)
 	}
 
@@ -113,7 +125,7 @@ func discover(t *testing.T, tree string) map[string]string {
 	}
 	out["harness"] = strings.Join(langs, " ")
 
-	m, err := matrix(filepath.Join(tree, "test", "conformance"))
+	m, err := matrix(filepath.Join(tree, "test", "conformance"), false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -40,7 +40,7 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(out, name), want, 0o644); err != nil {
 				t.Fatal(err)
 			}
-			scoreAnswer("go", "wire", out, expectation{name, want}, Instance{}, r)
+			scoreAnswer("go", "wire", out, expectation{name: name, want: want}, Instance{}, r)
 		}
 		if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), []byte("blob_shared"), 0o644); err != nil {
 			t.Fatal(err)
@@ -70,7 +70,7 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := &result{total: 1}
-		scoreAnswer("go", "wire", out, expectation{"blob_shared", []byte("golden wire")}, Instance{GoWireRefusal: "blob_shared"}, r)
+		scoreAnswer("go", "wire", out, expectation{name: "blob_shared", want: []byte("golden wire")}, Instance{GoWireRefusal: "blob_shared"}, r)
 		if len(r.failures) != 1 || r.missing != 0 {
 			t.Fatalf("wire scores = absent %d, failures %v; bytes must be red", r.missing, r.failures)
 		}
@@ -83,7 +83,7 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := &result{total: 1}
-		scoreAnswer("go", "wire", out, expectation{"blob_shared", []byte("golden wire")}, Instance{GoWireRefusal: "blob_shared"}, r)
+		scoreAnswer("go", "wire", out, expectation{name: "blob_shared", want: []byte("golden wire")}, Instance{GoWireRefusal: "blob_shared"}, r)
 		if len(r.failures) != 1 || r.missing != 0 {
 			t.Fatalf("wire scores = absent %d, failures %v; unnamed absence must be red", r.missing, r.failures)
 		}
@@ -96,7 +96,7 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := &result{total: 1}
-		scoreAnswer("go", "wire", out, expectation{"blob_shared", []byte("golden wire")}, Instance{GoWireRefusal: "blob_shared"}, r)
+		scoreAnswer("go", "wire", out, expectation{name: "blob_shared", want: []byte("golden wire")}, Instance{GoWireRefusal: "blob_shared"}, r)
 		if len(r.failures) != 1 || r.missing != 0 {
 			t.Fatalf("wire scores = absent %d, failures %v; wrong refusal name must be red", r.missing, r.failures)
 		}
@@ -109,7 +109,7 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := &result{total: 1}
-		scoreAnswer("cpp", "wire", out, expectation{"blob_shared", []byte("golden wire")}, Instance{GoWireRefusal: "blob_shared"}, r)
+		scoreAnswer("cpp", "wire", out, expectation{name: "blob_shared", want: []byte("golden wire")}, Instance{GoWireRefusal: "blob_shared"}, r)
 		if r.missing != 1 || r.named != 1 || len(r.failures) != 0 {
 			t.Fatalf("cpp wire scores = absent %d, named %d, failures %v; want one named refusal", r.missing, r.named, r.failures)
 		}
@@ -122,7 +122,7 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := &result{total: 1}
-		scoreAnswer("cpp", "wire", out, expectation{"blob_shared", []byte("golden wire")}, Instance{GoWireRefusal: "blob_shared"}, r)
+		scoreAnswer("cpp", "wire", out, expectation{name: "blob_shared", want: []byte("golden wire")}, Instance{GoWireRefusal: "blob_shared"}, r)
 		if r.missing != 1 || r.named != 0 {
 			t.Fatalf("cpp wire scores = absent %d, named %d; a wrong name must not count as the refusal", r.missing, r.named)
 		}
@@ -139,7 +139,7 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 		// reference is not listed, so it owes the bytes
 		inst := Instance{GoWireRefusal: "blob_shared"}
 		r := &result{total: 1}
-		scoreAnswer("cpp", "wire", out, expectation{"blob_shared", want}, inst, r)
+		scoreAnswer("cpp", "wire", out, expectation{name: "blob_shared", want: want}, inst, r)
 		if r.pass != 1 || len(r.failures) != 0 {
 			t.Fatalf("cpp wire scores = pass %d, failures %v; want base byte pass", r.pass, r.failures)
 		}
@@ -183,7 +183,7 @@ func TestWireRefusedByNamesThePortsBesidesGo(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &result{total: 1}
-	scoreAnswer("js", "wire", out, expectation{"blob_shared", []byte("golden wire")}, inst, r)
+	scoreAnswer("js", "wire", out, expectation{name: "blob_shared", want: []byte("golden wire")}, inst, r)
 	if r.missing != 1 || len(r.failures) != 0 {
 		t.Fatalf("js named refusal scores = absent %d, failures %v; want 1, none", r.missing, r.failures)
 	}
@@ -192,13 +192,13 @@ func TestWireRefusedByNamesThePortsBesidesGo(t *testing.T) {
 		t.Fatal(err)
 	}
 	r = &result{total: 1}
-	scoreAnswer("js", "wire", bytesOut, expectation{"blob_shared", []byte("golden wire")}, inst, r)
+	scoreAnswer("js", "wire", bytesOut, expectation{name: "blob_shared", want: []byte("golden wire")}, inst, r)
 	if len(r.failures) != 1 {
 		t.Fatalf("js bytes for a refused instance scored %v; must be red", r.failures)
 	}
 	// an unlisted port is held to the bytes
 	r = &result{total: 1}
-	scoreAnswer("cpp", "wire", bytesOut, expectation{"blob_shared", []byte("golden wire")}, inst, r)
+	scoreAnswer("cpp", "wire", bytesOut, expectation{name: "blob_shared", want: []byte("golden wire")}, inst, r)
 	if r.pass != 1 || len(r.failures) != 0 {
 		t.Fatalf("cpp bytes scored pass %d failures %v; the reference still writes them", r.pass, r.failures)
 	}

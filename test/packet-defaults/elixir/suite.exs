@@ -6,7 +6,6 @@ defmodule PacketDefaultTest do
     Batch,
     ZeroCount,
     Conditional,
-    Choice,
     EmptyOnly,
     Prefix,
     WideMask,
@@ -18,6 +17,13 @@ defmodule PacketDefaultTest do
 
   def check(true, _name), do: :ok
   def check(false, name), do: raise("FAILED: " <> name)
+
+  # the exact wire bits of a written value: what read_<name>_bits reports
+  # consuming from it (there is no generated measure, SPEC §6.1)
+  def bits_of(wire, read_bits) do
+    {:ok, _, bits} = read_bits.(wire, bit_size(wire))
+    bits
+  end
 
   def zero do
     %Sample{name: <<>>, token: <<>>, caps: 0, empty_name: <<>>, empty_token: <<>>, empty_caps: 0}
@@ -48,8 +54,13 @@ defmodule PacketDefaultTest do
   def pin(dir, name, value, want, type) do
     bytes = File.read!(Path.join(dir, name <> ".bin"))
     bits = File.read!(Path.join(dir, name <> ".bits")) |> String.trim() |> String.to_integer()
-    check(apply(D, String.to_atom("write_" <> type), [value]) == bytes, name <> " C++ bytes")
-    check(apply(D, String.to_atom("measure_" <> type), [value]) == bits, name <> " C++ bits")
+    wire = apply(D, String.to_atom("write_" <> type <> "!"), [value])
+    check(wire == bytes, name <> " C++ bytes")
+
+    check(
+      bits_of(wire, &apply(D, String.to_atom("read_" <> type <> "_bits"), [&1, &2])) == bits,
+      name <> " C++ bits"
+    )
 
     check(
       apply(D, String.to_atom("read_" <> type), [bytes, bits]) == {:ok, want},
@@ -77,7 +88,8 @@ defmodule PacketDefaultTest do
     wide_bytes = <<0, 0, 0, 0, 0, 0, 0, 128, 255, 255, 255, 255, 255, 255, 255, 255>>
 
     check(
-      D.write_wide_mask(wide) == wide_bytes and D.measure_wide_mask(wide) == 128,
+      D.write_wide_mask!(wide) == wide_bytes and
+        bits_of(D.write_wide_mask!(wide), &D.read_wide_mask_bits/2) == 128,
       "independent 64-bit wire"
     )
 
@@ -85,7 +97,8 @@ defmodule PacketDefaultTest do
     split = %SplitMask{lead: 5, mask: 1 <<< 32, tail: 2}
 
     check(
-      D.write_split_mask(split) == <<5, 0, 0, 0, 40>> and D.measure_split_mask(split) == 38,
+      D.write_split_mask!(split) == <<5, 0, 0, 0, 40>> and
+        bits_of(D.write_split_mask!(split), &D.read_split_mask_bits/2) == 38,
       "independent 33-bit wire"
     )
 
@@ -98,8 +111,9 @@ defmodule PacketDefaultTest do
     }
 
     check(
-      P.write_sample(plain) == D.write_sample(%Sample{}) and
-        P.measure_sample(plain) == D.measure_sample(%Sample{}),
+      P.write_sample!(plain) == D.write_sample!(%Sample{}) and
+        bits_of(P.write_sample!(plain), &P.read_sample_bits/2) ==
+          bits_of(D.write_sample!(%Sample{}), &D.read_sample_bits/2),
       "defaultless twin"
     )
 
@@ -122,30 +136,34 @@ defmodule PacketDefaultTest do
     off = %Conditional{enabled: false}
     off_want = %Conditional{enabled: false, value: zero()}
     pin(dir, "conditional-off", off, off_want, "conditional")
-    check(%Choice{}.type == 0, "union starts None")
-    choice = %Choice{type: 1}
+    check(D.zero_choice() == nil, "union starts None")
+    choice = {:sample, %Sample{}}
     pin(dir, "choice-sample", choice, choice, "choice")
     pin(dir, "sample-short", short(), short(), "sample")
     pin(dir, "sample-empty", zero(), zero(), "sample")
 
     for sent <- [short(), zero()] do
-      value = %Choice{type: 1, sample: sent}
-      bytes = D.write_choice(value)
+      value = {:sample, sent}
+      bytes = D.write_choice!(value)
 
       for _attempt <- 1..2 do
         check(
-          D.read_choice(bytes, D.measure_choice(value)) == {:ok, value},
+          D.read_choice(bytes, bits_of(D.write_choice!(value), &D.read_choice_bits/2)) ==
+            {:ok, value},
           "selected payload replaces defaults on each immutable read"
         )
       end
     end
 
-    off_choice = %Choice{type: 2, conditional: off}
+    off_choice = {:conditional, off}
 
     for _attempt <- 1..2 do
       check(
-        D.read_choice(D.write_choice(off_choice), D.measure_choice(off_choice)) ==
-          {:ok, %Choice{type: 2, conditional: off_want}},
+        D.read_choice(
+          D.write_choice!(off_choice),
+          bits_of(D.write_choice!(off_choice), &D.read_choice_bits/2)
+        ) ==
+          {:ok, {:conditional, off_want}},
         "untaken branch zeros selected defaults"
       )
     end

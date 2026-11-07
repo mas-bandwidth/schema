@@ -2,6 +2,7 @@ name: schema-engine-is-the-oracle
 
 on:
   push:
+    branches: [main]
     paths:
       - 'internal/tablewire/**'
       - 'internal/tabletext/**'
@@ -22,8 +23,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: schema-engine-is-the-oracle-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   oracle-independence:

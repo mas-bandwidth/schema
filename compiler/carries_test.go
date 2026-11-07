@@ -7,15 +7,28 @@ import (
 	"testing"
 )
 
-// nonGoCarriers lists the constructs the non-Go targets carry: C, C# and C++
-// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3);
+// nonGoCarriers lists the constructs the non-Go targets carry: C, C#, C++,
+// Dart and Java carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3);
 // C++ also carries the timestamp kind (§2.11), the JSON array root (§16.10),
-// the one-sided integer range (§4.3) and ?map[K]V (§2.8); every other target
+// the one-sided integer range (§4.3) and ?map[K]V (§2.8); Lobster carries
+// optional-variable-closure, the timestamp kind, the one-sided integer range
+// and the text lists (docs/PORT-LOBSTER.md); Luau carries every construct but
+// integrity (docs/SPEC-TABLES.md §2.14); Squirrel carries the constructs its
+// compiler/target_squirrel_*.go files register; every other target
 // carries none at this stage.
 var nonGoCarriers = map[string][]string{
-	"c":   {carryOptionalVariableClosure},
-	"cs":  {carryOptionalVariableClosure},
-	"cpp": {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
+	"c":    {carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryForms, carryIntegrity, carryRequired, carryTextList, carryTextListTotal, carryUnboundedText},
+	"cs":   {carryUnboundedText, carryRequired, carryTimestamp, carryForms, carryIntegrity, carryTextList, carryTextListTotal, carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot},
+	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap, carryForms, carryIntegrity, carryRequired, carryTextList, carryTextListTotal, carryUnboundedText},
+	"dart": {carryOptionalVariableClosure},
+	"java": {carryOptionalVariableClosure, carryOneSidedRange, carryForms, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired, carryIntegrity, carryTextList, carryTextListTotal, carryUnboundedText},
+	"luau": {carryTimestamp, carryRequired, carryForms, carryIntegrity, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
+	// moo (behind schema_leg_moo; compiler/carries_moo.go): each proven by
+	// internal/codegen/mootable's TestMooTableConstructsMatchTheGoEngine, the
+	// text form's by its carries_test.go
+	"moo":      {carryTimestamp, carryRequired, carryForms, carryIntegrity, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
+	"lobster":  {carryOptionalVariableClosure, carryTimestamp, carryOneSidedRange, carryTextList, carryTextListTotal, carryUnboundedText, carryRequired, carryOptionalMap},
+	"squirrel": {carryTimestamp, carryTextList, carryTextListTotal, carryArrayRoot, carryOptionalVariableClosure, carryRequired, carryOptionalMap, carryForms, carryIntegrity, carryOneSidedRange, carryUnboundedText}, // docs/SPEC-TABLES.md §2.3, §2.8, §2.11, §2.12, §2.13, §2.13.1, §2.14, §4.3, §16.2, §16.10
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
@@ -87,11 +100,7 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		t.Error("registerCarries accepted a second registration for go")
 	}
 
-	cases := []struct {
-		construct string
-		schema    string
-		refusal   string
-	}{
+	cases := []carriesRow{
 		{carryTimestamp, timestampUnit, "timestamp"},
 		{carryRequired, "package probe\ntable Ship\n{\n    name string(32) | required\n}\n", "refuses | required"},
 		{carryForms, "package probe\ntable Shape | forms = \"wire\"\n{\n    x int32\n}\n", "forms on table Shape"},
@@ -99,15 +108,21 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		{carryUnboundedText, "package probe\ntable Where\n{\n    rules []string\n}\n", "unbounded text-list element on field Where.rules"},
 		{carryTextListTotal, "package probe\ntable L\n{\n    names [..8]string(8) | total = 12\n}\n", "text list total on field L.names"},
 		{carryTextList, "package probe\ntable Lists\n{\n    rules [..4]string(8)\n}\n", "text list on field Lists.rules"},
-		{carryArrayRoot, "package probe\ntable Goal\n{\n    x int32\n}\ntable GoalList | json = \"array\"\n{\n    goals []Goal\n}\n", `json = "array" on table GoalList`},
+		{carryArrayRoot, "package probe\ntable Goal\n{\n    x int32\n}\ntable GoalList | json = \"array\"\n{\n    goals [..4]Goal\n}\n", `json = "array" on table GoalList`},
 		{carryOneSidedRange, "package probe\ntable OneSided\n{\n    a int64 | min = 0\n}\n", "OneSided.a"},
-		{carryOptionalVariableClosure, "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    inner ?Inner\n}\n", "optional over a variable closure on field Outer.inner"},
+		{carryOptionalVariableClosure, "package probe\ntable Leaf\n{\n    n int32\n}\ntable Inner\n{\n    child *Leaf\n}\ntable Outer\n{\n    inner ?Inner\n}\n", "optional over a variable closure on field Outer.inner"},
 		{carryOptionalMap, "package probe\ntable M\n{\n    tags ?map[string(8)]int32\n}\n", "optional map on field M.tags"},
 	}
 	c := New()
-	for _, tc := range cases {
+	for _, tc := range carriesTable(cases) {
 		t.Run(tc.construct, func(t *testing.T) {
 			u := unitFromSource(t, tc.schema)
+			// THE QUERY THE CONFORMANCE HARNESS CLAIMS BY names the same
+			// construct the refusal below does (test/conformance/README.md,
+			// "The nightly")
+			if uses := UnitConstructs(u); !slices.Contains(uses, tc.construct) {
+				t.Errorf("UnitConstructs = %v, does not name %q", uses, tc.construct)
+			}
 			for _, target := range targets {
 				files, err := c.Generate(u, target, Options{"runtime": "standalone"})
 				if carries(target, tc.construct) {
@@ -126,10 +141,74 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			}
 		})
 	}
+	seen := map[carriesRow]bool{}
+	for _, tc := range carriesTable(cases) {
+		if seen[tc] {
+			t.Errorf("carries row %q is registered twice", tc.construct)
+		}
+		seen[tc] = true
+	}
+}
+
+func TestRegisterCarriedAddsToAnExistingTarget(t *testing.T) {
+	t.Parallel()
+	registry := map[string]map[string]struct{}{
+		"squirrel": {},
+	}
+	saved := len(targetCarries)
+
+	registerCarriedIn(registry, "squirrel", carryRequired)
+	registerCarriedIn(registry, "squirrel", carryTimestamp)
+	if _, ok := registry["squirrel"][carryRequired]; !ok {
+		t.Errorf("squirrel does not carry %q after registration", carryRequired)
+	}
+	if _, ok := registry["squirrel"][carryTimestamp]; !ok {
+		t.Errorf("squirrel does not carry %q after registration", carryTimestamp)
+	}
+	if !panics(func() { registerCarriedIn(registry, "squirrel", carryRequired) }) {
+		t.Error("registerCarriedIn accepted a construct registered twice")
+	}
+	if !panics(func() { registerCarriedIn(registry, "no-such-target", carryRequired) }) {
+		t.Error("registerCarriedIn accepted an unregistered target")
+	}
+	if !panics(func() { registerCarriedIn(registry, "", carryRequired) }) {
+		t.Error("registerCarriedIn accepted an empty target")
+	}
+	if !panics(func() { registerCarriedIn(registry, "squirrel", "unknown") }) {
+		t.Error("registerCarriedIn accepted an unknown construct")
+	}
+	if len(targetCarries) != saved {
+		t.Errorf("package-level targetCarries changed: got %d entries, want %d", len(targetCarries), saved)
+	}
 }
 
 func panics(fn func()) (did bool) {
 	defer func() { did = recover() != nil }()
 	fn()
 	return false
+}
+
+// TestCarriedQueries holds the exported reads to the registry: Carried answers
+// a registration exactly, a target with none says so rather than reading as
+// "carries nothing", and a unit holding no registered construct names none.
+func TestCarriedQueries(t *testing.T) {
+	t.Parallel()
+	if got := CarryConstructs(); !slices.Equal(got, carryConstructs) {
+		t.Errorf("CarryConstructs = %v, want %v", got, carryConstructs)
+	}
+	got, ok := Carried("go")
+	if !ok || !slices.Equal(got, carryConstructs) {
+		t.Errorf("Carried(go) = %v, %v; want every construct", got, ok)
+	}
+	got, ok = Carried("cpp")
+	if !ok || !slices.Equal(got, carryConstructs) {
+		t.Errorf("Carried(cpp) = %v, %v", got, ok)
+	}
+	if got, ok := Carried("carry-test-unregistered"); ok || got != nil {
+		t.Errorf("Carried(unregistered) = %v, %v; want no registration", got, ok)
+	}
+	plain := unitFromSource(t, "package probe\ntable Plain\n{\n    x int32\n}\n")
+	if uses := UnitConstructs(plain); len(uses) != 0 {
+		t.Errorf("UnitConstructs(plain) = %v, want none", uses)
+	}
 }

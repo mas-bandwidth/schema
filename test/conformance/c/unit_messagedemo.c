@@ -1,4 +1,6 @@
 #include "MessagesTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE messagedemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER MESSAGEDEMO
 #include "unit.h"
 SCHEMA_CONFORMANCE_CODEC( ToolMessage, tool_message )
 SCHEMA_CONFORMANCE_CODEC( Edit, edit )

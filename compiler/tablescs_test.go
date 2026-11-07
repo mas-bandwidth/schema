@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -137,14 +138,24 @@ func TestCsCarriesBlobs(t *testing.T) {
 			t.Errorf("blob field %q missing from generated C#", want)
 		}
 	}
-	// rust carries both buffers on the variable wire now
-	// (internal/codegen/rusttable/variableclass_test.go), so the non-carrier
-	// this refusal is asked for is java
-	err = refuseBlobs(u, "java")
+	// every built-in target now registers blobs (lua, compiler/target_lua.go,
+	// was the last), so the refusal is asked for a new leg's name, which has
+	// no target. refuseBlobs leaves java out of the
+	// carrier list it spells (compiler/builtin.go), so the list below does not
+	// name it. squirrel is registered as a carrier under its build tag
+	// (compiler/target_squirrel_blobs.go), so it is named only in that build.
+	err = refuseBlobs(u, "newleg")
 	if err == nil {
-		t.Fatal("refuseBlobs accepted a blob-bearing unit for java")
+		t.Fatal("refuseBlobs accepted a blob-bearing unit for a new leg")
 	}
-	for _, want := range []string{"*bytes and *string are c, cpp, cs, elixir, go, js and rust only today", "--lang cs", "--lang js", "--lang rust"} {
+	carry := "c, cpp, cs, dart, elixir, go, js, lobster, lua, luau and rust"
+	wants := []string{"--lang cs", "--lang js", "--lang rust"}
+	if slices.Contains(blobTargets, "squirrel") {
+		carry = "c, cpp, cs, dart, elixir, go, js, lobster, lua, luau, rust and squirrel"
+		wants = append(wants, "--lang squirrel")
+	}
+	wants = append(wants, mooLegSpelled(gooseLegSpelled("*bytes and *string are "+carry+" only today")))
+	for _, want := range wants {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("blob-carrier refusal does not name %q: %v", want, err)
 		}
@@ -351,8 +362,8 @@ fixed table Subject {
 	if !strings.Contains(text, "private static class SubjectTableInfo") {
 		t.Errorf("expected SubjectTableInfo holder class in generated output")
 	}
-	if !strings.Contains(text, "(int)global::Vocab.Instance.Max") {
-		t.Errorf("expected qualified (int)global::Vocab.Instance.Max, got:\n%s", text)
+	if !strings.Contains(text, "(int)global::Vocab.Schema.InstanceMax") {
+		t.Errorf("expected qualified (int)global::Vocab.Schema.InstanceMax, got:\n%s", text)
 	}
 	if !strings.Contains(text, "global::Vocab.Build.Second") {
 		t.Errorf("expected qualified global::Vocab.Build.Second in default, got:\n%s", text)
@@ -396,7 +407,7 @@ type Leaf {
 }
 
 // THE TYPED FAST PATH IS THE FIXED CLASS'S (docs/SPEC-TABLES.md §2.2): the
-// guard below makes Subject a plain table, so its whole body walks the
+// guard below makes Subject a variable table, so its whole body walks the
 // dynamic descriptors, and the typed calls are asserted on the fixed twin.
 fixed table Fast {
     normal [2]Leaf
@@ -449,7 +460,7 @@ table Subject {
 
 	// 3. Guarded and optional arrays must NOT use typed child calls directly;
 	// they must fall back to dynamic descriptor dispatch (BodySizeField / WriteBodyField).
-	// Subject is a plain `table` (its guard disqualifies the fixed class), so
+	// Subject is a variable table (its guard disqualifies the fixed class), so
 	// NOTHING in its body takes the typed path — the guarded and optional
 	// arrays included, which is what this block has always asserted.
 	if strings.Contains(text, "LeafBodySizeTyped(v.Guarded") {

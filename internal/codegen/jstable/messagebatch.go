@@ -19,6 +19,7 @@ import (
 	"math/big"
 	"strconv"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -108,6 +109,7 @@ export function TableMessageResetReport(report) {
   report.Malformed = false;
   report.Verdict = 0;
   report.Reason = "";
+  report.NonFiniteFloat = "";
   report.Unknown = 0;
   report.Clamped = 0;
   report.KindMismatch = 0;
@@ -118,6 +120,38 @@ function tableMessageCountBits(s) {
   let bits = 0;
   while (n !== 0) { bits++; n = Math.floor(n / 2); }
   return bits;
+}
+export function tableMessageUtf8Valid(bytes, at, len) {
+  for (let i = 0; i < len;) {
+    const b0 = bytes[at + i];
+    if (b0 === 0) { return false; }
+    if (b0 < 0x80) { i += 1; continue; }
+    let need, cp;
+    if ((b0 & 0xe0) === 0xc0) { need = 1; cp = b0 & 0x1f; }
+    else if ((b0 & 0xf0) === 0xe0) { need = 2; cp = b0 & 0x0f; }
+    else if ((b0 & 0xf8) === 0xf0) { need = 3; cp = b0 & 0x07; }
+    else { return false; }
+    if (i + 1 + need > len) { return false; }
+    for (let k = 1; k <= need; k++) {
+      const b = bytes[at + i + k];
+      if ((b & 0xc0) !== 0x80) { return false; }
+      cp = (cp << 6) | (b & 0x3f);
+    }
+    const min = need === 1 ? 0x80 : need === 2 ? 0x800 : 0x10000;
+    if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) { return false; }
+    i += 1 + need;
+  }
+  return true;
+}
+export function tableMessageUtf8Clamp(bytes, at, bound) {
+  let i = 0;
+  while (i < bound) {
+    const b0 = bytes[at + i];
+    const step = b0 < 0x80 ? 1 : (b0 & 0xe0) === 0xc0 ? 2 : (b0 & 0xf0) === 0xe0 ? 3 : 4;
+    if (i + step > bound) { break; }
+    i += step;
+  }
+  return i;
 }
 export function tableMessageCount(r, s) {
   const bits = tableMessageCountBits(s);
@@ -331,6 +365,7 @@ func baseBigLit(base *big.Int) string {
 // gates only the batch verbs on FixedDeclared).
 func (g *fixedModule) emitMessageBody(st *ir.Struct) {
 	g.needHome("TableMessageRefBitsHere", "tableMessageEntry",
+		"tableMessageUtf8Valid", "tableMessageUtf8Clamp",
 		"tableMessageCount", "tableMessageSkip", "tableMessageSkipBody",
 		"tableMessageReadScalar", "tableMessageWriteScalar",
 		"TableMessageFloat32Bits", "TableMessageFloat32FromBits",
@@ -400,18 +435,29 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		lhs := mem + "[i]"
 		def := fixedElementZero(f)
 		if isUnionRef(f.Type) {
-			lhs += ".Type"
+			lhs += ".type"
 			def = "0"
 		}
 		v := ir.GoExportName(f.Name) + "AllDefault"
 		g.pf("%slet %s = true;\n", ind, v)
-		g.pf("%sfor (let i = 0; i < %d; i++) { if (%s !== %s) { %s = false; break; } }\n", ind, f.ArrayBound, lhs, def, v)
+		g.pf("%sfor (let i = 0; i < %d; i++) { if (%s) { %s = false; break; } }\n", ind, f.ArrayBound, messageDiffers(f, lhs, def), v)
 		return "!" + v
 	}
 	if isUnionRef(f.Type) {
-		return mem + ".Type !== 0"
+		return mem + ".type !== 0"
 	}
-	return mem + " !== " + fixedZeroFor(f)
+	return messageDiffers(f, mem, fixedZeroFor(f))
+}
+
+// messageDiffers is the elision compare of one value against its default. A
+// float compares its BIT PATTERN (docs/SPEC-TABLES.md §3.3, the 10-15 rule):
+// Object.is is the bit compare for two finite values, so a -0 under a +0
+// default rides, and a NaN never elides and reaches the writer's refusal.
+func messageDiffers(f *ir.Field, lhs, def string) string {
+	if fixedIsFloat(f.Type) {
+		return "!Object.is(" + lhs + ", " + def + ")"
+	}
+	return lhs + " !== " + def
 }
 
 func (g *fixedModule) emitMessageKeyedCount(f *ir.Field, mem, ind string) {
@@ -425,7 +471,7 @@ func (g *fixedModule) emitMessageKeyedCount(f *ir.Field, mem, ind string) {
 }
 
 func (g *fixedModule) emitMessageWriteField(f *ir.Field, ind string) {
-	name := ir.GoExportName(f.Name)
+	name := js.MemberName(f.Name)
 	mem := "value." + name
 	entry := ir.TableFieldEntry(f)
 	slot := messageSlot(g.unit, entry)
@@ -524,6 +570,9 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		g.pf("%sw.Put(%s ? 1n : 0n, 1);\n", ind, mem)
 		return
 	case ir.TableKindF32:
+		// A NaN OR AN INFINITY IS REFUSED BEFORE IT IS WRITTEN OR QUANTIZED
+		// (docs/SPEC-TABLES.md §3.3): no form carries one, so the save refuses
+		g.pf("%sif (!Number.isFinite(Math.fround(%s))) { return false; }\n", ind, mem)
 		if s.Packing == ir.TableMessageQuantized {
 			count, delta, _ := ir.TableMessageQuantization(s)
 			g.pf("%s{ const b = TableMessageFloat32Bits(%s); tableMessageWriteScalar(w, {Packing:2, Bits:%d, Base:[0n,0n], QMin:%s, QDelta:%s, QCount:%d}, b, 0n); }\n",
@@ -533,6 +582,7 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		}
 		return
 	case ir.TableKindF64:
+		g.pf("%sif (!Number.isFinite(%s)) { return false; }\n", ind, mem)
 		g.pf("%sw.Put(TableMessageFloat64Bits(%s), 64);\n", ind, mem)
 		return
 	}
@@ -561,14 +611,14 @@ func (g *fixedModule) emitMessageWriteEnum(f *ir.Field, mem, ind string) {
 
 func (g *fixedModule) emitMessageWriteUnion(f *ir.Field, mem, ind string) {
 	un := f.Type.Ref.(*ir.Union)
-	g.pf("%sswitch (%s.Type) {\n", ind, mem)
+	g.pf("%sswitch (%s.type) {\n", ind, mem)
 	g.pf("%s  case 0: w.Put(0n, TableMessageRefBitsHere); break;\n", ind)
 	for i, v := range un.Variants {
 		g.pf("%s  case %d: {\n", ind, i+1)
 		g.pf("%s    w.Put(%dn, TableMessageRefBitsHere);\n", ind, messageSlot(g.unit, ir.TableArmEntry(v)))
 		if !v.Void() {
 			arm := ir.TableArmEntry(v)
-			g.emitMessageWriteValue(v.F, arm, mem+"."+ir.GoExportName(v.Name), ind+"    ")
+			g.emitMessageWriteValue(v.F, arm, mem+"."+js.MemberName(v.Name), ind+"    ")
 		}
 		g.pf("%s    break;\n%s  }\n", ind, ind)
 	}
@@ -576,7 +626,11 @@ func (g *fixedModule) emitMessageWriteUnion(f *ir.Field, mem, ind string) {
 }
 
 func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
+	if !st.IsTable && g.gen.need != nil {
+		g.need(fixedDeclaringFile(g.unit, st.Name), "Init"+st.Name)
+	}
 	g.pf("export function %sLoadMessageBody(r, value) {\n", st.Name)
+	g.pf("  Init%s(value);\n", st.Name)
 	g.pf("  for (;;) {\n")
 	g.pf("    const [ref, ok] = r.Bits.Get(r.RefBits);\n")
 	g.pf("    if (!ok) { r.Report.Malformed = true; return false; }\n")
@@ -595,11 +649,11 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 }
 
 func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyEntry, ind string) {
-	mem := "value." + ir.GoExportName(f.Name)
+	mem := "value." + js.MemberName(f.Name)
 	g.pf("%sif (entry.Shape.Kind !== %d) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }\n", ind, mine.Kind)
 	g.emitMessageReadValue(f, mem, ind, "entry.Shape")
 	if f.Type.Optional {
-		g.pf("%svalue.%sPresent = true;\n", ind, ir.GoExportName(f.Name))
+		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))
 	}
 }
 
@@ -613,8 +667,10 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Malformed = true; return false; }\n", ind, shape)
 		g.pf("%s  const start = r.Bits.Offset >> 3;\n", ind)
 		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Malformed = true; return false; }\n", ind)
-		g.pf("%s  let kept = Number(n);\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  const rawLen = Number(n);\n", ind)
+		g.pf("%s  if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s  let kept = rawLen;\n", ind)
+		g.pf("%s  if (kept > %d) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, %d); r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
@@ -628,11 +684,21 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; }\n", ind, shape)
-		g.pf("%s  let kept = Number(n);\n", ind)
+		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || Number(n) * 16 > r.Bits.Buffer.length * 8 - r.Bits.Offset) { r.Report.Malformed = true; return false; }\n", ind, shape)
+		g.pf("%s  const rawLen = Number(n);\n", ind)
+		g.pf("%s  let kept = rawLen;\n", ind)
 		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
-		g.pf("%s  for (let i = 0; i < Number(n); i++) { const [u, uok] = r.Bits.Get(16); if (!uok) { r.Report.Malformed = true; return false; } if (i < kept) { %s[i] = Number(u); } }\n", ind, mem)
+		g.pf("%s  let high = false;\n", ind)
+		g.pf("%s  for (let i = 0; i < rawLen; i++) {\n", ind)
+		g.pf("%s    const [u, uok] = r.Bits.Get(16);\n", ind)
+		g.pf("%s    const unit = Number(u);\n", ind)
+		g.pf("%s    if (!uok || unit === 0 || (unit >= 0xdc00 && unit <= 0xdfff && !high) || (high && (unit < 0xdc00 || unit > 0xdfff))) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s    high = unit >= 0xd800 && unit <= 0xdbff;\n", ind)
+		g.pf("%s    if (i < kept) { %s[i] = unit; }\n", ind, mem)
+		g.pf("%s  }\n", ind)
+		g.pf("%s  if (high) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s  if (kept > 0 && %s[kept - 1] >= 0xd800 && %s[kept - 1] <= 0xdbff) { kept--; %s[kept] = 0; }\n", ind, mem, mem, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadArray(f, mem, ind)
@@ -723,10 +789,21 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 	case ir.TFloat32, ir.TFloat64:
 		// A compressed float reconstructs by the packet wire's rule, two
 		// roundings each side; a raw float is its own bits.
+		//
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
+		// §3.3), before the bits become a value and before the field is
+		// written: the read names the field and the batch refuses whole as
+		// non_finite_float. A quantized float reconstructs from its index and
+		// is finite by construction, so only the raw shape is tested.
+		refuse := fmt.Sprintf("{ if (!r.Report.NonFiniteFloat) { r.Report.NonFiniteFloat = %s; } return false; }", jsStr(jsFloatOwner(g.unit, f)))
 		if f.Type.Kind == ir.TFloat32 {
-			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; } let x = TableMessageFloat32FromBits(Number(v[0] & 0xffffffffn));\n", ind, shape)
+			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; } const b = Number(v[0] & 0xffffffffn);\n", ind, shape)
+			g.pf("%s  if (%s.Packing !== 2 && (b & 0x7f800000) === 0x7f800000) %s\n", ind, shape, refuse)
+			g.pf("%s  let x = TableMessageFloat32FromBits(b);\n", ind)
 		} else {
-			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; } let x = TableMessageFloat64FromBits(v[0]);\n", ind, shape)
+			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; }\n", ind, shape)
+			g.pf("%s  if ((v[0] & 0x7ff0000000000000n) === 0x7ff0000000000000n) %s\n", ind, refuse)
+			g.pf("%s  let x = TableMessageFloat64FromBits(v[0]);\n", ind)
 		}
 		g.emitMessageFloatClamp(f, "x", ind+"  ")
 		g.pf("%s  %s = x;\n%s}\n", ind, mem, ind)
@@ -798,7 +875,7 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, mem, ind string) {
 func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 	un := f.Type.Ref.(*ir.Union)
 	g.pf("%s{ const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Malformed = true; return false; }\n", ind)
-	g.pf("%s  if (ref === 0n) { %s.Type = 0; }\n", ind, mem)
+	g.pf("%s  if (ref === 0n) { %s.type = 0; }\n", ind, mem)
 	g.pf("%s  else {\n", ind)
 	g.pf("%s    const arm = tableMessageEntry(r.Vocabulary, ref);\n", ind)
 	g.pf("%s    if (arm === null || arm.Id >= 0xfffffffffffffffdn || arm.Shape.Kind === 0) { r.Report.Malformed = true; return false; }\n", ind)
@@ -806,19 +883,22 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 	for i, v := range un.Variants {
 		arm := ir.TableArmEntry(v)
 		g.pf("%s      case 0x%016xn: {\n", ind, arm.Id)
-		g.pf("%s        %s.Type = %d;\n", ind, mem, i+1)
+		g.pf("%s        %s.type = %d;\n", ind, mem, i+1)
 		if !v.Void() {
-			g.emitMessageReadValue(v.F, mem+"."+ir.GoExportName(v.Name), ind+"        ", "arm.Shape")
+			g.emitMessageReadValue(v.F, mem+"."+js.MemberName(v.Name), ind+"        ", "arm.Shape")
 		}
 		g.pf("%s        break;\n%s      }\n", ind, ind)
 	}
-	g.pf("%s      default: { %s.Type = 0; r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Malformed = true; return false; } }\n", ind, mem)
+	g.pf("%s      default: { %s.type = 0; r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Malformed = true; return false; } }\n", ind, mem)
 	g.pf("%s    }\n", ind)
 	g.pf("%s  }\n%s}\n", ind, ind)
 }
 
 func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	n := st.Name
+	if st.Integrity != "" {
+		g.needHome("TableIntegrityHolds", "TableIntegritySeal", "TableMessageOpenDamaged")
+	}
 	g.pf("// THE THREE BATCH VERBS (§3.3): the primitive is a batch and a single\n")
 	g.pf("// message is the batch of one. Measure sizes the buffer, Save writes one\n")
 	g.pf("// buffer, Load fills the caller's storage and reports how many it read.\n")
@@ -832,32 +912,67 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
-	g.pf("  return 2 + (w.Bits >> 3);\n}\n\n")
+	if st.Integrity != "" {
+		g.pf("  return 6 + (w.Bits >> 3);\n}\n\n")
+	} else {
+		g.pf("  return 2 + (w.Bits >> 3);\n}\n\n")
+	}
 
 	g.pf("export function %sSaveMessages(values, buffer, report) {\n", n)
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
 	g.pf("  TableMessageResetReport(report);\n")
 	g.pf("  if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, \"batch_too_large\"); return -1; }\n")
-	g.pf("  if (buffer.length < 2) { return -1; }\n")
+	if st.Integrity != "" {
+		g.pf("  if (buffer.length < 6) { return -1; }\n")
+	} else {
+		g.pf("  if (buffer.length < 2) { return -1; }\n")
+	}
 	g.pf("  buffer[0] = 2;\n")
 	g.pf("  buffer[1] = values.length - 1;\n")
-	g.pf("  const w = new TableBitWriter(buffer.subarray(2), false);\n")
+	if st.Integrity != "" {
+		g.pf("  const w = new TableBitWriter(buffer.subarray(2, buffer.length - 4), false);\n")
+	} else {
+		g.pf("  const w = new TableBitWriter(buffer.subarray(2), false);\n")
+	}
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
 	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { return -1; }\n", n)
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
-	g.pf("  return 2 + (w.Bits >> 3);\n}\n\n")
+	if st.Integrity != "" {
+		g.pf("  return TableIntegritySeal(buffer, 2 + (w.Bits >> 3));\n}\n\n")
+	} else {
+		g.pf("  return 2 + (w.Bits >> 3);\n}\n\n")
+	}
 
 	g.pf("export function %sLoadMessages(values, vocabulary, data, report) {\n", n)
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
 	g.pf("  TableMessageResetReport(report);\n")
+	if st.Integrity != "" {
+		g.pf("  if (data.length > 0 && data[0] === 2) {\n")
+		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Malformed = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return -1; }\n")
+		g.pf("    data = data.subarray(0, data.length - 4);\n  }\n")
+	}
 	g.pf("  const [r, count] = tableMessageBatchOpen(vocabulary, data, report);\n")
 	g.pf("  if (count < 0) { return -1; }\n")
 	g.pf("  if (count > values.length) { TableMessageRefuse(report, \"batch_too_large\"); return count; }\n")
 	g.pf("  for (let i = 0; i < count; i++) {\n")
-	g.pf("    if (!%sLoadMessageBody(r, values[i])) { return i; }\n", n)
+	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", n)
+	g.pf("      // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md\n")
+	g.pf("      // §3.3), the tolerant read included: no body of it is delivered.\n")
+	g.pf("      if (report.NonFiniteFloat) {\n")
+	g.pf("        for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
+	g.pf("        TableMessageRefuse(report, \"non_finite_float: \" + report.NonFiniteFloat);\n")
+	g.pf("        return -1;\n")
+	g.pf("      }\n")
+	g.pf("      // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):\n")
+	g.pf("      // the count says 0 and every body the walk touched goes back to its\n")
+	g.pf("      // declared defaults.\n")
+	g.pf("      for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
+	g.pf("      return 0;\n")
+	g.pf("    }\n")
 	g.pf("  }\n")
-	g.pf("  if (!tableMessageBatchClose(r)) { return count; }\n")
+	g.pf("  // damage after the last body discards the batch too (§4)\n")
+	g.pf("  if (!tableMessageBatchClose(r)) { for (let j = 0; j < count; j++) { Init%s(values[j]); } return 0; }\n", n)
 	g.pf("  return count;\n}\n\n")
 }

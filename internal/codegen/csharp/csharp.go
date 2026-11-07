@@ -59,8 +59,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
 	batched, needCore := batchPlan(u)
+	values := valueTypes(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, home: f.Base == home, batched: batched, needCore: needCore}
+		g := &gen{unit: u, file: f, home: f.Base == home, batched: batched, needCore: needCore, values: values}
+		if g.home {
+			if err := g.emitBuffers(); err != nil {
+				return nil, err
+			}
+		}
 		g.emitFile(g.home)
 		out[f.Base+".cs"] = g.assemble()
 	}
@@ -72,6 +78,8 @@ type gen struct {
 	file  *ir.File
 	home  bool   // this file carries ProtocolId and the unit-level target notes
 	owner string // the class whose members are being emitted (CS0542 escape)
+
+	values map[string]bool // declarations emitted as structs (values.go)
 
 	batched   map[string]bool    // Write/Read pair names whose entry runs a batch
 	needCore  map[string]bool    // pair names that get a *Batch core (batched or composed under one)
@@ -239,11 +247,22 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.tf("// union (None). Every read selection initializes the chosen payload from\n")
 	g.tf("// construction defaults; unselected arms keep what they last held — the\n")
 	g.tf("// MessageStorage reuse discipline. Consumers read the selected arm only.\n")
-	g.tf("public sealed class %s\n{\n", d.Name)
+	value := g.isValue(d.Name)
+	if value {
+		// every arm is a field of the value: no arm allocates, and a union
+		// holds no reference default(T) could leave null
+		g.tf("public struct %s\n{\n", d.Name)
+	} else {
+		g.tf("public sealed class %s\n{\n", d.Name)
+	}
 	g.tf("    public %sType Type;\n", d.Name)
 	for _, v := range d.Variants {
 		if v.Void() {
 			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
+		}
+		if value {
+			g.tf("    public %s %s;\n", v.Type, ir.GoExportName(v.Name))
+			continue
 		}
 		g.tf("    public %s %s = new %s();\n", v.Type, ir.GoExportName(v.Name), v.Type)
 	}
@@ -263,21 +282,19 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 		g.tf("%s", ir.DocComment(docs[i], "    ", "//"))
 		g.tf("    %s = %d,\n", m, i+1)
 	}
-	g.tf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(members))
-	g.tf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(members))
 	g.tf("}\n\n")
+	g.emitEnumMax(name, int64(len(members)))
 
 	// the tag enum's name surface is a declared enum's, member for member: a
 	// reader logging which message arrived writes EnumName<Tag>(value)
-	// whichever enum it is. Nothing on the read or write path calls it. The
-	// ulong parameter (not the enum type) keeps out-of-set values exact.
-	g.sf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", name, name)
-	g.sf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.sf("public static string EnumName%s(ulong value)\n{\n", name)
+	// whichever enum it is. Nothing on the read or write path calls it.
+	g.sf("// EnumName%s: debug/log/tooling name for any %s value —\n", name, name)
+	g.sf("// out-of-set values name as \"???\"\n")
+	g.sf("public static string EnumName%s(%s value)\n{\n", name, name)
 	g.sf("    switch (value)\n    {\n")
-	g.sf("        case (ulong)%s.None:\n            return \"None\";\n", name)
+	g.sf("        case %s.None:\n            return \"None\";\n", name)
 	for _, m := range members {
-		g.sf("        case (ulong)%s.%s:\n            return %q;\n", name, m, m)
+		g.sf("        case %s.%s:\n            return %q;\n", name, m, m)
 	}
 	g.sf("        default:\n            return \"???\";\n    }\n}\n\n")
 }
@@ -309,6 +326,15 @@ func (g *gen) foldComment(e ast.Expr) string {
 	return ""
 }
 
+// emitEnumMax exports an enum's extent (SPEC §4.2) as a typed constant on
+// Schema, spelled <Enum>Max — the Go target's spelling, so the checker's
+// existing claims cover it. It is not an enum member: a member valued like a
+// variant would alias it, and which name ToString() returns for a duplicated
+// value is unspecified.
+func (g *gen) emitEnumMax(name string, max int64) {
+	g.sf("public const %s %sMax = (%s)%d; // the exported extent (SPEC §4.2)\n\n", name, name, name, max)
+}
+
 func (g *gen) emitEnum(d *ir.Enum) {
 	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.tf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
@@ -320,32 +346,33 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.tf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
 		g.tf("    %s = %d,\n", v, i+1)
 	}
-	g.tf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(d.Variants))
-	g.tf("    Max = %d, // the exported extent (SPEC §4.2)\n", d.Max)
 	g.tf("}\n\n")
-	// the ulong parameter (not the enum type) keeps out-of-set values exact:
-	// a cast through a narrower backing would truncate 256 -> 0 -> "None"
-	// for an 8-bit enum
-	g.sf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
+	g.emitEnumMax(d.Name, d.Max)
+	// the enum's own type: a C# enum is open over its backing type, so every
+	// wire-legal value, headroom included, reaches the switch exactly
+	g.sf("// EnumName%s: debug/log/tooling name for any %s value —\n", d.Name, d.Name)
 	g.sf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.sf("public static string EnumName%s(ulong value)\n{\n", d.Name)
+	g.sf("public static string EnumName%s(%s value)\n{\n", d.Name, d.Name)
 	g.sf("    switch (value)\n    {\n")
-	g.sf("        case (ulong)%s.None:\n            return \"None\";\n", d.Name)
+	g.sf("        case %s.None:\n            return \"None\";\n", d.Name)
 	for _, v := range d.Variants {
-		g.sf("        case (ulong)%s.%s:\n            return %q;\n", d.Name, v, v)
+		g.sf("        case %s.%s:\n            return %q;\n", d.Name, v, v)
 	}
 	g.sf("        default:\n            return \"???\";\n    }\n}\n\n")
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
-	g.sf("%s", ir.DocComment(d.Doc, "", "//"))
-	g.sf("// %s — one bit per variant, consumed as masks; flags-typed fields store a\n", d.Name)
-	g.sf("// plain ulong, wire %d bits (SPEC §4.2). Masks are flat PascalCase — the Go\n", d.WireBits)
-	g.sf("// target's spelling exactly, so the checker's existing claims cover them.\n")
+	g.needsSystem = true // [Flags]
+	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
+	g.tf("// %s — one bit per variant, consumed as masks; wire %d bits (SPEC §4.2).\n", d.Name, d.WireBits)
+	g.tf("// The backing type is ulong in every declaration, the full width §4.2\n")
+	g.tf("// requires, so bits a newer build appended survive a read and a rewrite.\n")
+	g.tf("[Flags]\npublic enum %s : ulong\n{\n", d.Name)
 	for i, v := range d.Variants {
-		g.sf("%s", ir.DocComment(d.VariantDocs[i], "", "//"))
-		g.sf("public const ulong %s%s = 1ul << %d;\n", d.Name, v, i)
+		g.tf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
+		g.tf("    %s = 1ul << %d,\n", v, i)
 	}
+	g.tf("}\n\n")
 	g.sf("public const long %sCount = %d; // the declared variant count (SPEC §4.2)\n", d.Name, len(d.Variants))
 	g.sf("\n")
 
@@ -360,13 +387,14 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 	g.sf("// FlagNames%s renders the set bits of value as \"A|B\" — \"0\" for the\n", d.Name)
 	g.sf("// empty set, bits past the declared variants as hex\n")
-	g.sf("public static string FlagNames%s(ulong value)\n{\n", d.Name)
+	g.sf("public static string FlagNames%s(%s value)\n{\n", d.Name, d.Name)
 	g.sf("    string names = \"\";\n")
-	for i, v := range d.Variants {
-		g.sf("    if ((value & (1ul << %d)) != 0)\n    {\n        names += \"|%s\";\n    }\n", i, v)
+	for _, v := range d.Variants {
+		g.sf("    if ((value & %s.%s) != 0)\n    {\n        names += \"|%s\";\n    }\n", d.Name, v, v)
 	}
 	if len(d.Variants) < 64 { // a 64-variant set has no room for unknown bits
-		g.sf("    if ((value >> %d) != 0)\n    {\n        names += \"|0x\" + ((value >> %d) << %d).ToString(\"x\");\n    }\n", len(d.Variants), len(d.Variants), len(d.Variants))
+		g.sf("    ulong unknown = (ulong)value >> %d;\n", len(d.Variants))
+		g.sf("    if (unknown != 0)\n    {\n        names += \"|0x\" + (unknown << %d).ToString(\"x\");\n    }\n", len(d.Variants))
 	}
 	g.sf("    return names.Length == 0 ? \"0\" : names.Substring(1);\n}\n\n")
 }
@@ -375,9 +403,27 @@ func (g *gen) emitClass(d *ir.Struct) {
 	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.tf("// type %s\n", d.Name)
 	g.owner = d.Name
+	if g.isValue(d.Name) {
+		g.emitStruct(d)
+		return
+	}
 	g.tf("public sealed class %s\n{\n", d.Name)
 	g.emitClassFields(d.Fields)
 	g.emitElementConstructor(d.Name, d.Fields)
+	g.tf("}\n\n")
+}
+
+// emitStruct emits a type as a value: fixed buffers inline as the unit's
+// generic [InlineArray] types (values.go), nothing allocated, and — when the type carries a
+// specified default — a parameterless constructor that runs Init, so
+// `new T()` is the construction form while default(T) and a fresh array
+// element are the §5 zero form until Init runs on them.
+func (g *gen) emitStruct(d *ir.Struct) {
+	g.tf("public struct %s\n{\n", d.Name)
+	g.emitClassFields(d.Fields)
+	if hasDefaults(d) {
+		g.tf("\n    public %s()\n    {\n        Schema.Init%s(ref this);\n    }\n", d.Name, d.Name)
+	}
 	g.tf("}\n\n")
 }
 
@@ -453,6 +499,10 @@ func (g *gen) emitClassFields(fields []*ir.Field) {
 func (g *gen) emitStorageField(f *ir.Field) {
 	name := g.fieldBase(f)
 	typ := g.csFieldType(f.Type)
+	if g.ownerValue() {
+		g.emitValueField(f, name, typ)
+		return
+	}
 
 	switch {
 	case f.Type.Kind == ir.TWString:
@@ -485,6 +535,30 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	}
 }
 
+// emitValueField is a struct's member: buffers are the nested inline types
+// emitStruct declared, and nothing has an initializer — construction values
+// are Init's to install (SPEC §6.1).
+func (g *gen) emitValueField(f *ir.Field, name, typ string) {
+	n := fieldBufferLength(f)
+	switch {
+	case f.Type.Kind == ir.TWString:
+		g.tf("    public %s %s;\n    public int %s;\n", bufferType(n, "char"), name, g.m(name+"Length"))
+	case f.Type.Kind == ir.TString:
+		g.tf("    public %s %s; // string(%s): max length, used length beside it (SPEC §4.7)\n", bufferType(n, "byte"), name, ir.RenderExpr(f.Type.SizeExpr))
+		g.tf("    public int %s;\n", g.m(name+"Length"))
+	case f.Type.Kind == ir.TBytes:
+		g.tf("    public %s %s; // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n", bufferType(n, "byte"), name, ir.RenderExpr(f.Type.SizeExpr))
+		g.tf("    public int %s;\n", g.m(name+"Length"))
+	case f.Array == ir.ArrayFixed:
+		g.tf("    public %s %s;%s\n", bufferType(n, typ), name, g.fieldComment(f))
+	case f.Array == ir.ArrayCounted:
+		g.tf("    public %s %s; // used count beside it; wire count in [%d, %s]\n", bufferType(n, typ), name, f.ArrayMin, ir.RenderExpr(f.ArrayExpr))
+		g.tf("    public int %s;\n", g.m(name+"Count"))
+	default:
+		g.tf("    public %s %s;%s\n", typ, name, g.fieldComment(f))
+	}
+}
+
 // bornCountInit is a counted array's count initializer: a [A..B] count is
 // born at A, the one wire-legal count a fresh value can carry (SPEC §4.6),
 // and a [..N] count takes the field's zero.
@@ -497,11 +571,6 @@ func bornCountInit(f *ir.Field) string {
 
 func (g *gen) fieldComment(f *ir.Field) string {
 	var parts []string
-	if f.Type.Kind == ir.TNamed {
-		if _, isFlags := f.Type.Ref.(*ir.Flags); isFlags {
-			parts = append(parts, fmt.Sprintf("%s — consumed as masks, ulong storage (SPEC §4.2)", f.Type.Name))
-		}
-	}
 	if f.HasDefault {
 		parts = append(parts, "specified default at construction; Zero* gives the §5 zero form")
 	}
@@ -524,6 +593,8 @@ func (g *gen) defaultValue(f *ir.Field, qualified bool) string {
 		return fmt.Sprintf("%v", f.DefBool)
 	case f.DefVariant != "":
 		return f.Type.Name + "." + f.DefVariant
+	case f.Type.Kind == ir.TNamed && isFlagsRef(f.Type.Ref):
+		return flagsLiteral(f.Type.Ref.(*ir.Flags), f.Type.Name, f.DefInt)
 	case f.Type.Kind == ir.TFloat32:
 		return formatFloat32(f.DefFloat)
 	case f.Type.Kind == ir.TFloat64:
@@ -585,9 +656,7 @@ func (g *gen) csFieldType(t ir.FieldType) string {
 	case ir.TFloat64:
 		return "double"
 	case ir.TNamed:
-		if _, isFlags := t.Ref.(*ir.Flags); isFlags {
-			return "ulong" // §6.1: flags-typed fields store plain ulong
-		}
+		// a flags-typed field stores its [Flags] enum, ulong-backed (§6.1)
 		return t.Name
 	}
 	return "/* ? */"
@@ -834,4 +903,30 @@ func capitalize(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+func isFlagsRef(ref ir.Decl) bool {
+	_, ok := ref.(*ir.Flags)
+	return ok
+}
+
+// flagsLiteral spells a mask as its named bits joined with |; an empty mask
+// is 0, which C# converts to any enum, and bits past the declared variants
+// ride as one cast hex literal.
+func flagsLiteral(d *ir.Flags, typ string, mask *big.Int) string {
+	if mask == nil || mask.Sign() == 0 {
+		return "0"
+	}
+	rest := new(big.Int).Set(mask)
+	var parts []string
+	for i, v := range d.Variants {
+		if rest.Bit(i) != 0 {
+			parts = append(parts, typ+"."+v)
+			rest.SetBit(rest, i, 0)
+		}
+	}
+	if rest.Sign() != 0 {
+		parts = append(parts, fmt.Sprintf("(%s)0x%sul", typ, rest.Text(16)))
+	}
+	return strings.Join(parts, " | ")
 }

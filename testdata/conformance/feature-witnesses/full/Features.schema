@@ -1,0 +1,20 @@
+package featurewitnesses
+
+table Leaf { value int32 }
+table Part { child *Leaf }
+
+table Root | forms="wire,json,cook", integrity="crc32c" {
+    revision int32 | required
+    at timestamp
+    lower int32 = 5 | min=5
+    tags ?map[string(8)]int32
+    optional ?Part
+    labels [..4]string(8) | total=8
+    optional_labels []?string(8)
+    words []string
+    by_name map[string]int32
+}
+
+table ArrayRoot | json="array" {
+    values []int32
+}

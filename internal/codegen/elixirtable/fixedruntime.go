@@ -15,7 +15,7 @@ const FixedRuntimeModule = "FixedRuntime"
 // fixedRuntimeModule is the fixed form's shared Elixir runtime
 // (docs/SPEC-TABLES.md §3.4): the sixty-four-bit hash, the LAYOUT's own
 // validation rule by named rule, the PLAN COMPILER, THE ONE READ LOOP, and the
-// per-peer plan cache.
+// per-endpoint plan cache.
 //
 // THE READER'S OWN STORAGE IN THIS LANGUAGE IS THE RECORD IMAGE, and that is
 // this port's one real departure from the reference. C++ lands a plan entry
@@ -44,6 +44,9 @@ func fixedRuntimeModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "defmodule %s.FixedRuntime do\n", ns)
 	b.WriteString(fixedRuntimeBody)
+	if hasIntegrity(u) {
+		b.WriteString("\n" + integritySource(true))
+	}
 	b.WriteString("end\n")
 	return []byte(b.String())
 }
@@ -70,10 +73,10 @@ const fixedRuntimeBody = `  @moduledoc """
   runtime refuses past by name (` + "`" + `:plan_too_large` + "`" + `).
 
   A COMPILED PLAN IS CACHED BY LAYOUT HASH, AND THE CACHE IS BOUNDED. A layout
-  arrives from a PEER, so an unbounded cache is a peer's lever on this node's
+  arrives from an ENDPOINT, so an unbounded cache is an endpoint's lever on this node's
   memory and on every process in the VM — see ` + "`" + `cache/3` + "`" + ` and
-  ` + "`" + `plan_cache_max/0` + "`" + `. A service reading files from untrusted peers should hand
-  its own plan in through ` + "`" + `plan:` + "`" + ` and never mint one from a peer's layout.
+  ` + "`" + `plan_cache_max/0` + "`" + `. A service reading files from untrusted endpoints should hand
+  its own plan in through ` + "`" + `plan:` + "`" + ` and never mint one from an endpoint's layout.
 
   ## What a loaded value HOLDS
 
@@ -118,7 +121,7 @@ const fixedRuntimeBody = `  @moduledoc """
   @file_header_bytes 16
   @file_hash_at 8
 
-  # §3.4's RECORD CEILING, which a reader holds an UNTRUSTED PEER's layout to
+  # §3.4's RECORD CEILING, which a reader holds an UNTRUSTED ENDPOINT's layout to
   # for the same reason the compiler holds a declaration to it: a record past it
   # is one this build will not decode.
   @record_max 65536
@@ -276,7 +279,7 @@ const fixedRuntimeBody = `  @moduledoc """
   The PLAN'S OWN CENSUS onto the report, ONCE, after the record loop (§5.9 #6).
 
   unknown and kind_mismatch were fixed when the plan was built — §5.4 says once
-  per peer and never per record — so they ride in the lane and land here, on a
+  per endpoint and never per record — so they ride in the lane and land here, on a
   read that RETURNS and on no other. On a LAWFUL lineage they are both zero,
   always (§5.9 #30): a newer reader names every field of every writer its lineage
   can select, so the census is the report of an UNLAWFUL or HOSTILE entry only.
@@ -311,24 +314,55 @@ const fixedRuntimeBody = `  @moduledoc """
   def clamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
+  A COMPILED LANE'S IMAGE HELD TO ITS WRITER'S OWN RANGES, before the projection
+  holds this reader's own (docs/FIXED-FORM-ALGORITHM.md §4.6, bill §12.5). Each
+  bound is {offset, bits, sign, lo, hi} on the raw scale; a value past one lands
+  that bound. Answers the image and how many clamps fired, and a clean image
+  comes back as it went in, with no new binary.
+  """
+  def writer_bounds(image, bounds), do: writer_bounds(image, bounds, 0)
+
+  defp writer_bounds(image, [], c), do: {image, c}
+
+  defp writer_bounds(image, [{at, bits, sign, lo, hi} | rest], c) do
+    case writer_raw(image, at, bits, sign) do
+      v when v < lo -> writer_bounds(writer_put(image, at, bits, lo), rest, c + 1)
+      v when v > hi -> writer_bounds(writer_put(image, at, bits, hi), rest, c + 1)
+      _ -> writer_bounds(image, rest, c)
+    end
+  end
+
+  defp writer_raw(image, at, bits, :signed) do
+    <<_::binary-size(^at), v::little-signed-size(^bits), _::binary>> = image
+    v
+  end
+
+  defp writer_raw(image, at, bits, :unsigned) do
+    <<_::binary-size(^at), v::little-unsigned-size(^bits), _::binary>> = image
+    v
+  end
+
+  defp writer_put(image, at, bits, v) do
+    <<pre::binary-size(^at), _::size(^bits), post::binary>> = image
+    <<pre::binary, v::little-size(bits), post::binary>>
+  end
+
+  @doc """
   A RANGED FLOAT AGAINST ITS READER'S OWN BOUNDS, held and counted separately
-  from 'clamps/4' because a float32 that is not finite does not arrive here as
-  a number at all: 'f32_value/1' answers the TUPLE '{:nonfinite, bits}' for an
-  infinity or a NaN, and in Erlang's term order every tuple sorts ABOVE every
-  number, so an unguarded 'v > hi' would "clamp" a NaN to the maximum and count
-  it. The 'is_float/1' guard is the whole point of these two, and IEEE does the
-  rest: a NaN is below no min and above no max, and a negative zero is not
-  below a min of +0.
+  from 'clamps/4' so a float bound reads as a float bound. A NaN or an infinity
+  never arrives here: 'f32_value/1' and 'f64_value/1' refuse one on its raw
+  bits first, as non_finite_float (docs/SPEC-TABLES.md §3.3), so every value
+  these see is a finite float, and a negative zero is not below a min of +0.
 
   Which bound is the reader's own and not the writer's is schema#1164, ruled
   statement B: a compressed float rides AS THE FLOAT in the fixed form, its
   bounds are definitions in the digest, and the compiled plan carries no range.
   """
-  def fclamp(v, lo, _hi) when is_float(v) and v < lo, do: lo
-  def fclamp(v, _lo, hi) when is_float(v) and v > hi, do: hi
+  def fclamp(v, lo, _hi) when v < lo, do: lo
+  def fclamp(v, _lo, hi) when v > hi, do: hi
   def fclamp(v, _lo, _hi), do: v
 
-  def fclamps(acc, v, lo, hi) when is_float(v) and (v < lo or v > hi), do: acc + 1
+  def fclamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1
   def fclamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
@@ -375,68 +409,69 @@ const fixedRuntimeBody = `  @moduledoc """
   end
 
   # ---------------------------------------------------------------------------
-  # FLOATS ARE BIT-TRANSPARENT, the serialize.elixir convention
+  # A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the table form's rule since
+  # 2026-10-27, the same rule as the packet wire's)
   # ---------------------------------------------------------------------------
   #
-  # A non-finite IEEE-754 pattern is one no BEAM float term can hold, so it
-  # reads back as {:nonfinite, bits} and writes from the same form — exactly as
-  # the packet codec does, because a fixed record and a packet body carry the
-  # same value in the same language.
+  # A read tests the RAW BITS for an all-ones exponent before they become a
+  # float and refuses the whole read as non_finite_float, the tolerant one too:
+  # the throw is caught where the read's other uniform refusals are, and no
+  # destination byte lands. A write refuses what is not a float or narrows past
+  # float32's range to an infinity, the packet codec's own reason (a BEAM float
+  # holds no NaN and no infinity of its own). -0 and the subnormals are values.
+
+  def f32_value(bits) when (bits &&& 0x7F800000) == 0x7F800000,
+    do: throw({:refuse, :non_finite_float})
 
   def f32_value(bits) do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<value::float-32-little>> = <<bits::little-32>>
-      value
-    else
-      {:nonfinite, bits}
-    end
+    <<value::float-32-little>> = <<bits::little-32>>
+    value
   end
+
+  # AN ABSENT OPTIONAL'S PAYLOAD IS UNSPECIFIED (§3.4): nobody wrote it, so its
+  # bits are not a float any read refuses, and it lands 0.0 where they spell no
+  # float at all.
+  def f32_value(bits, true), do: f32_value(bits)
+  def f32_value(bits, false) when (bits &&& 0x7F800000) == 0x7F800000, do: 0.0
+  def f32_value(bits, false), do: f32_value(bits)
 
   def f32_bits(value) when is_float(value) do
     <<bits::little-32>> = <<value::float-32-little>>
 
     if (bits >>> 23 &&& 0xFF) == 0xFF do
-      raise ArgumentError, "float overflows float32; write {:nonfinite, bits} instead"
+      raise ArgumentError, "non_finite_float: #{inspect(value)} overflows float32"
     end
 
     bits
   end
 
-  # AND THE OTHER HALF OF THE PACKET CODEC'S CONTRACT: a ` + "`" + `{:nonfinite, bits}` + "`" + `
-  # carrying a FINITE pattern is a caller who tagged an ordinary number, and it
-  # raises rather than riding. The tag is not a spelling of "a float" — it is
-  # the ONLY way to spell a pattern no BEAM float term holds — so a finite
-  # pattern under it means the value surface and the wire disagree about what
-  # the field contains, and letting it ride would put a number on the wire that
-  # reads back as a float the writer never wrote.
-  def f32_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFF do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float32 pattern; write the float"
-    end
-
-    bits
+  def f32_bits(value) do
+    raise ArgumentError,
+          "non_finite_float: a float32 writes a finite float, got: #{inspect(value)}"
   end
+
+  def f64_value(bits) when (bits >>> 52 &&& 0x7FF) == 0x7FF,
+    do: throw({:refuse, :non_finite_float})
 
   def f64_value(bits) do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      <<value::float-64-little>> = <<bits::little-64>>
-      value
-    else
-      {:nonfinite, bits}
-    end
+    <<value::float-64-little>> = <<bits::little-64>>
+    value
   end
+
+  def f64_value(bits, true), do: f64_value(bits)
+
+  def f64_value(bits, false) when (bits >>> 52 &&& 0x7FF) == 0x7FF, do: 0.0
+
+  def f64_value(bits, false), do: f64_value(bits)
 
   def f64_bits(value) when is_float(value) do
     <<bits::little-64>> = <<value::float-64-little>>
     bits
   end
 
-  def f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
-    end
-
-    bits
+  def f64_bits(value) do
+    raise ArgumentError,
+          "non_finite_float: a float64 writes a finite float, got: #{inspect(value)}"
   end
 
   @doc """
@@ -447,7 +482,7 @@ const fixedRuntimeBody = `  @moduledoc """
   ruling this page gives where §3.4 disagrees): the used units alone are held,
   never the slack, and the refusal is ` + "`" + `text_ill_formed` + "`" + `.
   """
-  def text(used, _default, m), do: text(used, _default, m, true)
+  def text(used, default, m), do: text(used, default, m, true)
 
   def text(used, _default, m, present) do
     if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
@@ -457,7 +492,7 @@ const fixedRuntimeBody = `  @moduledoc """
   A ` + "`" + `wstring(N)` + "`" + `'s used units: paired UTF-16 with no zero unit, or a
   REFUSAL BY NAME (` + "`" + `text_ill_formed` + "`" + `), on the same present-flag rule.
   """
-  def wtext(used, _default, m), do: wtext(used, _default, m, true)
+  def wtext(used, default, m), do: wtext(used, default, m, true)
 
   def wtext(used, _default, m, present) do
     if present and not text_ok?(2, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
@@ -503,7 +538,7 @@ const fixedRuntimeBody = `  @moduledoc """
   that is the debug-assert equivalent here rather than a second safety layer.
 
   IT IS NOT A CLAMP. A reader CLAMPS a value outside ITS OWN declared range and
-  counts it (§3.4's op table), because the value came from a peer. A value
+  counts it (§3.4's op table), because the value came from an endpoint. A value
   handed to a writer came from this program, and silently bending it would hide
   the bug; worse, an unbounded integer past the field's STORAGE WIDTH is
   TRUNCATED by a BEAM binary construction without a word, which is a wrong value
@@ -521,7 +556,7 @@ const fixedRuntimeBody = `  @moduledoc """
   THE SAME CONTRACT AT THE FIELD'S OWN WIDTH, for a field that declares no
   range: then the storage width IS the range. This is the half that cannot be
   left to the reader, because a value past it never reaches a reader as itself
-  — a BEAM binary construction TRUNCATES it in silence, and the peer decodes a
+  — a BEAM binary construction TRUNCATES it in silence, and the endpoint decodes a
   different number with no counter and no refusal to say so.
   """
   def fits(value, bits, false) when is_integer(value) and value >= 0 and value < 1 <<< bits do
@@ -561,7 +596,7 @@ const fixedRuntimeBody = `  @moduledoc """
   # THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE
   # ---------------------------------------------------------------------------
   #
-  # A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+  # A LAYOUT ARRIVES FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader
   # must parse before it knows anything at all, so every rule below runs BEFORE
   # a single record byte is touched and each refuses under its OWN NAME rather
   # than under one word for all of them.
@@ -677,10 +712,10 @@ const fixedRuntimeBody = `  @moduledoc """
 
   # THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
   # the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-  # adds, the optional wrapper 35. 31 is §3's body framing escape and 34 is
-  # reserved: neither is a kind a declaration spells.
+  # adds, the optional wrapper 35, plus timestamp 36. 31 is §3's body framing
+  # escape and 34 is reserved: neither is a kind a declaration spells.
   defp known_kind?(kind) when kind >= 1 and kind <= 30, do: true
-  defp known_kind?(kind), do: kind == 32 or kind == 33 or kind == 35
+  defp known_kind?(kind), do: kind == 32 or kind == 33 or kind == 35 or kind == 36
 
   # A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
   # ONE exception, stated here rather than left to be found: a bits(N) field
@@ -711,6 +746,7 @@ const fixedRuntimeBody = `  @moduledoc """
   defp leaf_size(28, size), do: {true, size == 8}
   defp leaf_size(24, size), do: {true, size == 16}
   defp leaf_size(29, size), do: {true, size == 16}
+  defp leaf_size(36, size), do: {true, size == 8}
   defp leaf_size(32, size), do: {true, size == 0}
   defp leaf_size(_, _), do: {false, true}
 
@@ -889,11 +925,11 @@ const fixedRuntimeBody = `  @moduledoc """
   defp check_composite(_kind, _size, _children, _facts), do: {:error, :layout_kind_unknown}
 
   # ---------------------------------------------------------------------------
-  # THE PLAN COMPILER — once per peer, never once per record
+  # THE PLAN COMPILER — once per endpoint, never once per record
   # ---------------------------------------------------------------------------
   #
   # The SAME LOOP runs over this plan as over the identity plan. What the
-  # compiler does, ONCE PER PEER, is what a read would otherwise do once per
+  # compiler does, ONCE PER ENDPOINT, is what a read would otherwise do once per
   # record: map the writer's ids onto this reader's fields; leave a field it
   # cannot name OUT of the plan, which is what skips it, by arithmetic that was
   # going to step past it anyway; and leave a field the writer does not carry
@@ -1007,10 +1043,10 @@ const fixedRuntimeBody = `  @moduledoc """
 
   # match_children walks a TABLE's children on both sides, BY ID.
   #
-  # The census flag is whether THIS entry is the FIRST time the peer's field is
+  # The census flag is whether THIS entry is the FIRST time the writer's field is
   # seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-  # ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
-  # peer field dropped from a [4]Item is counted four times and the report says
+  # ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
+  # writer's field dropped from a [4]Item is counted four times and the report says
   # 4 where the law says 1 (the versioning tests' 5.8 row 11).
   defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report, census) do
     their_children = children_at(theirs, ti)
@@ -1318,7 +1354,7 @@ const fixedRuntimeBody = `  @moduledoc """
     acc =
       if elem(row, 3) == 1 do
         # THE BOUND IS THE WRITER'S their_n AND NOT MY OWN (§5.2 EMIT kind 14,
-        # bill §12.5): the plan carries THAT PEER'S bounds for the hostile pass,
+        # bill §12.5): the plan carries THAT ENDPOINT'S bounds for the hostile pass,
         # so a count forged past what the writer could have written clamps and
         # counts. Holding it to MY bound lets a count between their_n and my_n
         # through untouched, and every slot behind it reads as live.
@@ -1724,11 +1760,17 @@ const fixedRuntimeBody = `  @moduledoc """
   end
 
   defp step([{:widenf, src, dst} | rest], body, writes, report) do
-    # every f32 value is exactly representable in an f64, infinities and NaN
-    # payloads included, so there is nothing to round and nothing to lose
+    # every finite f32 is exactly representable in an f64, so the ordinary
+    # conversion widens it with nothing to round and nothing to lose. A NaN or
+    # an infinity stays non-finite in the image and the projection refuses it
+    # there (§3.3), where it knows whether an optional's payload is present.
     case body do
       <<_::binary-size(^src), bits::little-unsigned-32, _::binary>> ->
-        wide = f64_bits(widen_float(f32_value(bits)))
+        wide =
+          if (bits &&& 0x7F800000) == 0x7F800000,
+            do: 0x7FF8000000000000,
+            else: f64_bits(f32_value(bits))
+
         writes = [{dst, <<wide::little-unsigned-64>>} | writes]
         step(rest, body, writes, bump(report, :widened))
 
@@ -1831,25 +1873,6 @@ const fixedRuntimeBody = `  @moduledoc """
   defp image_bytes(v, width, true), do: <<v::little-signed-size(width)-unit(8)>>
   defp image_bytes(v, width, false), do: <<v::little-unsigned-size(width)-unit(8)>>
 
-  defp widen_float({:nonfinite, bits}) do
-    # THE f32 PATTERN'S SIGN AND PAYLOAD, CARRIED INTO f64 — AND A SIGNALLING
-    # NaN IS QUIETED, because that is what the reference does. Its rung is the
-    # C++ ` + "`" + `(double) f` + "`" + `, and every hardware f32→f64 convert (cvtss2sd, fcvt)
-    # turns an sNaN into the corresponding qNaN: the payload is carried and the
-    # QUIET BIT — the destination mantissa's top bit — is set. Preserving the
-    # signalling state instead would put a pattern on this side of the rung
-    # that the reference cannot produce, and the byte oracle compares patterns.
-    #
-    # AN INFINITY IS NOT A NaN and keeps its zero payload: setting the quiet bit
-    # on ±inf would hand back a NaN nobody wrote.
-    sign = bits >>> 31 &&& 1
-    mantissa = bits &&& 0x7FFFFF
-    wide = sign <<< 63 ||| 0x7FF0000000000000 ||| mantissa <<< 29
-    {:nonfinite, if(mantissa == 0, do: wide, else: wide ||| 0x8000000000000)}
-  end
-
-  defp widen_float(value), do: value
-
   # AN ORDINAL PAST THE LAST VARIANT THE WRITER DECLARED IS NOT A VARIANT AT
   # ALL: it lands None and counts one ` + "`" + `clamped` + "`" + `, which is the answer §3 gives
   # every other value outside its range and the answer a union tag beyond the
@@ -1925,17 +1948,17 @@ const fixedRuntimeBody = `  @moduledoc """
   defp splice([_ | rest], pos, prefill, acc), do: splice(rest, pos, prefill, acc)
 
   # ---------------------------------------------------------------------------
-  # THE PLAN CACHE: once per peer, and never once per record
+  # THE PLAN CACHE: once per endpoint, and never once per record
   # ---------------------------------------------------------------------------
 
   # THE CACHE IS BOUNDED, AND THE BOUND IS THE POINT. A plan is cached under the
-  # hash of the LAYOUT THAT MINTED IT, and a layout comes from a PEER: anyone
+  # hash of the LAYOUT THAT MINTED IT, and a layout comes from an ENDPOINT: anyone
   # who can hand this reader a file can hand it a layout it has never seen, and
   # every one of those is a :persistent_term.put/2 — which makes EVERY PROCESS
   # IN THE VM scan its heap for the old term. An unbounded cache turns "send me
   # files with fresh layouts" into "stop this node", at no cost to the sender.
   #
-  # SO THE CACHE FILLS ONCE AND THEN STOPS. Past the bound a new peer's plan is
+  # SO THE CACHE FILLS ONCE AND THEN STOPS. Past the bound a new endpoint's plan is
   # compiled per load and not cached: compiling is bounded work already held to
   # the plan capacity and it writes NOTHING, so an attacker past the bound buys
   # exactly one plan compile per file and no global scan at all.
@@ -1943,7 +1966,7 @@ const fixedRuntimeBody = `  @moduledoc """
   # IT IS NOT AN LRU, deliberately. An LRU would go on writing :persistent_term
   # forever — one put and one erase per eviction — which is the cost being
   # defended against, dressed up as a policy. A service that faces untrusted
-  # peers should not be minting plans from their layouts in the first place: it
+  # endpoints should not be minting plans from their layouts in the first place: it
   # hands its own plan in through the plan: option and never reaches this.
   @plan_cache_max 64
 
@@ -1956,7 +1979,7 @@ const fixedRuntimeBody = `  @moduledoc """
   time lookup that COPIES NOTHING — the term is read where it lies, so a read
   pays one lookup and no allocation, which is the only per-record cost §3.4
   allows a plan to have. A ` + "`" + `put/2` + "`" + ` is the expensive half: it makes every
-  process scan for the old term, which is why it happens ONCE PER PEER, why it
+  process scan for the old term, which is why it happens ONCE PER ENDPOINT, why it
   happens at most ` + "`" + `plan_cache_max/0` + "`" + ` times per module, and why a caller that
   would rather own the plan itself hands one in through ` + "`" + `plan:` + "`" + ` and never
   touches this.
@@ -1966,10 +1989,10 @@ const fixedRuntimeBody = `  @moduledoc """
   @doc """
   THIS BUILD's OWN parsed layout, parsed once and held beside the plans.
 
-  The plan compiler walks the peer's layout against mine, so mine has to be a
+  The plan compiler walks the endpoint's layout against mine, so mine has to be a
   parsed layout too — and parsing it is the one thing about the slow path that
-  is the same for every peer, so it happens once for the module rather than
-  once per peer.
+  is the same for every endpoint, so it happens once for the module rather than
+  once per endpoint.
   """
   # IT NEEDS NO BOUND: the only bytes ever handed to it are THIS BUILD's own
   # layouts, one per fixed root of the unit, so the number of them is a fact
@@ -2140,7 +2163,7 @@ const fixedRuntimeBody = `  @moduledoc """
   A CACHE THAT ONLY EVER FILLS NEEDS A WAY TO BE EMPTIED. It is not on the read
   path and it is not automatic: erasing is a ` + "`" + `:persistent_term` + "`" + ` write like any
   other, so a caller that does it per file has rebuilt the problem the bound
-  exists to prevent. It is for a node that has genuinely rolled its peers over
+  exists to prevent. It is for a node that has genuinely rolled its endpoints over
   — a deploy, a long-lived service reconfigured — and for tests.
   """
   def forget(module) do

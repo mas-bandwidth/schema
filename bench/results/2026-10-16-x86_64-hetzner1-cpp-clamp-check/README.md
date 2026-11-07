@@ -26,8 +26,8 @@ Before this commit, at `66d571b6d` and the same method: g++ 215.3 / 215.5 and cl
    one pass compiled out (`diagnosis/stage-stub-rows.csv`, pinned, best of 3). The
    identity read without the clamp pass is **69.2 ns (g++) / 75.9 ns (clang)**, against
    216.7 / 148.8 with it. Without `TableUtf8Valid` it is 237.4 / 147.8, so the text check
-   is not the cost. The clamp pass alone, on hot in-range records (`diagnosis/micro.cpp`,
-   `micro-rows.txt`), is **175 ns (g++) / 85 ns (clang)** per record. The corpus records
+   is not the cost. The clamp pass alone, on hot in-range records (a scratch
+   micro-benchmark, since removed; its rows are `diagnosis/micro-rows.txt`), is **175 ns (g++) / 85 ns (clang)** per record. The corpus records
    are full: 8 entities x 11 bounded fields plus 80 stats x 2, about 270 clamps a record.
    `TableFixedClampKnownRanges` has no ranges on the identity lineage and returns at once.
 2. **Why it is scalar.** From the compilers' reports over the runner's translation unit
@@ -62,7 +62,7 @@ Before this commit, at `66d571b6d` and the same method: g++ 215.3 / 215.5 and cl
 ## The sittings
 
 Each sitting was one `CXX=<c++> CC=<cc> taskset -c 6 sh bench/paired/nine.sh --read-arm --out ... --receipt ...` at `bdb901be5d679f1cd6853e5caa667dd12374714d`
-(`diagnosis/sittings.sh`). Before each one, the machine waited for three 20 s samples
+(a scratch script, since removed). Before each one, the machine waited for three 20 s samples
 in a row under 6% busy CPU, load1 under 2, and no process named on `window.go`'s
 refused list. Two earlier tries were refused at preflight, by another job's `go`
 (PID 1775564) and `VBCSCompiler` (PID 1783345). Neither process was this job's, neither
@@ -100,4 +100,4 @@ with load1 near 4 from this job's own builds just before. The rows are in
 ## Files
 
 - `{gcc,clang}-sitting-{1,2}/`: the driver's board (`READ.md`), `read.json`, `build.json`, the control and round CSVs, and `window-summary.json` (verdict, span, phases, sha256 of the full `window.json`, which is kept outside the tree).
-- `diagnosis/`: the compiler reports filtered to the clamp code, the g++ clamp body's disassembly head, the stage-stub, inline/hoist, check-form, micro and ARM rows, `micro.cpp`, `pred.py` (the scratch transform that prototyped the check), and `sittings.sh`.
+- `diagnosis/`: the compiler reports filtered to the clamp code, the g++ clamp body's disassembly head, the stage-stub, inline/hoist, check-form, micro and ARM rows. The scratch scripts that produced these rows (`micro.cpp`, `pred.py`, `sittings.sh`) were removed from the tree because `make shape-gate` refuses hand-written measurement outside the sanctioned bench; they are in git history at `620d68411f3946bb129b3bab714c3ece3ded9129`.

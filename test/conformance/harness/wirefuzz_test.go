@@ -119,15 +119,13 @@ func TestWireFuzzZeroSeedRosterRefusesByName(t *testing.T) {
 	}
 }
 
-// fakeClock is an injected clock for the driver-reply deadline, starting at
-// 1000.0 as a timed test does, and firing the After channel when the test
-// signals the deadline passed. It never uses real time.
+// fakeClock is an injected timer for the driver-reply deadline, firing the
+// After channel when the test signals the deadline passed. It never uses real
+// time.
 type fakeClock struct {
-	now     time.Time
 	afterCh chan time.Time
 }
 
-func (f *fakeClock) Now() time.Time                       { return f.now }
 func (f *fakeClock) After(time.Duration) <-chan time.Time { return f.afterCh }
 
 // TestWireFuzzDriverStall pins the hang's cause at the layer this card fixed
@@ -152,7 +150,7 @@ func TestWireFuzzDriverStall(t *testing.T) {
 		defer stdinW.Close()
 		_, _ = io.Copy(io.Discard, stdinR)
 	}()
-	clk := &fakeClock{now: time.Unix(1000, 0), afterCh: make(chan time.Time)}
+	clk := &fakeClock{afterCh: make(chan time.Time)}
 	result := make(chan error, 1)
 	go func() {
 		_, err := leg.receiveWithDeadline(clk)
@@ -166,5 +164,57 @@ func TestWireFuzzDriverStall(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "stalled") {
 		t.Fatalf("the stall is not named: %v", err)
+	}
+}
+
+// A NON-FINITE FLOAT IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md §3.3): on a
+// mutant the oracle refuses as non_finite_float, a leg that keeps the rule
+// answers with the refusal verdict and nothing else is compared; a leg that
+// lands the pattern is a divergence.
+func TestWireVerdictNonFiniteIsARefusal(t *testing.T) {
+	root := &wireRoot{unit: "probe", root: "Root"}
+	answer := oracleAnswer{nonFinite: true}
+	if verdict := wireVerdict(root, legReply{loaded: true, report: Counts{Refused: true}, saveFail: true}, answer, 16); verdict != "" {
+		t.Fatalf("a leg that refused the non-finite float diverged: %s", verdict)
+	}
+	if verdict := wireVerdict(root, legReply{loaded: true, report: Counts{Unknown: 1}, saved: []byte{1, 0}}, answer, 16); verdict == "" {
+		t.Fatal("a leg that landed a non-finite float did not diverge")
+	}
+}
+
+// A REFUSAL THE ORACLE DID NOT REACH IS A DIVERGENCE (docs/SPEC-TABLES.md
+// §4): damage ends the body it is met in, so a leg that refuses a wire the
+// oracle reads as malformed has reached a float the rule does not reach, or
+// stopped short of one it does.
+func TestWireVerdictMalformedIsNotARefusal(t *testing.T) {
+	root := &wireRoot{unit: "probe", root: "Root"}
+	answer := oracleAnswer{report: Counts{Malformed: true}}
+	if verdict := wireVerdict(root, legReply{report: Counts{Malformed: true}, saveFail: true}, answer, 16); verdict != "" {
+		t.Fatalf("a leg that answered malformed diverged: %s", verdict)
+	}
+	if verdict := wireVerdict(root, legReply{report: Counts{Malformed: true, Refused: true}, saveFail: true}, answer, 16); verdict == "" {
+		t.Fatal("a leg that refused a wire the oracle reads as malformed did not diverge")
+	}
+}
+
+// Permanent seed2 map_pairs differential: the repeated widened key retains
+// its entry; the unknown node-table ID and the earlier incompatible key value
+// still report their own events. SPEC-TABLES 2.8 uses the final key occurrence.
+func TestFileFuzzRepeatedKeyWidenKeepsMap(t *testing.T) {
+	_, _, units := corpus(t)
+	root, err := newWireRoot(units, "mapdemo", "Pairs", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile("testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err := root.oracle(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if answer.report != (Counts{Unknown: 2, KindMismatch: 1, Widened: 1}) || answer.bytes != 88 {
+		t.Fatalf("final widened key: %+v", answer)
 	}
 }

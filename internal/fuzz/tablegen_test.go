@@ -525,7 +525,7 @@ func randomSchema(r *rand.Rand) (string, *genUnit) {
 		u.Unions = append(u.Unions, un)
 	}
 	// On a seeded subset of units (about half; deterministic per seed), Root is a
-	// plain `table` declaring `| integrity = "crc32c"`, never a `fixed table` Root.
+	// variable table declaring `| integrity = "crc32c"`, never a `fixed table` Root.
 	// docs/SPEC-TABLES.md §2.14 ("The integrity check: `integrity`"):
 	// "The vocabulary today is one value, `crc32c`: CRC-32C, the Castagnoli
 	// polynomial (`0x1EDC6F41`, reflected `0x82F63B78`, initial value and
@@ -538,7 +538,7 @@ func randomSchema(r *rand.Rand) (string, *genUnit) {
 	// ... "Until then a `fixed table` that declares `integrity` is refused by
 	// name at check, since the class carries form `3` and is the one class that
 	// rides the message form (§3.3: \"`fixed table T` may ride here, a plain
-	// `table T` may not\"). A plain `table` carries neither, so the key on it
+	// `table T` may not\"). A variable table carries neither, so the key on it
 	// is complete. The cook (§7) and the block form (§19) are trusted
 	// accelerators whose integrity answer is a signature, and the key does not
 	// touch them." ... "Go carries the construct first, and every other target

@@ -7,7 +7,7 @@ package fuzz_test
 // through runGeneratedTableUnit under -race. For each scalar field of Root,
 // the probe writes the {} document with that one field set to each of:
 // min-1, max+1, the implied extremes plus one, 1e400, 2.5, "7" and null,
-// and reads it with RootFromJson (plus RootFromJsonTolerant to verify clamp
+// and reads it with RootFromJSON (plus RootFromJSONTolerant to verify clamp
 // and kind-mismatch storage invariants).
 
 import (
@@ -356,13 +356,13 @@ func checkAcceptedOrClampedRoundTrip(div *[]string, name string, pv *Root) {
 		record(div, "boundsload %s err=%v report=%+v", name, lr.Err(), lr)
 		return
 	}
-	jm := RootToJsonMeasure(pv)
+	jm := RootToJSONMeasure(pv)
 	if jm <= 0 {
 		record(div, "boundstojsonmeasure %s jm=%d", name, jm)
 		return
 	}
 	tj := make([]byte, jm)
-	if RootToJson(pv, tj) != jm {
+	if RootToJSON(pv, tj) != jm {
 		record(div, "boundstojson %s", name)
 		return
 	}
@@ -372,8 +372,8 @@ func checkAcceptedOrClampedRoundTrip(div *[]string, name string, pv *Root) {
 		record(div, "boundsroundtriprefuse %s err=%v %s", name, r2.Err(), b64(tj))
 		return
 	}
-	tj2 := make([]byte, RootToJsonMeasure(v2))
-	if RootToJson(v2, tj2) != int64(len(tj2)) || !bytes.Equal(tj2, tj) {
+	tj2 := make([]byte, RootToJSONMeasure(v2))
+	if RootToJSON(v2, tj2) != int64(len(tj2)) || !bytes.Equal(tj2, tj) {
 		record(div, "boundsroundtripjson %s %s %s", name, b64(tj), b64(tj2))
 	}
 	w2 := make([]byte, RootMeasure(v2))
@@ -392,8 +392,8 @@ func TestBoundsPassProbe(t *testing.T) {
 
 	var defVal Root
 	RootReset(&defVal)
-	defJSON := make([]byte, RootToJsonMeasure(&defVal))
-	RootToJson(&defVal, defJSON)
+	defJSON := make([]byte, RootToJSONMeasure(&defVal))
+	RootToJSON(&defVal, defJSON)
 
 	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
 		if line == "" {
@@ -457,16 +457,16 @@ func TestBoundsPassProbe(t *testing.T) {
 					if tv == nil {
 						tv = &defVal
 					}
-					gotJSON := make([]byte, RootToJsonMeasure(tv))
-					RootToJson(tv, gotJSON)
+					gotJSON := make([]byte, RootToJSONMeasure(tv))
+					RootToJSON(tv, gotJSON)
 					var wantR TableReport
 					wantV, wok := probeFromJSON(wantRaw, &wantR)
 					if !wok || wantV == nil || wantR.Err() != nil {
 						record(&div, "boundswantrefused %s err=%v", name, wantR.Err())
 						return
 					}
-					wantJSON := make([]byte, RootToJsonMeasure(wantV))
-					RootToJson(wantV, wantJSON)
+					wantJSON := make([]byte, RootToJSONMeasure(wantV))
+					RootToJSON(wantV, wantJSON)
 					if !bytes.Equal(gotJSON, wantJSON) {
 						record(&div, "boundsclampwanted %s got=%s want=%s", name, b64(gotJSON), b64(wantJSON))
 						return
@@ -483,8 +483,8 @@ func TestBoundsPassProbe(t *testing.T) {
 				var rr TableReport
 				probeFromJSONValue(&rv, decoded, &rr)
 				// A kind mismatch leaves the field at its declared default.
-				gotJSON := make([]byte, RootToJsonMeasure(&rv))
-				RootToJson(&rv, gotJSON)
+				gotJSON := make([]byte, RootToJSONMeasure(&rv))
+				RootToJSON(&rv, gotJSON)
 				if !bytes.Equal(gotJSON, defJSON) {
 					record(&div, "boundskindmismatchnotdefault %s got=%s want=%s", name, b64(gotJSON), b64(defJSON))
 					return
@@ -552,7 +552,7 @@ func runBoundsSeed(t *testing.T, r *rand.Rand, seed int, sabotage bool) (unexpec
 // SCHEMA_TABLE_DIFF_FROM..TO (default 0..4) and, for each scalar field of Root,
 // writes the {} value with that one field set to each of: min-1, max+1, the
 // implied extremes plus one, 1e400, 2.5, "7" and null, reading each with
-// RootFromJson under recover and -race, plus one sabotaged negative-control run.
+// RootFromJSON under recover and -race, plus one sabotaged negative-control run.
 func TestRandomTableBoundsPass(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units)")

@@ -707,46 +707,10 @@ fixed table Root
 	}
 }
 
-// OWED, AND THE REASON IS A CONTRADICTION THIS LEG CANNOT SETTLE ALONE.
-//
-// §5.2 EMIT kind 14 and §5.9 #33 say the element is emitted for i in
-// 0..min(their_n, my_n) WITH NO LIVE GATE — only the reader's elements PAST
-// that take the prefill — so a widened run counts EXACTLY min(their_n, my_n)
-// and a slack element inside the bound carries THE WRITER'S BYTES. The gate
-// this leg has lands the READER's own default over such an element instead,
-// which is wrong bytes.
-//
-// But `docs/SPEC-TABLES.md` §3.4 says slack is unspecified on read and MOVES NO
-// COUNTER, and §3.4 is the law where the algorithm page disagrees with it. The
-// byte gate holds the two plans to that law with an `==` on `clamped`
-// (`test/elixir-fixedform/main.exs`, "a compiled plan counts the `clamped` the
-// identity plan counts"): the identity path is a PROJECTION that walks the live
-// run only, so ungating the element run makes a hostile body count on the
-// compiled side and not on the identity one, and the gate goes red.
-//
-// Landing the bytes and suppressing the counter is a third answer neither page
-// states. THE RULING IS OWED — §5.2's per-entry count against §3.4's silent
-// slack — and until it lands this leg keeps the gate it can defend.
-func TestFixedCountedArrayElementsAreNotLiveGated(t *testing.T) {
-	t.Skip("owed: §5.2 EMIT kind 14 (no live gate, widened == min(their_n, my_n)) against SPEC-TABLES §3.4 (slack moves no counter) — see the note above")
-	out, err := Generate(unitFrom(t, `package probe
-
-fixed table Root
-{
-    vals [1..8] int32
-}
-`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	runtime := string(out[FixedRuntimeModule+".ex"])
-	if strings.Contains(runtime, ":live") {
-		t.Fatal("the plan still carries a `:live` op: an element inside min(their_n, my_n) is gated on the writer's count")
-	}
-	if strings.Contains(runtime, "live_wrap_entry") || strings.Contains(runtime, "live_at(") {
-		t.Fatal("the live gate's machinery is still emitted")
-	}
-}
+// Counted-array slack is held by TestFixedCountedArrayLiveExtent below the
+// public native boundary. Compile-time entry emission and runtime execution
+// are distinct: SPEC-TABLES §3.4 leaves slack uninspected, while algorithm
+// §5.9 #33 requires one widening operation per live element.
 
 // findGenerated answers the one generated file whose text carries `needle`, so
 // a test can name a shape rather than a filename.
@@ -763,7 +727,7 @@ func findGenerated(t *testing.T, out map[string][]byte, needle string) string {
 }
 
 // THE COUNT OP'S BOUND IS THE WRITER'S their_n, NEVER THE READER'S OWN (§5.2
-// EMIT kind 14, bill §12.5). The plan carries THAT PEER's bounds for the hostile
+// EMIT kind 14, bill §12.5). The plan carries THAT ENDPOINT's bounds for the hostile
 // pass, so a count forged past what the writer could have written clamps and
 // counts one `clamped`. Held to the READER's bound instead — which on a grown
 // array is the larger number — a count between `their_n` and `my_n` goes through

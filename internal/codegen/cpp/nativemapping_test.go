@@ -16,6 +16,7 @@ package cpp_test
 
 import (
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -141,7 +142,7 @@ func TestCppNativeHeaderIsIncludedWhenAMappingIsLive(t *testing.T) {
 			t.Errorf("Degenerate.h does not declare Vec3Sole's storage as `::VecMath v;` (SPEC §4.2)")
 		}
 		degWire := string(files["DegenerateWire.h"])
-		for _, want := range []string{`#include "TypesWire.h"`, "WriteVec3(", "ReadVec3("} {
+		for _, want := range []string{`#include "TypesWire.h"`, "schema_write_object( stream, WriteVec3, ", "schema_read_object( stream, ReadVec3, "} {
 			if !strings.Contains(degWire, want) {
 				t.Errorf("DegenerateWire.h does not carry %q: Vec3Sole's wire reaches Vec3 through TypesWire.h", want)
 			}
@@ -242,8 +243,8 @@ func TestCppNativeHeaderIsIncludedWhenAMappingIsLive(t *testing.T) {
 }
 
 // TestNativeMappingIsCppOnly pins the other half of SPEC §4.2: cpp_* keys are
-// C++'s alone, and every other target ignores them. Each of the other eight
-// languages' generated examples unit (where the mapping is live in C++)
+// C++'s alone, and every other target ignores them. Every other built-in
+// language's generated examples unit (where the mapping is live in C++)
 // carries no mention of the hand type or its header.
 func TestNativeMappingIsCppOnly(t *testing.T) {
 	t.Parallel()
@@ -254,8 +255,8 @@ func TestNativeMappingIsCppOnly(t *testing.T) {
 		t.Fatal("examples declares no cpp_native mapping")
 	}
 	targets := c.Targets()
-	if len(targets) != 9 {
-		t.Fatalf("want the nine built-in targets, got %v", targets)
+	if !slices.Contains(targets, "cpp") || len(targets) < 9 {
+		t.Fatalf("want cpp and every other built-in target, got %v", targets)
 	}
 	for _, target := range targets {
 		if target == "cpp" {

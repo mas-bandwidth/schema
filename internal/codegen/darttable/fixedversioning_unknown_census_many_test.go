@@ -5,15 +5,15 @@ import (
 	"testing"
 )
 
-// §5.4 says the compile census is once per peer AND NEVER PER RECORD. The
+// §5.4 says the compile census is once per endpoint AND NEVER PER RECORD. The
 // landed one-record row reads `old_unknown_census.bin`, a single record, where
-// "once per peer" and "once per record" are the SAME number (1) — so the second
+// "once per endpoint" and "once per record" are the SAME number (1) — so the second
 // half of that clause has never been under a gate. `many_unknown_census.bin`
 // carries THREE records of the same `Census` root, and only then does a
 // per-record `Unknown++` land 3 instead of 1.
 //
 // `report.unknown` is asserted EXACTLY `== 1`: `Item.drop` is ONE field of ONE
-// peer, so three records still owe ONE unknown — never 3, never the record count.
+// endpoint, so three records still owe ONE unknown — never 3, never the record count.
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
@@ -27,7 +27,7 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
     'counters that must not move did: ${why(report)}',
   );
   check(report.unknown == 1,
-      'unknown == ${report.unknown}, want 1: Item.drop is ONE field of ONE peer, not one per record');
+      'unknown == ${report.unknown}, want 1: Item.drop is ONE field of ONE endpoint, not one per record');
   for (var k = 0; k < 3; k++) {
     check(values[k].lead == 1 && values[k].trail == 2,
         'record $k moved the bracketing fields: lead=${values[k].lead} trail=${values[k].trail}');

@@ -18,11 +18,11 @@ type WeaponConfig = WeaponConfigRow
 type LoadoutConfig = LoadoutConfigRow
 type ProfileConfig = ProfileConfigRow
 
-// TableEnumId: Grade on the TABLE wire rides as the 64-bit hash of its VARIANT
+// TableEnumID: Grade on the TABLE wire rides as the 64-bit hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
 // data still reads (mas-bandwidth/schema docs/SPEC-TABLES.md §5). None uses reference zero; hash zero remains a valid named id.
 // The bool is false when no variant names this value: no wire identity.
-func (value Grade) TableEnumId() (uint64, bool) {
+func (value Grade) TableEnumID() (uint64, bool) {
 	switch value {
 	case GradeNone:
 		return 0, true
@@ -123,20 +123,20 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 				var hi, z uint64
 				p := value.VersionNote[:n]
 				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
 					hi |= x | y
 					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
 					p = p[16:]
 				}
 				if len(p) >= 8 {
-					x := tableUtf8Word(p)
+					x := tableUTF8Word(p)
 					hi |= x
 					z |= (x - 0x0101010101010101) &^ x
 					p = p[8:]
 				}
 				if len(p) > 0 {
 					if n >= 8 {
-						x := tableUtf8Word(value.VersionNote[n-8:])
+						x := tableUTF8Word(value.VersionNote[n-8:])
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
@@ -147,7 +147,7 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 						}
 					}
 				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.VersionNote[:n]) {
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.VersionNote[:n]) {
 					return false
 				}
 			}
@@ -363,7 +363,7 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.VersionNote[:])
 				value.VersionNoteLength = 0
@@ -371,7 +371,7 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 16 {
-				keep = tableUtf8Clamp(sub.Buffer, 16)
+				keep = tableUTF8Clamp(sub.Buffer, 16)
 				r.Report.Clamped++
 			}
 			clear(value.VersionNote[:])
@@ -494,9 +494,10 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 }
 
 // RootConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. RootConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. RootConfigLoad is the strict read; call this one by name.
 func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -507,12 +508,8 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -531,7 +528,13 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !RootConfigLoadBody(&r, value) {
+	report.Malformed = false
+	if !RootConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			RootConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -546,6 +549,10 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			RootConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -556,6 +563,12 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		RootConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -563,7 +576,7 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 // whatever RootConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. RootConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. RootConfigLoadTolerant also reads past an evolution event.
 func RootConfigLoad(value *RootConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -632,20 +645,20 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 				var hi, z uint64
 				p := value.VersionNote[:n]
 				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
 					hi |= x | y
 					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
 					p = p[16:]
 				}
 				if len(p) >= 8 {
-					x := tableUtf8Word(p)
+					x := tableUTF8Word(p)
 					hi |= x
 					z |= (x - 0x0101010101010101) &^ x
 					p = p[8:]
 				}
 				if len(p) > 0 {
 					if n >= 8 {
-						x := tableUtf8Word(value.VersionNote[n-8:])
+						x := tableUTF8Word(value.VersionNote[n-8:])
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
@@ -656,7 +669,7 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 						}
 					}
 				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.VersionNote[:n]) {
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.VersionNote[:n]) {
 					return false
 				}
 			}
@@ -882,7 +895,7 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.VersionNote[:])
 				value.VersionNoteLength = 0
@@ -890,7 +903,7 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 16 {
-				keep = tableUtf8Clamp(sub.Buffer, 16)
+				keep = tableUTF8Clamp(sub.Buffer, 16)
 				r.Report.Clamped++
 			}
 			clear(value.VersionNote[:])
@@ -1008,7 +1021,7 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "RootConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -1069,6 +1082,9 @@ func WeaponConfigSaveBodyFields(w *TableWriter, value *WeaponConfig) bool {
 			if ref := w.Ids.refAtHit(66, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Damage-value.Damage != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Damage))
 		}
 	}
@@ -1076,6 +1092,9 @@ func WeaponConfigSaveBodyFields(w *TableWriter, value *WeaponConfig) bool {
 		if math.Float32bits(value.Speed) != math.Float32bits(500.0) {
 			if ref := w.Ids.refAtHit(12, 0x1733055702acb1d2); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Speed-value.Speed != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Speed))
 		}
@@ -1234,11 +1253,13 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "WeaponConfig.damage")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.damage")
+				} else {
+					v := math.Float32frombits(b)
+					value.Damage = v
 				}
-				value.Damage = v
 			}
 		case 0x1733055702acb1d2: // speed
 			if kind != 10 {
@@ -1254,11 +1275,13 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "WeaponConfig.speed")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.speed")
+				} else {
+					v := math.Float32frombits(b)
+					value.Speed = v
 				}
-				value.Speed = v
 			}
 		case 0x4f31c5309e13e932: // penetration
 			if kind != 4 {
@@ -1424,9 +1447,10 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 }
 
 // WeaponConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. WeaponConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. WeaponConfigLoad is the strict read; call this one by name.
 func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -1437,12 +1461,8 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -1461,7 +1481,13 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !WeaponConfigLoadBody(&r, value) {
+	report.Malformed = false
+	if !WeaponConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			WeaponConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -1476,6 +1502,10 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			WeaponConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -1486,6 +1516,12 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		WeaponConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -1493,7 +1529,7 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 // whatever WeaponConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. WeaponConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. WeaponConfigLoadTolerant also reads past an evolution event.
 func WeaponConfigLoad(value *WeaponConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -1551,6 +1587,9 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 			if ref := w.Ids.refAtHit(66, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Damage-value.Damage != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Damage))
 		}
 	}
@@ -1558,6 +1597,9 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 		if math.Float32bits(value.Speed) != math.Float32bits(500.0) {
 			if ref := w.Ids.refAtHit(12, 0x1733055702acb1d2); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Speed-value.Speed != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Speed))
 		}
@@ -1718,11 +1760,13 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "WeaponConfig.damage")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.damage")
+				} else {
+					v := math.Float32frombits(b)
+					value.Damage = v
 				}
-				value.Damage = v
 			}
 		case 0x1733055702acb1d2: // speed
 			if kind != 10 {
@@ -1738,11 +1782,13 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "WeaponConfig.speed")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.speed")
+				} else {
+					v := math.Float32frombits(b)
+					value.Speed = v
 				}
-				value.Speed = v
 			}
 		case 0x4f31c5309e13e932: // penetration
 			if kind != 4 {
@@ -1905,7 +1951,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "WeaponConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -1979,11 +2025,11 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					w.putLebWide(0)
 				}
 			case GradeBronze:
-				w.IdAt(115, 0xc4927739aac4c591)
+				w.IDAt(115, 0xc4927739aac4c591)
 			case GradeSilver:
-				w.IdAt(113, 0xc3e51adeeaf12580)
+				w.IDAt(113, 0xc3e51adeeaf12580)
 			case GradeGold:
-				w.IdAt(114, 0xc416c97e0d3218b3)
+				w.IDAt(114, 0xc416c97e0d3218b3)
 			default:
 				return false
 			}
@@ -2011,11 +2057,11 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 							payload17.putLebWide(0)
 						}
 					case GradeBronze:
-						payload17.IdAt(115, 0xc4927739aac4c591)
+						payload17.IDAt(115, 0xc4927739aac4c591)
 					case GradeSilver:
-						payload17.IdAt(113, 0xc3e51adeeaf12580)
+						payload17.IDAt(113, 0xc3e51adeeaf12580)
 					case GradeGold:
-						payload17.IdAt(114, 0xc416c97e0d3218b3)
+						payload17.IDAt(114, 0xc416c97e0d3218b3)
 					default:
 						return false
 					}
@@ -2043,11 +2089,11 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 								w.putLebWide(0)
 							}
 						case GradeBronze:
-							w.IdAt(115, 0xc4927739aac4c591)
+							w.IDAt(115, 0xc4927739aac4c591)
 						case GradeSilver:
-							w.IdAt(113, 0xc3e51adeeaf12580)
+							w.IDAt(113, 0xc3e51adeeaf12580)
 						case GradeGold:
-							w.IdAt(114, 0xc416c97e0d3218b3)
+							w.IDAt(114, 0xc416c97e0d3218b3)
 						default:
 							return false
 						}
@@ -2079,11 +2125,11 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 							payload20.putLebWide(0)
 						}
 					case GradeBronze:
-						payload20.IdAt(115, 0xc4927739aac4c591)
+						payload20.IDAt(115, 0xc4927739aac4c591)
 					case GradeSilver:
-						payload20.IdAt(113, 0xc3e51adeeaf12580)
+						payload20.IDAt(113, 0xc3e51adeeaf12580)
 					case GradeGold:
-						payload20.IdAt(114, 0xc416c97e0d3218b3)
+						payload20.IDAt(114, 0xc416c97e0d3218b3)
 					default:
 						return false
 					}
@@ -2111,11 +2157,11 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 								w.putLebWide(0)
 							}
 						case GradeBronze:
-							w.IdAt(115, 0xc4927739aac4c591)
+							w.IDAt(115, 0xc4927739aac4c591)
 						case GradeSilver:
-							w.IdAt(113, 0xc3e51adeeaf12580)
+							w.IDAt(113, 0xc3e51adeeaf12580)
 						case GradeGold:
-							w.IdAt(114, 0xc416c97e0d3218b3)
+							w.IDAt(114, 0xc416c97e0d3218b3)
 						default:
 							return false
 						}
@@ -2648,9 +2694,10 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 }
 
 // LoadoutConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. LoadoutConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. LoadoutConfigLoad is the strict read; call this one by name.
 func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -2661,12 +2708,8 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -2685,7 +2728,13 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !LoadoutConfigLoadBody(&r, value) {
+	report.Malformed = false
+	if !LoadoutConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			LoadoutConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -2700,6 +2749,10 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			LoadoutConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -2710,6 +2763,12 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		LoadoutConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -2717,7 +2776,7 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 // whatever LoadoutConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. LoadoutConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. LoadoutConfigLoadTolerant also reads past an evolution event.
 func LoadoutConfigLoad(value *LoadoutConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -2781,11 +2840,11 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					w.putLebWide(0)
 				}
 			case GradeBronze:
-				w.IdAt(115, 0xc4927739aac4c591)
+				w.IDAt(115, 0xc4927739aac4c591)
 			case GradeSilver:
-				w.IdAt(113, 0xc3e51adeeaf12580)
+				w.IDAt(113, 0xc3e51adeeaf12580)
 			case GradeGold:
-				w.IdAt(114, 0xc416c97e0d3218b3)
+				w.IDAt(114, 0xc416c97e0d3218b3)
 			default:
 				return false
 			}
@@ -2813,11 +2872,11 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 							payload1.putLebWide(0)
 						}
 					case GradeBronze:
-						payload1.IdAt(115, 0xc4927739aac4c591)
+						payload1.IDAt(115, 0xc4927739aac4c591)
 					case GradeSilver:
-						payload1.IdAt(113, 0xc3e51adeeaf12580)
+						payload1.IDAt(113, 0xc3e51adeeaf12580)
 					case GradeGold:
-						payload1.IdAt(114, 0xc416c97e0d3218b3)
+						payload1.IDAt(114, 0xc416c97e0d3218b3)
 					default:
 						return false
 					}
@@ -2845,11 +2904,11 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 								w.putLebWide(0)
 							}
 						case GradeBronze:
-							w.IdAt(115, 0xc4927739aac4c591)
+							w.IDAt(115, 0xc4927739aac4c591)
 						case GradeSilver:
-							w.IdAt(113, 0xc3e51adeeaf12580)
+							w.IDAt(113, 0xc3e51adeeaf12580)
 						case GradeGold:
-							w.IdAt(114, 0xc416c97e0d3218b3)
+							w.IDAt(114, 0xc416c97e0d3218b3)
 						default:
 							return false
 						}
@@ -2881,11 +2940,11 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 							payload4.putLebWide(0)
 						}
 					case GradeBronze:
-						payload4.IdAt(115, 0xc4927739aac4c591)
+						payload4.IDAt(115, 0xc4927739aac4c591)
 					case GradeSilver:
-						payload4.IdAt(113, 0xc3e51adeeaf12580)
+						payload4.IDAt(113, 0xc3e51adeeaf12580)
 					case GradeGold:
-						payload4.IdAt(114, 0xc416c97e0d3218b3)
+						payload4.IDAt(114, 0xc416c97e0d3218b3)
 					default:
 						return false
 					}
@@ -2913,11 +2972,11 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 								w.putLebWide(0)
 							}
 						case GradeBronze:
-							w.IdAt(115, 0xc4927739aac4c591)
+							w.IDAt(115, 0xc4927739aac4c591)
 						case GradeSilver:
-							w.IdAt(113, 0xc3e51adeeaf12580)
+							w.IDAt(113, 0xc3e51adeeaf12580)
 						case GradeGold:
-							w.IdAt(114, 0xc416c97e0d3218b3)
+							w.IDAt(114, 0xc416c97e0d3218b3)
 						default:
 							return false
 						}
@@ -3507,7 +3566,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "LoadoutConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -3588,20 +3647,20 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 				var hi, z uint64
 				p := value.Name[:n]
 				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
 					hi |= x | y
 					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
 					p = p[16:]
 				}
 				if len(p) >= 8 {
-					x := tableUtf8Word(p)
+					x := tableUTF8Word(p)
 					hi |= x
 					z |= (x - 0x0101010101010101) &^ x
 					p = p[8:]
 				}
 				if len(p) > 0 {
 					if n >= 8 {
-						x := tableUtf8Word(value.Name[n-8:])
+						x := tableUTF8Word(value.Name[n-8:])
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
@@ -3612,7 +3671,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 						}
 					}
 				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Name[:n]) {
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Name[:n]) {
 					return false
 				}
 			}
@@ -3724,6 +3783,9 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(24, 0x288427f5babd05f7); !w.headerPair(ref, 11) {
 				w.headerRest(ref, 11)
 			}
+			if value.Precision-value.Precision != 0 {
+				return false
+			}
 			w.Put64(math.Float64bits(value.Precision))
 		}
 	}
@@ -3744,6 +3806,9 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 				payload33 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := range int(4) {
+					if value.Ratings[i]-value.Ratings[i] != 0 {
+						return false
+					}
 					payload33.Put32(math.Float32bits(value.Ratings[i]))
 					pairs++
 				}
@@ -3763,6 +3828,9 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 						w.putLebWide(pairs)
 					}
 					for i := range int(4) {
+						if value.Ratings[i]-value.Ratings[i] != 0 {
+							return false
+						}
 						w.Put32(math.Float32bits(value.Ratings[i]))
 					}
 				}
@@ -3864,7 +3932,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.Name[:])
 				value.NameLength = 0
@@ -3872,7 +3940,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 32 {
-				keep = tableUtf8Clamp(sub.Buffer, 32)
+				keep = tableUTF8Clamp(sub.Buffer, 32)
 				r.Report.Clamped++
 			}
 			clear(value.Name[:])
@@ -4116,16 +4184,19 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 						return false
 					}
 					{
-						var v float64
+						finite, v := true, float64(0)
 						if kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(r.Get32()))
+							b := r.Get32()
+							finite, v = b&0x7f800000 != 0x7f800000, float64(math.Float32frombits(b))
 						} else {
-							v = math.Float64frombits(r.Get64())
+							b := r.Get64()
+							finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b)
 						}
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "ProfileConfig.precision")
+						if !finite {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+						} else {
+							value.Precision = v
 						}
-						value.Precision = v
 					}
 					r.Report.Widened++
 					break
@@ -4142,11 +4213,13 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				return false
 			}
 			{
-				v := math.Float64frombits(r.Get64())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "ProfileConfig.precision")
+				b := r.Get64()
+				if b&0x7ff0000000000000 == 0x7ff0000000000000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+				} else {
+					v := math.Float64frombits(b)
+					value.Precision = v
 				}
-				value.Precision = v
 			}
 		case 0xb921eb8a3d0cb0f9: // ratings
 			if kind != 14 {
@@ -4186,11 +4259,13 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 							break
 						}
 						{
-							v := math.Float32frombits(sub.Get32())
-							if v != v || v-v != 0 {
-								tableNonFinite(&r.Report.Reason, "ProfileConfig.ratings")
+							b := sub.Get32()
+							if b&0x7f800000 == 0x7f800000 {
+								tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.ratings")
+							} else {
+								v := math.Float32frombits(b)
+								value.Ratings[i] = v
 							}
-							value.Ratings[i] = v
 						}
 					}
 				}
@@ -4248,9 +4323,10 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 }
 
 // ProfileConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. ProfileConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. ProfileConfigLoad is the strict read; call this one by name.
 func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -4261,12 +4337,8 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -4285,7 +4357,13 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !ProfileConfigLoadBody(&r, value) {
+	report.Malformed = false
+	if !ProfileConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			ProfileConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -4300,6 +4378,10 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			ProfileConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -4310,6 +4392,12 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		ProfileConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -4317,7 +4405,7 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 // whatever ProfileConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. ProfileConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. ProfileConfigLoadTolerant also reads past an evolution event.
 func ProfileConfigLoad(value *ProfileConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -4386,20 +4474,20 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 				var hi, z uint64
 				p := value.Name[:n]
 				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
 					hi |= x | y
 					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
 					p = p[16:]
 				}
 				if len(p) >= 8 {
-					x := tableUtf8Word(p)
+					x := tableUTF8Word(p)
 					hi |= x
 					z |= (x - 0x0101010101010101) &^ x
 					p = p[8:]
 				}
 				if len(p) > 0 {
 					if n >= 8 {
-						x := tableUtf8Word(value.Name[n-8:])
+						x := tableUTF8Word(value.Name[n-8:])
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
@@ -4410,7 +4498,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 						}
 					}
 				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Name[:n]) {
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Name[:n]) {
 					return false
 				}
 			}
@@ -4522,6 +4610,9 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(24, 0x288427f5babd05f7); !w.headerPair(ref, 11) {
 				w.headerRest(ref, 11)
 			}
+			if value.Precision-value.Precision != 0 {
+				return false
+			}
 			w.Put64(math.Float64bits(value.Precision))
 		}
 	}
@@ -4542,6 +4633,9 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 				payload4 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := range int(4) {
+					if value.Ratings[i]-value.Ratings[i] != 0 {
+						return false
+					}
 					payload4.Put32(math.Float32bits(value.Ratings[i]))
 					pairs++
 				}
@@ -4561,6 +4655,9 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 						w.putLebWide(pairs)
 					}
 					for i := range int(4) {
+						if value.Ratings[i]-value.Ratings[i] != 0 {
+							return false
+						}
 						w.Put32(math.Float32bits(value.Ratings[i]))
 					}
 				}
@@ -4692,7 +4789,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.Name[:])
 				value.NameLength = 0
@@ -4700,7 +4797,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 32 {
-				keep = tableUtf8Clamp(sub.Buffer, 32)
+				keep = tableUTF8Clamp(sub.Buffer, 32)
 				r.Report.Clamped++
 			}
 			clear(value.Name[:])
@@ -4945,16 +5042,19 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 						return false
 					}
 					{
-						var v float64
+						finite, v := true, float64(0)
 						if kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(r.Get32()))
+							b := r.Get32()
+							finite, v = b&0x7f800000 != 0x7f800000, float64(math.Float32frombits(b))
 						} else {
-							v = math.Float64frombits(r.Get64())
+							b := r.Get64()
+							finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b)
 						}
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "ProfileConfig.precision")
+						if !finite {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+						} else {
+							value.Precision = v
 						}
-						value.Precision = v
 					}
 					r.Report.Widened++
 					break
@@ -4971,11 +5071,13 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				return false
 			}
 			{
-				v := math.Float64frombits(r.Get64())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "ProfileConfig.precision")
+				b := r.Get64()
+				if b&0x7ff0000000000000 == 0x7ff0000000000000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+				} else {
+					v := math.Float64frombits(b)
+					value.Precision = v
 				}
-				value.Precision = v
 			}
 		case 0xb921eb8a3d0cb0f9: // ratings
 			if kind != 14 {
@@ -5016,11 +5118,13 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 							break
 						}
 						{
-							v := math.Float32frombits(sub.Get32())
-							if v != v || v-v != 0 {
-								tableNonFinite(&r.Report.Reason, "ProfileConfig.ratings")
+							b := sub.Get32()
+							if b&0x7f800000 == 0x7f800000 {
+								tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.ratings")
+							} else {
+								v := math.Float32frombits(b)
+								value.Ratings[i] = v
 							}
-							value.Ratings[i] = v
 						}
 					}
 				}
@@ -5070,7 +5174,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "ProfileConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -5093,6 +5197,9 @@ func AttachmentMeasureBody(value *AttachmentRow, ids *TableIds) int64 {
 	if value.Slot != 0 {
 		bytes += tableLebBytes(ids.refAtHit(59, 0x6a771618f6fe31d1)) + 1 + 4
 	} // slot
+	if (math.Float32bits(value.Power) != math.Float32bits(1.0)) && (value.Power-value.Power != 0) {
+		return -1
+	}
 	if math.Float32bits(value.Power) != math.Float32bits(1.0) {
 		bytes += tableLebBytes(ids.refAtHit(140, 0xeef9d1358ae7b4e6)) + 1 + 4
 	} // power
@@ -5141,6 +5248,9 @@ func AttachmentSaveBodyFields(w *TableWriter, value *AttachmentRow) bool {
 		if math.Float32bits(value.Power) != math.Float32bits(1.0) {
 			if ref := w.Ids.refAtHit(140, 0xeef9d1358ae7b4e6); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Power-value.Power != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Power))
 		}
@@ -5248,11 +5358,13 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Attachment.power")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Attachment.power")
+				} else {
+					v := math.Float32frombits(b)
+					value.Power = v
 				}
-				value.Power = v
 			}
 		default:
 			r.Report.Unknown++
@@ -5265,9 +5377,10 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 }
 
 // AttachmentLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. AttachmentLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. AttachmentLoad is the strict read; call this one by name.
 func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -5278,12 +5391,8 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -5302,7 +5411,13 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !AttachmentLoadBody(&r, value) {
+	report.Malformed = false
+	if !AttachmentLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			AttachmentReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -5317,6 +5432,10 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			AttachmentReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -5327,6 +5446,12 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		AttachmentReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -5334,7 +5459,7 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 // whatever AttachmentReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. AttachmentLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. AttachmentLoadTolerant also reads past an evolution event.
 func AttachmentLoad(value *AttachmentRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -5395,6 +5520,9 @@ func AttachmentSaveBodyFieldsRetain(w *TableRetainWriter, value *AttachmentRow) 
 		if math.Float32bits(value.Power) != math.Float32bits(1.0) {
 			if ref := w.Ids.refAtHit(140, 0xeef9d1358ae7b4e6); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Power-value.Power != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Power))
 		}
@@ -5492,15 +5620,17 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Attachment.power")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Attachment.power")
+				} else {
+					v := math.Float32frombits(b)
+					value.Power = v
 				}
-				value.Power = v
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "Attachment") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -5516,6 +5646,9 @@ func BuffReset(value *BuffRow) {
 
 func BuffMeasureBody(value *BuffRow, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (math.Float32bits(value.Multiplier) != math.Float32bits(1.0)) && (value.Multiplier-value.Multiplier != 0) {
+		return -1
+	}
 	if math.Float32bits(value.Multiplier) != math.Float32bits(1.0) {
 		bytes += tableLebBytes(ids.refAtHit(79, 0x9adc623a805c87c6)) + 1 + 4
 	} // multiplier
@@ -5553,6 +5686,9 @@ func BuffSaveBodyFields(w *TableWriter, value *BuffRow) bool {
 		if math.Float32bits(value.Multiplier) != math.Float32bits(1.0) {
 			if ref := w.Ids.refAtHit(79, 0x9adc623a805c87c6); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Multiplier-value.Multiplier != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Multiplier))
 		}
@@ -5613,11 +5749,13 @@ func BuffLoadBody(r *TableReader, value *BuffRow) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Buff.multiplier")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Buff.multiplier")
+				} else {
+					v := math.Float32frombits(b)
+					value.Multiplier = v
 				}
-				value.Multiplier = v
 			}
 		default:
 			r.Report.Unknown++
@@ -5630,9 +5768,10 @@ func BuffLoadBody(r *TableReader, value *BuffRow) bool {
 }
 
 // BuffLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. BuffLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. BuffLoad is the strict read; call this one by name.
 func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -5643,12 +5782,8 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -5667,7 +5802,13 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !BuffLoadBody(&r, value) {
+	report.Malformed = false
+	if !BuffLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			BuffReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -5682,6 +5823,10 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			BuffReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -5692,6 +5837,12 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		BuffReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -5699,7 +5850,7 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 // whatever BuffReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. BuffLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. BuffLoadTolerant also reads past an evolution event.
 func BuffLoad(value *BuffRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -5750,6 +5901,9 @@ func BuffSaveBodyFieldsRetain(w *TableRetainWriter, value *BuffRow) bool {
 			if ref := w.Ids.refAtHit(79, 0x9adc623a805c87c6); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Multiplier-value.Multiplier != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Multiplier))
 		}
 	}
@@ -5799,15 +5953,17 @@ func BuffLoadBodyRetain(r *TableRetainReader, value *BuffRow) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Buff.multiplier")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Buff.multiplier")
+				} else {
+					v := math.Float32frombits(b)
+					value.Multiplier = v
 				}
-				value.Multiplier = v
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "Buff") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -5970,9 +6126,10 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 }
 
 // DebuffLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. DebuffLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. DebuffLoad is the strict read; call this one by name.
 func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -5983,12 +6140,8 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -6007,7 +6160,13 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !DebuffLoadBody(&r, value) {
+	report.Malformed = false
+	if !DebuffLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			DebuffReset(value)
+			report.Malformed = report.Malformed || before.Malformed
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -6022,6 +6181,10 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			DebuffReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -6032,6 +6195,12 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		DebuffReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -6039,7 +6208,7 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 // whatever DebuffReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. DebuffLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. DebuffLoadTolerant also reads past an evolution event.
 func DebuffLoad(value *DebuffRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -6177,7 +6346,7 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "Debuff") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -6189,39 +6358,39 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 
 // RootConfigTableFields is RootConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var RootConfigTableFields = []TableFieldInfo{
-	{Name: "version_note", Json: "version_note", TypeName: "string", DeclaredTypeName: "string", Id: 0x8a67c9728746d394, Kind: 12, IsArray: false, Counted: true, Optional: false,
+	{Name: "version_note", JSON: "version_note", TypeName: "string", DeclaredTypeName: "string", ID: 0x8a67c9728746d394, Kind: 12, IsArray: false, Counted: true, Optional: false,
 		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(RootConfig{}.VersionNote)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.VersionNote)), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.VersionNoteLength)), PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 20, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "weapons", Json: "weapons", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", Id: 0x41cbd901b87fabb6, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "weapons", JSON: "weapons", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", ID: 0x41cbd901b87fabb6, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(RootConfig{}.Weapons)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.Weapons[0])), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 28, CookCountOffset: 248, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: WeaponConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "profiles", Json: "profiles", TypeName: "ProfileConfig", DeclaredTypeName: "ProfileConfig", Id: 0x8181e61fc0436767, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "profiles", JSON: "profiles", TypeName: "ProfileConfig", DeclaredTypeName: "ProfileConfig", ID: 0x8181e61fc0436767, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(RootConfig{}.Profiles)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.Profiles[0])), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), PresentOffset: 0xffffffff,
 		CookOffset: 256, CookElemSize: 304, CookCountOffset: 1472, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: ProfileConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6231,11 +6400,11 @@ var RootConfigTableFields = []TableFieldInfo{
 var RootConfigTableInfo TableTypeInfo
 
 func init() {
-	RootConfigTableInfo = TableTypeInfo{Name: "RootConfig", Size: uint32(unsafe.Sizeof(RootConfig{})), NumFields: 3, Fields: RootConfigTableFields, Reset: func(storage unsafe.Pointer) { RootConfigReset((*RootConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x5f4843f6def45e87, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return RootConfigSaveBody(w, (*RootConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return RootConfigLoadBody(&r, (*RootConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	RootConfigTableInfo = TableTypeInfo{Name: "RootConfig", Size: uint32(unsafe.Sizeof(RootConfig{})), NumFields: 3, Fields: RootConfigTableFields, Reset: func(storage unsafe.Pointer) { RootConfigReset((*RootConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x5f4843f6def45e87, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return RootConfigSaveBody(w, (*RootConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return RootConfigLoadBody(&r, (*RootConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return RootConfigSaveBodyRetain(w, (*RootConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return RootConfigLoadBodyRetain(&r, (*RootConfig)(p))
-	}, CookSize: 1480, CookAlign: 8}
+	}, CycleIndex: 17, CycleType: tableCycleType, CookSize: 1480, CookAlign: 8}
 }
 
 // RootConfigTableType returns RootConfig's reflection descriptor.
@@ -6246,71 +6415,71 @@ var WeaponConfigTableTags = []string{"designer_facing"}
 
 // WeaponConfigTableFields is WeaponConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WeaponConfigTableFields = []TableFieldInfo{
-	{Name: "damage", Json: "damage", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x7f6308be8ab37fc0, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "damage", JSON: "damage", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f6308be8ab37fc0, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.", NumTags: 3, Tags: WeaponConfigTableDamageTags},
-	{Name: "speed", Json: "speed", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x1733055702acb1d2, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "speed", JSON: "speed", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x1733055702acb1d2, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Speed)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "penetration", Json: "penetration", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x4f31c5309e13e932, Kind: 4, IsArray: false, Counted: false, Optional: false,
+	{Name: "penetration", JSON: "penetration", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x4f31c5309e13e932, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Penetration)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 10.0, RangeIntMin: 0, RangeIntMax: 10, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "channel", Json: "channel", TypeName: "bits(6)", DeclaredTypeName: "bits(6)", Id: 0xa5013e9ad5caeda4, Kind: 6, IsArray: false, Counted: false, Optional: false,
+	{Name: "channel", JSON: "channel", TypeName: "bits(6)", DeclaredTypeName: "bits(6)", ID: 0xa5013e9ad5caeda4, Kind: 6, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Channel)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 63.0, RangeUintMin: 0, RangeUintMax: 63, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "homing", Json: "homing", TypeName: "bool", DeclaredTypeName: "bool", Id: 0xad6587bc602e3f59, Kind: 1, IsArray: false, Counted: false, Optional: false,
+	{Name: "homing", JSON: "homing", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xad6587bc602e3f59, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Homing)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "effect", Json: "effect", TypeName: "Effect", DeclaredTypeName: "Effect", Id: 0x36c1c83b51f24394, Kind: 15, IsArray: false, Counted: false, Optional: false,
+	{Name: "effect", JSON: "effect", TypeName: "Effect", DeclaredTypeName: "Effect", ID: 0x36c1c83b51f24394, Kind: 15, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Effect)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 20, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 2,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName: func(v uint64) string {
 			switch v {
 			case 0:
@@ -6322,7 +6491,7 @@ var WeaponConfigTableFields = []TableFieldInfo{
 			}
 			return "???"
 		},
-		VariantId: func(v uint64) uint64 {
+		VariantID: func(v uint64) uint64 {
 			switch v {
 			case 0:
 				return 0
@@ -6334,7 +6503,7 @@ var WeaponConfigTableFields = []TableFieldInfo{
 			return 0
 		},
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  func() *TableUnionInfo { return &tableUnionArms[0] },
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6344,11 +6513,11 @@ var WeaponConfigTableFields = []TableFieldInfo{
 var WeaponConfigTableInfo TableTypeInfo
 
 func init() {
-	WeaponConfigTableInfo = TableTypeInfo{Name: "WeaponConfig", Size: uint32(unsafe.Sizeof(WeaponConfig{})), NumFields: 6, Fields: WeaponConfigTableFields, Reset: func(storage unsafe.Pointer) { WeaponConfigReset((*WeaponConfig)(storage)) }, Doc: "One weapon's tuning. A designer edits this table and nothing else.", NumTags: 1, Tags: WeaponConfigTableTags, Id: 0x0577780d86c4b0c3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WeaponConfigSaveBody(w, (*WeaponConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WeaponConfigLoadBody(&r, (*WeaponConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	WeaponConfigTableInfo = TableTypeInfo{Name: "WeaponConfig", Size: uint32(unsafe.Sizeof(WeaponConfig{})), NumFields: 6, Fields: WeaponConfigTableFields, Reset: func(storage unsafe.Pointer) { WeaponConfigReset((*WeaponConfig)(storage)) }, Doc: "One weapon's tuning. A designer edits this table and nothing else.", NumTags: 1, Tags: WeaponConfigTableTags, ID: 0x0577780d86c4b0c3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WeaponConfigSaveBody(w, (*WeaponConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WeaponConfigLoadBody(&r, (*WeaponConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return WeaponConfigSaveBodyRetain(w, (*WeaponConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return WeaponConfigLoadBodyRetain(&r, (*WeaponConfig)(p))
-	}, CookSize: 28, CookAlign: 4}
+	}, CycleIndex: 22, CycleType: tableCycleType, CookSize: 28, CookAlign: 4}
 }
 
 // WeaponConfigTableType returns WeaponConfig's reflection descriptor.
@@ -6356,87 +6525,87 @@ func WeaponConfigTableType() *TableTypeInfo { return &WeaponConfigTableInfo }
 
 // LoadoutConfigTableFields is LoadoutConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var LoadoutConfigTableFields = []TableFieldInfo{
-	{Name: "grade", Json: "grade", TypeName: "Grade", DeclaredTypeName: "Grade", Id: 0x32a89b2977c48ad4, Kind: 30, IsArray: false, Counted: false, Optional: false,
+	{Name: "grade", JSON: "grade", TypeName: "Grade", DeclaredTypeName: "Grade", ID: 0x32a89b2977c48ad4, Kind: 30, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Grade)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Grade)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },
-		VariantId:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumId(); return id },
+		VariantID:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumID(); return id },
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "grades", Json: "grades", TypeName: "Grade", DeclaredTypeName: "Grade", Id: 0xd90a4e7682f799c5, Kind: 30, IsArray: true, Counted: true, Optional: false,
+	{Name: "grades", JSON: "grades", TypeName: "Grade", DeclaredTypeName: "Grade", ID: 0xd90a4e7682f799c5, Kind: 30, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Grades[0])), CountOffset: uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), PresentOffset: 0xffffffff,
 		CookOffset: 1, CookElemSize: 1, CookCountOffset: 8, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },
-		VariantId:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumId(); return id },
+		VariantID:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumID(); return id },
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "podium", Json: "podium", TypeName: "Grade", DeclaredTypeName: "Grade", Id: 0xb46ff45a23d72549, Kind: 30, IsArray: true, Counted: false, Optional: false,
+	{Name: "podium", JSON: "podium", TypeName: "Grade", DeclaredTypeName: "Grade", ID: 0xb46ff45a23d72549, Kind: 30, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: 3, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Podium[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    func(v uint64) string { return EnumNameGrade(Grade(v)) },
-		VariantId:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumId(); return id },
+		VariantID:   func(v uint64) uint64 { id, _ := Grade(v).TableEnumID(); return id },
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "perks", Json: "perks", TypeName: "Perks", DeclaredTypeName: "Perks", Id: 0x4b06f5847096e54a, Kind: 9, IsArray: false, Counted: false, Optional: false,
+	{Name: "perks", JSON: "perks", TypeName: "Perks", DeclaredTypeName: "Perks", ID: 0x4b06f5847096e54a, Kind: 9, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Perks)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Perks)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 2,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    func(v uint64) string { return FlagNamePerks(int(v)) },
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "primary", Json: "primary", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", Id: 0xbf31137ff783e939, Kind: 13, IsArray: false, Counted: false, Optional: false,
+	{Name: "primary", JSON: "primary", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", ID: 0xbf31137ff783e939, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Primary)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Primary)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 28, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: WeaponConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "backups", Json: "backups", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", Id: 0xde28f0f5118acc24, Kind: 13, IsArray: true, Counted: false, Optional: false,
+	{Name: "backups", JSON: "backups", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", ID: 0xde28f0f5118acc24, Kind: 13, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: 2, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Backups[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 52, CookElemSize: 28, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: WeaponConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "attachments", Json: "attachments", TypeName: "Attachment", DeclaredTypeName: "Attachment", Id: 0xf901aa0340249a41, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "attachments", JSON: "attachments", TypeName: "Attachment", DeclaredTypeName: "Attachment", ID: 0xf901aa0340249a41, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Attachments[0])), CountOffset: uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), PresentOffset: 0xffffffff,
 		CookOffset: 108, CookElemSize: 8, CookCountOffset: 172, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: AttachmentTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6446,11 +6615,11 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 var LoadoutConfigTableInfo TableTypeInfo
 
 func init() {
-	LoadoutConfigTableInfo = TableTypeInfo{Name: "LoadoutConfig", Size: uint32(unsafe.Sizeof(LoadoutConfig{})), NumFields: 7, Fields: LoadoutConfigTableFields, Reset: func(storage unsafe.Pointer) { LoadoutConfigReset((*LoadoutConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xa6aa0caea28dcca1, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return LoadoutConfigSaveBody(w, (*LoadoutConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return LoadoutConfigLoadBody(&r, (*LoadoutConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	LoadoutConfigTableInfo = TableTypeInfo{Name: "LoadoutConfig", Size: uint32(unsafe.Sizeof(LoadoutConfig{})), NumFields: 7, Fields: LoadoutConfigTableFields, Reset: func(storage unsafe.Pointer) { LoadoutConfigReset((*LoadoutConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xa6aa0caea28dcca1, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return LoadoutConfigSaveBody(w, (*LoadoutConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return LoadoutConfigLoadBody(&r, (*LoadoutConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return LoadoutConfigSaveBodyRetain(w, (*LoadoutConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return LoadoutConfigLoadBodyRetain(&r, (*LoadoutConfig)(p))
-	}, CookSize: 176, CookAlign: 8}
+	}, CycleIndex: 10, CycleType: tableCycleType, CookSize: 176, CookAlign: 8}
 }
 
 // LoadoutConfigTableType returns LoadoutConfig's reflection descriptor.
@@ -6458,159 +6627,159 @@ func LoadoutConfigTableType() *TableTypeInfo { return &LoadoutConfigTableInfo }
 
 // ProfileConfigTableFields is ProfileConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ProfileConfigTableFields = []TableFieldInfo{
-	{Name: "name", Json: "name", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4bcadba8e631b86, Kind: 12, IsArray: false, Counted: true, Optional: false,
+	{Name: "name", JSON: "name", TypeName: "string", DeclaredTypeName: "string", ID: 0xc4bcadba8e631b86, Kind: 12, IsArray: false, Counted: true, Optional: false,
 		ArrayBound: 32, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Name)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Name)), CountOffset: uint32(unsafe.Offsetof(ProfileConfig{}.NameLength)), PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 36, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "icon", Json: "icon", TypeName: "bytes", DeclaredTypeName: "bytes", Id: 0xdbff4cc56c2092f0, Kind: 6, IsArray: true, Counted: true, Optional: false,
+	{Name: "icon", JSON: "icon", TypeName: "bytes", DeclaredTypeName: "bytes", ID: 0xdbff4cc56c2092f0, Kind: 6, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Icon)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Icon[0])), CountOffset: uint32(unsafe.Offsetof(ProfileConfig{}.IconLength)), PresentOffset: 0xffffffff,
 		CookOffset: 40, CookElemSize: 1, CookCountOffset: 56, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "experience", Json: "experience", TypeName: "uint32", DeclaredTypeName: "uint32", Id: 0xab8b6d521f80b969, Kind: 8, IsArray: false, Counted: false, Optional: false,
+	{Name: "experience", JSON: "experience", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0xab8b6d521f80b969, Kind: 8, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Experience)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Experience)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 60, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "tilt", Json: "tilt", TypeName: "int8", DeclaredTypeName: "int8", Id: 0x1e5088ef2e9bafc6, Kind: 2, IsArray: false, Counted: false, Optional: false,
+	{Name: "tilt", JSON: "tilt", TypeName: "int8", DeclaredTypeName: "int8", ID: 0x1e5088ef2e9bafc6, Kind: 2, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Tilt)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Tilt)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 64, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "heading", Json: "heading", TypeName: "int16", DeclaredTypeName: "int16", Id: 0xb128829190ca0f75, Kind: 3, IsArray: false, Counted: false, Optional: false,
+	{Name: "heading", JSON: "heading", TypeName: "int16", DeclaredTypeName: "int16", ID: 0xb128829190ca0f75, Kind: 3, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Heading)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Heading)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 66, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "timestamp", Json: "timestamp", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x5ddc92338ef53403, Kind: 5, IsArray: false, Counted: false, Optional: false,
+	{Name: "timestamp", JSON: "timestamp", TypeName: "int64", DeclaredTypeName: "int64", ID: 0x5ddc92338ef53403, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Timestamp)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Timestamp)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 72, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "badge", Json: "badge", TypeName: "uint8", DeclaredTypeName: "uint8", Id: 0x10bda981fe095518, Kind: 6, IsArray: false, Counted: false, Optional: false,
+	{Name: "badge", JSON: "badge", TypeName: "uint8", DeclaredTypeName: "uint8", ID: 0x10bda981fe095518, Kind: 6, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Badge)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Badge)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 80, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "port", Json: "port", TypeName: "uint16", DeclaredTypeName: "uint16", Id: 0x8c2cdb0da8933fa6, Kind: 7, IsArray: false, Counted: false, Optional: false,
+	{Name: "port", JSON: "port", TypeName: "uint16", DeclaredTypeName: "uint16", ID: 0x8c2cdb0da8933fa6, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Port)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Port)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 82, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "epoch", Json: "epoch", TypeName: "uint64", DeclaredTypeName: "uint64", Id: 0xfc9697d1196e6ba6, Kind: 9, IsArray: false, Counted: false, Optional: false,
+	{Name: "epoch", JSON: "epoch", TypeName: "uint64", DeclaredTypeName: "uint64", ID: 0xfc9697d1196e6ba6, Kind: 9, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Epoch)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Epoch)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 88, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "precision", Json: "precision", TypeName: "float64", DeclaredTypeName: "float64", Id: 0x288427f5babd05f7, Kind: 11, IsArray: false, Counted: false, Optional: false,
+	{Name: "precision", JSON: "precision", TypeName: "float64", DeclaredTypeName: "float64", ID: 0x288427f5babd05f7, Kind: 11, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Precision)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Precision)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 96, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "ratings", Json: "ratings", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xb921eb8a3d0cb0f9, Kind: 10, IsArray: true, Counted: false, Optional: false,
+	{Name: "ratings", JSON: "ratings", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xb921eb8a3d0cb0f9, Kind: 10, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Ratings)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Ratings[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 104, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "has_loadout", Json: "has_loadout", TypeName: "bool", DeclaredTypeName: "bool", Id: 0xa06f5e0a148e253c, Kind: 1, IsArray: false, Counted: false, Optional: false,
+	{Name: "has_loadout", JSON: "has_loadout", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xa06f5e0a148e253c, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.HasLoadout)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.HasLoadout)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 120, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "loadout", Json: "loadout", TypeName: "LoadoutConfig", DeclaredTypeName: "LoadoutConfig", Id: 0x5759ce7586bbb5a3, Kind: 13, IsArray: false, Counted: false, Optional: false,
+	{Name: "loadout", JSON: "loadout", TypeName: "LoadoutConfig", DeclaredTypeName: "LoadoutConfig", ID: 0x5759ce7586bbb5a3, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Loadout)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Loadout)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 128, CookElemSize: 176, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: LoadoutConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6620,11 +6789,11 @@ var ProfileConfigTableFields = []TableFieldInfo{
 var ProfileConfigTableInfo TableTypeInfo
 
 func init() {
-	ProfileConfigTableInfo = TableTypeInfo{Name: "ProfileConfig", Size: uint32(unsafe.Sizeof(ProfileConfig{})), NumFields: 13, Fields: ProfileConfigTableFields, Reset: func(storage unsafe.Pointer) { ProfileConfigReset((*ProfileConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x19fffcb7859da778, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ProfileConfigSaveBody(w, (*ProfileConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ProfileConfigLoadBody(&r, (*ProfileConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	ProfileConfigTableInfo = TableTypeInfo{Name: "ProfileConfig", Size: uint32(unsafe.Sizeof(ProfileConfig{})), NumFields: 13, Fields: ProfileConfigTableFields, Reset: func(storage unsafe.Pointer) { ProfileConfigReset((*ProfileConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x19fffcb7859da778, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ProfileConfigSaveBody(w, (*ProfileConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ProfileConfigLoadBody(&r, (*ProfileConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return ProfileConfigSaveBodyRetain(w, (*ProfileConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ProfileConfigLoadBodyRetain(&r, (*ProfileConfig)(p))
-	}, CookSize: 304, CookAlign: 8}
+	}, CycleIndex: 13, CycleType: tableCycleType, CookSize: 304, CookAlign: 8}
 }
 
 // ProfileConfigTableType returns ProfileConfig's reflection descriptor.
@@ -6632,27 +6801,27 @@ func ProfileConfigTableType() *TableTypeInfo { return &ProfileConfigTableInfo }
 
 // AttachmentTableFields is Attachment's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var AttachmentTableFields = []TableFieldInfo{
-	{Name: "slot", Json: "slot", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x6a771618f6fe31d1, Kind: 4, IsArray: false, Counted: false, Optional: false,
+	{Name: "slot", JSON: "slot", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x6a771618f6fe31d1, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(AttachmentRow{}.Slot)), ElemSize: uint32(unsafe.Sizeof(AttachmentRow{}.Slot)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 7.0, RangeIntMin: 0, RangeIntMax: 7, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "power", Json: "power", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xeef9d1358ae7b4e6, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "power", JSON: "power", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xeef9d1358ae7b4e6, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), ElemSize: uint32(unsafe.Sizeof(AttachmentRow{}.Power)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6662,11 +6831,11 @@ var AttachmentTableFields = []TableFieldInfo{
 var AttachmentTableInfo TableTypeInfo
 
 func init() {
-	AttachmentTableInfo = TableTypeInfo{Name: "Attachment", Size: uint32(unsafe.Sizeof(AttachmentRow{})), NumFields: 2, Fields: AttachmentTableFields, Reset: func(storage unsafe.Pointer) { AttachmentReset((*AttachmentRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xddfc86d2b1251528, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return AttachmentSaveBody(w, (*AttachmentRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return AttachmentLoadBody(&r, (*AttachmentRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	AttachmentTableInfo = TableTypeInfo{Name: "Attachment", Size: uint32(unsafe.Sizeof(AttachmentRow{})), NumFields: 2, Fields: AttachmentTableFields, Reset: func(storage unsafe.Pointer) { AttachmentReset((*AttachmentRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xddfc86d2b1251528, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return AttachmentSaveBody(w, (*AttachmentRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return AttachmentLoadBody(&r, (*AttachmentRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return AttachmentSaveBodyRetain(w, (*AttachmentRow)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return AttachmentLoadBodyRetain(&r, (*AttachmentRow)(p))
-	}, CookSize: 8, CookAlign: 4}
+	}, CycleIndex: 2, CycleType: tableCycleType, CookSize: 8, CookAlign: 4}
 }
 
 // AttachmentTableType returns Attachment's reflection descriptor.
@@ -6674,15 +6843,15 @@ func AttachmentTableType() *TableTypeInfo { return &AttachmentTableInfo }
 
 // BuffTableFields is Buff's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var BuffTableFields = []TableFieldInfo{
-	{Name: "multiplier", Json: "multiplier", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x9adc623a805c87c6, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "multiplier", JSON: "multiplier", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x9adc623a805c87c6, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), ElemSize: uint32(unsafe.Sizeof(BuffRow{}.Multiplier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6692,7 +6861,7 @@ var BuffTableFields = []TableFieldInfo{
 var BuffTableInfo TableTypeInfo
 
 func init() {
-	BuffTableInfo = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(BuffRow{})), NumFields: 1, Fields: BuffTableFields, Reset: func(storage unsafe.Pointer) { BuffReset((*BuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x2a43bfa7e454ddac, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return BuffSaveBody(w, (*BuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return BuffLoadBody(&r, (*BuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return BuffSaveBodyRetain(w, (*BuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return BuffLoadBodyRetain(&r, (*BuffRow)(p)) }, CookSize: 4, CookAlign: 4}
+	BuffTableInfo = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(BuffRow{})), NumFields: 1, Fields: BuffTableFields, Reset: func(storage unsafe.Pointer) { BuffReset((*BuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x2a43bfa7e454ddac, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return BuffSaveBody(w, (*BuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return BuffLoadBody(&r, (*BuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return BuffSaveBodyRetain(w, (*BuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return BuffLoadBodyRetain(&r, (*BuffRow)(p)) }, CycleIndex: 3, CycleType: tableCycleType, CookSize: 4, CookAlign: 4}
 }
 
 // BuffTableType returns Buff's reflection descriptor.
@@ -6700,15 +6869,15 @@ func BuffTableType() *TableTypeInfo { return &BuffTableInfo }
 
 // DebuffTableFields is Debuff's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var DebuffTableFields = []TableFieldInfo{
-	{Name: "amount", Json: "amount", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
+	{Name: "amount", JSON: "amount", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), ElemSize: uint32(unsafe.Sizeof(DebuffRow{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100.0, RangeIntMin: 0, RangeIntMax: 100, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6718,7 +6887,7 @@ var DebuffTableFields = []TableFieldInfo{
 var DebuffTableInfo TableTypeInfo
 
 func init() {
-	DebuffTableInfo = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(DebuffRow{})), NumFields: 1, Fields: DebuffTableFields, Reset: func(storage unsafe.Pointer) { DebuffReset((*DebuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x52bb98fcd979eab7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DebuffSaveBody(w, (*DebuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DebuffLoadBody(&r, (*DebuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DebuffSaveBodyRetain(w, (*DebuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DebuffLoadBodyRetain(&r, (*DebuffRow)(p)) }, CookSize: 4, CookAlign: 4}
+	DebuffTableInfo = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(DebuffRow{})), NumFields: 1, Fields: DebuffTableFields, Reset: func(storage unsafe.Pointer) { DebuffReset((*DebuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x52bb98fcd979eab7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DebuffSaveBody(w, (*DebuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DebuffLoadBody(&r, (*DebuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DebuffSaveBodyRetain(w, (*DebuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DebuffLoadBodyRetain(&r, (*DebuffRow)(p)) }, CycleIndex: 4, CycleType: tableCycleType, CookSize: 4, CookAlign: 4}
 }
 
 // DebuffTableType returns Debuff's reflection descriptor.
@@ -6733,15 +6902,15 @@ func init() {
 				Value BuffRow
 			})(unsafe.Add(storage, 4))
 			BuffReset(&value.Value)
-		}, Field: TableFieldInfo{Name: "buff", Json: "buff", TypeName: "Buff", DeclaredTypeName: "Buff", Id: 0xffb5be9be2e469cc, Kind: 13, IsArray: false, Counted: false, Optional: false,
+		}, Field: TableFieldInfo{Name: "buff", JSON: "buff", TypeName: "Buff", DeclaredTypeName: "Buff", ID: 0xffb5be9be2e469cc, Kind: 13, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: 4, ElemSize: 4, CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
-			VariantId:   nil,
+			VariantID:   nil,
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyID: nil,
 			Arms:  nil,
 			Guard: "", Table: BuffTableType,
 			Doc: "A multiplier that rides while the effect is live.", NumTags: 1, Tags: EffectTableBuffTags},
@@ -6751,15 +6920,15 @@ func init() {
 				Value DebuffRow
 			})(unsafe.Add(storage, 4))
 			DebuffReset(&value.Value)
-		}, Field: TableFieldInfo{Name: "debuff", Json: "debuff", TypeName: "Debuff", DeclaredTypeName: "Debuff", Id: 0x13cdc5ede73d2fd7, Kind: 13, IsArray: false, Counted: false, Optional: false,
+		}, Field: TableFieldInfo{Name: "debuff", JSON: "debuff", TypeName: "Debuff", DeclaredTypeName: "Debuff", ID: 0x13cdc5ede73d2fd7, Kind: 13, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: 4, ElemSize: 4, CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
-			VariantId:   nil,
+			VariantID:   nil,
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyID: nil,
 			Arms:  nil,
 			Guard: "", Table: DebuffTableType,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},

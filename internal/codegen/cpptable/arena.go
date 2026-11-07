@@ -25,12 +25,11 @@ import (
 
 // cppBlobThunks is what the numbering stores for a BYTE BUFFER record
 // (docs/SPEC-TABLES.md §2.5, §3.1), and it is emitted only into a unit that
-// DECLARES one. The four are named at exactly one site in this emitter — the
+// DECLARES one. The two are named at exactly one site in this emitter — the
 // `blob:` arm of the pointer edge walk in pointers.go — so a unit that
-// declares no *bytes and no *string has no call site for them and carried
-// thirty-three lines it could not reach. The two RESERVED TYPE IDS the block
-// used to sit under stay in EVERY pointered unit: the retain and message paths
-// compare against them whether or not this unit writes a blob of its own.
+// declares no *bytes and no *string has no call site for them. The two
+// RESERVED TYPE IDS stay in EVERY pointered unit: the retain path compares
+// against them whether or not this unit writes a blob of its own.
 //
 // THE CENSUS IS ir.BlobPointerFields AND NOT ir.PointerReachableBlobs, though
 // the two agree on every schema the corpus holds. The emitter's pointer edge
@@ -55,25 +54,6 @@ inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWrite
     const TableBlob * blob = (const TableBlob *) node;
     w.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );
     return true;
-}
-
-// and the same two on the MESSAGE FORM (§3.3): a blob record is its length at
-// thirty-two raw bits, an ALIGN, then the bytes verbatim
-template <typename Ctx>
-inline int64_t TableBlobMessageMeasureThunk( const void *, const TableNumbering &, int64_t, int64_t at, const void * node )
-{
-    const int64_t length = (int64_t) ( (const TableBlob *) node )->length;
-    return 32 + TableAlignBits( at + 32 ) + length * 8;
-}
-
-template <typename Ctx>
-inline bool TableBlobMessageSaveThunk( const void *, const TableNumbering &, int64_t, TableBitWriter & w, const void * node )
-{
-    const TableBlob * blob = (const TableBlob *) node;
-    w.put( (uint64_t) blob->length, 32 );
-    w.align();
-    w.putbytes( (const uint8_t *) ( blob + 1 ), (int64_t) blob->length );
-    return !w.overflow;
 }
 `
 
@@ -115,7 +95,11 @@ func tableArenaRuntime(u *ir.Unit, anyExtent bool) string {
         if ( rounded > (int64_t) kTableSlabBytes )
         {
             at = TableArenaGrabSpan( *arena, rounded );
-            if ( at == kTableAllocFailed ) { at = 0; return NULL; }
+            if ( at == kTableAllocFailed )
+            {
+                at = 0;
+                return NULL;
+            }
             return TableArenaAt( *arena, at );
         }
         if ( end == 0 || next + (uint32_t) rounded > end )
@@ -164,8 +148,8 @@ static const uint32_t kTableSegmentBits = 22;                          // 4 MiB 
 static const uint32_t kTableSegmentSize = 1u << kTableSegmentBits;
 static const uint32_t kTableSegmentMask = kTableSegmentSize - 1u;
 static const uint32_t kTableMaxSegments = 1u << ( 32 - kTableSegmentBits ); // 1024 -> 4 GiB
-static const uint32_t kTableSlabBytes   = 64u * 1024u;                 // one atomic per slab
-static const uint32_t kTableAlign       = ` + fmt.Sprint(align) + `;` + strings.Repeat(" ", 28-len(fmt.Sprint(align))) + `// ` + alignComment + `
+static const uint32_t kTableSlabBytes = 64u * 1024u;                 // one atomic per slab
+static const uint32_t kTableAlign = ` + fmt.Sprint(align) + `;` + strings.Repeat(" ", 28-len(fmt.Sprint(align))) + `// ` + alignComment + `
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
 
 // ---- THE CALLER'S ALLOCATOR (docs/SPEC-TABLES.md §6.5) ----
@@ -192,8 +176,16 @@ struct TableAllocator
 // The default pair, and it is the one every entry point takes when the caller
 // names none. It calls schema_allocate / schema_release, so a program with its
 // own C-library replacement can move the floor without writing a struct at all.
-inline void * table_default_alloc( void * context, int64_t bytes ) { (void) context; return schema_allocate( bytes ); }
-inline void table_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
+inline void * table_default_alloc( void * context, int64_t bytes )
+{
+    (void) context;
+    return schema_allocate( bytes );
+}
+inline void table_default_free( void * context, void * pointer )
+{
+    (void) context;
+    schema_release( pointer );
+}
 
 inline TableAllocator TableDefaultAllocator()
 {
@@ -249,7 +241,8 @@ struct TableRef
 
 // TableSlot is what Alloc hands back: usable as the node pointer (write
 // fields through it) AND as the reference to store in a pointer field.
-template <typename T> struct TableSlot
+template <typename T>
+struct TableSlot
 {
     T * ptr = NULL;
     TableRef ref;
@@ -343,7 +336,7 @@ struct TableStringSlot
 // plus threads x 64 KiB. That is the price of never synchronizing per node.
 struct TableArena
 {
-    std::atomic<uint8_t *> segments[ kTableMaxSegments ];
+    std::atomic<uint8_t *> segments[kTableMaxSegments];
     std::atomic<uint32_t> cursor; // (segment << kTableSegmentBits) | bytes handed out
     bool locked = false;          // MONOTONIC: Lock() is one-way, there is no unlock
     // THE ARENA CARRIES ITS OWN, so everything downstream of a builder —
@@ -376,7 +369,7 @@ inline void TableArenaShutdown( TableArena & arena )
 // one L1 load plus an add: the segment table is 8 KiB and stays hot
 inline uint8_t * TableArenaAt( const TableArena & arena, uint32_t offset )
 {
-    return arena.segments[ offset >> kTableSegmentBits ].load( std::memory_order_relaxed ) + ( offset & kTableSegmentMask );
+    return arena.segments[offset >> kTableSegmentBits].load( std::memory_order_relaxed ) + ( offset & kTableSegmentMask );
 }
 
 // TableArenaGrabSlab hands one worker its next private slab. Returns
@@ -472,7 +465,8 @@ struct TableWorker
     uint32_t next = 0;
     uint32_t end = 0;
 
-    template <typename T> TableSlot<T> Alloc()
+    template <typename T>
+    TableSlot<T> Alloc()
     {
         static_assert( alignof( T ) <= kTableAlign, "a table node's alignment must fit the arena's" );
         TableSlot<T> slot;
@@ -532,7 +526,11 @@ struct TableWorker
         if ( bytes > (int64_t) kTableSlabBytes )
         {
             at = TableArenaGrabSpan( *arena, bytes );
-            if ( at == kTableAllocFailed ) { at = 0; return NULL; }
+            if ( at == kTableAllocFailed )
+            {
+                at = 0;
+                return NULL;
+            }
         }
         else
         {
@@ -654,7 +652,7 @@ inline int64_t TablePackMapSlot( const TablePackMap & map, const void * key )
 inline TablePackEntry * TablePackMapFind( TablePackMap & map, const void * key )
 {
     if ( map.capacity == 0 ) { return NULL; }
-    TablePackEntry * entry = &map.entries[ TablePackMapSlot( map, key ) ];
+    TablePackEntry * entry = &map.entries[TablePackMapSlot( map, key )];
     return entry->key == key ? entry : NULL;
 }
 
@@ -673,7 +671,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
     for ( int64_t i = 0; i < map.capacity; i++ )
     {
         if ( map.entries[i].key == NULL ) { continue; }
-        grown.entries[ TablePackMapSlot( grown, map.entries[i].key ) ] = map.entries[i];
+        grown.entries[TablePackMapSlot( grown, map.entries[i].key )] = map.entries[i];
         grown.count++;
     }
     table_release( map.allocator, map.entries );
@@ -727,8 +725,10 @@ inline void TablePackMapClose( TablePackMap & map, const void * key, int64_t hin
 
 // ---- resolution contexts: which encoding a walk is reading ----
 
-struct TableArenaCtx { const TableArena * arena; };
-struct TableRegionCtx {};
+struct TableArenaCtx
+{ const TableArena * arena; };
+struct TableRegionCtx
+{};
 
 // ---- a BYTE BUFFER's resolution (docs/SPEC-TABLES.md §2.5, §6.3) ----
 //
@@ -738,9 +738,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -755,13 +761,21 @@ inline const TableBlob * TableBlobAt( const TableArena & arena, const TableRef &
 inline TableBytesView TableBytesViewOf( const TableBlob * blob )
 {
     TableBytesView view = { NULL, 0 };
-    if ( blob != NULL ) { view.data = (const uint8_t *) ( blob + 1 ); view.length = (int64_t) blob->length; }
+    if ( blob != NULL )
+    {
+        view.data = (const uint8_t *) ( blob + 1 );
+        view.length = (int64_t) blob->length;
+    }
     return view;
 }
 inline TableStringView TableStringViewOf( const TableBlob * blob )
 {
     TableStringView view = { NULL, 0 };
-    if ( blob != NULL ) { view.data = (const char *) ( blob + 1 ); view.length = (int64_t) blob->length; }
+    if ( blob != NULL )
+    {
+        view.data = (const char *) ( blob + 1 );
+        view.length = (int64_t) blob->length;
+    }
     return view;
 }
 
@@ -770,8 +784,10 @@ inline TableBytesView TableBytesAt( const TableRef & ref ) { return TableBytesVi
 inline TableStringView TableStringAt( const TableRef & ref ) { return TableStringViewOf( TableBlobAt( ref ) ); }
 // and the context forms a walk uses: a region context, an arena context, or
 // the arena itself while the builder is mutable
-template <typename Ctx> inline TableBytesView TableBytesAt( const Ctx & ctx, const TableRef & ref ) { return TableBytesViewOf( TableBlobAt( ctx, ref ) ); }
-template <typename Ctx> inline TableStringView TableStringAt( const Ctx & ctx, const TableRef & ref ) { return TableStringViewOf( TableBlobAt( ctx, ref ) ); }
+template <typename Ctx>
+inline TableBytesView TableBytesAt( const Ctx & ctx, const TableRef & ref ) { return TableBytesViewOf( TableBlobAt( ctx, ref ) ); }
+template <typename Ctx>
+inline TableStringView TableStringAt( const Ctx & ctx, const TableRef & ref ) { return TableStringViewOf( TableBlobAt( ctx, ref ) ); }
 
 // allocate a blob in the arena and point the slot at it; the slot holds the
 // arena offset, as every slot does while the builder is mutable
@@ -829,20 +845,8 @@ struct TableNodeEntry
 {
     const void * node;
     uint64_t type_id;
-    // the type id's MESSAGE-FORM SLOT (docs/SPEC-TABLES.md §3.3), stored where
-    // the numbering walk stores the id itself and for the same reason: the
-    // target's type is known STATICALLY at the site that numbers it, so a
-    // form 2 save reads the slot out of the entry instead of looking an id up.
-    // Every pointer target's type id is an entry of the announcement, which is
-    // what makes the slot a compile-time fact of a POINTERED message too.
-    uint64_t type_slot;
-    int64_t ( * measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
-    bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
-    // the same two over the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a bitpacked
-    // body at a bit position, its pointer indices at the width the node count
-    // settled
-    int64_t ( * message_measure )( const void * ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const void * node );
-    bool ( * message_save )( const void * ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const void * node );
+    int64_t ( *measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
+    bool ( *save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
 };
 
 struct TableNumbering
@@ -885,7 +889,7 @@ inline void TableNumberingShutdown( TableNumbering & n )
 inline bool TableNumberingIndex( const TableNumbering & n, const void * node, uint64_t & index )
 {
     if ( n.seen.capacity == 0 ) { return false; }
-    const TablePackEntry & entry = n.seen.entries[ TablePackMapSlot( n.seen, node ) ];
+    const TablePackEntry & entry = n.seen.entries[TablePackMapSlot( n.seen, node )];
     if ( entry.key != node ) { return false; }
     index = (uint64_t) entry.offset;
     return true;
@@ -930,18 +934,6 @@ template <typename Ctx, typename T>
 inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node )
 {
     return TableNodeSave( *(const Ctx *) ctx, numbering, w, ids, *(const T *) node );
-}
-
-template <typename Ctx, typename T>
-inline int64_t TableNodeMessageMeasureThunk( const void * ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const void * node )
-{
-    return TableNodeMessageMeasure( *(const Ctx *) ctx, numbering, index_bits, at, *(const T *) node );
-}
-
-template <typename Ctx, typename T>
-inline bool TableNodeMessageSaveThunk( const void * ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const void * node )
-{
-    return TableNodeMessageSave( *(const Ctx *) ctx, numbering, index_bits, w, *(const T *) node );
 }
 // ---- a BYTE BUFFER's record (docs/SPEC-TABLES.md §2.5, §3.1) ----
 //
@@ -1033,6 +1025,9 @@ struct TableNodeMap
     // takes the SELF-RELATIVE delta so a deref is one add, and the tool's
     // builder path takes the node's ARENA OFFSET (§6.3).
     bool arena = false;` + carveMember + `
+    // During construction, keep validated TABLE indices for the cycle check.
+    // Blob references resolve normally. No root is returned in this state.
+    bool cycle_indices = false;
     // ONCE is the file and message REGION reads' rule (§2.5, §16.7): the first
     // slot naming a blob marks its directory entry, and every later slot naming
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
@@ -1069,7 +1064,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         // second slot naming it is blob_shared and still resolves to the one
         // node. No other target has this reading.
         if ( !map.once || entry.type_id != ~target ||
-             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
+            ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
             report->kind_mismatch++;
             return;
@@ -1080,8 +1075,216 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         map.entries[index - 1].type_id = ~target;
     }
+    if ( map.cycle_indices && target != kTableBytesTypeId && target != kTableStringTypeId )
+    {
+        slot.value = (int64_t) index;
+        return;
+    }
     slot.value = map.arena ? (int64_t) entry.offset
-                          : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
+                           : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
+}
+
+// ---- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4) ----
+//
+// During construction table pointer slots hold validated wire indices. Kahn's
+// two passes therefore reach the directory directly: each node is entered once
+// and each slot is visited a fixed number of times, with no sorting or reverse
+// offset lookup. A final pass resolves the slots to their published offsets.
+// The directory's type_id word carries the degree and stack link; its offset
+// high bits carry the type ordinal. The caller restores both before publishing
+// a region. Region loads allocate nothing and no pointer graph is recursed.
+static const uint64_t kTableCycleAbsent = 1ull << 63;
+static const uint64_t kTableCycleVertex = 1ull << 62;
+static const int kTableCycleOrdinalShift = 48;
+static const uint64_t kTableCycleOffsetMask = ( 1ull << 48 ) - 1;
+
+struct TableCycle
+{
+    TableNodeDirEntry * entries = NULL;
+    int64_t count = 0;
+    const uint8_t * base = NULL;
+    const TableArena * arena = NULL;
+    uint32_t head = 0;
+    int64_t vertices = 0;
+    int64_t processed = 0;
+    bool releasing = false;
+    bool resolving = false;
+    bool broken = false;
+};
+
+inline bool TableCycleIsVertex( const TableCycle & c, int64_t p )
+{
+    return ( c.entries[p].offset & ( kTableCycleAbsent | kTableCycleVertex ) ) == kTableCycleVertex;
+}
+
+inline uint32_t TableCycleOrdinal( const TableCycle & c, int64_t p )
+{
+    return (uint32_t) ( ( c.entries[p].offset >> kTableCycleOrdinalShift ) & 0x3FFFu );
+}
+
+inline const void * TableCycleNode( const TableCycle & c, int64_t p )
+{
+    const uint64_t offset = c.entries[p].offset & kTableCycleOffsetMask;
+    if ( c.arena != NULL ) { return (const void *) TableArenaAt( *c.arena, (uint32_t) offset ); }
+    return (const void *) ( c.base + offset );
+}
+
+inline bool TableCycleBegin( TableCycle & c, TableNodeDirEntry * entries, int64_t count, const uint8_t * base, const TableArena * arena, uint32_t ( *ordinal )( uint64_t type_id ) )
+{
+    c.entries = entries;
+    c.count = count;
+    c.base = base;
+    c.arena = arena;
+    if ( count <= 0 || count >= ( 1ll << 31 ) )
+    {
+        c.broken = true;
+        return false;
+    }
+    for ( int64_t p = 0; p < count; p++ )
+    {
+        TableNodeDirEntry & e = entries[p];
+        if ( e.offset == kTableNodeAbsent )
+        {
+            e.offset = kTableCycleAbsent;
+            continue;
+        }
+        if ( e.offset > kTableCycleOffsetMask )
+        {
+            c.broken = true;
+            return false;
+        }
+        const uint32_t kind = ordinal( e.type_id );
+        if ( kind == 0 ) { continue; } // a byte buffer or an already marked blob
+        e.offset |= kTableCycleVertex | ( (uint64_t) kind << kTableCycleOrdinalShift );
+        e.type_id = 0;
+        c.vertices++;
+    }
+    return true;
+}
+
+inline void TableCyclePush( TableCycle & c, int64_t p )
+{
+    c.entries[p].type_id = ( c.entries[p].type_id & 0xFFFFFFFFull ) | ( (uint64_t) c.head << 32 );
+    c.head = (uint32_t) ( p + 1 );
+}
+
+// TableCycleEdge is one stored pointer slot: pass one counts the in-degree of
+// the node it names, and pass two takes the count down and stacks the node
+// when the last slot naming it has been met.
+inline bool TableCycleEdge( TableCycle & c, const TableRef & slot )
+{
+    if ( slot.value == 0 ) { return true; }
+    const uint64_t index = (uint64_t) slot.value;
+    if ( index - 1 >= (uint64_t) c.count )
+    {
+        c.broken = true;
+        return false;
+    }
+    const int64_t p = (int64_t) index - 1;
+    if ( !TableCycleIsVertex( c, p ) )
+    {
+        c.broken = true;
+        return false;
+    }
+    if ( c.resolving )
+    {
+        const uint64_t offset = c.entries[p].offset & kTableCycleOffsetMask;
+        // The visitor borrows const views, but these are this load's mutable
+        // construction slots. No caller can observe their temporary indices.
+        TableRef & output = const_cast<TableRef &>( slot );
+        output.value = c.arena != NULL ? (int64_t) offset
+                                       : (int64_t) ( ( c.base + offset ) - (const uint8_t *) &slot );
+        return true;
+    }
+    const uint32_t degree = (uint32_t) c.entries[p].type_id;
+    if ( !c.releasing )
+    {
+        if ( degree == 0xFFFFFFFFu )
+        {
+            c.broken = true;
+            return false;
+        }
+        c.entries[p].type_id += 1;
+        return true;
+    }
+    if ( degree == 0 )
+    {
+        c.broken = true;
+        return false;
+    }
+    c.entries[p].type_id -= 1;
+    if ( degree == 1 ) { TableCyclePush( c, p ); } // the last slot naming it: its descent is free
+    return true;
+}
+
+// TableCycleAcyclic checks the graph, then resolves its slots. VISIT enumerates one node's stored
+// slots through TableCycleEdge. True is a graph with no cycle; false is a
+// cycle, or a directory this check could not carry.
+template <typename Ctx, typename Visit>
+inline bool TableCycleAcyclic( TableCycle & c, const Ctx & ctx, Visit visit )
+{
+    if ( c.broken ) { return false; }
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
+    }
+    c.releasing = true;
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && (uint32_t) c.entries[p].type_id == 0 ) { TableCyclePush( c, p ); }
+    }
+    while ( c.head != 0 )
+    {
+        const int64_t p = (int64_t) c.head - 1;
+        c.head = (uint32_t) ( c.entries[p].type_id >> 32 );
+        // a node is entered ONCE: more entries than nodes is a walk gone wrong
+        if ( ++c.processed > c.vertices )
+        {
+            c.broken = true;
+            return false;
+        }
+        if ( !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
+    }
+    if ( c.broken || c.processed != c.vertices ) { return false; } // an unfreed node sits on a cycle
+    c.resolving = true;
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
+    }
+    return !c.broken;
+}
+
+// TableCycleRestore puts back one table node's type id, the one the wire
+// carries; a byte buffer's entry was never touched.
+inline void TableCycleRestore( TableCycle & c, int64_t p, uint64_t type_id )
+{
+    if ( p >= 0 && p < c.count && TableCycleIsVertex( c, p ) ) { c.entries[p].type_id = type_id; }
+}
+
+// TableCycleEnd removes the construction tags from directory offsets.
+inline void TableCycleEnd( TableCycle & c )
+{
+    for ( int64_t p = 0; p < c.count && c.entries != NULL; p++ )
+    {
+        uint64_t & offset = c.entries[p].offset;
+        if ( ( offset & kTableCycleAbsent ) != 0 ) { offset = kTableNodeAbsent; }
+        else
+        {
+            offset &= kTableCycleOffsetMask;
+        }
+    }
 }
 
 // ---- the record SCAN, and it is the whole of load's bound (§3.1) ----
@@ -1130,9 +1333,17 @@ inline bool TableNodeScanOpen( TableNodeScan & s )
         if ( id == kTableNodeTableFieldId )
         {
             s.present = true;
-            if ( kind != 12 ) { s.malformed = true; return false; }
+            if ( kind != 12 )
+            {
+                s.malformed = true;
+                return false;
+            }
             uint64_t length = 0;
-            if ( !s.fields.getleb( length ) || !s.fields.room( length ) ) { s.malformed = true; return false; }
+            if ( !s.fields.getleb( length ) || !s.fields.room( length ) )
+            {
+                s.malformed = true;
+                return false;
+            }
             s.payload = s.fields.buffer + s.fields.offset;
             s.payload_size = (int64_t) length;
             s.fields.offset += (int64_t) length;
@@ -1142,14 +1353,18 @@ inline bool TableNodeScanOpen( TableNodeScan & s )
     }
     if ( s.payload == NULL ) { return false; }
     TableReader head( s.payload, s.payload_size, s.fields.report, s.ids );
-    if ( !head.getleb( s.declared ) ) { s.malformed = true; return false; }
+    if ( !head.getleb( s.declared ) )
+    {
+        s.malformed = true;
+        return false;
+    }
     s.payload_offset = head.offset;
     return true;
 }
 
 // the next record, or false at the end of the table — s.malformed says whether
 // the end was the end or the framing giving out
-inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint8_t * & body, int64_t & length )
+inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint8_t *& body, int64_t & length )
 {
     if ( !s.opened && !TableNodeScanOpen( s ) ) { return false; }
     if ( s.payload == NULL || s.payload_offset >= s.payload_size ) { return false; }

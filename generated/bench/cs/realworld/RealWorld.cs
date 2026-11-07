@@ -18,6 +18,7 @@
 // the caller's responsibility to be correct on the write side; every check
 // the reader needs is on the read side and runs in every build.
 
+using System;
 using System.Diagnostics;
 using Serialize;
 
@@ -35,12 +36,23 @@ namespace Realworld
         Combat = 3,
         Docked = 4,
         Warping = 5,
-        Count = 5, // the declared variant count (SPEC §4.2)
-        Max = 5, // the exported extent (SPEC §4.2)
+    }
+
+    // PacketFlags — one bit per variant, consumed as masks; wire 5 bits (SPEC §4.2).
+    // The backing type is ulong in every declaration, the full width §4.2
+    // requires, so bits a newer build appended survive a read and a rewrite.
+    [Flags]
+    public enum PacketFlags : ulong
+    {
+        Shielded = 1ul << 0,
+        Cloaked = 1ul << 1,
+        Overheated = 1ul << 2,
+        LowPower = 1ul << 3,
+        Jamming = 1ul << 4,
     }
 
     // type RealPacket
-    public sealed class RealPacket
+    public struct RealPacket
     {
         public int F001Int; // wire [-805495, 805495]
         public double F002F64;
@@ -53,7 +65,7 @@ namespace Realworld
         public sbyte F009Int; // wire [-22, 22]
         public float F010F32;
         public uint F011Bits;
-        public bool F012Bool = true; // specified default at construction; Zero* gives the §5 zero form
+        public bool F012Bool; // specified default at construction; Zero* gives the §5 zero form
 
         // f012_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -88,7 +100,7 @@ namespace Realworld
         public short F040Fixed; // wire [-5, 5]
         public sbyte F041Int; // wire [-55, 55]
         public uint F042Bits;
-        public bool F043Bool = false; // specified default at construction; Zero* gives the §5 zero form
+        public bool F043Bool; // specified default at construction; Zero* gives the §5 zero form
 
         // f043_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -99,7 +111,7 @@ namespace Realworld
 
         public double F048F64;
         public ushort F049Ufixed; // wire [0, 3]
-        public bool F050Bool = true; // specified default at construction; Zero* gives the §5 zero form
+        public bool F050Bool; // specified default at construction; Zero* gives the §5 zero form
 
         // f050_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -127,7 +139,7 @@ namespace Realworld
         public float F071Cf32; // compressed float [0.0, 10.0] @ 0.02
         public float F072Cf32; // compressed float [0.0, 100.0] @ 0.01
         public sbyte F073Int; // wire [-4, 4]
-        public bool F074Bool = false; // specified default at construction; Zero* gives the §5 zero form
+        public bool F074Bool; // specified default at construction; Zero* gives the §5 zero form
 
         // f074_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -148,13 +160,18 @@ namespace Realworld
         public short F088Int; // wire [-694, 694]
         public ulong F089Bits;
         public byte F090Uint; // wire [0, 214]
-        public ulong F091Flags; // PacketFlags — consumed as masks, ulong storage (SPEC §4.2)
+        public PacketFlags F091Flags;
         public bool F092Bool;
         public ulong F093Bits;
         public bool F094Bool;
         public int F095Fixed; // wire [-1577, 1577]
         public uint F096Bits;
         public uint F097Bits;
+
+        public RealPacket()
+        {
+            Schema.InitRealPacket(ref this);
+        }
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -166,37 +183,31 @@ namespace Realworld
         // sides at the same id speak identical bits; there is no other versioning.
         public const ulong ProtocolId = 0x1922430092518648;
 
-        // EnumNamePacketMode: debug/log/tooling name for any PacketMode wire value —
+        public const PacketMode PacketModeMax = (PacketMode)5; // the exported extent (SPEC §4.2)
+
+        // EnumNamePacketMode: debug/log/tooling name for any PacketMode value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNamePacketMode(ulong value)
+        public static string EnumNamePacketMode(PacketMode value)
         {
             switch (value)
             {
-                case (ulong)PacketMode.None:
+                case PacketMode.None:
                     return "None";
-                case (ulong)PacketMode.Idle:
+                case PacketMode.Idle:
                     return "Idle";
-                case (ulong)PacketMode.Active:
+                case PacketMode.Active:
                     return "Active";
-                case (ulong)PacketMode.Combat:
+                case PacketMode.Combat:
                     return "Combat";
-                case (ulong)PacketMode.Docked:
+                case PacketMode.Docked:
                     return "Docked";
-                case (ulong)PacketMode.Warping:
+                case PacketMode.Warping:
                     return "Warping";
                 default:
                     return "???";
             }
         }
 
-        // PacketFlags — one bit per variant, consumed as masks; flags-typed fields store a
-        // plain ulong, wire 5 bits (SPEC §4.2). Masks are flat PascalCase — the Go
-        // target's spelling exactly, so the checker's existing claims cover them.
-        public const ulong PacketFlagsShielded = 1ul << 0;
-        public const ulong PacketFlagsCloaked = 1ul << 1;
-        public const ulong PacketFlagsOverheated = 1ul << 2;
-        public const ulong PacketFlagsLowPower = 1ul << 3;
-        public const ulong PacketFlagsJamming = 1ul << 4;
         public const long PacketFlagsCount = 5; // the declared variant count (SPEC §4.2)
 
         // FlagNamePacketFlags: debug/log/tooling name for bit i of PacketFlags —
@@ -216,43 +227,44 @@ namespace Realworld
 
         // FlagNamesPacketFlags renders the set bits of value as "A|B" — "0" for the
         // empty set, bits past the declared variants as hex
-        public static string FlagNamesPacketFlags(ulong value)
+        public static string FlagNamesPacketFlags(PacketFlags value)
         {
             string names = "";
-            if ((value & (1ul << 0)) != 0)
+            if ((value & PacketFlags.Shielded) != 0)
             {
                 names += "|Shielded";
             }
-            if ((value & (1ul << 1)) != 0)
+            if ((value & PacketFlags.Cloaked) != 0)
             {
                 names += "|Cloaked";
             }
-            if ((value & (1ul << 2)) != 0)
+            if ((value & PacketFlags.Overheated) != 0)
             {
                 names += "|Overheated";
             }
-            if ((value & (1ul << 3)) != 0)
+            if ((value & PacketFlags.LowPower) != 0)
             {
                 names += "|LowPower";
             }
-            if ((value & (1ul << 4)) != 0)
+            if ((value & PacketFlags.Jamming) != 0)
             {
                 names += "|Jamming";
             }
-            if ((value >> 5) != 0)
+            ulong unknown = (ulong)value >> 5;
+            if (unknown != 0)
             {
-                names += "|0x" + ((value >> 5) << 5).ToString("x");
+                names += "|0x" + (unknown << 5).ToString("x");
             }
             return names.Length == 0 ? "0" : names.Substring(1);
         }
 
         // RealPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // RealPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long RealPacketMaxBits = 1810;
-        public const long RealPacketMaxBytes = 232;
+        public const int RealPacketMaxBits = 1810;
+        public const int RealPacketMaxBytes = 232;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroRealPacket(RealPacket value)
+        public static void ZeroRealPacket(ref RealPacket value)
         {
             value.F001Int = 0;
             value.F002F64 = 0.0;
@@ -354,7 +366,7 @@ namespace Realworld
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitRealPacket(RealPacket value)
+        public static void InitRealPacket(ref RealPacket value)
         {
             value.F001Int = 0;
             value.F002F64 = 0.0;
@@ -455,7 +467,7 @@ namespace Realworld
             value.F097Bits = 0;
         }
 
-        public static bool WriteRealPacket(WriteStream stream, RealPacket value)
+        public static bool WriteRealPacket(WriteStream stream, ref RealPacket value)
         {
             Debug.Assert(value.F001Int >= -805495 && value.F001Int <= 805495, "value.F001Int out of range [-805495, 805495]");
             {
@@ -893,11 +905,11 @@ namespace Realworld
                 // flat run: 138 bits in 3 chunk(s) — the field placement is folded
                 Debug.Assert(value.F088Int >= -694 && value.F088Int <= 694, "value.F088Int out of range [-694, 694]");
                 Debug.Assert(value.F090Uint <= 214, "value.F090Uint out of range [0, 214]");
-                Debug.Assert(value.F091Flags < 1ul << 5, "value.F091Flags has a mask bit above the 5-bit wire width"); // a mask bit above the wire width cannot ride
+                Debug.Assert((ulong)value.F091Flags < 1ul << 5, "value.F091Flags has a mask bit above the 5-bit wire width"); // a mask bit above the wire width cannot ride
                 ulong f0 = ((ulong)((uint)(value.F088Int) - unchecked((uint)(-694)))) & 0x7ffUL;
                 ulong f1 = ((ulong)value.F089Bits) & 0xffffffffffffUL;
                 ulong f2 = ((ulong)((uint)(value.F090Uint))) & 0xffUL;
-                ulong f3 = (value.F091Flags) & 0x1fUL;
+                ulong f3 = ((ulong)value.F091Flags) & 0x1fUL;
                 ulong f4 = value.F092Bool ? 1UL : 0UL;
                 ulong f5 = (ulong)value.F093Bits;
                 ulong f6 = value.F094Bool ? 1UL : 0UL;
@@ -934,7 +946,7 @@ namespace Realworld
             return true;
         }
 
-        public static bool ReadRealPacket(ReadStream stream, RealPacket value)
+        public static bool ReadRealPacket(ReadStream stream, ref RealPacket value)
         {
             if (!stream.SerializeInt(ref value.F001Int, -805495, 805495))
             {
@@ -1494,7 +1506,7 @@ namespace Realworld
                     return false;
                 }
                 ulong v0 = c0 & 0x1fUL;
-                value.F091Flags = v0;
+                value.F091Flags = (PacketFlags)v0;
                 ulong v1 = (c0 >> 5) & 0x1UL;
                 value.F092Bool = v1 != 0UL;
                 ulong v2 = ((c0 >> 6) | (c1 << 58));

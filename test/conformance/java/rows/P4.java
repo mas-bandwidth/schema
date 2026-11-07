@@ -115,7 +115,7 @@ public final class P4 {
         // 3. Execution via TableFixed.run & RootFixed.scatter
         // -------------------------------------------------------------------
         tblk1.RootFixed.Value k1Src = new tblk1.RootFixed.Value();
-        k1Src.grade = tblk1.K1.Grade.gold; // 3
+        k1Src.grade = tblk1.K1.Grade.GOLD; // 3
         k1Src.raw = (short) 500;
         byte[] k1WireBody = new byte[tblk1.RootFixed.bodyBytes];
         tblk1.RootFixed.writeBody(k1WireBody, 0, k1Src);
@@ -126,7 +126,7 @@ public final class P4 {
         tblk1.TableFixed.run(planK1asK1, nK1asK1, remapK1asK1, k1WireBody, 0, k1WireBody.length, lawfulImage, repK1asK1);
         tblk1.RootFixed.Value k1Decoded = new tblk1.RootFixed.Value();
         tblk1.RootFixed.scatter(lawfulImage, 0, k1Decoded, repK1asK1);
-        check(k1Decoded.grade == tblk1.K1.Grade.gold, "Lawful K1 read lands grade=Gold");
+        check(k1Decoded.grade == tblk1.K1.Grade.GOLD, "Lawful K1 read lands grade=Gold");
         check(k1Decoded.raw == 500, "Lawful K1 read lands raw=500");
 
         // Cross-schema read through compiled plan:
@@ -137,7 +137,7 @@ public final class P4 {
         tblk2.RootFixed.Value k2Decoded = new tblk2.RootFixed.Value();
         tblk2.RootFixed.scatter(k2Image, 0, k2Decoded, repK1asK2);
         check(k2Decoded.grade == 0, "Cross-schema read leaves grade at default (0)");
-        check(k2Decoded.raw == tblk2.K2.Grade.none, "Cross-schema read leaves raw enum at default (None=0)");
+        check(k2Decoded.raw == tblk2.K2.Grade.NONE, "Cross-schema read leaves raw enum at default (None=0)");
 
         // -------------------------------------------------------------------
         // 4. "The wrong plan goes red" (docs/FIXED-FORM-ALGORITHM.md:1685)
@@ -152,7 +152,7 @@ public final class P4 {
 
         check(k2Wrong.grade != 0 && k2Wrong.grade != 500,
             "Wrong plan mangles grade value (read " + (k2Wrong.grade & 0xFFFF) + ")");
-        check(k2Wrong.raw != tblk1.K1.Grade.gold,
+        check(k2Wrong.raw != tblk1.K1.Grade.GOLD,
             "Wrong plan mangles raw enum value (read " + k2Wrong.raw + ")");
 
         // -------------------------------------------------------------------

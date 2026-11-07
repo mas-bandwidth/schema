@@ -11,7 +11,7 @@
  *
  * THE PRODUCTION PATH THIS TEST DRIVES (the same path the conformance driver's
  * `report` surface reaches through its codec table): the caller's entry point
- * cfg_fixed_load() (build/tables-generated-c/v1/V1Table.h), the file's own hash
+ * cfg_fixed_load_tolerant() (build/tables-generated-c/v1/V1Table.h), the file's own hash
  * selecting the static identity plan cfg_fixed_plan, table_fixed_run() walking
  * it, and table_fixed_apply()'s case kTableFixedCount doing the clamp. The
  * generated bounds pass that runs after the loop (schema_tblv1_cfg_fixed_clamp_)
@@ -75,7 +75,7 @@ int main( void )
     n = cfg_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
     check( n == cfg_fixed_measure( 1 ), "c/C2: the boundary record (items_count == Max) saves" );
     memset( &r, 0, sizeof( r ) );
-    check( cfg_fixed_load( &back, 1, file, n, NULL, 0, NULL, &r ) == 1, "c/C2 BOUNDARY: count == Max reads" );
+    check( cfg_fixed_load_tolerant( &back, 1, file, n, NULL, 0, NULL, &r ) == 1, "c/C2 BOUNDARY: count == Max reads" );
     check( back.items_count == 8 && back.items[0] == 100 && back.items[7] == 107,
            "c/C2 BOUNDARY: count == Max lands whole" );
     check( r.clamped == 0, "c/C2 BOUNDARY: count == Max counts nothing — the clamp is v > Max, never v >= Max" );
@@ -86,7 +86,7 @@ int main( void )
 
     memset( &back, 0, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    check( cfg_fixed_load( &back, 1, file, n, NULL, 0, NULL, &r ) == 1,
+    check( cfg_fixed_load_tolerant( &back, 1, file, n, NULL, 0, NULL, &r ) == 1,
            "c/C2: a count forged past Max still reads — clamped, never refused, never malformed" );
     check( back.items_count == 8,
            "c/C2 CLAMP: the count lands Max (8), never the forged 1000, never 0" );

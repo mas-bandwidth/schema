@@ -42,7 +42,7 @@ func Render(record *Record) ([]byte, Report, error) {
 		return nil, report, err
 	}
 	out.WriteString("RESULT: ")
-	out.WriteString(rowStr(root.Id[:], root.IdLength))
+	out.WriteString(rowStr(root.ID[:], root.IDLength))
 	out.WriteString(" sha=")
 	out.WriteString(rowStr(root.Sha[:], root.ShaLength))
 	out.WriteString(" tier: ")

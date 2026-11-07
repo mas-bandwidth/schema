@@ -157,10 +157,10 @@ let failures = 0;
 function fail(why) { console.error("FAIL: " + why); failures++; }
 
 const v = new Root(); InitRoot(v);
-v.O.Type = OuterType.M;
-v.O.M.Type = MiddleType.I;
-v.O.M.I.Type = InnerType.A;
-v.O.M.I.A.X = 42;
+v.o.type = OuterType.M;
+v.o.m.type = MiddleType.I;
+v.o.m.i.type = InnerType.A;
+v.o.m.i.a.x = 42;
 const buf = new Uint8Array(RootFixedMeasure(1));
 if (RootFixedSave([v], 1, buf) !== buf.length) { fail("the save"); }
 const rec = buf.length - RootFixedRecordBytes + 8;
@@ -176,7 +176,7 @@ for (let path = 0; path < 2; path++) {
     const n = RootFixedLoad(back, 1, file, file.length, RootFixedNewPlan(4096, 4096), r);
     const which = path === 0 ? "identity" : "compiled";
     if (n !== 1 || r.refused !== 0 || r.malformed) { fail(which + " poison " + poison + ": n=" + n + " refused=" + r.refused); continue; }
-    const x = back[0].O.M.I.A.X;
+    const x = back[0].o.m.i.a.x;
     if (poison === 0 && x !== 42) { fail(which + ": the record as written did not land its deepest leaf"); }
     if (poison > 0 && x === 42) { fail(which + ": the deepest leaf landed while tag " + (poison - 1) + " names another arm"); }
   }

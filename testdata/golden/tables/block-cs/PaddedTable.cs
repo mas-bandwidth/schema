@@ -74,7 +74,8 @@ namespace Blockdemo
         {
             TableFieldInfo[] fields = PaddedRowTableType().Fields;
             if (v.Tag != 0 && !ids.Add(0x56d7ab194448a4f3ul)) return false;
-            if (v.Value != 0.0 && !ids.Add(0x7ce4fd9430e80ceaul)) return false;
+            if (!double.IsFinite(v.Value)) return false;
+            if (BitConverter.DoubleToUInt64Bits(v.Value) != 0x0000000000000000ul && !ids.Add(0x7ce4fd9430e80ceaul)) return false;
             if (v.Flag != false && !ids.Add(0xd5f2d079088c0b17ul)) return false;
             if (v.Id != 0 && !ids.Add(0x08b72e07b55c3ac0ul)) return false;
             if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
@@ -89,7 +90,7 @@ namespace Blockdemo
             long n = 1;
             TableFieldInfo[] fields = PaddedRowTableType().Fields;
             if (v.Tag != 0) { n += TableWire.VarSize(ids.RefAt(25, 0x56d7ab194448a4f3ul)) + 2; }
-            if (v.Value != 0.0) { n += TableWire.VarSize(ids.RefAt(36, 0x7ce4fd9430e80ceaul)) + 9; }
+            if (BitConverter.DoubleToUInt64Bits(v.Value) != 0x0000000000000000ul) { n += TableWire.VarSize(ids.RefAt(36, 0x7ce4fd9430e80ceaul)) + 9; }
             if (v.Flag != false) { n += TableWire.VarSize(ids.RefAt(73, 0xd5f2d079088c0b17ul)) + 2; }
             if (v.Id != 0) { n += TableWire.VarSize(ids.RefAt(0, 0x08b72e07b55c3ac0ul)) + 5; }
             n += TableWire.BodySizeField(v, fields[4], ref ids, default, out long payload_4);
@@ -110,7 +111,7 @@ namespace Blockdemo
                 w.HeaderAt(25, 0x56d7ab194448a4f3ul, 6, ref ids);
                 w.Fixed((ulong)v.Tag, 1);
             }
-            if (v.Value != 0.0)
+            if (BitConverter.DoubleToUInt64Bits(v.Value) != 0x0000000000000000ul)
             {
                 w.HeaderAt(36, 0x7ce4fd9430e80ceaul, 11, ref ids);
                 w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Value)), 8);
@@ -154,6 +155,7 @@ namespace Blockdemo
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + PaddedRowBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -161,6 +163,7 @@ namespace Blockdemo
             PaddedRowWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -286,6 +289,7 @@ namespace Blockdemo
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + PaddedFrameBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -293,6 +297,7 @@ namespace Blockdemo
             PaddedFrameWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -340,6 +345,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.PaddedRow(); };
                 info.StorageSize = 64; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -347,13 +353,13 @@ namespace Blockdemo
                 info.Fields = new TableFieldInfo[]
                 {
                     new TableFieldInfo { Name = "tag", Json = "tag", TypeName = "uint8", Id = 0x56d7ab194448a4f3, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Tag; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Tag = unchecked((byte)r); }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Tag = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "value", Json = "value", TypeName = "float64", Id = 0x7ce4fd9430e80cea, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.PaddedRow)o).Value)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Value = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 6, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Value = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "value", Json = "value", TypeName = "float64", Id = 0x7ce4fd9430e80cea, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.PaddedRow)o).Value)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Value = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 6, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Value = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), NonFiniteField = "PaddedRow.value", NonFiniteReason = "non_finite_float: PaddedRow.value", ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
                     new TableFieldInfo { Name = "flag", Json = "flag", TypeName = "bool", Id = 0xd5f2d079088c0b17, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return ((global::Blockdemo.PaddedRow)o).Flag ? 1ul : 0ul; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Flag = r != 0; }, MessageSlot = 7, Ordinal = 2, NativeOffset = 16, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Flag = false; }, DefaultRaw = false ? 1ul : 0ul },
                     new TableFieldInfo { Name = "id", Json = "id", TypeName = "uint32", Id = 0x08b72e07b55c3ac0, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Id; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Id = unchecked((uint)r); }, MessageSlot = 8, Ordinal = 3, NativeOffset = 20, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Id = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
                     new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0x39f7fcec8fcb623d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Blockdemo.PaddedRow)o).Label; }, GetCount = delegate (object o) { return ((global::Blockdemo.PaddedRow)o).LabelLength; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.PaddedRow)o).LabelLength = n; }, MessageSlot = 9, Ordinal = 4, NativeOffset = 24, NativeElementSize = 16, NativeCountOffset = 40, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Label, 0, value.Label.Length); value.LabelLength = 0; } },
                     new TableFieldInfo { Name = "slots", Json = "slots", TypeName = "uint16", Id = 0xe68c2e6bb1ee5646, Kind = 7, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Slots[i]; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Slots[i] = unchecked((ushort)r); }, MessageSlot = 10, Ordinal = 5, NativeOffset = 44, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Slots, 0, value.Slots.Length); }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "teams", Json = "teams", TypeName = "uint8", Id = 0xbaaeb048a5a8fa6d, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Blockdemo.Team.Max, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate (ulong v) { return EnumNameTeam(v); }, KeyId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Teams.Slots[i]; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Teams.Slots[i] = unchecked((byte)r); }, MessageSlot = 11, Ordinal = 6, NativeOffset = 52, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Teams.Slots, 0, value.Teams.Slots.Length); }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "counter", Json = "counter", TypeName = "int32", Id = 0x77976c7416517c63, Kind = 4, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Blockdemo.PaddedRow)o).Counter; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Counter = unchecked((int)(long)r); }, GetPresent = delegate (object o) { return ((global::Blockdemo.PaddedRow)o).CounterPresent; }, SetPresent = delegate (object o, bool p) { ((global::Blockdemo.PaddedRow)o).CounterPresent = p; }, MessageSlot = 12, Ordinal = 7, NativeOffset = 56, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = 60, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Counter = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "teams", Json = "teams", TypeName = "uint8", Id = 0xbaaeb048a5a8fa6d, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Blockdemo.Schema.TeamMax, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate (ulong v) { return v <= (ulong)TeamMax ? EnumNameTeam((global::Blockdemo.Team)v) : "???"; }, KeyId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Teams.Slots[i]; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Teams.Slots[i] = unchecked((byte)r); }, MessageSlot = 11, Ordinal = 6, NativeOffset = 52, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Teams.Slots, 0, value.Teams.Slots.Length); }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "counter", Json = "counter", TypeName = "int32", Id = 0x77976c7416517c63, Kind = 4, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Blockdemo.PaddedRow)o).Counter)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Counter = unchecked((int)(long)r); }, GetPresent = delegate (object o) { return ((global::Blockdemo.PaddedRow)o).CounterPresent; }, SetPresent = delegate (object o, bool p) { ((global::Blockdemo.PaddedRow)o).CounterPresent = p; }, MessageSlot = 12, Ordinal = 7, NativeOffset = 56, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = 60, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Counter = 0; }, DefaultRaw = unchecked((ulong)(long)(0)), ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return unchecked((ulong)(long)(v)); } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Blockdemo.PaddedRow)o); };
                 info.Doc = TableDocNone;
@@ -382,6 +388,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.PaddedFrame(); };
                 info.StorageSize = 4136; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 64;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -464,7 +471,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(len_label <= 15);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(14), len_label);
             if (len_label > 0) { value.Label.AsSpan(0, len_label).CopyTo(b.Slice(18)); }
-            if (value.Slots != null) { MemoryMarshal.AsBytes(value.Slots.AsSpan(0, Math.Min(value.Slots.Length, 4))).CopyTo(b.Slice(33)); }
+            if (value.Slots != null) { TableFixedWire.WriteLittle<ushort>(value.Slots.AsSpan(0, Math.Min(value.Slots.Length, 4)), b.Slice(33)); }
             if (value.Teams.Slots != null) { value.Teams.Slots.AsSpan(0, Math.Min(value.Teams.Slots.Length, 4)).CopyTo(b.Slice(41)); }
             b[45] = (byte)(value.CounterPresent ? 1 : 0);
             if (value.CounterPresent)
@@ -513,6 +520,33 @@ namespace Blockdemo
                     PaddedRowFixedClampBody(value.Rows[i], ref clamped);
                 }
             }
+        }
+
+        // PaddedRow's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
+        // <Owner>.<field>, or null.
+        public static string PaddedRowFixedFiniteBody(PaddedRow value)
+        {
+            if (value == null) return null;
+            if (!double.IsFinite(value.Value)) return "PaddedRow.value";
+            return null;
+        }
+
+        // PaddedFrame's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
+        // <Owner>.<field>, or null.
+        public static string PaddedFrameFixedFiniteBody(PaddedFrame value)
+        {
+            if (value == null) return null;
+            if (value.Rows != null)
+            {
+                for (int i = 0; i < value.RowsCount && i < value.Rows.Length; ++i)
+                {
+                    {
+                        string why = PaddedRowFixedFiniteBody(value.Rows[i]);
+                        if (why != null) return why;
+                    }
+                }
+            }
+            return null;
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -583,7 +617,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedRow>(setRaw: (t, v) => t.Id = unchecked((uint)v), reset: (t) => { t.Id = 0; }),
             new TableFixedSlot<PaddedRow>(setRaw: (t, v) => t.LabelLength = (int)v, reset: (t) => { t.LabelLength = 0; }),
             new TableFixedSlot<PaddedRow>(setBytes: (t, b, l) => { if (t.Label != null) b.Slice(0, Math.Min(b.Length, t.Label.Length)).CopyTo(t.Label); }, reset: (t) => { if (t.Label != null) { Array.Clear(t.Label, 0, t.Label.Length); } }),
-            new TableFixedSlot<PaddedRow>(setBytes: (t, b, l) => { if (t.Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Slots.Length * 2))).CopyTo(t.Slots); }, reset: (t) => { if (t.Slots != null) Array.Clear(t.Slots, 0, t.Slots.Length); }),
+            new TableFixedSlot<PaddedRow>(setBytes: (t, b, l) => { if (t.Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Slots.Length * 2)), t.Slots); }, reset: (t) => { if (t.Slots != null) Array.Clear(t.Slots, 0, t.Slots.Length); }),
             new TableFixedSlot<PaddedRow>(setRaw: (t, v) => t.Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedRow>(setRaw: (t, v) => t.Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedRow>(setRaw: (t, v) => t.Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Teams.Slots[2] = 0; }),
@@ -633,7 +667,7 @@ namespace Blockdemo
             switch (slot)
             {
                 case 5: { if (t.Label != null) b.Slice(0, Math.Min(b.Length, t.Label.Length)).CopyTo(t.Label); } break;
-                case 6: { if (t.Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Slots.Length * 2))).CopyTo(t.Slots); } break;
+                case 6: { if (t.Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Slots.Length * 2)), t.Slots); } break;
                 default: break;
             }
         }
@@ -733,7 +767,7 @@ namespace Blockdemo
                                 int at = (int)p.Src + e * sw;
                                 if (p.Sign == 2)
                                 {
-                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
                                     BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                     continue;
                                 }
@@ -841,7 +875,7 @@ namespace Blockdemo
                     case TableFixedWire.WidenF:
                         {
                             float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                            PaddedRowFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            PaddedRowFixedSetDouble(dst, p.Dst, (double)f);
                             if (report != null) { report.Widened++; }
                             break;
                         }
@@ -930,13 +964,14 @@ namespace Blockdemo
 
         public static long PaddedRowFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + PaddedRowFixedLayoutBytes + count * PaddedRowFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + PaddedRowFixedLayoutBytes + count * PaddedRowFixedRecordBytes + 0;
         }
 
         public static long PaddedRowFixedSave(ReadOnlySpan<PaddedRow> values, Span<byte> buffer)
         {
             long need = PaddedRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (PaddedRowFixedFiniteBody(values[k]) != null) { return -1; } }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PaddedRowFixedHash);
@@ -1050,7 +1085,7 @@ namespace Blockdemo
                 entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
                 planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
-                // the plan this peer selected. It reads no layout and compiles
+                // the plan this endpoint selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
                 // path; the PLAN is, and the plan is the build's.
                 int slotN = PaddedRowFixedSlots.Length;
@@ -1060,7 +1095,7 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, PaddedRowFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindMismatch;
@@ -1083,7 +1118,8 @@ namespace Blockdemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new PaddedRow(); }
@@ -1094,7 +1130,15 @@ namespace Blockdemo
                 string run_why = PaddedRowFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string finite_why = PaddedRowFixedFiniteBody(values[k]);
+                if (finite_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 PaddedRowFixedClamp(values[k], report);
@@ -1218,7 +1262,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[0].Id = unchecked((uint)v), reset: (t) => { t.Rows[0].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[0].LabelLength = (int)v, reset: (t) => { t.Rows[0].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[0].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[0].Label.Length)).CopyTo(t.Rows[0].Label); }, reset: (t) => { if (t.Rows[0].Label != null) { Array.Clear(t.Rows[0].Label, 0, t.Rows[0].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[0].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[0].Slots.Length * 2))).CopyTo(t.Rows[0].Slots); }, reset: (t) => { if (t.Rows[0].Slots != null) Array.Clear(t.Rows[0].Slots, 0, t.Rows[0].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[0].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[0].Slots.Length * 2)), t.Rows[0].Slots); }, reset: (t) => { if (t.Rows[0].Slots != null) Array.Clear(t.Rows[0].Slots, 0, t.Rows[0].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[0].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[0].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[0].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[0].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[0].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[0].Teams.Slots[2] = 0; }),
@@ -1231,7 +1275,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[1].Id = unchecked((uint)v), reset: (t) => { t.Rows[1].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[1].LabelLength = (int)v, reset: (t) => { t.Rows[1].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[1].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[1].Label.Length)).CopyTo(t.Rows[1].Label); }, reset: (t) => { if (t.Rows[1].Label != null) { Array.Clear(t.Rows[1].Label, 0, t.Rows[1].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[1].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[1].Slots.Length * 2))).CopyTo(t.Rows[1].Slots); }, reset: (t) => { if (t.Rows[1].Slots != null) Array.Clear(t.Rows[1].Slots, 0, t.Rows[1].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[1].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[1].Slots.Length * 2)), t.Rows[1].Slots); }, reset: (t) => { if (t.Rows[1].Slots != null) Array.Clear(t.Rows[1].Slots, 0, t.Rows[1].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[1].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[1].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[1].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[1].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[1].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[1].Teams.Slots[2] = 0; }),
@@ -1244,7 +1288,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[2].Id = unchecked((uint)v), reset: (t) => { t.Rows[2].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[2].LabelLength = (int)v, reset: (t) => { t.Rows[2].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[2].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[2].Label.Length)).CopyTo(t.Rows[2].Label); }, reset: (t) => { if (t.Rows[2].Label != null) { Array.Clear(t.Rows[2].Label, 0, t.Rows[2].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[2].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[2].Slots.Length * 2))).CopyTo(t.Rows[2].Slots); }, reset: (t) => { if (t.Rows[2].Slots != null) Array.Clear(t.Rows[2].Slots, 0, t.Rows[2].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[2].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[2].Slots.Length * 2)), t.Rows[2].Slots); }, reset: (t) => { if (t.Rows[2].Slots != null) Array.Clear(t.Rows[2].Slots, 0, t.Rows[2].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[2].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[2].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[2].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[2].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[2].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[2].Teams.Slots[2] = 0; }),
@@ -1257,7 +1301,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[3].Id = unchecked((uint)v), reset: (t) => { t.Rows[3].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[3].LabelLength = (int)v, reset: (t) => { t.Rows[3].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[3].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[3].Label.Length)).CopyTo(t.Rows[3].Label); }, reset: (t) => { if (t.Rows[3].Label != null) { Array.Clear(t.Rows[3].Label, 0, t.Rows[3].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[3].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[3].Slots.Length * 2))).CopyTo(t.Rows[3].Slots); }, reset: (t) => { if (t.Rows[3].Slots != null) Array.Clear(t.Rows[3].Slots, 0, t.Rows[3].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[3].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[3].Slots.Length * 2)), t.Rows[3].Slots); }, reset: (t) => { if (t.Rows[3].Slots != null) Array.Clear(t.Rows[3].Slots, 0, t.Rows[3].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[3].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[3].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[3].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[3].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[3].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[3].Teams.Slots[2] = 0; }),
@@ -1270,7 +1314,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[4].Id = unchecked((uint)v), reset: (t) => { t.Rows[4].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[4].LabelLength = (int)v, reset: (t) => { t.Rows[4].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[4].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[4].Label.Length)).CopyTo(t.Rows[4].Label); }, reset: (t) => { if (t.Rows[4].Label != null) { Array.Clear(t.Rows[4].Label, 0, t.Rows[4].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[4].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[4].Slots.Length * 2))).CopyTo(t.Rows[4].Slots); }, reset: (t) => { if (t.Rows[4].Slots != null) Array.Clear(t.Rows[4].Slots, 0, t.Rows[4].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[4].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[4].Slots.Length * 2)), t.Rows[4].Slots); }, reset: (t) => { if (t.Rows[4].Slots != null) Array.Clear(t.Rows[4].Slots, 0, t.Rows[4].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[4].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[4].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[4].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[4].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[4].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[4].Teams.Slots[2] = 0; }),
@@ -1283,7 +1327,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[5].Id = unchecked((uint)v), reset: (t) => { t.Rows[5].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[5].LabelLength = (int)v, reset: (t) => { t.Rows[5].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[5].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[5].Label.Length)).CopyTo(t.Rows[5].Label); }, reset: (t) => { if (t.Rows[5].Label != null) { Array.Clear(t.Rows[5].Label, 0, t.Rows[5].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[5].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[5].Slots.Length * 2))).CopyTo(t.Rows[5].Slots); }, reset: (t) => { if (t.Rows[5].Slots != null) Array.Clear(t.Rows[5].Slots, 0, t.Rows[5].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[5].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[5].Slots.Length * 2)), t.Rows[5].Slots); }, reset: (t) => { if (t.Rows[5].Slots != null) Array.Clear(t.Rows[5].Slots, 0, t.Rows[5].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[5].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[5].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[5].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[5].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[5].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[5].Teams.Slots[2] = 0; }),
@@ -1296,7 +1340,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[6].Id = unchecked((uint)v), reset: (t) => { t.Rows[6].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[6].LabelLength = (int)v, reset: (t) => { t.Rows[6].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[6].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[6].Label.Length)).CopyTo(t.Rows[6].Label); }, reset: (t) => { if (t.Rows[6].Label != null) { Array.Clear(t.Rows[6].Label, 0, t.Rows[6].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[6].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[6].Slots.Length * 2))).CopyTo(t.Rows[6].Slots); }, reset: (t) => { if (t.Rows[6].Slots != null) Array.Clear(t.Rows[6].Slots, 0, t.Rows[6].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[6].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[6].Slots.Length * 2)), t.Rows[6].Slots); }, reset: (t) => { if (t.Rows[6].Slots != null) Array.Clear(t.Rows[6].Slots, 0, t.Rows[6].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[6].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[6].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[6].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[6].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[6].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[6].Teams.Slots[2] = 0; }),
@@ -1309,7 +1353,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[7].Id = unchecked((uint)v), reset: (t) => { t.Rows[7].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[7].LabelLength = (int)v, reset: (t) => { t.Rows[7].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[7].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[7].Label.Length)).CopyTo(t.Rows[7].Label); }, reset: (t) => { if (t.Rows[7].Label != null) { Array.Clear(t.Rows[7].Label, 0, t.Rows[7].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[7].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[7].Slots.Length * 2))).CopyTo(t.Rows[7].Slots); }, reset: (t) => { if (t.Rows[7].Slots != null) Array.Clear(t.Rows[7].Slots, 0, t.Rows[7].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[7].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[7].Slots.Length * 2)), t.Rows[7].Slots); }, reset: (t) => { if (t.Rows[7].Slots != null) Array.Clear(t.Rows[7].Slots, 0, t.Rows[7].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[7].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[7].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[7].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[7].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[7].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[7].Teams.Slots[2] = 0; }),
@@ -1322,7 +1366,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[8].Id = unchecked((uint)v), reset: (t) => { t.Rows[8].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[8].LabelLength = (int)v, reset: (t) => { t.Rows[8].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[8].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[8].Label.Length)).CopyTo(t.Rows[8].Label); }, reset: (t) => { if (t.Rows[8].Label != null) { Array.Clear(t.Rows[8].Label, 0, t.Rows[8].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[8].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[8].Slots.Length * 2))).CopyTo(t.Rows[8].Slots); }, reset: (t) => { if (t.Rows[8].Slots != null) Array.Clear(t.Rows[8].Slots, 0, t.Rows[8].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[8].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[8].Slots.Length * 2)), t.Rows[8].Slots); }, reset: (t) => { if (t.Rows[8].Slots != null) Array.Clear(t.Rows[8].Slots, 0, t.Rows[8].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[8].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[8].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[8].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[8].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[8].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[8].Teams.Slots[2] = 0; }),
@@ -1335,7 +1379,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[9].Id = unchecked((uint)v), reset: (t) => { t.Rows[9].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[9].LabelLength = (int)v, reset: (t) => { t.Rows[9].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[9].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[9].Label.Length)).CopyTo(t.Rows[9].Label); }, reset: (t) => { if (t.Rows[9].Label != null) { Array.Clear(t.Rows[9].Label, 0, t.Rows[9].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[9].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[9].Slots.Length * 2))).CopyTo(t.Rows[9].Slots); }, reset: (t) => { if (t.Rows[9].Slots != null) Array.Clear(t.Rows[9].Slots, 0, t.Rows[9].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[9].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[9].Slots.Length * 2)), t.Rows[9].Slots); }, reset: (t) => { if (t.Rows[9].Slots != null) Array.Clear(t.Rows[9].Slots, 0, t.Rows[9].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[9].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[9].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[9].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[9].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[9].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[9].Teams.Slots[2] = 0; }),
@@ -1348,7 +1392,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[10].Id = unchecked((uint)v), reset: (t) => { t.Rows[10].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[10].LabelLength = (int)v, reset: (t) => { t.Rows[10].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[10].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[10].Label.Length)).CopyTo(t.Rows[10].Label); }, reset: (t) => { if (t.Rows[10].Label != null) { Array.Clear(t.Rows[10].Label, 0, t.Rows[10].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[10].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[10].Slots.Length * 2))).CopyTo(t.Rows[10].Slots); }, reset: (t) => { if (t.Rows[10].Slots != null) Array.Clear(t.Rows[10].Slots, 0, t.Rows[10].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[10].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[10].Slots.Length * 2)), t.Rows[10].Slots); }, reset: (t) => { if (t.Rows[10].Slots != null) Array.Clear(t.Rows[10].Slots, 0, t.Rows[10].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[10].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[10].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[10].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[10].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[10].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[10].Teams.Slots[2] = 0; }),
@@ -1361,7 +1405,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[11].Id = unchecked((uint)v), reset: (t) => { t.Rows[11].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[11].LabelLength = (int)v, reset: (t) => { t.Rows[11].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[11].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[11].Label.Length)).CopyTo(t.Rows[11].Label); }, reset: (t) => { if (t.Rows[11].Label != null) { Array.Clear(t.Rows[11].Label, 0, t.Rows[11].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[11].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[11].Slots.Length * 2))).CopyTo(t.Rows[11].Slots); }, reset: (t) => { if (t.Rows[11].Slots != null) Array.Clear(t.Rows[11].Slots, 0, t.Rows[11].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[11].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[11].Slots.Length * 2)), t.Rows[11].Slots); }, reset: (t) => { if (t.Rows[11].Slots != null) Array.Clear(t.Rows[11].Slots, 0, t.Rows[11].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[11].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[11].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[11].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[11].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[11].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[11].Teams.Slots[2] = 0; }),
@@ -1374,7 +1418,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[12].Id = unchecked((uint)v), reset: (t) => { t.Rows[12].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[12].LabelLength = (int)v, reset: (t) => { t.Rows[12].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[12].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[12].Label.Length)).CopyTo(t.Rows[12].Label); }, reset: (t) => { if (t.Rows[12].Label != null) { Array.Clear(t.Rows[12].Label, 0, t.Rows[12].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[12].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[12].Slots.Length * 2))).CopyTo(t.Rows[12].Slots); }, reset: (t) => { if (t.Rows[12].Slots != null) Array.Clear(t.Rows[12].Slots, 0, t.Rows[12].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[12].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[12].Slots.Length * 2)), t.Rows[12].Slots); }, reset: (t) => { if (t.Rows[12].Slots != null) Array.Clear(t.Rows[12].Slots, 0, t.Rows[12].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[12].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[12].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[12].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[12].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[12].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[12].Teams.Slots[2] = 0; }),
@@ -1387,7 +1431,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[13].Id = unchecked((uint)v), reset: (t) => { t.Rows[13].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[13].LabelLength = (int)v, reset: (t) => { t.Rows[13].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[13].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[13].Label.Length)).CopyTo(t.Rows[13].Label); }, reset: (t) => { if (t.Rows[13].Label != null) { Array.Clear(t.Rows[13].Label, 0, t.Rows[13].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[13].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[13].Slots.Length * 2))).CopyTo(t.Rows[13].Slots); }, reset: (t) => { if (t.Rows[13].Slots != null) Array.Clear(t.Rows[13].Slots, 0, t.Rows[13].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[13].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[13].Slots.Length * 2)), t.Rows[13].Slots); }, reset: (t) => { if (t.Rows[13].Slots != null) Array.Clear(t.Rows[13].Slots, 0, t.Rows[13].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[13].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[13].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[13].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[13].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[13].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[13].Teams.Slots[2] = 0; }),
@@ -1400,7 +1444,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[14].Id = unchecked((uint)v), reset: (t) => { t.Rows[14].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[14].LabelLength = (int)v, reset: (t) => { t.Rows[14].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[14].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[14].Label.Length)).CopyTo(t.Rows[14].Label); }, reset: (t) => { if (t.Rows[14].Label != null) { Array.Clear(t.Rows[14].Label, 0, t.Rows[14].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[14].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[14].Slots.Length * 2))).CopyTo(t.Rows[14].Slots); }, reset: (t) => { if (t.Rows[14].Slots != null) Array.Clear(t.Rows[14].Slots, 0, t.Rows[14].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[14].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[14].Slots.Length * 2)), t.Rows[14].Slots); }, reset: (t) => { if (t.Rows[14].Slots != null) Array.Clear(t.Rows[14].Slots, 0, t.Rows[14].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[14].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[14].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[14].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[14].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[14].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[14].Teams.Slots[2] = 0; }),
@@ -1413,7 +1457,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[15].Id = unchecked((uint)v), reset: (t) => { t.Rows[15].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[15].LabelLength = (int)v, reset: (t) => { t.Rows[15].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[15].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[15].Label.Length)).CopyTo(t.Rows[15].Label); }, reset: (t) => { if (t.Rows[15].Label != null) { Array.Clear(t.Rows[15].Label, 0, t.Rows[15].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[15].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[15].Slots.Length * 2))).CopyTo(t.Rows[15].Slots); }, reset: (t) => { if (t.Rows[15].Slots != null) Array.Clear(t.Rows[15].Slots, 0, t.Rows[15].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[15].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[15].Slots.Length * 2)), t.Rows[15].Slots); }, reset: (t) => { if (t.Rows[15].Slots != null) Array.Clear(t.Rows[15].Slots, 0, t.Rows[15].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[15].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[15].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[15].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[15].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[15].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[15].Teams.Slots[2] = 0; }),
@@ -1426,7 +1470,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[16].Id = unchecked((uint)v), reset: (t) => { t.Rows[16].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[16].LabelLength = (int)v, reset: (t) => { t.Rows[16].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[16].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[16].Label.Length)).CopyTo(t.Rows[16].Label); }, reset: (t) => { if (t.Rows[16].Label != null) { Array.Clear(t.Rows[16].Label, 0, t.Rows[16].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[16].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[16].Slots.Length * 2))).CopyTo(t.Rows[16].Slots); }, reset: (t) => { if (t.Rows[16].Slots != null) Array.Clear(t.Rows[16].Slots, 0, t.Rows[16].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[16].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[16].Slots.Length * 2)), t.Rows[16].Slots); }, reset: (t) => { if (t.Rows[16].Slots != null) Array.Clear(t.Rows[16].Slots, 0, t.Rows[16].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[16].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[16].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[16].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[16].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[16].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[16].Teams.Slots[2] = 0; }),
@@ -1439,7 +1483,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[17].Id = unchecked((uint)v), reset: (t) => { t.Rows[17].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[17].LabelLength = (int)v, reset: (t) => { t.Rows[17].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[17].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[17].Label.Length)).CopyTo(t.Rows[17].Label); }, reset: (t) => { if (t.Rows[17].Label != null) { Array.Clear(t.Rows[17].Label, 0, t.Rows[17].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[17].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[17].Slots.Length * 2))).CopyTo(t.Rows[17].Slots); }, reset: (t) => { if (t.Rows[17].Slots != null) Array.Clear(t.Rows[17].Slots, 0, t.Rows[17].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[17].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[17].Slots.Length * 2)), t.Rows[17].Slots); }, reset: (t) => { if (t.Rows[17].Slots != null) Array.Clear(t.Rows[17].Slots, 0, t.Rows[17].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[17].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[17].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[17].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[17].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[17].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[17].Teams.Slots[2] = 0; }),
@@ -1452,7 +1496,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[18].Id = unchecked((uint)v), reset: (t) => { t.Rows[18].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[18].LabelLength = (int)v, reset: (t) => { t.Rows[18].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[18].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[18].Label.Length)).CopyTo(t.Rows[18].Label); }, reset: (t) => { if (t.Rows[18].Label != null) { Array.Clear(t.Rows[18].Label, 0, t.Rows[18].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[18].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[18].Slots.Length * 2))).CopyTo(t.Rows[18].Slots); }, reset: (t) => { if (t.Rows[18].Slots != null) Array.Clear(t.Rows[18].Slots, 0, t.Rows[18].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[18].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[18].Slots.Length * 2)), t.Rows[18].Slots); }, reset: (t) => { if (t.Rows[18].Slots != null) Array.Clear(t.Rows[18].Slots, 0, t.Rows[18].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[18].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[18].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[18].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[18].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[18].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[18].Teams.Slots[2] = 0; }),
@@ -1465,7 +1509,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[19].Id = unchecked((uint)v), reset: (t) => { t.Rows[19].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[19].LabelLength = (int)v, reset: (t) => { t.Rows[19].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[19].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[19].Label.Length)).CopyTo(t.Rows[19].Label); }, reset: (t) => { if (t.Rows[19].Label != null) { Array.Clear(t.Rows[19].Label, 0, t.Rows[19].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[19].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[19].Slots.Length * 2))).CopyTo(t.Rows[19].Slots); }, reset: (t) => { if (t.Rows[19].Slots != null) Array.Clear(t.Rows[19].Slots, 0, t.Rows[19].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[19].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[19].Slots.Length * 2)), t.Rows[19].Slots); }, reset: (t) => { if (t.Rows[19].Slots != null) Array.Clear(t.Rows[19].Slots, 0, t.Rows[19].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[19].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[19].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[19].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[19].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[19].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[19].Teams.Slots[2] = 0; }),
@@ -1478,7 +1522,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[20].Id = unchecked((uint)v), reset: (t) => { t.Rows[20].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[20].LabelLength = (int)v, reset: (t) => { t.Rows[20].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[20].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[20].Label.Length)).CopyTo(t.Rows[20].Label); }, reset: (t) => { if (t.Rows[20].Label != null) { Array.Clear(t.Rows[20].Label, 0, t.Rows[20].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[20].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[20].Slots.Length * 2))).CopyTo(t.Rows[20].Slots); }, reset: (t) => { if (t.Rows[20].Slots != null) Array.Clear(t.Rows[20].Slots, 0, t.Rows[20].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[20].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[20].Slots.Length * 2)), t.Rows[20].Slots); }, reset: (t) => { if (t.Rows[20].Slots != null) Array.Clear(t.Rows[20].Slots, 0, t.Rows[20].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[20].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[20].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[20].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[20].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[20].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[20].Teams.Slots[2] = 0; }),
@@ -1491,7 +1535,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[21].Id = unchecked((uint)v), reset: (t) => { t.Rows[21].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[21].LabelLength = (int)v, reset: (t) => { t.Rows[21].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[21].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[21].Label.Length)).CopyTo(t.Rows[21].Label); }, reset: (t) => { if (t.Rows[21].Label != null) { Array.Clear(t.Rows[21].Label, 0, t.Rows[21].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[21].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[21].Slots.Length * 2))).CopyTo(t.Rows[21].Slots); }, reset: (t) => { if (t.Rows[21].Slots != null) Array.Clear(t.Rows[21].Slots, 0, t.Rows[21].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[21].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[21].Slots.Length * 2)), t.Rows[21].Slots); }, reset: (t) => { if (t.Rows[21].Slots != null) Array.Clear(t.Rows[21].Slots, 0, t.Rows[21].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[21].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[21].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[21].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[21].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[21].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[21].Teams.Slots[2] = 0; }),
@@ -1504,7 +1548,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[22].Id = unchecked((uint)v), reset: (t) => { t.Rows[22].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[22].LabelLength = (int)v, reset: (t) => { t.Rows[22].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[22].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[22].Label.Length)).CopyTo(t.Rows[22].Label); }, reset: (t) => { if (t.Rows[22].Label != null) { Array.Clear(t.Rows[22].Label, 0, t.Rows[22].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[22].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[22].Slots.Length * 2))).CopyTo(t.Rows[22].Slots); }, reset: (t) => { if (t.Rows[22].Slots != null) Array.Clear(t.Rows[22].Slots, 0, t.Rows[22].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[22].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[22].Slots.Length * 2)), t.Rows[22].Slots); }, reset: (t) => { if (t.Rows[22].Slots != null) Array.Clear(t.Rows[22].Slots, 0, t.Rows[22].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[22].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[22].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[22].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[22].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[22].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[22].Teams.Slots[2] = 0; }),
@@ -1517,7 +1561,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[23].Id = unchecked((uint)v), reset: (t) => { t.Rows[23].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[23].LabelLength = (int)v, reset: (t) => { t.Rows[23].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[23].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[23].Label.Length)).CopyTo(t.Rows[23].Label); }, reset: (t) => { if (t.Rows[23].Label != null) { Array.Clear(t.Rows[23].Label, 0, t.Rows[23].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[23].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[23].Slots.Length * 2))).CopyTo(t.Rows[23].Slots); }, reset: (t) => { if (t.Rows[23].Slots != null) Array.Clear(t.Rows[23].Slots, 0, t.Rows[23].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[23].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[23].Slots.Length * 2)), t.Rows[23].Slots); }, reset: (t) => { if (t.Rows[23].Slots != null) Array.Clear(t.Rows[23].Slots, 0, t.Rows[23].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[23].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[23].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[23].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[23].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[23].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[23].Teams.Slots[2] = 0; }),
@@ -1530,7 +1574,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[24].Id = unchecked((uint)v), reset: (t) => { t.Rows[24].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[24].LabelLength = (int)v, reset: (t) => { t.Rows[24].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[24].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[24].Label.Length)).CopyTo(t.Rows[24].Label); }, reset: (t) => { if (t.Rows[24].Label != null) { Array.Clear(t.Rows[24].Label, 0, t.Rows[24].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[24].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[24].Slots.Length * 2))).CopyTo(t.Rows[24].Slots); }, reset: (t) => { if (t.Rows[24].Slots != null) Array.Clear(t.Rows[24].Slots, 0, t.Rows[24].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[24].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[24].Slots.Length * 2)), t.Rows[24].Slots); }, reset: (t) => { if (t.Rows[24].Slots != null) Array.Clear(t.Rows[24].Slots, 0, t.Rows[24].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[24].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[24].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[24].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[24].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[24].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[24].Teams.Slots[2] = 0; }),
@@ -1543,7 +1587,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[25].Id = unchecked((uint)v), reset: (t) => { t.Rows[25].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[25].LabelLength = (int)v, reset: (t) => { t.Rows[25].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[25].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[25].Label.Length)).CopyTo(t.Rows[25].Label); }, reset: (t) => { if (t.Rows[25].Label != null) { Array.Clear(t.Rows[25].Label, 0, t.Rows[25].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[25].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[25].Slots.Length * 2))).CopyTo(t.Rows[25].Slots); }, reset: (t) => { if (t.Rows[25].Slots != null) Array.Clear(t.Rows[25].Slots, 0, t.Rows[25].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[25].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[25].Slots.Length * 2)), t.Rows[25].Slots); }, reset: (t) => { if (t.Rows[25].Slots != null) Array.Clear(t.Rows[25].Slots, 0, t.Rows[25].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[25].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[25].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[25].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[25].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[25].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[25].Teams.Slots[2] = 0; }),
@@ -1556,7 +1600,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[26].Id = unchecked((uint)v), reset: (t) => { t.Rows[26].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[26].LabelLength = (int)v, reset: (t) => { t.Rows[26].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[26].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[26].Label.Length)).CopyTo(t.Rows[26].Label); }, reset: (t) => { if (t.Rows[26].Label != null) { Array.Clear(t.Rows[26].Label, 0, t.Rows[26].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[26].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[26].Slots.Length * 2))).CopyTo(t.Rows[26].Slots); }, reset: (t) => { if (t.Rows[26].Slots != null) Array.Clear(t.Rows[26].Slots, 0, t.Rows[26].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[26].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[26].Slots.Length * 2)), t.Rows[26].Slots); }, reset: (t) => { if (t.Rows[26].Slots != null) Array.Clear(t.Rows[26].Slots, 0, t.Rows[26].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[26].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[26].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[26].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[26].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[26].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[26].Teams.Slots[2] = 0; }),
@@ -1569,7 +1613,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[27].Id = unchecked((uint)v), reset: (t) => { t.Rows[27].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[27].LabelLength = (int)v, reset: (t) => { t.Rows[27].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[27].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[27].Label.Length)).CopyTo(t.Rows[27].Label); }, reset: (t) => { if (t.Rows[27].Label != null) { Array.Clear(t.Rows[27].Label, 0, t.Rows[27].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[27].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[27].Slots.Length * 2))).CopyTo(t.Rows[27].Slots); }, reset: (t) => { if (t.Rows[27].Slots != null) Array.Clear(t.Rows[27].Slots, 0, t.Rows[27].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[27].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[27].Slots.Length * 2)), t.Rows[27].Slots); }, reset: (t) => { if (t.Rows[27].Slots != null) Array.Clear(t.Rows[27].Slots, 0, t.Rows[27].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[27].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[27].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[27].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[27].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[27].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[27].Teams.Slots[2] = 0; }),
@@ -1582,7 +1626,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[28].Id = unchecked((uint)v), reset: (t) => { t.Rows[28].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[28].LabelLength = (int)v, reset: (t) => { t.Rows[28].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[28].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[28].Label.Length)).CopyTo(t.Rows[28].Label); }, reset: (t) => { if (t.Rows[28].Label != null) { Array.Clear(t.Rows[28].Label, 0, t.Rows[28].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[28].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[28].Slots.Length * 2))).CopyTo(t.Rows[28].Slots); }, reset: (t) => { if (t.Rows[28].Slots != null) Array.Clear(t.Rows[28].Slots, 0, t.Rows[28].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[28].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[28].Slots.Length * 2)), t.Rows[28].Slots); }, reset: (t) => { if (t.Rows[28].Slots != null) Array.Clear(t.Rows[28].Slots, 0, t.Rows[28].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[28].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[28].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[28].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[28].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[28].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[28].Teams.Slots[2] = 0; }),
@@ -1595,7 +1639,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[29].Id = unchecked((uint)v), reset: (t) => { t.Rows[29].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[29].LabelLength = (int)v, reset: (t) => { t.Rows[29].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[29].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[29].Label.Length)).CopyTo(t.Rows[29].Label); }, reset: (t) => { if (t.Rows[29].Label != null) { Array.Clear(t.Rows[29].Label, 0, t.Rows[29].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[29].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[29].Slots.Length * 2))).CopyTo(t.Rows[29].Slots); }, reset: (t) => { if (t.Rows[29].Slots != null) Array.Clear(t.Rows[29].Slots, 0, t.Rows[29].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[29].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[29].Slots.Length * 2)), t.Rows[29].Slots); }, reset: (t) => { if (t.Rows[29].Slots != null) Array.Clear(t.Rows[29].Slots, 0, t.Rows[29].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[29].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[29].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[29].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[29].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[29].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[29].Teams.Slots[2] = 0; }),
@@ -1608,7 +1652,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[30].Id = unchecked((uint)v), reset: (t) => { t.Rows[30].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[30].LabelLength = (int)v, reset: (t) => { t.Rows[30].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[30].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[30].Label.Length)).CopyTo(t.Rows[30].Label); }, reset: (t) => { if (t.Rows[30].Label != null) { Array.Clear(t.Rows[30].Label, 0, t.Rows[30].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[30].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[30].Slots.Length * 2))).CopyTo(t.Rows[30].Slots); }, reset: (t) => { if (t.Rows[30].Slots != null) Array.Clear(t.Rows[30].Slots, 0, t.Rows[30].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[30].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[30].Slots.Length * 2)), t.Rows[30].Slots); }, reset: (t) => { if (t.Rows[30].Slots != null) Array.Clear(t.Rows[30].Slots, 0, t.Rows[30].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[30].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[30].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[30].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[30].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[30].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[30].Teams.Slots[2] = 0; }),
@@ -1621,7 +1665,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[31].Id = unchecked((uint)v), reset: (t) => { t.Rows[31].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[31].LabelLength = (int)v, reset: (t) => { t.Rows[31].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[31].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[31].Label.Length)).CopyTo(t.Rows[31].Label); }, reset: (t) => { if (t.Rows[31].Label != null) { Array.Clear(t.Rows[31].Label, 0, t.Rows[31].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[31].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[31].Slots.Length * 2))).CopyTo(t.Rows[31].Slots); }, reset: (t) => { if (t.Rows[31].Slots != null) Array.Clear(t.Rows[31].Slots, 0, t.Rows[31].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[31].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[31].Slots.Length * 2)), t.Rows[31].Slots); }, reset: (t) => { if (t.Rows[31].Slots != null) Array.Clear(t.Rows[31].Slots, 0, t.Rows[31].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[31].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[31].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[31].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[31].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[31].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[31].Teams.Slots[2] = 0; }),
@@ -1634,7 +1678,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[32].Id = unchecked((uint)v), reset: (t) => { t.Rows[32].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[32].LabelLength = (int)v, reset: (t) => { t.Rows[32].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[32].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[32].Label.Length)).CopyTo(t.Rows[32].Label); }, reset: (t) => { if (t.Rows[32].Label != null) { Array.Clear(t.Rows[32].Label, 0, t.Rows[32].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[32].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[32].Slots.Length * 2))).CopyTo(t.Rows[32].Slots); }, reset: (t) => { if (t.Rows[32].Slots != null) Array.Clear(t.Rows[32].Slots, 0, t.Rows[32].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[32].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[32].Slots.Length * 2)), t.Rows[32].Slots); }, reset: (t) => { if (t.Rows[32].Slots != null) Array.Clear(t.Rows[32].Slots, 0, t.Rows[32].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[32].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[32].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[32].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[32].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[32].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[32].Teams.Slots[2] = 0; }),
@@ -1647,7 +1691,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[33].Id = unchecked((uint)v), reset: (t) => { t.Rows[33].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[33].LabelLength = (int)v, reset: (t) => { t.Rows[33].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[33].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[33].Label.Length)).CopyTo(t.Rows[33].Label); }, reset: (t) => { if (t.Rows[33].Label != null) { Array.Clear(t.Rows[33].Label, 0, t.Rows[33].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[33].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[33].Slots.Length * 2))).CopyTo(t.Rows[33].Slots); }, reset: (t) => { if (t.Rows[33].Slots != null) Array.Clear(t.Rows[33].Slots, 0, t.Rows[33].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[33].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[33].Slots.Length * 2)), t.Rows[33].Slots); }, reset: (t) => { if (t.Rows[33].Slots != null) Array.Clear(t.Rows[33].Slots, 0, t.Rows[33].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[33].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[33].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[33].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[33].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[33].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[33].Teams.Slots[2] = 0; }),
@@ -1660,7 +1704,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[34].Id = unchecked((uint)v), reset: (t) => { t.Rows[34].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[34].LabelLength = (int)v, reset: (t) => { t.Rows[34].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[34].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[34].Label.Length)).CopyTo(t.Rows[34].Label); }, reset: (t) => { if (t.Rows[34].Label != null) { Array.Clear(t.Rows[34].Label, 0, t.Rows[34].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[34].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[34].Slots.Length * 2))).CopyTo(t.Rows[34].Slots); }, reset: (t) => { if (t.Rows[34].Slots != null) Array.Clear(t.Rows[34].Slots, 0, t.Rows[34].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[34].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[34].Slots.Length * 2)), t.Rows[34].Slots); }, reset: (t) => { if (t.Rows[34].Slots != null) Array.Clear(t.Rows[34].Slots, 0, t.Rows[34].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[34].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[34].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[34].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[34].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[34].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[34].Teams.Slots[2] = 0; }),
@@ -1673,7 +1717,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[35].Id = unchecked((uint)v), reset: (t) => { t.Rows[35].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[35].LabelLength = (int)v, reset: (t) => { t.Rows[35].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[35].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[35].Label.Length)).CopyTo(t.Rows[35].Label); }, reset: (t) => { if (t.Rows[35].Label != null) { Array.Clear(t.Rows[35].Label, 0, t.Rows[35].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[35].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[35].Slots.Length * 2))).CopyTo(t.Rows[35].Slots); }, reset: (t) => { if (t.Rows[35].Slots != null) Array.Clear(t.Rows[35].Slots, 0, t.Rows[35].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[35].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[35].Slots.Length * 2)), t.Rows[35].Slots); }, reset: (t) => { if (t.Rows[35].Slots != null) Array.Clear(t.Rows[35].Slots, 0, t.Rows[35].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[35].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[35].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[35].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[35].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[35].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[35].Teams.Slots[2] = 0; }),
@@ -1686,7 +1730,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[36].Id = unchecked((uint)v), reset: (t) => { t.Rows[36].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[36].LabelLength = (int)v, reset: (t) => { t.Rows[36].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[36].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[36].Label.Length)).CopyTo(t.Rows[36].Label); }, reset: (t) => { if (t.Rows[36].Label != null) { Array.Clear(t.Rows[36].Label, 0, t.Rows[36].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[36].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[36].Slots.Length * 2))).CopyTo(t.Rows[36].Slots); }, reset: (t) => { if (t.Rows[36].Slots != null) Array.Clear(t.Rows[36].Slots, 0, t.Rows[36].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[36].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[36].Slots.Length * 2)), t.Rows[36].Slots); }, reset: (t) => { if (t.Rows[36].Slots != null) Array.Clear(t.Rows[36].Slots, 0, t.Rows[36].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[36].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[36].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[36].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[36].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[36].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[36].Teams.Slots[2] = 0; }),
@@ -1699,7 +1743,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[37].Id = unchecked((uint)v), reset: (t) => { t.Rows[37].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[37].LabelLength = (int)v, reset: (t) => { t.Rows[37].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[37].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[37].Label.Length)).CopyTo(t.Rows[37].Label); }, reset: (t) => { if (t.Rows[37].Label != null) { Array.Clear(t.Rows[37].Label, 0, t.Rows[37].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[37].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[37].Slots.Length * 2))).CopyTo(t.Rows[37].Slots); }, reset: (t) => { if (t.Rows[37].Slots != null) Array.Clear(t.Rows[37].Slots, 0, t.Rows[37].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[37].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[37].Slots.Length * 2)), t.Rows[37].Slots); }, reset: (t) => { if (t.Rows[37].Slots != null) Array.Clear(t.Rows[37].Slots, 0, t.Rows[37].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[37].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[37].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[37].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[37].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[37].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[37].Teams.Slots[2] = 0; }),
@@ -1712,7 +1756,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[38].Id = unchecked((uint)v), reset: (t) => { t.Rows[38].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[38].LabelLength = (int)v, reset: (t) => { t.Rows[38].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[38].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[38].Label.Length)).CopyTo(t.Rows[38].Label); }, reset: (t) => { if (t.Rows[38].Label != null) { Array.Clear(t.Rows[38].Label, 0, t.Rows[38].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[38].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[38].Slots.Length * 2))).CopyTo(t.Rows[38].Slots); }, reset: (t) => { if (t.Rows[38].Slots != null) Array.Clear(t.Rows[38].Slots, 0, t.Rows[38].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[38].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[38].Slots.Length * 2)), t.Rows[38].Slots); }, reset: (t) => { if (t.Rows[38].Slots != null) Array.Clear(t.Rows[38].Slots, 0, t.Rows[38].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[38].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[38].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[38].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[38].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[38].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[38].Teams.Slots[2] = 0; }),
@@ -1725,7 +1769,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[39].Id = unchecked((uint)v), reset: (t) => { t.Rows[39].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[39].LabelLength = (int)v, reset: (t) => { t.Rows[39].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[39].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[39].Label.Length)).CopyTo(t.Rows[39].Label); }, reset: (t) => { if (t.Rows[39].Label != null) { Array.Clear(t.Rows[39].Label, 0, t.Rows[39].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[39].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[39].Slots.Length * 2))).CopyTo(t.Rows[39].Slots); }, reset: (t) => { if (t.Rows[39].Slots != null) Array.Clear(t.Rows[39].Slots, 0, t.Rows[39].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[39].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[39].Slots.Length * 2)), t.Rows[39].Slots); }, reset: (t) => { if (t.Rows[39].Slots != null) Array.Clear(t.Rows[39].Slots, 0, t.Rows[39].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[39].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[39].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[39].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[39].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[39].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[39].Teams.Slots[2] = 0; }),
@@ -1738,7 +1782,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[40].Id = unchecked((uint)v), reset: (t) => { t.Rows[40].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[40].LabelLength = (int)v, reset: (t) => { t.Rows[40].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[40].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[40].Label.Length)).CopyTo(t.Rows[40].Label); }, reset: (t) => { if (t.Rows[40].Label != null) { Array.Clear(t.Rows[40].Label, 0, t.Rows[40].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[40].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[40].Slots.Length * 2))).CopyTo(t.Rows[40].Slots); }, reset: (t) => { if (t.Rows[40].Slots != null) Array.Clear(t.Rows[40].Slots, 0, t.Rows[40].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[40].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[40].Slots.Length * 2)), t.Rows[40].Slots); }, reset: (t) => { if (t.Rows[40].Slots != null) Array.Clear(t.Rows[40].Slots, 0, t.Rows[40].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[40].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[40].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[40].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[40].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[40].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[40].Teams.Slots[2] = 0; }),
@@ -1751,7 +1795,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[41].Id = unchecked((uint)v), reset: (t) => { t.Rows[41].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[41].LabelLength = (int)v, reset: (t) => { t.Rows[41].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[41].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[41].Label.Length)).CopyTo(t.Rows[41].Label); }, reset: (t) => { if (t.Rows[41].Label != null) { Array.Clear(t.Rows[41].Label, 0, t.Rows[41].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[41].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[41].Slots.Length * 2))).CopyTo(t.Rows[41].Slots); }, reset: (t) => { if (t.Rows[41].Slots != null) Array.Clear(t.Rows[41].Slots, 0, t.Rows[41].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[41].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[41].Slots.Length * 2)), t.Rows[41].Slots); }, reset: (t) => { if (t.Rows[41].Slots != null) Array.Clear(t.Rows[41].Slots, 0, t.Rows[41].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[41].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[41].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[41].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[41].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[41].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[41].Teams.Slots[2] = 0; }),
@@ -1764,7 +1808,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[42].Id = unchecked((uint)v), reset: (t) => { t.Rows[42].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[42].LabelLength = (int)v, reset: (t) => { t.Rows[42].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[42].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[42].Label.Length)).CopyTo(t.Rows[42].Label); }, reset: (t) => { if (t.Rows[42].Label != null) { Array.Clear(t.Rows[42].Label, 0, t.Rows[42].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[42].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[42].Slots.Length * 2))).CopyTo(t.Rows[42].Slots); }, reset: (t) => { if (t.Rows[42].Slots != null) Array.Clear(t.Rows[42].Slots, 0, t.Rows[42].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[42].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[42].Slots.Length * 2)), t.Rows[42].Slots); }, reset: (t) => { if (t.Rows[42].Slots != null) Array.Clear(t.Rows[42].Slots, 0, t.Rows[42].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[42].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[42].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[42].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[42].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[42].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[42].Teams.Slots[2] = 0; }),
@@ -1777,7 +1821,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[43].Id = unchecked((uint)v), reset: (t) => { t.Rows[43].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[43].LabelLength = (int)v, reset: (t) => { t.Rows[43].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[43].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[43].Label.Length)).CopyTo(t.Rows[43].Label); }, reset: (t) => { if (t.Rows[43].Label != null) { Array.Clear(t.Rows[43].Label, 0, t.Rows[43].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[43].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[43].Slots.Length * 2))).CopyTo(t.Rows[43].Slots); }, reset: (t) => { if (t.Rows[43].Slots != null) Array.Clear(t.Rows[43].Slots, 0, t.Rows[43].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[43].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[43].Slots.Length * 2)), t.Rows[43].Slots); }, reset: (t) => { if (t.Rows[43].Slots != null) Array.Clear(t.Rows[43].Slots, 0, t.Rows[43].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[43].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[43].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[43].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[43].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[43].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[43].Teams.Slots[2] = 0; }),
@@ -1790,7 +1834,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[44].Id = unchecked((uint)v), reset: (t) => { t.Rows[44].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[44].LabelLength = (int)v, reset: (t) => { t.Rows[44].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[44].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[44].Label.Length)).CopyTo(t.Rows[44].Label); }, reset: (t) => { if (t.Rows[44].Label != null) { Array.Clear(t.Rows[44].Label, 0, t.Rows[44].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[44].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[44].Slots.Length * 2))).CopyTo(t.Rows[44].Slots); }, reset: (t) => { if (t.Rows[44].Slots != null) Array.Clear(t.Rows[44].Slots, 0, t.Rows[44].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[44].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[44].Slots.Length * 2)), t.Rows[44].Slots); }, reset: (t) => { if (t.Rows[44].Slots != null) Array.Clear(t.Rows[44].Slots, 0, t.Rows[44].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[44].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[44].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[44].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[44].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[44].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[44].Teams.Slots[2] = 0; }),
@@ -1803,7 +1847,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[45].Id = unchecked((uint)v), reset: (t) => { t.Rows[45].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[45].LabelLength = (int)v, reset: (t) => { t.Rows[45].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[45].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[45].Label.Length)).CopyTo(t.Rows[45].Label); }, reset: (t) => { if (t.Rows[45].Label != null) { Array.Clear(t.Rows[45].Label, 0, t.Rows[45].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[45].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[45].Slots.Length * 2))).CopyTo(t.Rows[45].Slots); }, reset: (t) => { if (t.Rows[45].Slots != null) Array.Clear(t.Rows[45].Slots, 0, t.Rows[45].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[45].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[45].Slots.Length * 2)), t.Rows[45].Slots); }, reset: (t) => { if (t.Rows[45].Slots != null) Array.Clear(t.Rows[45].Slots, 0, t.Rows[45].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[45].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[45].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[45].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[45].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[45].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[45].Teams.Slots[2] = 0; }),
@@ -1816,7 +1860,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[46].Id = unchecked((uint)v), reset: (t) => { t.Rows[46].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[46].LabelLength = (int)v, reset: (t) => { t.Rows[46].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[46].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[46].Label.Length)).CopyTo(t.Rows[46].Label); }, reset: (t) => { if (t.Rows[46].Label != null) { Array.Clear(t.Rows[46].Label, 0, t.Rows[46].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[46].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[46].Slots.Length * 2))).CopyTo(t.Rows[46].Slots); }, reset: (t) => { if (t.Rows[46].Slots != null) Array.Clear(t.Rows[46].Slots, 0, t.Rows[46].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[46].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[46].Slots.Length * 2)), t.Rows[46].Slots); }, reset: (t) => { if (t.Rows[46].Slots != null) Array.Clear(t.Rows[46].Slots, 0, t.Rows[46].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[46].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[46].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[46].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[46].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[46].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[46].Teams.Slots[2] = 0; }),
@@ -1829,7 +1873,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[47].Id = unchecked((uint)v), reset: (t) => { t.Rows[47].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[47].LabelLength = (int)v, reset: (t) => { t.Rows[47].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[47].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[47].Label.Length)).CopyTo(t.Rows[47].Label); }, reset: (t) => { if (t.Rows[47].Label != null) { Array.Clear(t.Rows[47].Label, 0, t.Rows[47].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[47].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[47].Slots.Length * 2))).CopyTo(t.Rows[47].Slots); }, reset: (t) => { if (t.Rows[47].Slots != null) Array.Clear(t.Rows[47].Slots, 0, t.Rows[47].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[47].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[47].Slots.Length * 2)), t.Rows[47].Slots); }, reset: (t) => { if (t.Rows[47].Slots != null) Array.Clear(t.Rows[47].Slots, 0, t.Rows[47].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[47].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[47].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[47].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[47].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[47].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[47].Teams.Slots[2] = 0; }),
@@ -1842,7 +1886,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[48].Id = unchecked((uint)v), reset: (t) => { t.Rows[48].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[48].LabelLength = (int)v, reset: (t) => { t.Rows[48].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[48].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[48].Label.Length)).CopyTo(t.Rows[48].Label); }, reset: (t) => { if (t.Rows[48].Label != null) { Array.Clear(t.Rows[48].Label, 0, t.Rows[48].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[48].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[48].Slots.Length * 2))).CopyTo(t.Rows[48].Slots); }, reset: (t) => { if (t.Rows[48].Slots != null) Array.Clear(t.Rows[48].Slots, 0, t.Rows[48].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[48].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[48].Slots.Length * 2)), t.Rows[48].Slots); }, reset: (t) => { if (t.Rows[48].Slots != null) Array.Clear(t.Rows[48].Slots, 0, t.Rows[48].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[48].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[48].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[48].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[48].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[48].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[48].Teams.Slots[2] = 0; }),
@@ -1855,7 +1899,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[49].Id = unchecked((uint)v), reset: (t) => { t.Rows[49].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[49].LabelLength = (int)v, reset: (t) => { t.Rows[49].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[49].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[49].Label.Length)).CopyTo(t.Rows[49].Label); }, reset: (t) => { if (t.Rows[49].Label != null) { Array.Clear(t.Rows[49].Label, 0, t.Rows[49].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[49].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[49].Slots.Length * 2))).CopyTo(t.Rows[49].Slots); }, reset: (t) => { if (t.Rows[49].Slots != null) Array.Clear(t.Rows[49].Slots, 0, t.Rows[49].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[49].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[49].Slots.Length * 2)), t.Rows[49].Slots); }, reset: (t) => { if (t.Rows[49].Slots != null) Array.Clear(t.Rows[49].Slots, 0, t.Rows[49].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[49].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[49].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[49].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[49].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[49].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[49].Teams.Slots[2] = 0; }),
@@ -1868,7 +1912,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[50].Id = unchecked((uint)v), reset: (t) => { t.Rows[50].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[50].LabelLength = (int)v, reset: (t) => { t.Rows[50].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[50].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[50].Label.Length)).CopyTo(t.Rows[50].Label); }, reset: (t) => { if (t.Rows[50].Label != null) { Array.Clear(t.Rows[50].Label, 0, t.Rows[50].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[50].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[50].Slots.Length * 2))).CopyTo(t.Rows[50].Slots); }, reset: (t) => { if (t.Rows[50].Slots != null) Array.Clear(t.Rows[50].Slots, 0, t.Rows[50].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[50].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[50].Slots.Length * 2)), t.Rows[50].Slots); }, reset: (t) => { if (t.Rows[50].Slots != null) Array.Clear(t.Rows[50].Slots, 0, t.Rows[50].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[50].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[50].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[50].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[50].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[50].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[50].Teams.Slots[2] = 0; }),
@@ -1881,7 +1925,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[51].Id = unchecked((uint)v), reset: (t) => { t.Rows[51].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[51].LabelLength = (int)v, reset: (t) => { t.Rows[51].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[51].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[51].Label.Length)).CopyTo(t.Rows[51].Label); }, reset: (t) => { if (t.Rows[51].Label != null) { Array.Clear(t.Rows[51].Label, 0, t.Rows[51].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[51].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[51].Slots.Length * 2))).CopyTo(t.Rows[51].Slots); }, reset: (t) => { if (t.Rows[51].Slots != null) Array.Clear(t.Rows[51].Slots, 0, t.Rows[51].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[51].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[51].Slots.Length * 2)), t.Rows[51].Slots); }, reset: (t) => { if (t.Rows[51].Slots != null) Array.Clear(t.Rows[51].Slots, 0, t.Rows[51].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[51].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[51].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[51].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[51].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[51].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[51].Teams.Slots[2] = 0; }),
@@ -1894,7 +1938,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[52].Id = unchecked((uint)v), reset: (t) => { t.Rows[52].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[52].LabelLength = (int)v, reset: (t) => { t.Rows[52].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[52].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[52].Label.Length)).CopyTo(t.Rows[52].Label); }, reset: (t) => { if (t.Rows[52].Label != null) { Array.Clear(t.Rows[52].Label, 0, t.Rows[52].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[52].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[52].Slots.Length * 2))).CopyTo(t.Rows[52].Slots); }, reset: (t) => { if (t.Rows[52].Slots != null) Array.Clear(t.Rows[52].Slots, 0, t.Rows[52].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[52].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[52].Slots.Length * 2)), t.Rows[52].Slots); }, reset: (t) => { if (t.Rows[52].Slots != null) Array.Clear(t.Rows[52].Slots, 0, t.Rows[52].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[52].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[52].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[52].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[52].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[52].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[52].Teams.Slots[2] = 0; }),
@@ -1907,7 +1951,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[53].Id = unchecked((uint)v), reset: (t) => { t.Rows[53].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[53].LabelLength = (int)v, reset: (t) => { t.Rows[53].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[53].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[53].Label.Length)).CopyTo(t.Rows[53].Label); }, reset: (t) => { if (t.Rows[53].Label != null) { Array.Clear(t.Rows[53].Label, 0, t.Rows[53].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[53].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[53].Slots.Length * 2))).CopyTo(t.Rows[53].Slots); }, reset: (t) => { if (t.Rows[53].Slots != null) Array.Clear(t.Rows[53].Slots, 0, t.Rows[53].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[53].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[53].Slots.Length * 2)), t.Rows[53].Slots); }, reset: (t) => { if (t.Rows[53].Slots != null) Array.Clear(t.Rows[53].Slots, 0, t.Rows[53].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[53].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[53].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[53].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[53].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[53].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[53].Teams.Slots[2] = 0; }),
@@ -1920,7 +1964,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[54].Id = unchecked((uint)v), reset: (t) => { t.Rows[54].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[54].LabelLength = (int)v, reset: (t) => { t.Rows[54].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[54].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[54].Label.Length)).CopyTo(t.Rows[54].Label); }, reset: (t) => { if (t.Rows[54].Label != null) { Array.Clear(t.Rows[54].Label, 0, t.Rows[54].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[54].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[54].Slots.Length * 2))).CopyTo(t.Rows[54].Slots); }, reset: (t) => { if (t.Rows[54].Slots != null) Array.Clear(t.Rows[54].Slots, 0, t.Rows[54].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[54].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[54].Slots.Length * 2)), t.Rows[54].Slots); }, reset: (t) => { if (t.Rows[54].Slots != null) Array.Clear(t.Rows[54].Slots, 0, t.Rows[54].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[54].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[54].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[54].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[54].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[54].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[54].Teams.Slots[2] = 0; }),
@@ -1933,7 +1977,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[55].Id = unchecked((uint)v), reset: (t) => { t.Rows[55].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[55].LabelLength = (int)v, reset: (t) => { t.Rows[55].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[55].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[55].Label.Length)).CopyTo(t.Rows[55].Label); }, reset: (t) => { if (t.Rows[55].Label != null) { Array.Clear(t.Rows[55].Label, 0, t.Rows[55].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[55].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[55].Slots.Length * 2))).CopyTo(t.Rows[55].Slots); }, reset: (t) => { if (t.Rows[55].Slots != null) Array.Clear(t.Rows[55].Slots, 0, t.Rows[55].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[55].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[55].Slots.Length * 2)), t.Rows[55].Slots); }, reset: (t) => { if (t.Rows[55].Slots != null) Array.Clear(t.Rows[55].Slots, 0, t.Rows[55].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[55].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[55].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[55].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[55].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[55].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[55].Teams.Slots[2] = 0; }),
@@ -1946,7 +1990,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[56].Id = unchecked((uint)v), reset: (t) => { t.Rows[56].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[56].LabelLength = (int)v, reset: (t) => { t.Rows[56].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[56].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[56].Label.Length)).CopyTo(t.Rows[56].Label); }, reset: (t) => { if (t.Rows[56].Label != null) { Array.Clear(t.Rows[56].Label, 0, t.Rows[56].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[56].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[56].Slots.Length * 2))).CopyTo(t.Rows[56].Slots); }, reset: (t) => { if (t.Rows[56].Slots != null) Array.Clear(t.Rows[56].Slots, 0, t.Rows[56].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[56].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[56].Slots.Length * 2)), t.Rows[56].Slots); }, reset: (t) => { if (t.Rows[56].Slots != null) Array.Clear(t.Rows[56].Slots, 0, t.Rows[56].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[56].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[56].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[56].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[56].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[56].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[56].Teams.Slots[2] = 0; }),
@@ -1959,7 +2003,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[57].Id = unchecked((uint)v), reset: (t) => { t.Rows[57].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[57].LabelLength = (int)v, reset: (t) => { t.Rows[57].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[57].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[57].Label.Length)).CopyTo(t.Rows[57].Label); }, reset: (t) => { if (t.Rows[57].Label != null) { Array.Clear(t.Rows[57].Label, 0, t.Rows[57].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[57].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[57].Slots.Length * 2))).CopyTo(t.Rows[57].Slots); }, reset: (t) => { if (t.Rows[57].Slots != null) Array.Clear(t.Rows[57].Slots, 0, t.Rows[57].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[57].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[57].Slots.Length * 2)), t.Rows[57].Slots); }, reset: (t) => { if (t.Rows[57].Slots != null) Array.Clear(t.Rows[57].Slots, 0, t.Rows[57].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[57].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[57].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[57].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[57].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[57].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[57].Teams.Slots[2] = 0; }),
@@ -1972,7 +2016,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[58].Id = unchecked((uint)v), reset: (t) => { t.Rows[58].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[58].LabelLength = (int)v, reset: (t) => { t.Rows[58].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[58].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[58].Label.Length)).CopyTo(t.Rows[58].Label); }, reset: (t) => { if (t.Rows[58].Label != null) { Array.Clear(t.Rows[58].Label, 0, t.Rows[58].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[58].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[58].Slots.Length * 2))).CopyTo(t.Rows[58].Slots); }, reset: (t) => { if (t.Rows[58].Slots != null) Array.Clear(t.Rows[58].Slots, 0, t.Rows[58].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[58].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[58].Slots.Length * 2)), t.Rows[58].Slots); }, reset: (t) => { if (t.Rows[58].Slots != null) Array.Clear(t.Rows[58].Slots, 0, t.Rows[58].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[58].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[58].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[58].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[58].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[58].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[58].Teams.Slots[2] = 0; }),
@@ -1985,7 +2029,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[59].Id = unchecked((uint)v), reset: (t) => { t.Rows[59].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[59].LabelLength = (int)v, reset: (t) => { t.Rows[59].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[59].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[59].Label.Length)).CopyTo(t.Rows[59].Label); }, reset: (t) => { if (t.Rows[59].Label != null) { Array.Clear(t.Rows[59].Label, 0, t.Rows[59].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[59].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[59].Slots.Length * 2))).CopyTo(t.Rows[59].Slots); }, reset: (t) => { if (t.Rows[59].Slots != null) Array.Clear(t.Rows[59].Slots, 0, t.Rows[59].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[59].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[59].Slots.Length * 2)), t.Rows[59].Slots); }, reset: (t) => { if (t.Rows[59].Slots != null) Array.Clear(t.Rows[59].Slots, 0, t.Rows[59].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[59].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[59].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[59].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[59].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[59].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[59].Teams.Slots[2] = 0; }),
@@ -1998,7 +2042,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[60].Id = unchecked((uint)v), reset: (t) => { t.Rows[60].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[60].LabelLength = (int)v, reset: (t) => { t.Rows[60].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[60].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[60].Label.Length)).CopyTo(t.Rows[60].Label); }, reset: (t) => { if (t.Rows[60].Label != null) { Array.Clear(t.Rows[60].Label, 0, t.Rows[60].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[60].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[60].Slots.Length * 2))).CopyTo(t.Rows[60].Slots); }, reset: (t) => { if (t.Rows[60].Slots != null) Array.Clear(t.Rows[60].Slots, 0, t.Rows[60].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[60].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[60].Slots.Length * 2)), t.Rows[60].Slots); }, reset: (t) => { if (t.Rows[60].Slots != null) Array.Clear(t.Rows[60].Slots, 0, t.Rows[60].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[60].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[60].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[60].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[60].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[60].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[60].Teams.Slots[2] = 0; }),
@@ -2011,7 +2055,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[61].Id = unchecked((uint)v), reset: (t) => { t.Rows[61].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[61].LabelLength = (int)v, reset: (t) => { t.Rows[61].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[61].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[61].Label.Length)).CopyTo(t.Rows[61].Label); }, reset: (t) => { if (t.Rows[61].Label != null) { Array.Clear(t.Rows[61].Label, 0, t.Rows[61].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[61].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[61].Slots.Length * 2))).CopyTo(t.Rows[61].Slots); }, reset: (t) => { if (t.Rows[61].Slots != null) Array.Clear(t.Rows[61].Slots, 0, t.Rows[61].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[61].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[61].Slots.Length * 2)), t.Rows[61].Slots); }, reset: (t) => { if (t.Rows[61].Slots != null) Array.Clear(t.Rows[61].Slots, 0, t.Rows[61].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[61].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[61].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[61].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[61].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[61].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[61].Teams.Slots[2] = 0; }),
@@ -2024,7 +2068,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[62].Id = unchecked((uint)v), reset: (t) => { t.Rows[62].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[62].LabelLength = (int)v, reset: (t) => { t.Rows[62].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[62].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[62].Label.Length)).CopyTo(t.Rows[62].Label); }, reset: (t) => { if (t.Rows[62].Label != null) { Array.Clear(t.Rows[62].Label, 0, t.Rows[62].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[62].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[62].Slots.Length * 2))).CopyTo(t.Rows[62].Slots); }, reset: (t) => { if (t.Rows[62].Slots != null) Array.Clear(t.Rows[62].Slots, 0, t.Rows[62].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[62].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[62].Slots.Length * 2)), t.Rows[62].Slots); }, reset: (t) => { if (t.Rows[62].Slots != null) Array.Clear(t.Rows[62].Slots, 0, t.Rows[62].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[62].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[62].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[62].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[62].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[62].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[62].Teams.Slots[2] = 0; }),
@@ -2037,7 +2081,7 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[63].Id = unchecked((uint)v), reset: (t) => { t.Rows[63].Id = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[63].LabelLength = (int)v, reset: (t) => { t.Rows[63].LabelLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[63].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[63].Label.Length)).CopyTo(t.Rows[63].Label); }, reset: (t) => { if (t.Rows[63].Label != null) { Array.Clear(t.Rows[63].Label, 0, t.Rows[63].Label.Length); } }),
-            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[63].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[63].Slots.Length * 2))).CopyTo(t.Rows[63].Slots); }, reset: (t) => { if (t.Rows[63].Slots != null) Array.Clear(t.Rows[63].Slots, 0, t.Rows[63].Slots.Length); }),
+            new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Rows[63].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[63].Slots.Length * 2)), t.Rows[63].Slots); }, reset: (t) => { if (t.Rows[63].Slots != null) Array.Clear(t.Rows[63].Slots, 0, t.Rows[63].Slots.Length); }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[63].Teams.Slots[0] = unchecked((byte)v), reset: (t) => { t.Rows[63].Teams.Slots[0] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[63].Teams.Slots[1] = unchecked((byte)v), reset: (t) => { t.Rows[63].Teams.Slots[1] = 0; }),
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.Rows[63].Teams.Slots[2] = unchecked((byte)v), reset: (t) => { t.Rows[63].Teams.Slots[2] = 0; }),
@@ -2849,133 +2893,133 @@ namespace Blockdemo
             switch (slot)
             {
                 case 8: { if (t.Rows[0].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[0].Label.Length)).CopyTo(t.Rows[0].Label); } break;
-                case 9: { if (t.Rows[0].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[0].Slots.Length * 2))).CopyTo(t.Rows[0].Slots); } break;
+                case 9: { if (t.Rows[0].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[0].Slots.Length * 2)), t.Rows[0].Slots); } break;
                 case 21: { if (t.Rows[1].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[1].Label.Length)).CopyTo(t.Rows[1].Label); } break;
-                case 22: { if (t.Rows[1].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[1].Slots.Length * 2))).CopyTo(t.Rows[1].Slots); } break;
+                case 22: { if (t.Rows[1].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[1].Slots.Length * 2)), t.Rows[1].Slots); } break;
                 case 34: { if (t.Rows[2].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[2].Label.Length)).CopyTo(t.Rows[2].Label); } break;
-                case 35: { if (t.Rows[2].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[2].Slots.Length * 2))).CopyTo(t.Rows[2].Slots); } break;
+                case 35: { if (t.Rows[2].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[2].Slots.Length * 2)), t.Rows[2].Slots); } break;
                 case 47: { if (t.Rows[3].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[3].Label.Length)).CopyTo(t.Rows[3].Label); } break;
-                case 48: { if (t.Rows[3].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[3].Slots.Length * 2))).CopyTo(t.Rows[3].Slots); } break;
+                case 48: { if (t.Rows[3].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[3].Slots.Length * 2)), t.Rows[3].Slots); } break;
                 case 60: { if (t.Rows[4].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[4].Label.Length)).CopyTo(t.Rows[4].Label); } break;
-                case 61: { if (t.Rows[4].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[4].Slots.Length * 2))).CopyTo(t.Rows[4].Slots); } break;
+                case 61: { if (t.Rows[4].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[4].Slots.Length * 2)), t.Rows[4].Slots); } break;
                 case 73: { if (t.Rows[5].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[5].Label.Length)).CopyTo(t.Rows[5].Label); } break;
-                case 74: { if (t.Rows[5].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[5].Slots.Length * 2))).CopyTo(t.Rows[5].Slots); } break;
+                case 74: { if (t.Rows[5].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[5].Slots.Length * 2)), t.Rows[5].Slots); } break;
                 case 86: { if (t.Rows[6].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[6].Label.Length)).CopyTo(t.Rows[6].Label); } break;
-                case 87: { if (t.Rows[6].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[6].Slots.Length * 2))).CopyTo(t.Rows[6].Slots); } break;
+                case 87: { if (t.Rows[6].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[6].Slots.Length * 2)), t.Rows[6].Slots); } break;
                 case 99: { if (t.Rows[7].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[7].Label.Length)).CopyTo(t.Rows[7].Label); } break;
-                case 100: { if (t.Rows[7].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[7].Slots.Length * 2))).CopyTo(t.Rows[7].Slots); } break;
+                case 100: { if (t.Rows[7].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[7].Slots.Length * 2)), t.Rows[7].Slots); } break;
                 case 112: { if (t.Rows[8].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[8].Label.Length)).CopyTo(t.Rows[8].Label); } break;
-                case 113: { if (t.Rows[8].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[8].Slots.Length * 2))).CopyTo(t.Rows[8].Slots); } break;
+                case 113: { if (t.Rows[8].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[8].Slots.Length * 2)), t.Rows[8].Slots); } break;
                 case 125: { if (t.Rows[9].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[9].Label.Length)).CopyTo(t.Rows[9].Label); } break;
-                case 126: { if (t.Rows[9].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[9].Slots.Length * 2))).CopyTo(t.Rows[9].Slots); } break;
+                case 126: { if (t.Rows[9].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[9].Slots.Length * 2)), t.Rows[9].Slots); } break;
                 case 138: { if (t.Rows[10].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[10].Label.Length)).CopyTo(t.Rows[10].Label); } break;
-                case 139: { if (t.Rows[10].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[10].Slots.Length * 2))).CopyTo(t.Rows[10].Slots); } break;
+                case 139: { if (t.Rows[10].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[10].Slots.Length * 2)), t.Rows[10].Slots); } break;
                 case 151: { if (t.Rows[11].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[11].Label.Length)).CopyTo(t.Rows[11].Label); } break;
-                case 152: { if (t.Rows[11].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[11].Slots.Length * 2))).CopyTo(t.Rows[11].Slots); } break;
+                case 152: { if (t.Rows[11].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[11].Slots.Length * 2)), t.Rows[11].Slots); } break;
                 case 164: { if (t.Rows[12].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[12].Label.Length)).CopyTo(t.Rows[12].Label); } break;
-                case 165: { if (t.Rows[12].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[12].Slots.Length * 2))).CopyTo(t.Rows[12].Slots); } break;
+                case 165: { if (t.Rows[12].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[12].Slots.Length * 2)), t.Rows[12].Slots); } break;
                 case 177: { if (t.Rows[13].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[13].Label.Length)).CopyTo(t.Rows[13].Label); } break;
-                case 178: { if (t.Rows[13].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[13].Slots.Length * 2))).CopyTo(t.Rows[13].Slots); } break;
+                case 178: { if (t.Rows[13].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[13].Slots.Length * 2)), t.Rows[13].Slots); } break;
                 case 190: { if (t.Rows[14].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[14].Label.Length)).CopyTo(t.Rows[14].Label); } break;
-                case 191: { if (t.Rows[14].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[14].Slots.Length * 2))).CopyTo(t.Rows[14].Slots); } break;
+                case 191: { if (t.Rows[14].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[14].Slots.Length * 2)), t.Rows[14].Slots); } break;
                 case 203: { if (t.Rows[15].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[15].Label.Length)).CopyTo(t.Rows[15].Label); } break;
-                case 204: { if (t.Rows[15].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[15].Slots.Length * 2))).CopyTo(t.Rows[15].Slots); } break;
+                case 204: { if (t.Rows[15].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[15].Slots.Length * 2)), t.Rows[15].Slots); } break;
                 case 216: { if (t.Rows[16].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[16].Label.Length)).CopyTo(t.Rows[16].Label); } break;
-                case 217: { if (t.Rows[16].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[16].Slots.Length * 2))).CopyTo(t.Rows[16].Slots); } break;
+                case 217: { if (t.Rows[16].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[16].Slots.Length * 2)), t.Rows[16].Slots); } break;
                 case 229: { if (t.Rows[17].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[17].Label.Length)).CopyTo(t.Rows[17].Label); } break;
-                case 230: { if (t.Rows[17].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[17].Slots.Length * 2))).CopyTo(t.Rows[17].Slots); } break;
+                case 230: { if (t.Rows[17].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[17].Slots.Length * 2)), t.Rows[17].Slots); } break;
                 case 242: { if (t.Rows[18].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[18].Label.Length)).CopyTo(t.Rows[18].Label); } break;
-                case 243: { if (t.Rows[18].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[18].Slots.Length * 2))).CopyTo(t.Rows[18].Slots); } break;
+                case 243: { if (t.Rows[18].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[18].Slots.Length * 2)), t.Rows[18].Slots); } break;
                 case 255: { if (t.Rows[19].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[19].Label.Length)).CopyTo(t.Rows[19].Label); } break;
-                case 256: { if (t.Rows[19].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[19].Slots.Length * 2))).CopyTo(t.Rows[19].Slots); } break;
+                case 256: { if (t.Rows[19].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[19].Slots.Length * 2)), t.Rows[19].Slots); } break;
                 case 268: { if (t.Rows[20].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[20].Label.Length)).CopyTo(t.Rows[20].Label); } break;
-                case 269: { if (t.Rows[20].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[20].Slots.Length * 2))).CopyTo(t.Rows[20].Slots); } break;
+                case 269: { if (t.Rows[20].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[20].Slots.Length * 2)), t.Rows[20].Slots); } break;
                 case 281: { if (t.Rows[21].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[21].Label.Length)).CopyTo(t.Rows[21].Label); } break;
-                case 282: { if (t.Rows[21].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[21].Slots.Length * 2))).CopyTo(t.Rows[21].Slots); } break;
+                case 282: { if (t.Rows[21].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[21].Slots.Length * 2)), t.Rows[21].Slots); } break;
                 case 294: { if (t.Rows[22].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[22].Label.Length)).CopyTo(t.Rows[22].Label); } break;
-                case 295: { if (t.Rows[22].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[22].Slots.Length * 2))).CopyTo(t.Rows[22].Slots); } break;
+                case 295: { if (t.Rows[22].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[22].Slots.Length * 2)), t.Rows[22].Slots); } break;
                 case 307: { if (t.Rows[23].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[23].Label.Length)).CopyTo(t.Rows[23].Label); } break;
-                case 308: { if (t.Rows[23].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[23].Slots.Length * 2))).CopyTo(t.Rows[23].Slots); } break;
+                case 308: { if (t.Rows[23].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[23].Slots.Length * 2)), t.Rows[23].Slots); } break;
                 case 320: { if (t.Rows[24].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[24].Label.Length)).CopyTo(t.Rows[24].Label); } break;
-                case 321: { if (t.Rows[24].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[24].Slots.Length * 2))).CopyTo(t.Rows[24].Slots); } break;
+                case 321: { if (t.Rows[24].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[24].Slots.Length * 2)), t.Rows[24].Slots); } break;
                 case 333: { if (t.Rows[25].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[25].Label.Length)).CopyTo(t.Rows[25].Label); } break;
-                case 334: { if (t.Rows[25].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[25].Slots.Length * 2))).CopyTo(t.Rows[25].Slots); } break;
+                case 334: { if (t.Rows[25].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[25].Slots.Length * 2)), t.Rows[25].Slots); } break;
                 case 346: { if (t.Rows[26].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[26].Label.Length)).CopyTo(t.Rows[26].Label); } break;
-                case 347: { if (t.Rows[26].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[26].Slots.Length * 2))).CopyTo(t.Rows[26].Slots); } break;
+                case 347: { if (t.Rows[26].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[26].Slots.Length * 2)), t.Rows[26].Slots); } break;
                 case 359: { if (t.Rows[27].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[27].Label.Length)).CopyTo(t.Rows[27].Label); } break;
-                case 360: { if (t.Rows[27].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[27].Slots.Length * 2))).CopyTo(t.Rows[27].Slots); } break;
+                case 360: { if (t.Rows[27].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[27].Slots.Length * 2)), t.Rows[27].Slots); } break;
                 case 372: { if (t.Rows[28].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[28].Label.Length)).CopyTo(t.Rows[28].Label); } break;
-                case 373: { if (t.Rows[28].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[28].Slots.Length * 2))).CopyTo(t.Rows[28].Slots); } break;
+                case 373: { if (t.Rows[28].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[28].Slots.Length * 2)), t.Rows[28].Slots); } break;
                 case 385: { if (t.Rows[29].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[29].Label.Length)).CopyTo(t.Rows[29].Label); } break;
-                case 386: { if (t.Rows[29].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[29].Slots.Length * 2))).CopyTo(t.Rows[29].Slots); } break;
+                case 386: { if (t.Rows[29].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[29].Slots.Length * 2)), t.Rows[29].Slots); } break;
                 case 398: { if (t.Rows[30].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[30].Label.Length)).CopyTo(t.Rows[30].Label); } break;
-                case 399: { if (t.Rows[30].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[30].Slots.Length * 2))).CopyTo(t.Rows[30].Slots); } break;
+                case 399: { if (t.Rows[30].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[30].Slots.Length * 2)), t.Rows[30].Slots); } break;
                 case 411: { if (t.Rows[31].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[31].Label.Length)).CopyTo(t.Rows[31].Label); } break;
-                case 412: { if (t.Rows[31].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[31].Slots.Length * 2))).CopyTo(t.Rows[31].Slots); } break;
+                case 412: { if (t.Rows[31].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[31].Slots.Length * 2)), t.Rows[31].Slots); } break;
                 case 424: { if (t.Rows[32].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[32].Label.Length)).CopyTo(t.Rows[32].Label); } break;
-                case 425: { if (t.Rows[32].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[32].Slots.Length * 2))).CopyTo(t.Rows[32].Slots); } break;
+                case 425: { if (t.Rows[32].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[32].Slots.Length * 2)), t.Rows[32].Slots); } break;
                 case 437: { if (t.Rows[33].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[33].Label.Length)).CopyTo(t.Rows[33].Label); } break;
-                case 438: { if (t.Rows[33].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[33].Slots.Length * 2))).CopyTo(t.Rows[33].Slots); } break;
+                case 438: { if (t.Rows[33].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[33].Slots.Length * 2)), t.Rows[33].Slots); } break;
                 case 450: { if (t.Rows[34].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[34].Label.Length)).CopyTo(t.Rows[34].Label); } break;
-                case 451: { if (t.Rows[34].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[34].Slots.Length * 2))).CopyTo(t.Rows[34].Slots); } break;
+                case 451: { if (t.Rows[34].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[34].Slots.Length * 2)), t.Rows[34].Slots); } break;
                 case 463: { if (t.Rows[35].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[35].Label.Length)).CopyTo(t.Rows[35].Label); } break;
-                case 464: { if (t.Rows[35].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[35].Slots.Length * 2))).CopyTo(t.Rows[35].Slots); } break;
+                case 464: { if (t.Rows[35].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[35].Slots.Length * 2)), t.Rows[35].Slots); } break;
                 case 476: { if (t.Rows[36].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[36].Label.Length)).CopyTo(t.Rows[36].Label); } break;
-                case 477: { if (t.Rows[36].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[36].Slots.Length * 2))).CopyTo(t.Rows[36].Slots); } break;
+                case 477: { if (t.Rows[36].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[36].Slots.Length * 2)), t.Rows[36].Slots); } break;
                 case 489: { if (t.Rows[37].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[37].Label.Length)).CopyTo(t.Rows[37].Label); } break;
-                case 490: { if (t.Rows[37].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[37].Slots.Length * 2))).CopyTo(t.Rows[37].Slots); } break;
+                case 490: { if (t.Rows[37].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[37].Slots.Length * 2)), t.Rows[37].Slots); } break;
                 case 502: { if (t.Rows[38].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[38].Label.Length)).CopyTo(t.Rows[38].Label); } break;
-                case 503: { if (t.Rows[38].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[38].Slots.Length * 2))).CopyTo(t.Rows[38].Slots); } break;
+                case 503: { if (t.Rows[38].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[38].Slots.Length * 2)), t.Rows[38].Slots); } break;
                 case 515: { if (t.Rows[39].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[39].Label.Length)).CopyTo(t.Rows[39].Label); } break;
-                case 516: { if (t.Rows[39].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[39].Slots.Length * 2))).CopyTo(t.Rows[39].Slots); } break;
+                case 516: { if (t.Rows[39].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[39].Slots.Length * 2)), t.Rows[39].Slots); } break;
                 case 528: { if (t.Rows[40].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[40].Label.Length)).CopyTo(t.Rows[40].Label); } break;
-                case 529: { if (t.Rows[40].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[40].Slots.Length * 2))).CopyTo(t.Rows[40].Slots); } break;
+                case 529: { if (t.Rows[40].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[40].Slots.Length * 2)), t.Rows[40].Slots); } break;
                 case 541: { if (t.Rows[41].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[41].Label.Length)).CopyTo(t.Rows[41].Label); } break;
-                case 542: { if (t.Rows[41].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[41].Slots.Length * 2))).CopyTo(t.Rows[41].Slots); } break;
+                case 542: { if (t.Rows[41].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[41].Slots.Length * 2)), t.Rows[41].Slots); } break;
                 case 554: { if (t.Rows[42].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[42].Label.Length)).CopyTo(t.Rows[42].Label); } break;
-                case 555: { if (t.Rows[42].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[42].Slots.Length * 2))).CopyTo(t.Rows[42].Slots); } break;
+                case 555: { if (t.Rows[42].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[42].Slots.Length * 2)), t.Rows[42].Slots); } break;
                 case 567: { if (t.Rows[43].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[43].Label.Length)).CopyTo(t.Rows[43].Label); } break;
-                case 568: { if (t.Rows[43].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[43].Slots.Length * 2))).CopyTo(t.Rows[43].Slots); } break;
+                case 568: { if (t.Rows[43].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[43].Slots.Length * 2)), t.Rows[43].Slots); } break;
                 case 580: { if (t.Rows[44].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[44].Label.Length)).CopyTo(t.Rows[44].Label); } break;
-                case 581: { if (t.Rows[44].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[44].Slots.Length * 2))).CopyTo(t.Rows[44].Slots); } break;
+                case 581: { if (t.Rows[44].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[44].Slots.Length * 2)), t.Rows[44].Slots); } break;
                 case 593: { if (t.Rows[45].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[45].Label.Length)).CopyTo(t.Rows[45].Label); } break;
-                case 594: { if (t.Rows[45].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[45].Slots.Length * 2))).CopyTo(t.Rows[45].Slots); } break;
+                case 594: { if (t.Rows[45].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[45].Slots.Length * 2)), t.Rows[45].Slots); } break;
                 case 606: { if (t.Rows[46].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[46].Label.Length)).CopyTo(t.Rows[46].Label); } break;
-                case 607: { if (t.Rows[46].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[46].Slots.Length * 2))).CopyTo(t.Rows[46].Slots); } break;
+                case 607: { if (t.Rows[46].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[46].Slots.Length * 2)), t.Rows[46].Slots); } break;
                 case 619: { if (t.Rows[47].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[47].Label.Length)).CopyTo(t.Rows[47].Label); } break;
-                case 620: { if (t.Rows[47].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[47].Slots.Length * 2))).CopyTo(t.Rows[47].Slots); } break;
+                case 620: { if (t.Rows[47].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[47].Slots.Length * 2)), t.Rows[47].Slots); } break;
                 case 632: { if (t.Rows[48].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[48].Label.Length)).CopyTo(t.Rows[48].Label); } break;
-                case 633: { if (t.Rows[48].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[48].Slots.Length * 2))).CopyTo(t.Rows[48].Slots); } break;
+                case 633: { if (t.Rows[48].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[48].Slots.Length * 2)), t.Rows[48].Slots); } break;
                 case 645: { if (t.Rows[49].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[49].Label.Length)).CopyTo(t.Rows[49].Label); } break;
-                case 646: { if (t.Rows[49].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[49].Slots.Length * 2))).CopyTo(t.Rows[49].Slots); } break;
+                case 646: { if (t.Rows[49].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[49].Slots.Length * 2)), t.Rows[49].Slots); } break;
                 case 658: { if (t.Rows[50].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[50].Label.Length)).CopyTo(t.Rows[50].Label); } break;
-                case 659: { if (t.Rows[50].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[50].Slots.Length * 2))).CopyTo(t.Rows[50].Slots); } break;
+                case 659: { if (t.Rows[50].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[50].Slots.Length * 2)), t.Rows[50].Slots); } break;
                 case 671: { if (t.Rows[51].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[51].Label.Length)).CopyTo(t.Rows[51].Label); } break;
-                case 672: { if (t.Rows[51].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[51].Slots.Length * 2))).CopyTo(t.Rows[51].Slots); } break;
+                case 672: { if (t.Rows[51].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[51].Slots.Length * 2)), t.Rows[51].Slots); } break;
                 case 684: { if (t.Rows[52].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[52].Label.Length)).CopyTo(t.Rows[52].Label); } break;
-                case 685: { if (t.Rows[52].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[52].Slots.Length * 2))).CopyTo(t.Rows[52].Slots); } break;
+                case 685: { if (t.Rows[52].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[52].Slots.Length * 2)), t.Rows[52].Slots); } break;
                 case 697: { if (t.Rows[53].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[53].Label.Length)).CopyTo(t.Rows[53].Label); } break;
-                case 698: { if (t.Rows[53].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[53].Slots.Length * 2))).CopyTo(t.Rows[53].Slots); } break;
+                case 698: { if (t.Rows[53].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[53].Slots.Length * 2)), t.Rows[53].Slots); } break;
                 case 710: { if (t.Rows[54].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[54].Label.Length)).CopyTo(t.Rows[54].Label); } break;
-                case 711: { if (t.Rows[54].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[54].Slots.Length * 2))).CopyTo(t.Rows[54].Slots); } break;
+                case 711: { if (t.Rows[54].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[54].Slots.Length * 2)), t.Rows[54].Slots); } break;
                 case 723: { if (t.Rows[55].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[55].Label.Length)).CopyTo(t.Rows[55].Label); } break;
-                case 724: { if (t.Rows[55].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[55].Slots.Length * 2))).CopyTo(t.Rows[55].Slots); } break;
+                case 724: { if (t.Rows[55].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[55].Slots.Length * 2)), t.Rows[55].Slots); } break;
                 case 736: { if (t.Rows[56].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[56].Label.Length)).CopyTo(t.Rows[56].Label); } break;
-                case 737: { if (t.Rows[56].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[56].Slots.Length * 2))).CopyTo(t.Rows[56].Slots); } break;
+                case 737: { if (t.Rows[56].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[56].Slots.Length * 2)), t.Rows[56].Slots); } break;
                 case 749: { if (t.Rows[57].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[57].Label.Length)).CopyTo(t.Rows[57].Label); } break;
-                case 750: { if (t.Rows[57].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[57].Slots.Length * 2))).CopyTo(t.Rows[57].Slots); } break;
+                case 750: { if (t.Rows[57].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[57].Slots.Length * 2)), t.Rows[57].Slots); } break;
                 case 762: { if (t.Rows[58].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[58].Label.Length)).CopyTo(t.Rows[58].Label); } break;
-                case 763: { if (t.Rows[58].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[58].Slots.Length * 2))).CopyTo(t.Rows[58].Slots); } break;
+                case 763: { if (t.Rows[58].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[58].Slots.Length * 2)), t.Rows[58].Slots); } break;
                 case 775: { if (t.Rows[59].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[59].Label.Length)).CopyTo(t.Rows[59].Label); } break;
-                case 776: { if (t.Rows[59].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[59].Slots.Length * 2))).CopyTo(t.Rows[59].Slots); } break;
+                case 776: { if (t.Rows[59].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[59].Slots.Length * 2)), t.Rows[59].Slots); } break;
                 case 788: { if (t.Rows[60].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[60].Label.Length)).CopyTo(t.Rows[60].Label); } break;
-                case 789: { if (t.Rows[60].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[60].Slots.Length * 2))).CopyTo(t.Rows[60].Slots); } break;
+                case 789: { if (t.Rows[60].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[60].Slots.Length * 2)), t.Rows[60].Slots); } break;
                 case 801: { if (t.Rows[61].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[61].Label.Length)).CopyTo(t.Rows[61].Label); } break;
-                case 802: { if (t.Rows[61].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[61].Slots.Length * 2))).CopyTo(t.Rows[61].Slots); } break;
+                case 802: { if (t.Rows[61].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[61].Slots.Length * 2)), t.Rows[61].Slots); } break;
                 case 814: { if (t.Rows[62].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[62].Label.Length)).CopyTo(t.Rows[62].Label); } break;
-                case 815: { if (t.Rows[62].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[62].Slots.Length * 2))).CopyTo(t.Rows[62].Slots); } break;
+                case 815: { if (t.Rows[62].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[62].Slots.Length * 2)), t.Rows[62].Slots); } break;
                 case 827: { if (t.Rows[63].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[63].Label.Length)).CopyTo(t.Rows[63].Label); } break;
-                case 828: { if (t.Rows[63].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[63].Slots.Length * 2))).CopyTo(t.Rows[63].Slots); } break;
+                case 828: { if (t.Rows[63].Slots != null) TableFixedWire.ReadLittle<ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[63].Slots.Length * 2)), t.Rows[63].Slots); } break;
                 case 836: { if (t.Blob != null) b.Slice(0, Math.Min(b.Length, t.Blob.Length)).CopyTo(t.Blob); } break;
                 default: break;
             }
@@ -3900,7 +3944,7 @@ namespace Blockdemo
                                 int at = (int)p.Src + e * sw;
                                 if (p.Sign == 2)
                                 {
-                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
                                     BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                     continue;
                                 }
@@ -4008,7 +4052,7 @@ namespace Blockdemo
                     case TableFixedWire.WidenF:
                         {
                             float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                            PaddedFrameFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            PaddedFrameFixedSetDouble(dst, p.Dst, (double)f);
                             if (report != null) { report.Widened++; }
                             break;
                         }
@@ -4863,13 +4907,14 @@ namespace Blockdemo
 
         public static long PaddedFrameFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + PaddedFrameFixedLayoutBytes + count * PaddedFrameFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + PaddedFrameFixedLayoutBytes + count * PaddedFrameFixedRecordBytes + 0;
         }
 
         public static long PaddedFrameFixedSave(ReadOnlySpan<PaddedFrame> values, Span<byte> buffer)
         {
             long need = PaddedFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (PaddedFrameFixedFiniteBody(values[k]) != null) { return -1; } }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PaddedFrameFixedHash);
@@ -4983,7 +5028,7 @@ namespace Blockdemo
                 entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
                 planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
-                // the plan this peer selected. It reads no layout and compiles
+                // the plan this endpoint selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
                 // path; the PLAN is, and the plan is the build's.
                 int slotN = PaddedFrameFixedSlots.Length;
@@ -4993,7 +5038,7 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, PaddedFrameFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindMismatch;
@@ -5016,7 +5061,8 @@ namespace Blockdemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new PaddedFrame(); }
@@ -5027,7 +5073,15 @@ namespace Blockdemo
                 string run_why = PaddedFrameFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string finite_why = PaddedFrameFixedFiniteBody(values[k]);
+                if (finite_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 PaddedFrameFixedClamp(values[k], report);

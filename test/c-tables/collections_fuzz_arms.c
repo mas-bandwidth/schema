@@ -2,6 +2,8 @@
 #include "arms/GateTable.h"
 #include "arms/NestTable.h"
 #include "arms/RingTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE armdemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER ARMDEMO
 #include "unit.h"
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Holder,holder)
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Hand,hand)

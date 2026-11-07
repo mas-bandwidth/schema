@@ -19,7 +19,7 @@ import ("errors";"testing")
 func TestTop(t *testing.T) {
 	var v Top
 	var r TableReport
-	if !TopFromJson(&v, []byte("{\"u\":18446744073709551615,\"h\":9223372036854775809}"), &r) {
+	if !TopFromJSON(&v, []byte("{\"u\":18446744073709551615,\"h\":9223372036854775809}"), &r) {
 		t.Fatalf("read refused: %+v", r)
 	}
 	if v.U != 18446744073709551615 || v.H != 9223372036854775809 || r.Clamped != 0 {
@@ -27,12 +27,12 @@ func TestTop(t *testing.T) {
 	}
 	v, r = Top{}, TableReport{}
 	// the clamp is the TOLERANT read's answer (docs/SPEC-TABLES.md §6.5) ...
-	if !TopFromJsonTolerant(&v, []byte("{\"u\":0,\"h\":5}"), &r) || v.U != 1 || v.H != 9223372036854775808 || r.Clamped != 2 {
+	if !TopFromJSONTolerant(&v, []byte("{\"u\":0,\"h\":5}"), &r) || v.U != 1 || v.H != 9223372036854775808 || r.Clamped != 2 {
 		t.Fatalf("under-min u64 read %+v report %+v", v, r)
 	}
-	// ... and the strict plain FromJson refuses it, with the count
+	// ... and the strict plain FromJSON refuses it, with the count
 	v, r = Top{}, TableReport{}
-	if TopFromJson(&v, []byte("{\"u\":0,\"h\":5}"), &r) || r.Clamped != 2 || !errors.Is(r.Err(), TableRefuseClamped) {
+	if TopFromJSON(&v, []byte("{\"u\":0,\"h\":5}"), &r) || r.Clamped != 2 || !errors.Is(r.Err(), TableRefuseClamped) {
 		t.Fatalf("plain under-min u64 read: report %+v, want a clamped refusal", r)
 	}
 }

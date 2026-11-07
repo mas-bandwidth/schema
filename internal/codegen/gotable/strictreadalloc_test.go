@@ -81,7 +81,7 @@ func partsWire(t *testing.T) []byte {
  }
  text = append(text, []byte("]}")...)
  var report TableReport
- if !RootFromJson(&b, text, &report) || report != (TableReport{}) { t.Fatalf("FromJson: %+v", report) }
+ if !RootFromJSON(&b, text, &report) || report != (TableReport{}) { t.Fatalf("FromJSON: %+v", report) }
  n := RootMeasure(b.GetRoot(), &b.Arena)
  if n < 0 { t.Fatal("measure") }
  wire := make([]byte, n)
@@ -100,10 +100,10 @@ func bytesPerRead(t *testing.T, read func()) uint64 {
 
 func jsonOf(t *testing.T, v *Root) []byte {
  t.Helper()
- n := RootToJsonMeasure(v)
+ n := RootToJSONMeasure(v)
  if n < 0 { t.Fatal("tojson measure") }
  out := make([]byte, n)
- if RootToJson(v, out) != n { t.Fatal("tojson") }
+ if RootToJSON(v, out) != n { t.Fatal("tojson") }
  return out
 }
 
@@ -129,10 +129,10 @@ func resave(t *testing.T, v *Root) []byte {
 }
 
 func textOf(v *Root) ([]byte, error) {
- n := RootToJsonMeasure(v)
+ n := RootToJSONMeasure(v)
  if n < 0 { return nil, fmt.Errorf("tojson measure %d", n) }
  out := make([]byte, n)
- if RootToJson(v, out) != n { return nil, fmt.Errorf("tojson short") }
+ if RootToJSON(v, out) != n { return nil, fmt.Errorf("tojson short") }
  return out, nil
 }
 

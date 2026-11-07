@@ -2,7 +2,7 @@
 
 The Rust leg of the schema stream work-card record: `src/lib.rs` is the
 handwritten owning facade over the generated `Card` table modules (`card.rs`,
-`card_records.rs`, `card_table.rs`, `card_variable.rs`, `card_descriptors.rs`,
+`card_records.rs`, `card_table.rs`, `card_variable.rs`, `card_descriptors.rs`, `table_enums.rs`,
 `variable_runtime.rs`). It owns the wire buffer, enforces the customer bounds
 before anything is published, and turns one buffer into a record a customer can
 read, edit and hash. `tests/cards.rs` holds the facade tests and

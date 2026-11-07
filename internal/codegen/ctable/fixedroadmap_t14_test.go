@@ -224,7 +224,7 @@ int main(void) {
     fclose(f);
     memset(&r, 0, sizeof r);
     reading_reset(&back[0]);
-    n = reading_fixed_load(back, 1, data, len, plan, 4096, NULL, &r);
+    n = reading_fixed_load_tolerant(back, 1, data, len, plan, 4096, NULL, &r);
     if (n != 1) { printf("load refused n=%%lld\n", (long long)n); return 1; }
     bits.f = back[0].aim;
     if (bits.u != 0x3E99999Au || back[0].lead != 1 || back[0].trail != 2) {

@@ -3,7 +3,7 @@ package cpptable
 // §5.8 row 11, unknown_census: the NEW reader (Item.drop REMOVED) reads the OLD
 // writer's lawful `old_unknown_census.bin` through the handed-in lineage entry.
 // Four elements each carry `a` and the removed `drop`, but `drop` is ONE field
-// of ONE peer (Item), so the compile census counts it ONCE: `unknown == 1`, and
+// of ONE endpoint (Item), so the compile census counts it ONCE: `unknown == 1`, and
 // a leg that counts once per ELEMENT would land `4` and pass a `>= 1` read. The
 // check asserts `== 1` exactly.
 

@@ -4,6 +4,9 @@
 
 #ifdef __cplusplus
 using namespace wide;
+/* the C spellings of the types the shared body names (SPEC §6.3) */
+typedef WideSeven wide_wide_seven_t;
+typedef WideFour wide_wide_four_t;
 #endif
 
 int main( void )
@@ -14,8 +17,8 @@ int main( void )
     {
         uint32_t input[64] = {0}, encoded[64] = {0};
         unsigned char * data = (unsigned char *) input;
-        WideSeven seven;
-        WideFour four;
+        wide_wide_seven_t seven;
+        wide_wide_four_t four;
         uint16_t payload[7];
         int i, length, count, size = (int) strlen( line ) / 2;
         long long consumed, written;
@@ -41,10 +44,10 @@ int main( void )
         serialize_read_stream_t r;
         serialize_write_stream_t w;
         serialize_read_stream_init( &r, data, size );
-        if ( !( bound == 7 ? read_wide_seven( &r, &seven ) : read_wide_four( &r, &four ) ) ) { puts( "REFUSE" ); continue; }
+        if ( !( bound == 7 ? wide_read_wide_seven( &r, &seven ) : wide_read_wide_four( &r, &four ) ) ) { puts( "REFUSE" ); continue; }
         consumed = (long long) serialize_read_bits_processed( &r );
         serialize_write_stream_init( &w, (unsigned char *) encoded, sizeof( encoded ) );
-        if ( !( bound == 7 ? write_wide_seven( &w, &seven ) : write_wide_four( &w, &four ) ) ) { return 4; }
+        if ( !( bound == 7 ? wide_write_wide_seven( &w, &seven ) : wide_write_wide_four( &w, &four ) ) ) { return 4; }
         serialize_write_flush( &w );
         written = (long long) serialize_write_bits_processed( &w );
         count = serialize_write_bytes_processed( &w );

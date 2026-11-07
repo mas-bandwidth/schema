@@ -70,7 +70,7 @@ func compileAndRunC(t *testing.T, u *ir.Unit, mainSource string) {
 	if err != nil {
 		t.Skip("generated C execution requires cc")
 	}
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -106,7 +106,7 @@ func compileAndRunC(t *testing.T, u *ir.Unit, mainSource string) {
 // and that the resulting codecs compile and execute cleanly.
 func TestCTableDeadCheckDefault_Unprobed(t *testing.T) {
 	u := unitFromSource(t, deadCUnprobedSrc)
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -163,7 +163,7 @@ int main(void) {
     root_table_reset(&loaded);
     TableReport report;
     memset(&report, 0, sizeof(report));
-    assert(root_table_load(&loaded, buf, saved, &report) == 1);
+    assert(root_table_load_tolerant(&loaded, buf, saved, &report) == 1);
     assert(report.malformed == 0);
     assert(loaded.count == 42);
     assert(loaded.scores[0] == 10);
@@ -185,7 +185,7 @@ int main(void) {
     ScalarLeaf loaded_leaf;
     scalar_leaf_reset(&loaded_leaf);
     memset(&report, 0, sizeof(report));
-    assert(scalar_leaf_load(&loaded_leaf, buf, saved, &report) == 1);
+    assert(scalar_leaf_load_tolerant(&loaded_leaf, buf, saved, &report) == 1);
     assert(report.malformed == 0);
     assert(loaded_leaf.id == 7);
     assert(loaded_leaf.scale == 2.5f);
@@ -203,7 +203,7 @@ int main(void) {
 // writer structs, and omitted from unprobeable structs (Outer).
 func TestCTableDeadCheckDefault_Probed(t *testing.T) {
 	u := unitFromSource(t, deadCProbedSrc)
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -317,7 +317,7 @@ int main(void) {
     /* Decode default outer */
     outer_reset(&loaded);
     memset(&report, 0, sizeof(report));
-    assert(outer_load(&loaded, buf_def, saved_def, &report) == 1);
+    assert(outer_load_tolerant(&loaded, buf_def, saved_def, &report) == 1);
     assert(report.malformed == 0);
     assert(loaded.id == 1);
     assert(loaded.leaf.x == 0);
@@ -326,7 +326,7 @@ int main(void) {
     /* Decode non-default outer */
     outer_reset(&loaded);
     memset(&report, 0, sizeof(report));
-    assert(outer_load(&loaded, buf_nondef, saved_nondef, &report) == 1);
+    assert(outer_load_tolerant(&loaded, buf_nondef, saved_nondef, &report) == 1);
     assert(report.malformed == 0);
     assert(loaded.id == 1);
     assert(loaded.leaf.x == 42);

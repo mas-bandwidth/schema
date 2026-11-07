@@ -98,8 +98,8 @@ void main() {
   // ---- THE REFUSALS — the law's three clauses, by name, through
   // ---- ./bin/schema generate --lang dart.
 
-  // every TABLE reached by value is itself fixed: a plain `table` in the
-  // closure is refused (ir/table.go:231 — "holds the plain table").
+  // every TABLE reached by value is itself fixed: a variable table in the
+  // closure is refused (ir/table.go:231 — "holds the variable table").
   refuse(
     'plain-table-by-value',
     'fixed table T {\n'
@@ -109,7 +109,7 @@ void main() {
         'table Q {\n'
         '  x int32\n'
         '}\n',
-    'holds the plain table Q by value',
+    'holds the variable table Q by value',
   );
 
   // a POINTER in the closure is a compile refusal (ir/table.go:224).

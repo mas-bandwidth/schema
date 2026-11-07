@@ -51,13 +51,13 @@ let failures = 0;
 function fail(why) { console.error("FAIL: " + why); failures++; }
 
 function roundTrip() {
-  const v = new mod.T(); mod.InitT(v); v.X = 7; v.Y = 9;
+  const v = new mod.T(); mod.InitT(v); v.x = 7; v.y = 9;
   const bytes = new Uint8Array(mod.TFixedMeasure(1));
   if (mod.TFixedSave([v], 1, bytes) !== bytes.length) { return { ok: false, bytes: null }; }
   const back = [new mod.T()]; mod.InitT(back[0]);
   const report = new mod.TableFixedReport();
   const n = mod.TFixedLoad(back, 1, bytes, bytes.length, mod.TFixedNewPlan(4096, 4096), report);
-  const ok = n === 1 && back[0].X === 7 && back[0].Y === 9 && !report.malformed && report.refused === 0;
+  const ok = n === 1 && back[0].x === 7 && back[0].y === 9 && !report.malformed && report.refused === 0;
   return { ok: ok, bytes: bytes };
 }
 

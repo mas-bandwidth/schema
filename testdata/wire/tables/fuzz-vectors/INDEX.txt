@@ -28,66 +28,16 @@
 # 24845619678, on Certify run 33887252419.
 stream_count_past_body streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_count_past_body.bin
 
-# THE FORGED POINTER CYCLE (§3.1, §14 note 9; schema#535, filed on #521 as
-# G-19). One flipped bit in a three-node ListNode chain turns the middle node's
-# `next` index from 3 into 2, which is that node's own index. The wire loads,
-# the report is all zero, and the loaded node points at itself.
+# THE FORGED POINTER CYCLE (§3.1, §4; schema#535, filed on #521 as G-19). One
+# flipped bit in a three-node ListNode chain turns the middle node's `next`
+# index from 3 into 2, which is that node's own index.
 #
-# THAT IS THE CONTRACT, NOT A HOLE, and this vector pins it as one. §3.1: "A
-# pointer field's payload is a NUMBER: it is bounds-checked and stored, never
-# followed... Load itself is safe on any input: it scans, it terminates, it
-# fabricates nothing. What a cyclic structure costs is paid by whatever WALKS
-# it." The index names a node that exists and whose type matches, so no §4
-# event happened and no counter may move. §14 note 9 prices the reader-side
-# acyclicity check this version does not spend.
-#
-# The vector's job here is the REFERENCE AND THE ORACLE AGREEING on that: both
-# must accept it with a silent report, and a port that starts following
-# references — or one that stops bounds-checking the index — parts from the
-# other and this seeks the disagreement rather than searching for it. The
-# walking consumers' half of the contract is held beside it, in Go, by
-# internal/tablewire's TestForgedPointerCycleLoadsSilentlyAndRefusesEveryWalk:
-# the text export and a re-encode each refuse the loaded instance BY NAME, and
-# each refusal returns rather than recursing away. Its three negative controls
-# are the two guards reverted and a counter added on the load path.
+# A CYCLIC WIRE IS DAMAGE (Glenn, 2026-10-31: "It's perhaps the MOST OBVIOUS
+# attack somebody would do on this protocol!"), so the whole load is refused as
+# `malformed`. The vector's job here is the REFERENCE AND THE ORACLE AGREEING
+# on that refusal. internal/tablewire's TestForgedPointerCycleIsDamage holds the
+# engine's half.
 pointer_self_cycle graphdemo Scene    testdata/wire/tables/fuzz-vectors/pointer_self_cycle.bin
-
-# A NODE RECORD OF A TYPE NO POINTER BELOW THIS ROOT NAMES (§3.1, §6.5, §3.3).
-# The message form is what makes this reachable: a connection's table announces
-# every table's name id whether or not a pointer names it, so a mutated node
-# record can claim a type the closure HAS and the root can never point at. In
-# graphdemo that type is Layer, which Scene nests by value and nothing points
-# at. The reference gives such a record no region storage and skips its body,
-# counting one unknown, which is §3.1's rule for a type id this reader cannot
-# name. The engine placed it, decoded it, and counted what was inside: four
-# unknown against the reference's two, and a region sixteen bytes wider. The fix
-# is ir.PointerReachable, in the engine's node table and in the fuzzer's own
-# region arithmetic.
-#
-# THE BYTES ARE THE SECOND ROUND'S. The message form's bodies moved to a packed
-# bit stream that a word at a time fills, so the wire the first vector pinned is
-# not a wire any more: those bytes decoded to a different shape and the vector
-# went quiet. This one is derived against the current stream, a mutant of
-# graph_tree_message that the reader with ir.PointerReachable and the reader
-# without answer differently: 1 unknown against 3 unknown and 1 kind_mismatch.
-# It is the input tables-wire-fuzz-node-type-negative-control replays.
-message_node_type_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_node_type_unpointed.bin message
-
-# A RECORD'S FRAMING IS ITS TYPE ID'S AND ITS PLACEMENT IS THE ROOT'S (§2.5,
-# §3.1, §3.3), which are two questions, and this vector is the red that
-# separated them. The two RESERVED BLOB IDS say a thirty-two bit length, an
-# align and the bytes wherever they appear, because §3.3's tail announces both
-# ids whether or not a root names them; ir.PointerReachableBlobs answers only
-# whether this root can PLACE such a node. The oracle asked only the second
-# question, so with no blob edge under graphdemo's Scene it framed a blob
-# record as a TABLE BODY and read its bytes as fields, where the reference read
-# the length and refused a record whose 3,739,746,528 bytes run past a 66 byte
-# batch. The first vector for this class stopped reproducing when the second
-# round moved the bodies to bits; this one is derived against the bit stream,
-# found by the random pass at mutant 280820 of seed 24845619678 over
-# graph_tree_message. It is the input
-# tables-wire-fuzz-blob-node-negative-control replays.
-message_blob_node_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_blob_node_unpointed.bin message
 
 # ILL-FORMED TEXT ON A MESSAGE BODY (§3, §3.3; schema#620). §3's one content
 # rule holds over a form-`2` body unchanged in what it rejects, and §3.3 says
@@ -107,35 +57,6 @@ message_blob_node_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/me
 # controls are the four in `make tables-message-form-negative-control`, two per
 # engine, each of which parts the leg from the oracle on this vector's name.
 message_ill_formed_text backenddemo StorePurchase testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin message
-
-# ILL-FORMED TEXT IN A *string BLOB RECORD ON A MESSAGE BODY (§3, §3.1, §3.3;
-# schema#632). §3.1 states kinds `12` and `33`'s content rule MET AT A NODE, "A
-# TEXT blob's CONTENT is refused on the same terms", and §3.3 says a form-`2`
-# body's content rules are §3's, unchanged in what they reject: a `*string`
-# blob whose bytes are not well-formed UTF-8 is DAMAGE, terminal for the batch
-# here because a bit stream has no place to resume. NEITHER ENGINE CARRIED IT
-# at the message site, where both carried it at the file site, so a record no
-# reader should place loaded into both, agreeing, and agreeing wrongly, which
-# is the one shape a differential fuzzer cannot see on its own. It became a red
-# the moment one engine was repaired, and this vector is what holds the two
-# together from here.
-#
-# The bytes are `blob_str8` re-encoded as a batch of one, with the fourth byte
-# of `note`'s eight byte payload replaced by 0xFF, a lead byte UTF-8 never
-# spells. Nothing else moves: the record's length, its align and the `*bytes`
-# record beside it are the encoder's own, so what the two readers answer
-# differently is the content rule and nothing else. The `*bytes` record is the
-# vector's own control: it carries bytes no UTF-8 rule would accept and is
-# never checked, because a `*bytes` blob is bytes and never text.
-message_blob_ill_formed_text blobdemo Catalog testdata/wire/tables/fuzz-vectors/message_blob_ill_formed_text.bin message
-
-# AND THE ZERO BYTE, which §3.1 names in the same sentence: a `*string` blob
-# "whose bytes are not well-formed UTF-8 or which carries a zero byte". The
-# bytes are the vector above's with 0x00 in place of the 0xFF, so the two
-# separate the two halves of one check: a reader that rejected only the
-# ill-formed sequence, or only the interior zero, goes red on one of them and
-# not the other.
-message_blob_zero_byte blobdemo Catalog testdata/wire/tables/fuzz-vectors/message_blob_zero_byte.bin message
 
 # A list's wire elements widen while its region uses the declared width.
 # Before schema#713, C++ LoadMeasure omitted this extent, then Load reported
@@ -172,3 +93,288 @@ pointer_arm_trailing streamdemo Feed testdata/wire/tables/fuzz-vectors/pointer_a
 
 # A later map occurrence supersedes retained bodies even after a damaged key cleared its value.
 map_retained_replaced mapdemo Text testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin
+
+# BYTES INSIDE AN ENVELOPE ARE SKIPPED, BYTES AFTER THE MESSAGE ARE NOT (§3).
+# A nested-union arm whose L runs one byte past the whole inner union it
+# frames is the append rule's case: a newer writer may add at the end, and an
+# older reader steps over the rest of the envelope with the arm, counting
+# nothing. The C++ leg once called it malformed against the oracle (mutant
+# 72054 of seed 24845619678, messagedemo.ToolMessage); this is that shape
+# built clean. The twin puts the same byte after the ROOT's terminator,
+# outside every envelope, where it is malformed (serialize 2.0's end rule).
+# Both are the reference leg's bytes, pinned by test/tables/main.cpp.
+nested_arm_trailing     messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing.bin
+nested_arm_trailing_top messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing_top.bin
+
+# A REGION READ WHOSE LIST COUNT THE FRAMED STORAGE CANNOT HOLD reports damage
+# and RESUMES after the array's L (§3, §6.5; the oracle's collectionCap): the
+# next field is still read. Here it is an unknown id under a kind outside the
+# closed set, so the oracle counts one unknown before that field stops the
+# read. The C# region reader stopped the whole body at the cap and counted
+# nothing. Found by the random pass at mutant 193624 of seed 24845619678
+# (corpus seed list_shared), on the region fuzz of PR #2163.
+region_list_cap_resumes listdemo Album testdata/wire/tables/fuzz-vectors/region_list_cap_resumes.bin
+
+# A VALUE THE SKIP CANNOT HONOUR ENDS THE RECORD (§3, §4). The C# region
+# measure's ExtentField ignored the result of skipping a framed scalar, so a
+# map entry whose string key claimed more bytes than the entry holds left the
+# reader just past the length and ExtentBody resumed inside the broken payload,
+# read it as the entry's value (an inner map) and measured storage the framing
+# never placed: "LoadMeasure asks for 528 region bytes; the framing commands
+# exactly 512". The reference scan (internal/tablewire/extent.go) ends the
+# record. Found by the region fuzz at mutant 215837 of seed 24845619678
+# (corpus seed map_full, mapdemo.Fleet), on the CI of PR #2237.
+region_map_skip_past_value mapdemo Fleet testdata/wire/tables/fuzz-vectors/region_map_skip_past_value.bin
+
+# THE NODE SCAN OF A VARIABLE ROOT REFUSES NOTHING (§3.1, §4). A deletion inside
+# Mixed's id table leaves eleven entries over 80 trailing bytes, so the table
+# starts inside the body: three fields name ids nobody declares, and the last
+# field's L falls past the body's end. The oracle's node-table scan stops at
+# the damage and the body read counts it: three unknown, malformed, the value
+# read. The Rust gathering scan refused the whole file on the unskippable
+# field, so the load returned no root after LoadMeasure sized its region.
+# Found by the random pass of the retention arm at mutant 720704 of seed
+# 68719476731 (corpus seed list_mixed), on tables-rust-release run on vision;
+# the plain arm refuses it the same way.
+root_scan_passes_damage_to_body listdemo Mixed testdata/wire/tables/fuzz-vectors/root_scan_passes_damage_to_body.bin
+
+# A PLAIN FLOAT'S -0 UNDER A +0 DEFAULT RIDES (§3.3). The C# writer's default
+# elision compared a float32 or float64 as a VALUE, under which -0 == +0, so a
+# list element's x of -0 was left off the wire and the saved bytes were 57 where
+# the oracle saved 71. Elision compares bit patterns. Found by the random pass
+# at mutant 237037 of seed 24845619678 (corpus seed list_scalar_widen,
+# listdemo.Save), on the Certify wire fuzz.
+list_float_minus_zero_default listdemo Save testdata/wire/tables/fuzz-vectors/list_float_minus_zero_default.bin
+
+# A KEYED SLOT WRITTEN AGAIN DISCARDS WHAT WAS RETAINED UNDER IT (§6.6). Depth's
+# keyed field rides twice; the first occurrence's Squad carries a roster entry
+# whose value arrives under the wrong kind, so the retaining read keeps it.
+# The second occurrence rewrites the same slot, and the oracle forgets the
+# slot's instance, records and all, before refilling it. The Rust retaining
+# reader refilled the slot and kept the first occurrence's record, so it saved
+# 194 bytes where the oracle saved 174. Found by the random pass of the
+# retention arm at mutant 745809 of seed 68719476731 (corpus seed map_depth),
+# on tables-rust-release run on vision.
+keyed_slot_rewrite_discards_retained mapdemo Depth testdata/wire/tables/fuzz-vectors/keyed_slot_rewrite_discards_retained.bin
+
+# A BOOL PAYLOAD BYTE THAT IS NEITHER 0 NOR 1 (§3, §6.5): the value reads true
+# and one malformed counts, naming the field. profile_elide with has_loadout's
+# byte set to 0x11. The JavaScript variable reader read it true and counted
+# nothing. Found by the random pass at mutant 18630 of seed 24845619678
+# (corpus seed profile_elide), on tables-js-wire-fuzz-all; its emitter-lane
+# gate is internal/codegen/jstable's TestBoolByteAboveOneIsMalformedJavaScript.
+bool_byte_above_one tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/bool_byte_above_one.bin
+
+# A RETAINING SAVE ELIDES A FIELD AT ITS DECLARED DEFAULT, not at zero (§4.2,
+# §6.6). graph_tree with its root `name` reference moved to an id Scene does not
+# declare: the load retains that one field, and the retaining save then wrote
+# `meta { build = 1 }`, the declared default the engine elides, because the Java
+# retaining writer tested scalar leaves against zero. Found by the Java leg's
+# retention arm at enumerated pass reference #1 of graph_tree, run seed 1.
+retain_declared_default graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_declared_default.bin
+
+# A MAP HEADER WITH A FOREIGN ELEMENT KIND COUNTS THE MISMATCH even when its
+# count is spelled past the map's own L (§2.8, §4). list_of_maps with a squad's
+# map cut to L = 2 over element kind 14 and a count byte that continues: the
+# engine reads the count against the enclosing body, as for every bounded
+# collection, and counts one kind_mismatch; the Java leg read it inside L, failed
+# the spelling, and counted none. Found by the Java leg's random pass #5292 of
+# list_of_maps, run seed 24845619678.
+map_foreign_kind_count_past_body listdemo Army testdata/wire/tables/fuzz-vectors/map_foreign_kind_count_past_body.bin
+
+# AN ARM'S ARRAY HEADER IS READ INSIDE THE ARM'S L (§3, the arm payload table).
+# ToolMessage's body arrives as the spans arm with L = 4: element kind 2 (an i8,
+# which widens into the declared i32) and a count whose LEB128 runs past the
+# L. The oracle reads an arm out of a reader framed by its L, so the count is
+# truncated, the arm is that arm's own framing damage, the union reads None,
+# and only malformed counts. The Rust arm reader took the count from the whole
+# wire and counted a widen and a clamp first. Found by the random pass at
+# mutant 487423 of seed 68719476731 (corpus seed message_arms), on Certify run
+# 41188400968, tables-rust-release.
+arm_array_count_past_arm_length messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/arm_array_count_past_arm_length.bin
+
+# A BLOB TWO SLOTS NAME IS REFUSED BY THE RETAINING SAVE TOO (§2.5, §6.6). One
+# byte of blob_small moves the `brick` Asset's `data` index from its own blob
+# (node 3) to node 6, the blob Catalog's `thumb` names. The load keeps both
+# slots on the one blob; every writer
+# refuses that graph as blob_shared, and the oracle refuses to encode it. The C#
+# retaining save numbered the region without the refusal and wrote 186 bytes.
+# Found by the index pass (#33, corpus seed blob_small) of the retention arm at
+# seed 24845619678, on tables-cs-release on hetzner1.
+retain_blob_shared_refused blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_blob_shared_refused.bin
+
+# Retained unknown unions carry an explicit arm frame, even for fixed scalars.
+# Dart previously consumed the frame length as payload and lost the field.
+retain_union_arm_frame streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_union_arm_frame.bin
+
+# Retaining readers must recognize every reachable byte-blob type like plain readers.
+# Dart omitted bytesBlob initialization and dropped valid nodes as unknown.
+retain_byte_blob_reachability blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_byte_blob_reachability.bin
+
+# Two empty string records have distinct incoming identity despite canonical String values.
+# Dart formerly merged them and refused the valid graph as blob_shared.
+distinct_empty_string_blobs blobdemo Catalog testdata/wire/tables/fuzz-vectors/distinct_empty_string_blobs.bin
+
+# An unknown enum in a counted list is an excluded retained class.
+# Dart counted unknown but omitted retain_lost for this list element.
+retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain_enum_list_unknown.bin
+
+# Retained records in nodes no longer reached by the save count retain_lost.
+# Dart saved the right bytes but omitted the unvisited retained-record count.
+retain_unreachable_record mapdemo Trails testdata/wire/tables/fuzz-vectors/retain_unreachable_record.bin
+
+# Replaced map entries discard their retained bodies without reporting loss.
+# The discarded body and an unreachable pointer node have different ownership.
+retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_map_entry_replaced.bin
+# Final widened key occurrence replaces an earlier incompatible key kind.
+# The neutral oracle and C++ previously retained the earlier mismatch flag.
+map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
+# A malformed child ends there, and its list reads on to a later element
+# carrying a non-finite float, which refuses the read (§4).
+list_damaged_child_reads_on listdemo Save testdata/wire/tables/fuzz-vectors/list_damaged_child_reads_on.bin
+
+# Reserved node-table transport has exactly kind12; a different kind is damage.
+node_table_wrong_kind featurewitnesses ArrayRoot testdata/wire/tables/fuzz-vectors/node_table_wrong_kind.bin
+
+# A shortened union table body must not decode its truncated float payload.
+arm_length_empty_float tabledemo RootConfig testdata/wire/tables/fuzz-vectors/arm_length_empty_float.bin
+
+# Length bounds are checked before cursor addition; huge signed lengths cannot wrap.
+wire_length_overflow graphdemo Scene testdata/wire/tables/fuzz-vectors/wire_length_overflow.bin
+node_table_length_overflow graphdemo Scene testdata/wire/tables/fuzz-vectors/node_table_length_overflow.bin
+node_table_negative_length graphdemo Scene testdata/wire/tables/fuzz-vectors/node_table_negative_length.bin
+
+# An enum array reference above the trailing id-table count is framing damage.
+enum_array_ref_outside tabledemo RootConfig testdata/wire/tables/fuzz-vectors/enum_array_ref_outside.bin
+
+# An unknown enum variant in a known array slot is excluded retention loss.
+enum_array_foreign_variant tabledemo RootConfig testdata/wire/tables/fuzz-vectors/enum_array_foreign_variant.bin
+
+# A nested union arm retains unknown fields in its selected inner table body.
+retain_nested_union_arm messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_nested_union_arm.bin
+
+# A known numeric union arm widens identically in plain and retaining reads.
+retain_union_arm_widen messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_union_arm_widen.bin
+
+# A keyed scalar element kind widens once and preserves every named slot.
+keyed_element_widen tabledemo KeyedConfig testdata/wire/tables/fuzz-vectors/keyed_element_widen.bin
+inert_byte_array_header streamdemo Feed testdata/wire/tables/fuzz-vectors/inert_byte_array_header.bin
+blob_field_replaced blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_field_replaced.bin
+blob_table_owner_replaced blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_table_owner_replaced.bin
+union_array_element_kind messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/union_array_element_kind.bin
+
+# Replacing a table array supersedes retained inline records without save loss.
+retain_array_replaced mapdemo Depth testdata/wire/tables/fuzz-vectors/retain_array_replaced.bin
+retain_list_replaced listdemo Save testdata/wire/tables/fuzz-vectors/retain_list_replaced.bin
+retain_list_maps_replaced listdemo Army testdata/wire/tables/fuzz-vectors/retain_list_maps_replaced.bin
+
+# A map key with an unknown kind is a clean whole-map mismatch, not malformed
+# input. Discovered by the Elixir wire pass; TestPinnedMapKeyKindElixir fails
+# against the pre-admission-scan emitter and passes with the repaired scanner.
+map_key_kind_unknown mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_kind_unknown.bin
+
+# Unknown key fields leave two equal default keys: last wins and duplicate counts.
+map_key_default_duplicate mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_default_duplicate.bin
+
+# UTF-16 NUL is malformed even though the host Unicode converter accepts it.
+wide_text_zero_unit widedemo Caption testdata/wire/tables/fuzz-vectors/wide_text_zero_unit.bin
+
+# A bounded byte count clamps before payload extent checks.
+bytes_count_clamped_prefix backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/bytes_count_clamped_prefix.bin
+
+# A POINTER CYCLE THROUGH NODES THE ROOT REACHES (§3.1, §4). Each is its seed
+# with one pointer's node index lowered to 2 (stream_chain, blob_small,
+# graph_tree), which closes a cycle in the stored pointer graph. A cyclic
+# wire is damage on every read, the builder and retaining reads included: the
+# oracle discards the load as malformed. The Goose load stored the edges and
+# returned the root; its save then refused the data cycle.
+stream_chain_link_cycle streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_chain_link_cycle.bin
+blob_catalog_cycle blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_catalog_cycle.bin
+graph_tree_cycle graphdemo Scene testdata/wire/tables/fuzz-vectors/graph_tree_cycle.bin
+
+# A CRC-32C TRAILER THAT DOES NOT MATCH A ONE-BYTE BODY (§2.14). Five bytes as
+# a root that declares integrity = "crc32c": the form byte 1 is the whole
+# body, and its CRC-32C is 0xA016D052, not the trailer's 0x00070401. The read
+# is malformed with integrity_mismatch, nothing decoded and nothing saved. The
+# Goose load never answered: GCC 15 -O2 compiled its bitwise CRC loop into an
+# endless one. Found by the retaining arm at seed 1, pass truncate #5 of
+# feature_full.
+integrity_short_body_mismatch featurewitnesses Root testdata/wire/tables/fuzz-vectors/integrity_short_body_mismatch.bin
+
+# A framed node record with an impossible collection count refuses region sizing.
+node_record_list_count_refusal listdemo Sheet testdata/wire/tables/fuzz-vectors/node_record_list_count_refusal.bin
+
+# An unknown enum-keyed array slot in variable form skips its length-framed element without decoding inside it (§3.2, §6.6).
+unknown_keyed_slot_length_skip tblv2 Cfg testdata/wire/tables/fuzz-vectors/unknown_keyed_slot_length_skip.bin
+
+# THE ID TABLE'S MAXIMUM (§3, THE DISTINCTNESS CHECK IS BOUNDED WORK; F6 of
+# docs/LAYERS/1-framing.md): an empty root under an id table of 4096 distinct
+# entries the reader cannot name, which resolves and counts nothing, and the
+# same with one entry more, which is malformed whatever the buffer holds. The
+# entries are splitmix64 of 1..n, spread as hashed ids are. The Goose load read
+# any count the buffer allowed and proved the entries distinct pairwise, and
+# C#'s LoadMeasure and builder open loaded the variable-root 4097 table. Each
+# pair rides a variable root and a value-only root, so every arm meets it.
+id_table_4096       graphdemo Scene testdata/wire/tables/fuzz-vectors/id_table_4096.bin
+id_table_4097       graphdemo Scene testdata/wire/tables/fuzz-vectors/id_table_4097.bin
+id_table_4096_value tblr1     Cfg   testdata/wire/tables/fuzz-vectors/id_table_4096_value.bin
+id_table_4097_value tblr1     Cfg   testdata/wire/tables/fuzz-vectors/id_table_4097_value.bin
+
+# WHAT A READ REACHES (docs/SPEC-TABLES.md §4). Damage ends the body it is met
+# in, the enclosing body steps over that body by its L and reads on, and a
+# non-finite float anywhere the read reaches refuses it as non_finite_float,
+# whatever damage it also met. Each vector pairs two events in one
+# tabledemo.ProfileConfig body, in the order its name gives: a NaN (`nan`),
+# framing damage (`damage`, a reference above the entry count), a bool byte of
+# 2 (`bool`) and a clamp (`clamp`), at the root, in the nested `loadout` or
+# `loadout.primary` body (`nested`, `deep`), or in a `loadout.backups` element
+# (`element`). A NaN after damage in the SAME body is never reached and the
+# answer is malformed; a NaN after damage in a nested body or an earlier
+# element is reached and the read refuses. A bool byte of 2 and a clamp end
+# nothing.
+reach_clean tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_clean.bin
+reach_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nan.bin
+reach_damage tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_damage.bin
+reach_nan_then_damage tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nan_then_damage.bin
+reach_damage_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_damage_then_nan.bin
+reach_nan_then_nested_damage tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nan_then_nested_damage.bin
+reach_nested_damage_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nested_damage_then_nan.bin
+reach_nested_nan_then_damage tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nested_nan_then_damage.bin
+reach_damage_then_nested_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_damage_then_nested_nan.bin
+reach_nan_then_damage_same_body tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nan_then_damage_same_body.bin
+reach_damage_then_nan_same_body tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_damage_then_nan_same_body.bin
+reach_nan_then_bool tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nan_then_bool.bin
+reach_bool_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_bool_then_nan.bin
+reach_nan_then_nested_bool tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nan_then_nested_bool.bin
+reach_nested_bool_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nested_bool_then_nan.bin
+reach_nan_then_clamp tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nan_then_clamp.bin
+reach_clamp_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_clamp_then_nan.bin
+reach_nested_clamp_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nested_clamp_then_nan.bin
+reach_bool_then_damage tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_bool_then_damage.bin
+reach_damage_then_bool tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_damage_then_bool.bin
+reach_clamp_then_damage tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_clamp_then_damage.bin
+reach_damage_then_clamp tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_damage_then_clamp.bin
+reach_nested_clamp_then_damage tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nested_clamp_then_damage.bin
+reach_clamp tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_clamp.bin
+reach_bool tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_bool.bin
+reach_deep_damage_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_deep_damage_then_nan.bin
+reach_deep_damage_then_sibling_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_deep_damage_then_sibling_nan.bin
+reach_element_damage_then_element_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_element_damage_then_element_nan.bin
+reach_element_damage_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_element_damage_then_nan.bin
+reach_element_nan_then_element_damage tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_element_nan_then_element_damage.bin
+reach_element_damage_then_later_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_element_damage_then_later_nan.bin
+reach_nested_tail_damage_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nested_tail_damage_then_nan.bin
+reach_overlong_body_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_overlong_body_then_nan.bin
+
+# A MAP COUNT PAST THE INT32 STORAGE CAP INSIDE ITS L (§2.8, §2.9): LoadMeasure
+# refuses it as count_over_extent_cap, and a builder read stops on it with
+# malformed unset and no counter moved. A builder's count refusal rides the
+# completion and the save failure, never the report's refused flag, so the
+# Squirrel driver once answered `refused` where the builder oracle reads.
+map_count_cap mapdemo Docs testdata/wire/tables/fuzz-vectors/map_count_cap.bin
+
+# THE REGION'S ALIGNMENT IS ITS EXTENTS' TOO (§2.8, §6.5; ir.TableRegionAlign):
+# one []uint128 element in a root whose own record aligns to eight rounds the
+# region to sixteen, so the framing commands 80 bytes. The Luau driver's
+# LoadMeasure took the records' alignment alone and asked for 72.
+region_align_extent_uint128 widelist Wide testdata/wire/tables/fuzz-vectors/region_align_extent_uint128.bin

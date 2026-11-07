@@ -48,6 +48,7 @@ namespace benchtable = bench;
 #define TableMixedReset BenchMixedReset
 #define TableMixedSave BenchMixedSave
 #define TableMixedLoad BenchMixedLoad
+#define TableMixedLoadTolerant BenchMixedLoadTolerant
 #else
 #include "BenchTableTable.h"
 #endif

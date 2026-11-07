@@ -10,7 +10,7 @@ SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),
 
 build/packet-text/go/.stamp: bin/schema test/packet-text/Narrow.schema make/go.mk
 	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Narrow.schema
-	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-text/go/go.mod
+	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-text/go/go.mod
 	@touch $@
 
 .PHONY: packet-utf8-go packet-utf8-go-negative-control
@@ -34,14 +34,14 @@ test-go: packet-utf8-go packet-utf8-go-negative-control
 
 generated/go-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang go --out generated/go-ludicrous examples128
-	@printf 'module ludicrous\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../$(SERIALIZE_GO)\n' > generated/go-ludicrous/go.mod
+	@printf 'module ludicrous\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../$(SERIALIZE_GO)\n' > generated/go-ludicrous/go.mod
 	@touch $@
 
 # the Go target: generated package + module wiring (the go.mod is build
 # wiring, not schema output — the emitter writes only .go files)
 generated/go/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang go --out generated/go examples
-	@printf 'module example\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../$(SERIALIZE_GO)\n' > generated/go/go.mod
+	@printf 'module example\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../$(SERIALIZE_GO)\n' > generated/go/go.mod
 	@touch $@
 
 # The same corpus through the C# table backend (docs/SPEC-TABLES.md, schema#262):
@@ -99,7 +99,7 @@ test-go: tables-go-shared-runtime
 .PHONY: conformance-go-rows conformance-go-rows-negative-control
 conformance-go-rows: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows \
-		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
 		./rows/ -count=1 -timeout 600s
 test-go: conformance-go-rows
 
@@ -114,7 +114,7 @@ conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fix
 	@printf 'package main\n\nimport "testing"\n\nfunc TestRowZZPlanted(t *testing.T) { t.Parallel(); t.Fatal("planted failing row") }\n' > build/rows-planted/_ZZ_planted_test.go
 	@printf '{"Replace":{"%s/test/conformance/go/rows/ZZ_planted_test.go":"%s/build/rows-planted/_ZZ_planted_test.go"}}\n' "$(CURDIR)" "$(CURDIR)" > build/rows-planted/overlay.json
 	@if cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-negative-control \
-		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
 		./rows/ -count=1 -timeout 600s -overlay=$(CURDIR)/build/rows-planted/overlay.json > $(CURDIR)/build/rows-planted/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the planted failing row left the gate green"; \
 		cat $(CURDIR)/build/rows-planted/log; exit 1; fi
@@ -149,7 +149,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema)
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-go
 	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
 	# The pointer corpus exercises the wire, region and cook read surfaces.
@@ -187,6 +187,10 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,blobs,blobdemo)
 	./bin/schema generate --lang go --out build/tables-generated-go/lists tables/lists
 	$(call go_table_module,lists,listdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/widelist tables/widelist
+	$(call go_table_module,widelist,widelistdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
+	$(call go_table_module,featurewitnesses,featurewitnesses)
 	./bin/schema generate --lang go --out build/tables-generated-go/maps tables/maps
 	$(call go_table_module,maps,mapdemo)
 	./bin/schema generate --lang go --out build/tables-generated-go/backend tables/backend
@@ -236,7 +240,7 @@ cards-generate: bin/schema
 	./bin/schema generate --lang go --out build/tables-generated-go/cards-future tables/cards/testdata/upgrade/future/DECLARATION.schema
 	$(call go_table_module,cards-initial,cardsinitial)
 	$(call go_table_module,cards-future,cardsfuture)
-	@printf 'module cards\n\ngo 1.26\n\nrequire (\n\tcardsfuture v0.0.0\n\tcardsinitial v0.0.0\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n\nreplace cardsinitial => ../cards-initial\n\nreplace cardsfuture => ../cards-future\n' > build/tables-generated-go/cards/go.mod
+	@printf 'module cards\n\ngo 1.26\n\nrequire (\n\tcardsfuture v0.0.0\n\tcardsinitial v0.0.0\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n\nreplace cardsinitial => ../cards-initial\n\nreplace cardsfuture => ../cards-future\n' > build/tables-generated-go/cards/go.mod
 	cp tables/cards/cards.go build/tables-generated-go/cards/cards.go
 	cp tables/cards/cards_test.go build/tables-generated-go/cards/cards_test.go
 	cp tables/cards/parse.go build/tables-generated-go/cards/parse.go
@@ -279,12 +283,12 @@ cards-generate: bin/schema
 cards-example: cards-generate
 	@rm -rf build/cards-example
 	@mkdir -p build/cards-example/testdata
-	cp tables/cards/example/go.mod build/cards-example/go.mod
+	sed "s|=> ../../..$$|=> $(CURDIR)|" tables/cards/example/go.mod > build/cards-example/go.mod
 	cp tables/cards/example/example_test.go build/cards-example/example_test.go
-	@printf '\nreplace cards => %s\n\nreplace github.com/mas-bandwidth/serialize.go => %s\n' \
+	@printf '\nreplace cards => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' \
 		"$(CURDIR)/build/tables-generated-go/cards" "$(abspath $(SERIALIZE_GO))" >> build/cards-example/go.mod
 	@mkdir -p build/tables-generated-go/cards-future/probe
-	@printf '%s\n' 'package main' '' 'import (' '	"os"' '	"strings"' '' '	cardsfuture "cardsfuture"' ')' '' 'func main() {' '	var b cardsfuture.CardBuilder' '	if !b.Init() {' '		os.Exit(2)' '	}' '	r := b.GetRoot()' '	set := func(dst []byte, n *int32, s string) { copy(dst, s); *n = int32(len(s)) }' '	set(r.Id[:], &r.IdLength, "future-probe")' '	set(r.Sha[:], &r.ShaLength, strings.Repeat("e", 40))' '	r.Tier = cardsfuture.Tierpro' '	set(r.FutureNote[:], &r.FutureNoteLength, "future-value")' '	if !b.Lock() {' '		os.Exit(3)' '	}' '	size := cardsfuture.CardMeasure(b.AsConst())' '	w := make([]byte, size)' '	if cardsfuture.CardSave(b.AsConst(), w) != size {' '		os.Exit(4)' '	}' '	os.Stdout.Write(w)' '}' > build/tables-generated-go/cards-future/probe/main.go
+	@printf '%s\n' 'package main' '' 'import (' '	"os"' '	"strings"' '' '	cardsfuture "cardsfuture"' ')' '' 'func main() {' '	var b cardsfuture.CardBuilder' '	if !b.Init() {' '		os.Exit(2)' '	}' '	r := b.GetRoot()' '	set := func(dst []byte, n *int32, s string) { copy(dst, s); *n = int32(len(s)) }' '	set(r.ID[:], &r.IDLength, "future-probe")' '	set(r.Sha[:], &r.ShaLength, strings.Repeat("e", 40))' '	r.Tier = cardsfuture.Tierpro' '	set(r.FutureNote[:], &r.FutureNoteLength, "future-value")' '	if !b.Lock() {' '		os.Exit(3)' '	}' '	size := cardsfuture.CardMeasure(b.AsConst())' '	w := make([]byte, size)' '	if cardsfuture.CardSave(b.AsConst(), w) != size {' '		os.Exit(4)' '	}' '	os.Stdout.Write(w)' '}' > build/tables-generated-go/cards-future/probe/main.go
 	cd build/tables-generated-go/cards-future && go run "$(CURDIR)/build/tables-generated-go/cards-future/probe" > $(CURDIR)/build/cards-example/testdata/future-note.wire
 	cd build/cards-example && go vet ./... && SCHEMA_SLOW=1 CARDS_SOURCE_ROOT=$(CURDIR) CARDS_DOC_PATH=$(CURDIR)/docs/CARDS.md CARDS_DECL_PATH=$(CURDIR)/tables/cards/Card.schema CARDS_FUTURE_WIRE=$(CURDIR)/build/cards-example/testdata/future-note.wire go test -count=1 -timeout 600s -v ./...
 
@@ -349,7 +353,7 @@ cards-conformance-create: cards-driver-go
 	@if [ -n "$$(ls tables/cards/conformance/expected/ 2>/dev/null)" ]; then \
 		echo "cards-conformance-create REFUSED: tables/cards/conformance/expected is not empty"; exit 1; fi
 	@mkdir -p build/tables-generated-go/cards-future/probe
-	@printf '%s\n' 'package main' '' 'import (' '	"os"' '	"strings"' '' '	cardsfuture "cardsfuture"' ')' '' 'func main() {' '	var b cardsfuture.CardBuilder' '	if !b.Init() {' '		os.Exit(2)' '	}' '	r := b.GetRoot()' '	set := func(dst []byte, n *int32, s string) { copy(dst, s); *n = int32(len(s)) }' '	set(r.Id[:], &r.IdLength, "future-probe")' '	set(r.Sha[:], &r.ShaLength, strings.Repeat("e", 40))' '	r.Tier = cardsfuture.Tierpro' '	set(r.FutureNote[:], &r.FutureNoteLength, "future-value")' '	if !b.Lock() {' '		os.Exit(3)' '	}' '	size := cardsfuture.CardMeasure(b.AsConst())' '	w := make([]byte, size)' '	if cardsfuture.CardSave(b.AsConst(), w) != size {' '		os.Exit(4)' '	}' '	os.Stdout.Write(w)' '}' > build/tables-generated-go/cards-future/probe/main.go
+	@printf '%s\n' 'package main' '' 'import (' '	"os"' '	"strings"' '' '	cardsfuture "cardsfuture"' ')' '' 'func main() {' '	var b cardsfuture.CardBuilder' '	if !b.Init() {' '		os.Exit(2)' '	}' '	r := b.GetRoot()' '	set := func(dst []byte, n *int32, s string) { copy(dst, s); *n = int32(len(s)) }' '	set(r.ID[:], &r.IDLength, "future-probe")' '	set(r.Sha[:], &r.ShaLength, strings.Repeat("e", 40))' '	r.Tier = cardsfuture.Tierpro' '	set(r.FutureNote[:], &r.FutureNoteLength, "future-value")' '	if !b.Lock() {' '		os.Exit(3)' '	}' '	size := cardsfuture.CardMeasure(b.AsConst())' '	w := make([]byte, size)' '	if cardsfuture.CardSave(b.AsConst(), w) != size {' '		os.Exit(4)' '	}' '	os.Stdout.Write(w)' '}' > build/tables-generated-go/cards-future/probe/main.go
 	cd build/tables-generated-go/cards-future && go run "$(CURDIR)/build/tables-generated-go/cards-future/probe" > "$(CURDIR)/tables/cards/conformance/cases/future-note.wire"
 	@printf '{"id":"x","body":"' > tables/cards/conformance/cases/bounds-body-65536.json
 	@head -c 65536 /dev/zero | tr '\0' 'y' >> tables/cards/conformance/cases/bounds-body-65536.json
@@ -383,8 +387,8 @@ cards-conformance-go: build/conformance-harness cards-driver-go
 	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE)
 
 # ONE GATE FOR EVERY LEG (the-cards-page-and-roadmap-name-every-language): runs
-# cards-conformance-go and every cards-<lang>-conformance target across all nine
-# languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
+# cards-conformance-go and every cards-<lang>-conformance target across all thirteen
+# carded languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
 # parse, bounds, upgrade, edit, taskhash, view), continuing after a failure so
 # the full matrix is collected, prints one `<leg> <surface> pass n/m` (or FAIL /
 # absent) line per leg and surface, and exits nonzero if any leg fails, answers
@@ -394,7 +398,7 @@ CARDS_ALL_SURFACES := load,save,render,parse,bounds,upgrade,edit,taskhash,view
 cards-conformance-all:
 	@mkdir -p build/cards-conformance-all
 	@fail=0; \
-	for leg in go c cpp cs rust java js dart elixir; do \
+	for leg in go c cpp cs rust java js dart elixir lua luau moo lobster; do \
 		if [ "$$leg" = "go" ]; then target=cards-conformance-go; else target=cards-$$leg-conformance; fi; \
 		log=build/cards-conformance-all/$$leg.log; \
 		if ! $(MAKE) -n $$target >/dev/null 2>&1; then \
@@ -484,7 +488,7 @@ test-go: cards-test cards-example cards-wire-fuzz
 # The shared Go runtime is the default (docs/SPEC-TABLES.md §8.4), so every
 # generated table module requires this module and replaces it with the tree.
 define go_table_module
-@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' $(2) > build/tables-generated-go/$(1)/go.mod
+@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' $(2) > build/tables-generated-go/$(1)/go.mod
 endef
 
 # THE STANDALONE GATE, Go — the M4b twin of `tables-cs-standalone`,
@@ -517,7 +521,7 @@ tables-go-standalone: build/tables-generated-go/.stamp
 
 .PHONY: tables-go-soak
 tables-go-soak: build/tables-generated-go/.stamp
-	cd test/go-tables && go test -run Soak -timeout 0 -soak $(SOAK) -v .
+	cd test/go-tables && go test -run Soak -timeout 0 -soak-iterations $(TABLES_GO_SOAK_ITERATIONS) -v .
 
 # FUZZ-TABLES-GO: the permanent native fuzz target over the table compiler
 # front end and the Go table emitter (internal/fuzz/tablefrontend_test.go).
@@ -615,20 +619,20 @@ GO_BENCH_RUNTIME := standalone
 generated/bench/tables/go/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/go
 	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/tables/go bench/corpus/BenchTable.schema
-	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
+	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
 
 # Keep both compiler-owned source and module wiring in the discovered generation
 # graph. Default wiring is byte-identical to the paired driver's generated unit.
 generated/bench/paired/go/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/go.mk
 	@mkdir -p generated/bench/paired/go
 	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/paired/go bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/paired/go/go.mod
+	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../../$(SERIALIZE_GO)\n' > generated/bench/paired/go/go.mod
 	@touch $@
 
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/go bench/corpus/Bench.schema
 	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/go/realworld bench/corpus/RealWorld.schema
-	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
+	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
 	@touch $@
 
 build/conformance-go: build/tables-generated-go/.stamp cards-generate $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
@@ -652,9 +656,48 @@ build/conformance-go-be: build/tables-generated-go/.stamp cards-generate $(wildc
 
 .PHONY: conformance-big-endian
 conformance-big-endian: build/conformance-harness build/conformance-go-be
-	@printf 'go-be test/conformance/go/driver-be\n' > build/conformance-be-drivers.txt
+	@printf 'go test/conformance/go/driver-be\n' > build/conformance-be-drivers.txt
 	./build/conformance-harness run --drivers build/conformance-be-drivers.txt --work build/conformance-be-work
 	@echo "big-endian leg: the Go table wire, the read report and the text form cross the byte order"
+
+# ITS NEGATIVE CONTROL (docs/PORTING.md M12, I7), on the C++ big-endian
+# control's rule: one byte-order-neutral read is put back to HOST order and the
+# leg must go RED on the target while the same sabotaged driver stays GREEN on
+# this little-endian host — which is the whole argument for running the leg.
+# Every generated unit carries its own wire reader, and each one's 32-bit read
+# becomes binary.NativeEndian through `go build -overlay`, so no file under
+# build/ or the tree is written to. The leg is named `go` because it IS the Go
+# port: the corpus's carried-by rows name ports, not drivers. It runs in
+# ci-full.yml's big-endian job (row go-control), which installs the emulator;
+# the shared negative-control rows do not, so it is in the manifest's exclusion
+# list with that reason.
+GO_BE_NC := build/go-be-negative-control
+.PHONY: conformance-big-endian-negative-control
+conformance-big-endian-negative-control: build/conformance-harness build/conformance-go-be build/conformance-go
+	@rm -rf $(GO_BE_NC) && mkdir -p $(GO_BE_NC)
+	@entries=""; n=0; for f in $$(grep -l 'v := binary.LittleEndian.Uint32(r.Buffer\[r.Offset:\])' build/tables-generated-go/*/*.go); do \
+		copy=$(GO_BE_NC)/$$(echo $$f | tr '/' '_').gotext; \
+		sed 's/v := binary.LittleEndian.Uint32(r.Buffer\[r.Offset:\])/v := binary.NativeEndian.Uint32(r.Buffer[r.Offset:]) \/\/ SABOTAGED: host order/' $$f > $$copy; \
+		entry="\"$(CURDIR)/$$f\":\"$(CURDIR)/$$copy\""; \
+		if [ -z "$$entries" ]; then entries=$$entry; else entries="$$entries,$$entry"; fi; n=$$((n+1)); \
+	done; \
+	[ $$n -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }; \
+	printf '{"Replace":{%s}}\n' "$$entries" > $(GO_BE_NC)/overlay.json; \
+	echo "host-order 32-bit read in $$n generated units"
+	cd test/conformance/go && GOOS=linux GOARCH=s390x go build -overlay $(CURDIR)/$(GO_BE_NC)/overlay.json -o $(CURDIR)/$(GO_BE_NC)/driver-be-bin .
+	cd test/conformance/go && go build -overlay $(CURDIR)/$(GO_BE_NC)/overlay.json -o $(CURDIR)/$(GO_BE_NC)/driver-host-bin .
+	@sed 's|build/conformance-go-be|$(GO_BE_NC)/driver-be-bin|' test/conformance/go/driver-be > $(GO_BE_NC)/driver-be && chmod +x $(GO_BE_NC)/driver-be
+	@grep -q '$(GO_BE_NC)/driver-be-bin' $(GO_BE_NC)/driver-be || { echo "NEGATIVE CONTROL FAILED: the target driver was not substituted"; exit 1; }
+	@printf '#!/bin/sh\nexec $(GO_BE_NC)/driver-host-bin "$$@"\n' > $(GO_BE_NC)/driver-host && chmod +x $(GO_BE_NC)/driver-host
+	@printf 'go $(GO_BE_NC)/driver-host\n' > $(GO_BE_NC)/host.txt
+	@printf 'go $(GO_BE_NC)/driver-be\n' > $(GO_BE_NC)/be.txt
+	@./build/conformance-harness run --drivers $(GO_BE_NC)/host.txt --work $(GO_BE_NC)/host-work > $(GO_BE_NC)/host.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the host-order read is red on the little-endian HOST too, so the target run would prove nothing about byte order"; cat $(GO_BE_NC)/host.log; exit 1; }
+	@if ./build/conformance-harness run --drivers $(GO_BE_NC)/be.txt --work $(GO_BE_NC)/be-work > $(GO_BE_NC)/be.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a host-order read left the big-endian leg GREEN"; cat $(GO_BE_NC)/be.log; exit 1; \
+	fi
+	@grep -q 'go / wire:' $(GO_BE_NC)/be.log || { echo "NEGATIVE CONTROL FAILED: the big-endian leg went red, but not on the wire"; cat $(GO_BE_NC)/be.log; exit 1; }
+	@echo "big-endian negative control (Go): a host-order read is green on the host and red on the target"
 
 # THE GO LEG's NEGATIVE CONTROL, on the same rule as the C++ one: a harness
 # that has never gone red on a leg is watching that leg. One byte of ONE wire
@@ -669,15 +712,23 @@ conformance-negative-control-go: build/conformance-harness build/conformance-go
 conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control walk
 
+# THE FRAMING SURFACE's own control (docs/LAYERS/1-framing.md): the generated
+# Go reader's 4096 id-table entry cap is removed, and the framing row
+# frame_entries_4097 must go red while the wire surface stays green.
+.PHONY: conformance-negative-control-go-framing
+conformance-negative-control-go-framing: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control frame-cap
+
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
-# negative control, the forgery fuzzer plain and under -race, and two seconds
-# of the soak; the hour is `make tables-go-soak` — the standalone gate, the
+# negative control, the forgery fuzzer plain and under -race, and the soak's
+# short default count; the hour is `make tables-go-soak` — the standalone gate, the
 # bench units' compile gates, and the packet tests.
 .PHONY: test-go
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
+	$(MAKE) conformance-negative-control-go-framing
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz
@@ -698,7 +749,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
 build/packet-wide/go/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema make/go.mk
 	./bin/schema generate --lang go --out build/packet-wide/go build/packet-wide/source/WideText.schema
 	./bin/schema generate --lang go --out build/packet-wide/go/shapes test/packet-wide/Shapes.schema
-	@printf 'module packetwide\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-wide/go/go.mod
+	@printf 'module packetwide\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-wide/go/go.mod
 	@touch $@
 
 .PHONY: packet-wide-go packet-wide-go-negative-control
@@ -722,7 +773,7 @@ test-go: packet-wide-go packet-wide-go-negative-control
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainSavesWhatTheOracleSaves$$'
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
 	./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 
 tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go
@@ -821,7 +872,7 @@ test-go: tables-go-block-build tables-go-block-fill-refuser
 .PHONY: tables-go-retain
 tables-go-retain:
 	sh test/slowgate/proof tables-go-retain \
-		'TestRetainMatchesIndependentRewrite TestRetainMessageBoundsBeforeExpansion TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
+		'TestRetainMatchesIndependentRewrite TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
 		./internal/codegen/gotable -run '^TestRetain' -count=1
 test-go: tables-go-retain
 
@@ -851,7 +902,7 @@ tables-go-allocator-negative-controls:
 tables-go-allocator-runtime-negative-control:
 	sh test/conformance/go/ownership-negative-control runtime
 tables-go-retain-negative-controls:
-	@set -e; for mode in file-count-floor message-depth unknown-node; do sh test/conformance/go/ownership-negative-control $$mode; done
+	@set -e; for mode in file-count-floor unknown-node; do sh test/conformance/go/ownership-negative-control $$mode; done
 
 test-go: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
 
@@ -891,25 +942,34 @@ tables-go-retain-wire-fuzz: build/conformance-harness build/conformance-go
 test-go: tables-go-measure-negative-controls tables-go-retain-wire-fuzz
 
 # Release certification reuses the PR checks at a second seed, a longer soak,
-# and a larger allocation sample. Local invocations may shorten GO_SOAK.
+# and a larger allocation sample. Local invocations may shorten
+# TABLES_GO_RELEASE_SOAK_ITERATIONS.
 #
-# The default stays 30m so the soak fits the certify.yml release-gates job's
-# 60-minute timeout with its stated 15-minute pre-soak allowance (30m + 15m
-# < 60m). A longer soak would be killed at the cap, which is never raised to
-# fit a growing suite (certify.yml note, 2026-09-18) — the full hour lives on
-# in `make tables-go-soak`, for local and nightly runs.
-GO_SOAK ?= 30m
+# The default is HALF of TABLES_GO_SOAK_ITERATIONS (the hour's count), about
+# 30 minutes, so the soak fits the certify.yml release-gates job's 60-minute
+# timeout with its stated 15-minute pre-soak allowance (30m + 15m < 60m).
+# internal/ci/gosoak_test.go holds that ratio. A longer soak would be killed
+# at the cap, which is never raised to fit a growing suite (certify.yml note,
+# 2026-09-18) — the full hour lives on in `make tables-go-soak`, for local and
+# nightly runs.
+TABLES_GO_RELEASE_SOAK_ITERATIONS ?= 300000
 GO_RELEASE_SEED ?= 68719476731
 .PHONY: tables-go-release tables-go-clean tables-go-bench-gate
 tables-go-release: build/conformance-harness build/conformance-go tables-go-bench-gate tables-go-clean
-	$(MAKE) tables-go-wire-fuzz tables-go-retain-wire-fuzz tables-go-builders N=100000 SEED=$(GO_RELEASE_SEED)
+	$(MAKE) tables-go-release-fuzz
 	$(MAKE) tables-go-wire-fuzz-negative-control
-	cd test/go-tables && GOTOOLCHAIN=go1.26.0 go test -run '^TestSoak$$' -count=1 -timeout 2h -soak $(GO_SOAK)
+	cd test/go-tables && GOTOOLCHAIN=go1.26.0 go test -run '^TestSoak$$' -count=1 -timeout 2h -soak-iterations $(TABLES_GO_RELEASE_SOAK_ITERATIONS)
 	SCHEMA_GO_ALLOC_RUNS=200 GOTOOLCHAIN=go1.26.0 sh test/slowgate/proof tables-go-release-allocator \
 		'TestAllocatorOwnershipAndStandaloneWriters' \
 		./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
 tables-go-clean: build/tables-generated-go/.stamp
-	@set -e; for d in build/tables-generated-go/*; do \
+	@$(MAKE) --no-print-directory tables-go-clean-units
+# the gate's body, over GO_CLEAN_UNITS (every generated unit by default), so its
+# negative control runs this same recipe over a unit a sabotaged emitter wrote
+GO_CLEAN_UNITS ?= build/tables-generated-go/*
+.PHONY: tables-go-clean-units
+tables-go-clean-units:
+	@set -e; for d in $(GO_CLEAN_UNITS); do \
 		[ -f "$$d/go.mod" ] || continue; \
 		bad=$$(gofmt -l "$$d"/*.go); [ -z "$$bad" ] || { echo "noncanonical generated Go: $$bad"; exit 1; }; \
 		(cd "$$d" && go vet ./...); \
@@ -918,6 +978,39 @@ tables-go-bench-gate: generated/bench/tables/go/.stamp
 	bench/tables/go/leg build
 	bench/tables/go/leg run --gate
 test-go: tables-go-clean tables-go-bench-gate
+
+# THE RELEASE TIER's fuzz half (docs/PORTING.md J3): the PR tier's wire, retain
+# and builder fuzzers at the release count on the release seed, over
+# GO_FUZZ_DRIVER. Its negative control hands it a driver whose generated
+# readers accept a noncanonical LEB128 (test/conformance/go/negative-control
+# leb's sabotage) and requires the release tier RED on the oracle's verdict.
+GO_FUZZ_DRIVER ?= build/conformance-go
+GO_RELEASE_N ?= 100000
+.PHONY: tables-go-release-fuzz tables-go-release-negative-control
+tables-go-release-fuzz: build/conformance-harness build/conformance-go
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
+	./build/conformance-harness wire-fuzz --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
+	./build/conformance-harness wire-fuzz --retain --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
+	$(MAKE) tables-go-builders N=$(GO_RELEASE_N) SEED=$(GO_RELEASE_SEED)
+tables-go-release-negative-control: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control leb-driver
+	@if $(MAKE) --no-print-directory tables-go-release-fuzz GO_FUZZ_DRIVER=build/go-table-control-leb-driver/driver-bin > build/go-table-control-leb-driver/release.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the release tier stayed green over a reader that accepts noncanonical LEB128"; exit 1; \
+	fi
+	@grep -q 'harness: FAILED after' build/go-table-control-leb-driver/release.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the release tier went red, but not on the fuzzer's verdict"; cat build/go-table-control-leb-driver/release.log; exit 1; }
+	@echo "Go release negative control: a reader accepting noncanonical LEB128 turns the release tier red"
+
+# THE CLEAN GATE's negative control (docs/PORTING.md J4): the emitter is
+# sabotaged twice through `go build -overlay` and one unit regenerated from it
+# each time, and the gate's own recipe must go red on each half -- gofmt, when
+# the emitter skips go/format; go vet, when a printf call loses an argument.
+.PHONY: tables-go-clean-negative-control
+tables-go-clean-negative-control: build/tables-generated-go/.stamp
+	sh test/go-tables/negative-control clean-format
+	sh test/go-tables/negative-control clean-vet
+
+test-go: tables-go-release-negative-control tables-go-clean-negative-control
 
 # ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) — THE GO LEG
@@ -999,11 +1092,11 @@ tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
 		"$(CURDIR)" "$(CURDIR)" > build/go-fixed-sabotage/overlay.json
 	@go build -overlay=build/go-fixed-sabotage/overlay.json -o build/go-fixed-sabotage/schema ./cmd/schema
 	@./build/go-fixed-sabotage/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out build/go-fixed-sabotage/gen bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' > build/go-fixed-sabotage/gen/go.mod
+	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => $(CURDIR)/$(SERIALIZE_GO)\n' > build/go-fixed-sabotage/gen/go.mod
 	@cp bench/paired/go/go.mod build/go-fixed-sabotage/table.mod
 	@cd bench/paired/go && go mod edit -modfile $(CURDIR)/build/go-fixed-sabotage/table.mod \
 		-replace benchtable=$(CURDIR)/build/go-fixed-sabotage/gen \
-		-replace github.com/mas-bandwidth/serialize.go=$(CURDIR)/$(SERIALIZE_GO)
+		-replace github.com/mas-bandwidth/serialize.go/v2=$(CURDIR)/$(SERIALIZE_GO)
 	@cd bench/paired/go && go build -modfile $(CURDIR)/build/go-fixed-sabotage/table.mod -tags matched \
 		-o $(CURDIR)/build/go-fixed-sabotage/leg ../../tables/go/table_main.go ../../tables/go/shape_matched.go
 	@if ./build/go-fixed-sabotage/leg --gate --indexed --wire-dir bench/paired/corpus \
@@ -1020,6 +1113,73 @@ tables-go-usage: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run '^TestUsage$$' -count=1
 test-go: tables-go-usage
 
+# ITS NEGATIVE CONTROL (docs/PORTING.md I12): the unit the page's example
+# imports spells its strict read differently, through an overlay the gate's own
+# go vet and go run inherit, and the gate must go red naming the page.
+.PHONY: tables-go-usage-negative-control
+tables-go-usage-negative-control: build/tables-generated-go/.stamp
+	sh test/go-tables/negative-control usage
+test-go: tables-go-usage-negative-control
+
+# THE ENUM-KEYED ARRAY's guard (docs/PORTING.md M5): TestKeyedRefusesNone,
+# TestKeyedRefusesPastMax and TestKeyedPlacesByKey over the generated
+# TableKeyed. Its negative control removes the None compare, the past-E.Max
+# compare and the k-1 shift from the generated unit in turn, each through an
+# overlay, and each must turn exactly its own test red.
+.PHONY: tables-go-keyed tables-go-keyed-negative-control
+tables-go-keyed: build/tables-generated-go/.stamp
+	cd test/go-tables && go test -run '^TestKeyed' -count=1
+tables-go-keyed-negative-control: build/tables-generated-go/.stamp
+	sh test/go-tables/negative-control keyed-none
+	sh test/go-tables/negative-control keyed-max
+	sh test/go-tables/negative-control keyed-shift
+test-go: tables-go-keyed tables-go-keyed-negative-control
+
+# THE LAYOUT CONTRACT IN GENERATED CODE (docs/PORTING.md M11): the block
+# init refuses a runtime whose struct disagrees with the compiler's model.
+# Its negative control makes the emitted init's two refusing helpers stop
+# panicking, and the gate must go red on the disagreeing runtime it now loads.
+.PHONY: tables-go-layout-contract tables-go-layout-contract-negative-control
+tables-go-layout-contract:
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/gotable -run '^TestBlockLayoutContractRefusesADisagreeingRuntime$$'
+tables-go-layout-contract-negative-control:
+	sh test/go-tables/negative-control layout
+test-go: tables-go-layout-contract tables-go-layout-contract-negative-control
+
+# THE `&node` LABEL (docs/PORTING.md M14): TestRegionGraphs writes a graph
+# whose node two pointers share as text and requires the read to share it
+# again. Its negative control makes the emitter's text writer write a shared
+# node as plain copies, with no label, and the gate must go red on the sharing.
+.PHONY: tables-go-graph-label-negative-control
+tables-go-graph-label-negative-control:
+	sh test/go-tables/negative-control graph-label
+test-go: tables-go-graph-label-negative-control
+
+# PER-CASE ABSENT (docs/PORTING.md I4): the Go leg alone, under a substituted
+# registry, answers the cases it cannot carry ABSENT one by one and passes,
+# and the matrix shows it did (`+Na`). Its negative control makes the driver
+# write nothing for such a case, and the harness must go red on the missing
+# answer.
+.PHONY: conformance-go-absent conformance-negative-control-go-absent
+conformance-go-absent: build/conformance-harness build/conformance-go
+	@mkdir -p build/conformance-go-absent
+	@printf 'go test/conformance/go/driver\n' > build/conformance-go-absent/drivers.txt
+	./build/conformance-harness run --drivers build/conformance-go-absent/drivers.txt --work build/conformance-go-absent/work | tee build/conformance-go-absent/log
+	@for s in wire framing; do grep -Eq "^$$s +pass [0-9]+/[0-9]+ \+[1-9][0-9]*a" build/conformance-go-absent/log || \
+		{ echo "PER-CASE ABSENT GATE FAILED: the Go leg's $$s surface answered no case absent, so the grain is not exercised"; exit 1; }; done
+conformance-negative-control-go-absent: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control absent
+test-go: conformance-go-absent conformance-negative-control-go-absent
+
+# THE CARD CHECK, its Go leg (docs/PORTING.md J6): the Go card renderer
+# writes a header line's separator one space wider, through an overlay of the
+# copy the driver builds from, and the check must go red on render and stay
+# green on load.
+.PHONY: cards-conformance-go-negative-control
+cards-conformance-go-negative-control: build/conformance-harness cards-driver-go
+	CARDS_REQUIRE=$(CARDS_REQUIRE) sh test/go-tables/negative-control cards
+test-go: cards-conformance-go-negative-control
+
 # The Go table output compiles with any subset of its optional forms {json,
 # cook, block, message} omitted (docs/SPEC-TABLES.md, "GO's optional forms"): every corpus unit,
 # all sixteen subsets, through the emitter's own omit path (GenerateOmitting),
@@ -1032,7 +1192,7 @@ tables-go-subsets:
 		./internal/codegen/gotable -run '^TestGoTableCompilesWithAnySubsetOfItsForms$$' -count=1 -timeout 600s
 test-go: tables-go-subsets
 
-# I13 (docs/PORTING.md:1278): the go leg's text differential against a third
+# I13 (docs/PORTING.md, the text differential): the go leg's text differential against a third
 # implementation. The test generates N random float-only instances with the
 # generated setters, writes each as (wire, text), then byte-compares the leg's
 # text against internal/tabletext's text and packs the leg's text back to wire
@@ -1045,7 +1205,20 @@ tables-go-text-differential:
 	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferential$$' -count=1
 tables-go-text-differential-negative-control:
 	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
-test-go: tables-go-text-differential
+test-go: tables-go-text-differential tables-go-text-differential-negative-control
+
+# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
+# finite-only too, same rule as packets"): every read refuses a NaN or an
+# infinity on its raw bits as non_finite_float and every writer refuses one.
+# The gate is TestGoPlainFloatSpecialValuesAgreeAcrossForms; its reversed
+# witness sabotages the read's bit test, the fixed form's finite pass and the
+# writer's clause in turn, and each must turn the probe red on its own half.
+.PHONY: tables-go-finite-float tables-go-finite-float-negative-control
+tables-go-finite-float:
+	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestGoPlainFloatSpecialValuesAgreeAcrossForms$$' -count=1
+tables-go-finite-float-negative-control:
+	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestGoFiniteFloatNegativeControl$$' -count=1
+test-go: tables-go-finite-float
 
 # The random-schema table differential (card
 # schema-go-fuzz-random-table-differential): seeds 0..SCHEMA_TABLE_DIFF_TO of
@@ -1072,3 +1245,75 @@ fuzz-tables-props:
 
 .PHONY: test-go
 test-go: deps
+
+# The same reversed witness on the MESSAGE surface (docs/SPEC-TABLES.md §3.3):
+# one byte of the login_full batch answer flipped in a copy of the driver, and
+# the matrix must go red on that message row while the wire surface stays green.
+.PHONY: conformance-negative-control-go-message
+conformance-negative-control-go-message: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control message
+
+# The generated message form's own controls (internal/codegen/gotable,
+# messageform_negative_test.go): each plants one fault in a copy of the
+# generated source and requires its gate's probe red on its own message.
+.PHONY: tables-go-message-form-negative-controls
+tables-go-message-form-negative-controls:
+	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -count=1 -timeout 600s \
+		-run '^(TestGoMessageFormGoldensNegativeControl|TestGoMessageFormRefusalsNegativeControl|TestGoMessageFormStrictNegativeControl|TestGoMessageFormVersioningNegativeControl|TestGoMessageFormFixedOnlyNegativeControl|TestGoWireIntegrityMessageFormNegativeControl)$$'
+
+test-go: conformance-negative-control-go-message tables-go-message-form-negative-controls
+
+# THE OPEN-NODE REFUSAL's control (docs/SPEC-TABLES.md §3.1, §4): the generated
+# Go reader's cycle walk answers "no cycle", and the framing rows
+# node_cycle_self and node_cycle_to_root must go red while wire stays green.
+# It rebuilds only the driver over the generated tree, about 3 s.
+.PHONY: conformance-negative-control-go-cycle
+conformance-negative-control-go-cycle: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control cycle
+
+test-go: conformance-negative-control-go-cycle
+# DAMAGE DISCARDS THE WHOLE LOAD in the Go leg (docs/SPEC-TABLES.md §4): each
+# sabotage removes one discard guard from a COPY of the emitter, reached
+# through a Go overlay, and TestDamageDiscardsTheWholeLoadGo must go red on
+# that guard's own line: the fixed LoadTolerant's (read.go) hands back the
+# fixed value it decoded, and the region load's (regions.go) hands back its
+# root. Nothing tracked is written to.
+GO_DISCARD_NC := build/go-discard-nc
+.PHONY: tables-go-discard-negative-control
+tables-go-discard-negative-control:
+	@rm -rf $(GO_DISCARD_NC) && mkdir -p $(GO_DISCARD_NC)
+	@sed -e 's|g.pf("\\tif report.Malformed {\\n")|g.pf("\\tif false {\\n") // NEGATIVE CONTROL: the fixed discard is gone|' \
+		internal/codegen/gotable/read.go > $(GO_DISCARD_NC)/read.go.txt
+	@cmp -s internal/codegen/gotable/read.go $(GO_DISCARD_NC)/read.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/gotable/read.go":"%s/$(GO_DISCARD_NC)/read.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/fixed.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
+			./internal/codegen/gotable > $(GO_DISCARD_NC)/fixed.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Go fixed discard is gone and the gate stayed green"; \
+		cat $(GO_DISCARD_NC)/fixed.log; exit 1; \
+	fi
+	@grep -q "fixed: LoadTolerant answered true on damage" $(GO_DISCARD_NC)/fixed.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(GO_DISCARD_NC)/fixed.log; exit 1; }
+	@sed -e 's/if report.Malformed{clear(region);return nil}/if false{clear(region);return nil}/' \
+		internal/codegen/gotable/regions.go > $(GO_DISCARD_NC)/regions.go.txt
+	@cmp -s internal/codegen/gotable/regions.go $(GO_DISCARD_NC)/regions.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/gotable/regions.go":"%s/$(GO_DISCARD_NC)/regions.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/region.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/region.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
+			./internal/codegen/gotable > $(GO_DISCARD_NC)/region.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Go region discard is gone and the gate stayed green"; \
+		cat $(GO_DISCARD_NC)/region.log; exit 1; \
+	fi
+	@grep -q "variable: LoadTolerant handed back a root on damage" $(GO_DISCARD_NC)/region.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the region gate went red for some other reason"; \
+		  cat $(GO_DISCARD_NC)/region.log; exit 1; }
+	@echo "negative control: removing either Go discard guard turns TestDamageDiscardsTheWholeLoadGo RED"
+
+test-go: tables-go-discard-negative-control
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-go/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

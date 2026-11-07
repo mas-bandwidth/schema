@@ -91,7 +91,7 @@ static uint8_t * slurp( const char * path, size_t * out )
         memset( &report, 0, sizeof( report ) ); \
         memset( &value, 0, sizeof( value ) ); \
         FN##_reset( &value ); \
-        check( FN##_load( &value, variable, (int64_t) variable_bytes, &report ), label ": load variable form" ); \
+        check( FN##_load_tolerant( &value, variable, (int64_t) variable_bytes, &report ), label ": load variable form" ); \
         need = FN##_measure_messages( &value, 1, &report ); \
         check( need == (int64_t) message_bytes, label ": message size matches golden" ); \
         written = FN##_save_messages( &value, 1, saved, need, &report ); \
@@ -106,7 +106,7 @@ static uint8_t * slurp( const char * path, size_t * out )
             check( announce_read( &vocabulary, announce, (int64_t) announce_bytes, &report ), label ": read announcement" ); \
             memset( &value, 0, sizeof( value ) ); \
             FN##_reset( &value ); \
-            check( FN##_load_messages( &value, &count, &vocabulary, message, (int64_t) message_bytes, &report ), label ": load message form" ); \
+            check( FN##_load_messages_tolerant( &value, &count, &vocabulary, message, (int64_t) message_bytes, &report ), label ": load message form" ); \
             check( count == 1, label ": exactly one message body" ); \
             need = FN##_measure( &value ); \
             check( need == (int64_t) variable_bytes, label ": variable size matches golden" ); \

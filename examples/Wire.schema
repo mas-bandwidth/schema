@@ -1,7 +1,8 @@
-// Wire.schema — wire-construct coverage: the constructs the protocol shapes
-// in the other files don't reach, so every emitter codepath is exercised in
-// the corpus (Glenn's ask, 2026-08-05). Each type is a realistic probe shape,
-// not a kitchen sink for its own sake.
+// Wire.schema — the wire constructs the other files don't need: typed
+// constants, enum and flags headroom, storage-less wire items, every `bits`
+// width class, compressed floats, defaults, unions, empty types and
+// fixed-capacity strings. Each type is a small, realistic shape that uses
+// one or two of them.
 
 package example
 
@@ -33,9 +34,8 @@ type ProbeHeader
     probe_id uint64
 }
 
-// bits at the interesting widths — 9, the 33-bit low-first boundary, 64 —
-// and the ranged-integer emission paths past int32: a full-range uint32
-// (the int64 call family) and a full-range uint64 (raw offset bits)
+// raw bits at 9, 33 and 64 bits wide, and full-range uint32 and uint64
+// fields, whose bounds span the whole storage type
 type ProbeBits
 {
     small    bits(9)
@@ -45,10 +45,10 @@ type ProbeBits
     nonce    uint64   | min = 0, max = 18446744073709551615
 }
 
-// a compressed float on a plain type's wire (SPEC §4.3 — the object-view
-// projection is a different codepath), a specified default, if/else with a
-// nested branch, bare int32/int64, and a range-counted array whose count
-// can never be zero
+// a compressed float (SPEC §4.3: min, max and resolution quantize it to the
+// fewest bits that hold the range at that step), a specified default,
+// if/else with a nested branch, bare int32/int64, and a range-counted array
+// whose count can never be zero
 type ProbeSample
 {
     active      bool = true
@@ -109,17 +109,15 @@ type ProbeConfig
     preferred Weapon = Railgun
 }
 
-// a type composing DEFAULTED types — through a fixed array and a plain
-// member: New*/construction must install the inner defaults transitively in
-// every target (zero init reaches only fields with no specified default)
+// defaults apply through composition: constructing a ProbeArray gives both
+// array elements and the nested config their declared defaults, not zeros
 type ProbeArray
 {
     samples [2]ProbeSample
     config  ProbeConfig
 }
 
-// an empty body — presence is the payload; zero wire bits, and the one
-// empty-struct emission corner every target must keep legal
+// an empty body — presence is the payload, and it costs zero wire bits
 type Heartbeat
 {
 }
@@ -157,14 +155,10 @@ type ProbeReport
     echo   Test
 }
 
-// serialize.h's own TestData, schema-specified — the representability claim
-// made concrete: everything the vanilla library's test object serializes,
-// the language declares. Differences, stated honestly: a/b/c use declared
-// ranges (the library test feeds theirs from a runtime context, which is not
-// a wire feature); the fixed 17-byte block is a fixed byte array behind an
-// explicit align (the exact-N bytes form died in the §4.7 unification); and
-// two constructs are v1-deferred by decision and absent — int_relative
-// (§4.10, the delta pass) and wstring.
+// A broad test object: ranged integers, raw bits, a bool, a counted array,
+// plain and compressed floats, every integer width, a 17-byte block after an
+// explicit align, and a string. If you are porting a hand-written serialize
+// function, this shows the schema spelling of most of what it does.
 type TestData
 {
     a int32 | min = -100, max = 100
@@ -200,18 +194,10 @@ type TestData
     text string(255)
 }
 
-// The FMA-boundary compressed-float vectors SPEC §7.2 gate 7 promises. The
-// pinned values were chosen by SWEEPING each range for divergence, never
-// guessed (the audit's lesson: an on-quantum value like TestData's 2.5
-// agrees under float32, double and a fused multiply-add alike, so a corpus
-// built only from on-quantum values cannot detect the arithmetic):
-//   boundary = 0.005  -> integer 1 under the float32 two-rounding law;
-//                        a fused build says 0, a double build says 0
-//   offset   = -4.8585 -> integer 142 under the law; a double build says 141
-//                        (the non-zero min exercises the v - min subtraction
-//                        on write and the + min reconstruction on read; a
-//                        full-range float32 sweep found no fused divergence
-//                        on this shape — measured, not assumed)
+// Compressed floats over a range starting at zero and over one with a
+// negative minimum. Quantization is strict IEEE-754 float32 arithmetic with
+// no fused multiply-add (SPEC §4.3, §7.2), so every target maps a given value
+// to the same integer on the wire.
 type CompressedProbe
 {
     boundary float32 | min = 0, max = 10, resolution = 0.01

@@ -415,7 +415,7 @@ func (p *parsedCard) build(body []byte) (*Record, error) {
 	}
 	defer b.Shutdown()
 	root := b.GetRoot()
-	assignFixed(root.Id[:], &root.IdLength, p.id)
+	assignFixed(root.ID[:], &root.IDLength, p.id)
 	assignFixed(root.Sha[:], &root.ShaLength, p.sha)
 	root.Tier = p.tier
 	assignFixed(root.Repo[:], &root.RepoLength, p.repo)

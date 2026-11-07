@@ -27,17 +27,48 @@ func (t elixirTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, err
 // elixirtable opens no file and a build ships a reader for every layout the lock
 // records.
 func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains refused.
+	// Packet wide text is carried, and table kind 33 too: elixir is in
+	// tableWideTextTargets (compiler/widetext.go, docs/SPEC-TABLES.md §3).
 	if err := refuseWideText(u, "elixir"); err != nil {
 		return nil, err
 	}
-	if err := refuseUnported(u, "elixir"); err != nil {
+	// refuseUnported, split per construct. This target registers as a carrier
+	// of maps (§2.8), optional arrays (§2.3), table arms and arrays of unions
+	// (§2.6) in init below, so those refusals pass by registration; the calls
+	// stay so a carrier that is unregistered is refused by name again (§11).
+	if err := refuseValueDefaults(u, "elixir"); err != nil {
 		return nil, err
+	}
+	// Elixir carries the `was` rows (§5): it appends itself to wasRowTargets
+	// in init below, so refuseWasRows passes. The variable form's descriptors
+	// hash a renamed enum variant, packet-union arm and type field under their
+	// was alias, so old bytes read as the new names
+	// (internal/codegen/elixirtable's writeEnumMaps, armDescriptor and
+	// fieldDescriptor).
+	if err := refuseWasRows(u, "elixir"); err != nil {
+		return nil, err
+	}
+	if err := refuseVoidArms(u, "elixir"); err != nil {
+		return nil, err
+	}
+	if err := refuseBytes(u, "elixir"); err != nil {
+		return nil, err
+	}
+	if err := refuseStrings(u, "elixir"); err != nil {
+		return nil, err
+	}
+	if !elixirListsBesideUncarried(u) {
+		if err := refuseTableArms(u, "elixir"); err != nil {
+			return nil, err
+		}
+		if err := refuseUnionArrays(u, "elixir"); err != nil {
+			return nil, err
+		}
+		if err := refuseMaps(u, "elixir"); err != nil {
+			return nil, err
+		}
 	}
 	if err := refuseOptionalArrays(u, "elixir"); err != nil {
-		return nil, err
-	}
-	if err := refuseMaps(u, "elixir"); err != nil {
 		return nil, err
 	}
 	if err := refuseLists(u, "elixir"); err != nil {
@@ -47,10 +78,10 @@ func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage
 	if err != nil {
 		return nil, err
 	}
-	// units that declare tables ALSO get <Base>Table.ex per file — the
-	// TABLE-wire codecs, the reflection descriptors, the text form and the two
-	// accelerators' READ side (docs/SPEC-TABLES.md); a table-free unit's output
-	// is byte-identical to what the packet emitter alone produces.
+	// units that declare tables ALSO get Table.ex, one variable-form codec per
+	// unit, beside <Base>Block.ex and <Base>Cook.ex (docs/SPEC-TABLES.md); a
+	// table-free unit's output is byte-identical to what the packet emitter
+	// alone produces.
 	tables, err := elixirtable.GenerateLineage(u, elixirTableLineage(u, lineage))
 	if err != nil {
 		return nil, err
@@ -62,6 +93,15 @@ func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage
 		files[name] = data
 	}
 	return files, nil
+}
+
+// elixirListsBesideUncarried reports whether the unit declares an unbounded
+// array this backend emits (docs/SPEC-TABLES.md §2.9). Such a unit still
+// generates when a map or a union sits beside those lists: the lists are the
+// carried wire, and the other roots are uncarried rather than a refusal of
+// the whole unit (§2.6, §2.8, §11).
+func elixirListsBesideUncarried(u *ir.Unit) bool {
+	return len(ir.ListFields(u)) > 0
 }
 
 // elixirTableLineage is the lock's lineage in the Elixir backend's own spelling.
@@ -105,16 +145,23 @@ func init() {
 	//     image: every field of the image is present by construction, so there
 	//     is no absent field for a default to answer and nothing to elide.
 	//
-	// The id-table wire (§3) is NOT emitted for this backend (schema#515), so
-	// its elision rule is not this port's to carry today; when #515 lands, the
-	// codec it brings has to keep this claim true.
+	// The id-table wire (§3) is emitted for this backend for the whole variable
+	// class (docs/SPEC-TABLES.md §2, §3); its codec elides a field at its
+	// declared default, so the elision claim stays true as the class widens.
 	// Registered the way go, java and rust register (target_go.go,
 	// target_java.go, target_rust.go): the append IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "elixir")
+	// The append IS the registration (target_go.go, target_java.go and
+	// target_rust.go register the same way): refuseWasRows reads this list.
+	wasRowTargets = append(wasRowTargets, "elixir")
 	registerWideTextCarrier("elixir")
 	registerListCarrier("elixir")
-	// blobs=true: the variable form's card slice carries *string (docs/SPEC-TABLES.md
-	// §2.5); *bytes stays refused at the elixirtable boundary (§11), so the
-	// compiler-level byte-buffer gate must not fire for the *string the card uses.
-	registerBuiltin(elixirTarget{}, true, false, false, true)
+	registerMapCarrier("elixir")
+	registerOptionalArrayCarrier("elixir")
+	// arms=true and unionArrays=true: the variable form carries a union whose
+	// arms are field lines of any type, payload-free arms among them, and an
+	// array of unions (docs/SPEC-TABLES.md §2.6, §3). blobs=true: it carries
+	// *string and *bytes (§2.5), so the compiler-level byte-buffer gate must
+	// not fire for the two blobs the wire rides as nodes.
+	registerBuiltin(elixirTarget{}, true, true, true, true)
 }

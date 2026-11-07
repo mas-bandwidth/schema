@@ -67,15 +67,15 @@ if (RootBlock.Begin(bytes, { Rows: 17, Other: -1 }) !== -1) { console.log("a neg
 if (Buffer.from(bytes.subarray(0, used)).toString("hex") !== hex) { console.log("a refusal changed the extent"); process.exit(1); }
 console.log("refusals left the extent alone");
 const root = new Root();
-root.Stamp = 42n;
-root.RowsCount = 2;
-root.Rows[0].Value = 9n;
-root.Rows[0].Flag = true;
-root.Rows[1].Value = 3n;
-root.Rows[1].Flag = false;
-root.OtherCount = 1;
-root.Other[0].Value = 11n;
-root.Other[0].Flag = true;
+root.stamp = 42n;
+root.rowsCount = 2;
+root.rows[0].value = 9n;
+root.rows[0].flag = true;
+root.rows[1].value = 3n;
+root.rows[1].flag = false;
+root.otherCount = 1;
+root.other[0].value = 11n;
+root.other[0].flag = true;
 const measure = RootCookMeasure(root);
 const reason = RootCookMeasureReason(root);
 console.log("cook-measure " + measure);

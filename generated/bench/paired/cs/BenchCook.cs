@@ -69,7 +69,8 @@ namespace Bench
         public int ElemSize;    // one element's size, for an array; the field's own otherwise
         public bool IsArray;
         public int ArrayBound;  // the DECLARED bound: a counted array's N, a string's or bytes' length
-        public bool IsPointer;  // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
+        public bool IsPointer;
+        public bool Unbounded;  // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
         public int CountOffset; // the count companion's offset, or -1 when the field has none
         public int PresentOffset; // an optional's presence bool, or -1
         public TableCookStorage Storage; // what one slot HOLDS, at ElemSize bytes
@@ -114,7 +115,7 @@ namespace Bench
         // There are TWO ids in the design and they are not interchangeable: the
         // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
         // what everything cooked or blocked is keyed by.
-        public const ulong BuildVersion = 0x23753a84972a054eUL;
+        public const ulong BuildVersion = 0x41d3559378bfa852UL;
 
         // The cook's MAGIC (docs/SPEC-TABLES.md §7.1), read BYTEWISE before anything
         // else: it is what establishes the byte order every other header word is

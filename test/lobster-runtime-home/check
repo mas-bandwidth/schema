@@ -1,0 +1,39 @@
+#!/bin/sh
+# THE LOBSTER RUNTIME HOME (docs/PORTING.md J2). The table runtime is emitted
+# as fixed-name modules beside the unit's <Base>Table.lobster modules, named by
+# no schema file. This generates tables/examples twice — as committed, and
+# with an earlier-sorting packet-only file (Aaa.schema) added — and requires
+# every runtime module (internal/codegen/lobstertable/runtime/*.lobster) at its
+# own name and byte-identical in both trees, and the same set of table modules.
+#
+# usage: test/lobster-runtime-home/check <schema binary> <scratch dir>
+set -eu
+schema=$1
+out=$2
+rm -rf "$out" && mkdir -p "$out/src"
+cp tables/examples/*.schema "$out/src/"
+printf 'package tabledemo\n\ntype AaaPacket\n{\n    tag uint8\n}\n' > "$out/src/Aaa.schema"
+"$schema" generate --lang lobster --out "$out/base" tables/examples > /dev/null
+"$schema" generate --lang lobster --out "$out/added" "$out/src" > /dev/null
+status=0
+for f in internal/codegen/lobstertable/runtime/*.lobster; do
+    n=$(basename "$f")
+    for tree in base added; do
+        if [ ! -f "$out/$tree/$n" ]; then
+            echo "RUNTIME HOME GATE FAILED: the $tree tree has no runtime module $n (a runtime module is named by no schema file)"
+            status=1
+        fi
+    done
+    if [ -f "$out/base/$n" ] && [ -f "$out/added/$n" ] && ! cmp -s "$out/base/$n" "$out/added/$n"; then
+        echo "RUNTIME HOME GATE FAILED: the runtime module $n changed when the unit gained an earlier-sorting file"
+        status=1
+    fi
+done
+base=$(cd "$out/base" && ls *Table.lobster | tr '\n' ' ')
+added=$(cd "$out/added" && ls *Table.lobster | tr '\n' ' ')
+if [ "$base" != "$added" ]; then
+    echo "RUNTIME HOME GATE FAILED: the table modules moved: [$base] became [$added]"
+    status=1
+fi
+[ "$status" -eq 0 ] || exit 1
+echo "runtime home gate (Lobster): every runtime module keeps its name and its bytes, and the table modules stay [${base% }], when an earlier-sorting file joins the unit"

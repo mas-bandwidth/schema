@@ -75,7 +75,7 @@ func runFixLoadProbe(t *testing.T, reader string, older []string, testSource str
 	maps.Copy(files, tables)
 	dir := t.TempDir()
 	runtime := slowtest.SerializeGo(t, "../../../")
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	files["alloc_test.go"] = []byte(testSource)
 	for name, data := range files {
 		if strings.Contains(name, "/") {

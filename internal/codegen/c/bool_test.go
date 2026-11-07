@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// Packet bool storage is uint8_t (one-byte layout, no <stdbool.h>).
-// serialize_read_bool still takes int *, so the read goes through a temp
-// for both a scalar field and an array element.
-func TestBoolStorageIsUint8AndReadUsesIntTemp(t *testing.T) {
+// Packet bool storage is C99's bool from <stdbool.h> — one byte, alignment
+// one, the C++ target's spelling. serialize_read_bool still takes int *, so
+// the read goes through a temp for both a scalar field and an array element.
+func TestBoolStorageIsBoolAndReadUsesIntTemp(t *testing.T) {
 	u := unitFromSource(t, "Bool.schema", `package booltest
 type Pair {
     moving bool
@@ -22,15 +22,17 @@ type Pair {
 	}
 	header := string(files["Bool.h"])
 	for _, want := range []string{
-		"uint8_t moving;",
-		"uint8_t firing;",
-		"uint8_t flags[2];",
+		"#include <stdbool.h>\n",
+		"bool moving;",
+		"bool firing;",
+		"bool flags[2];",
 	} {
 		if !strings.Contains(header, want) {
-			t.Errorf("packet bool storage must be uint8_t: want %q in:\n%s", want, header)
+			t.Errorf("packet bool storage must be bool: want %q in:\n%s", want, header)
 		}
 	}
 	for _, banned := range []string{
+		"uint8_t moving;",
 		"int moving;",
 		"int firing;",
 		"int flags[2];",
@@ -44,8 +46,8 @@ type Pair {
 	for _, want := range []string{
 		"int bool_value = 0;",
 		"if ( !serialize_read_bool( stream, &bool_value ) )",
-		"value->firing = (uint8_t) bool_value;",
-		"value->flags[i] = (uint8_t) bool_value;",
+		"value->firing = bool_value != 0;",
+		"value->flags[i] = bool_value != 0;",
 		"serialize_write_bool( stream, value->firing )",
 		"serialize_write_bool( stream, value->flags[i] )",
 	} {
@@ -54,9 +56,9 @@ type Pair {
 		}
 	}
 	if strings.Contains(wire, "serialize_read_bool( stream, &value->firing )") {
-		t.Error("serialize_read_bool must not take the address of a uint8_t field")
+		t.Error("serialize_read_bool must not take the address of a bool field")
 	}
 	if strings.Contains(wire, "serialize_read_bool( stream, &value->flags[i] )") {
-		t.Error("serialize_read_bool must not take the address of a uint8_t array element")
+		t.Error("serialize_read_bool must not take the address of a bool array element")
 	}
 }

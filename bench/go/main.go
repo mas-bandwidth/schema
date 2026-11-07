@@ -33,7 +33,7 @@ import (
 
 	"bench"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 const MaxNumRuns = 7 // median of 7 (N >= 5), after 1 warmup run

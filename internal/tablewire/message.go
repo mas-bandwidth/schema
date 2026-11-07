@@ -105,9 +105,9 @@ func (e *MessageRefusal) Error() string {
 // THE SCOPE IS THE ANNOUNCEMENT'S, and nothing here assumes a transport. The
 // announcement is delivered ONCE, reliably, before the first body, and is
 // never re-announced; the bodies then ride any channel, one self-delimiting
-// batch to a datagram on an unreliable one. A peer holds one of these per
+// batch to a datagram on an unreliable one. An endpoint holds one of these per
 // direction, the one it writes with and the one it reads with, and neither is
-// the other's. A body from a peer that never announced is refused by name.
+// the other's. A body from an endpoint that never announced is refused by name.
 type Vocabulary struct {
 	// THE BOUND IS TWO NUMBERS, because an entry is no longer a fixed width:
 	// an announcement above either is refused by name before an entry is
@@ -140,7 +140,7 @@ func (v *Vocabulary) RefBits() int { return ir.TableMessageRefBits(len(v.entries
 func (v *Vocabulary) Announced() bool { return v.announced }
 
 // BuildVersion is the build the table was announced under. It KEYS the table
-// and gates nothing: peers connect on the protocol id and may differ in build
+// and gates nothing: endpoints connect on the protocol id and may differ in build
 // version (§20.5), and a receiver never refuses a message because the
 // announced build version is not its own.
 func (v *Vocabulary) BuildVersion() uint64 { return v.buildVersion }
@@ -187,9 +187,10 @@ func Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
 // A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is checked here and
 // never again: a `bits` above 128, a `min` or a `max` above what its kind can
 // hold, an array whose `min` exceeds its `max`, an element kind outside the
-// closed set, an element kind of `12` or `33`, two entries that agree on all
-// three parts, and a shape running past the vocabulary field's own length are
-// each malformed on the announcement, which is a file and takes §3's rule that
+// closed set, two entries that agree on all three parts, and a shape running
+// past the vocabulary field's own length are each malformed on the
+// announcement (an element kind of `12` is not among them: a text list, §2.13,
+// announces one), which is a file and takes §3's rule that
 // a wire it cannot read whole is malformed whole.
 //
 // A refused announcement sets NO VOCABULARY, and a malformed one sets none
@@ -201,7 +202,7 @@ func (v *Vocabulary) AnnounceRead(data []byte, report *tabletext.Report) error {
 	// REFUSAL IS TERMINAL: a connection whose first announcement was refused,
 	// for any reason, carries no vocabulary for its life, and every
 	// announcement after it is refused as second_announcement whether or not
-	// the first set anything, so a peer cannot buy a second resolve by having
+	// the first set anything, so an endpoint cannot buy a second resolve by having
 	// its first refused (§3.3).
 	if v.announced || v.refused {
 		report.Refused = true
@@ -256,7 +257,7 @@ func (v *Vocabulary) announceRead(data []byte, report *tabletext.Report) error {
 	// carry: a build version that is absent, doubled, under another kind or
 	// not eight bytes wide, and a vocabulary that is absent, doubled or not a
 	// run of bytes, each say the bytes are not an announcement rather than
-	// that this peer declined to announce.
+	// that this endpoint declined to announce.
 	if !read {
 		report.Malformed = true
 		return nil

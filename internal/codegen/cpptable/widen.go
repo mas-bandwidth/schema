@@ -2,6 +2,7 @@ package cpptable
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -35,9 +36,13 @@ inline bool TableKindWidens( uint8_t kind, uint8_t declared )
 {
     switch ( declared )
     {
-        case 3: case 4: case 5: return kind >= 2 && kind < declared;
+        case 3:
+        case 4:
+        case 5: return kind >= 2 && kind < declared;
         case 18: return kind >= 2 && kind <= 5;
-        case 7: case 8: case 9: return kind >= 6 && kind < declared;
+        case 7:
+        case 8:
+        case 9: return kind >= 6 && kind < declared;
         case 19: return kind >= 6 && kind <= 9;
         case 11: return kind == 10;
     }
@@ -57,11 +62,30 @@ inline int64_t TableKindWidth( uint8_t kind )
 {
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
-        case 18: case 19: case 24: case 29: return 16;
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 1;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 2;
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27: return 4;
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
+        case 18:
+        case 19:
+        case 24:
+        case 29: return 16;
     }
     return 0;
 }
@@ -94,35 +118,27 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 {
     switch ( kind )
     {
-        case 6: if ( !r.has( 1 ) ) { return false; } out = r.get8(); return true;
-        case 7: if ( !r.has( 2 ) ) { return false; } out = r.get16(); return true;
-        case 8: if ( !r.has( 4 ) ) { return false; } out = r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
+        case 6:
+            if ( !r.has( 1 ) ) { return false; }
+            out = r.get8();
+            return true;
+        case 7:
+            if ( !r.has( 2 ) ) { return false; }
+            out = r.get16();
+            return true;
+        case 8:
+            if ( !r.has( 4 ) ) { return false; }
+            out = r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = r.get64();
+            return true;
     }
 }
 `
 
-// tableWidenF32Runtime is the FLOAT RUNG, kind 10 into kind 11, and it is
-// emitted only where kind 11 is declared: the file wire's widened scalar and
-// the message form's f32-shaped entry into an f64 field (messageload.go) are
-// its two call sites, and both are behind a declared f64.
-const tableWidenF32Runtime = `
-// f32 into f64, exact: a NaN's payload is data and rides on the bits, since
-// the hardware conversion would set the quiet bit (§4)
-inline double TableWidenF32( uint32_t bits )
-{
-    if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
-    {
-        const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
-        const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
-        const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
-        double d; memcpy( &d, &nan_bits, 8 ); return d;
-    }
-    float f; memcpy( &f, &bits, 4 ); return (double) f;
-}
-`
-
-// widenCensus is the unit-level census of the four widening helpers
+// widenCensus is the unit-level census of the three widening helpers
 // (docs/SPEC-TABLES.md §2.2, §3, §4). It is UNIT-LEVEL and not per-file for
 // the reason §794's two are: the primitives block sits behind ONE
 // package-scoped guard, so whichever <Base>Table.h a translation unit includes
@@ -143,7 +159,6 @@ inline double TableWidenF32( uint32_t bits )
 // that keeps a helper it does not call; the cost of a subset would be a unit
 // that does not compile, which is why it is taken this way round.
 type widenCensus struct {
-	f32      bool // TableWidenF32: a declared kind 11, the float rung's top
 	signed   bool // TableReadSignedAt: a declared kind 3, 4, 5 or 18
 	unsigned bool // TableReadUnsignedAt: a declared kind 7, 8, 9 or 19
 	width    bool // TableKindWidth: an arm on any ladder, or a list
@@ -176,7 +191,8 @@ func unitWidenCensus(u *ir.Unit, closure map[string]bool, anyList bool) widenCen
 			}
 			switch {
 			case kind == tkF64:
-				c.f32 = true
+				// the float rung is the ordinary conversion behind the finite
+				// test (§3.3, §4): it needs no helper of its own
 			case ir.TableKindSigned(kind):
 				c.signed = true
 			default:
@@ -217,7 +233,7 @@ func unitWidenCensus(u *ir.Unit, closure map[string]bool, anyList bool) widenCen
 }
 
 // runtime composes the widening runtime this unit carries: the ladder
-// predicate always, and each of the four helpers where the census could not
+// predicate always, and each of the three helpers where the census could not
 // rule its call sites out.
 func (c widenCensus) runtime() string {
 	out := tableWidensRuntime
@@ -229,9 +245,6 @@ func (c widenCensus) runtime() string {
 	}
 	if c.unsigned {
 		out += tableReadUnsignedAtRuntime
-	}
-	if c.f32 {
-		out += tableWidenF32Runtime
 	}
 	return out
 }
@@ -276,10 +289,15 @@ func widenableElement(f *ir.Field) bool {
 // clamped by the reader's own declaration exactly as a payload at the
 // declared width is, and stored. onTrunc runs where the body cannot cover the
 // payload, which is framing damage on the body carrying it.
-func (g *tableGen) emitWidenedScalar(f *ir.Field, declared int, kindExpr, lvalue, ind, rdr, onTrunc string) {
+func (g *tableGen) emitWidenedScalar(f *ir.Field, declared int, kindExpr, lvalue, ind, rdr string, onTrunc ...string) {
 	if declared == tkF64 {
-		g.pf("%sif ( !%s.has( 4 ) ) { %s }\n", ind, rdr, onTrunc)
-		g.pf("%s%s = TableWidenF32( %s.get32() );\n", ind, lvalue, rdr)
+		// THE FLOAT RUNG: every finite float32 is exactly a float64, so the
+		// ordinary conversion is the widening, and a NaN or an infinity never
+		// reaches it — it is refused on its raw bits first (§3.3, §4)
+		g.emitIfActions(ind, fmt.Sprintf("!%s.has( 4 )", rdr), onTrunc...)
+		g.pf("%s{\n%s    const uint32_t widened_bits = %s.get32();\n", ind, ind, rdr)
+		g.pf("%s    if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }\n", ind)
+		g.pf("%s    else { %s = (double) table_bits_to_float( widened_bits ); }\n%s}\n", ind, lvalue, ind)
 		return
 	}
 	width := tableKindWidth(declared)
@@ -296,10 +314,10 @@ func (g *tableGen) emitWidenedScalar(f *ir.Field, declared int, kindExpr, lvalue
 	}
 	if signed {
 		g.pf("%sint64_t widened_v = 0;\n", ind)
-		g.pf("%sif ( !TableReadSignedAt( %s, %s, widened_v ) ) { %s }\n", ind, rdr, kindExpr, onTrunc)
+		g.emitIfActions(ind, fmt.Sprintf("!TableReadSignedAt( %s, %s, widened_v )", rdr, kindExpr), onTrunc...)
 	} else {
 		g.pf("%suint64_t widened_v = 0;\n", ind)
-		g.pf("%sif ( !TableReadUnsignedAt( %s, %s, widened_v ) ) { %s }\n", ind, rdr, kindExpr, onTrunc)
+		g.emitIfActions(ind, fmt.Sprintf("!TableReadUnsignedAt( %s, %s, widened_v )", rdr, kindExpr), onTrunc...)
 	}
 	if width == 16 {
 		// the two lanes of serialize's pair, the high one the sign's
@@ -356,7 +374,7 @@ func (g *tableGen) emitArmWiden(v ir.UnionVariant, base, armKindExpr, rdr, tag, 
 	g.pf("%s    if ( %s.size != TableKindWidth( %s ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, armKindExpr, tag, none)
 	g.establishArm(v, base, ind+"    ")
 	g.emitWidenedScalar(v.F, declared, armKindExpr, armValue(base, v), ind+"    ", rdr,
-		fmt.Sprintf("%s = %s; r.report->malformed = true; break;", tag, none))
+		fmt.Sprintf("%s = %s;", tag, none), "r.report->malformed = true;", "break;")
 	g.pf("%s    %s = %s;\n", ind, tag, selected)
 	g.pf("%s    r.report->widened++;\n", ind)
 	g.pf("%s    break;\n%s}\n", ind, ind)
@@ -371,7 +389,7 @@ func (g *tableGen) emitWidenedElements(f *ir.Field, declared int, kindExpr, elem
 	g.pf("%sr.report->widened++;\n", ind)
 	g.pf("%suint64_t widened_decoded = 0;\n", ind)
 	g.pf("%sfor ( uint64_t widened_i = 0; widened_i < %s; widened_i++ )\n%s{\n", ind, keepExpr, ind)
-	g.emitWidenedScalar(f, declared, kindExpr, fmt.Sprintf(elems, "(int32_t) widened_i"), ind+"    ", rdr, "r.report->malformed = true; break;")
+	g.emitWidenedScalar(f, declared, kindExpr, fmt.Sprintf(elems, "(int32_t) widened_i"), ind+"    ", rdr, "r.report->malformed = true;", "break;")
 	g.pf("%s    widened_decoded = widened_i + 1;\n", ind)
 	g.pf("%s}\n", ind)
 	if count != "" {
@@ -394,8 +412,8 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%s        if ( key_ref == 0 )\n%s        {\n", ind, ind)
 	g.pf("%s            // None is the NULL KEY, and a stored key reference of 0 names\n", ind)
 	g.pf("%s            // no id at all, so a body carrying one is DAMAGED rather than\n", ind)
-	g.pf("%s            // merely foreign: the read stops this body, keeps what it\n", ind)
-	g.pf("%s            // decoded, and the parent reads on past the length (§3.2, §4).\n", ind)
+	g.pf("%s            // merely foreign, and damage discards the whole load (§3.2,\n", ind)
+	g.pf("%s            // §4).\n", ind)
 	g.pf("%s            r.report->malformed = true;\n%s            break;\n%s        }\n", ind, ind, ind)
 	g.pf("%s        if ( key_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }\n", ind)
 	g.pf("%s        uint64_t elem_len = 0;\n", ind)
@@ -407,10 +425,10 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );\n", ind, ind)
 	// the key k lives at STORAGE INDEX k-1 (docs/SPEC-TABLES.md §2.4)
 	slot := g.keyedSlots("value.", f) + "[int32_t( slot ) - 1]"
-	onTrunc := "r.report->malformed = true; sub.offset += (int64_t) elem_len; continue;"
+	onTrunc := []string{"r.report->malformed = true;", "sub.offset += (int64_t) elem_len;", "continue;"}
 	switch {
 	case widened:
-		g.emitWidenedScalar(f, kind, "elem_kind", slot, ind+"            ", "elem", onTrunc)
+		g.emitWidenedScalar(f, kind, "elem_kind", slot, ind+"            ", "elem", onTrunc...)
 	case kind == tkTable:
 		g.inStep("int32_t( slot ) - 1", func() {
 			g.pf("%s            %s;\n", ind, g.loadCall(f, f.Type.Name, "elem", slot))
@@ -418,9 +436,9 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 			g.pf("%s            if ( elem.offset != elem.size ) { r.report->malformed = true; %sReset( %s ); }\n", ind, f.Type.Name, slot)
 		})
 	case kind == tkEnum:
-		g.emitEnumRefLoad(f, slot, ind+"            ", "elem", onTrunc)
+		g.emitEnumRefLoad(f, slot, ind+"            ", "elem", strings.Join(onTrunc, " "))
 	default:
-		g.emitTableReadScalarFrom(f, kind, slot, ind+"            ", "elem", onTrunc)
+		g.emitTableReadScalarFrom(f, kind, slot, ind+"            ", "elem", onTrunc...)
 	}
 	g.pf("%s        }\n", ind)
 	g.pf("%s        sub.offset += (int64_t) elem_len;\n", ind)

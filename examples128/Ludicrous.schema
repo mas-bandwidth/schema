@@ -1,10 +1,9 @@
-// Ludicrous.schema — the fixed-point + 128-bit corpus unit (SPEC §4.3), named
-// for the construct's named customer ("we will need int 128 for ludicrous
-// mode"). Its own unit beside examples/: it began C++-only while the
-// Go/Rust/C# serialize ports grew the phase-1 surface; the ports all carry it
-// now, every backend emits these wire families, and this unit rides the
-// cross-language wire gate like any other (test/go-ludicrous,
-// test/rust-ludicrous, test/cs-ludicrous byte-compare the C++-pinned wire).
+// Ludicrous.schema — fixed-point numbers and 128-bit integers (SPEC §4.3).
+// Use fixed(I, F) when a value needs exact, deterministic fractions across
+// machines (positions in a lockstep simulation, money), and int128/uint128
+// when 64 bits are not enough (large ids, wide accumulators). Every target
+// supports both. The name comes from the game feature that first needed
+// 128-bit integers, its "ludicrous mode".
 
 package ludicrous
 
@@ -15,10 +14,11 @@ const MaxWorldUnits = 30000
 // the null, no has-flag pair
 enum DriveMode { Cruise, Warp, Ludicrous }
 
-// the fixed storage widths and the F = 0 corner: Q16.16 (one wire group),
-// Q48.16 (32-bit wire, the single-group boundary), Q112.16 (the wide path,
-// two groups), Q32.0 (a fixed with no fraction IS a ranged integer —
-// STANDARD.md), and a fixed array (per-element encoding)
+// fixed(I, F) is a signed Q I.F number: I integer bits and F fraction bits.
+// The bounds are in whole units and size the wire, like an integer range.
+// Shown: Q16.16, Q48.16, Q112.16 (128-bit storage), Q32.0 (no fraction, so
+// it is a ranged integer on the wire), and a fixed array, which encodes each
+// element with the shared bounds
 type FixedProbe
 {
     angle    fixed(16, 16)    | min = -180, max = 180
@@ -28,15 +28,11 @@ type FixedProbe
     samples  [2]fixed(16, 16) | min = -8, max = 8
 }
 
-// The unsigned sibling — ufixed(I, F), DECIDED (Glenn, 2026-08-15: "ufixed
-// is fine"; SPEC §4.3, §9 q17 closed as the explicit-spelling option): no
-// sign bit, whole-unit domain [0, 2^I), same F semantics, storage an
-// unsigned integer of exactly I+F bits. The shapes mirror FixedProbe's
-// width ladder and add the unsigned-only hazard: span's raw values fill
-// uint64's HIGH HALF (above 2^63), where any sign-extending route corrupts
-// them — the C entry routing and the Go bit-casts are proven by the
-// byte-compare. locked is the degenerate ufixed shape (zero bits, F = 16
-// would show), riding in front of the tail byte like DegenerateProbe's.
+// ufixed(I, F) is the unsigned sibling (SPEC §4.3): no sign bit, whole-unit
+// domain [0, 2^I), the same F, and storage an unsigned integer of exactly
+// I+F bits. The shapes mirror FixedProbe's. span's raw values reach above
+// 2^63, the top half of uint64 storage. locked has min == max, so it costs
+// zero bits on the wire and always reads back as 3.
 type UnsignedProbe
 {
     angle   ufixed(16, 16)     | min = 0, max = 360
@@ -49,11 +45,10 @@ type UnsignedProbe
 }
 
 // the 128-bit integers: the raw field (always 128 bits, low qword first), a
-// ranged field whose range fits 64 bits (bytes identical to serialize_int64
-// over the same bounds — STANDARD.md), a ranged field only 128 bits can hold
-// (serialize's own ±2^100 band: 102 wire bits, four groups), and specified
-// defaults on both kinds — including one beyond int64, which C++ renders as
-// composed unsigned halves (no 128-bit literal exists)
+// ranged field whose range fits 64 bits (the same wire bytes as an int64
+// over the same bounds), a ranged field only 128 bits can hold (±2^100:
+// 102 wire bits), and specified defaults on both kinds, including one
+// beyond the int64 range
 type WideProbe
 {
     entity_id uint128
@@ -78,14 +73,9 @@ type LudicrousState
     }
 }
 
-// Degenerate ranges cost ZERO bits — DECIDED (Glenn, 2026-08-15: "min==max
-// is legal"; SPEC §4.6). The reader recovers each value from the range
-// alone. The audit found four behaviors behind the old rejection: zero
-// bits (C), fraction_bits on the wide path only (Go/C#), an abort (C++)
-// and a panic (Rust) — so every degenerate shape rides in front of a tail
-// byte: a port that emits ANY bits for one of them shifts the tail and
-// fails the byte-compare. locked_fixed is the fraction_bits shape
-// (F = 16 would appear); locked_wide is the 64/128 boundary shape.
+// A range with min == max is legal and costs ZERO bits (SPEC §4.6): the
+// reader recovers the value from the range alone. The tail byte after them
+// starts at bit 0, because the three locked fields write nothing.
 type DegenerateProbe
 {
     locked_fixed fixed(16, 16) = -3       | min = -3, max = -3
@@ -109,7 +99,7 @@ type FixedQuat
     x fixed(2, 30) | min = -1, max = 1
     y fixed(2, 30) | min = -1, max = 1
     z fixed(2, 30) | min = -1, max = 1
-    // the identity rest state — THE case that reopened fixed defaults
-    // (SPEC §4.3): whole units, exactly representable (1.0 * 2^30)
+    // defaults to the identity rotation: 1.0 is exact in Q2.30
+    // (1.0 * 2^30 is an integer), so a fixed default is legal (SPEC §4.6)
     w fixed(2, 30) = 1.0 | min = -1, max = 1
 }

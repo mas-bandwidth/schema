@@ -63,7 +63,7 @@ func TestCTableViewListing(t *testing.T) {
 			dir := t.TempDir()
 			args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O1", "-I", dir}
 			base := strings.ToUpper(u.Package[:1]) + u.Package[1:] + "View"
-			args = append(args, "-DVIEW_HEADER=\""+base+".h\"", "../test/c-tables/view_main.c")
+			args = append(args, "-DVIEW_HEADER=\""+base+".h\"", "-DVIEW_PACKAGE="+u.Package, "-DVIEW_PACKAGE_UPPER="+strings.ToUpper(u.Package), "../test/c-tables/view_main.c")
 			for name, data := range files {
 				p := filepath.Join(dir, name)
 				if err := os.WriteFile(p, data, 0600); err != nil {

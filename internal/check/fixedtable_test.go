@@ -1,5 +1,5 @@
 // THE DECLARED CLASS (docs/SPEC-TABLES.md §2.2): `fixed table` is the fixed
-// wire and a plain `table` is the variable one, and nothing is inferred in
+// wire and a variable table is the variable one, and nothing is inferred in
 // either direction. The owner's ruling is both halves of that — "that way if
 // we add any feature that stops it from being fixed, it is a compile error",
 // and "otherwise, it could be a bit of a guess whether the table is fixed or
@@ -69,7 +69,7 @@ func TestFixedTableClosureRefusals(t *testing.T) {
 			src: "package t\nfixed table Patrol {\n    has_target bool\n    if has_target\n    {\n        target_id bits(12)\n    }\n}\n",
 		},
 		{
-			name: "a nested plain table", field: "Root.child", want: "holds the plain table Child by value",
+			name: "a nested variable table", field: "Root.child", want: "holds the variable table Child by value",
 			src: "package t\ntable Child { x int32 }\nfixed table Root { child Child }\n",
 		},
 		// THE CLOSURE IS BY-VALUE AND REACHES THROUGH A `type` (§2.2), which
@@ -87,7 +87,7 @@ func TestFixedTableClosureRefusals(t *testing.T) {
 		},
 		// AN ELEMENT OF A BOUNDED ARRAY is a by-value edge like any other.
 		{
-			name: "a plain table in a bounded array", field: "Fleet.ships", want: "holds the plain table Ship by value",
+			name: "a variable table in a bounded array", field: "Fleet.ships", want: "holds the variable table Ship by value",
 			src: "package t\ntable Ship { hp int32 }\nfixed table Fleet { ships [..4]Ship }\n",
 		},
 	} {
@@ -107,7 +107,7 @@ func TestFixedTableClosureRefusals(t *testing.T) {
 }
 
 // TestABoundedPlainTableIsStillVariable is the OTHER half of the ruling, and
-// the half a derivation could never give: a plain `table` whose every field is
+// the half a derivation could never give: a variable table whose every field is
 // bounded is on the VARIABLE wire, because the declaration says so. Nothing is
 // inferred from the fields, so adding a map to this table later is an edit to
 // its body and not a change of its wire.
@@ -115,7 +115,7 @@ func TestABoundedPlainTableIsStillVariable(t *testing.T) {
 	u := buildUnit(t, "package t\ntable Bounded {\n    name  string(16)\n    slots [4]int32\n    flag  bool\n}\nfixed table Sized {\n    name  string(16)\n    slots [4]int32\n    flag  bool\n}\n")
 	variable := ir.VariableTables(u)
 	if !variable["Bounded"] {
-		t.Error("a plain `table` of bounded fields is the VARIABLE wire — the class is declared, not derived (docs/SPEC-TABLES.md §2.2)")
+		t.Error("a variable table of bounded fields is the VARIABLE wire — the class is declared, not derived (docs/SPEC-TABLES.md §2.2)")
 	}
 	if variable["Sized"] {
 		t.Error("`fixed table` is the FIXED wire")
@@ -130,10 +130,10 @@ func TestABoundedPlainTableIsStillVariable(t *testing.T) {
 		t.Error("the fixed table has no block form — every FIXED table has one (docs/SPEC-TABLES.md §2.7)")
 	}
 	if blocks.Block("Bounded") != nil {
-		t.Error("the plain table got a block form — it is the fixed class's alone (docs/SPEC-TABLES.md §2.7)")
+		t.Error("the variable table got a block form — it is the fixed class's alone (docs/SPEC-TABLES.md §2.7)")
 	}
 	if _, said := blocks.Skipped["Bounded"]; !said {
-		t.Error("the plain table's missing block form is not recorded with its reason")
+		t.Error("the variable table's missing block form is not recorded with its reason")
 	}
 }
 

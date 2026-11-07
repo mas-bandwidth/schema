@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 	p "packettext"
 )
 

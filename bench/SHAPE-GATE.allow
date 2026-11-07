@@ -69,7 +69,7 @@
 # its test fixtures — no serialization, no timing.
 # ---------------------------------------------------------------------------
 
-names bench/tools/variantgen/main.go 96 the single deliberate copy of BenchMixed shape code; emits the corpus the nine legs read blind (superseded by #195)
+names bench/tools/variantgen/main.go 87 the single deliberate copy of BenchMixed shape code; emits the corpus the nine legs read blind (superseded by #195)
 names bench/tools/realpacket-gen/main.go 11 the single deliberate copy of the RealWorld snapshot shape code (§1.7)
 names bench/tools/realpacket-gen/pin_test.go 3 pins the generator above against its golden
 names bench/tools/inline-gate.sh 9 shape names inside the inline-budget symbol map and its disassembly test fixtures — row labels, no serialization, no clock
@@ -98,6 +98,7 @@ paths test/bench/main.cpp 1 the §1.5 golden pinner: correctness code, no timing
 # ---------------------------------------------------------------------------
 
 timing internal/baseline/file.go 1 the history entry's calendar date — a day written into a text log, no interval measured (prose)
+timing internal/codegen/luatable/testgen_test.go 1 the generated-test lint's list of BANNED names (os.clock among them): a string the test refuses, no clock read — the check is lexical
 
 # ---------------------------------------------------------------------------
 # GATE 2 — the spec's own MEASURED gate (docs/SPEC-TABLES.md §12.1).
@@ -118,6 +119,7 @@ timing internal/baseline/file.go 1 the history entry's calendar date — a day w
 
 timing test/tables/block_gate2_main.cpp 6 gate 2's C++ half (§12.1): the per-frame write, generated against the hand-written scatter
 timing test/cs-block/src/Gate2.cs 2 gate 2's C# half (§12.1): the per-frame read, generated against the hand mirror
+timing tools/luaufuzzhost/main.cpp 4 the Luau nightly fuzz host's wall-clock budget (make/schema-luau-nightly-fuzz.mk): std::chrono::steady_clock bounds how long the mutator runs, no schema shape is measured (prose)
 timing test/conformance/harness/wirefuzz.go 1 the wire fuzzer's throughput line (SPEC-TABLES §4.2): mutants per second so N can be sized to the budget — no schema shape measured
 
 # THE COOK's OPEN-COST GATE (docs/SPEC-TABLES.md §7, §7.5) measures the ABSENCE of
@@ -167,14 +169,6 @@ timing test/tables/retain_main.cpp 4 the resolving walk's linearity bound (§6.6
 
 paths test/bench/table_main.cpp 1 the tables corpus's producer and §1.5 oracle: correctness code, no timing
 
-# THE GO PORT's SOAK (docs/SPEC-TABLES.md, "What allocates, and what never
-# does") reads a clock for the same reason the cook's open-cost gate does: to
-# BOUND A DURATION, not to measure one. What it watches is
-# runtime.MemStats.Mallocs across the loop, which must not move at all; the two
-# clock reads decide when to stop. It names no shape it did not get from the
-# conformance corpus's own manifest, and it reports no time.
-
-timing test/go-tables/soak_test.go 2 the Go port's allocation soak: the clock BOUNDS the loop, the allocation counter is what is watched — no time is reported and no shape is measured
 # Matched wire coordinator: existing runners, no field list or timing loop.
 names bench/paired/main.go 3 source filenames passed to the existing compiler; no corpus fields
 paths test/bench/paired_main.cpp 1 shared-data producer and packet/table equivalence oracle; no timing

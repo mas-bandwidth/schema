@@ -184,7 +184,7 @@ func fixedRefusal(st *ir.Struct) string {
 		return "field " + n + " is OPTIONAL inside a `type`, whose Dart class internal/codegen/dart owns and which carries no presence member for the present flag (docs/SPEC-TABLES.md §3.4, §2.3)"
 	}
 	if fixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
-		return "its record body is past §3.4's 65536-byte ceiling, so no conforming reader would decode it"
+		return "its record body is past §3.4's 65536-byte ceiling, so no conforming reader would decode it (`layout_record_too_large`)"
 	}
 	return ""
 }
@@ -430,7 +430,11 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			return
 		}
 	}
-	w.push(fixedLayoutEntry{id: id, kind: ir.TableWireScalarKind(f), size: size, children: 0, note: note},
+	kind := ir.TableWireScalarKind(f)
+	if f.Type.Timestamp {
+		kind = ir.TableKindI64
+	} // §2.11: fixed layout deliberately shares int64's identity.
+	w.push(fixedLayoutEntry{id: id, kind: kind, size: size, children: 0, note: note},
 		fixedDst{dst: at})
 }
 

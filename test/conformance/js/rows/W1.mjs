@@ -70,35 +70,35 @@ function assert(condition, msg) {
 // ---- the value: one live row, a two-unit label, a two-byte blob; the
 // storage behind every live extent is garbage the writer must not copy.
 const v = new PaddedFrame();
-v.Marker = 0x11;
-v.Stamp = 0x1122334455667788n;
-v.RowsCount = 1;
-const row0 = v.Rows[0];
-row0.Tag = 0x22;
-row0.Value = 9.25;
-row0.Flag = true;
-row0.Id = 0xCAFEBABE;
-row0.Label.fill(0xFF);            // caller leftovers in the storage behind the length
-row0.Label.set([0x41, 0x42], 0);  // "AB"
-row0.LabelLength = 2;
-row0.Slots = [1, 2, 3, 4];        // a fixed [4] array: every slot is live
-row0.Teams.set([5, 6, 7, 8], 0);  // an enum-keyed [Team] array: every slot is live
-row0.CounterPresent = false;
-row0.Counter = 0x0BADF00D;        // must NOT ride under a clear flag
-const unused = v.Rows[1];         // the element past the count carries a full "default image"
-unused.Tag = 0x7F;
-unused.Value = 9.25;
-unused.Flag = true;
-unused.Id = 0x7F7F7F7F;
-unused.Label.fill(0x7F);
-unused.LabelLength = 15;
-unused.Slots = [0x7F7F, 0x7F7F, 0x7F7F, 0x7F7F];
-unused.Teams.fill(0x7F);
-unused.CounterPresent = true;
-unused.Counter = 0x7F7F7F7F;
-v.Blob.fill(0xFF);                // caller leftovers behind blobLength
-v.Blob.set([0xAA, 0xBB], 0);
-v.BlobLength = 2;
+v.marker = 0x11;
+v.stamp = 0x1122334455667788n;
+v.rowsCount = 1;
+const row0 = v.rows[0];
+row0.tag = 0x22;
+row0.value = 9.25;
+row0.flag = true;
+row0.id = 0xCAFEBABE;
+row0.label.fill(0xFF);            // caller leftovers in the storage behind the length
+row0.label.set([0x41, 0x42], 0);  // "AB"
+row0.labelLength = 2;
+row0.slots = [1, 2, 3, 4];        // a fixed [4] array: every slot is live
+row0.teams.set([5, 6, 7, 8], 0);  // an enum-keyed [Team] array: every slot is live
+row0.counterPresent = false;
+row0.counter = 0x0BADF00D;        // must NOT ride under a clear flag
+const unused = v.rows[1];         // the element past the count carries a full "default image"
+unused.tag = 0x7F;
+unused.value = 9.25;
+unused.flag = true;
+unused.id = 0x7F7F7F7F;
+unused.label.fill(0x7F);
+unused.labelLength = 15;
+unused.slots = [0x7F7F, 0x7F7F, 0x7F7F, 0x7F7F];
+unused.teams.fill(0x7F);
+unused.counterPresent = true;
+unused.counter = 0x7F7F7F7F;
+v.blob.fill(0xFF);                // caller leftovers behind blobLength
+v.blob.set([0xAA, 0xBB], 0);
+v.blobLength = 2;
 
 const file = new Uint8Array(PaddedFrameFixedMeasure(1));
 file.fill(0xFF); // caller leftovers everywhere the writer does not land

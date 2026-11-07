@@ -24,7 +24,7 @@ package elixirtable
 //
 // elixir/E9 [verify]: duplicate never raised.
 //
-// elixir/R16 [weak]: §5.4's counters exactly (unknown once per peer at COMPILE,
+// elixir/R16 [weak]: §5.4's counters exactly (unknown once per endpoint at COMPILE,
 // widened and clamped once per entry per record, the bounds pass counts a
 // forged ordinal remapped to None, copy/const/present/ordinal move nothing).
 //
@@ -170,7 +170,7 @@ fixed table T
 }
 `), "T")
 	if got, want := len(ir.TableFixedWalkRoot(dep)), len(ir.TableFixedWalkRoot(plain)); got != want {
-		t.Errorf("E8: the deprecated field's slot did not stay: %d walked entries, want the plain table's %d", got, want)
+		t.Errorf("E8: the deprecated field's slot did not stay: %d walked entries, want the variable table's %d", got, want)
 	}
 
 	// THE APPEND lands its declared default in the prefill, and a lawful
@@ -242,13 +242,13 @@ fixed table T
 // ---- elixir/R16 --------------------------------------------------------------
 
 // t05R16 holds elixir/R16 to §5.4's counters, each asserted by the site that
-// owns it: the census ONCE per peer after the loop, the widen and clamp bumps of
+// owns it: the census ONCE per endpoint after the loop, the widen and clamp bumps of
 // the plan's step, the bounds pass's `clamps`/`fclamps`, and the ordinal remap
 // that lands None and counts one in the bounds pass and nowhere else.
 func t05R16(t *testing.T) {
 	runtime := t05Runtime(t)
 	for _, want := range []string{
-		// unknown: ONCE PER PEER, after the record loop (§5.9 #6).
+		// unknown: ONCE PER ENDPOINT, after the record loop (§5.9 #6).
 		"def census(report, unknown, kind_mismatch) do",
 		"unknown: report.unknown + unknown",
 		// widened: once per entry per record.
@@ -256,7 +256,7 @@ func t05R16(t *testing.T) {
 		// clamped: once per entry per record, count and text.
 		"def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))",
 		"def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1",
-		"def fclamps(acc, v, lo, hi) when is_float(v) and (v < lo or v > hi), do: acc + 1",
+		"def fclamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1",
 		// the bounds pass counts a forged ordinal remapped to None.
 		"def past(acc, v, variants) when v > variants, do: acc + 1",
 	} {
@@ -328,7 +328,7 @@ fixed table T
 func t05C5(t *testing.T) {
 	runtime := t05Runtime(t)
 	for _, want := range []string{
-		"def wtext(used, _default, m), do: wtext(used, _default, m, true)",
+		"def wtext(used, default, m), do: wtext(used, default, m, true)",
 		"defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)",
 		"defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false",
 		"when u >= 0xD800 and u <= 0xDBFF",

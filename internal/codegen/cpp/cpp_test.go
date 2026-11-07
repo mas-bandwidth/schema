@@ -153,10 +153,10 @@ union Empty {}
 			t.Errorf("%s: direct <new> include = %v, want %v; only a header that constructs a payload includes it", name, got, want)
 		}
 	}
-	if !strings.Contains(string(files["ChoiceWire.h"]), "::new ( (void*) &value.payload ) Payload{};") {
+	if !strings.Contains(string(files["ChoiceWire.h"]), "::new ( static_cast<void *>( &value.payload ) ) Payload{};") {
 		t.Error("ChoiceWire.h lost selected-payload placement construction")
 	}
-	if !strings.Contains(string(files["Choice.h"]), "        ::new ( (void*) &payload ) Payload{};\n") {
+	if !strings.Contains(string(files["Choice.h"]), "        ::new ( static_cast<void *>( &payload ) ) Payload{};\n") {
 		t.Error("Choice.h lost the arm setter's placement construction")
 	}
 	if !strings.Contains(string(files["Choice.h"]), "// together (SPEC §4.8, the arm setter): Payload & arm = value.SelectPayload();") {
@@ -177,10 +177,14 @@ union Empty {}
 			}
 		}
 	}
-	for _, want := range []string{"Ping = 1", "Payload = 2", "Pong = 3", "Count = 3", "Max = 3"} {
+	for _, want := range []string{"Ping = 1", "Payload = 2", "Pong = 3", "Max = 3"} {
 		if !strings.Contains(string(files["Choice.h"]), want) {
 			t.Errorf("Choice.h lost a tag when omitting payload-free storage: %q", want)
 		}
+	}
+	// a tag enum exports Max and no Count (SPEC §4.2)
+	if strings.Contains(string(files["Choice.h"]), "Count = ") {
+		t.Errorf("Choice.h tag enum exports a Count: SPEC §4.2 gives it Max only")
 	}
 	for _, name := range []string{"ChoiceWire.h", "SignalsWire.h"} {
 		// Both void arms must remain explicit in both directions. Omitting

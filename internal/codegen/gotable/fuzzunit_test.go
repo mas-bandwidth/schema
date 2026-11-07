@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
@@ -25,7 +24,6 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 	t.Parallel()
 
 	slowtest.Gate(t, "the Go toolchain (it regenerates the fuzz unit)")
-	start := time.Now()
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
 		t.Fatalf("find repo root: %v", err)
@@ -99,7 +97,7 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("walk %s: %v", goFuzzUnitDir, err)
 	}
-	t.Logf("fuzz unit compared with the in-process compiler in %s: %d files", time.Since(start), len(emitted))
+	t.Logf("fuzz unit compared with the in-process compiler: %d files", len(emitted))
 }
 
 func goFuzzFirstDiff(committed, emitted []byte) string {

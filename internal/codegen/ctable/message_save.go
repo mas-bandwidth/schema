@@ -41,6 +41,10 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 	case tkBool:
 		g.pf("%stable_bit_put(w,%s ? 1 : 0,1);\n", ind, expr)
 	case tkF32:
+		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
+		// §3.3), a compressed float's too, before it is quantized: the
+		// measure and the save share this body and refuse it at one place
+		g.pf("%sif(!table_float_finite(%s)) return 0; /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		if shape.Packing == ir.TableMessageQuantized {
 			count, delta, _ := ir.TableMessageQuantization(shape)
 			g.pf("%stable_bit_put(w,table_message_quantize(%s,%s,%s,%du),%d);\n", ind, expr, formatFloat(float64(shape.QMin), true), formatFloat(float64(delta), true), count, bits)
@@ -48,6 +52,7 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 			g.pf("%stable_bit_put(w,table_float_to_bits(%s),32);\n", ind, expr)
 		}
 	case tkF64:
+		g.pf("%sif(!table_double_finite(%s)) return 0; /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		g.pf("%stable_bit_put(w,table_double_to_bits(%s),64);\n", ind, expr)
 	default:
 		var lo, hi uint64
@@ -74,19 +79,6 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 
 func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, count, ind string) {
 	switch {
-	case f.IsList() || f.IsMap():
-		elem, typ := sequenceElement(f), g.sequenceType(f)
-		g.pf("%s{ TableSequenceCursor cursor=%s; int32_t i;\n", ind, g.sequenceCursor(f, "w->nodes", expr))
-		g.pf("%s if(!cursor.ok || %s.count<0) return 0; table_bit_put(w,(uint64_t)%s.count,32);\n", ind, expr, expr)
-		if ir.TableMessageAligns(e.Kind, e.Shape) {
-			g.pf("%stable_bit_align_write(w);\n", ind)
-		}
-		g.pf("%s for(i=0;i<%s.count;i++) { const %s * element=(const %s *)table_sequence_next(&cursor); if(element==NULL) return 0;\n", ind, expr, typ, typ)
-		g.messageElement(elem, e.Shape.Elem, e.Shape.Inner, "(*element)", ind+"  ")
-		g.pf("%s } }\n", ind)
-	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		g.pf("%s{ const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&%s); uint64_t index=table_number_find(w->nodes,node);\n", ind, expr)
-		g.pf("%s if(node!=NULL && index==0) return 0; table_bit_put(w,index,w->index_bits); }\n", ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.pf("%sif(%s<0 || %s>%d) return 0;\n", ind, count, count, f.Type.Size)
 		bits := ir.TableMessageBitsRequired(0, e.Shape.Max)
@@ -124,10 +116,6 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 }
 
 func (g *tableGen) messageElement(f *ir.Field, kind uint8, shape *ir.TableMessageShape, expr, ind string) {
-	if f.Type.Pointer {
-		g.messageValue(&ir.Field{Type: f.Type}, ir.TableVocabularyEntry{}, expr, "", ind)
-		return
-	}
 	switch int(kind) {
 	case tkTable:
 		g.pf("%sif(!%s(w,&%s)) return 0;\n", ind, g.api(f.Type.Name, "save_message_body"), expr)
@@ -147,6 +135,32 @@ func (g *tableGen) messageKeyedRides(f *ir.Field, expr, ind string) {
 		g.pf("%sif(!%s(&probe,&%s)) return 0;\n%sif(probe.bits==kTableMessageRefBitsHere) continue;\n", ind, g.api(f.Type.Name, "save_message_body"), expr, ind)
 	} else {
 		g.pf("%sif(%s) continue;\n", ind, g.wireDefaultEquals(f, expr))
+	}
+}
+
+// emitMessageCodecs declares the message codecs of the members and unions in
+// the message form's closure and defines the unions' codecs; a member's own
+// codecs follow its wire codecs.
+func (g *tableGen) emitMessageCodecs(members []*ir.Struct, unions []*ir.Union) {
+	var structs []*ir.Struct
+	for _, st := range members {
+		if g.messageStructs[st.Name] {
+			structs = append(structs, st)
+		}
+	}
+	var held []*ir.Union
+	for _, un := range unions {
+		if g.messageUnions[un.Name] {
+			held = append(held, un)
+		}
+	}
+	g.emitMessageSaveDeclarations(structs, held)
+	g.emitMessageReadDeclarations(structs, held)
+	for _, un := range held {
+		g.emitMessageUnionSave(un)
+	}
+	for _, un := range held {
+		g.emitMessageUnionRead(un)
 	}
 }
 
@@ -193,10 +207,7 @@ func (g *tableGen) emitMessageSave(st *ir.Struct) {
 		condition := "!(" + g.wireDefaultEquals(f, expr) + ")"
 		count := strconv.FormatInt(f.ArrayBound, 10)
 		switch {
-		case f.IsList() || f.IsMap():
-			condition = expr + ".count>0"
-			g.pf(" if(%s.count<0) return 0;\n", expr)
-		case !f.Type.Blob() && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString):
+		case (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString):
 			count = expr + "_length"
 			g.pf(" if(%s<0 || %s>%d) return 0;\n", count, count, f.Type.Size)
 			condition = g.wireBytesDiffer(f, expr)
@@ -239,9 +250,7 @@ func (g *tableGen) emitMessageSave(st *ir.Struct) {
 		g.pf(" }\n")
 	}
 	g.pf(" table_bit_put(w,0,kTableMessageRefBitsHere); return !w->overflow;\n}\n")
-	if !g.isVar(st.Name) && !st.IsMapEntry() {
-		g.emitFixedMessageSave(st)
-	}
+	g.emitFixedMessageSave(st)
 }
 
 func (g *tableGen) emitFixedMessageSave(st *ir.Struct) {
@@ -249,12 +258,23 @@ func (g *tableGen) emitFixedMessageSave(st *ir.Struct) {
 		verb, extra, buf, cap := "save_messages", ",uint8_t * buffer,int64_t capacity,TableReport * report", "buffer", "capacity"
 		if measure {
 			verb, extra, buf, cap = "measure_messages", ",TableReport * report", "NULL", "INT64_MAX"
+		} else if st.Integrity != "" {
+			cap = "capacity-4"
 		}
 		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * values,int64_t count%s)\n{\n", g.api(st.Name, verb), st.Name, extra)
-		g.pf(" TableBitWriter w=table_bit_writer(%s,%s); int64_t i;\n if(count<1 || values==NULL) return -1;\n if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}\n", buf, cap)
+		g.pf(" TableBitWriter w; int64_t i;\n if(count<1 || values==NULL) return -1;\n if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}\n")
 		if !measure {
-			g.pf(" if(buffer==NULL || capacity<0) return -1;\n")
+			if st.Integrity != "" {
+				g.pf(" if(buffer==NULL || capacity<6) return -1;\n")
+			} else {
+				g.pf(" if(buffer==NULL || capacity<0) return -1;\n")
+			}
 		}
-		g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;\n}\n", g.api(st.Name, "save_message_body"))
+		g.pf(" w=table_bit_writer(%s,%s);\n", buf, cap)
+		if st.Integrity != "" {
+			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : schema_table_integrity_seal_(%s,w.bits/8);\n}\n", g.api(st.Name, "save_message_body"), buf)
+		} else {
+			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;\n}\n", g.api(st.Name, "save_message_body"))
+		}
 	}
 }

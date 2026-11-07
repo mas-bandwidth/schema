@@ -1,9 +1,12 @@
 // THE VARIABLE FORM for Elixir (docs/SPEC-TABLES.md §3): form byte 1, the
-// id-table wire, for exactly the constructs the card record uses — a plain
-// `table` root and tables as list elements; bool, int32, int64 and enum with
-// their defaults and ranges; string(N); *string (the string blob, §2.5); and
-// unbounded lists of tables []T (§2.9). The rest of the variable class is
-// refused by name at the backend's boundary (§11) and never reaches here.
+// id-table wire, for the variable class beyond the card record — pointers to
+// tables and the flat node table (§2.1, §3.1), blobs (*bytes and *string,
+// §2.5), unbounded arrays of scalar, string and enum elements and arrays of
+// pointers (§2.9), the remaining scalars, and the text form (§16). A map
+// (§2.8) or a union the closure holds (§2.6) does not refuse a unit that also
+// carries those lists: the roots that reach one are named uncarried and
+// answer an error, so the driver writes <case>.absent rather than a wrong
+// byte (§11). A unit that is only that construct is still refused by name.
 //
 // The wire is the same bytes the Go, C, C++ and C# backends write
 // (docs/SPEC-TABLES.md §3, §3.1): the form byte, then a body of `(reference,
@@ -25,6 +28,7 @@ package elixirtable
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -37,17 +41,25 @@ import (
 const VariableTableModule = "Table"
 
 // generateVariableForm emits <ns>.Table: the id-table wire's load and save for
-// every variable table the unit's closure holds, driven by the descriptors
-// below and the shared engine in variableRuntimeSource. Nil when the unit
-// declares no variable table.
+// every table the unit's closure holds, driven by the descriptors below and
+// the shared engine in variableRuntimeSource. Nil when that closure holds no
+// table. A fixed-only unit still emits it (docs/SPEC-TABLES.md §2.3, §3): the
+// conformance wire is form byte 1, and an optional and a by-value nest are one
+// framing, so tblp1 and tblp3 answer that byte instead of writing <case>.absent.
 func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
-	variable := ir.VariableTables(u)
-	if len(variable) == 0 {
-		return nil
+	// The descriptors cover the WHOLE table closure (docs/SPEC-TABLES.md §3.1):
+	// a variable root reaches a fixed table by value and by pointer, and a
+	// fixed-only unit's own form-1 body is the same codec. Optional absence is
+	// the absence of the field, not a kind (§2.3), so ?T and T share it.
+	closure := ir.TableClosure(u)
+	names := make([]string, 0, len(closure))
+	for name := range closure {
+		if closureStruct(u, name) != nil {
+			names = append(names, name)
+		}
 	}
-	names := make([]string, 0, len(variable))
-	for name := range variable {
-		names = append(names, name)
+	if len(names) == 0 {
+		return nil
 	}
 	sort.Strings(names)
 
@@ -67,31 +79,580 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	fmt.Fprintf(&b, "  @build_version_id 0x%016X\n", ir.TableBuildVersionWireId)
 	fmt.Fprintf(&b, "  @message_vocab_id 0x%016X\n", ir.TableMessageVocabularyWireId)
 	fmt.Fprintf(&b, "  @string_id 0x%016X\n", ir.StringWireTypeId)
+	fmt.Fprintf(&b, "  @bytes_id 0x%016X\n", ir.BytesWireTypeId)
 	fmt.Fprintf(&b, "  @region_align %d\n", ir.TableRegionAlign(u))
-	b.WriteString("  # every id the closure can name, ascending (docs/SPEC-TABLES.md §6.6): a\n")
-	b.WriteString("  # retained id is by definition not here, and takes its entry from the\n")
-	b.WriteString("  # caller's list rather than the generated table.\n")
-	b.WriteString("  @known_ids MapSet.new([\n")
-	for _, id := range ir.TableWireIds(u) {
-		fmt.Fprintf(&b, "    0x%016X,\n", id)
+	if len(ir.VariableTables(u)) > 0 {
+		b.WriteString("  # every id the closure can name, ascending (docs/SPEC-TABLES.md §6.6): a\n")
+		b.WriteString("  # retained id is by definition not here, and takes its entry from the\n")
+		b.WriteString("  # caller's list rather than the generated table.\n")
+		var known strings.Builder
+		known.WriteString("[")
+		for _, id := range ir.TableWireIds(u) {
+			fmt.Fprintf(&known, "0x%016X, ", id)
+		}
+		known.WriteString("]")
+		// `MapSet.new([` keeps its bracket on the call's line, the ids two columns
+		// in from the call and `])` back at the call's column (mix format)
+		knownHead := "  @known_ids MapSet.new("
+		b.WriteString(knownHead + exParseLiteral(known.String()).render(exWidth(knownHead), exWidth("  @known_ids "), 1) + ")\n\n")
 	}
-	b.WriteString("  ])\n\n")
-	b.WriteString("  @tables %{\n")
+	var tables strings.Builder
+	tables.WriteString("%{\n")
+	anyExtent := false
 	for _, name := range names {
-		st := u.Tables[name]
+		st := closureStruct(u, name)
 		if st == nil {
 			continue
 		}
-		b.WriteString(tableDescriptor(u, st))
+		anyExtent = anyExtent || cookHasExtent(u, st)
+		tables.WriteString(tableDescriptor(u, st))
 	}
-	b.WriteString("  }\n")
+	tables.WriteString("}")
+	b.WriteString(exAttribute("tables", tables.String()))
+	var unions strings.Builder
+	unions.WriteString("%{\n")
+	// every `t:` an arm descriptor spells, nested ones included: the arm
+	// kinds the runtime's arm clauses can be handed (withArmKinds)
+	armKinds := map[string]bool{}
+	unionNames := make([]string, 0, len(u.Unions)+len(u.TableUnions))
+	for name := range u.Unions {
+		unionNames = append(unionNames, name)
+	}
+	for name := range u.TableUnions {
+		if _, exists := u.Unions[name]; !exists {
+			unionNames = append(unionNames, name)
+		}
+	}
+	sort.Strings(unionNames)
+	for _, name := range unionNames {
+		un := u.TableUnions[name]
+		if un == nil {
+			un = u.Unions[name]
+		}
+		fmt.Fprintf(&unions, "    %q => %%{by_name: %%{\n", name)
+		for i, arm := range un.Variants {
+			d := armDescriptor(u, un.Name, arm, i)
+			for _, m := range armKindPattern.FindAllStringSubmatch(d, -1) {
+				armKinds[m[1]] = true
+			}
+			fmt.Fprintf(&unions, "      %q => %s", arm.Name, d)
+		}
+		unions.WriteString("    }, by_id: %{\n")
+		for _, arm := range un.Variants {
+			fmt.Fprintf(&unions, "      0x%016X => %q,\n", ir.TableWireId(arm.WireName()), arm.Name)
+		}
+		unions.WriteString("    }},\n")
+	}
+	unions.WriteString("}")
+	// a unit with no union carries no union runtime (withoutUnions), so the
+	// attribute would be set and never read
+	if len(unionNames) > 0 {
+		b.WriteString("  # Union arms are field lines (docs/SPEC-TABLES.md §2.6, §3).\n")
+		b.WriteString(exAttribute("unions", unions.String()))
+	}
+	b.WriteString("  # the node table's type vocabulary (docs/SPEC-TABLES.md §3.1): the id a\n")
+	b.WriteString("  # record's type reference resolves to — a blob kind or a table name — so a\n")
+	b.WriteString("  # pointer names the node it points at.\n")
+	var nodeTypes strings.Builder
+	nodeTypes.WriteString("%{")
+	fmt.Fprintf(&nodeTypes, "0x%016X => :bytes, ", ir.BytesWireTypeId)
+	fmt.Fprintf(&nodeTypes, "0x%016X => :string, ", ir.StringWireTypeId)
+	for _, name := range names {
+		st := closureStruct(u, name)
+		if st == nil {
+			continue
+		}
+		fmt.Fprintf(&nodeTypes, "0x%016X => %q, ", ir.TableWireId(st.WireName()), name)
+	}
+	nodeTypes.WriteString("}")
+	b.WriteString(exAttribute("node_types", nodeTypes.String()))
 	b.WriteString("  # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool\n")
 	b.WriteString("  # walks a record by name and kind with, no per-version struct on hand.\n")
 	b.WriteString("  def descriptors, do: @tables\n\n")
-	b.WriteString(variableRuntimeSource)
-	b.WriteString(variableRetainSource)
+	uncarried := uncarriedRootNames(u)
+	b.WriteString(uncarriedAttribute(uncarried))
+	if anyTableForm(u, "cook") {
+		fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
+		fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
+	}
+	runtime, cook, retain := variableRuntimeSource, cookWriteSource, variableRetainSource
+	anyArrayRoot, anyObjectRoot := false, false
+	for _, name := range names {
+		st := closureStruct(u, name)
+		anyArrayRoot = anyArrayRoot || st.JsonArray
+		anyObjectRoot = anyObjectRoot || !st.JsonArray
+	}
+	if !anyArrayRoot {
+		runtime = withoutArrayRoots(runtime)
+	} else if !anyObjectRoot {
+		// A closure containing only array roots cannot use object-root clauses.
+		runtime = strings.ReplaceAll(runtime, "  defp json_root_pairs(_desc, {:obj, pairs}), do: {:ok, pairs}\n  defp json_root_pairs(_desc, _raw), do: :error\n", "")
+	}
+	if len(uncarried) == 0 {
+		runtime = withoutUncarriedClauses(runtime)
+	}
+	if !anyExtent {
+		cook = withoutExtentWalks(cook)
+	}
+	if len(unionNames) > 0 {
+		runtime = withArmKinds(runtime, armKinds)
+	} else {
+		runtime = withoutUnions(runtime)
+		cook = cookWithoutUnions(cook, anyExtent)
+		retain = withoutRetainUnions(retain)
+	}
+	if len(unionNames) > 0 {
+		retain = withRetainArmKinds(retain, armKinds)
+	}
+	runtime, retain = variableIntegrity(u, runtime, retain)
+	retainAttrs, retain := restrictRetainRoots(u, names, retain)
+	b.WriteString(retainAttrs)
+	attrs, runtime, cook := restrictFormRuntime(u, names, runtime, cook)
+	b.WriteString(attrs)
+	b.WriteString(runtime)
+	// the formatter keeps a blank line between the runtime's last `end` and
+	// the cook writer's leading comment
+	if cook != "" {
+		b.WriteString("\n")
+		b.WriteString(cook)
+	}
+	b.WriteString(retain)
 	b.WriteString("end\n")
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
+}
+
+// The BEAM compiler infers the closed descriptor types. Omit array-root
+// clauses when none can be called, rather than suppressing unreachable warnings.
+func withoutArrayRoots(source string) string {
+	for _, block := range []string{
+		`  defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
+    validate_record(desc, value)
+    json_field(field, Map.get(value, field.name, field.default), depth)
+  end
+
+`,
+		`  defp json_root_pairs(%{json_array: true, fields: [field]}, raw) when is_list(raw),
+    do: {:ok, [{field.json, raw}]}
+
+  defp json_root_pairs(%{json_array: true}, _raw), do: {:error, :root_shape}
+`,
+		`        {:error, :root_shape} ->
+          report = Map.put(empty_report(), :reason, "json_root_not_array: " <> table)
+          {:error, :json_root_not_array, %{report | malformed: true}}
+
+`,
+	} {
+		source = strings.ReplaceAll(source, block, "")
+	}
+	return source
+}
+
+// uncarriedRootNames is the compatibility roster for region measurement.
+// Maps, keyed arrays and union payloads now have framing-driven extent walks.
+func uncarriedRootNames(_ *ir.Unit) []string { return nil }
+
+var armKindPattern = regexp.MustCompile(`\bt: :([a-z_]+)`)
+
+// armClauses are the runtime's clauses that handle ONE arm kind, keyed by the
+// kinds that reach them. A union arm's descriptor comes out of the literal
+// @unions, so Elixir's type checker knows every kind an arm can have and
+// reports a clause for any other kind as one that is never used. A unit is
+// emitted with only the clauses its own arms can reach.
+var armClauses = []struct {
+	kinds []string
+	text  string
+}{
+	{[]string{"union"}, "  defp arm_extent(%{t: :union} = arm, body, ids, at),\n"},
+	{[]string{"void", "table", "int", "float", "bool", "string", "wstring", "bytes", "enum", "pointer", "blob", "list", "keyed", "map"}, "  defp arm_extent(arm, body, ids, at),\n"},
+	{[]string{"void"}, "  defp arm_content(%{t: :void}, _v, _idx_map, ids, order), do: {<<>>, ids, order}\n"},
+	{[]string{"table"}, "  defp arm_content(%{t: :table} = a, v, idx_map, ids, order) do\n"},
+	{[]string{"int"}, "  defp arm_content(%{t: :int} = a, v, _idx_map, ids, order),\n"},
+	{[]string{"float"}, "  defp arm_content(%{t: :float} = a, v, _idx_map, ids, order),\n"},
+	{[]string{"bool"}, "  defp arm_content(%{t: :bool}, v, _idx_map, ids, order),\n"},
+	{[]string{"string"}, "  defp arm_content(%{t: :string}, v, _idx_map, ids, order), do: {v, ids, order}\n"},
+	{[]string{"wstring"}, "  defp arm_content(%{t: :wstring}, v, _idx_map, ids, order), do: {utf16(v), ids, order}\n"},
+	{[]string{"bytes"}, "  defp arm_content(%{t: :bytes}, v, _idx_map, ids, order),\n"},
+	{[]string{"enum"}, "  defp arm_content(%{t: :enum}, nil, _idx_map, ids, order), do: {leb_encode(0), ids, order}\n"},
+	{[]string{"enum"}, "  defp arm_content(%{t: :enum} = a, v, _idx_map, ids, order) do\n"},
+	{[]string{"pointer", "blob"}, "  defp arm_content(%{t: t}, nil, _idx_map, ids, order) when t in [:pointer, :blob],\n"},
+	{[]string{"pointer", "blob"}, "  defp arm_content(%{t: t} = a, v, idx_map, ids, order) when t in [:pointer, :blob],\n"},
+	{[]string{"pointer"}, "  defp arm_node_key(:pointer, a, v), do: {a.type_id, node_identity(v)}\n"},
+	{[]string{"blob"}, "  defp arm_node_key(:blob, _a, v), do: blob_site(v)\n"},
+	{[]string{"list"}, "  defp arm_content(%{t: :list} = a, v, idx_map, ids, order) do\n"},
+	{[]string{"union"}, "  defp arm_content(%{t: :union} = a, v, idx_map, ids, order),\n"},
+	{[]string{"void"}, "  defp read_arm_payload(%{t: :void}, name, _inner, _framed, _nodes, _ids, report),\n"},
+	{[]string{"int", "float"}, "  defp retyped_arm(%{t: t} = a, name, k, inner, report) when t in [:int, :float] do\n"},
+}
+
+// armVoidLines are the void arm's branches inside case expressions, each
+// whole and found exactly as many times as listed.
+var armVoidLines = []struct {
+	text  string
+	count int
+}{
+	{"      %{t: :void} -> acc\n", 2},
+	{"        %{t: :void} -> \"null\"\n", 1},
+	{"      {:ok, %{t: :void}} ->\n        if input == nil,\n          do: {{name, nil}, report},\n          else: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}\n\n", 1},
+}
+
+const armNodeCheck = "        if input == nil and a.t != :pointer and a.t != :blob do\n"
+
+// withArmKinds is the runtime for a unit whose union arms take only the kinds
+// in `kinds`: every armClauses clause no such kind reaches goes (from its head
+// through its last line and the blank line after it), the void branches go
+// when no arm is void, and the JSON reader's null check names only the node
+// kinds an arm can be. Every edit must apply, so a template change that moves
+// one fails the emitter's tests.
+func withArmKinds(runtime string, kinds map[string]bool) string {
+	runtime = withArrayArmCheck(runtime, kinds, false)
+	reached := func(ks []string) bool {
+		for _, k := range ks {
+			if kinds[k] {
+				return true
+			}
+		}
+		return false
+	}
+	for _, c := range armClauses {
+		if reached(c.kinds) {
+			continue
+		}
+		if strings.Count(runtime, c.text) != 1 {
+			panic("elixirtable: arm clause not found exactly once: " + c.text)
+		}
+		i := strings.Index(runtime, c.text)
+		end := i + len(c.text)
+		switch {
+		case strings.HasSuffix(c.text, " do\n"):
+			end = i + strings.Index(runtime[i:], "\n  end\n") + len("\n  end\n")
+		case strings.HasSuffix(c.text, ",\n"):
+			end += strings.Index(runtime[end:], "\n") + 1
+		}
+		if strings.HasPrefix(runtime[end:], "\n") {
+			end++
+		}
+		runtime = runtime[:i] + runtime[end:]
+	}
+	if !kinds["void"] {
+		for _, l := range armVoidLines {
+			if strings.Count(runtime, l.text) != l.count {
+				panic("elixirtable: void arm branch not found as expected: " + l.text)
+			}
+			runtime = strings.ReplaceAll(runtime, l.text, "")
+		}
+	}
+	// A unit whose arms are all void has no payload branch. Keep the
+	// descriptor lookup (invalid authored arm names must still fail), while
+	// removing only the alternatives no descriptor can select.
+	if len(kinds) == 1 && kinds["void"] {
+		return withOnlyVoidArms(runtime)
+	}
+	if strings.Count(runtime, armNodeCheck) != 1 {
+		panic("elixirtable: arm node check not found exactly once")
+	}
+	var check strings.Builder
+	check.WriteString("        if input == nil")
+	for _, k := range []string{"pointer", "blob"} {
+		if kinds[k] {
+			check.WriteString(" and a.t != :" + k)
+		}
+	}
+	check.WriteString(" do\n")
+	return strings.Replace(runtime, armNodeCheck, check.String(), 1)
+}
+
+// withArrayArmCheck omits an inner array-header branch no declared arm can
+// reach. Keep the source replacement checked, like the other arm specializations.
+func withArrayArmCheck(runtime string, kinds map[string]bool, retaining bool) string {
+	if kinds["list"] || kinds["bytes"] || kinds["map"] || kinds["keyed"] {
+		return runtime
+	}
+	suffix := ""
+	if retaining {
+		suffix = ", retain"
+	}
+	clause := "                      not compatible_payload?(a, framed) ->\n" +
+		"                        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}" + suffix + "}\n\n"
+	if strings.Count(runtime, clause) != 1 {
+		panic("elixirtable: array arm check not found exactly once")
+	}
+	return strings.Replace(runtime, clause, "", 1)
+}
+
+// withOnlyVoidArms specializes the four case expressions whose fallback
+// handles a non-void payload. Clause pruning remains checked against the
+// literal template, so a future template edit cannot silently miss a branch.
+func withOnlyVoidArms(runtime string) string {
+	replacements := [][2]string{
+		{"      a -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)\n", ""},
+		{"  defp collect_union_nodes(union, {arm, payload}, acc) do\n", "  defp collect_union_nodes(union, {arm, _payload}, acc) do\n"},
+		{"      a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)\n", ""},
+		{"  defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do\n", "  defp tally_field(%{t: :union, elem: union}, {arm, _payload}, acc) do\n"},
+		{"        _ -> json_field(a, if(payload == nil, do: a.default, else: payload), depth + 1)\n", ""},
+		{"  defp json_arm(union, {arm, payload}, depth) do\n", "  defp json_arm(union, {arm, _payload}, depth) do\n"},
+		{`      {:ok, a} ->
+        if input == nil and a.t != :pointer and a.t != :blob do
+          {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        else
+          before = report.kind_mismatch
+          {v, report} = json_read_field(a, input, report)
+
+          if v == :skip or
+               (report.kind_mismatch > before and a.t not in [:table, :list, :union, :keyed]),
+             do: {nil, report},
+             else: {{name, v}, report}
+        end
+`, ""},
+	}
+	for _, pair := range replacements {
+		if strings.Count(runtime, pair[0]) != 1 {
+			panic("elixirtable: void-only arm branch not found exactly once: " + pair[0])
+		}
+		runtime = strings.Replace(runtime, pair[0], pair[1], 1)
+	}
+	return runtime
+}
+
+// unionFamilies are the runtime functions that exist only to read, write,
+// walk or spell a union, and unionClauses the clauses of shared functions
+// that hand one a union field or a union-array element. In a unit with no
+// union the literal @unions is empty, so every Map.fetch! on it is one
+// Elixir's type checker proves always raises; such a unit is emitted without
+// them.
+var unionFamilies = []string{"collect_union_nodes", "arm_header", "arm_content", "arm_node_key",
+	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm", "arm_extent", "union_elements_extent"}
+
+var unionClauses = []string{
+	"  defp field_extent(%{t: :union,",
+	"  defp collect_list_nodes(%{elem_kind: 15}",
+	"  defp emit_field(%{t: :union}",
+	"  defp emit_element(%{elem_kind: 15}",
+	"  defp read_payload(%{t: :union}",
+	"  defp read_list_elements(%{elem_kind: 15}",
+	"  defp tally_field(%{t: :union",
+	"  defp tally_field(%{t: :list, elem_kind: 15}",
+	"  defp json_field(%{t: :union}",
+	"  defp json_list_elem(%{elem_kind: 15}",
+	"  defp json_read_field(%{t: :union}",
+	"  defp json_read_list_elem(%{elem_kind: 15}",
+}
+
+const unionNodeBranch = "          :union ->\n            collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n"
+
+const unionExtentBranch = "          kind == 15 ->\n            union_elements_extent(field.elem, elems, count, ids, at)\n\n"
+
+// withoutUnions is the runtime for a unit with no union: unionFamilies and
+// unionClauses go, each with the comment directly above it, and so does the
+// node walk's union branch. Every name and clause must be found, so a
+// template change that renames one fails the emitter's tests.
+func withoutUnions(runtime string) string {
+	for _, branch := range []string{unionNodeBranch, unionExtentBranch} {
+		if strings.Count(runtime, branch) != 1 {
+			panic("elixirtable: union walk branch not found exactly once: " + branch)
+		}
+		runtime = strings.Replace(runtime, branch, "", 1)
+	}
+	found := map[string]bool{}
+	runtime = dropTopLevel(runtime, func(head string) bool {
+		for _, name := range unionFamilies {
+			if strings.HasPrefix(head, "  defp "+name+"(") {
+				found[name] = true
+				return true
+			}
+		}
+		for _, c := range unionClauses {
+			if strings.HasPrefix(head, c) {
+				found[c] = true
+				return true
+			}
+		}
+		return false
+	})
+	for _, k := range append(append([]string{}, unionFamilies...), unionClauses...) {
+		if !found[k] {
+			panic("elixirtable: union runtime piece not found: " + k)
+		}
+	}
+	return runtime
+}
+
+// retainUnionFamilies and retainUnionClauses are unionFamilies and unionClauses
+// for the retaining pair (docs/SPEC-TABLES.md §6.6): the walks that read or
+// write a union arm's body, and the clauses of shared functions that hand one a
+// union field or an array of unions. A unit with no union is emitted without
+// them, for the same reason.
+var retainUnionFamilies = []string{"read_arm_retain", "read_arm_payload_retain",
+	"arm_header_retain", "arm_content_retain", "read_unions_retain", "read_union_list_retain"}
+
+var retainUnionClauses = []string{
+	"  defp read_payload_retain(%{t: :list, elem_kind: 15}",
+	"  defp read_payload_retain(%{t: :union}",
+	"  defp emit_field_retain(%{t: :union}",
+	"  defp emit_element_retain(%{elem_kind: 15}",
+}
+
+// withoutRetainUnions is the retaining pair for a unit with no union.
+func withoutRetainUnions(retain string) string {
+	found := map[string]bool{}
+	retain = dropTopLevel(retain, func(head string) bool {
+		for _, name := range retainUnionFamilies {
+			if strings.HasPrefix(head, "  defp "+name+"(") {
+				found[name] = true
+				return true
+			}
+		}
+		for _, c := range retainUnionClauses {
+			if strings.HasPrefix(head, c) {
+				found[c] = true
+				return true
+			}
+		}
+		return false
+	})
+	for _, k := range append(append([]string{}, retainUnionFamilies...), retainUnionClauses...) {
+		if !found[k] {
+			panic("elixirtable: retain union piece not found: " + k)
+		}
+	}
+	return retain
+}
+
+// withRetainArmKinds is the retaining pair for a unit whose union arms take
+// only the kinds in `kinds`: Elixir's type checker reports a clause that no arm
+// of the unit can reach, so the table arm's clauses go when no arm is a table,
+// the pointer reader's when none is a pointer. The generic writer also handles
+// pointer and enum arms, while the generic reader handles only the remaining kinds.
+// Every clause must be found.
+func withRetainArmKinds(retain string, kinds map[string]bool) string {
+	retain = withArrayArmCheck(retain, kinds, true)
+	table, pointer, enum, list, union, other := kinds["table"], kinds["pointer"], kinds["enum"], kinds["list"], kinds["union"], false
+	for k := range kinds {
+		if k != "table" && k != "pointer" && k != "enum" && k != "list" && k != "union" {
+			other = true
+		}
+	}
+	heads := map[string]bool{
+		"  defp arm_content_retain(%{t: :table}":        table,
+		"  defp arm_content_retain(%{t: :list}":         list,
+		"  defp arm_content_retain(%{t: :union}":        union,
+		"  defp arm_content_retain(a,":                  other || pointer || enum,
+		"  defp read_arm_payload_retain(%{t: :table}":   table,
+		"  defp read_arm_payload_retain(%{t: :pointer}": pointer,
+		"  defp read_arm_payload_retain(%{t: :enum}":    enum,
+		"  defp read_arm_payload_retain(%{t: :list}":    list,
+		"  defp read_arm_payload_retain(%{t: :union}":   union,
+		"  defp read_arm_payload_retain(a,":             other,
+	}
+	found := map[string]bool{}
+	retain = dropTopLevel(retain, func(head string) bool {
+		for h, keep := range heads {
+			if strings.HasPrefix(head, h) {
+				found[h] = true
+				return !keep
+			}
+		}
+		return false
+	})
+	for h := range heads {
+		if !found[h] {
+			panic("elixirtable: retain arm clause not found: " + h)
+		}
+	}
+	return retain
+}
+
+// dropTopLevel removes every module-level item of an emitted Elixir source
+// whose head line `drop` names. An item starts at a line indented exactly two
+// spaces (except function continuations) and runs to the next such line, carrying its
+// own body and the blank line after it; a run of `#` lines directly above a
+// head belongs to that head's item and goes with it.
+func dropTopLevel(src string, drop func(head string) bool) string {
+	lines := strings.SplitAfter(src, "\n")
+	starts := func(l string) bool {
+		for _, continuation := range []string{"  end\n", "  end)", "  rescue\n", "  catch\n", "  after\n", "  else\n"} {
+			if strings.HasPrefix(l, continuation) {
+				return false
+			}
+		}
+		return strings.HasPrefix(l, "  ") && len(l) > 2 && l[2] != ' ' && l[2] != '\n'
+	}
+	var b strings.Builder
+	for i := 0; i < len(lines); {
+		if !starts(lines[i]) {
+			b.WriteString(lines[i])
+			i++
+			continue
+		}
+		j := i
+		for j < len(lines) && strings.HasPrefix(lines[j], "  #") {
+			j++
+		}
+		if j == len(lines) || !starts(lines[j]) {
+			// a comment with no head under it stays as written
+			for ; i < j; i++ {
+				b.WriteString(lines[i])
+			}
+			continue
+		}
+		head := lines[j]
+		k := j + 1
+		for k < len(lines) && !starts(lines[k]) {
+			k++
+		}
+		if !drop(head) {
+			for ; i < k; i++ {
+				b.WriteString(lines[i])
+			}
+			continue
+		}
+		i = k
+	}
+	return b.String()
+}
+
+// uncarriedClauses are the runtime's refusals of an uncarried root, each the
+// whole clause and the blank line after it. A unit whose closure carries every
+// root has an empty @uncarried, so each guard reads `table in []`: never true,
+// which Elixir's type checker reports as a guard that will never succeed (and
+// `table` as unused). Such a unit is emitted without them.
+var uncarriedClauses = []string{
+	"  def load_measure(table, _data) when table in @uncarried, do: -1\n\n",
+}
+
+// withoutUncarriedClauses is the runtime source for a unit whose @uncarried is
+// empty: the uncarried refusal goes. The edit must apply, so a template change
+// that moves it fails the emitter's tests rather than silently shipping the
+// guard.
+func withoutUncarriedClauses(runtime string) string {
+	return replaceOnce(runtime, uncarriedClauses[0], "")
+}
+
+// replaceOnce replaces the one occurrence of old, and panics when old is not
+// found exactly once, so a template edit that moves it fails the emitter's
+// tests rather than silently shipping the text.
+func replaceOnce(src, old, new string) string {
+	if strings.Count(src, old) != 1 {
+		panic("elixirtable: emitted text not found exactly once: " + old)
+	}
+	return strings.Replace(src, old, new, 1)
+}
+
+// uncarriedAttribute is the module attribute the public clauses guard on, and
+// carried?/1 the wire-fuzz roster reads (docs/SPEC-TABLES.md §11). The list is
+// string literals so `table in @uncarried` is a legal guard. An empty list
+// never matches, and every root of that unit stays carried.
+func uncarriedAttribute(names []string) string {
+	var b strings.Builder
+	b.WriteString("  # Maps, keyed arrays and union payloads participate in region measurement.\n")
+	var list strings.Builder
+	list.WriteString("[")
+	for _, name := range names {
+		fmt.Fprintf(&list, "%q, ", name)
+	}
+	list.WriteString("]")
+	b.WriteString(exAttribute("uncarried", list.String()) + "\n")
+	b.WriteString("  def carried?(table), do: table not in @uncarried\n\n")
+	return b.String()
 }
 
 // variableRuntimeSource is the id-table wire engine, driven by @tables. It is
@@ -100,152 +661,767 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 // §4 names.
 const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3) ----
 
-  def save(table, value) when is_map(value) do
+  def save(table, value) when is_map(value),
+    do: with_node_identities(fn -> save_identity(table, value) end)
+
+  defp save_identity(table, value) do
     desc = Map.fetch!(@tables, table)
 
     # the node table's records in §3.1's first-visit order, one record per
-    # DISTINCT blob: a blob two fields share is numbered once, so the saved
-    # wire matches the reference backends byte for byte (§3.1)
-    nodes = collect_nodes(desc, value, []) |> Enum.reverse()
-    idx_map = nodes |> Enum.with_index(2) |> Map.new(fn {v, i} -> {v, i} end)
+    # DISTINCT node: a table node two fields share is numbered once, so the
+    # saved wire matches the reference backends byte for byte (§3.1), and a
+    # blob is a node of its own SLOT (§2.5), so two slots holding equal bytes
+    # are two records. A blob the tolerant read found named from two slots
+    # refuses the save by name, blob_shared (§2.5).
+    try do
+      nodes = collect_root(desc, value)
+      idx_map = node_index(nodes)
 
-    {_idx_map, ids, order, body} = save_fields(desc, value, idx_map, %{}, [], [])
+      blob_site_begin(:root)
+      {_idx_map, ids, order, body} = save_fields(desc, value, idx_map, %{}, [], [])
 
-    {body, _ids, order} = save_node_table(nodes, ids, order, body)
+      {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
 
-    ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
+      ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
-    {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}
+      {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}
+    catch
+      :blob_shared -> {:error, :blob_shared}
+      # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
+      :non_finite_float -> {:error, :non_finite_float}
+      :invalid_value -> {:error, :invalid_value}
+    after
+      Process.delete(:elixir_blob_site)
+    end
   end
 
-  # collect_nodes is the declaration-order walk of every *string this value
-  # reaches: the flat node table's records, in the order §3.1 numbers them
-  # (root is index 1, the first blob is 2). A blob reached twice is one record.
+  # collect_root numbers the value's nodes in §3.1's first-visit order, with
+  # each blob keyed by the SLOT that holds it (blob_site/1).
+  defp collect_root(desc, value) do
+    blob_site_begin(:root)
+    collect_nodes(desc, value, []) |> Enum.reverse()
+  end
+
+  defp node_index(nodes),
+    do: nodes |> Enum.with_index(2) |> Map.new(fn {n, i} -> {node_content(n), i} end)
+
+  # A BLOB IS NUMBERED BY ITS SLOT, never by its content (docs/SPEC-TABLES.md
+  # §2.5, §3.1): a BEAM binary has no identity, so the slot is the identity —
+  # the body that holds it (the root, or the table node by its content) and its
+  # position among that body's blob slots in declaration order. The node walk
+  # and the body writer meet a body's blob slots in the same order, so the two
+  # name the same site. A {:blob_shared, bytes} slot is the tolerant read's
+  # mark of a blob a second slot named, and every writer refuses it (§2.5).
+  defp blob_site_begin(holder), do: Process.put(:elixir_blob_site, {holder, 0})
+
+  defp blob_site({:__wire_blob__, idx, order, _bytes}), do: {:wire_blob, idx, order}
+
+  defp blob_site({:blob_shared, _bytes}), do: throw(:blob_shared)
+
+  defp blob_site(_bytes) do
+    {holder, n} = Process.get(:elixir_blob_site)
+    Process.put(:elixir_blob_site, {holder, n + 1})
+    {:blob, holder, n}
+  end
+
+  # a table node's body is its own holder: its blob slots count from zero
+  defp in_node_holder(node, fun) do
+    prev = Process.put(:elixir_blob_site, {node_content(node), 0})
+
+    try do
+      fun.()
+    after
+      Process.put(:elixir_blob_site, prev)
+    end
+  end
+
+  # collect_nodes is the declaration-order DFS walk of every node this value
+  # reaches — a *string/*bytes blob and a table a pointer names — the flat node
+  # table's records, in the order §3.1 numbers them (root is index 1, the first
+  # node is 2). A node reached twice is one record. A node is {type_id, kind,
+  # table_name, content}: kind :blob for a byte buffer, :table for a pointer
+  # pointee.
   defp collect_nodes(desc, value, acc) do
     Enum.reduce(desc.fields, acc, fn f, acc ->
-      case f.t do
-        :blob ->
-          case Map.get(value, f.name) do
-            nil ->
-              acc
+      if field_active?(f, desc, value) do
+        case f.t do
+          :blob ->
+            case Map.get(value, f.name) do
+              nil -> acc
+              v -> [{f.type_id, :blob, blob_site(v), v} | acc]
+            end
 
-            v ->
-              if Enum.any?(acc, fn e -> e == v end), do: acc, else: [v | acc]
-          end
+          :pointer ->
+            case Map.get(value, f.name) do
+              nil ->
+                acc
 
-        :list ->
-          Enum.reduce(Map.get(value, f.name, []), acc, fn e, acc ->
-            collect_nodes(Map.fetch!(@tables, f.elem), e, acc)
-          end)
+              v ->
+                push_node(acc, {f.type_id, :table, f.elem, v})
+            end
 
-        _ ->
-          acc
+          :table ->
+            # an absent optional (nil) owns no edge (§2.3), and a by-value
+            # table left nil holds its defaults, which name no node
+            case Map.get(value, f.name) do
+              nil -> acc
+              v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)
+            end
+
+          :list ->
+            collect_list_nodes(f, Map.get(value, f.name) || [], acc)
+
+          :map ->
+            Enum.reduce(map_entries(f, Map.get(value, f.name, %{})), acc, fn entry, acc ->
+              collect_nodes(Map.fetch!(@tables, f.elem), entry, acc)
+            end)
+
+          :union ->
+            collect_union_nodes(f.elem, Map.get(value, f.name), acc)
+
+          :keyed ->
+            slots = Map.get(value, f.name) || %{}
+
+            Enum.reduce(f.key_names, acc, fn name, acc ->
+              case Map.get(slots, name) do
+                nil -> acc
+                v -> collect_nodes(%{fields: [f.item]}, %{f.item.name => v}, acc)
+              end
+            end)
+
+          _ ->
+            acc
+        end
+      else
+        acc
       end
     end)
   end
 
+  # a union's selected arm is a field line (docs/SPEC-TABLES.md §2.6, §3.1):
+  # its nodes are visited where the union sits, exactly as a field's are.
+  defp collect_union_nodes(_union, nil, acc), do: acc
+
+  defp collect_union_nodes(union, {arm, payload}, acc) do
+    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
+      %{t: :void} -> acc
+      a -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)
+    end
+  end
+
+  # push_node numbers a TABLE node a pointer names, once, and walks its body
+  # the first time only: a node reached again is the one record (§3.1).
+  # Unassembled read markers are queued once by the live ownership walk.
+  defp push_node(acc, {_tid, :table, _elem, %{__wire_node__: _}} = node), do: [node | acc]
+
+  defp push_node(acc, {_type_id, :table, elem, v} = node) do
+    c = node_content(node)
+
+    if Enum.any?(acc, fn n -> node_content(n) == c end) do
+      acc
+    else
+      in_node_holder(node, fn -> collect_nodes(Map.fetch!(@tables, elem), v, [node | acc]) end)
+    end
+  end
+
+  # A loaded table node keeps its directory identity (§3.1); untagged
+  # authored maps share by content. A blob's identity is its slot
+  # (blob_site/1), so equal bytes in two slots are
+  # two nodes, and an empty *bytes and an empty *string are two nodes.
+  defp node_content({_type_id, :blob, site, _bytes}), do: site
+  defp node_content({type_id, _kind, _ref, c}), do: {type_id, node_identity(c)}
+
+  # Intern local shapes, replacing each child map by a small structural id.
+  # Loaded directory indices remain part of the shape: two equal records
+  # are still two nodes (§3.1). Exact comparisons distinguish edited copies
+  # sharing an index; untagged authored maps retain content-based sharing.
+  defp with_node_identities(fun) do
+    prior = Process.get(:elixir_node_identities)
+    Process.put(:elixir_node_identities, %{seen: %{}, shapes: %{}})
+
+    try do
+      fun.()
+    after
+      if prior == nil,
+        do: Process.delete(:elixir_node_identities),
+        else: Process.put(:elixir_node_identities, prior)
+    end
+  end
+
+  defp node_identity(value) when is_map(value) do
+    state = Process.get(:elixir_node_identities)
+    bucket = Map.get(value, :__wire_identity__)
+    seen = if bucket == nil, do: [], else: Map.get(state.seen, bucket, [])
+
+    case Enum.find(seen, fn {previous, _id} -> previous === value end) do
+      {_previous, id} ->
+        id
+
+      nil ->
+        shape = Map.new(value, fn {key, v} -> {key, identity_term(v)} end)
+        state = Process.get(:elixir_node_identities)
+        id = Map.get(state.shapes, shape, map_size(state.shapes))
+
+        seen =
+          if bucket == nil,
+            do: state.seen,
+            else: Map.update(state.seen, bucket, [{value, id}], fn xs -> [{value, id} | xs] end)
+
+        Process.put(:elixir_node_identities, %{
+          seen: seen,
+          shapes: Map.put(state.shapes, shape, id)
+        })
+
+        id
+    end
+  end
+
+  defp node_identity(value), do: value
+
+  defp identity_term(value) when is_map(value), do: {:map, node_identity(value)}
+  defp identity_term(value) when is_list(value), do: {:list, Enum.map(value, &identity_term/1)}
+
+  defp identity_term(value) when is_tuple(value),
+    do: {:tuple, value |> Tuple.to_list() |> Enum.map(&identity_term/1)}
+
+  defp identity_term(value), do: {:scalar, value}
+
+  # SPEC-TABLES §2.8: textual string keys compare bytewise, integer keys by
+  # numeric value. The entry table holds an ordinary key and value field.
+  defp map_entries(_f, nil), do: []
+
+  defp map_entries(f, values) do
+    values
+    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)
+    |> Enum.map(fn {key, value} -> %{"key" => map_key_value(f, key), "value" => value} end)
+  end
+
+  defp map_sort_key(%{key_kind: 12}, key), do: key
+
+  defp map_sort_key(_f, key) when is_binary(key) do
+    case Integer.parse(key) do
+      {v, ""} -> v
+      _ -> key
+    end
+  end
+
+  defp map_sort_key(_f, key), do: key
+  defp map_key_value(%{key_kind: 12}, key), do: key
+  defp map_key_value(_f, key) when is_binary(key), do: String.to_integer(key)
+  defp map_key_value(_f, key), do: key
+
+  # an unbounded array's elements are inline (kind 13) when they are tables and
+  # nodes when they are pointers; scalar and string elements reach no node.
+  defp collect_list_nodes(%{elem_kind: 13} = f, elements, acc) do
+    Enum.reduce(elements, acc, fn e, acc ->
+      collect_nodes(Map.fetch!(@tables, f.elem), e, acc)
+    end)
+  end
+
+  defp collect_list_nodes(%{elem_kind: 17} = f, elements, acc) do
+    Enum.reduce(elements, acc, fn
+      nil, acc ->
+        acc
+
+      e, acc ->
+        push_node(acc, {f.elem_type_id, :table, f.elem, e})
+    end)
+  end
+
+  defp collect_list_nodes(%{elem_kind: 15} = f, elements, acc) do
+    Enum.reduce(elements, acc, fn e, acc -> collect_union_nodes(f.elem, e, acc) end)
+  end
+
+  defp collect_list_nodes(_f, _elements, acc), do: acc
+
   # save_fields writes one body's fields and returns the iodata, the node
   # index map, the id map and the reversed first-use order.
   defp save_fields(desc, value, idx_map, ids, order, acc) do
+    validate_record(desc, value)
+    value = Map.merge(defaults(desc), value)
+
     Enum.reduce(desc.fields, {idx_map, ids, order, acc}, fn f, {idx_map, ids, order, acc} ->
-      emit_field(f, value, idx_map, ids, order, acc)
+      if field_active?(f, desc, value),
+        do: emit_field(f, value, idx_map, ids, order, acc),
+        else: {idx_map, ids, order, acc}
     end)
   end
 
   defp emit_field(%{t: :blob} = f, value, idx_map, ids, order, acc) do
     case Map.get(value, f.name) do
       nil ->
-        {idx_map, ids, order, acc}
+        if Map.get(f, :required, false) do
+          {ref, ids, order} = intern(ids, order, f.id)
+          {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, <<0>>]}
+        else
+          {idx_map, ids, order, acc}
+        end
 
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
-        idx = Map.fetch!(idx_map, v)
+        idx = Map.fetch!(idx_map, blob_site(v))
         {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(idx)]}
     end
   end
 
   defp emit_field(%{t: :list} = f, value, idx_map, ids, order, acc) do
-    case Map.get(value, f.name, []) do
-      [] ->
+    case Map.get(value, f.name, Map.get(f, :default)) do
+      nil ->
         {idx_map, ids, order, acc}
 
       elements ->
-        {ref, ids, order} = intern(ids, order, f.id)
-        elem_desc = Map.fetch!(@tables, f.elem)
-        {body, idx_map, ids, order} = save_elements(elem_desc, elements, idx_map, ids, order, [])
-        array = [<<13>>, leb_encode(length(elements)), body]
-        {idx_map, ids, order, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+        elements = pad_fixed(f, elements)
+
+        if list_elides?(f, elements) do
+          {idx_map, ids, order, acc}
+        else
+          {ref, ids, order} = intern(ids, order, f.id)
+          {body, idx_map, ids, order} = save_list_elements(f, elements, idx_map, ids, order, [])
+          array = [<<f.elem_kind>>, leb_encode(length(elements)), body]
+
+          {idx_map, ids, order,
+           [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+        end
     end
   end
 
-  defp emit_field(%{t: :enum} = f, value, idx_map, ids, order, acc) do
+  # a union field (docs/SPEC-TABLES.md §2.6, §3): None elides; a selected arm
+  # is kind 15 and one arm header.
+  defp emit_field(%{t: :union} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name) do
+      nil ->
+        if Map.get(f, :required, false) do
+          {ref, ids, order} = intern(ids, order, f.id)
+          {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, <<0>>]}
+        else
+          {idx_map, ids, order, acc}
+        end
+
+      sel ->
+        {ref, ids, order} = intern(ids, order, f.id)
+        {header, ids, order} = arm_header(f.elem, sel, idx_map, ids, order)
+        {idx_map, ids, order, [acc, leb_encode(ref), <<15>>, header]}
+    end
+  end
+
+  # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2): kind 16, the element
+  # kind, the pair count, then per slot off its default the key's variant id
+  # reference, L and the element. A slot at its default rolls its key back; no
+  # pair at all rolls the field back.
+  defp emit_field(%{t: :keyed} = f, value, idx_map, ids, order, acc) do
+    slots = Map.get(value, f.name) || %{}
+    {ref, ids1, order1} = intern(ids, order, f.id)
+    item = Map.put(f.item, :elem_kind, f.elem_kind)
+
+    {pairs, n, ids2, order2} =
+      Enum.reduce(f.key_names, {[], 0, ids1, order1}, fn name, {pairs, n, ids, order} ->
+        v = Map.get(slots, name, f.item.default)
+        {kref, ids_k, order_k} = intern(ids, order, Map.fetch!(f.key_ids, name))
+
+        case keyed_elem(item, v, idx_map, ids_k, order_k) do
+          :elide ->
+            {pairs, n, ids, order}
+
+          {elem, ids_e, order_e} ->
+            {[pairs, leb_encode(kref), leb_encode(IO.iodata_length(elem)), elem], n + 1, ids_e,
+             order_e}
+        end
+      end)
+
+    if n == 0 and not Map.get(f, :required, false) do
+      {idx_map, ids, order, acc}
+    else
+      inner = [<<f.elem_kind>>, leb_encode(n), pairs]
+
+      {idx_map, ids2, order2,
+       [acc, leb_encode(ref), <<16>>, leb_encode(IO.iodata_length(inner)), inner]}
+    end
+  end
+
+  # wstring(N) on the variable wire (docs/SPEC-TABLES.md §3): kind 33, L the
+  # UTF-16LE byte count, the code units; an empty one elides.
+  defp emit_field(%{t: :wstring} = f, value, idx_map, ids, order, acc) do
+    v = Map.get(value, f.name, f.default)
+
+    if not emit_scalar?(f, v) do
+      {idx_map, ids, order, acc}
+    else
+      {ref, ids, order} = intern(ids, order, f.id)
+      units = utf16(v)
+      {idx_map, ids, order, [acc, leb_encode(ref), <<33>>, leb_encode(byte_size(units)), units]}
+    end
+  end
+
+  defp emit_field(%{t: :map} = f, value, idx_map, ids, order, acc) do
+    # SPEC-TABLES §2.8: map storage is the same kind-14/element-13 framing
+    # as a list of entry tables, with ascending key order fixed by the writer.
+    case Map.get(value, f.name, f.default) do
+      nil ->
+        {idx_map, ids, order, acc}
+
+      values ->
+        entries = map_entries(f, values)
+        emit_field(%{f | t: :list}, %{f.name => entries}, idx_map, ids, order, acc)
+    end
+  end
+
+  defp emit_field(%{t: :pointer} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name) do
+      nil ->
+        if Map.get(f, :required, false) do
+          {ref, ids, order} = intern(ids, order, f.id)
+          {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, <<0>>]}
+        else
+          {idx_map, ids, order, acc}
+        end
+
+      v ->
+        {ref, ids, order} = intern(ids, order, f.id)
+        idx = Map.fetch!(idx_map, {f.type_id, node_identity(v)})
+        {idx_map, ids, order, [acc, leb_encode(ref), <<17>>, leb_encode(idx)]}
+    end
+  end
+
+  defp emit_field(%{t: :table} = f, value, idx_map, ids, order, acc) do
     case Map.get(value, f.name) do
       nil ->
         {idx_map, ids, order, acc}
 
-      variant ->
-        vid = Map.fetch!(f.by_name, variant)
-        {ref, ids, order} = intern(ids, order, f.id)
-        {vref, ids, order} = intern(ids, order, vid)
-        {idx_map, ids, order, [acc, leb_encode(ref), <<30>>, leb_encode(vref)]}
+      v ->
+        {ref, ids1, order1} = intern(ids, order, f.id)
+        elem_desc = Map.fetch!(@tables, f.elem)
+        {_idx, ids2, order2, body} = save_fields(elem_desc, v, idx_map, ids1, order1, [])
+
+        if IO.iodata_length(body) == 0 and not Map.get(f, :optional, false) and
+             not Map.get(f, :required, false) do
+          # an all-default nested table rides nothing (§3): the field and its
+          # speculative ids roll back, exactly as the reference's truncate does.
+          # An optional stays (§2.3): presence is the field itself, so an empty
+          # frame is the present default and an omitted field is absence.
+          {idx_map, ids, order, acc}
+        else
+          framed = [body, <<0>>]
+
+          {idx_map, ids2, order2,
+           [acc, leb_encode(ref), <<13>>, leb_encode(IO.iodata_length(framed)), framed]}
+        end
+    end
+  end
+
+  defp emit_field(%{t: :bytes} = f, value, idx_map, ids, order, acc) do
+    v = Map.get(value, f.name, f.default)
+
+    if not emit_scalar?(f, v) do
+      {idx_map, ids, order, acc}
+    else
+      {ref, ids, order} = intern(ids, order, f.id)
+      # bytes(N) is an array of u8. The element kind is 6, not 8: 8 is u32
+      # (docs/SPEC-TABLES.md §3, ir.TableKindU8).
+      array = [<<6>>, leb_encode(byte_size(v)), v]
+
+      {idx_map, ids, order,
+       [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+    end
+  end
+
+  defp emit_field(%{t: :enum} = f, value, idx_map, ids, order, acc) do
+    v = Map.get(value, f.name, f.default)
+
+    if not emit_scalar?(f, v) do
+      {idx_map, ids, order, acc}
+    else
+      {ref, ids, order} = intern(ids, order, f.id)
+
+      # The zero variant is reference 0. Optional fields use reserved "None"
+      # for a present zero, keeping nil available for absence.
+      {vref, ids, order} =
+        case v do
+          v when v in [nil, "None"] -> {0, ids, order}
+          _ -> intern(ids, order, Map.fetch!(f.by_name, v))
+        end
+
+      {idx_map, ids, order, [acc, leb_encode(ref), <<30>>, leb_encode(vref)]}
     end
   end
 
   defp emit_field(%{t: :int} = f, value, idx_map, ids, order, acc) do
-    case Map.get(value, f.name, 0) do
-      0 ->
-        {idx_map, ids, order, acc}
+    v = Map.get(value, f.name, f.default)
 
-      v ->
-        {ref, ids, order} = intern(ids, order, f.id)
-        {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, int_bytes(v, f.width)]}
+    if not emit_scalar?(f, v) do
+      {idx_map, ids, order, acc}
+    else
+      {ref, ids, order} = intern(ids, order, f.id)
+      {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, int_bytes(v, f.width, f.signed)]}
+    end
+  end
+
+  defp emit_field(%{t: :float} = f, value, idx_map, ids, order, acc) do
+    v = Map.get(value, f.name, f.default)
+
+    if not emit_scalar?(f, v) do
+      {idx_map, ids, order, acc}
+    else
+      {ref, ids, order} = intern(ids, order, f.id)
+      {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, float_bytes(v, f.width)]}
     end
   end
 
   defp emit_field(%{t: :string} = f, value, idx_map, ids, order, acc) do
-    case Map.get(value, f.name, "") do
-      "" ->
-        {idx_map, ids, order, acc}
+    v = Map.get(value, f.name, f.default)
 
-      v ->
-        {ref, ids, order} = intern(ids, order, f.id)
-        {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(byte_size(v)), v]}
+    if not emit_scalar?(f, v) do
+      {idx_map, ids, order, acc}
+    else
+      {ref, ids, order} = intern(ids, order, f.id)
+      {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(byte_size(v)), v]}
     end
   end
 
   defp emit_field(%{t: :bool} = f, value, idx_map, ids, order, acc) do
-    case Map.get(value, f.name, false) do
-      false ->
-        {idx_map, ids, order, acc}
+    v = Map.get(value, f.name, f.default)
 
-      _ ->
-        {ref, ids, order} = intern(ids, order, f.id)
-        {idx_map, ids, order, [acc, leb_encode(ref), <<1>>, <<1>>]}
+    if not emit_scalar?(f, v) do
+      {idx_map, ids, order, acc}
+    else
+      {ref, ids, order} = intern(ids, order, f.id)
+      {idx_map, ids, order, [acc, leb_encode(ref), <<1>>, if(v, do: <<1>>, else: <<0>>)]}
     end
   end
 
-  defp save_elements(_desc, [], idx_map, ids, order, acc), do: {acc, idx_map, ids, order}
+  # SPEC-TABLES §2.3: absence is the lack of a field line. A present optional
+  # must write even its zero/default value, while nil never becomes a payload.
+  # An optional enum has two zero states: absent nil and present reserved None.
+  defp enum_none(f), do: if(Map.get(f, :optional, false), do: "None", else: nil)
 
-  defp save_elements(desc, [e | rest], idx_map, ids, order, acc) do
-    {idx_map, ids, order, body} = save_fields(desc, e, idx_map, ids, order, [])
-    framed = [leb_encode(IO.iodata_length(body) + 1), body, <<0>>]
-    save_elements(desc, rest, idx_map, ids, order, [acc, framed])
+  defp emit_scalar?(%{required: true}, _v), do: true
+  defp emit_scalar?(%{optional: true}, v), do: v != nil
+  defp emit_scalar?(f, v), do: not same_field?(f, v, f.default)
+
+  # ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3, the 10-15 rule):
+  # -0.0 == 0.0 on the BEAM, so a -0 under a +0 default would be dropped and
+  # read back as +0. Every other value compares as a value.
+  # Exact equality (=:=) tells -0.0 from 0.0 since OTP 27, and a BEAM float is
+  # never a NaN, so on two floats it is the bit compare, with nothing built.
+  defp same?(a, b) when is_float(a) and is_float(b), do: a === b
+  defp same?(a, b), do: a == b
+
+  # Compare the stored width: BEAM inputs and schema literals are binary64.
+  defp same_field?(%{t: :float, width: 4}, a, b),
+    do: float_bytes(a, 4) == float_bytes(b, 4)
+
+  defp same_field?(_f, a, b), do: same?(a, b)
+
+  # SPEC-TABLES §2.3, §3: a present optional array always writes; a [N]T of
+  # tables always writes; any other [N]T elides when every element is the
+  # declared default, and a counted or unbounded array elides when empty.
+  defp list_elides?(f, elements) do
+    cond do
+      Map.get(f, :optional, false) or Map.get(f, :required, false) ->
+        false
+
+      Map.has_key?(f, :fixed_array) and f.elem_kind == 13 ->
+        false
+
+      Map.has_key?(f, :fixed_array) and f.elem_kind == 10 ->
+        Enum.all?(elements, &(float_bytes(&1, 4) == float_bytes(f.elem_default, 4)))
+
+      Map.has_key?(f, :fixed_array) ->
+        Enum.all?(elements, &same?(&1, f.elem_default))
+
+      true ->
+        elements == []
+    end
   end
 
+  # a [N]T always carries N elements (docs/SPEC-TABLES.md §3): a shorter
+  # value is padded with the element default, a longer one is cut at N.
+  defp pad_fixed(%{fixed_array: n} = f, elements) when is_list(elements) do
+    kept = Enum.take(elements, n)
+    kept ++ List.duplicate(f.elem_default, n - length(kept))
+  end
+
+  defp pad_fixed(_f, elements), do: elements
+
+  defp utf16(v), do: :unicode.characters_to_binary(v, :utf8, {:utf16, :little})
+
+  defp keyed_elem(%{elem_kind: 13} = item, v, idx_map, ids, order) do
+    {_idx, ids2, order2, body} =
+      save_fields(Map.fetch!(@tables, item.elem), v || %{}, idx_map, ids, order, [])
+
+    if IO.iodata_length(body) == 0, do: :elide, else: {[body, <<0>>], ids2, order2}
+  end
+
+  defp keyed_elem(item, v, idx_map, ids, order) do
+    if same_field?(item, v, item.default),
+      do: :elide,
+      else: emit_element(item, v, idx_map, ids, order)
+  end
+
+  # one arm header (docs/SPEC-TABLES.md §2.6, §3): the arm id's reference, the
+  # arm's kind byte, L, and the arm's payload. None is the zero reference.
+  defp arm_header(_union, nil, _idx_map, ids, order), do: {leb_encode(0), ids, order}
+
+  defp arm_header(union, {arm, payload}, idx_map, ids, order) do
+    a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    {aref, ids, order} = intern(ids, order, a.arm_id)
+
+    {content, ids, order} =
+      arm_content(a, if(payload == nil, do: a.default, else: payload), idx_map, ids, order)
+
+    {[leb_encode(aref), <<a.arm_kind>>, leb_encode(IO.iodata_length(content)), content], ids,
+     order}
+  end
+
+  # an arm's payload under its L (docs/SPEC-TABLES.md §3's arm payload table):
+  # a table body with its terminator, a scalar's bytes, a string's or wide
+  # string's bytes, a node index, an enum reference, an array body, or an
+  # inner union's arm header. A payload-free arm is empty.
+  defp arm_content(%{t: :void}, _v, _idx_map, ids, order), do: {<<>>, ids, order}
+
+  defp arm_content(%{t: :table} = a, v, idx_map, ids, order) do
+    {_idx, ids, order, body} =
+      save_fields(Map.fetch!(@tables, a.elem), v || %{}, idx_map, ids, order, [])
+
+    {[body, <<0>>], ids, order}
+  end
+
+  defp arm_content(%{t: :int} = a, v, _idx_map, ids, order),
+    do: {int_bytes(v, a.width, a.signed), ids, order}
+
+  defp arm_content(%{t: :float} = a, v, _idx_map, ids, order),
+    do: {float_bytes(v, a.width), ids, order}
+
+  defp arm_content(%{t: :bool}, v, _idx_map, ids, order),
+    do: {if(v, do: <<1>>, else: <<0>>), ids, order}
+
+  defp arm_content(%{t: :string}, v, _idx_map, ids, order), do: {v, ids, order}
+
+  defp arm_content(%{t: :wstring}, v, _idx_map, ids, order), do: {utf16(v), ids, order}
+
+  defp arm_content(%{t: :bytes}, v, _idx_map, ids, order),
+    do: {[<<6>>, leb_encode(byte_size(v)), v], ids, order}
+
+  defp arm_content(%{t: :enum}, nil, _idx_map, ids, order), do: {leb_encode(0), ids, order}
+
+  defp arm_content(%{t: :enum} = a, v, _idx_map, ids, order) do
+    {vref, ids, order} = intern(ids, order, Map.fetch!(a.by_name, v))
+    {leb_encode(vref), ids, order}
+  end
+
+  defp arm_content(%{t: t}, nil, _idx_map, ids, order) when t in [:pointer, :blob],
+    do: {leb_encode(0), ids, order}
+
+  defp arm_content(%{t: t} = a, v, idx_map, ids, order) when t in [:pointer, :blob],
+    do: {leb_encode(Map.fetch!(idx_map, arm_node_key(t, a, v))), ids, order}
+
+  defp arm_content(%{t: :list} = a, v, idx_map, ids, order) do
+    elements = pad_fixed(a, v || [])
+    {body, _idx_map, ids, order} = save_list_elements(a, elements, idx_map, ids, order, [])
+    {[<<a.elem_kind>>, leb_encode(length(elements)), body], ids, order}
+  end
+
+  defp arm_content(%{t: :union} = a, v, idx_map, ids, order),
+    do: arm_header(a.elem, v, idx_map, ids, order)
+
+  defp arm_node_key(:pointer, a, v), do: {a.type_id, node_identity(v)}
+  defp arm_node_key(:blob, _a, v), do: blob_site(v)
+
+  defp save_list_elements(_f, [], idx_map, ids, order, acc), do: {acc, idx_map, ids, order}
+
+  defp save_list_elements(f, [e | rest], idx_map, ids, order, acc) do
+    {elem, ids, order} = emit_element(f, e, idx_map, ids, order)
+    save_list_elements(f, rest, idx_map, ids, order, [acc, elem])
+  end
+
+  # emit_element writes one array element by the list's element kind
+  # (docs/SPEC-TABLES.md §3, §2.9): a table element is a framed body, a pointer
+  # element a node index, a string element its L and bytes, an enum a variant
+  # reference, and every scalar element its own bytes.
+  defp emit_element(%{elem_kind: 13} = f, e, idx_map, ids, order) do
+    elem_desc = Map.fetch!(@tables, f.elem)
+    {_idx, ids, order, body} = save_fields(elem_desc, e, idx_map, ids, order, [])
+    {[leb_encode(IO.iodata_length(body) + 1), body, <<0>>], ids, order}
+  end
+
+  # a null pointer element is node index 0 (docs/SPEC-TABLES.md §3.1). It
+  # names no record, so it is not a key in the node map.
+  defp emit_element(%{elem_kind: 17} = _f, nil, _idx_map, ids, order) do
+    {leb_encode(0), ids, order}
+  end
+
+  defp emit_element(%{elem_kind: 17} = f, e, idx_map, ids, order) do
+    idx = Map.fetch!(idx_map, {f.elem_type_id, node_identity(e)})
+    {leb_encode(idx), ids, order}
+  end
+
+  defp emit_element(%{text_list: true, elem_kind: 12}, e, _idx_map, ids, order) do
+    value = Map.get(e, "value", "")
+    {[leb_encode(byte_size(value)), value], ids, order}
+  end
+
+  defp emit_element(%{elem_kind: 12}, e, _idx_map, ids, order) do
+    {[leb_encode(byte_size(e)), e], ids, order}
+  end
+
+  defp emit_element(%{elem_kind: 30}, nil, _idx_map, ids, order), do: {leb_encode(0), ids, order}
+
+  defp emit_element(%{elem_kind: 30} = f, e, _idx_map, ids, order) do
+    vid = Map.fetch!(f.by_name, e)
+    {vref, ids, order} = intern(ids, order, vid)
+    {leb_encode(vref), ids, order}
+  end
+
+  defp emit_element(%{elem_kind: 1} = _f, e, _idx_map, ids, order) do
+    {if(e, do: <<1>>, else: <<0>>), ids, order}
+  end
+
+  defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order) when kind in [10, 11] do
+    {float_bytes(e, kind_width(kind)), ids, order}
+  end
+
+  defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
+    {int_bytes(e, kind_width(kind), kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]), ids, order}
+  end
+
+  defp emit_element(%{elem_kind: 15} = f, e, idx_map, ids, order),
+    do: arm_header(f.elem, e, idx_map, ids, order)
+
+  defp emit_element(_f, _e, _idx_map, ids, order), do: {<<>>, ids, order}
+
   # save_node_table writes the reserved node-table field once, when the value
-  # carries a blob (docs/SPEC-TABLES.md §3.1).
-  defp save_node_table([], ids, order, body), do: {body, ids, order}
+  # carries a node (docs/SPEC-TABLES.md §3.1). Each record is the node's type id
+  # reference, its body's L and the body — a blob's raw bytes or a table's field
+  # walk ending in its terminator. Type ids and a table node's field ids intern
+  # in the record's own order, which is the reference's first-use order.
+  defp save_node_table([], _idx_map, ids, order, body), do: {body, ids, order}
 
-  defp save_node_table(nodes, ids, order, body) do
+  defp save_node_table(nodes, idx_map, ids, order, body) do
     {ref, ids, order} = intern(ids, order, @node_id)
-    {sref, ids, order} = intern(ids, order, @string_id)
-    table =
-      for v <- nodes do
-        [leb_encode(sref), leb_encode(byte_size(v)), v]
-      end
-
-    payload = [leb_encode(length(nodes)), table]
+    {records, ids, order} = write_node_records(nodes, idx_map, ids, order, [])
+    payload = [leb_encode(length(nodes)), records]
     {[body, leb_encode(ref), <<12>>, leb_encode(IO.iodata_length(payload)), payload], ids, order}
+  end
+
+  defp write_node_records([], _idx_map, ids, order, acc), do: {acc, ids, order}
+
+  defp write_node_records([node | rest], idx_map, ids, order, acc) do
+    {tref, ids, order} = intern(ids, order, elem(node, 0))
+    {nbody, ids, order} = node_body(node, idx_map, ids, order)
+    acc = [acc, leb_encode(tref), leb_encode(IO.iodata_length(nbody)), nbody]
+    write_node_records(rest, idx_map, ids, order, acc)
+  end
+
+  defp node_body({_type_id, :blob, _ref, bytes}, _idx_map, ids, order),
+    do: {bytes, ids, order}
+
+  defp node_body({_type_id, :table, ref, v} = node, idx_map, ids, order) do
+    desc = Map.fetch!(@tables, ref)
+
+    {_idx, ids, order, body} =
+      in_node_holder(node, fn -> save_fields(desc, v, idx_map, ids, order, []) end)
+
+    {IO.iodata_to_binary([body, <<0>>]), ids, order}
   end
 
   # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----
@@ -255,27 +1431,80 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     case open(data) do
       {:error, reason} ->
-        {:error, reason, empty_report()}
+        {:error, reason, reasoned(empty_report(), reason)}
 
       {:ok, body, ids} ->
-        case entries(body, ids, desc.string_blob) do
-          {:error, _} ->
-            {:error, :malformed, empty_report()}
+        {fields, nodes, terminated} =
+          case entries(body, ids, desc, desc.variable) do
+            {:ok, fields, nodes} -> {fields, nodes, true}
+            {:stop, fields, nodes, _remaining} -> {fields, nodes, false}
+          end
 
-          {:stop, _fields, _nodes, _remaining} ->
-            # a ROOT body the walk could not finish is malformed; nothing below
-            # the damage is read, so there is no value to save (§3)
-            {:error, :malformed, empty_report()}
+        {{value, report}, shared} =
+          with_node_directory(table, nodes, fn ->
+            blob_namings(fn -> decode_directory(desc, fields, nodes, ids, terminated) end)
+          end)
 
-          {:ok, fields, nodes} ->
-            {value, report} = decode(desc, fields, nodes, ids)
-            report = if :malformed in nodes, do: %{report | malformed: true}, else: report
-            unknown = Enum.count(nodes, &(&1 == :unknown))
-            report = %{report | unknown: report.unknown + unknown}
-            {:ok, Map.merge(defaults(desc), value), report}
+        report =
+          report
+          |> Map.put(:blob_shared, shared)
+          |> Map.put(:malformed, report.malformed or not terminated)
+
+        # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
+        # that met damage anywhere returns no value, only its report
+        cond do
+          Map.get(report, :missing_required, 0) > 0 ->
+            {:error, :missing_required, report}
+
+          Map.get(report, :malformed) ->
+            {:error, :malformed, reasoned(report, :malformed)}
+
+          true ->
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
         end
     end
+  catch
+    {:missing_required, report} ->
+      {:error, :missing_required, report}
+
+    {:count_over_extent_cap, report} ->
+      {:error, :count_over_extent_cap, reasoned(report, :count_over_extent_cap)}
+
+    # A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3), the
+    # tolerant one too, and outranks any damage the walk would have met after
+    # it: nothing lands, and the reason names the first such field.
+    {:non_finite_float, name} ->
+      {:error, :non_finite_float, reasoned(empty_report(), {:non_finite_float, name})}
+
+    :wire_damaged ->
+      {:error, :malformed, reasoned(empty_report(), :malformed)}
   end
+
+  # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
+  # verdict word beside its counters, spelled with the reference leg's
+  # TableRefuseReason names (internal/codegen/gotable/refusal.go) exactly as
+  # its measure names a wire it cannot read (tableRegionMeasureReason in
+  # internal/codegen/gotable/regions.go: unknown_form for a refused form,
+  # wire_damaged for damage). A clean read says an empty reason however
+  # tolerant it was: a widened, clamped, unknown or mismatched field is an
+  # EVENT the counters carry and never a refusal (§4). A form byte this reader
+  # does not carry says unknown_form, which is a refusal and not damage (§3).
+  # Framing damage says wire_damaged with the malformed flag beside it, and so
+  # does a read that finished over damage below the root (malformed set, the
+  # value kept), because the flag and the reason never disagree.
+  defp reasoned(report, :ok),
+    do: Map.put(report, :reason, if(report.malformed, do: "wire_damaged", else: ""))
+
+  defp reasoned(report, :newer_form), do: Map.put(report, :reason, "unknown_form")
+
+  defp reasoned(report, :count_over_extent_cap),
+    do: Map.put(report, :reason, "count_over_extent_cap")
+
+  defp reasoned(report, {:non_finite_float, name}),
+    do: Map.put(report, :reason, "non_finite_float: " <> name)
+
+  defp reasoned(report, _damage),
+    do: Map.put(%{report | malformed: true}, :reason, "wire_damaged")
 
   # open reads the form byte and the id trailer (docs/SPEC-TABLES.md §3).
   defp open(<<>>), do: {:error, :malformed}
@@ -288,7 +1517,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     size = byte_size(data)
     count = :binary.decode_unsigned(binary_part(data, size - 8, 8), :little)
 
-    if count > div(size - 9, 8) do
+    # §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+    # whatever the buffer would hold
+    if count > 4096 or count > div(size - 9, 8) do
       {:error, :malformed}
     else
       start = size - 8 - count * 8
@@ -309,7 +1540,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp duplicate_ids?(ids) do
     entries =
-      for i <- 0..div(byte_size(ids), 8) - 1 do
+      for i <- 0..(div(byte_size(ids), 8) - 1) do
         :binary.decode_unsigned(binary_part(ids, i * 8, 8), :little)
       end
 
@@ -347,88 +1578,124 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # entries walks the body once into {id, kind, payload} triples, splitting the
-  # node table out into its records (docs/SPEC-TABLES.md §3.1).
-  defp entries(bin, ids, string_blob), do: entries(bin, ids, string_blob, [], [])
+  # node table out into its records (docs/SPEC-TABLES.md §3.1). transport is
+  # true for a variable root: that body carries the reserved node id as its own
+  # numbering and does not count it unknown. It is false for a fixed root, which
+  # cannot name the id, so the id joins the field list and counts once as
+  # unknown (§4). It is :nested for every other body (a by-value table, an
+  # element, an entry, a node record), where the id is malformed: a second
+  # numbering cannot exist.
+  defp entries(bin, ids, allowed, transport) do
+    case entries(bin, ids, allowed, transport, [], nil) do
+      {:ok, fields, nil} ->
+        {:ok, fields, []}
+
+      {:ok, fields, node_bin} ->
+        case node_table(node_bin, ids, allowed) do
+          {:ok, ns} -> {:ok, fields, ns}
+          :error -> {:stop, fields, [], 0}
+        end
+
+      {:stop, fields, nil, rem} ->
+        {:stop, fields, [], rem}
+
+      {:stop, fields, node_bin, rem} ->
+        case node_table(node_bin, ids, allowed) do
+          {:ok, ns} -> {:stop, fields, ns, rem}
+          :error -> {:stop, fields, [], rem}
+        end
+    end
+  end
 
   # entries returns {:ok, fields, nodes} when the body ends at its terminator,
   # or {:stop, fields, nodes, remaining} when the walk stops, the fourth item
   # being the bytes the walk left un-consumed: 0 means the body ran off its own
   # end cleanly, which is the one stop that keeps the decoded prefix (§3).
-  defp entries(bin, ids, string_blob, acc, nodes) do
+  defp entries(bin, ids, allowed, transport, acc, node_bin) do
     case leb(bin) do
       :error ->
-        {:stop, Enum.reverse(acc), nodes, byte_size(bin)}
+        {:stop, Enum.reverse(acc), node_bin, byte_size(bin)}
 
       {0, _rest} ->
-        {:ok, Enum.reverse(acc), nodes}
+        {:ok, Enum.reverse(acc), node_bin}
 
       {ref, rest} ->
         case resolve(ids, ref) do
           :error ->
-            {:stop, Enum.reverse(acc), nodes, byte_size(rest)}
+            {:stop, Enum.reverse(acc), node_bin, byte_size(rest)}
 
           id ->
             case rest do
               <<kind, rest2::binary>> ->
-                if id == @build_version_id or id == @message_vocab_id do
+                if id == @build_version_id or id == @message_vocab_id or
+                     (id == @node_id and transport == :nested) do
                   # the two reserved ids ride in the ANNOUNCEMENT and nowhere
-                  # else (§3.3): one in any body but the announcement's own is
-                  # malformed, the walk stops there and no field after it is
-                  # read (§3.1)
-                  {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
+                  # else (§3.3), and the node id is a root's alone (§3.1): one
+                  # in a body that is not its transport is malformed, the walk
+                  # stops there and no field after it is read
+                  {:stop, Enum.reverse(acc), node_bin, byte_size(rest2)}
                 else
                   case slice(rest2, kind) do
                     {:ok, payload, rest3} ->
-                      if id == @node_id do
-                        # the reserved node id is this reader's own (§3.1): the
-                        # root body reads it as the node table, and a body that
-                        # carries it under another kind steps over it, never
-                        # counting it unknown
+                      if id == @node_id and transport == true do
+                        # the reserved node id is a variable root's own transport
+                        # (§3.1): its framing is whole or malformed. Any other
+                        # kind damages the numbering and discards the load.
+                        # A fixed root has no such transport arm.
                         if kind == 12 do
-                          case node_table(payload, ids, string_blob) do
-                            {:ok, ns} -> entries(rest3, ids, string_blob, acc, nodes ++ ns)
-                            :error -> {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
-                          end
+                          # a node table riding twice: the LAST is the
+                          # numbering (§3 last-wins; framing N7)
+                          entries(rest3, ids, allowed, transport, acc, payload)
                         else
-                          entries(rest3, ids, string_blob, acc, nodes)
+                          {:stop, Enum.reverse(acc), nil, byte_size(rest2)}
                         end
-
                       else
-                        entries(rest3, ids, string_blob, [{id, kind, payload} | acc], nodes)
+                        entries(
+                          rest3,
+                          ids,
+                          allowed,
+                          transport,
+                          [{id, kind, payload} | acc],
+                          node_bin
+                        )
                       end
 
                     :error ->
                       # a kind this reader cannot skip, or a length its body
-                      # cannot hold: the field still counts — unknown when the id
-                      # is not this body's, a kind mismatch when it is — and the
-                      # walk stops (§3, §4)
-                      if id == @node_id do
-                        {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
+                      # cannot hold: preserve the header for unknown/kind
+                      # accounting, but no payload exists to decode. The walk
+                      # stops here and the enclosing body owns the damage (§3, §4).
+                      if id == @node_id and transport == true do
+                        {:stop, Enum.reverse(acc), nil, byte_size(rest2)}
                       else
-                        {:stop, Enum.reverse([{id, kind, <<>>} | acc]), nodes, byte_size(rest2)}
+                        {:stop, Enum.reverse([{id, kind, :unframed} | acc]), node_bin,
+                         byte_size(rest2)}
                       end
                   end
                 end
 
               _ ->
-                {:stop, Enum.reverse(acc), nodes, 0}
+                {:stop, Enum.reverse(acc), node_bin, 0}
             end
         end
     end
   end
 
-  # node_table decodes the node table's records in order: the string framing
-  # first, then a count, then per record a reference to the string type id and
-  # the bytes. The whole table is read or it is nothing (§3.1): the scan reads
-  # records until the payload is consumed, and a count that disagrees with the
-  # scan makes the table malformed, so every pointer in the save reads null.
-  defp node_table(bin, ids, string_blob) do
+  # node_table decodes the node table's records in order (docs/SPEC-TABLES.md
+  # §3.1): the framing first, then a count, then per record a reference to the
+  # node's type id and its body. A record is a blob node (kind :blob, holding
+  # its bytes) or a table node (kind :table, holding its body bytes, decoded on
+  # demand by the pointer that names it). The whole table is read or it is
+  # nothing: the scan reads records until the payload is consumed, and a count
+  # that disagrees with the scan makes the table malformed, so every pointer in
+  # the save reads null.
+  defp node_table(bin, ids, allowed) do
     case leb(bin) do
       {l, rest} when byte_size(rest) >= l ->
         content = binary_part(rest, 0, l)
 
         case leb(content) do
-          {n, cr} -> node_records(cr, n, [], ids, string_blob)
+          {n, cr} -> node_records(cr, n, [], ids, allowed)
           :error -> :error
         end
 
@@ -437,11 +1704,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp node_records(<<>>, n, acc, _ids, _string_blob) do
+  defp node_records(<<>>, n, acc, _ids, _allowed) do
     if n == length(acc), do: {:ok, Enum.reverse(acc)}, else: :error
   end
 
-  defp node_records(rest, n, acc, ids, string_blob) do
+  defp node_records(rest, n, acc, ids, allowed) do
     with {sref, r1} <- leb(rest),
          true <- sref != 0 and sref <= div(byte_size(ids), 8),
          {len, r2} <- leb(r1),
@@ -449,20 +1716,326 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       bytes = binary_part(r2, 0, len)
 
       node =
-        if string_blob and resolve(ids, sref) == @string_id do
-          if utf8_valid?(bytes), do: bytes, else: :malformed
-        else
-          # a record whose type id this reader cannot name keeps its index
-          # and every pointer naming it reads null; the unknown is counted
-          # once at the record, not once per pointer (§3.1)
-          :unknown
+        case resolve(ids, sref) do
+          :error ->
+            :unknown
+
+          @string_id ->
+            # a *string blob this reader can name is its UTF-8 bytes; a record
+            # whose content is not text is malformed, and the root that reaches
+            # no *string cannot place the record at all (§3.1)
+            if is_map(allowed) and allowed.string_blob do
+              if utf8_valid?(bytes), do: {:blob, :string, bytes}, else: :malformed
+            else
+              :unknown
+            end
+
+          tid ->
+            case Map.fetch(@node_types, tid) do
+              {:ok, :bytes} ->
+                if is_map(allowed) and allowed.bytes_blob,
+                  do: {:blob, :bytes, bytes},
+                  else: :unknown
+
+              {:ok, name} ->
+                if is_map(allowed) and Map.get(allowed.node_types, tid) == name,
+                  do: {:table, name, bytes},
+                  else: :unknown
+
+              :error ->
+                :unknown
+            end
         end
 
-      node_records(binary_part(r2, len, byte_size(r2) - len), n, [node | acc], ids, string_blob)
+      node_records(binary_part(r2, len, byte_size(r2) - len), n, [node | acc], ids, allowed)
     else
       _ -> :error
     end
   end
+
+  # THE TOLERANT READ OF A SHARED BLOB (docs/SPEC-TABLES.md §2.5): a blob is
+  # owned by one slot, and a wire whose two slots name ONE blob record is read,
+  # not refused. Final stored slots use bytes for the first owner and
+  # {:blob_shared, bytes} for each other owner, never a copy. The report counts
+  # extra read namings; writers refuse only ownership that survives replacement.
+  # A read site is the body holding it (root or table node by index) and its
+  # position among that body's blob reads, so a table node a second pointer
+  # decodes again names the same slots and is not a sharing.
+  defp blob_namings(fun) do
+    Process.put(:elixir_blob_read, %{
+      holder: :root,
+      n: 0,
+      next: 0,
+      named: %{},
+      shared: MapSet.new()
+    })
+
+    try do
+      result = fun.()
+      {result, MapSet.size(Process.get(:elixir_blob_read).shared)}
+    after
+      Process.delete(:elixir_blob_read)
+    end
+  end
+
+  defp in_read_holder(idx, fun) do
+    case Process.get(:elixir_blob_read) do
+      nil ->
+        fun.()
+
+      outer ->
+        Process.put(:elixir_blob_read, %{outer | holder: {:node, idx}, n: 0})
+
+        try do
+          fun.()
+        after
+          inner = Process.get(:elixir_blob_read)
+          Process.put(:elixir_blob_read, %{inner | holder: outer.holder, n: outer.n})
+        end
+    end
+  end
+
+  defp blob_named(idx, bytes) do
+    case Process.get(:elixir_blob_read) do
+      nil ->
+        bytes
+
+      st ->
+        site = {st.holder, st.n}
+        marker = {:__wire_blob__, idx, st.next, bytes}
+        st = %{st | n: st.n + 1, next: st.next + 1}
+
+        st =
+          case Map.fetch(st.named, idx) do
+            :error -> %{st | named: Map.put(st.named, idx, site)}
+            {:ok, ^site} -> st
+            {:ok, _first} -> %{st | shared: MapSet.put(st.shared, site)}
+          end
+
+        Process.put(:elixir_blob_read, st)
+        marker
+    end
+  end
+
+  # Read events count every extra naming. Writer ownership belongs to the
+  # final stored slots, after duplicate fields have replaced or cleared values.
+  # Resolve markers before assembling the DAG, following only live root edges.
+  defp final_blob_slots(records, root_desc) do
+    case Process.get(:elixir_blob_read) do
+      %{next: 0} ->
+        records
+
+      _ ->
+        owners = live_blob_owners([{1, root_desc}], records, MapSet.new(), %{})
+        place_blob_slots(records, owners)
+    end
+  end
+
+  defp live_blob_owners([], _records, _seen, owners), do: owners
+
+  defp live_blob_owners([{idx, desc} | pending], records, seen, owners) do
+    if MapSet.member?(seen, idx) do
+      live_blob_owners(pending, records, seen, owners)
+    else
+      # Reuse writer selection, including guards, by-value bodies and selected
+      # union arms. Private pointer markers queue edges without expanding DAGs.
+      {pending, owners} =
+        Enum.reduce(collect_nodes(desc, Map.fetch!(records, idx), []), {pending, owners}, fn
+          {_tid, :blob, _site, {:__wire_blob__, blob, order, _bytes}}, {pending, owners} ->
+            {pending, Map.update(owners, blob, order, &min(&1, order))}
+
+          {_tid, :table, name, %{__wire_node__: child}}, {pending, owners} ->
+            {[{child, Map.fetch!(@tables, name)} | pending], owners}
+        end)
+
+      live_blob_owners(pending, records, MapSet.put(seen, idx), owners)
+    end
+  end
+
+  defp place_blob_slots({:__wire_blob__, idx, order, bytes}, owners),
+    do: if(Map.get(owners, idx, order) == order, do: bytes, else: {:blob_shared, bytes})
+
+  defp place_blob_slots(value, owners) when is_map(value),
+    do: Map.new(value, fn {key, v} -> {key, place_blob_slots(v, owners)} end)
+
+  defp place_blob_slots(value, owners) when is_list(value),
+    do: Enum.map(value, &place_blob_slots(&1, owners))
+
+  defp place_blob_slots(value, owners) when is_tuple(value),
+    do: value |> Tuple.to_list() |> Enum.map(&place_blob_slots(&1, owners)) |> List.to_tuple()
+
+  defp place_blob_slots(value, _owners), do: value
+
+  # Decode never follows a pointer. The directory gives constant-time index
+  # lookup; a stored pointer stays a private marker until all bodies are read.
+  defp with_node_directory(root, nodes, fun) do
+    prior = Process.get(:elixir_node_directory)
+    Process.put(:elixir_node_directory, {root, List.to_tuple(nodes)})
+
+    try do
+      fun.()
+    after
+      if prior == nil,
+        do: Process.delete(:elixir_node_directory),
+        else: Process.put(:elixir_node_directory, prior)
+    end
+  end
+
+  defp root_reference(f) do
+    {root, _directory} = Process.get(:elixir_node_directory)
+    if Map.get(f, :elem) == root, do: %{__wire_node__: 1}, else: nil
+  end
+
+  defp node_value(_nodes, idx, _ids, expected) do
+    {_root, directory} = Process.get(:elixir_node_directory)
+    at = idx - 2
+
+    if at < 0 or at >= tuple_size(directory) do
+      :out_of_range
+    else
+      case elem(directory, at) do
+        {:blob, kind, bytes} ->
+          if Map.get(expected, :blob) == kind, do: {:value, bytes}, else: {:value, :wrong_type}
+
+        {:table, name, _body} ->
+          if Map.get(expected, :elem) == name,
+            do: {:value, %{__wire_node__: idx}},
+            else: {:value, :wrong_type}
+
+        _ ->
+          :null
+      end
+    end
+  end
+
+  defp decoded_fields(name, body, ids) do
+    desc = Map.fetch!(@tables, name)
+
+    case entries(body, ids, desc, :nested) do
+      {:ok, fields, []} -> {desc, fields, true}
+      {:stop, fields, [], _} -> {desc, fields, false}
+      _ -> throw(:wire_damaged)
+    end
+  end
+
+  defp directory_report(nodes, report, retaining) do
+    unknown = Enum.count(nodes, &(&1 == :unknown))
+
+    %{
+      report
+      | unknown: report.unknown + unknown,
+        retain_lost: report.retain_lost + if(retaining, do: unknown, else: 0),
+        malformed: report.malformed or :malformed in nodes
+    }
+  end
+
+  defp decode_directory(desc, fields, nodes, ids, terminated) do
+    # The directory census precedes every body; placed nodes precede the root.
+    # A refusal must retain exactly the diagnostic prefix already earned.
+    report = directory_report(nodes, empty_report(), false)
+
+    {records, report} =
+      nodes
+      |> Enum.with_index(2)
+      |> Enum.reduce({%{}, report}, fn
+        {{:table, name, body}, idx}, {records, report} ->
+          {node_desc, node_fields, node_ok} = decoded_fields(name, body, ids)
+
+          {_status, value, own_report} =
+            carry_count_report(report, fn ->
+              in_read_holder(idx, fn ->
+                decode(node_desc, node_fields, nodes, ids, node_ok)
+              end)
+            end)
+
+          own_report = %{own_report | malformed: own_report.malformed or not node_ok}
+          {Map.put(records, idx, value), merge_report(report, own_report)}
+
+        _, state ->
+          state
+      end)
+
+    {_status, root, own_report} =
+      carry_count_report(report, fn -> decode(desc, fields, nodes, ids, terminated) end)
+
+    report =
+      merge_report(report, %{own_report | malformed: own_report.malformed or not terminated})
+
+    records = records |> Map.put(1, root) |> final_blob_slots(desc)
+    value = if report.malformed, do: %{}, else: assemble_directory(records)
+    {value, report}
+  end
+
+  # Kahn's pass starts at leaves. Each final stored pointer contributes one
+  # dependency, including false guards and records unreachable from the root.
+  # The by-value walk never follows a marker, sorts a map, or expands a DAG.
+  defp assemble_directory(records) do
+    {pending, parents, ready} =
+      Enum.reduce(records, {%{}, %{}, :queue.new()}, fn
+        {idx, value}, {pending, parents, ready} ->
+          refs = stored_references(value, [])
+
+          parents =
+            Enum.reduce(refs, parents, fn ref, parents ->
+              Map.update(parents, ref, [idx], fn xs -> [idx | xs] end)
+            end)
+
+          ready = if refs == [], do: :queue.in(idx, ready), else: ready
+          {Map.put(pending, idx, length(refs)), parents, ready}
+      end)
+
+    assembled = assemble_ready(ready, pending, parents, records, %{})
+    if map_size(assembled) != map_size(records), do: throw(:wire_damaged)
+    Map.get(assembled, 1, %{})
+  end
+
+  defp assemble_ready(ready, pending, parents, records, assembled) do
+    case :queue.out(ready) do
+      {:empty, _} ->
+        assembled
+
+      {{:value, idx}, ready} ->
+        value = resolve_stored(Map.fetch!(records, idx), assembled)
+        value = if idx == 1, do: value, else: Map.put(value, :__wire_identity__, idx)
+        assembled = Map.put(assembled, idx, value)
+
+        {pending, ready} =
+          Enum.reduce(Map.get(parents, idx, []), {pending, ready}, fn
+            parent, {pending, ready} ->
+              left = Map.fetch!(pending, parent) - 1
+              ready = if left == 0, do: :queue.in(parent, ready), else: ready
+              {Map.put(pending, parent, left), ready}
+          end)
+
+        assemble_ready(ready, pending, parents, records, assembled)
+    end
+  end
+
+  defp stored_references(%{__wire_node__: idx}, acc), do: [idx | acc]
+
+  defp stored_references(value, acc) when is_map(value),
+    do: Enum.reduce(value, acc, fn {_key, v}, acc -> stored_references(v, acc) end)
+
+  defp stored_references(value, acc) when is_list(value),
+    do: Enum.reduce(value, acc, &stored_references/2)
+
+  defp stored_references(value, acc) when is_tuple(value),
+    do: value |> Tuple.to_list() |> Enum.reduce(acc, &stored_references/2)
+
+  defp stored_references(_value, acc), do: acc
+
+  defp resolve_stored(%{__wire_node__: idx}, assembled), do: Map.fetch!(assembled, idx)
+
+  defp resolve_stored(value, assembled) when is_map(value),
+    do: Map.new(value, fn {key, v} -> {key, resolve_stored(v, assembled)} end)
+
+  defp resolve_stored(value, assembled) when is_list(value),
+    do: Enum.map(value, &resolve_stored(&1, assembled))
+
+  defp resolve_stored(value, assembled) when is_tuple(value),
+    do: value |> Tuple.to_list() |> Enum.map(&resolve_stored(&1, assembled)) |> List.to_tuple()
+
+  defp resolve_stored(value, _assembled), do: value
 
   # decode folds the field triples into a value, tolerantly (docs/SPEC-TABLES.md §4).
   # A reference that resolves ABOVE the entry count is framing damage on the
@@ -470,32 +2043,95 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # stand, one malformed counts, and no field after it is read. §4's ordinary
   # events — an unknown id, a kind mismatch, an out-of-range value, a reference
   # a reader cannot name — read on, and the halt is the one exception.
-  defp decode(desc, fields, nodes, ids) do
-    Enum.reduce_while(fields, {Map.new(), empty_report()}, fn {id, kind, payload}, {value, report} ->
-      case find_field(desc, id) do
-        nil ->
-          {:cont, {value, %{report | unknown: report.unknown + 1}}}
+  defp decode(desc, fields, nodes, ids, terminated) do
+    {status, value, report} =
+      Enum.reduce_while(fields, {:cont, Map.new(), empty_report()}, fn {id, kind, payload},
+                                                                       {_status, value, report} ->
+        case find_field(desc, id) do
+          nil ->
+            report = %{report | unknown: report.unknown + 1}
 
-        f ->
-          cond do
-            kind == f.kind ->
-              case read_payload(f, payload, nodes, ids, report) do
-                {:cont, v, report} -> {:cont, {Map.put(value, f.name, v), report}}
-                {:halt, v, report} -> {:halt, {Map.put(value, f.name, v), report}}
-              end
+            if payload == :unframed,
+              do: {:halt, {:halt, value, report}},
+              else: {:cont, {:cont, value, report}}
 
-            widens?(kind, f) ->
-              # WIDENED (§4): a kind that grew since the writer decodes exactly
-              # at its own width, the value lands, and one widened event counts
-              {v, report} = read_widened(f, kind, payload, report)
-              {:cont, {Map.put(value, f.name, v), report}}
+          f ->
+            cond do
+              payload == :unframed ->
+                # The field header was read, but its payload never framed.
+                # Count only a genuine kind mismatch; never feed fabricated
+                # empty bytes to a scalar reader. The enclosing body owns
+                # the damage and discards this incomplete field.
+                report =
+                  if kind == f.kind or widens?(kind, f),
+                    do: report,
+                    else: %{report | kind_mismatch: report.kind_mismatch + 1}
 
-            true ->
-              {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
-          end
-      end
-    end)
+                {:halt, {:halt, value, report}}
+
+              kind == f.kind and not compatible_payload?(f, payload) ->
+                {:cont, {:cont, value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
+
+              kind == f.kind ->
+                case read_payload(f, payload, nodes, ids, report) do
+                  {:cont, :inert, report} ->
+                    {:cont, {:cont, inert_required_field(f, value), report}}
+
+                  {:cont, v, report} ->
+                    {:cont, {:cont, put_wire_field(value, f, v), report}}
+
+                  {:halt, v, report} ->
+                    {:halt, {:halt, put_wire_field(value, f, v), report}}
+                end
+
+              widens?(kind, f) ->
+                # WIDENED (§4): a kind that grew since the writer decodes exactly
+                # at its own width, the value lands, and one widened event counts
+                {v, report} = read_widened(f, kind, payload, report)
+                {:cont, {:cont, put_wire_field(value, f, v), report}}
+
+              true ->
+                {:cont, {:cont, value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
+            end
+        end
+      end)
+
+    status = if terminated, do: status, else: :halt
+
+    report =
+      if status == :cont, do: require_seen(desc, value, Map.keys(value), report), else: report
+
+    {status, value, report}
   end
+
+  # A positional fixed array updates its received prefix; an enum-keyed
+  # occurrence updates only the slots it names. Other fields replace normally.
+  defp put_wire_field(value, %{t: :list, fixed_array: _} = f, incoming) do
+    prior = Map.get(value, f.name) || []
+    Map.put(value, f.name, incoming ++ Enum.drop(prior, length(incoming)))
+  end
+
+  defp put_wire_field(value, %{t: :keyed} = f, incoming) do
+    prior = Map.get(value, f.name) || %{}
+    Map.put(value, f.name, Map.merge(prior, incoming))
+  end
+
+  defp put_wire_field(value, f, incoming), do: Map.put(value, f.name, incoming)
+
+  # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
+  # array, map or keyed body too short to carry its own header, fewer than two
+  # bytes, decodes nothing, counts nothing, and the field keeps the value it
+  # has. The field rode, so an optional one is present: empty, when no earlier
+  # occurrence set it.
+  defp inert_field(f, value) do
+    if Map.get(f, :optional, false) and not Map.has_key?(value, f.name),
+      do: Map.put(value, f.name, inert_empty(f)),
+      else: value
+  end
+
+  defp inert_empty(%{t: :bytes}), do: <<>>
+  defp inert_empty(%{t: :list}), do: []
+  defp inert_empty(_f), do: %{}
 
   defp find_field(desc, id) do
     Enum.find(desc.fields, fn f -> f.id == id end)
@@ -510,8 +2146,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           not utf8_valid?(raw) ->
             {:cont, "", %{report | malformed: true}}
 
-          len > f.size ->
-            {:cont, binary_part(raw, 0, f.size), %{report | clamped: report.clamped + 1}}
+          not Map.get(f, :unbounded, false) and len > f.size ->
+            {:cont, utf8_prefix(raw, f.size), %{report | clamped: report.clamped + 1}}
 
           true ->
             {:cont, raw, report}
@@ -529,14 +2165,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {:cont, clamped, report}
   end
 
-  defp read_payload(%{t: :bool}, payload, _nodes, _ids, report) do
-    {:cont, binary_part(payload, 0, 1) != <<0>>, report}
+  defp read_payload(%{t: :bool}, <<b, _::binary>>, _nodes, _ids, report) do
+    report = if b > 1, do: %{report | malformed: true}, else: report
+    {:cont, b != 0, report}
   end
 
   defp read_payload(%{t: :enum} = f, payload, _nodes, ids, report) do
     case leb(payload) do
       {0, _} ->
-        {:cont, nil, report}
+        {:cont, enum_none(f), report}
 
       {vref, _} ->
         case resolve(ids, vref) do
@@ -548,65 +2185,266 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           variant_id ->
             case Map.fetch(f.by_id, variant_id) do
               {:ok, name} -> {:cont, name, report}
-              :error -> {:cont, nil, %{report | unknown: report.unknown + 1}}
+              :error -> {:cont, enum_none(f), %{report | unknown: report.unknown + 1}}
             end
         end
     end
   end
 
-  defp read_payload(%{t: :blob} = _f, payload, nodes, _ids, report) do
+  defp read_payload(%{t: :blob} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {0, _} ->
         {:cont, nil, report}
 
       {1, _} ->
-        # node index 1 is the ROOT, a table, never a blob (§3.1): a *string
-        # naming it is a kind mismatch, and the pointer reads null
+        # node index 1 is the ROOT, a table, never a blob (§3.1): a *bytes or
+        # *string naming it is a kind mismatch, and the pointer reads null
         {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
       {idx, _} ->
-        at = idx - 2
+        case node_value(nodes, idx, ids, f) do
+          {:value, bytes} when is_binary(bytes) ->
+            {:cont, blob_named(idx, bytes), report}
 
-        cond do
-          at < 0 or at >= length(nodes) ->
+          {:value, _} ->
+            # a table node named by a *bytes/*string pointer is a kind mismatch
+            {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+          :out_of_range ->
             # an index above node_count + 1 is framing damage; the pointer reads
             # null and the walk reads on (§3.1)
             {:cont, nil, %{report | malformed: true}}
 
-          Enum.at(nodes, at) == :malformed ->
-            # a text blob whose content was refused reads null; the malformed
-            # was counted once at the node table (§3.1)
+          :null ->
+            # a malformed or unknown record was counted once at the node table
             {:cont, nil, report}
-
-          Enum.at(nodes, at) == :unknown ->
-            # a record whose type id this reader cannot name reads null; the
-            # unknown was counted once at the node table (§3.1)
-            {:cont, nil, report}
-
-          true ->
-            {:cont, Enum.at(nodes, at), report}
         end
+    end
+  end
+
+  defp read_payload(%{t: :pointer} = f, payload, nodes, ids, report) do
+    case leb(payload) do
+      {0, _} ->
+        {:cont, nil, report}
+
+      {1, _} ->
+        # Node index 1 resolves to the ROOT when the table type matches.
+        # All records' final stored slots are checked for resulting cycles;
+        # a different table type is a kind mismatch.
+        case root_reference(f) do
+          nil -> {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+          value -> {:cont, value, report}
+        end
+
+      {idx, _} ->
+        case node_value(nodes, idx, ids, f) do
+          {:value, v} when is_map(v) ->
+            {:cont, v, report}
+
+          {:value, _} ->
+            # a blob node named by a *table pointer is a kind mismatch
+            {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+          :out_of_range ->
+            {:cont, nil, %{report | malformed: true}}
+
+          :null ->
+            {:cont, nil, report}
+        end
+    end
+  end
+
+  # a nested table by value rides as a framed body (kind 13): the payload is the
+  # body's L then the field walk (docs/SPEC-TABLES.md §3). A body that cannot be
+  # read whole reads the table's declared defaults and one malformed counts.
+  defp read_payload(%{t: :table} = f, payload, nodes, ids, report) do
+    case leb(payload) do
+      {_len, body} ->
+        # a nested body reads as an element does (§3, §4), and its events FOLD
+        # into the holder's: a fresh report here would drop every event the
+        # holder counted before it
+        {status, value, nested} =
+          carry_count_report(report, fn ->
+            read_element(Map.fetch!(@tables, f.elem), body, nodes, ids)
+          end)
+
+        {status, value, merge_report(report, nested)}
+
+      :error ->
+        {:cont, %{}, %{report | malformed: true}}
+    end
+  end
+
+  # bytes(N) rides as an array of u8 (kind 14, element kind 6): L then the count
+  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. A count past the
+  # declared size clamps.
+  defp read_payload(%{t: :bytes} = f, payload, _nodes, _ids, report) do
+    case leb(payload) do
+      {_len, arr} when byte_size(arr) < 2 ->
+        {:cont, :inert, report}
+
+      {_len, <<actual, count_rest::binary>>} ->
+        case leb(count_rest) do
+          {n, bytes} when actual == 6 ->
+            keep = min(n, f.size)
+            clamped = if n > f.size, do: 1, else: 0
+            report = %{report | clamped: report.clamped + clamped}
+
+            if byte_size(bytes) >= keep do
+              {:cont, binary_part(bytes, 0, keep), report}
+            else
+              {:cont, bytes, %{report | malformed: true}}
+            end
+
+          {_n, _bytes} ->
+            {:cont, <<>>, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+          :error ->
+            {:cont, <<>>, %{report | malformed: true}}
+        end
+
+      :error ->
+        {:cont, <<>>, %{report | malformed: true}}
+    end
+  end
+
+  defp read_payload(%{t: :float} = f, payload, _nodes, _ids, report) do
+    {v, report} = clamp_int(float_of(payload, f.width, f.non_finite), f, report)
+    {:cont, v, report}
+  end
+
+  defp read_payload(%{t: :map} = f, payload, nodes, ids, report) do
+    # SPEC-TABLES §2.8, §3: kind 14 contains framed entry tables. A map's
+    # public keys use their JSON spelling; its wire keys remain typed.
+    case read_payload(Map.put(%{f | t: :list}, :map_entry, true), payload, nodes, ids, report) do
+      {:cont, :map_key_mismatch, report} ->
+        {:cont, %{}, report}
+
+      {:cont, :inert, report} ->
+        {:cont, :inert, report}
+
+      {:cont, entries, report} ->
+        [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
+        keys = Enum.map(entries, &Map.get(&1, "key", kf.default))
+
+        if descending?(keys) do
+          # DESCENDING keys are not a map any conforming writer produced: damage,
+          # and the whole load is discarded (§2.8, §4)
+          {:cont, %{}, %{report | malformed: true}}
+        else
+          map_values(entries, kf, vf, report)
+        end
+
+      other ->
+        other
+    end
+  end
+
+  # a union field's payload is one arm header (docs/SPEC-TABLES.md §2.6, §3).
+  defp read_payload(%{t: :union} = f, payload, nodes, ids, report),
+    do: read_arm(f.elem, payload, nodes, ids, report)
+
+  # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2): the element kind, the
+  # pair count, then (key reference, L, element) pairs. A key this reader cannot
+  # name counts unknown and its element is skipped by its L.
+  # A body of fewer than two bytes is inert (§4); a foreign element kind is
+  # a kind mismatch; a count that does not complete
+  # inside the body is damage (§3, THE HEADER AGAINST THE PARENT: completed in
+  # the parent, it is a count the body cannot cover).
+  defp read_payload(%{t: :keyed} = f, payload, nodes, ids, report) do
+    case leb(payload) do
+      {_len, body} when byte_size(body) < 2 ->
+        {:cont, :inert, report}
+
+      {_len, <<ek, rest::binary>>} ->
+        case leb(rest) do
+          {n, pairs} ->
+            case keyed_reader(f, ek, report) do
+              {:ok, reader, report} -> read_keyed_pairs(reader, pairs, n, nodes, ids, %{}, report)
+              {:mismatch, report} -> {:cont, %{}, report}
+            end
+
+          :error ->
+            {:cont, %{}, %{report | malformed: true}}
+        end
+
+      :error ->
+        {:cont, %{}, %{report | malformed: true}}
+    end
+  end
+
+  # Validate the whole UTF-16LE payload before clamping. NUL and unpaired
+  # surrogates are damage even beyond the bound; a clamp never splits a pair.
+  defp read_payload(%{t: :wstring} = f, payload, _nodes, _ids, report) do
+    case leb(payload) do
+      {len, rest} when byte_size(rest) >= len and rem(len, 2) == 0 ->
+        raw = binary_part(rest, 0, len)
+
+        case :unicode.characters_to_binary(raw, {:utf16, :little}, :utf8) do
+          s when is_binary(s) ->
+            cond do
+              not utf8_valid?(s) ->
+                {:cont, "", %{report | malformed: true}}
+
+              div(len, 2) > f.size ->
+                cut = binary_part(raw, 0, f.size * 2)
+                size = byte_size(cut)
+
+                cut =
+                  if size > 0 do
+                    <<last::little-unsigned-16>> = binary_part(cut, size - 2, 2)
+                    if last in 0xD800..0xDBFF, do: binary_part(cut, 0, size - 2), else: cut
+                  else
+                    cut
+                  end
+
+                {:cont, :unicode.characters_to_binary(cut, {:utf16, :little}, :utf8),
+                 %{report | clamped: report.clamped + 1}}
+
+              true ->
+                {:cont, s, report}
+            end
+
+          _ ->
+            {:cont, "", %{report | malformed: true}}
+        end
+
+      _ ->
+        {:cont, "", %{report | malformed: true}}
     end
   end
 
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
-      {_len, arr} ->
-        elem_desc = Map.fetch!(@tables, f.elem)
+      {_len, arr} when byte_size(arr) < 2 ->
+        # a body too short to carry its header is inert (§4, H2)
+        {:cont, :inert, report}
 
-        case arr do
-          <<13, count_rest::binary>> ->
-            case leb(count_rest) do
-              {n, elems} ->
-                {value, report} = read_elements(elem_desc, elems, n, nodes, ids, [], report)
-                {:cont, value, report}
+      {_len, <<elem_kind, count_rest::binary>>} ->
+        case leb(count_rest) do
+          {n, elems} ->
+            # a narrower scalar element kind widens and counts once
+            # (docs/SPEC-TABLES.md §2.9, §4). Any other disagreement skips
+            # the field and counts a kind mismatch.
+            if elem_kind == f.elem_kind or kind_widens?(elem_kind, f.elem_kind) do
+              report =
+                if elem_kind == f.elem_kind do
+                  report
+                else
+                  %{report | widened: report.widened + 1}
+                end
 
-              :error ->
-                {:cont, [], %{report | malformed: true}}
+              check_wire_count(n, f, report)
+              reader = %{f | elem_kind: elem_kind}
+              {n, report} = clamp_count(n, f, report)
+              {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
+              {:cont, value, report}
+            else
+              {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
             end
 
-          _ ->
-            {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+          :error ->
+            {:cont, [], %{report | malformed: true}}
         end
 
       :error ->
@@ -614,108 +2452,815 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  # widens? reports whether a wire kind decodes EXACTLY into this int field
-  # (docs/SPEC-TABLES.md §4): a smaller signed integer into a wider one of the
-  # same signedness. The card declares int32 and int64 only, so the ladder is
-  # kinds 2, 3, 4, 5 and every kind below the declared one widens.
-  defp widens?(kind, %{t: :int, signed: true} = f), do: kind >= 2 and kind < f.kind
+  # A map key is scanned before its value, including the first entry. Its
+  # final kind wins; an incompatible key outranks later scan damage and clears
+  # the whole map. Other fields are skipped only for framing during this scan.
+  defp map_key_admission(desc, sub, acc, ids, report) do
+    if Map.get(desc, :map_entry, false) do
+      [kf | _] = desc.fields
+      {complete, key, bad, widened} = scan_map_key(kf, sub, ids, kf.default, false, false)
+      prior_widened = Map.get(desc, :map_widened, false)
+
+      report =
+        if widened and not prior_widened,
+          do: %{report | widened: report.widened + 1},
+          else: report
+
+      desc = Map.put(desc, :map_widened, prior_widened or widened)
+
+      cond do
+        bad ->
+          {:mismatch, desc, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+        not complete ->
+          {:malformed, desc, %{report | malformed: true}}
+
+        kf.t == :string and not Map.get(kf, :unbounded, false) and byte_size(key) > kf.size ->
+          {:drop, desc, %{report | clamped: report.clamped + 1}}
+
+        acc != [] and key < Map.get(hd(acc), "key", kf.default) ->
+          {:malformed, desc, %{report | malformed: true}}
+
+        true ->
+          duplicate = acc != [] and key == Map.get(hd(acc), "key", kf.default)
+          {:keep, Map.put(desc, :map_duplicate, duplicate), report}
+      end
+    else
+      {:keep, desc, report}
+    end
+  end
+
+  # Count a duplicate only after its complete value has been decoded. The
+  # event survives a later key mismatch that clears the map's stored value.
+  defp map_duplicate_report(desc, report) do
+    if Map.get(desc, :map_duplicate, false),
+      do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+      else: report
+  end
+
+  defp scan_map_key(kf, bin, ids, key, bad, widened) do
+    case leb(bin) do
+      {0, rest} ->
+        {rest == <<>>, key, bad, widened}
+
+      {ref, <<kind, rest::binary>>} ->
+        case resolve(ids, ref) do
+          :error ->
+            {false, key, bad, widened}
+
+          id ->
+            is_key = id == kf.id
+            grows = is_key and widens?(kind, kf)
+            bad = if is_key, do: kind != kf.kind and not grows, else: bad
+            widened = widened or grows
+
+            case slice(rest, kind) do
+              {:ok, payload, after_value} ->
+                if is_key and not bad do
+                  case scan_map_key_value(kf, kind, payload) do
+                    {:ok, value} -> scan_map_key(kf, after_value, ids, value, bad, widened)
+                    :error -> {false, key, bad, widened}
+                  end
+                else
+                  scan_map_key(kf, after_value, ids, key, bad, widened)
+                end
+
+              :error ->
+                {false, key, bad, widened}
+            end
+        end
+
+      _ ->
+        {false, key, bad, widened}
+    end
+  end
+
+  defp scan_map_key_value(%{t: :string}, _kind, payload) do
+    case leb(payload) do
+      {len, value} when byte_size(value) == len ->
+        if utf8_valid?(value), do: {:ok, value}, else: :error
+
+      _ ->
+        :error
+    end
+  end
+
+  defp scan_map_key_value(kf, kind, payload),
+    do: {:ok, int_of(payload, kind_width(kind), kf.signed)}
+
+  defp map_key_descriptor(%{map_entry: true, fields: [kf | rest]} = desc),
+    do: %{desc | fields: [Map.put(kf, :map_key, true) | rest]}
+
+  defp map_key_descriptor(desc), do: desc
+
+  # a map's wire keys ascend; a key below the one before it is DESCENDING
+  # (§2.8), and an equal key is a duplicate, last wins
+  defp descending?([a, b | rest]), do: b < a or descending?([b | rest])
+  defp descending?(_keys), do: false
+
+  defp map_values(entries, kf, vf, report) do
+    values =
+      Map.new(entries, fn entry ->
+        key = Map.get(entry, "key", kf.default)
+
+        {if(is_binary(key), do: key, else: Integer.to_string(key)),
+         Map.get(entry, "value", vf.default)}
+      end)
+
+    {:cont, values, report}
+  end
+
+  # read_arm reads one arm header (docs/SPEC-TABLES.md §2.6, §3): the zero
+  # reference is None; an arm id this reader cannot name counts unknown; an arm
+  # header under another kind counts a kind mismatch; the arm's payload under
+  # its L reads by the arm's own field line, and the value is {arm, payload}.
+  defp read_arm(union, bin, nodes, ids, report) do
+    case leb(bin) do
+      {0, _} ->
+        {:cont, nil, report}
+
+      {aref, <<k, rest::binary>>} ->
+        case resolve(ids, aref) do
+          :error ->
+            {:halt, nil, %{report | malformed: true}}
+
+          arm_id ->
+            un = Map.fetch!(@unions, union)
+
+            case Map.fetch(un.by_id, arm_id) do
+              :error ->
+                case leb(rest) do
+                  {l, content} when byte_size(content) >= l ->
+                    {:cont, nil, %{report | unknown: report.unknown + 1}}
+
+                  _ ->
+                    {:halt, nil, %{report | malformed: true}}
+                end
+
+              {:ok, name} ->
+                a = Map.fetch!(un.by_name, name)
+
+                case leb(rest) do
+                  {l, content} when byte_size(content) >= l and k == a.arm_kind ->
+                    inner = binary_part(content, 0, l)
+                    framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
+
+                    cond do
+                      arm_framing_damaged?(a, inner) ->
+                        # a fixed-width arm whose L is not its kind's width, a
+                        # payload-free arm with an L, and a reference-shaped arm
+                        # whose L is not its reference's own length are that
+                        # arm's own framing damage: the union reads None and the
+                        # parent reads on past L (§3)
+                        {:cont, nil, %{report | malformed: true}}
+
+                      not compatible_payload?(a, framed) ->
+                        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+                      true ->
+                        read_arm_payload(a, name, inner, framed, nodes, ids, report)
+                    end
+
+                  {l, content} when byte_size(content) >= l ->
+                    retyped_arm(a, name, k, binary_part(content, 0, l), report)
+
+                  _ ->
+                    {:cont, nil, %{report | malformed: true}}
+                end
+            end
+        end
+
+      _ ->
+        {:cont, nil, %{report | malformed: true}}
+    end
+  end
+
+  defp read_arm_payload(%{t: :void}, name, _inner, _framed, _nodes, _ids, report),
+    do: {:cont, {name, nil}, report}
+
+  defp read_arm_payload(a, name, inner, framed, nodes, ids, report) do
+    # the length-framed kinds read their own L, so they take the framed bytes;
+    # every other arm reads its payload exactly as a field does
+    payload = if a.arm_kind in [12, 13, 14, 16, 33], do: framed, else: inner
+
+    case read_payload(a, payload, nodes, ids, report) do
+      {:cont, :inert, report} -> {:cont, {name, inert_empty(a)}, report}
+      {:cont, v, report} -> {:cont, {name, v}, report}
+      {:halt, v, report} -> {:halt, {name, v}, report}
+    end
+  end
+
+  # arm_framing_damaged? is §3's length rule for an arm whose kind byte
+  # agreed: a payload-free arm carries nothing, a reference-shaped arm (a
+  # pointer, an enum) is exactly its reference, and a fixed-width arm is
+  # exactly its kind's width. The length-shaped kinds frame themselves.
+  defp arm_framing_damaged?(a, inner) do
+    cond do
+      a.arm_kind == 32 -> inner != <<>>
+      a.arm_kind in [17, 30] -> not match?({_, <<>>}, leb(inner))
+      a.arm_kind == 1 -> byte_size(inner) != 1
+      kind_width(a.arm_kind) > 0 -> byte_size(inner) != kind_width(a.arm_kind)
+      true -> false
+    end
+  end
+
+  # retyped_arm judges an arm that arrived under a kind the reader does not
+  # declare for it by the field rules (docs/SPEC-TABLES.md §3, §4): a kind the
+  # arm's own kind WIDENS decodes at the wire kind's width and counts one
+  # widened, an L that is not that width is the arm's own framing damage, and
+  # any other kind is a kind mismatch — the union None, the parent reading on.
+  defp retyped_arm(%{t: t} = a, name, k, inner, report) when t in [:int, :float] do
+    cond do
+      not widens?(k, a) ->
+        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+      byte_size(inner) != kind_width(k) ->
+        {:cont, nil, %{report | malformed: true}}
+
+      true ->
+        {v, report} = read_widened(a, k, inner, report)
+        {:cont, {name, v}, report}
+    end
+  end
+
+  defp retyped_arm(_a, _name, _k, _inner, report),
+    do: {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+  defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
+
+  defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
+    with {kref, r1} <- leb(bin),
+         kid when kid != :error <- resolve(ids, kref),
+         {l, r2} when byte_size(r2) >= l <- leb(r1) do
+      elem = binary_part(r2, 0, l)
+      rest = binary_part(r2, l, byte_size(r2) - l)
+      item = Map.put(f.item, :elem_kind, f.elem_kind)
+
+      case Map.fetch(f.key_by_id, kid) do
+        {:ok, name} ->
+          case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+            {:cont, v, report} ->
+              read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
+
+            {:halt, v, report} ->
+              {:halt, Map.put(acc, name, v), report}
+          end
+
+        :error ->
+          read_keyed_pairs(
+            f,
+            rest,
+            n - 1,
+            nodes,
+            ids,
+            acc,
+            %{report | unknown: report.unknown + 1}
+          )
+      end
+    else
+      _ -> {:cont, acc, %{report | malformed: true}}
+    end
+  end
+
+  defp read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+    if f.elem_kind == 13 do
+      {status, v, elem_report} =
+        carry_count_report(report, fn ->
+          read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
+        end)
+
+      {status, v, merge_report(report, elem_report)}
+    else
+      case read_list_elements(item, elem, 1, nodes, ids, [], report) do
+        {[v], report} -> {:cont, v, report}
+        {_, report} -> {:cont, item.default, report}
+      end
+    end
+  end
+
+  # A keyed body's scalar element kind widens once for the field. Each
+  # length-framed slot is then decoded at that incoming width (§3.2, §4).
+  defp keyed_reader(f, kind, report) do
+    cond do
+      kind == f.elem_kind ->
+        {:ok, f, report}
+
+      kind_widens?(kind, f.elem_kind) ->
+        {:ok, %{f | elem_kind: kind}, %{report | widened: report.widened + 1}}
+
+      true ->
+        {:mismatch, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  # Storage refusal is terminal and distinct from body damage. Bounded arrays
+  # keep their declared clamp contract; unbounded extents must fit int32.
+  defp check_wire_count(n, f, report) do
+    if n > 0x7FFFFFFF and not Map.has_key?(f, :max_count),
+      do: throw({:count_over_extent_cap, report})
+
+    :ok
+  end
+
+  # Nested plain reads start their own counters. Fold their terminal report
+  # into the enclosing read exactly where a successful child would be folded.
+  defp carry_count_report(report, fun) do
+    fun.()
+  catch
+    {:count_over_extent_cap, child} ->
+      throw({:count_over_extent_cap, merge_report(report, child)})
+
+    {:missing_required, child} ->
+      throw({:missing_required, merge_report(report, child)})
+  end
+
+  # a count past a bounded array's declared bound reads the first bound
+  # elements and counts one clamped, before any element is read, so the
+  # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
+  defp clamp_count(n, %{max_count: max}, report) when n > max,
+    do: {max, %{report | clamped: report.clamped + 1}}
+
+  defp clamp_count(n, _f, report), do: {n, report}
+
+  # widens? reports whether a wire kind decodes EXACTLY into this field
+  # (docs/SPEC-TABLES.md §4): a smaller integer into a wider one of the same
+  # signedness, the 128-bit kinds included, and float32 into float64 — the
+  # ladder kind_widens? spells, the same one an array's element kind climbs.
+  defp widens?(kind, %{t: :int} = f), do: kind_widens?(kind, f.kind)
+  defp widens?(kind, %{t: :float} = f), do: kind_widens?(kind, f.kind)
   defp widens?(_kind, _f), do: false
 
-  # read_widened decodes an int field whose wire kind widened (§4): the value
+  # read_widened decodes a field whose wire kind widened (§4): the value
   # reads at the wire kind's own width and lands, one widened event counts, and an
   # out-of-range value clamps as always.
+  defp read_widened(%{t: :float} = f, kind, payload, report) do
+    {v, report} = clamp_int(float_of(payload, kind_width(kind), f.non_finite), f, report)
+    {v, %{report | widened: report.widened + 1}}
+  end
+
   defp read_widened(f, kind, payload, report) do
     v = int_of(payload, kind_width(kind), f.signed)
     {clamped, report} = clamp_int(v, f, report)
-    {clamped, %{report | widened: report.widened + 1}}
+    widened = if Map.get(f, :map_key, false), do: report.widened, else: report.widened + 1
+    {clamped, %{report | widened: widened}}
   end
 
   defp kind_width(2), do: 1
   defp kind_width(3), do: 2
   defp kind_width(4), do: 4
   defp kind_width(5), do: 8
+  defp kind_width(6), do: 1
+  defp kind_width(7), do: 2
+  defp kind_width(8), do: 4
+  defp kind_width(9), do: 8
+  defp kind_width(10), do: 4
+  defp kind_width(11), do: 8
+  defp kind_width(kind) when kind in [20, 25], do: 1
+  defp kind_width(kind) when kind in [21, 26], do: 2
+  defp kind_width(kind) when kind in [22, 27], do: 4
+  defp kind_width(kind) when kind in [23, 28, 36], do: 8
+  defp kind_width(kind) when kind in [18, 19, 24, 29], do: 16
   defp kind_width(_), do: 0
 
-  defp read_elements(_desc, _rest, 0, _nodes, _ids, acc, report), do: {Enum.reverse(acc), report}
+  # kind_widens? is the scalar ladder a list's element kind may climb
+  # (docs/SPEC-TABLES.md §4): a smaller signed integer into a wider one of
+  # the same signedness, and float32 into float64. One widened counts for
+  # the array, and the elements are then read at the wire kind's width.
+  defp kind_widens?(from, to) do
+    (from >= 2 and from <= 5 and ((to > from and to <= 5) or to == 18)) or
+      (from >= 6 and from <= 9 and ((to > from and to <= 9) or to == 19)) or
+      (from == 10 and to == 11)
+  end
 
-  defp read_elements(desc, rest, n, nodes, ids, acc, report) do
+  # read_list_elements decodes one unbounded array's elements by the list's
+  # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
+  # body, a pointer element a node index, a string element its L and bytes, an
+  # enum element a variant reference, and every scalar element its own bytes.
+  defp read_list_elements(_f, _rest, 0, _nodes, _ids, acc, report),
+    do: {Enum.reverse(acc), report}
+
+  defp read_list_elements(%{text_list: true, elem_kind: 12} = f, rest, n, nodes, ids, acc, report) do
+    case leb(rest) do
+      {len, body} when byte_size(body) >= len ->
+        raw = binary_part(body, 0, len)
+        after_sub = binary_part(body, len, byte_size(body) - len)
+
+        {value, report} =
+          cond do
+            not utf8_valid?(raw) ->
+              {"", %{report | malformed: true}}
+
+            not Map.get(f, :text_unbounded, false) and len > f.text_size ->
+              {utf8_prefix(raw, f.text_size), %{report | clamped: report.clamped + 1}}
+
+            true ->
+              {raw, report}
+          end
+
+        value = %{"value" => value}
+
+        case text_list_keep(f, value, report) do
+          {:keep, f, report} ->
+            read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+
+          {:drop, report} ->
+            {Enum.reverse(acc), report}
+        end
+
+      _ ->
+        {Enum.reverse(acc), %{report | malformed: true}}
+    end
+  end
+
+  defp read_list_elements(%{elem_kind: 13} = f, rest, n, nodes, ids, acc, report) do
     case leb(rest) do
       {len, body} when byte_size(body) >= len ->
         sub = binary_part(body, 0, len)
         after_sub = binary_part(body, len, byte_size(body) - len)
 
-        {value, elem_report} = read_element(desc, sub, nodes, ids)
-        read_elements(desc, after_sub, n - 1, nodes, ids, [value | acc], merge_report(report, elem_report))
+        desc =
+          Map.fetch!(@tables, f.elem)
+          |> Map.put(:map_entry, Map.get(f, :map_entry, false))
+          |> Map.put(:map_widened, Map.get(f, :map_widened, false))
+          |> map_key_descriptor()
+
+        case map_key_admission(desc, sub, acc, ids, report) do
+          {:mismatch, _desc, report} ->
+            {:map_key_mismatch, report}
+
+          {:malformed, _desc, report} ->
+            {Enum.reverse(acc), report}
+
+          {:drop, desc, report} ->
+            read_list_elements(
+              Map.put(f, :map_widened, Map.get(desc, :map_widened, false)),
+              after_sub,
+              n - 1,
+              nodes,
+              ids,
+              acc,
+              report
+            )
+
+          {:keep, desc, report} ->
+            {:cont, value, elem_report} =
+              carry_count_report(report, fn -> read_element(desc, sub, nodes, ids) end)
+
+            f = Map.put(f, :map_widened, Map.get(desc, :map_widened, false))
+
+            report = map_duplicate_report(desc, merge_report(report, elem_report))
+
+            case text_list_keep(f, value, report) do
+              {:keep, f, report} ->
+                read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+
+              {:drop, report} ->
+                {Enum.reverse(acc), report}
+            end
+        end
 
       _ ->
-        # the element's L framing is damaged: the walk stops, one malformed
-        # counts, and the elements already read stand (§4)
         {Enum.reverse(acc), %{report | malformed: true}}
     end
   end
 
-  # read_element decodes one []T element (docs/SPEC-TABLES.md §2.9, §4). A body
-  # that cannot be read whole — its L does not frame it, its terminator is not
-  # its last byte, or its walk stops on damage — reads the element's DECLARED
-  # DEFAULTS and one malformed counts, and the list reads on past it. A clean
-  # body reads its value, and an event inside it folds into the list's report.
-  defp read_element(desc, sub, nodes, ids) do
-    if ends_early?(sub, ids) do
-      {%{}, malformed_report()}
-    else
-      case entries(sub, ids, false) do
-        {:ok, fields, []} ->
-          # a list element's report FOLDS into the enclosing one (§4): the
-          # counters sum and malformed sticks, so an event inside an element
-          # is never lost when the element's own walk returns.
-          decode(desc, fields, nodes, ids)
+  defp read_list_elements(%{elem_kind: 17} = f, rest, n, nodes, ids, acc, report) do
+    case leb(rest) do
+      {0, after_sub} ->
+        read_list_elements(f, after_sub, n - 1, nodes, ids, [nil | acc], report)
 
-        {:stop, fields, [], 0} ->
-          # the element's body ran off its own end with no terminator: the
-          # prefix decoded stands, and one malformed counts (§3)
-          {value, report} = decode(desc, fields, nodes, ids)
-          {value, %{report | malformed: true}}
+      {1, after_sub} ->
+        # node index 1 is the ROOT, as at a pointer field
+        value = root_reference(f)
 
-        {:stop, fields, [], _remaining} ->
-          # the element's body is damaged mid-walk: the events its prefix
-          # already earned count, the element reads its declared defaults, and
-          # one malformed counts (§3, §4)
-          {_value, report} = decode(desc, fields, nodes, ids)
-          {%{}, %{report | malformed: true}}
+        report =
+          if value == nil, do: %{report | kind_mismatch: report.kind_mismatch + 1}, else: report
 
-        _ ->
-          {%{}, malformed_report()}
-      end
+        read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+
+      {idx, after_sub} ->
+        # a SLOT resolves the way a pointer field does (§3.1): an index above
+        # the node count is malformed and THAT slot reads null, the array kept
+        # at its count; a blob node under a *T slot is a kind mismatch
+        {value, report} =
+          case node_value(nodes, idx, ids, f) do
+            {:value, v} when is_map(v) -> {v, report}
+            {:value, _} -> {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+            :out_of_range -> {nil, %{report | malformed: true}}
+            :null -> {nil, report}
+          end
+
+        read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+
+      :error ->
+        {Enum.reverse(acc), %{report | malformed: true}}
     end
   end
 
-  defp malformed_report, do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: true, retained: 0, retain_lost: 0}
+  defp read_list_elements(%{elem_kind: 12} = f, rest, n, nodes, ids, acc, report) do
+    case leb(rest) do
+      {len, body} when byte_size(body) >= len ->
+        raw = binary_part(body, 0, len)
+        after_sub = binary_part(body, len, byte_size(body) - len)
+
+        value =
+          cond do
+            not utf8_valid?(raw) -> ""
+            len > f.size -> utf8_prefix(raw, f.size)
+            true -> raw
+          end
+
+        read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+
+      _ ->
+        {Enum.reverse(acc), %{report | malformed: true}}
+    end
+  end
+
+  defp read_list_elements(%{elem_kind: 30} = f, rest, n, nodes, ids, acc, report) do
+    case leb(rest) do
+      {0, after_sub} ->
+        read_list_elements(f, after_sub, n - 1, nodes, ids, [nil | acc], report)
+
+      {vref, after_sub} ->
+        case resolve(ids, vref) do
+          :error ->
+            # A reference outside the id table is framing damage (§3, §4),
+            # not None or an id this enum does not declare.
+            {Enum.reverse(acc), %{report | malformed: true}}
+
+          variant_id ->
+            {value, report} =
+              case Map.fetch(f.by_id, variant_id) do
+                {:ok, name} -> {name, report}
+                :error -> {nil, %{report | unknown: report.unknown + 1}}
+              end
+
+            read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+        end
+
+      :error ->
+        {Enum.reverse(acc), %{report | malformed: true}}
+    end
+  end
+
+  defp read_list_elements(%{elem_kind: 1} = f, rest, n, nodes, ids, acc, report) do
+    case rest do
+      <<b, after_sub::binary>> ->
+        report = if b > 1, do: %{report | malformed: true}, else: report
+        read_list_elements(f, after_sub, n - 1, nodes, ids, [b != 0 | acc], report)
+
+      _ ->
+        {Enum.reverse(acc), %{report | malformed: true}}
+    end
+  end
+
+  defp read_list_elements(%{elem_kind: kind} = f, rest, n, nodes, ids, acc, report)
+       when kind in [10, 11] do
+    w = kind_width(kind)
+
+    if byte_size(rest) >= w do
+      <<raw::binary-size(^w), after_sub::binary>> = rest
+      {v, report} = clamp_list_int(float_of(raw, w, f.non_finite), f, report)
+      read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
+    else
+      {Enum.reverse(acc), %{report | malformed: true}}
+    end
+  end
+
+  defp read_list_elements(%{elem_kind: kind} = f, rest, n, nodes, ids, acc, report)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
+    w = kind_width(kind)
+    signed = kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]
+
+    if byte_size(rest) >= w do
+      <<raw::binary-size(^w), after_sub::binary>> = rest
+      {v, report} = clamp_list_int(int_of(raw, w, signed), f, report)
+      read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
+    else
+      {Enum.reverse(acc), %{report | malformed: true}}
+    end
+  end
+
+  defp read_list_elements(%{elem_kind: 15} = f, rest, n, nodes, ids, acc, report) do
+    case slice(rest, 15) do
+      {:ok, header, after_sub} ->
+        case read_arm(f.elem, header, nodes, ids, report) do
+          {:cont, v, report} ->
+            read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
+
+          {:halt, _v, report} ->
+            {Enum.reverse(acc), report}
+        end
+
+      :error ->
+        {Enum.reverse(acc), %{report | malformed: true}}
+    end
+  end
+
+  defp read_list_elements(_f, _rest, _n, _nodes, _ids, acc, report),
+    do: {Enum.reverse(acc), report}
+
+  # read_element decodes one L-framed nested body: a []T element, a by-value
+  # table, a keyed slot, a map entry or a table arm (docs/SPEC-TABLES.md §2.9,
+  # §4). DAMAGE ENDS THE BODY IT IS MET IN (§4): a body that cannot be read
+  # whole — its L does not frame it, its terminator is not its last byte, or
+  # its walk stops on damage — reads its DECLARED DEFAULTS, one malformed
+  # counts, and the enclosing body steps over it by its L and reads on, so the
+  # status is always :cont. A clean body reads its value, and an event inside
+  # it folds into the enclosing report.
+  defp read_element(desc, sub, nodes, ids) do
+    case entries(sub, ids, false, :nested) do
+      {:ok, fields, []} ->
+        # a list element's report FOLDS into the enclosing one (§4): the
+        # counters sum and malformed sticks, so an event inside an element
+        # is never lost when the element's own walk returns. A body whose
+        # terminator is not the last byte of its L is framing damage (§3):
+        # the events its fields earned count, the element reads its
+        # declared defaults, and one malformed counts.
+        {status, value, report} = decode(desc, fields, nodes, ids, true)
+
+        if status == :halt or ends_early?(sub, ids),
+          do: {:cont, %{}, %{report | malformed: true}},
+          else: {:cont, value, report}
+
+      {:stop, fields, [], _remaining} ->
+        # the element's body is damaged mid-walk or runs off its own end: the
+        # events its prefix already earned count, the element reads its
+        # declared defaults, and one malformed counts (§3, §4)
+        {_status, _value, report} = decode(desc, fields, nodes, ids, false)
+        {:cont, %{}, %{report | malformed: true}}
+
+      _ ->
+        {:cont, %{}, malformed_report()}
+    end
+  end
+
+  # Required presence closes each body, using final branch values (§2.3).
+  # JSON supplies named keys; wire supplies only compatible fields.
+  defp require_seen(desc, value, seen, report) do
+    missing =
+      Enum.filter(desc.fields, fn f ->
+        Map.get(f, :required, false) and field_active?(f, desc, value) and f.name not in seen
+      end)
+
+    if missing == [] do
+      report
+    else
+      report =
+        report
+        |> Map.update(:missing_required, 1, &(&1 + 1))
+        |> Map.put(:reason, "missing_required: " <> Enum.map_join(missing, ", ", & &1.name))
+
+      throw({:missing_required, report})
+    end
+  end
+
+  defp field_active?(%{guard: guard}, desc, value) do
+    Enum.all?(String.split(guard, " && "), fn term ->
+      {name, want} =
+        if String.starts_with?(term, "!"),
+          do: {String.trim_leading(term, "!"), false},
+          else: {term, true}
+
+      parent = Enum.find(desc.fields, &(&1.name == name))
+      parent != nil and Map.get(value, name, parent.default) == want
+    end)
+  end
+
+  defp field_active?(_f, _desc, _value), do: true
+
+  defp validate_record(desc, value) do
+    Enum.each(desc.fields, fn f ->
+      if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
+        validate_text_list(f, Map.get(value, f.name, f.default))
+      end
+
+      if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
+        text = Map.get(value, f.name, f.default)
+
+        unless Map.get(f, :optional, false) and text == nil do
+          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+        end
+      end
+
+      if Map.get(f, :required, false) and field_active?(f, desc, value) do
+        required_value(f, Map.get(value, f.name, f.default))
+      end
+    end)
+  end
+
+  defp required_value(%{t: :list} = f, values) do
+    Enum.each(pad_fixed(f, values), fn v ->
+      if Map.has_key?(f, :elem_min) and (v < f.elem_min or v > f.elem_max),
+        do: throw(:invalid_value)
+
+      if f.elem_kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
+        bits = Map.get(f, :elem_bits, kind_width(f.elem_kind) * 8)
+        signed = f.elem_kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]
+        required_integer(v, bits, signed)
+      end
+    end)
+  end
+
+  defp required_value(%{t: :keyed} = f, slots) do
+    Enum.each(f.key_names, fn name ->
+      required_value(f.item, Map.get(slots, name, f.item.default))
+    end)
+  end
+
+  defp required_value(%{min: lo, max: hi}, v) when v < lo or v > hi,
+    do: throw(:invalid_value)
+
+  defp required_value(%{t: :int} = f, v),
+    do: required_integer(v, Map.get(f, :bits, f.width * 8), f.signed)
+
+  defp required_value(_f, _v), do: :ok
+
+  defp required_integer(v, bits, signed) do
+    {lo, hi} =
+      if signed, do: {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}, else: {0, (1 <<< bits) - 1}
+
+    if not is_integer(v) or v < lo or v > hi, do: throw(:invalid_value)
+  end
+
+  defp compatible_payload?(%{t: t, elem_kind: expected} = f, payload)
+       when t in [:list, :map, :keyed] do
+    with {_len, <<actual, count_rest::binary>>} <- leb(payload),
+         true <- count_ok?(f, count_rest) do
+      actual == expected or (t in [:list, :keyed] and kind_widens?(actual, expected))
+    else
+      _ -> true
+    end
+  end
+
+  defp compatible_payload?(%{t: :bytes} = f, payload) do
+    with {_len, <<actual, count_rest::binary>>} <- leb(payload),
+         true <- count_ok?(f, count_rest) do
+      actual == 6
+    else
+      _ -> true
+    end
+  end
+
+  defp compatible_payload?(_f, _payload), do: true
+
+  defp count_ok?(%{arm_kind: _}, bin), do: leb(bin) != :error
+  defp count_ok?(_f, bin), do: leb(bin) != :error or crosses_l?(bin, 0)
+
+  defp crosses_l?(<<b, rest::binary>>, i) when i < 9 and (b &&& 0x80) != 0,
+    do: rest == <<>> or crosses_l?(rest, i + 1)
+
+  defp crosses_l?(_bin, _i), do: false
+
+  defp inert_required_field(%{required: true} = f, value),
+    do: Map.put_new(value, f.name, f.default)
+
+  defp inert_required_field(f, value), do: inert_field(f, value)
+
+  defp malformed_report,
+    do: %{
+      unknown: 0,
+      kind_mismatch: 0,
+      widened: 0,
+      clamped: 0,
+      malformed: true,
+      retained: 0,
+      retain_lost: 0,
+      reason: "",
+      missing_required: 0
+    }
 
   # ---- the shared primitives ----
 
-  defp empty_report, do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+  defp empty_report,
+    do: %{
+      unknown: 0,
+      kind_mismatch: 0,
+      widened: 0,
+      clamped: 0,
+      malformed: false,
+      retained: 0,
+      retain_lost: 0,
+      reason: "",
+      missing_required: 0
+    }
 
-  # defaults is a field's declared default: what an absent field reads (§4).
+  # defaults is a field's declared default: what an absent field reads (§4). The
+  # descriptor's own default column carries it, declared default first, so an
+  # int32 = 1 reads 1 and a text renders 1.
   defp defaults(desc) do
     Map.new(desc.fields, fn f ->
-      d =
-        case f.t do
-          :string -> ""
-          :int -> 0
-          :list -> []
-          :enum -> nil
-          :blob -> nil
-          :bool -> false
-        end
-
-      {f.name, d}
+      {f.name, Map.get(f, :default)}
     end)
   end
 
   # intern assigns a reference in first-use order and returns it.
   defp intern(ids, order, id) do
     case ids do
-      %{^id => ref} -> {ref, ids, order}
+      %{^id => ref} ->
+        {ref, ids, order}
+
       _ ->
         ref = length(order) + 1
         {ref, Map.put(ids, id, ref), [id | order]}
@@ -729,10 +3274,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp leb(<<b, rest::binary>>, i, acc) do
     cond do
-      i == 9 and b > 1 -> :error
+      i == 9 and b > 1 ->
+        :error
+
       (b &&& 0x80) == 0 ->
-        if i > 0 and b == 0, do: :error, else: {acc ||| ((b &&& 0x7F) <<< (7 * i)), rest}
-      true -> leb(rest, i + 1, acc ||| ((b &&& 0x7F) <<< (7 * i)))
+        if i > 0 and b == 0, do: :error, else: {acc ||| (b &&& 0x7F) <<< (7 * i), rest}
+
+      true ->
+        leb(rest, i + 1, acc ||| (b &&& 0x7F) <<< (7 * i))
     end
   end
 
@@ -747,7 +3296,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if rest == 0 do
       <<b>>
     else
-      <<(b ||| 0x80), leb_encode(rest)::binary>>
+      <<b ||| 0x80, leb_encode(rest)::binary>>
     end
   end
 
@@ -763,10 +3312,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp slice(bin, kind) when kind in [1, 2, 6, 20, 25], do: take(bin, 1)
   defp slice(bin, kind) when kind in [3, 7, 21, 26], do: take(bin, 2)
   defp slice(bin, kind) when kind in [4, 8, 10, 22, 27], do: take(bin, 4)
-  defp slice(bin, kind) when kind in [5, 9, 11, 23, 28], do: take(bin, 8)
+  defp slice(bin, kind) when kind in [5, 9, 11, 23, 28, 36], do: take(bin, 8)
   defp slice(bin, kind) when kind in [18, 19, 24, 29], do: take(bin, 16)
   defp slice(bin, kind) when kind in [17, 30], do: leb_rest(bin)
   defp slice(bin, kind) when kind in [12, 13, 14, 16, 31, 32, 33], do: body(bin)
+
   defp slice(bin, 15) do
     case leb(bin) do
       :error ->
@@ -816,15 +3366,55 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp int_bytes(v, 4), do: <<v::little-signed-32>>
-  defp int_bytes(v, 8), do: <<v::little-signed-64>>
+  defp int_bytes(v, 1, true), do: <<v::little-signed-8>>
+  defp int_bytes(v, 2, true), do: <<v::little-signed-16>>
+  defp int_bytes(v, 4, true), do: <<v::little-signed-32>>
+  defp int_bytes(v, 8, true), do: <<v::little-signed-64>>
+  defp int_bytes(v, 16, true), do: <<v::little-signed-128>>
+  defp int_bytes(v, 1, false), do: <<v::little-unsigned-8>>
+  defp int_bytes(v, 2, false), do: <<v::little-unsigned-16>>
+  defp int_bytes(v, 4, false), do: <<v::little-unsigned-32>>
+  defp int_bytes(v, 8, false), do: <<v::little-unsigned-64>>
+  defp int_bytes(v, 16, false), do: <<v::little-unsigned-128>>
+
+  # A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the same rule as the packet
+  # wire's). A BEAM float holds no NaN and no
+  # infinity, so the one non-finite value a writer can be handed is a float64
+  # past float32's range, which would narrow to an infinity, and the write
+  # refuses it. The bound is float32's largest finite value plus half its last
+  # place, the least magnitude that rounds to infinity, so the test is a
+  # comparison and builds nothing.
+  defp float_bytes(v, 4) when v >= 3.4028235677973366e38 or v <= -3.4028235677973366e38,
+    do: throw(:non_finite_float)
+
+  defp float_bytes(v, 4), do: <<v::little-float-32>>
+  defp float_bytes(v, 8), do: <<v::little-float-64>>
+
+  # EVERY READ REFUSES A NaN OR AN INFINITY ON ITS RAW BITS (§3.3), before the
+  # bits become a float and before the field is assigned: an all-ones exponent
+  # throws the field's name, and the load that catches it refuses whole as
+  # non_finite_float, the tolerant read included, with nothing landed. The test
+  # reads the top sixteen bits, where the exponent sits at either width, so it
+  # builds no bignum on the way.
+  defp float_of(<<_::16, hi::little-16>>, 4, name) when (hi &&& 0x7F80) == 0x7F80,
+    do: throw({:non_finite_float, name})
+
+  defp float_of(<<_::48, hi::little-16>>, 8, name) when (hi &&& 0x7FF0) == 0x7FF0,
+    do: throw({:non_finite_float, name})
+
+  defp float_of(<<v::little-float-32>>, 4, _name), do: v
+  defp float_of(<<v::little-float-64>>, 8, _name), do: v
 
   defp int_of(<<v::little-signed-8>>, 1, true), do: v
   defp int_of(<<v::little-signed-16>>, 2, true), do: v
   defp int_of(<<v::little-signed-32>>, 4, true), do: v
   defp int_of(<<v::little-signed-64>>, 8, true), do: v
+  defp int_of(<<v::little-signed-128>>, 16, true), do: v
+  defp int_of(<<v::little-unsigned-8>>, 1, false), do: v
+  defp int_of(<<v::little-unsigned-16>>, 2, false), do: v
   defp int_of(<<v::little-unsigned-32>>, 4, false), do: v
   defp int_of(<<v::little-unsigned-64>>, 8, false), do: v
+  defp int_of(<<v::little-unsigned-128>>, 16, false), do: v
   defp int_of(_payload, _w, _signed), do: 0
 
   defp clamp_int(v, %{min: lo, max: _hi}, report) when v < lo,
@@ -835,62 +3425,414 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp clamp_int(v, _f, report), do: {v, report}
 
+  defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
+    do: clamp_int(v, %{min: lo, max: hi}, report)
+
+  defp clamp_list_int(v, f, report), do: clamp_int(v, f, report)
+
+  # Keep nanoseconds outside DateTime's microsecond storage. The calendar
+  # validates whole seconds; the fractional digits remain exact integers.
+  defp timestamp_text(nanos) do
+    seconds = Integer.floor_div(nanos, 1_000_000_000)
+    fraction = nanos - seconds * 1_000_000_000
+    date = DateTime.from_unix!(seconds, :second) |> DateTime.to_iso8601()
+
+    if fraction == 0 do
+      date
+    else
+      digits = fraction |> Integer.to_string() |> String.pad_leading(9, "0")
+      String.trim_trailing(date, "Z") <> "." <> String.trim_trailing(digits, "0") <> "Z"
+    end
+  end
+
+  defp json_read_timestamp(name, raw, report) when is_binary(raw) do
+    case timestamp_parse(raw) do
+      {:ok, nanos} ->
+        {nanos, report}
+
+      :error ->
+        {:skip, %{report | malformed: true, reason: "timestamp_not_rfc3339: " <> name}}
+    end
+  end
+
+  defp json_read_timestamp(_name, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  defp timestamp_parse(raw) do
+    pattern =
+      ~r/\A([0-9]{4}-[0-9]{2}-[0-9]{2})[Tt]([0-9]{2}:[0-9]{2}:[0-9]{2})(?:\.([0-9]+))?([Zz]|[+-][0-9]{2}:[0-9]{2})\z/
+
+    case Regex.run(pattern, raw) do
+      [_, day, time, fraction, offset] ->
+        offset = if offset == "-00:00", do: "Z", else: String.upcase(offset)
+
+        case DateTime.from_iso8601(day <> "T" <> time <> offset) do
+          {:ok, value, _} ->
+            digits = binary_part(fraction, 0, min(byte_size(fraction), 9))
+            nanos = DateTime.to_unix(value, :second) * 1_000_000_000
+            nanos = nanos + String.to_integer(String.pad_trailing(digits, 9, "0"))
+
+            if nanos >= -9_223_372_036_854_775_808 and nanos <= 9_223_372_036_854_775_807,
+              do: {:ok, nanos},
+              else: :error
+
+          _ ->
+            :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
   # tableUtf8Valid (docs/SPEC-TABLES.md §4): well-formed UTF-8 without NUL.
+  defp utf8_prefix(raw, bound) do
+    prefix = binary_part(raw, 0, min(byte_size(raw), bound))
+    if String.valid?(prefix), do: prefix, else: utf8_prefix(prefix, byte_size(prefix) - 1)
+  end
+
+  defp validate_text_list(f, elements) do
+    if not is_list(elements), do: throw(:invalid_value)
+    bound = Map.get(f, :array_bound, 0)
+    if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
+
+    Enum.reduce(elements, 0, fn element, used ->
+      if not is_map(element), do: throw(:invalid_value)
+      default = if f.text_optional, do: nil, else: ""
+      value = Map.get(element, "value", default)
+
+      if not (f.text_optional and value == nil) do
+        if not is_binary(value) or not utf8_valid?(value) or
+             (not Map.get(f, :text_unbounded, false) and byte_size(value) > f.text_size),
+           do: throw(:invalid_value)
+      end
+
+      used = used + if(value == nil, do: 0, else: byte_size(value))
+      total = Map.get(f, :text_total, 0)
+      if total > 0 and used > total, do: throw(:invalid_value)
+      used
+    end)
+  end
+
+  # The total is applied after each element's own clamp. Once one element
+  # overflows, the remaining wire/JSON tail is not interpreted (§2.13).
+  defp text_list_keep(%{text_list: true, text_total: total} = f, value, report) when total > 0 do
+    left = Map.get(f, :text_left, total)
+    text = Map.get(value, "value")
+    size = if text == nil, do: 0, else: byte_size(text)
+
+    if size > left do
+      {:drop, %{report | clamped: report.clamped + 1}}
+    else
+      {:keep, Map.put(f, :text_left, left - size), report}
+    end
+  end
+
+  defp text_list_keep(f, _value, report), do: {:keep, f, report}
+
   defp utf8_valid?(raw) do
     String.valid?(raw) and :binary.match(raw, <<0>>) == :nomatch
   end
 
   # ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
   #
-  # The card's constructs only, one text for one table. The writer emits every
-  # field in declaration order, defaults included, pretty-printed two spaces per
-  # level and ending with exactly one newline (§16.1); the reader places every
-  # key it can name, counts the rest and clamps rather than truncating (§16.2).
+  # One text for one table of the variable class (docs/SPEC-TABLES.md §16). The
+  # writer emits every field in declaration order, defaults included,
+  # pretty-printed two spaces per level and ending with exactly one newline
+  # (§16.1); the reader places every key it can name, counts the rest and
+  # clamps rather than truncating (§16.2). A node named more than once is
+  # defined once under "&node" and named by "&node" alone after (§16.7).
+  # A loaded table's sharing keeps its directory index; untagged authored
+  # maps share by content, just as save does. A blob named from two slots refuses
+  # the text by name, blob_shared (§2.5, §16.7).
 
-  def to_json(table, value) when is_map(value) do
+  def to_json(table, value) when is_map(value),
+    do: with_node_identities(fn -> to_json_identity(table, value) end)
+
+  defp to_json_identity(table, value) do
     desc = Map.fetch!(@tables, table)
-    {:ok, IO.iodata_to_binary([json_object(desc, Map.merge(defaults(desc), value), 0), "\n"])}
+    value = Map.merge(defaults(desc), value)
+    counts = tally_refs(desc, value, %{})
+
+    shared_blob =
+      Enum.any?(counts, fn
+        {{:blob, _, _}, n} -> n > 1
+        _ -> false
+      end)
+
+    if shared_blob do
+      # a blob's text is a string, which has no first key for "&node" (§16.7)
+      {:error, :blob_shared}
+    else
+      Process.put(:elixir_json_refs, counts)
+      Process.put(:elixir_json_labels, %{})
+      Process.put(:elixir_json_next, 0)
+      Process.put(:elixir_json_refuse, false)
+
+      try do
+        text = IO.iodata_to_binary([json_object(desc, value, 0), "\n"])
+
+        if Process.get(:elixir_json_refuse) do
+          {:error, :shared}
+        else
+          {:ok, text}
+        end
+      catch
+        :non_finite_float -> {:error, :non_finite_float}
+        :invalid_value -> {:error, :invalid_value}
+      after
+        Process.delete(:elixir_json_refs)
+        Process.delete(:elixir_json_labels)
+        Process.delete(:elixir_json_next)
+        Process.delete(:elixir_json_refuse)
+      end
+    end
   end
 
   def from_json(table, text) when is_binary(text) do
+    # Exactly one BOM may prefix the document; it is not general whitespace.
+    text =
+      case text do
+        <<0xEF, 0xBB, 0xBF, rest::binary>> -> rest
+        _ -> text
+      end
+
     desc = Map.fetch!(@tables, table)
+    Process.put(:elixir_json_defs, %{})
+    Process.put(:elixir_json_open, %{})
+    Process.put(:elixir_json_bad, false)
+    Process.put(:elixir_json_variable, desc.variable)
+    outer_table = Process.get(:elixir_json_table)
 
-    case json_value(text) do
-      {:ok, doc, _rest} when is_map(doc) ->
-        {value, report} = json_fields(desc, doc)
-        {:ok, Map.merge(defaults(desc), value), report}
+    try do
+      with {:ok, raw, rest} <- json_value(text, 0),
+           {:ok, pairs} <- json_root_pairs(desc, raw) do
+        if json_skip(rest) != <<>> or Process.get(:elixir_json_bad) do
+          {:error, :malformed, empty_report()}
+        else
+          {value, report} = json_fields(desc, pairs)
 
-      {:ok, _other, _rest} ->
-        {:error, :malformed, empty_report()}
+          cond do
+            Map.get(report, :missing_required, 0) > 0 ->
+              {:error, :missing_required, report}
 
-      :error ->
-        {:error, :malformed, empty_report()}
+            Process.get(:elixir_json_bad) or report.malformed ->
+              {:error, :malformed, %{report | malformed: true}}
+
+            true ->
+              {:ok, Map.merge(defaults(desc), value), report}
+          end
+        end
+      else
+        {:error, :root_shape} ->
+          report = Map.put(empty_report(), :reason, "json_root_not_array: " <> table)
+          {:error, :json_root_not_array, %{report | malformed: true}}
+
+        _ ->
+          {:error, :malformed, empty_report()}
+      end
+    catch
+      {:missing_required, report} -> {:error, :missing_required, report}
+    after
+      if outer_table == nil,
+        do: Process.delete(:elixir_json_table),
+        else: Process.put(:elixir_json_table, outer_table)
+
+      Process.delete(:elixir_json_defs)
+      Process.delete(:elixir_json_open)
+      Process.delete(:elixir_json_bad)
+      Process.delete(:elixir_json_variable)
+    end
+  end
+
+  # The root requires the declared shape. Nested mismatches use the normal
+  # skipped kind-mismatch field result instead of a whole-document refusal.
+  defp json_root_pairs(%{json_array: true, fields: [field]}, raw) when is_list(raw),
+    do: {:ok, [{field.json, raw}]}
+
+  defp json_root_pairs(%{json_array: true}, _raw), do: {:error, :root_shape}
+  defp json_root_pairs(_desc, {:obj, pairs}), do: {:ok, pairs}
+  defp json_root_pairs(_desc, _raw), do: :error
+
+  # tally_refs counts pointer slots and blob slots. A node named twice is one
+  # label (§16.7). Descent is once per content, so a shared child is not
+  # counted again through its parent.
+  defp tally_refs(desc, value, acc) do
+    Enum.reduce(desc.fields, acc, fn f, acc ->
+      if field_active?(f, desc, value),
+        do: tally_field(f, Map.get(value, f.name), acc),
+        else: acc
+    end)
+  end
+
+  defp tally_field(%{t: :pointer, elem: name}, v, acc) when is_map(v),
+    do: tally_node(name, v, acc)
+
+  # a blob is its slot's own (§2.5), so equal bytes in two slots are two
+  # strings; only the tolerant read's {:blob_shared, bytes} mark is a sharing
+  defp tally_field(%{t: :blob, type_id: id}, {:blob_shared, _bytes}, acc),
+    do: Map.put(acc, {:blob, id, :shared}, 2)
+
+  defp tally_field(%{t: :table, elem: name}, v, acc) when is_map(v) do
+    child = Map.fetch!(@tables, name)
+    tally_refs(child, Map.merge(defaults(child), v), acc)
+  end
+
+  defp tally_field(%{t: :list, elem_kind: 17, elem: name}, elements, acc)
+       when is_list(elements) do
+    Enum.reduce(elements, acc, fn
+      v, acc when is_map(v) -> tally_node(name, v, acc)
+      _, acc -> acc
+    end)
+  end
+
+  defp tally_field(%{t: :list, elem_kind: 13, elem: name}, elements, acc)
+       when is_list(elements) do
+    child = Map.fetch!(@tables, name)
+
+    Enum.reduce(elements, acc, fn
+      v, acc when is_map(v) -> tally_refs(child, Map.merge(defaults(child), v), acc)
+      _, acc -> acc
+    end)
+  end
+
+  defp tally_field(%{t: :map, elem: name}, values, acc) when is_map(values) do
+    vf = Map.fetch!(@tables, name).fields |> Enum.at(1)
+    Enum.reduce(values, acc, fn {_key, v}, acc -> tally_field(vf, v, acc) end)
+  end
+
+  defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do
+    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
+      %{t: :void} -> acc
+      a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
+    end
+  end
+
+  defp tally_field(%{t: :list, elem_kind: 15} = f, elements, acc) when is_list(elements) do
+    Enum.reduce(elements, acc, fn e, acc -> tally_field(%{t: :union, elem: f.elem}, e, acc) end)
+  end
+
+  defp tally_field(%{t: :keyed} = f, slots, acc) when is_map(slots) do
+    Enum.reduce(slots, acc, fn {_name, v}, acc -> tally_field(f.item, v, acc) end)
+  end
+
+  defp tally_field(_f, _v, acc), do: acc
+
+  defp tally_node(name, v, acc) do
+    key = {:table, name, node_identity(v)}
+    prev = Map.get(acc, key, 0)
+    acc = Map.put(acc, key, prev + 1)
+
+    if prev == 0 do
+      child = Map.fetch!(@tables, name)
+      tally_refs(child, Map.merge(defaults(child), v), acc)
+    else
+      acc
     end
   end
 
   # json_object writes one instance's fields in declaration order, defaults
   # included (§16.1: a text is for people and tools, so elision is not for it).
-  defp json_object(desc, value, depth) do
-    entries =
-      Enum.map(desc.fields, fn f ->
-        ["\n", indent(depth + 1), "\"", json_escape(f.json), "\": ",
-         json_field(f, Map.get(value, f.name), depth + 1)]
+  # A value is SPARSE — only the fields the wire carried — so each level folds
+  # the descriptor's defaults back in before a field is read. label 0 is a
+  # plain object. A positive label is a definition: "&node" first, then the
+  # fields (§16.7). The depth cap is the reader's (§16.2).
+  defp json_object(desc, value, depth), do: json_object(desc, value, depth, 0)
+
+  defp json_object(_desc, _value, depth, _label) when depth > 128 do
+    Process.put(:elixir_json_refuse, true)
+    "null"
+  end
+
+  defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
+    validate_record(desc, value)
+    json_field(field, Map.get(value, field.name, field.default), depth)
+  end
+
+  defp json_object(desc, value, depth, label) do
+    validate_record(desc, value)
+    value = Map.merge(defaults(desc), value)
+
+    # an absent optional writes no key: presence is the key (§2.3, §16.2)
+    present =
+      Enum.reject(desc.fields, fn f ->
+        not field_active?(f, desc, value) or
+          (Map.get(f, :optional, false) and Map.get(value, f.name) == nil)
       end)
 
-    ["{", Enum.intersperse(entries, ","), "\n", indent(depth), "}"]
+    entries =
+      Enum.map(present, fn f ->
+        [
+          "\n",
+          indent(depth + 1),
+          "\"",
+          json_escape(f.json),
+          "\": ",
+          json_field(f, Map.get(value, f.name), depth + 1)
+        ]
+      end)
+
+    cond do
+      label != 0 and entries == [] ->
+        Process.put(:elixir_json_refuse, true)
+        "null"
+
+      label != 0 ->
+        head = ["{\n", indent(depth + 1), "\"&node\": ", Integer.to_string(label)]
+        [head, Enum.map(entries, fn e -> [",", e] end), "\n", indent(depth), "}"]
+
+      entries == [] ->
+        "{}"
+
+      true ->
+        ["{", Enum.intersperse(entries, ","), "\n", indent(depth), "}"]
+    end
+  end
+
+  # json_node writes one pointer target. A node named once is a plain object.
+  # A node named again is defined at the first write, label from 1, and every
+  # later write is {"&node": N} alone (§16.7).
+  defp json_node(table, value, depth) do
+    key = {:table, table, node_identity(value)}
+    n = Map.get(Process.get(:elixir_json_refs, %{}), key, 1)
+
+    if n < 2 do
+      json_object(Map.fetch!(@tables, table), value, depth)
+    else
+      labels = Process.get(:elixir_json_labels, %{})
+
+      case Map.get(labels, key) do
+        nil ->
+          next = Process.get(:elixir_json_next, 0) + 1
+          Process.put(:elixir_json_next, next)
+          Process.put(:elixir_json_labels, Map.put(labels, key, next))
+          json_object(Map.fetch!(@tables, table), value, depth, next)
+
+        label ->
+          [
+            "{\n",
+            indent(depth + 1),
+            "\"&node\": ",
+            Integer.to_string(label),
+            "\n",
+            indent(depth),
+            "}"
+          ]
+      end
+    end
   end
 
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
-    case elements do
+    case pad_fixed(f, elements) do
       [] ->
         "[]"
 
-      _ ->
-        elem_desc = Map.fetch!(@tables, f.elem)
-
+      elements ->
         rows =
           Enum.map(elements, fn e ->
-            ["\n", indent(depth + 1), json_object(elem_desc, e, depth + 1)]
+            ["\n", indent(depth + 1), json_list_elem(f, e, depth + 1)]
           end)
 
         ["[", Enum.intersperse(rows, ","), "\n", indent(depth), "]"]
@@ -899,13 +3841,298 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_field(%{t: :list}, _other, _depth), do: "[]"
 
+  defp json_field(%{optional: true}, nil, _depth), do: "null"
   defp json_field(%{t: :string}, v, _depth), do: ["\"", json_escape(v), "\""]
+
+  defp json_field(%{t: :map} = f, values, depth) do
+    entry_desc = Map.fetch!(@tables, f.elem)
+    value_field = entry_desc.fields |> Enum.at(1)
+    pairs = map_entries(f, values)
+    Enum.each(pairs, &validate_record(entry_desc, &1))
+
+    if pairs == [] do
+      "{}"
+    else
+      [
+        "{",
+        Enum.intersperse(
+          Enum.map(pairs, fn entry ->
+            key = entry["key"]
+            key_text = if is_binary(key), do: key, else: Integer.to_string(key)
+
+            [
+              "\n",
+              indent(depth + 1),
+              "\"",
+              json_escape(key_text),
+              "\": ",
+              json_field(value_field, entry["value"], depth + 1)
+            ]
+          end),
+          ","
+        ),
+        "\n",
+        indent(depth),
+        "}"
+      ]
+    end
+  end
+
+  defp json_field(%{t: :table} = f, v, depth),
+    do: json_object(Map.fetch!(@tables, f.elem), v || %{}, depth)
+
+  defp json_field(%{t: :pointer} = _f, nil, _depth), do: "null"
+  defp json_field(%{t: :pointer} = f, v, depth), do: json_node(f.elem, v, depth)
   defp json_field(%{t: :blob}, nil, _depth), do: "null"
+  defp json_field(%{t: :blob, blob: :bytes}, v, _depth), do: ["\"", Base.encode64(v), "\""]
   defp json_field(%{t: :blob}, v, _depth), do: ["\"", json_escape(v), "\""]
+  defp json_field(%{t: :bytes}, v, _depth), do: ["\"", Base.encode64(v), "\""]
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
   defp json_field(%{t: :enum}, name, _depth), do: ["\"", json_escape(name), "\""]
+  defp json_field(%{t: :union} = f, sel, depth), do: json_arm(f.elem, sel, depth)
+  defp json_field(%{t: :wstring}, v, _depth), do: ["\"", json_escape(v), "\""]
+
+  defp json_field(%{t: :keyed} = f, slots, depth) do
+    slots = slots || %{}
+
+    case f.key_names do
+      [] ->
+        "{}"
+
+      names ->
+        rows =
+          Enum.map(names, fn name ->
+            v = Map.get(slots, name, f.item.default)
+
+            [
+              "\n",
+              indent(depth + 1),
+              "\"",
+              json_escape(name),
+              "\": ",
+              json_field(f.item, v, depth + 1)
+            ]
+          end)
+
+        ["{", Enum.intersperse(rows, ","), "\n", indent(depth), "}"]
+    end
+  end
+
+  defp json_field(%{t: :int, flags: names}, v, depth) do
+    set = for {n, i} <- Enum.with_index(names), (v >>> i &&& 1) == 1, do: n
+
+    case set do
+      [] ->
+        "[]"
+
+      _ ->
+        [
+          "[",
+          Enum.intersperse(
+            Enum.map(set, fn n -> ["\n", indent(depth + 1), "\"", json_escape(n), "\""] end),
+            ","
+          ),
+          "\n",
+          indent(depth),
+          "]"
+        ]
+    end
+  end
+
+  defp json_field(%{timestamp: _}, v, _depth), do: ["\"", timestamp_text(v), "\""]
+  defp json_field(%{t: :int, frac: frac}, v, _depth), do: fixed_text(v, frac)
   defp json_field(%{t: :int}, v, _depth), do: Integer.to_string(v)
+  defp json_field(%{t: :float} = f, v, _depth), do: json_float(v, f.width)
   defp json_field(%{t: :bool}, v, _depth), do: if(v, do: "true", else: "false")
+
+  # json_list_elem writes one unbounded array's element by its element kind
+  # (docs/SPEC-TABLES.md §2.9, §16.7): a table or pointer element is an object, a
+  # string or enum a quoted name, and a scalar its own spelling.
+  defp json_list_elem(%{text_list: true} = f, e, _depth) do
+    default = if f.text_optional, do: nil, else: ""
+
+    case Map.get(e, "value", default) do
+      nil -> "null"
+      value -> ["\"", json_escape(value), "\""]
+    end
+  end
+
+  defp json_list_elem(%{elem_kind: 13} = f, e, depth),
+    do: json_object(Map.fetch!(@tables, f.elem), e, depth)
+
+  defp json_list_elem(%{elem_kind: 17} = _f, nil, _depth), do: "null"
+  defp json_list_elem(%{elem_kind: 17} = f, e, depth), do: json_node(f.elem, e, depth)
+  defp json_list_elem(%{elem_kind: 12}, e, _depth), do: ["\"", json_escape(e), "\""]
+  defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
+  defp json_list_elem(%{elem_kind: 30}, e, _depth), do: ["\"", json_escape(e), "\""]
+
+  defp json_list_elem(%{elem_flags: names}, e, depth),
+    do: json_field(%{t: :int, flags: names}, e, depth)
+
+  defp json_list_elem(%{elem_kind: 1}, e, _depth), do: if(e, do: "true", else: "false")
+
+  defp json_list_elem(%{elem_kind: kind}, e, _depth)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19], do: Integer.to_string(e)
+
+  defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29,
+    do: fixed_text(e, frac)
+
+  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [10, 11],
+    do: json_float(e, kind_width(kind))
+
+  defp json_list_elem(%{elem_kind: 15} = f, e, depth), do: json_arm(f.elem, e, depth)
+  defp json_list_elem(_f, _e, _depth), do: "null"
+
+  # json_float spells one float as C's %.*g does, byte for byte, over the
+  # float's OWN width (docs/SPEC-TABLES.md §16, "The FLOAT SPELLING", which
+  # §16.7 holds for the variable class): the first precision from low to high
+  # whose text reads back to the same value at that width (a float32 parsed
+  # and narrowed through float32, 6 to 9 digits; a float64 parsed as is, 15 to
+  # 17), and at the last precision the text as rounded, with no loop left.
+  # Float.to_string is NOT this rule: it is the shortest round trip of the
+  # widened double, so a float32 spelled up to seventeen digits, its exponent
+  # was "e19" where %g writes "e+19", and a trailing-zero trim ate an exponent's
+  # zero ("e-20" written "e-2") (I13, docs/PORTING.md).
+  # THE TEXT WRITER REFUSES A FLOAT THAT IS NOT FINITE (docs/SPEC-TABLES.md
+  # §3.3, §16.3): a float32 field's float64 past float32's range narrows to an
+  # infinity, which has no spelling (float_bytes/2 holds the same bound).
+  defp json_float(v, 4) when v >= 3.4028235677973366e38 or v <= -3.4028235677973366e38,
+    do: throw(:non_finite_float)
+
+  defp json_float(v, width) do
+    if json_float_plain_integer?(v) do
+      Integer.to_string(trunc(v))
+    else
+      {low, high} = json_float_digits(width)
+      json_float_at(v, width, low, high)
+    end
+  end
+
+  # A non-negative integral float below 10^6 is %g's plain integer spelling at
+  # BOTH widths (docs/SPEC-TABLES.md §16, "The FLOAT SPELLING"): six significant
+  # digits and a decimal exponent below the precision keep %g out of exponent
+  # form, and every float32 of that magnitude is exact. The fast path spells the
+  # same text the read-back loop would, without the per-element binaries the
+  # audit counts (docs/PORTING.md I1, I14). The sign bit is read so -0.0 keeps
+  # the slow path's "-0".
+  defp json_float_plain_integer?(v) when v == trunc(v) and v >= 0.0 and v <= 999_999.0 do
+    case <<v::float>> do
+      <<0::1, _::63>> -> true
+      _ -> false
+    end
+  end
+
+  defp json_float_plain_integer?(_v), do: false
+
+  defp json_float_digits(4), do: {6, 9}
+  defp json_float_digits(_), do: {15, 17}
+
+  defp json_float_at(v, width, digits, high) do
+    text = json_format_g(v, digits)
+
+    if digits >= high or json_float_reads_back?(text, v, width) do
+      text
+    else
+      json_float_at(v, width, digits + 1, high)
+    end
+  end
+
+  defp json_float_reads_back?(text, v, width) do
+    case Float.parse(text) do
+      {back, ""} -> json_float_narrow(back, width) == v
+      _ -> false
+    end
+  rescue
+    _ -> false
+  end
+
+  defp json_float_narrow(back, 4) do
+    <<n::float-32>> = <<back::float-32>>
+    n
+  end
+
+  defp json_float_narrow(back, _), do: back
+
+  # json_format_g is C's %.*g for a finite double: the exponent form when the
+  # decimal exponent is below -4 or at least the precision, the plain form
+  # otherwise, trailing zeros and a trailing point removed, and an exponent of
+  # at least two digits with its sign. The digits are the %.*e conversion's
+  # (float_to_binary's :scientific, correctly rounded, ties to even), and the
+  # plain form moves that one digit string's point, which is what C's %g does
+  # with the exponent %e found.
+  defp json_format_g(v, prec) do
+    sci = :erlang.float_to_binary(v, [{:scientific, prec - 1}])
+    [mant, exp_text] = String.split(sci, "e")
+    exp = String.to_integer(exp_text)
+
+    if exp < -4 or exp >= prec do
+      json_trim_zeros(mant) <> "e" <> json_exp_digits(exp)
+    else
+      json_trim_zeros(json_plain(mant, exp))
+    end
+  end
+
+  defp json_plain("-" <> mant, exp), do: "-" <> json_plain(mant, exp)
+
+  defp json_plain(mant, exp) do
+    digits = String.replace(mant, ".", "")
+
+    if exp >= 0 do
+      {whole, frac} = String.split_at(digits, exp + 1)
+      if frac == "", do: whole, else: whole <> "." <> frac
+    else
+      "0." <> String.duplicate("0", -exp - 1) <> digits
+    end
+  end
+
+  defp json_trim_zeros(s) do
+    if String.contains?(s, "."),
+      do: String.trim_trailing(String.trim_trailing(s, "0"), "."),
+      else: s
+  end
+
+  defp json_exp_digits(exp) when exp < 0, do: "-" <> json_exp_abs(-exp)
+  defp json_exp_digits(exp), do: "+" <> json_exp_abs(exp)
+  defp json_exp_abs(e) when e < 10, do: "0" <> Integer.to_string(e)
+  defp json_exp_abs(e), do: Integer.to_string(e)
+
+  # a union is an object with ONE key, the arm's name, and None is {}
+  # (docs/SPEC-TABLES.md §2.6, §16.2); a payload-free arm's value is null.
+  defp json_arm(_union, nil, _depth), do: "{}"
+
+  defp json_arm(union, {arm, payload}, depth) do
+    a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+
+    inner =
+      case a do
+        %{t: :void} -> "null"
+        _ -> json_field(a, if(payload == nil, do: a.default, else: payload), depth + 1)
+      end
+
+    ["{\n", indent(depth + 1), "\"", json_escape(arm), "\": ", inner, "\n", indent(depth), "}"]
+  end
+
+  # Exact decimal spelling of a fixed raw integer (SPEC-TABLES §3, §4.12).
+  # Elixir integers carry all 128 bits, so each base-ten digit is a remainder
+  # of the dyadic fraction and no floating-point rounding enters the text.
+  defp fixed_text(raw, frac) do
+    scale = 1 <<< frac
+    magnitude = abs(raw)
+    sign = if raw < 0, do: "-", else: ""
+
+    sign <>
+      Integer.to_string(div(magnitude, scale)) <>
+      "." <>
+      fixed_digits(rem(magnitude, scale), scale, [])
+  end
+
+  defp fixed_digits(0, _scale, []), do: "0"
+  defp fixed_digits(0, _scale, acc), do: acc |> Enum.reverse() |> IO.iodata_to_binary()
+
+  defp fixed_digits(remain, scale, acc) do
+    ten = remain * 10
+    fixed_digits(rem(ten, scale), scale, [<<div(ten, scale) + ?0>> | acc])
+  end
 
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
   # this writer emits is readable by any conforming parser (§16.3): the escapes
@@ -946,139 +4173,963 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # unknown key is skipped and counted in report.unknown, a key of the wrong
   # JSON type is skipped and counted as kind_mismatch, and the field keeps its
   # default. A value outside a bound clamps and counts, never truncates (§16.2).
-  defp json_fields(desc, doc) when is_map(doc) do
-    {value, report} =
-      Enum.reduce(desc.fields, {%{}, empty_report()}, fn f, {value, report} ->
-        case Map.fetch(doc, f.json) do
-          {:ok, raw} ->
-            {v, report} = json_read_field(f, raw, report)
-            {Map.put(value, f.name, v), report}
+  defp json_fields(desc, pairs) when is_list(pairs) do
+    outer = Process.put(:elixir_json_table, desc.name)
 
-          :error ->
-            {value, report}
+    {value, seen, report} =
+      Enum.reduce(pairs, {%{}, MapSet.new(), empty_report()}, fn {k, raw},
+                                                                 {value, seen, report} ->
+        if report.malformed or Map.get(report, :missing_required, 0) > 0 or
+             Process.get(:elixir_json_bad, false) do
+          {value, seen, report}
+        else
+          if String.starts_with?(k, "&") do
+            Process.put(:elixir_json_bad, true)
+            {value, seen, %{report | malformed: true}}
+          else
+            case Enum.find(desc.fields, fn f -> f.json == k end) do
+              nil ->
+                json_skip_value(raw)
+                {value, seen, %{report | unknown: report.unknown + 1}}
+
+              f ->
+                report =
+                  if MapSet.member?(seen, f.name) do
+                    Map.update(report, :duplicate, 1, &(&1 + 1))
+                  else
+                    report
+                  end
+
+                seen = MapSet.put(seen, f.name)
+
+                if Map.get(f, :optional, false) and raw == nil do
+                  {Map.delete(value, f.name), seen, report}
+                else
+                  case json_read_field(f, raw, report) do
+                    {:skip, report} ->
+                      value =
+                        if Map.get(f, :optional, false),
+                          do: Map.put_new(value, f.name, json_present_default(f)),
+                          else: value
+
+                      {value, seen, report}
+
+                    {v, report} ->
+                      {Map.put(value, f.name, v), seen, report}
+                  end
+                end
+            end
+          end
         end
       end)
 
-    known = MapSet.new(desc.fields, & &1.json)
-    unknown = Enum.count(Map.keys(doc), fn k -> not MapSet.member?(known, k) end)
-    {value, %{report | unknown: report.unknown + unknown}}
+    if outer == nil,
+      do: Process.delete(:elixir_json_table),
+      else: Process.put(:elixir_json_table, outer)
+
+    {value, require_seen(desc, value, seen, report)}
   end
 
+  # json_skip_value walks a value the reader drops (an unknown key, a kind
+  # mismatch, an element past its bound), so a label defined inside it is
+  # still defined and a later reference to it reads null, never malformed
+  # (docs/SPEC-TABLES.md §16.2, §16.7).
+  defp json_skip_value({:obj, [{"&node", label} | rest]}) when is_integer(label) and label > 0 do
+    if Process.get(:elixir_json_variable, false) do
+      defs = Process.get(:elixir_json_defs, %{})
+      Process.put(:elixir_json_defs, Map.put_new(defs, label, :dropped))
+    end
+
+    Enum.each(rest, fn {_k, v} -> json_skip_value(v) end)
+  end
+
+  defp json_skip_value({:obj, pairs}) do
+    Enum.each(pairs, fn {_k, v} -> json_skip_value(v) end)
+  end
+
+  defp json_skip_value(items) when is_list(items) do
+    Enum.each(items, &json_skip_value/1)
+  end
+
+  defp json_skip_value(_other), do: :ok
+
+  # a JSON number with a fraction or an exponent arrives as its decimal text
+  # (json_number below): a fixed-point field reads that text exactly (§3,
+  # §4.12), every other field reads it as the double it spells (§16.2).
+  # Wide integers accept integral decimal/exponent tokens without a double.
+  defp json_read_field(%{t: :int, width: 16} = f, {:decimal, _} = raw, report)
+       when not is_map_key(f, :frac) do
+    case fixed_raw(raw, 0) do
+      {:ok, value} -> clamp_json_int(value, f, report)
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_field(%{t: :float, width: 4} = f, {:decimal, _} = raw, report) do
+    case json_decimal_f32(raw) do
+      {:ok, value} -> json_read_field(f, value, report)
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_field(f, {:decimal, _} = raw, report) when not is_map_key(f, :frac),
+    do: json_read_field(f, json_decimal_float(raw), report)
+
+  defp json_read_field(%{optional: true}, nil, report), do: {nil, report}
+
   defp json_read_field(%{t: :string} = f, raw, report) when is_binary(raw) do
-    if byte_size(raw) > f.size do
-      {binary_part(raw, 0, f.size), %{report | clamped: report.clamped + 1}}
+    report = json_text_zero(f, raw, report)
+
+    if not Map.get(f, :unbounded, false) and byte_size(raw) > f.size do
+      {utf8_prefix(raw, f.size), %{report | clamped: report.clamped + 1}}
     else
       {raw, report}
     end
   end
 
-  defp json_read_field(%{t: :string}, _raw, report),
-    do: {"", %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :string}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
   defp json_read_field(%{t: :enum} = f, raw, report) when is_binary(raw) do
     # "None" is the reserved nil spelling (docs/SPEC-TABLES.md §16; the Go
     # reference internal/tabletext/value.go EnumValue): it reads the nil variant
     # exactly as value 0 does on the wire, and is never an unknown name.
     case raw do
-      "None" -> {nil, report}
+      "None" ->
+        {enum_none(f), report}
+
       _ ->
         case Map.fetch(f.by_name, raw) do
           {:ok, _id} -> {raw, report}
-          :error -> {nil, %{report | unknown: report.unknown + 1}}
+          :error -> {enum_none(f), %{report | unknown: report.unknown + 1}}
         end
     end
   end
 
-  defp json_read_field(%{t: :enum}, _raw, report),
-    do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  # a union field reads one arm object (docs/SPEC-TABLES.md §2.6, §16.2)
+  defp json_read_field(%{t: :union} = f, {:obj, _} = raw, report),
+    do: json_read_arm(f.elem, raw, report)
 
-  defp json_read_field(%{t: :int} = f, raw, report) when is_integer(raw) do
-    {v, report} = clamp_int(raw, f, report)
-    {v, report}
+  defp json_read_field(%{t: :union}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
-  defp json_read_field(%{t: :int}, _raw, report),
-    do: {0, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  # wstring(N) (docs/SPEC-TABLES.md §3, §16.2): the text is UTF-8; past N
+  # UTF-16 code units it clamps and counts.
+  defp json_read_field(%{t: :wstring} = f, raw, report) when is_binary(raw) do
+    report = json_text_zero(f, raw, report)
+    units = utf16(raw)
+
+    if div(byte_size(units), 2) > f.size do
+      # A clamp keeps a code-point prefix, never half of a surrogate pair.
+      cut = binary_part(units, 0, f.size * 2)
+      size = byte_size(cut)
+
+      cut =
+        if size > 0 do
+          <<last::little-unsigned-16>> = binary_part(cut, size - 2, 2)
+          if last in 0xD800..0xDBFF, do: binary_part(cut, 0, size - 2), else: cut
+        else
+          cut
+        end
+
+      {:unicode.characters_to_binary(cut, {:utf16, :little}, :utf8),
+       %{report | clamped: report.clamped + 1}}
+    else
+      {raw, report}
+    end
+  end
+
+  defp json_read_field(%{t: :wstring}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2, §16.2) is an object
+  # keyed by variant name; a name the key enum does not have counts unknown.
+  defp json_read_field(%{t: :keyed} = f, {:obj, pairs}, report) do
+    {values, _seen, report} =
+      Enum.reduce(pairs, {%{}, MapSet.new(), report}, fn {name, input}, {acc, seen, report} ->
+        if report.malformed or Process.get(:elixir_json_bad, false) do
+          {acc, seen, report}
+        else
+          if Map.has_key?(f.key_ids, name) do
+            # A rejected occurrence is still a seen slot, but cannot replace it.
+            report =
+              if MapSet.member?(seen, name),
+                do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+                else: report
+
+            seen = MapSet.put(seen, name)
+
+            case json_read_field(f.item, input, report) do
+              {:skip, report} -> {acc, seen, report}
+              {v, report} -> {Map.put(acc, name, v), seen, report}
+            end
+          else
+            json_skip_value(input)
+            {acc, seen, %{report | unknown: report.unknown + 1}}
+          end
+        end
+      end)
+
+    {values, report}
+  end
+
+  defp json_read_field(%{t: :keyed}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  # a flags mask (docs/SPEC-TABLES.md §3, §16.2) is the list of its set names;
+  # a name the flags do not have counts unknown.
+  defp json_read_field(%{t: :int, flags: names}, raw, report) when is_list(raw) do
+    Enum.reduce(raw, {0, report}, fn n, {mask, report} ->
+      case Enum.find_index(names, &(&1 == n)) do
+        nil -> {mask, %{report | unknown: report.unknown + 1}}
+        i -> {mask ||| 1 <<< i, report}
+      end
+    end)
+  end
+
+  defp json_read_field(%{t: :int, flags: _}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  # a fixed-point field (docs/SPEC-TABLES.md §3, §4.12) stores the exact
+  # scaled integer: the decimal text converts without passing through a
+  # float, and a fraction finer than 2^-F is a kind mismatch.
+  defp json_read_field(%{t: :int, frac: frac} = f, raw, report) do
+    case fixed_raw(raw, frac) do
+      {:ok, v} ->
+        clamp_json_int(v, f, report)
+
+      :error ->
+        json_skip_value(raw)
+        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_field(%{t: :enum}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  defp json_read_field(%{timestamp: name}, raw, report),
+    do: json_read_timestamp(name, raw, report)
+
+  defp json_read_field(%{t: :int} = f, raw, report) when is_integer(raw) do
+    clamp_json_int(raw, f, report)
+  end
+
+  defp json_read_field(%{t: :int} = f, raw, report) when is_float(raw) do
+    if Float.floor(raw) == raw do
+      clamp_json_int(trunc(raw), f, report)
+    else
+      {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_field(%{t: :int}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
   defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}
 
-  defp json_read_field(%{t: :bool}, _raw, report),
-    do: {false, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :bool}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
-  defp json_read_field(%{t: :blob}, raw, report) when is_binary(raw), do: {raw, report}
+  defp json_read_field(%{t: :blob, blob: :bytes}, raw, report) when is_binary(raw) do
+    case json_decode_base64(raw) do
+      {:ok, bytes} -> {bytes, report}
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_field(%{t: :blob} = f, raw, report) when is_binary(raw),
+    do: {raw, json_text_zero(f, raw, report)}
+
   defp json_read_field(%{t: :blob}, nil, report), do: {nil, report}
 
-  defp json_read_field(%{t: :blob}, _raw, report),
-    do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :blob}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
-  defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
-    elem_desc = Map.fetch!(@tables, f.elem)
+  defp json_read_field(%{t: :bytes} = f, raw, report) when is_binary(raw) do
+    case json_decode_base64(raw) do
+      {:ok, bytes} when byte_size(bytes) <= f.size ->
+        {bytes, report}
 
-    {elems, report} =
-      Enum.reduce(raw, {[], report}, fn e, {acc, report} ->
-        case e do
-          m when is_map(m) ->
-            {v, elem_report} = json_fields(elem_desc, m)
-            {[v | acc], merge_report(report, elem_report)}
+      {:ok, bytes} ->
+        {binary_part(bytes, 0, f.size), %{report | clamped: report.clamped + 1}}
+
+      :error ->
+        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_field(%{t: :bytes}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  defp json_read_field(%{t: :table} = f, raw, report) do
+    desc = Map.fetch!(@tables, f.elem)
+
+    case json_root_pairs(desc, raw) do
+      {:ok, pairs} ->
+        {v, elem_report} = carry_count_report(report, fn -> json_fields(desc, pairs) end)
+        {v, merge_report(report, elem_report)}
+
+      _ ->
+        json_skip_value(raw)
+        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  # A map reads entries in input order, so node labels keep their document
+  # meaning. Its writer sorts the admitted keys. Each occurrence is a fresh
+  # entry: a rejected value leaves that entry's default, replacing a duplicate.
+  defp json_read_field(%{t: :map} = f, {:obj, pairs}, report) do
+    [key_field, value_field | _] = Map.fetch!(@tables, f.elem).fields
+
+    Enum.reduce_while(pairs, {%{}, report}, fn {key, input}, {acc, report} ->
+      report = json_text_zero(f, key, report)
+
+      if report.malformed do
+        {:halt, {acc, report}}
+      else
+        case json_map_key(key_field, key) do
+          {:ok, identity} ->
+            {value, report} = json_map_value(value_field, input, report)
+
+            if report.malformed or Process.get(:elixir_json_bad, false) do
+              {:halt, {acc, report}}
+            else
+              report =
+                if Map.has_key?(acc, identity),
+                  do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+                  else: report
+
+              {:cont, {Map.put(acc, identity, value), report}}
+            end
+
+          {:skip, counter} ->
+            json_skip_value(input)
+            {:cont, {acc, Map.update!(report, counter, &(&1 + 1))}}
+
+          :malformed ->
+            Process.put(:elixir_json_bad, true)
+            {:halt, {acc, %{report | malformed: true}}}
+        end
+      end
+    end)
+  end
+
+  defp json_read_field(%{t: :map}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  defp json_read_field(%{t: :pointer} = _f, nil, report), do: {nil, report}
+
+  defp json_read_field(%{t: :pointer} = f, {:obj, pairs}, report) do
+    json_read_node(f.elem, pairs, report)
+  end
+
+  defp json_read_field(%{t: :pointer}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  defp json_read_field(%{t: :float} = f, raw, report) when is_number(raw) do
+    case json_float_in_width(raw, f.width) do
+      :error ->
+        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+      {:ok, v} ->
+        case f do
+          %{min: lo, max: _hi} when v < lo ->
+            {lo * 1.0, %{report | clamped: report.clamped + 1}}
+
+          %{min: _lo, max: hi} when v > hi ->
+            {hi * 1.0, %{report | clamped: report.clamped + 1}}
 
           _ ->
-            {acc, %{report | kind_mismatch: report.kind_mismatch + 1}}
+            {v, report}
+        end
+    end
+  end
+
+  defp json_read_field(%{t: :float}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  defp json_read_field(%{t: :list, text_list: true} = f, raw, report) when is_list(raw) do
+    bound = Map.get(f, :array_bound, 0)
+    # every element past [..N] counts clamped, the total's drop included
+    # (docs/SPEC-TABLES.md §2.13, §16.2)
+    past = if bound > 0, do: max(length(raw) - bound, 0), else: 0
+
+    {elements, _count, _f, report} =
+      Enum.reduce_while(raw, {[], 0, f, report}, fn raw, {acc, count, f, report} ->
+        cond do
+          report.malformed ->
+            {:halt, {acc, count, f, report}}
+
+          bound > 0 and count >= bound ->
+            {:halt, {acc, count, f, %{report | clamped: report.clamped + past}}}
+
+          true ->
+            {value, report} = json_read_list_elem(f, raw, report)
+
+            case text_list_keep(f, value, report) do
+              {:keep, f, report} ->
+                {:cont, {[value | acc], count + 1, f, report}}
+
+              {:drop, report} ->
+                {:halt, {acc, count, f, %{report | clamped: report.clamped + past}}}
+            end
+        end
+      end)
+
+    {Enum.reverse(elements), report}
+  end
+
+  defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
+    bound = Map.get(f, :array_bound, 0)
+
+    {elems, _placed, report} =
+      Enum.reduce(raw, {[], 0, report}, fn e, {acc, placed, report} ->
+        if report.malformed or Process.get(:elixir_json_bad, false) do
+          {acc, placed, report}
+        else
+          if bound > 0 and placed >= bound do
+            json_skip_value(e)
+            {acc, placed, %{report | clamped: report.clamped + 1}}
+          else
+            case json_read_list_elem(f, e, report) do
+              {:skip, report} ->
+                json_skip_value(e)
+                {[json_element_default(f) | acc], placed + 1, report}
+
+              {v, report} ->
+                {[v | acc], placed + 1, report}
+            end
+          end
         end
       end)
 
     {Enum.reverse(elems), report}
   end
 
-  defp json_read_field(%{t: :list}, _raw, report),
-    do: {[], %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :list}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  # A map entry is present even when its non-null value has the wrong shape.
+  # Only optional null is absent; a skipped value becomes present-default and
+  # participates in the same last-wins duplicate rule as an admitted value.
+  defp json_map_value(f, raw, report) do
+    if raw == nil and (Map.get(f, :optional, false) or f.t in [:pointer, :blob]) do
+      {nil, report}
+    else
+      case json_read_field(f, raw, report) do
+        {:skip, report} -> {json_present_default(f), report}
+        pair -> pair
+      end
+    end
+  end
+
+  # A map key is an identity: reject, never clamp it into another key.
+  # A bare string key has no declared byte bound; bounded keys retain their
+  # declaration's token limit.
+  defp json_map_key(field, key) do
+    cond do
+      field.t == :string and Map.get(field, :unbounded, false) ->
+        {:ok, key}
+
+      field.t == :string ->
+        if byte_size(key) > min(field.size, 255), do: {:skip, :clamped}, else: {:ok, key}
+
+      byte_size(key) > 255 ->
+        {:skip, :kind_mismatch}
+
+      true ->
+        case json_number(key) do
+          {:ok, raw, ""} ->
+            case fixed_raw(raw, 0) do
+              {:ok, value} ->
+                {lo, hi} = int_domain_bounds(field)
+
+                if value >= lo and value <= hi,
+                  do: {:ok, Integer.to_string(value)},
+                  else: {:skip, :kind_mismatch}
+
+              :error ->
+                {:skip, :kind_mismatch}
+            end
+
+          _ ->
+            :malformed
+        end
+    end
+  end
+
+  defp json_present_default(%{t: kind}) when kind in [:table, :map, :keyed], do: %{}
+  defp json_present_default(%{t: :list}), do: []
+  defp json_present_default(%{t: :enum} = f), do: enum_none(f)
+  defp json_present_default(%{t: kind}) when kind in [:pointer, :blob, :union], do: nil
+  defp json_present_default(%{t: kind}) when kind in [:string, :wstring, :bytes], do: ""
+  defp json_present_default(%{t: :bool}), do: false
+  defp json_present_default(%{t: :float}), do: 0.0
+  defp json_present_default(_f), do: 0
+
+  # Array elements are positional: a rejected element keeps its default slot.
+  defp json_element_default(%{elem_default: value}), do: value
+  defp json_element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
+  defp json_element_default(%{elem_kind: kind}) when kind in [15, 17, 30], do: nil
+  defp json_element_default(%{elem_kind: 12}), do: ""
+  defp json_element_default(%{elem_kind: 1}), do: false
+  defp json_element_default(%{elem_kind: kind}) when kind in [10, 11], do: 0.0
+  defp json_element_default(_f), do: 0
+
+  # json_text_zero is the one rule for a zero in text (docs/SPEC-TABLES.md
+  # §16.2, "A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT"):
+  # a JSON string the read would PLACE in text storage that decodes to U+0000
+  # refuses the read, malformed, and the reason names the innermost field that
+  # held it as text_holds_zero: <Table>.<field>.
+  defp json_text_zero(f, text, report) do
+    if :binary.match(text, <<0>>) == :nomatch do
+      report
+    else
+      Process.put(:elixir_json_bad, true)
+      reason = "text_holds_zero: " <> Process.get(:elixir_json_table, "") <> "." <> f.name
+
+      %{report | malformed: true}
+      |> Map.update(:reason, reason, fn
+        "" -> reason
+        held -> held
+      end)
+    end
+  end
+
+  # clamp_json_int clamps a JSON integer to the field's declared range and
+  # then to its storage domain, counting each clamp (docs/SPEC-TABLES.md §16.2).
+  #
+  # The order is the reference's (gotable tableJSONReadScalar): a token past
+  # sixty-four bits saturates first and counts, then the declared range, then
+  # the storage width, each clamp counted. A fixed-point or 128-bit field has
+  # one domain, which comes first, then its range.
+  defp clamp_json_int(v, f, report) do
+    if Map.has_key?(f, :frac) or Map.get(f, :width) == 16 do
+      {v, report} = clamp_between(v, int_domain_bounds(f), report)
+      clamp_int(v, f, report)
+    else
+      signed = Map.get(f, :signed, false)
+
+      sat =
+        if signed,
+          do: {-(1 <<< 63), (1 <<< 63) - 1},
+          else: {0, (1 <<< 64) - 1}
+
+      {v, report} = clamp_between(v, sat, report)
+      {v, report} = clamp_int(v, f, report)
+      clamp_between(v, int_domain_bounds(f), report)
+    end
+  end
+
+  defp clamp_between(v, {lo, hi}, report) do
+    cond do
+      v < lo -> {lo, %{report | clamped: report.clamped + 1}}
+      v > hi -> {hi, %{report | clamped: report.clamped + 1}}
+      true -> {v, report}
+    end
+  end
+
+  # int_domain_bounds is an integer field's storage domain (§16.2).
+  defp int_domain_bounds(%{bits: bits}) when is_integer(bits) and bits > 0 do
+    {0, (1 <<< bits) - 1}
+  end
+
+  defp int_domain_bounds(%{width: w, signed: true}) do
+    bits = w * 8
+    {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}
+  end
+
+  defp int_domain_bounds(%{width: w, signed: false}) do
+    bits = w * 8
+    {0, (1 <<< bits) - 1}
+  end
+
+  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
+  # or unpadded (docs/SPEC-TABLES.md §16.2).
+  defp json_decode_base64(""), do: {:ok, <<>>}
+
+  defp json_decode_base64(raw) do
+    if String.contains?(raw, "=") do
+      Base.decode64(raw)
+    else
+      Base.decode64(raw, padding: false)
+    end
+  end
+
+  # json_clamp_elem holds one integer element to its kind's storage domain and
+  # then to the declared range, each clamp counted (docs/SPEC-TABLES.md §16.2),
+  # the order a scalar field takes.
+  defp json_clamp_elem(v, %{elem_kind: kind} = f, report) do
+    bits = kind_width(kind) * 8
+
+    {lo, hi} =
+      if kind in 2..5 or kind == 18 or kind in 20..24,
+        do: {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1},
+        else: {0, (1 <<< bits) - 1}
+
+    {v, report} =
+      cond do
+        v < lo -> {lo, %{report | clamped: report.clamped + 1}}
+        v > hi -> {hi, %{report | clamped: report.clamped + 1}}
+        true -> {v, report}
+      end
+
+    case f do
+      %{elem_min: rlo} when v < rlo -> {rlo, %{report | clamped: report.clamped + 1}}
+      %{elem_max: rhi} when v > rhi -> {rhi, %{report | clamped: report.clamped + 1}}
+      _ -> {v, report}
+    end
+  end
+
+  # json_float_in_width is the double a number spells, held to the field's
+  # width: a number past the double's range, or one a float32 rounds to
+  # infinity (the midpoint above its largest value included), spells no value
+  # the field can store and reads as the wrong shape (docs/SPEC-TABLES.md
+  # §16.2); no infinity is ever stored.
+  # An integer token compares exactly: 2^128 - 2^103 is the midpoint and one
+  # below it still rounds to the largest float32, which is what it stores, since
+  # its nearest double is the midpoint itself and that would narrow to infinity.
+  defp json_float_in_width(raw, 4) when is_integer(raw) do
+    json_ratio_f32(abs(raw), 1, if(raw < 0, do: 1, else: 0))
+  end
+
+  defp json_float_in_width(raw, 4) do
+    if abs(raw) >= 3.4028235677973366e38,
+      do: :error,
+      else: {:ok, json_float_narrow(raw * 1.0, 4)}
+  end
+
+  defp json_float_in_width(raw, _width) do
+    {:ok, raw * 1.0}
+  rescue
+    ArithmeticError -> :error
+  end
+
+  # json_read_list_elem reads one unbounded array's element by its element kind
+  # (docs/SPEC-TABLES.md §2.9, §16.7), folding the element's report into the list's.
+  # an integer element reads -0 as the 0 it is (json_number keeps the token)
+  defp json_read_list_elem(%{text_list: true, text_optional: true}, nil, report),
+    do: {%{"value" => nil}, report}
+
+  defp json_read_list_elem(%{text_list: true} = f, raw, report) when is_binary(raw) do
+    report = json_text_zero(f, raw, report)
+
+    if not Map.get(f, :text_unbounded, false) and byte_size(raw) > f.text_size do
+      {%{"value" => utf8_prefix(raw, f.text_size)}, %{report | clamped: report.clamped + 1}}
+    else
+      {%{"value" => raw}, report}
+    end
+  end
+
+  defp json_read_list_elem(%{text_list: true} = f, raw, report) do
+    json_skip_value(raw)
+    value = if f.text_optional, do: nil, else: ""
+    {%{"value" => value}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  defp json_read_list_elem(%{elem_kind: kind}, {:decimal, "-0"}, report)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19],
+       do: {0, report}
+
+  defp json_read_list_elem(%{elem_kind: kind} = f, {:decimal, _} = e, report)
+       when kind in [18, 19] do
+    case fixed_raw(e, 0) do
+      {:ok, value} -> json_clamp_elem(value, f, report)
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_list_elem(%{elem_kind: 10}, {:decimal, _} = e, report) do
+    case json_decimal_f32(e) do
+      {:ok, value} -> {value, report}
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_list_elem(f, {:decimal, _} = e, report) when not is_map_key(f, :elem_frac),
+    do: json_read_list_elem(f, json_decimal_float(e), report)
+
+  defp json_read_list_elem(%{elem_kind: 13} = f, raw, report),
+    do: json_read_field(%{t: :table, elem: f.elem}, raw, report)
+
+  defp json_read_list_elem(%{elem_kind: 17} = _f, nil, report), do: {nil, report}
+
+  defp json_read_list_elem(%{elem_kind: 17} = f, {:obj, pairs}, report) do
+    json_read_node(f.elem, pairs, report)
+  end
+
+  defp json_read_list_elem(%{elem_kind: 12} = f, e, report) when is_binary(e) do
+    report = json_text_zero(f, e, report)
+
+    if byte_size(e) > f.size do
+      {utf8_prefix(e, f.size), %{report | clamped: report.clamped + 1}}
+    else
+      {e, report}
+    end
+  end
+
+  defp json_read_list_elem(%{elem_kind: 30} = f, e, report) when is_binary(e) do
+    case e do
+      "None" ->
+        {nil, report}
+
+      _ ->
+        case Map.fetch(f.by_name, e) do
+          {:ok, _id} -> {e, report}
+          :error -> {nil, %{report | unknown: report.unknown + 1}}
+        end
+    end
+  end
+
+  defp json_read_list_elem(%{elem_flags: names}, e, report) when is_list(e),
+    do: json_read_field(%{t: :int, flags: names}, e, report)
+
+  defp json_read_list_elem(%{elem_kind: 1}, e, report) when is_boolean(e), do: {e, report}
+
+  defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19] and is_integer(e),
+       do: json_clamp_elem(e, f, report)
+
+  defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19] and is_float(e) do
+    if Float.floor(e) == e,
+      do: json_clamp_elem(trunc(e), f, report),
+      else: {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  defp json_read_list_elem(%{elem_kind: kind, elem_frac: frac} = f, e, report)
+       when kind in 20..29 do
+    case fixed_raw(e, frac) do
+      {:ok, raw} -> json_clamp_elem(raw, f, report)
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
+       when kind in [10, 11] and is_number(e) do
+    case json_float_in_width(e, kind_width(kind)) do
+      {:ok, v} -> clamp_list_int(v, f, report)
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_list_elem(%{elem_kind: 15} = f, e, report), do: json_read_arm(f.elem, e, report)
+
+  defp json_read_list_elem(_f, _e, report),
+    do: {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+  # json_read_arm reads one union object (docs/SPEC-TABLES.md §2.6, §16.2): {}
+  # is None; one key names the arm and its value reads by the arm's field
+  # line; an arm this reader cannot name counts unknown and reads None; two
+  # keys select nothing and the text is refused; any other shape is a kind
+  # mismatch.
+  defp json_read_arm(_union, {:obj, []}, report), do: {nil, report}
+
+  defp json_read_arm(union, {:obj, [{name, input}]}, report) do
+    un = Map.fetch!(@unions, union)
+
+    case Map.fetch(un.by_name, name) do
+      :error ->
+        json_skip_value(input)
+        {nil, %{report | unknown: report.unknown + 1}}
+
+      {:ok, %{t: :void}} ->
+        if input == nil,
+          do: {{name, nil}, report},
+          else: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+      {:ok, a} ->
+        if input == nil and a.t != :pointer and a.t != :blob do
+          {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        else
+          before = report.kind_mismatch
+          {v, report} = json_read_field(a, input, report)
+
+          if v == :skip or
+               (report.kind_mismatch > before and a.t not in [:table, :list, :union, :keyed]),
+             do: {nil, report},
+             else: {{name, v}, report}
+        end
+    end
+  end
+
+  defp json_read_arm(_union, {:obj, _pairs}, report) do
+    Process.put(:elixir_json_bad, true)
+    {nil, %{report | malformed: true}}
+  end
+
+  defp json_read_arm(_union, raw, report) do
+    json_skip_value(raw)
+    {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  # json_read_node reads one pointer object (§16.7). "&node" alone, after the
+  # label is defined, is that node. "&node" plus fields defines it. A label
+  # with no definition, a second definition, or a reference while the
+  # definition is still open is malformed. A label of another table is a kind
+  # mismatch and the pointer reads null.
+  defp json_read_node(table, [{"&node", label}], report) when is_integer(label) and label > 0 do
+    if Map.has_key?(Process.get(:elixir_json_open, %{}), label) do
+      Process.put(:elixir_json_bad, true)
+      {nil, %{report | malformed: true}}
+    else
+      case Process.get(:elixir_json_defs, %{}) do
+        %{^label => :dropped} ->
+          {nil, report}
+
+        %{^label => {^table, value}} ->
+          {value, report}
+
+        %{^label => _} ->
+          {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+        _ ->
+          Process.put(:elixir_json_bad, true)
+          {nil, %{report | malformed: true}}
+      end
+    end
+  end
+
+  defp json_read_node(table, [{"&node", label} | rest_pairs], report)
+       when is_integer(label) and label > 0 do
+    defs = Process.get(:elixir_json_defs, %{})
+    open = Process.get(:elixir_json_open, %{})
+
+    if Map.has_key?(defs, label) or Map.has_key?(open, label) do
+      Process.put(:elixir_json_bad, true)
+      {nil, %{report | malformed: true}}
+    else
+      Process.put(:elixir_json_open, Map.put(open, label, true))
+
+      {v, elem_report} =
+        carry_count_report(report, fn -> json_fields(Map.fetch!(@tables, table), rest_pairs) end)
+
+      Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
+
+      Process.put(
+        :elixir_json_defs,
+        Map.put(Process.get(:elixir_json_defs, %{}), label, {table, v})
+      )
+
+      {v, merge_report(report, elem_report)}
+    end
+  end
+
+  defp json_read_node(table, pairs, report) when is_list(pairs) do
+    {v, elem_report} =
+      carry_count_report(report, fn -> json_fields(Map.fetch!(@tables, table), pairs) end)
+
+    {v, merge_report(report, elem_report)}
+  end
 
   # merge_report folds one nested value's report into the enclosing one
   # (§16.2): the counters sum and malformed sticks, so an event inside a list
   # element is never lost when the element's own walk returns.
+  defp merge_reason(%{reason: reason}, _b) when reason != "", do: reason
+  defp merge_reason(_a, b), do: Map.get(b, :reason, "")
+
   defp merge_report(a, b) do
-    %{
+    base = %{
       unknown: a.unknown + b.unknown,
       kind_mismatch: a.kind_mismatch + b.kind_mismatch,
       widened: a.widened + b.widened,
       clamped: a.clamped + b.clamped,
       malformed: a.malformed or b.malformed,
       retained: a.retained + b.retained,
-      retain_lost: a.retain_lost + b.retain_lost
+      retain_lost: a.retain_lost + b.retain_lost,
+      reason: merge_reason(a, b),
+      missing_required: Map.get(a, :missing_required, 0) + Map.get(b, :missing_required, 0)
     }
+
+    case Map.get(a, :duplicate, 0) + Map.get(b, :duplicate, 0) do
+      0 -> base
+      d -> Map.put(base, :duplicate, d)
+    end
   end
 
   # ---- a JSON parser over the standard library (docs/SPEC-TABLES.md §16.3):
   # ---- objects, arrays, strings with escapes, numbers, booleans and null
 
-  defp json_value(bin) do
+  defp json_value(_bin, depth) when depth > 128, do: :error
+
+  defp json_value(bin, depth) do
     case json_skip(bin) do
-      <<"{", rest::binary>> -> json_object_p(rest, %{})
-      <<"[", rest::binary>> -> json_array_p(rest, [])
+      <<"{", rest::binary>> -> json_object_p(rest, depth)
+      <<"[", rest::binary>> -> json_array_p(rest, depth)
       <<"\"", rest::binary>> -> json_string(rest, [])
       <<"true", rest::binary>> -> {:ok, true, rest}
       <<"false", rest::binary>> -> {:ok, false, rest}
       <<"null", rest::binary>> -> {:ok, nil, rest}
-      <<?-, _::binary>> = num -> json_number(num, [])
-      <<c, _::binary>> = num when c in ?0..?9 -> json_number(num, [])
+      <<?-, _::binary>> = num -> json_number(num)
+      <<c, _::binary>> = num when c in ?0..?9 -> json_number(num)
       _ -> :error
     end
   end
 
   defp json_skip(<<c, rest::binary>>) when c in [?\s, ?\t, ?\n, ?\r], do: json_skip(rest)
+  # comments are accepted on read (docs/SPEC-TABLES.md §16.2); an
+  # unclosed block comment leaves a byte behind, so the document is malformed.
+  defp json_skip(<<"//", rest::binary>>), do: json_skip_line(rest)
+  defp json_skip(<<"/*", rest::binary>>), do: json_skip_block(rest)
   defp json_skip(bin), do: bin
 
-  defp json_object_p(bin, acc) do
-    case json_skip(bin) do
-      <<",", rest::binary>> -> json_object_p(rest, acc)
+  defp json_skip_line(<<"\n", rest::binary>>), do: json_skip(rest)
+  defp json_skip_line(<<_, rest::binary>>), do: json_skip_line(rest)
+  defp json_skip_line(<<>>), do: <<>>
 
+  defp json_skip_block(<<"*/", rest::binary>>), do: json_skip(rest)
+  defp json_skip_block(<<_, rest::binary>>), do: json_skip_block(rest)
+  defp json_skip_block(<<>>), do: <<0>>
+
+  defp json_object_p(bin, depth) do
+    case json_skip(bin) do
+      <<"}", rest::binary>> -> {:ok, {:obj, []}, rest}
+      _ -> json_object_pairs(bin, [], depth)
+    end
+  end
+
+  defp json_object_pairs(bin, acc, depth) do
+    case json_skip(bin) do
       <<"}", rest::binary>> ->
-        {:ok, acc, rest}
+        {:ok, {:obj, Enum.reverse(acc)}, rest}
 
       <<"\"", rest::binary>> ->
         with {:ok, key, r1} <- json_string(rest, []),
              <<":", r2::binary>> <- json_skip(r1),
-             {:ok, val, r3} <- json_value(r2) do
-          json_object_p(r3, Map.put(acc, key, val))
+             {:ok, val, r3} <- json_object_val(key, acc, r2, depth + 1) do
+          case json_skip(r3) do
+            <<",", r4::binary>> -> json_object_pairs(r4, [{key, val} | acc], depth)
+            <<"}", r4::binary>> -> {:ok, {:obj, Enum.reverse([{key, val} | acc])}, r4}
+            _ -> :error
+          end
         else
           _ -> :error
         end
@@ -1088,17 +5139,72 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_array_p(bin, acc) do
-    case json_skip(bin) do
-      <<",", rest::binary>> -> json_array_p(rest, acc)
+  # json_object_val reads one member's value; in a variable-class document
+  # a key opening with & is the §16.7 label and only "&node", first, is one.
+  defp json_object_val(key, acc, bin, depth) do
+    if String.starts_with?(key, "&") and Process.get(:elixir_json_variable, false) do
+      if key != "&node" or acc != [] do
+        :error
+      else
+        json_label(bin)
+      end
+    else
+      json_value(bin, depth)
+    end
+  end
 
+  # json_label reads a §16.7 label: a positive decimal integer of at most
+  # 64 bits, no sign, fraction or exponent (docs/SPEC-TABLES.md §16.7).
+  defp json_label(bin) do
+    case json_skip(bin) do
+      <<first, rest::binary>> when first in ?1..?9 ->
+        json_label_digits(rest, first - ?0)
+
+      _ ->
+        :error
+    end
+  end
+
+  defp json_label_digits(<<c, rest::binary>>, acc) when c in ?0..?9 do
+    next = acc * 10 + (c - ?0)
+
+    if next > 0xFFFFFFFFFFFFFFFF do
+      :error
+    else
+      json_label_digits(rest, next)
+    end
+  end
+
+  defp json_label_digits(rest, acc) do
+    case rest do
+      <<c, _::binary>> when c in [?., ?e, ?E, ?+, ?-] -> :error
+      _ -> {:ok, acc, rest}
+    end
+  end
+
+  defp json_array_p(bin, depth) do
+    case json_skip(bin) do
+      <<"]", rest::binary>> -> {:ok, [], rest}
+      _ -> json_array_elems(bin, [], depth)
+    end
+  end
+
+  defp json_array_elems(bin, acc, depth) do
+    case json_skip(bin) do
       <<"]", rest::binary>> ->
         {:ok, Enum.reverse(acc), rest}
 
       _ ->
-        case json_value(bin) do
-          {:ok, val, rest} -> json_array_p(rest, [val | acc])
-          :error -> :error
+        case json_value(bin, depth + 1) do
+          {:ok, val, r1} ->
+            case json_skip(r1) do
+              <<",", r2::binary>> -> json_array_elems(r2, [val | acc], depth)
+              <<"]", r2::binary>> -> {:ok, Enum.reverse([val | acc]), r2}
+              _ -> :error
+            end
+
+          :error ->
+            :error
         end
     end
   end
@@ -1108,40 +5214,280 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_string(<<"\\", rest::binary>>, acc) do
     case rest do
-      <<"\"", r::binary>> -> json_string(r, ["\"" | acc])
-      <<"\\", r::binary>> -> json_string(r, ["\\" | acc])
-      <<"/", r::binary>> -> json_string(r, ["/" | acc])
-      <<"b", r::binary>> -> json_string(r, ["\b" | acc])
-      <<"f", r::binary>> -> json_string(r, ["\f" | acc])
-      <<"n", r::binary>> -> json_string(r, ["\n" | acc])
-      <<"r", r::binary>> -> json_string(r, ["\r" | acc])
-      <<"t", r::binary>> -> json_string(r, ["\t" | acc])
+      <<"\"", r::binary>> ->
+        json_string(r, ["\"" | acc])
+
+      <<"\\", r::binary>> ->
+        json_string(r, ["\\" | acc])
+
+      <<"/", r::binary>> ->
+        json_string(r, ["/" | acc])
+
+      <<"b", r::binary>> ->
+        json_string(r, ["\b" | acc])
+
+      <<"f", r::binary>> ->
+        json_string(r, ["\f" | acc])
+
+      <<"n", r::binary>> ->
+        json_string(r, ["\n" | acc])
+
+      <<"r", r::binary>> ->
+        json_string(r, ["\r" | acc])
+
+      <<"t", r::binary>> ->
+        json_string(r, ["\t" | acc])
+
       <<"u", a, b, c, d, r::binary>> ->
-        code = hexval(a) * 4096 + hexval(b) * 256 + hexval(c) * 16 + hexval(d)
-        point = if code in 0xD800..0xDFFF, do: 0xFFFD, else: code
-        json_string(r, [<<point::utf8>> | acc])
+        with {:ok, ha} <- hex_digit(a),
+             {:ok, hb} <- hex_digit(b),
+             {:ok, hc} <- hex_digit(c),
+             {:ok, hd} <- hex_digit(d) do
+          code = ha * 4096 + hb * 256 + hc * 16 + hd
+
+          case r do
+            <<"\\u", e, f, g, h, tail::binary>> when code in 0xD800..0xDBFF ->
+              with {:ok, he} <- hex_digit(e),
+                   {:ok, hf} <- hex_digit(f),
+                   {:ok, hg} <- hex_digit(g),
+                   {:ok, hh} <- hex_digit(h),
+                   low when low in 0xDC00..0xDFFF <- he * 4096 + hf * 256 + hg * 16 + hh do
+                point = 0x10000 + (code - 0xD800) * 1024 + low - 0xDC00
+                json_string(tail, [<<point::utf8>> | acc])
+              else
+                _ -> json_string(r, [<<0xFFFD::utf8>> | acc])
+              end
+
+            _ ->
+              point = if code in 0xD800..0xDFFF, do: 0xFFFD, else: code
+              json_string(r, [<<point::utf8>> | acc])
+          end
+        else
+          _ -> :error
+        end
 
       _ ->
         :error
     end
   end
 
-  defp json_string(<<c, rest::binary>>, acc) when c >= 0x20, do: json_string(rest, [<<c>> | acc])
+  # a byte past ASCII must open a well-formed UTF-8 sequence: RFC 8259 texts
+  # are UTF-8, and an ill-formed byte spells no code point, so the read refuses
+  # the text at the string site rather than replacing or clamping it
+  # (docs/SPEC-TABLES.md §16.3, conformance row str-illformed-at-bound)
+  defp json_string(<<ch::utf8, rest::binary>>, acc) when ch >= 0x80,
+    do: json_string(rest, [<<ch::utf8>> | acc])
+
+  defp json_string(<<c, rest::binary>>, acc) when c >= 0x20 and c < 0x80,
+    do: json_string(rest, [<<c>> | acc])
+
   defp json_string(_, _acc), do: :error
 
-  defp hexval(c) when c in ?0..?9, do: c - ?0
-  defp hexval(c) when c in ?a..?f, do: c - ?a + 10
-  defp hexval(c) when c in ?A..?F, do: c - ?A + 10
-  defp hexval(_), do: 0
+  defp hex_digit(c) when c in ?0..?9, do: {:ok, c - ?0}
+  defp hex_digit(c) when c in ?a..?f, do: {:ok, c - ?a + 10}
+  defp hex_digit(c) when c in ?A..?F, do: {:ok, c - ?A + 10}
+  defp hex_digit(_), do: :error
 
-  defp json_number(bin, acc) do
-    case bin do
-      <<c, rest::binary>> when c in ?0..?9 -> json_number(rest, [c | acc])
-      rest ->
-        digits = acc |> Enum.reverse() |> IO.iodata_to_binary()
-        {:ok, String.to_integer(digits), rest}
+  # json_number reads the RFC 8259 number grammar strictly (no leading zero,
+  # no plus sign, digits after a point and an exponent); an integer stays an
+  # integer and anything else stays its decimal text, {:decimal, token}, so a
+  # fixed-point field reads it exactly and every other field reads the double
+  # it spells (docs/SPEC-TABLES.md §3, §4.12, §16.2).
+  defp json_number(bin) do
+    with {:ok, neg, int_value, r1} <- json_num_sign(bin) |> json_num_int(),
+         {:ok, frac_digits, r3} <- json_num_frac(r1),
+         {:ok, exp_str, r4} <- json_num_exp(r3),
+         :ok <- json_num_tail(r4) do
+      sign_str = if neg, do: "-", else: ""
+
+      cond do
+        neg and int_value == 0 and frac_digits == "" and exp_str == "" ->
+          # -0 KEEPS ITS SIGN (docs/SPEC-TABLES.md §3.3, §16.2): an integer
+          # has no -0, so the token rides as its decimal text and a float
+          # field reads -0.0 from it, where an integer field still reads 0
+          {:ok, {:decimal, "-0"}, r4}
+
+        frac_digits == "" and exp_str == "" ->
+          {:ok, if(neg, do: -int_value, else: int_value), r4}
+
+        true ->
+          token =
+            sign_str <>
+              Integer.to_string(int_value) <>
+              if(frac_digits == "", do: ".0", else: "." <> frac_digits) <> exp_str
+
+          {:ok, {:decimal, token}, r4}
+      end
     end
   end
+
+  defp json_num_sign(<<"-", rest::binary>>), do: {:ok, true, rest}
+  defp json_num_sign(<<"+", _::binary>>), do: :error
+  defp json_num_sign(rest), do: {:ok, false, rest}
+
+  # the integer part is accumulated by value, not as a text binary: one binary
+  # per element for a 70000-element integer array is the allocation this audit
+  # refuses (docs/SPEC-TABLES.md §16.2 gates the shape, not the cost).
+  defp json_num_int({:ok, neg, rest}) do
+    case json_int_value(rest, 0) do
+      {:ok, value, rest2} -> {:ok, neg, value, rest2}
+      :error -> :error
+    end
+  end
+
+  defp json_num_int(:error), do: :error
+
+  defp json_int_value(<<"0", c, _::binary>>, _acc) when c in ?0..?9, do: :error
+  defp json_int_value(<<"0", rest::binary>>, _acc), do: {:ok, 0, rest}
+
+  defp json_int_value(<<c, rest::binary>>, _acc) when c in ?1..?9,
+    do: json_int_digits(rest, c - ?0)
+
+  defp json_int_value(_, _acc), do: :error
+
+  defp json_int_digits(<<c, rest::binary>>, acc) when c in ?0..?9,
+    do: json_int_digits(rest, acc * 10 + (c - ?0))
+
+  defp json_int_digits(rest, acc), do: {:ok, acc, rest}
+
+  defp json_num_frac(<<".", c, rest::binary>>) when c in ?0..?9, do: json_digits(rest, [c])
+  defp json_num_frac(<<".", _::binary>>), do: :error
+  defp json_num_frac(rest), do: {:ok, "", rest}
+
+  defp json_num_exp(<<e, s, c, rest::binary>>)
+       when e in [?e, ?E] and s in [?+, ?-] and c in ?0..?9 do
+    {:ok, d, r} = json_digits(rest, [c])
+    {:ok, <<e, s>> <> d, r}
+  end
+
+  defp json_num_exp(<<e, c, rest::binary>>) when e in [?e, ?E] and c in ?0..?9 do
+    {:ok, d, r} = json_digits(rest, [c])
+    {:ok, <<e>> <> d, r}
+  end
+
+  defp json_num_exp(<<e, _::binary>>) when e in [?e, ?E], do: :error
+  defp json_num_exp(rest), do: {:ok, "", rest}
+
+  defp json_num_tail(<<c, _::binary>>) when c in [?., ?e, ?E, ?+, ?-] or c in ?0..?9, do: :error
+  defp json_num_tail(_), do: :ok
+
+  defp json_digits(<<c, rest::binary>>, acc) when c in ?0..?9, do: json_digits(rest, [c | acc])
+  defp json_digits(rest, acc), do: {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
+
+  # Round a decimal directly to binary32. Going through binary64 first loses
+  # which side of a binary32 halfway point an exact decimal token occupies.
+  defp json_decimal_f32({:decimal, token}) do
+    [mantissa | exponent] = String.split(token, ~r/[eE]/, parts: 2)
+    power = if exponent == [], do: 0, else: String.to_integer(hd(exponent))
+    sign = if String.starts_with?(mantissa, "-"), do: 1, else: 0
+    [whole | tail] = String.split(String.trim_leading(mantissa, "-"), ".", parts: 2)
+    fraction = if tail == [], do: "", else: hd(tail)
+    digits = String.trim_leading(whole <> fraction, "0")
+    shift = power - byte_size(fraction)
+    order = byte_size(digits) + shift
+
+    cond do
+      digits == "" or order < -50 ->
+        json_f32_bits(sign <<< 31)
+
+      order > 40 ->
+        :error
+
+      true ->
+        n = String.to_integer(digits)
+
+        {n, d} =
+          if shift >= 0,
+            do: {n * Integer.pow(10, shift), 1},
+            else: {n, Integer.pow(10, -shift)}
+
+        json_ratio_f32(n, d, sign)
+    end
+  end
+
+  # Both integer and decimal tokens use exact rounding, so a large integer
+  # one unit away from a binary32 midpoint cannot lose that unit in binary64.
+  defp json_ratio_f32(n, d, sign) do
+    e = byte_size(Integer.to_string(n, 2)) - byte_size(Integer.to_string(d, 2))
+    below = if e >= 0, do: n < d <<< e, else: n <<< -e < d
+    e = max(if(below, do: e - 1, else: e), -126)
+    scale = 23 - e
+    {n, d} = if scale >= 0, do: {n <<< scale, d}, else: {n, d <<< -scale}
+    q = div(n, d)
+    twice = rem(n, d) * 2
+    q = if twice > d or (twice == d and rem(q, 2) == 1), do: q + 1, else: q
+    {q, e} = if q == 1 <<< 24, do: {q >>> 1, e + 1}, else: {q, e}
+
+    cond do
+      e > 127 -> :error
+      q < 1 <<< 23 -> json_f32_bits(sign <<< 31 ||| q)
+      true -> json_f32_bits(sign <<< 31 ||| (e + 127) <<< 23 ||| q - (1 <<< 23))
+    end
+  end
+
+  defp json_f32_bits(bits) do
+    <<value::float-32>> = <<bits::unsigned-32>>
+    {:ok, value}
+  end
+
+  # json_decimal_float is the double a decimal text spells; one past the
+  # double's range is :overflow_float, which no field accepts (§16.2).
+  defp json_decimal_float({:decimal, token}) do
+    case Float.parse(token) do
+      {f, ""} -> f
+      _ -> :overflow_float
+    end
+  rescue
+    _ -> :overflow_float
+  end
+
+  # fixed_raw converts a JSON number to the exact scaled integer §3 stores
+  # (docs/SPEC-TABLES.md §3, §4.12). A fraction finer than 2^-F is a kind
+  # mismatch, never rounded through a float.
+  defp fixed_raw(raw, frac) when is_integer(raw), do: {:ok, raw <<< frac}
+
+  defp fixed_raw({:decimal, token}, frac) do
+    [mantissa | exponent] = String.split(token, ~r/[eE]/, parts: 2)
+    power = if exponent == [], do: 0, else: String.to_integer(hd(exponent))
+    negative = String.starts_with?(mantissa, "-")
+    unsigned = String.trim_leading(mantissa, "-")
+    [whole | tail] = String.split(unsigned, ".", parts: 2)
+    fraction = if tail == [], do: "", else: hd(tail)
+    digits = String.to_integer(whole <> fraction)
+    shift = power - byte_size(fraction)
+    numerator = digits <<< frac
+
+    cond do
+      # the token cap (511 bytes) bounds the digits, so an exponent past 700
+      # either way decides without the power: zero stays zero, a larger shift
+      # is past every field's range (the clamp counts it) and a smaller one is
+      # finer than 2^-F with no exact scaled integer
+      digits == 0 ->
+        {:ok, 0}
+
+      shift > 700 ->
+        v = Integer.pow(10, 700)
+        {:ok, if(negative, do: -v, else: v)}
+
+      shift < -700 ->
+        :error
+
+      true ->
+        {numerator, denominator} =
+          if shift >= 0,
+            do: {numerator * Integer.pow(10, shift), 1},
+            else: {numerator, Integer.pow(10, -shift)}
+
+        if rem(numerator, denominator) == 0 do
+          v = div(numerator, denominator)
+          {:ok, if(negative, do: -v, else: v)}
+        else
+          :error
+        end
+    end
+  end
+
+  defp fixed_raw(_, _), do: :error
 
   # ---- the region measure (docs/SPEC-TABLES.md §4.2, §6.5) ----
   #
@@ -1153,6 +5499,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # the measure to the framing's bound. A wire this reader cannot open, or a
   # list count past the storage cap, answers -1.
 
+  def load_measure(table, _data) when table in @uncarried, do: -1
+
   def load_measure(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
@@ -1162,7 +5510,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {:ok, body, ids} ->
         with {:ok, at} <- extent(desc, body, ids),
-             {:ok, count, blobs} <- measure_nodes(body, ids) do
+             {:ok, count, blobs} <- measure_nodes(body, ids, desc) do
           region_round(region_round(desc.size) + at) + blobs + (count + 1) * 16
         else
           _ -> -1
@@ -1182,76 +5530,199 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp extent(desc, bin, ids, at) do
     case leb(bin) do
-      :error ->
-        {:ok, at}
+      {ref, rest} when ref != 0 ->
+        with id when id != :error <- resolve(ids, ref),
+             <<kind, payload::binary>> <- rest,
+             {:ok, body, remaining} <- slice(payload, kind) do
+          field = find_field(desc, id)
 
-      {0, _rest} ->
-        {:ok, at}
-
-      {ref, rest} ->
-        case resolve(ids, ref) do
-          :error ->
-            {:ok, at}
-
-          id ->
-            case rest do
-              <<kind, rest2::binary>> ->
-                field = find_field(desc, id)
-
-                if field != nil and field.t == :list and kind == 14 do
-                  case slice(rest2, kind) do
-                    {:ok, payload, rest3} ->
-                      case leb(payload) do
-                        {_l, arr} ->
-                          case list_extent(field, arr, ids, at) do
-                            :error -> :error
-                            {:ok, at2} -> extent(desc, rest3, ids, at2)
-                          end
-
-                        :error ->
-                          {:ok, at}
-                      end
-
-                    :error ->
-                      {:ok, at}
-                  end
-                else
-                  case slice(rest2, kind) do
-                    {:ok, _payload, rest3} -> extent(desc, rest3, ids, at)
-                    :error -> {:ok, at}
-                  end
-                end
-
-              _ ->
-                {:ok, at}
+          if field != nil and field.kind == kind do
+            case field_extent(field, body, ids, at) do
+              {:ok, next} -> extent(desc, remaining, ids, next)
+              :error -> :error
             end
-        end
-    end
-  end
-
-  defp list_extent(field, arr, ids, at) do
-    case arr do
-      <<13, count_rest::binary>> ->
-        case leb(count_rest) do
-          :error ->
-            :error
-
-          {count, elems} ->
-            if count > 0x7FFFFFFF do
-              :error
-            else
-              if count > div(byte_size(elems), 2) do
-                :error
-              else
-                at = align_to(at, field.elem_align) + count * field.elem_size
-                elem_desc = Map.fetch!(@tables, field.elem)
-                elements_extent(elem_desc, elems, count, ids, at)
-              end
-            end
+          else
+            extent(desc, remaining, ids, at)
+          end
+        else
+          _ -> {:ok, at}
         end
 
       _ ->
         {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :map, elem: name}, payload, ids, at) do
+    with {_length, <<13, rest::binary>>} <- leb(payload),
+         {count, elems} <- leb(rest) do
+      if count > 0x7FFFFFFF or count > div(byte_size(elems), 2) do
+        :error
+      else
+        entry = Map.fetch!(@tables, name)
+        next = align_to(at, entry.align) + count * entry.size
+        elements_extent(entry, elems, count, ids, next)
+      end
+    else
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :keyed} = field, payload, ids, at) do
+    with {_length, <<kind, rest::binary>>} <- leb(payload),
+         true <- kind == field.elem_kind or kind_widens?(kind, field.elem_kind),
+         {count, pairs} <- leb(rest) do
+      if kind == 13,
+        do: keyed_extent(field.item, pairs, count, ids, at),
+        else: {:ok, at}
+    else
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :union, elem: name}, payload, ids, at) do
+    un = Map.fetch!(@unions, name)
+
+    # Sizing follows the known arm's declared shape; the value reader diagnoses
+    # an incompatible arm kind separately, after reserving its region.
+    with {ref, <<_kind, rest::binary>>} when ref != 0 <- leb(payload),
+         id when id != :error <- resolve(ids, ref),
+         {:ok, arm_name} <- Map.fetch(un.by_id, id),
+         {length, body} when byte_size(body) >= length <- leb(rest) do
+      arm_extent(Map.fetch!(un.by_name, arm_name), binary_part(body, 0, length), ids, at)
+    else
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :list} = field, payload, ids, at) do
+    case leb(payload) do
+      {_length, array} -> list_extent(field, array, ids, at)
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :table, elem: name}, payload, ids, at) do
+    case leb(payload) do
+      {_length, body} -> extent(Map.fetch!(@tables, name), body, ids, at)
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :string, unbounded: true}, payload, _ids, at) do
+    case leb(payload) do
+      {length, body} when byte_size(body) >= length -> text_extent(length, at)
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(_field, _payload, _ids, at), do: {:ok, at}
+
+  defp text_extent(0, at), do: {:ok, at}
+
+  defp text_extent(length, at) when length <= 0xFFFFFFFF,
+    do: {:ok, align_to(at, 8) + region_round(9 + length)}
+
+  defp text_extent(_length, _at), do: :error
+
+  defp text_elements_extent(_elems, 0, at), do: {:ok, at}
+
+  defp text_elements_extent(elems, count, at) do
+    case leb(elems) do
+      {length, body} when byte_size(body) >= length ->
+        case text_extent(length, at) do
+          {:ok, at} ->
+            text_elements_extent(
+              binary_part(body, length, byte_size(body) - length),
+              count - 1,
+              at
+            )
+
+          :error ->
+            :error
+        end
+
+      _ ->
+        {:ok, at}
+    end
+  end
+
+  defp arm_extent(%{t: :union} = arm, body, ids, at),
+    do: field_extent(arm, body, ids, at)
+
+  defp arm_extent(arm, body, ids, at),
+    do: field_extent(arm, leb_encode(byte_size(body)) <> body, ids, at)
+
+  # Keyed table slots are inline, but every framed value can hold extents.
+  # Unknown keys still reserve the storage declared by the complete framing.
+  defp keyed_extent(_field, _pairs, 0, _ids, at), do: {:ok, at}
+
+  defp keyed_extent(field, pairs, count, ids, at) do
+    with {_key, rest} <- leb(pairs),
+         {length, body} when byte_size(body) >= length <- leb(rest) do
+      value = binary_part(body, 0, length)
+      remaining = binary_part(body, length, byte_size(body) - length)
+
+      case field_extent(field, leb_encode(length) <> value, ids, at) do
+        {:ok, next} -> keyed_extent(field, remaining, count - 1, ids, next)
+        :error -> :error
+      end
+    else
+      _ -> {:ok, at}
+    end
+  end
+
+  defp union_elements_extent(_name, _elems, 0, _ids, at), do: {:ok, at}
+
+  defp union_elements_extent(name, elems, count, ids, at) do
+    case slice(elems, 15) do
+      {:ok, arm, rest} ->
+        case field_extent(%{t: :union, elem: name}, arm, ids, at) do
+          {:ok, next} -> union_elements_extent(name, rest, count - 1, ids, next)
+          :error -> :error
+        end
+
+      _ ->
+        {:ok, at}
+    end
+  end
+
+  # a header whose element kind is not the declared one is a kind mismatch the
+  # read answers as an empty list, so it places nothing (internal/tablewire
+  # extent.go). Table and union payloads descend using the declared element type.
+  defp list_extent(field, arr, ids, at) do
+    with <<kind, count_rest::binary>> <- arr,
+         true <- kind == field.elem_kind or kind_widens?(kind, field.elem_kind),
+         {count, elems} <- leb(count_rest) do
+      # The count's byte floor is the incoming element width, before any
+      # widening. Bounded arrays reserve no element extent of their own.
+      floor = if kind == 13, do: 2, else: max(kind_width(kind), 1)
+      list = field.array == :list
+
+      if list and (count > 0x7FFFFFFF or count > div(byte_size(elems), floor)) do
+        :error
+      else
+        at =
+          if field.array == :list,
+            do: align_to(at, field.elem_align) + count * field.elem_size,
+            else: at
+
+        cond do
+          kind == 13 ->
+            elements_extent(Map.fetch!(@tables, field.elem), elems, count, ids, at)
+
+          kind == 15 ->
+            union_elements_extent(field.elem, elems, count, ids, at)
+
+          kind == 12 and Map.get(field, :text_unbounded, false) ->
+            text_elements_extent(elems, count, at)
+
+          true ->
+            {:ok, at}
+        end
+      end
+    else
+      _ -> {:ok, at}
     end
   end
 
@@ -1281,74 +5752,109 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # length header, its bytes and its terminator, rounded; a type id this build
   # cannot name commands none. A node table that cannot be read whole commands
   # nothing, exactly as a reader that cannot name it steps over it.
-  defp measure_nodes(bin, ids) do
+  defp measure_nodes(bin, ids, desc), do: measure_nodes(bin, ids, desc, nil)
+
+  defp measure_nodes(bin, ids, desc, found) do
     case leb(bin) do
       :error ->
-        {:ok, 0, 0}
+        measure_found_nodes(found, ids, desc)
 
       {0, _rest} ->
-        {:ok, 0, 0}
+        measure_found_nodes(found, ids, desc)
 
       {ref, rest} ->
         case resolve(ids, ref) do
           :error ->
-            {:ok, 0, 0}
+            measure_found_nodes(found, ids, desc)
 
           id ->
             case rest do
               <<kind, rest2::binary>> ->
-                case slice(rest2, kind) do
-                  {:ok, payload, rest3} ->
-                    if id == @node_id and kind == 12 do
-                      case measure_node_table(payload, ids) do
-                        {:ok, count, blobs} -> {:ok, count, blobs}
-                        :error -> {:ok, 0, 0}
-                      end
-                    else
-                      measure_nodes(rest3, ids)
+                if id == @node_id do
+                  if kind == 12 do
+                    case slice(rest2, 12) do
+                      {:ok, payload, rest3} -> measure_nodes(rest3, ids, desc, payload)
+                      :error -> {:ok, 0, 0}
                     end
-
-                  :error ->
+                  else
                     {:ok, 0, 0}
+                  end
+                else
+                  case slice(rest2, kind) do
+                    {:ok, _payload, rest3} -> measure_nodes(rest3, ids, desc, found)
+                    :error -> measure_found_nodes(found, ids, desc)
+                  end
                 end
 
               _ ->
-                {:ok, 0, 0}
+                measure_found_nodes(found, ids, desc)
             end
         end
     end
   end
 
-  defp measure_node_table(bin, ids) do
-    case leb(bin) do
-      {l, rest} when byte_size(rest) >= l ->
-        content = binary_part(rest, 0, l)
+  defp measure_found_nodes(nil, _ids, _desc), do: {:ok, 0, 0}
+  defp measure_found_nodes(payload, ids, desc), do: measure_node_table(payload, ids, desc)
 
-        case leb(content) do
-          {n, cr} -> measure_records(cr, n, ids, 0, 0)
-          :error -> :error
-        end
-
-      _ ->
-        :error
+  defp measure_node_table(bin, ids, desc) do
+    with {l, rest} when byte_size(rest) >= l <- leb(bin),
+         content = binary_part(rest, 0, l),
+         {n, cr} <- leb(content),
+         {:ok, records} <- scan_measure_records(cr, n, ids, []) do
+      measure_records(records, ids, desc, 0, 0)
+    else
+      _ -> {:ok, 0, 0}
     end
   end
 
-  defp measure_records(_rest, 0, _ids, count, blobs), do: {:ok, count, blobs}
+  defp scan_measure_records(<<>>, n, _ids, acc) do
+    if n == length(acc), do: {:ok, Enum.reverse(acc)}, else: :error
+  end
 
-  defp measure_records(rest, n, ids, count, blobs) do
+  defp scan_measure_records(rest, n, ids, acc) do
     with {tref, r1} <- leb(rest),
+         true <- tref != 0 and tref <= div(byte_size(ids), 8),
          {len, r2} <- leb(r1),
          true <- byte_size(r2) >= len do
-      blobs =
-        case resolve(ids, tref) do
-          @string_id -> blobs + region_round(8 + len + 1)
-          _ -> blobs
-        end
+      rec = {resolve(ids, tref), len, binary_part(r2, 0, len)}
 
-      measure_records(binary_part(r2, len, byte_size(r2) - len), n - 1, ids, count + 1, blobs)
+      scan_measure_records(
+        binary_part(r2, len, byte_size(r2) - len),
+        n,
+        ids,
+        [rec | acc]
+      )
     else
       _ -> :error
+    end
+  end
+
+  defp measure_records([], _ids, _desc, count, blobs), do: {:ok, count, blobs}
+
+  defp measure_records([{type_id, len, body} | rest], ids, desc, count, blobs) do
+    added =
+      cond do
+        type_id == @string_id and desc.string_blob ->
+          if len > 0xFFFFFFFF, do: :error, else: {:ok, region_round(8 + len + 1)}
+
+        type_id == @bytes_id and desc.bytes_blob ->
+          if len > 0xFFFFFFFF, do: :error, else: {:ok, region_round(8 + len)}
+
+        Map.has_key?(desc.node_types, type_id) ->
+          node = Map.fetch!(@tables, Map.fetch!(desc.node_types, type_id))
+
+          case extent(node, body, ids) do
+            {:ok, at} -> {:ok, region_round(region_round(node.size) + at)}
+            :error -> :error
+          end
+
+        true ->
+          {:ok, 0}
+      end
+
+    case added do
+      {:ok, bytes} -> measure_records(rest, ids, desc, count + 1, blobs + bytes)
+      :error -> :error
     end
   end
 `
@@ -1372,198 +5878,773 @@ const variableRetainSource = `
 
   def load_retain(table, data, retain, report) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
+    missing_before = Map.get(report, :missing_required, 0)
+    report = report |> Map.put(:missing_required, 0) |> Map.put(:reason, "")
     # §6.6: a retention buffer belongs to one loaded region; the next LoadRetain
     # into it resets both stores, keeping only the caller's capacities.
     retain = %{retain | records: [], used: 0, ids: []}
 
     case open(data) do
-      {:error, _} ->
-        {:error, :malformed, report, retain}
+      {:error, refusal} ->
+        {:error, :malformed, reasoned(report, refusal), retain}
 
       {:ok, body, ids} ->
-        case entries(body, ids, desc.string_blob) do
-          {:ok, fields, nodes} ->
-            {value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
-            report = if :malformed in nodes, do: %{report | malformed: true}, else: report
-            # an unknown NODE RECORD whose type id this reader cannot name is an
-            # excluded class (§6.6): one retain_lost, counted once at the record
-            unknown = Enum.count(nodes, &(&1 == :unknown))
-            report = %{report | unknown: report.unknown + unknown, retain_lost: report.retain_lost + unknown}
-            {:ok, Map.merge(defaults(desc), value), report, retain}
+        {fields, nodes, terminated} =
+          case entries(body, ids, desc, desc.variable) do
+            {:ok, fields, nodes} -> {fields, nodes, true}
+            {:stop, fields, nodes, _remaining} -> {fields, nodes, false}
+          end
 
-          _ ->
-            {:error, :malformed, report, retain}
+        # the node directory's memo: a node a second pointer names is the
+        # one value, read and retained once (§6.6, the path's first step)
+        {{value, report, retain}, shared} =
+          with_node_directory(table, nodes, fn ->
+            blob_namings(fn ->
+              decode_directory_retain(desc, fields, nodes, ids, retain, report, terminated)
+            end)
+          end)
+
+        report =
+          report
+          |> Map.put(:blob_shared, shared)
+          |> Map.put(:malformed, report.malformed or not terminated)
+          |> Map.update(:missing_required, missing_before, &(&1 + missing_before))
+
+        # the records were kept newest first; they are saved in the order
+        # retained
+        retain = %{Map.delete(retain, :memo) | records: Enum.reverse(retain.records)}
+
+        # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no value
+        # and nothing retained, only the report
+        cond do
+          Map.get(report, :missing_required, 0) > missing_before ->
+            {:error, :missing_required, report, %{retain | records: [], used: 0, ids: []}}
+
+          report.malformed ->
+            {:error, :malformed, reasoned(report, :malformed),
+             %{retain | records: [], used: 0, ids: []}}
+
+          true ->
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
+        end
+    end
+  catch
+    {:missing_required, refused_report} ->
+      refused_report =
+        Map.update!(
+          refused_report,
+          :missing_required,
+          &(&1 + Map.get(report, :missing_required, 0))
+        )
+
+      {:error, :missing_required, refused_report, %{retain | records: [], used: 0, ids: []}}
+
+    {:count_over_extent_cap, refused_report} ->
+      {:error, :count_over_extent_cap, reasoned(refused_report, :count_over_extent_cap),
+       %{retain | records: [], used: 0, ids: []}}
+
+    # a NaN or an infinity refuses the retaining read as it does the plain one
+    # (docs/SPEC-TABLES.md §3.3): nothing lands and nothing is retained
+    {:non_finite_float, name} ->
+      {:error, :non_finite_float, reasoned(report, {:non_finite_float, name}),
+       %{retain | records: [], used: 0, ids: []}}
+
+    :wire_damaged ->
+      {:error, :malformed, reasoned(report, :malformed),
+       %{retain | records: [], used: 0, ids: []}}
+  end
+
+  def measure_retain(table, value, retain) when is_map(value) do
+    case save_retain_internal(table, value, retain, empty_report()) do
+      {:ok, bytes, _retain, _report} -> byte_size(bytes)
+      {:error, :blob_shared} -> -1
+    end
+  catch
+    :non_finite_float -> -1
+    :invalid_value -> -1
+  end
+
+  def save_retain(table, value, retain, report) when is_map(value) do
+    case save_retain_internal(table, value, retain, report) do
+      {:ok, bytes, retain, report} -> {:ok, bytes, report, retain}
+      {:error, :blob_shared} -> {:error, :blob_shared, report, retain}
+    end
+  catch
+    # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
+    :non_finite_float -> {:error, :non_finite_float, report, retain}
+    :invalid_value -> {:error, :invalid_value, report, retain}
+  end
+
+  defp save_retain_internal(table, value, retain, report),
+    do: with_node_identities(fn -> save_retain_identity(table, value, retain, report) end)
+
+  defp save_retain_identity(table, value, retain, report) do
+    desc = Map.fetch!(@tables, table)
+
+    try do
+      nodes = collect_root(desc, value)
+      idx_map = node_index(nodes)
+
+      blob_site_begin(:root)
+
+      # the records of one body are found by its path: grouped once, they are
+      # looked up by the walk rather than scanned for at every body
+      retain =
+        retain
+        |> Map.put(:matched, 0)
+        |> Map.put(:by_path, Enum.group_by(retain.records, &elem(&1, 0)))
+
+      {s, body} = save_fields_retain(desc, value, {idx_map, %{}, [], retain, report}, [], [])
+      {{_idx_map, _ids, order, retain, report}, body} = save_node_table_retain(nodes, s, body)
+      ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
+
+      # a record whose path no longer names a body was lost by the caller's
+      # edit between load and save: one retain_lost each (§6.6)
+      orphans = length(retain.records) - retain.matched
+      report = %{report | retain_lost: report.retain_lost + orphans}
+      retain = retain |> Map.delete(:matched) |> Map.delete(:by_path)
+
+      {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>]),
+       retain, report}
+    catch
+      :blob_shared -> {:error, :blob_shared}
+    after
+      Process.delete(:elixir_blob_site)
+    end
+  end
+
+  # one body's fields, then its retained tail. The walk's state is the node
+  # index map, the id map and its first-use order, and the two caller stores
+  # with the report.
+  defp save_fields_retain(desc, value, s, path, acc) do
+    validate_record(desc, value)
+    value = Map.merge(defaults(desc), value)
+
+    {s, acc} =
+      Enum.reduce(desc.fields, {s, acc}, fn f, {s, acc} ->
+        if field_active?(f, desc, value),
+          do: emit_field_retain(f, value, s, path, acc),
+          else: {s, acc}
+      end)
+
+    emit_retain_tail(s, path, acc)
+  end
+
+  # a nested table by value: its body is the step pair {ordinal, 0}. A body
+  # that carries a retained field does not elide (§6.6).
+  defp emit_field_retain(%{t: :table} = f, value, s, path, acc) do
+    {idx_map, ids, order, retain, report} = s
+
+    case Map.get(value, f.name) do
+      nil ->
+        {s, acc}
+
+      v ->
+        {ref, ids1, order1} = intern(ids, order, f.id)
+
+        {{idx_map2, ids2, order2, retain2, report2}, body} =
+          save_fields_retain(
+            Map.fetch!(@tables, f.elem),
+            v,
+            {idx_map, ids1, order1, retain, report},
+            path ++ [{f.ordinal, 0}],
+            []
+          )
+
+        if IO.iodata_length(body) == 0 and not Map.get(f, :optional, false) and
+             not Map.get(f, :required, false) do
+          {{idx_map, ids, order, retain2, report2}, acc}
+        else
+          framed = [body, <<0>>]
+
+          {{idx_map2, ids2, order2, retain2, report2},
+           [acc, leb_encode(ref), <<13>>, leb_encode(IO.iodata_length(framed)), framed]}
         end
     end
   end
 
-  def measure_retain(table, value, retain) when is_map(value) do
-    {:ok, bytes, _retain, _report} = save_retain_internal(table, value, retain, empty_report())
-    byte_size(bytes)
-  end
+  # an array of tables: element i is the step pair {ordinal, i}. A map is the
+  # same framing over its entry tables, in ascending key order, so an entry's
+  # slot is its index.
+  defp emit_field_retain(%{t: :map} = f, value, s, path, acc) do
+    case Map.get(value, f.name, f.default) do
+      nil ->
+        {s, acc}
 
-  def save_retain(table, value, retain, report) when is_map(value) do
-    {:ok, bytes, retain, report} = save_retain_internal(table, value, retain, report)
-    {:ok, bytes, report, retain}
-  end
-
-  defp save_retain_internal(table, value, retain, report) do
-    desc = Map.fetch!(@tables, table)
-    nodes = collect_nodes(desc, value, []) |> Enum.reverse()
-    idx_map = nodes |> Enum.with_index(2) |> Map.new(fn {v, i} -> {v, i} end)
-    {_idx_map, ids, order, retain, report, body} =
-      save_fields_retain(desc, value, idx_map, %{}, [], retain, report, [], [])
-
-    {body, ids, order} = save_node_table(nodes, ids, order, body)
-    ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
-    {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>]), retain, report}
-  end
-
-  defp save_fields_retain(desc, value, idx_map, ids, order, retain, report, path, acc) do
-    {idx_map, ids, order, retain, report, acc} =
-      Enum.reduce(desc.fields, {idx_map, ids, order, retain, report, acc}, fn f, {idx_map, ids, order, retain, report, acc} ->
-        emit_field_retain(f, value, idx_map, ids, order, retain, report, path, acc)
-      end)
-
-    {ids, order, retain, report, acc} = emit_retain_tail(retain, ids, order, report, path, acc)
-    {idx_map, ids, order, retain, report, acc}
-  end
-
-  defp emit_field_retain(%{t: :list} = f, value, idx_map, ids, order, retain, report, path, acc) do
-    case Map.get(value, f.name, []) do
-      [] ->
-        {idx_map, ids, order, retain, report, acc}
-
-      elements ->
-        {ref, ids, order} = intern(ids, order, f.id)
-        elem_desc = Map.fetch!(@tables, f.elem)
-        {body, idx_map, ids, order, retain, report} =
-          save_elements_retain(elem_desc, elements, 0, idx_map, ids, order, retain, report, f.ordinal, path, [])
-
-        array = [<<13>>, leb_encode(length(elements)), body]
-        {idx_map, ids, order, retain, report, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+      values ->
+        entries = map_entries(f, values)
+        emit_field_retain(%{f | t: :list}, %{f.name => entries}, s, path, acc)
     end
   end
 
-  defp emit_field_retain(f, value, idx_map, ids, order, retain, report, _path, acc) do
-    {idx_map, ids, order, acc} = emit_field(f, value, idx_map, ids, order, acc)
-    {idx_map, ids, order, retain, report, acc}
+  defp emit_field_retain(%{t: :list, elem_kind: kind} = f, value, s, path, acc)
+       when kind in [13, 15] do
+    {idx_map, ids, order, retain, report} = s
+    elements = pad_fixed(f, Map.get(value, f.name, Map.get(f, :default)))
+
+    if elements == nil or list_elides?(f, elements) do
+      {s, acc}
+    else
+      {ref, ids, order} = intern(ids, order, f.id)
+
+      {body, s} =
+        save_elements_retain(f, elements, 0, {idx_map, ids, order, retain, report}, path, [])
+
+      array = [<<f.elem_kind>>, leb_encode(length(elements)), body]
+      {s, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+    end
   end
 
-  defp save_elements_retain(_desc, [], _index, idx_map, ids, order, retain, report, _ordinal, _path, acc),
-    do: {acc, idx_map, ids, order, retain, report}
+  # an enum-keyed array: slot k is the step pair {ordinal, k}; a slot's element
+  # is a body of its own (§3.2).
+  defp emit_field_retain(%{t: :keyed} = f, value, s, path, acc) do
+    {idx_map, ids, order, retain, report} = s
+    slots = Map.get(value, f.name) || %{}
+    {ref, ids1, order1} = intern(ids, order, f.id)
+    item = Map.put(f.item, :elem_kind, f.elem_kind)
 
-  defp save_elements_retain(desc, [e | rest], index, idx_map, ids, order, retain, report, ordinal, path, acc) do
-    elem_path = path ++ [{ordinal, index}]
-    {idx_map, ids, order, retain, report, body} =
-      save_fields_retain(desc, e, idx_map, ids, order, retain, report, elem_path, [])
+    {pairs, n, {_, ids2, order2, retain2, report2}} =
+      f.key_names
+      |> Enum.with_index()
+      |> Enum.reduce({[], 0, {idx_map, ids1, order1, retain, report}}, fn {name, slot},
+                                                                          {pairs, n, s} ->
+        {idx_map, ids, order, retain, report} = s
+        v = Map.get(slots, name, f.item.default)
+        {kref, ids_k, order_k} = intern(ids, order, Map.fetch!(f.key_ids, name))
 
-    framed = [leb_encode(IO.iodata_length(body) + 1), body, <<0>>]
-    save_elements_retain(desc, rest, index + 1, idx_map, ids, order, retain, report, ordinal, path, [acc, framed])
+        case keyed_elem_retain(
+               item,
+               v,
+               {idx_map, ids_k, order_k, retain, report},
+               path ++ [{f.ordinal, slot}]
+             ) do
+          {:elide, {_, _, _, retain, report}} ->
+            {pairs, n, {idx_map, ids, order, retain, report}}
+
+          {elem, s} ->
+            {[pairs, leb_encode(kref), leb_encode(IO.iodata_length(elem)), elem], n + 1, s}
+        end
+      end)
+
+    if n == 0 and not Map.get(f, :required, false) do
+      {{idx_map, ids, order, retain2, report2}, acc}
+    else
+      inner = [<<f.elem_kind>>, leb_encode(n), pairs]
+
+      {{idx_map, ids2, order2, retain2, report2},
+       [acc, leb_encode(ref), <<16>>, leb_encode(IO.iodata_length(inner)), inner]}
+    end
+  end
+
+  defp emit_field_retain(%{t: :union} = f, value, s, path, acc) do
+    {idx_map, ids, order, retain, report} = s
+
+    case Map.get(value, f.name) do
+      nil ->
+        if Map.get(f, :required, false) do
+          {ref, ids, order} = intern(ids, order, f.id)
+          {{idx_map, ids, order, retain, report}, [acc, leb_encode(ref), <<15, 0>>]}
+        else
+          {s, acc}
+        end
+
+      sel ->
+        {ref, ids, order} = intern(ids, order, f.id)
+
+        {header, s} =
+          arm_header_retain(f.elem, f.ordinal, sel, {idx_map, ids, order, retain, report}, path)
+
+        {s, [acc, leb_encode(ref), <<15>>, header]}
+    end
+  end
+
+  defp emit_field_retain(f, value, {idx_map, ids, order, retain, report}, _path, acc) do
+    {idx_map, ids, order, acc} = emit_field(f, value, idx_map, ids, order, acc)
+    {{idx_map, ids, order, retain, report}, acc}
+  end
+
+  defp keyed_elem_retain(%{elem_kind: 13} = item, v, s, path) do
+    {s, body} = save_fields_retain(Map.fetch!(@tables, item.elem), v || %{}, s, path, [])
+    if IO.iodata_length(body) == 0, do: {:elide, s}, else: {[body, <<0>>], s}
+  end
+
+  defp keyed_elem_retain(item, v, {idx_map, ids, order, retain, report} = s, _path) do
+    if same_field?(item, v, item.default) do
+      {:elide, s}
+    else
+      {elem, ids, order} = emit_element(item, v, idx_map, ids, order)
+      {elem, {idx_map, ids, order, retain, report}}
+    end
+  end
+
+  # one arm header with its arm's body retaining: the arm is the step pair
+  # {union field ordinal, arm ordinal}, and not "whichever arm is set", so a
+  # switched arm leaves its records no body to name (§6.6).
+  defp arm_header_retain(_union, _ordinal, nil, s, _path), do: {leb_encode(0), s}
+
+  defp arm_header_retain(union, ordinal, {arm, payload}, s, path) do
+    {idx_map, ids, order, retain, report} = s
+    a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    {aref, ids, order} = intern(ids, order, a.arm_id)
+    arm_path = path ++ [{ordinal, a.ordinal}]
+
+    {content, s} =
+      arm_content_retain(
+        a,
+        if(payload == nil, do: a.default, else: payload),
+        {idx_map, ids, order, retain, report},
+        arm_path
+      )
+
+    {[leb_encode(aref), <<a.arm_kind>>, leb_encode(IO.iodata_length(content)), content], s}
+  end
+
+  defp arm_content_retain(%{t: :table} = a, v, s, arm_path) do
+    {s, body} = save_fields_retain(Map.fetch!(@tables, a.elem), v || %{}, s, arm_path, [])
+    {[body, <<0>>], s}
+  end
+
+  defp arm_content_retain(%{t: :list} = a, value, s, arm_path) do
+    elements = pad_fixed(a, value || [])
+    {body, s} = save_elements_retain(a, elements, 0, s, arm_path, [])
+    {[<<a.elem_kind>>, leb_encode(length(elements)), body], s}
+  end
+
+  defp arm_content_retain(%{t: :union} = a, value, s, arm_path),
+    do: arm_header_retain(a.elem, a.ordinal, value, s, arm_path)
+
+  defp arm_content_retain(a, v, {idx_map, ids, order, retain, report}, _arm_path) do
+    {content, ids, order} = arm_content(a, v, idx_map, ids, order)
+    {content, {idx_map, ids, order, retain, report}}
+  end
+
+  defp save_elements_retain(_f, [], _index, s, _path, acc), do: {acc, s}
+
+  defp save_elements_retain(f, [e | rest], index, s, path, acc) do
+    {framed, s} = emit_element_retain(f, e, s, path, index)
+    save_elements_retain(f, rest, index + 1, s, path, [acc, framed])
+  end
+
+  defp emit_element_retain(%{elem_kind: 13} = f, e, s, path, index) do
+    {s, body} =
+      save_fields_retain(Map.fetch!(@tables, f.elem), e, s, path ++ [{f.ordinal, index}], [])
+
+    {[leb_encode(IO.iodata_length(body) + 1), body, <<0>>], s}
+  end
+
+  defp emit_element_retain(%{elem_kind: 15} = f, e, s, path, index),
+    do: arm_header_retain(f.elem, f.ordinal, e, s, path ++ [{f.ordinal, index}])
+
+  defp emit_element_retain(f, value, {idx_map, ids, order, retain, report}, _path, _index) do
+    {element, ids, order} = emit_element(f, value, idx_map, ids, order)
+    {element, {idx_map, ids, order, retain, report}}
   end
 
   # emit_retain_tail re-emits the records whose path names the body being
   # written, in the order retained (§6.6).
-  defp emit_retain_tail(retain, ids, order, report, path, acc) do
-    Enum.reduce(retain.records, {ids, order, retain, report, acc}, fn rec, {ids, order, retain, report, acc} ->
-      case rec do
-        {^path, id, kind, resolved} ->
-          {ref, ids, order, retain} = retain_ref(ids, order, retain, id)
+  defp emit_retain_tail({idx_map, ids, order, retain, report}, path, acc) do
+    records = Map.get(retain.by_path, path, [])
 
-          if ref == 0 do
-            {ids, order, retain, %{report | retain_lost: report.retain_lost + 1}, acc}
-          else
-            case retain_emit(ids, order, retain, kind, resolved) do
-              {:ok, body, <<>>, ids, order, retain} ->
-                {ids, order, retain, report, [acc, leb_encode(ref), <<kind>>, body]}
+    retain =
+      if records == [], do: retain, else: %{retain | matched: retain.matched + length(records)}
 
-              _ ->
-                {ids, order, retain, %{report | retain_lost: report.retain_lost + 1}, acc}
-            end
+    {ids, order, retain, report, acc} =
+      Enum.reduce(records, {ids, order, retain, report, acc}, fn {_path, id, kind, resolved},
+                                                                 {ids, order, retain, report, acc} ->
+        {ref, ids, order, retain} = retain_ref(ids, order, retain, id)
+
+        if ref == 0 do
+          {ids, order, retain, %{report | retain_lost: report.retain_lost + 1}, acc}
+        else
+          case retain_emit(ids, order, retain, kind, resolved) do
+            {:ok, body, <<>>, ids, order, retain} ->
+              {ids, order, retain, report, [acc, leb_encode(ref), <<kind>>, body]}
+
+            _ ->
+              {ids, order, retain, %{report | retain_lost: report.retain_lost + 1}, acc}
           end
+        end
+      end)
 
-        _ ->
-          {ids, order, retain, report, acc}
-      end
-    end)
+    {{idx_map, ids, order, retain, report}, acc}
+  end
+
+  # the node table with the node records' retained tails: a node's body is the
+  # path {:node, k}, k the index it held in the loaded region's directory,
+  # which a loaded node value carries with it (§6.6, the path's first step).
+  defp save_node_table_retain([], s, body), do: {s, body}
+
+  defp save_node_table_retain(nodes, {idx_map, ids, order, retain, report}, body) do
+    {ref, ids, order} = intern(ids, order, @node_id)
+
+    {records, s} =
+      write_node_records_retain(nodes, {idx_map, ids, order, retain, report}, [])
+
+    payload = [leb_encode(length(nodes)), records]
+
+    {s, [body, leb_encode(ref), <<12>>, leb_encode(IO.iodata_length(payload)), payload]}
+  end
+
+  defp write_node_records_retain([], s, acc), do: {acc, s}
+
+  defp write_node_records_retain([node | rest], {idx_map, ids, order, retain, report}, acc) do
+    {tref, ids, order} = intern(ids, order, elem(node, 0))
+    {nbody, s} = node_body_retain(node, {idx_map, ids, order, retain, report})
+    acc = [acc, leb_encode(tref), leb_encode(IO.iodata_length(nbody)), nbody]
+    write_node_records_retain(rest, s, acc)
+  end
+
+  defp node_body_retain({_type_id, :blob, _ref, bytes}, s), do: {bytes, s}
+
+  defp node_body_retain({_type_id, :table, ref, v} = node, s) do
+    desc = Map.fetch!(@tables, ref)
+    path = [{:node, Map.get(v, :__retain_node__)}]
+    {s, body} = in_node_holder(node, fn -> save_fields_retain(desc, v, s, path, []) end)
+    {IO.iodata_to_binary([body, <<0>>]), s}
   end
 
   # ---- the retaining read: decode with a caller-owned store (§6.6) ----
 
-  defp decode_retain(desc, fields, nodes, ids, retain, report, path) do
-    Enum.reduce_while(fields, {Map.new(), report, retain}, fn {id, kind, payload}, {value, report, retain} ->
-      case find_field(desc, id) do
-        nil ->
-          # an unknown FIELD id is the retained class (§6.6): the resolved walk
-          # decides, and the six excluded classes count one retain_lost.
-          if payload == <<>> do
-            # a field the plain read could not delimit — its slice failed — has
-            # no bytes to retain: §6.6's capture never runs, one unknown counts
-            # and the enclosing read's malformed does (§3, §4).
-            {:cont, {value, %{report | unknown: report.unknown + 1}, retain}}
-          else
-            case retain_capture(ids, kind, payload) do
-              {:ok, resolved} ->
-                if retain_room(retain, path, resolved) do
-                  retain = retain_put(retain, path, id, kind, resolved)
-                  {:cont, {value, %{report | unknown: report.unknown + 1, retained: report.retained + 1}, retain}}
-                else
-                  {:cont, {value, %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1}, retain}}
-                end
+  defp decode_retain(desc, fields, nodes, ids, retain, report, path, terminated) do
+    {status, value, report, retain} =
+      Enum.reduce_while(fields, {:cont, Map.new(), report, retain}, fn {id, kind, payload},
+                                                                       {_status, value, report,
+                                                                        retain} ->
+        case find_field(desc, id) do
+          nil ->
+            # an unknown FIELD id is the retained class (§6.6): the resolved walk
+            # decides, and the six excluded classes count one retain_lost.
+            if payload in [<<>>, :unframed] do
+              # a field the plain read could not delimit — its slice failed — has
+              # no bytes to retain: §6.6's capture never runs, one unknown counts
+              # and the enclosing read's malformed does (§3, §4).
+              report = %{report | unknown: report.unknown + 1}
 
-              :error ->
-                {:cont, {value, %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1}, retain}}
-            end
-          end
-
-        f ->
-          cond do
-            kind == f.kind ->
-              case read_payload_retain(f, payload, nodes, ids, report, retain, path) do
-                {:cont, v, report, retain} -> {:cont, {Map.put(value, f.name, v), report, retain}}
-                {:halt, v, report, retain} -> {:halt, {Map.put(value, f.name, v), report, retain}}
+              if payload == :unframed,
+                do: {:halt, {:halt, value, report, retain}},
+                else: {:cont, {:cont, value, report, retain}}
+            else
+              # A RETAINED FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+              # §3.3, §6.6): a kind-10 or kind-11 entry whose raw bits are a NaN
+              # or an infinity refuses the read, named <owner>.0x<id>.
+              if kind in [10, 11] do
+                _ = float_of(payload, kind_width(kind), retained_float_name(desc, id))
               end
 
-            widens?(kind, f) ->
-              {v, report} = read_widened(f, kind, payload, report)
-              {:cont, {Map.put(value, f.name, v), report, retain}}
+              case retain_capture(ids, kind, payload) do
+                {:ok, resolved} ->
+                  if retain_room(retain, path, resolved) do
+                    retain = retain_put(retain, path, id, kind, resolved)
 
-            true ->
-              {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}}
-          end
-      end
-    end)
-  end
+                    {:cont,
+                     {:cont, value,
+                      %{report | unknown: report.unknown + 1, retained: report.retained + 1},
+                      retain}}
+                  else
+                    {:cont,
+                     {:cont, value,
+                      %{
+                        report
+                        | unknown: report.unknown + 1,
+                          retain_lost: report.retain_lost + 1
+                      }, retain}}
+                  end
 
-  defp read_payload_retain(%{t: :list} = f, payload, nodes, ids, report, retain, path) do
-    case leb(payload) do
-      {_len, arr} ->
-        elem_desc = Map.fetch!(@tables, f.elem)
-
-        case arr do
-          <<13, count_rest::binary>> ->
-            case leb(count_rest) do
-              {n, elems} ->
-                {value, report, retain} = read_elements_retain(elem_desc, elems, n, nodes, ids, [], report, retain, f.ordinal, path)
-                {:cont, value, report, retain}
-
-              :error ->
-                {:cont, [], %{report | malformed: true}, retain}
+                :error ->
+                  {:cont,
+                   {:cont, value,
+                    %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1},
+                    retain}}
+              end
             end
 
-          _ ->
-            {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+          f ->
+            cond do
+              payload == :unframed ->
+                # Array elements keep prefix events even when framing stops.
+                # As in decode/4, an incomplete payload is never a value and
+                # cannot enter either the scalar reader or retained capture.
+                report =
+                  if kind == f.kind or widens?(kind, f),
+                    do: report,
+                    else: %{report | kind_mismatch: report.kind_mismatch + 1}
+
+                {:halt, {:halt, value, report, retain}}
+
+              kind == f.kind and not compatible_payload?(f, payload) ->
+                {:cont,
+                 {:cont, value, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}}
+
+              kind == f.kind ->
+                case read_payload_retain(f, payload, nodes, ids, report, retain, path) do
+                  {:cont, :inert, report, retain} ->
+                    {:cont, {:cont, inert_required_field(f, value), report, retain}}
+
+                  {:cont, v, report, retain} ->
+                    {:cont, {:cont, put_wire_field(value, f, v), report, retain}}
+
+                  {:halt, v, report, retain} ->
+                    {:halt, {:halt, put_wire_field(value, f, v), report, retain}}
+                end
+
+              widens?(kind, f) ->
+                {v, report} = read_widened(f, kind, payload, report)
+                {:cont, {:cont, put_wire_field(value, f, v), report, retain}}
+
+              true ->
+                {:cont,
+                 {:cont, value, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}}
+            end
+        end
+      end)
+
+    status = if terminated, do: status, else: :halt
+
+    report =
+      if status == :cont, do: require_seen(desc, value, Map.keys(value), report), else: report
+
+    {status, value, report, retain}
+  end
+
+  # a retained unknown float's name: the body's table and the id it cannot
+  # name, as the reference leg's tableRetainedFloatName spells it
+  defp retained_float_name(desc, id) do
+    hex = id |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(16, "0")
+    desc.name <> ".0x" <> hex
+  end
+
+  # Inert headers preserve both the prior value and its retained records.
+  defp read_payload_retain(
+         %{t: t},
+         <<len, body::binary>>,
+         _nodes,
+         _ids,
+         report,
+         retain,
+         _path
+       )
+       when t in [:list, :map, :keyed, :bytes] and len < 2 and byte_size(body) == len,
+       do: {:cont, :inert, report, retain}
+
+  # an array of tables: element i is the step pair {ordinal, i}. A later
+  # occurrence of the field resets the earlier one's records (§6.6).
+  defp read_payload_retain(
+         %{t: :list, elem_kind: 13} = f,
+         payload,
+         nodes,
+         ids,
+         report,
+         retain,
+         path
+       ) do
+    retain = retain_reset(retain, path, f.ordinal, nil)
+
+    with {_len, <<actual, count_rest::binary>>} <- leb(payload),
+         {n, elems} <- leb(count_rest) do
+      if actual == 13 do
+        check_wire_count(n, f, report)
+        {n, report} = clamp_count(n, f, report)
+
+        {value, report, retain} =
+          read_elements_retain(
+            Map.fetch!(@tables, f.elem)
+            |> Map.put(:map_entry, Map.get(f, :map_entry, false))
+            |> Map.merge(Map.take(f, [:text_list, :text_total])),
+            elems,
+            n,
+            nodes,
+            ids,
+            [],
+            report,
+            retain,
+            f.ordinal,
+            path,
+            0
+          )
+
+        clamp_retain(value, f, report, retain)
+      else
+        {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+      end
+    else
+      _ -> {:cont, [], %{report | malformed: true}, retain}
+    end
+  end
+
+  # an array of pointers: each element names a node, read once and retained
+  # under the node's own path.
+  defp read_payload_retain(
+         %{t: :list, elem_kind: 17} = f,
+         payload,
+         nodes,
+         ids,
+         report,
+         retain,
+         _path
+       ) do
+    with {_len, <<actual, count_rest::binary>>} <- leb(payload),
+         {n, elems} <- leb(count_rest) do
+      if actual == 17 do
+        check_wire_count(n, f, report)
+        {n, report} = clamp_count(n, f, report)
+
+        {value, report, retain} =
+          read_pointers_retain(f, elems, n, nodes, ids, [], report, retain)
+
+        clamp_retain(value, f, report, retain)
+      else
+        {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+      end
+    else
+      _ -> {:cont, [], %{report | malformed: true}, retain}
+    end
+  end
+
+  # a nested table by value: the step pair {ordinal, 0}. A later occurrence of
+  # the field resets the earlier one's records before it is read (§6.6).
+  defp read_payload_retain(%{t: :table} = f, payload, nodes, ids, report, retain, path) do
+    case leb(payload) do
+      {_len, body} ->
+        retain = retain_reset(retain, path, f.ordinal, nil)
+
+        {status, value, report, retain} =
+          read_body_retain(
+            Map.fetch!(@tables, f.elem),
+            body,
+            nodes,
+            ids,
+            report,
+            retain,
+            path ++ [{f.ordinal, 0}]
+          )
+
+        {status, value, report, retain}
+
+      :error ->
+        {:cont, %{}, %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_payload_retain(%{t: :pointer} = f, payload, nodes, ids, report, retain, _path) do
+    case leb(payload) do
+      {0, _} ->
+        {:cont, nil, report, retain}
+
+      {1, _} ->
+        case root_reference(f) do
+          nil -> {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+          value -> {:cont, value, report, retain}
+        end
+
+      {idx, _} ->
+        case node_value_retain(nodes, idx, ids, f, report, retain) do
+          {{:value, v}, report, retain} when is_map(v) ->
+            {:cont, v, report, retain}
+
+          {{:value, _}, report, retain} ->
+            {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+
+          {:out_of_range, report, retain} ->
+            {:cont, nil, %{report | malformed: true}, retain}
+
+          {:null, report, retain} ->
+            {:cont, nil, report, retain}
+        end
+    end
+  end
+
+  # a map is kind 14 over framed entry tables: entry i is the step pair
+  # {ordinal, i} while it is read, and its slot in ascending key order once the
+  # field is whole, because a key written twice is the later entry's (§2.8)
+  # and its slot is the address a save walks (§6.6).
+  defp read_payload_retain(%{t: :map} = f, payload, nodes, ids, report, retain, path) do
+    case read_payload_retain(
+           Map.put(%{f | t: :list}, :map_entry, true),
+           payload,
+           nodes,
+           ids,
+           report,
+           retain,
+           path
+         ) do
+      {:cont, :map_key_mismatch, report, retain} ->
+        {:cont, %{}, report, retain}
+
+      {:cont, entries, report, retain} ->
+        [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
+        # DESCENDING keys are not a map any conforming writer produced: damage,
+        # and the whole load is discarded (§2.8, §4), as the plain read holds it
+        report =
+          if is_list(entries) and descending?(Enum.map(entries, &Map.get(&1, "key", kf.default))),
+            do: %{report | malformed: true},
+            else: report
+
+        keyed =
+          Enum.map(entries, fn entry ->
+            key = Map.get(entry, "key", kf.default)
+
+            {if(is_binary(key), do: key, else: Integer.to_string(key)),
+             Map.get(entry, "value", vf.default)}
+          end)
+
+        last = keyed |> Enum.with_index() |> Map.new(fn {{key, _value}, i} -> {key, i} end)
+
+        slots =
+          last
+          |> Enum.sort_by(fn {key, _i} -> map_sort_key(f, key) end)
+          |> Enum.with_index()
+          |> Map.new(fn {{_key, i}, slot} -> {i, slot} end)
+
+        {:cont, Map.new(keyed), report, retain_remap(retain, path, f.ordinal, slots)}
+
+      other ->
+        other
+    end
+  end
+
+  # A union array uses the element index followed by the arm ordinal, exactly
+  # as its retaining writer does. Walk once with an explicit index.
+  defp read_payload_retain(%{t: :list, elem_kind: 15} = f, p, ns, ids, r, rt, path) do
+    read_union_list_retain(f, p, ns, ids, r, rt, path)
+  end
+
+  # a union field: the arm is the step pair {ordinal, arm ordinal}.
+  defp read_payload_retain(%{t: :union} = f, payload, nodes, ids, report, retain, path) do
+    retain = retain_reset(retain, path, f.ordinal, nil)
+    read_arm_retain(f.elem, f.ordinal, payload, nodes, ids, report, retain, path)
+  end
+
+  # an enum-keyed array: slot k is the step pair {ordinal, k}; a slot written
+  # again resets the earlier one's records.
+  defp read_payload_retain(%{t: :keyed} = f, payload, nodes, ids, report, retain, path) do
+    case leb(payload) do
+      {_len, body} when byte_size(body) < 2 ->
+        {:cont, %{}, report, retain}
+
+      {_len, <<ek, rest::binary>>} ->
+        case leb(rest) do
+          {n, pairs} ->
+            case keyed_reader(f, ek, report) do
+              {:ok, reader, report} ->
+                read_keyed_retain(reader, pairs, n, nodes, ids, %{}, report, retain, path)
+
+              {:mismatch, report} ->
+                {:cont, %{}, report, retain}
+            end
+
+          :error ->
+            {:cont, %{}, %{report | malformed: true}, retain}
         end
 
       :error ->
-        {:cont, [], %{report | malformed: true}, retain}
+        {:cont, %{}, %{report | malformed: true}, retain}
     end
   end
 
   defp read_payload_retain(%{t: :enum} = f, payload, _nodes, ids, report, retain, _path) do
     case leb(payload) do
       {0, _} ->
-        {:cont, nil, report, retain}
+        {:cont, enum_none(f), report, retain}
 
       {vref, _} ->
         case resolve(ids, vref) do
@@ -1579,29 +6660,491 @@ const variableRetainSource = `
                 # an unknown ENUM variant in a KNOWN field is excluded (§6.6):
                 # the field is the reader's, so it is reported as loss, never
                 # retained silently.
-                {:cont, nil, %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1}, retain}
+                {:cont, enum_none(f),
+                 %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1},
+                 retain}
             end
         end
     end
   end
 
+  # Unknown enum references in known array slots are excluded just like a
+  # known scalar enum field (§6.6). Only that array's new unknowns count.
+  defp read_payload_retain(
+         %{t: :list, elem_kind: 30} = f,
+         payload,
+         nodes,
+         ids,
+         report,
+         retain,
+         _path
+       ) do
+    unknown_before = report.unknown
+    {:cont, value, report} = read_payload(f, payload, nodes, ids, report)
+    report = %{report | retain_lost: report.retain_lost + report.unknown - unknown_before}
+    {:cont, value, report, retain}
+  end
+
   defp read_payload_retain(f, payload, nodes, ids, report, retain, _path) do
-    case read_payload(f, payload, nodes, ids, report) do
+    {:cont, v, report} = read_payload(f, payload, nodes, ids, report)
+    {:cont, v, report, retain}
+  end
+
+  # a bounded array keeps its first bound elements and counts one clamped
+  # (§4); a record under a cut element names no body, and a save counts it.
+  defp clamp_retain(value, %{max_count: max}, report, retain) when length(value) > max,
+    do: {:cont, Enum.take(value, max), %{report | clamped: report.clamped + 1}, retain}
+
+  defp clamp_retain(value, _f, report, retain), do: {:cont, value, report, retain}
+
+  # one nested body read under its path: the entries failing to frame leave the
+  # table's declared defaults and one malformed.
+  defp read_body_retain(desc, body, nodes, ids, report, retain, path) do
+    case entries(body, ids, desc, :nested) do
+      {:ok, fields, []} ->
+        {status, value, report, retain} =
+          decode_retain(desc, fields, nodes, ids, retain, report, path, true)
+
+        # damage ends this body and the enclosing body reads on, and a body
+        # whose terminator is not the last byte of its L is damage (§3, §4),
+        # as the plain read's read_element holds it
+        if status == :halt or ends_early?(body, ids),
+          do: {:cont, %{}, %{report | malformed: true}, retain},
+          else: {:cont, value, report, retain}
+
+      {:stop, fields, [], _} ->
+        {_status, _value, report, retain} =
+          decode_retain(desc, fields, nodes, ids, retain, report, path, false)
+
+        {:cont, %{}, %{report | malformed: true}, retain}
+
+      _ ->
+        {:cont, %{}, %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_union_list_retain(f, payload, nodes, ids, report, retain, path) do
+    retain = retain_reset(retain, path, f.ordinal, nil)
+
+    with {_len, <<actual, count_rest::binary>>} <- leb(payload),
+         {n, elems} <- leb(count_rest) do
+      if actual == 15 do
+        check_wire_count(n, f, report)
+        {n, report} = clamp_count(n, f, report)
+
+        {value, report, retain} =
+          read_unions_retain(f, elems, n, nodes, ids, [], report, retain, path, 0)
+
+        clamp_retain(value, f, report, retain)
+      else
+        {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+      end
+    else
+      _ -> {:cont, [], %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_unions_retain(_f, _rest, 0, _nodes, _ids, acc, report, retain, _path, _index),
+    do: {Enum.reverse(acc), report, retain}
+
+  defp read_unions_retain(f, rest, n, nodes, ids, acc, report, retain, path, index) do
+    case slice(rest, 15) do
+      {:ok, header, after_sub} ->
+        case read_arm_retain(
+               f.elem,
+               f.ordinal,
+               header,
+               nodes,
+               ids,
+               report,
+               retain,
+               path ++ [{f.ordinal, index}]
+             ) do
+          {:cont, value, report, retain} ->
+            read_unions_retain(
+              f,
+              after_sub,
+              n - 1,
+              nodes,
+              ids,
+              [value | acc],
+              report,
+              retain,
+              path,
+              index + 1
+            )
+
+          {:halt, _value, report, retain} ->
+            {Enum.reverse(acc), report, retain}
+        end
+
+      :error ->
+        {Enum.reverse(acc), %{report | malformed: true}, retain}
+    end
+  end
+
+  # read_arm_retain is read_arm with the arm's body retaining: an unknown arm id
+  # is an excluded class (§6.6), one retain_lost beside its unknown.
+  defp read_arm_retain(union, ordinal, bin, nodes, ids, report, retain, path) do
+    case leb(bin) do
+      {0, _} ->
+        {:cont, nil, report, retain}
+
+      {aref, <<k, rest::binary>>} ->
+        case resolve(ids, aref) do
+          :error ->
+            {:halt, nil, %{report | malformed: true}, retain}
+
+          arm_id ->
+            un = Map.fetch!(@unions, union)
+
+            case Map.fetch(un.by_id, arm_id) do
+              :error ->
+                case leb(rest) do
+                  {l, content} when byte_size(content) >= l ->
+                    {:cont, nil,
+                     %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1},
+                     retain}
+
+                  _ ->
+                    {:halt, nil, %{report | malformed: true}, retain}
+                end
+
+              {:ok, name} ->
+                a = Map.fetch!(un.by_name, name)
+
+                case leb(rest) do
+                  {l, content} when byte_size(content) >= l and k == a.arm_kind ->
+                    inner = binary_part(content, 0, l)
+                    framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
+                    arm_path = path ++ [{ordinal, a.ordinal}]
+
+                    cond do
+                      arm_framing_damaged?(a, inner) ->
+                        {:cont, nil, %{report | malformed: true}, retain}
+
+                      not compatible_payload?(a, framed) ->
+                        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+
+                      true ->
+                        read_arm_payload_retain(
+                          a,
+                          name,
+                          inner,
+                          framed,
+                          {nodes, ids, report, retain},
+                          arm_path
+                        )
+                    end
+
+                  {l, content} when byte_size(content) >= l ->
+                    inner = binary_part(content, 0, l)
+                    {:cont, value, report} = retyped_arm(a, name, k, inner, report)
+                    {:cont, value, report, retain}
+
+                  _ ->
+                    {:cont, nil, %{report | malformed: true}, retain}
+                end
+            end
+        end
+
+      _ ->
+        {:cont, nil, %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_arm_payload_retain(%{t: :table} = a, name, _inner, framed, c, arm_path) do
+    {nodes, ids, report, retain} = c
+
+    case leb(framed) do
+      {_len, body} ->
+        {status, value, report, retain} =
+          read_body_retain(
+            Map.fetch!(@tables, a.elem),
+            body,
+            nodes,
+            ids,
+            report,
+            retain,
+            arm_path
+          )
+
+        {status, {name, value}, report, retain}
+
+      :error ->
+        {:cont, {name, %{}}, %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_arm_payload_retain(%{t: :pointer} = a, name, inner, _framed, c, arm_path) do
+    {nodes, ids, report, retain} = c
+
+    {:cont, value, report, retain} =
+      read_payload_retain(a, inner, nodes, ids, report, retain, arm_path)
+
+    {:cont, {name, value}, report, retain}
+  end
+
+  defp read_arm_payload_retain(%{t: :enum} = a, name, inner, _framed, c, arm_path) do
+    {nodes, ids, report, retain} = c
+
+    case read_payload_retain(a, inner, nodes, ids, report, retain, arm_path) do
+      {:cont, value, report, retain} -> {:cont, {name, value}, report, retain}
+      {:halt, value, report, retain} -> {:halt, {name, value}, report, retain}
+    end
+  end
+
+  defp read_arm_payload_retain(%{t: :list} = a, name, _inner, framed, c, arm_path) do
+    {nodes, ids, report, retain} = c
+
+    case read_payload_retain(a, framed, nodes, ids, report, retain, arm_path) do
+      {:cont, :inert, report, retain} -> {:cont, {name, inert_empty(a)}, report, retain}
+      {:cont, value, report, retain} -> {:cont, {name, value}, report, retain}
+    end
+  end
+
+  defp read_arm_payload_retain(%{t: :union} = a, name, inner, _framed, c, arm_path) do
+    {nodes, ids, report, retain} = c
+
+    case read_payload_retain(a, inner, nodes, ids, report, retain, arm_path) do
+      {:cont, value, report, retain} -> {:cont, {name, value}, report, retain}
+      {:halt, value, report, retain} -> {:halt, {name, value}, report, retain}
+    end
+  end
+
+  defp read_arm_payload_retain(a, name, inner, framed, c, _arm_path) do
+    {nodes, ids, report, retain} = c
+
+    case read_arm_payload(a, name, inner, framed, nodes, ids, report) do
       {:cont, v, report} -> {:cont, v, report, retain}
       {:halt, v, report} -> {:halt, v, report, retain}
     end
   end
 
-  defp read_elements_retain(_desc, _rest, 0, _nodes, _ids, acc, report, retain, _ordinal, _path),
+  defp read_keyed_retain(_f, _bin, 0, _nodes, _ids, acc, report, retain, _path),
+    do: {:cont, acc, report, retain}
+
+  defp read_keyed_retain(f, bin, n, nodes, ids, acc, report, retain, path) do
+    with {kref, r1} <- leb(bin),
+         kid when kid != :error <- resolve(ids, kref),
+         {l, r2} when byte_size(r2) >= l <- leb(r1) do
+      elem = binary_part(r2, 0, l)
+      rest = binary_part(r2, l, byte_size(r2) - l)
+      item = Map.put(f.item, :elem_kind, f.elem_kind)
+
+      case Map.fetch(f.key_by_id, kid) do
+        {:ok, name} ->
+          slot = Enum.find_index(f.key_names, &(&1 == name))
+          retain = retain_reset(retain, path, f.ordinal, slot)
+
+          case read_keyed_elem_retain(f, item, elem, nodes, ids, report, retain, path, slot) do
+            {:cont, v, report, retain} ->
+              read_keyed_retain(
+                f,
+                rest,
+                n - 1,
+                nodes,
+                ids,
+                Map.put(acc, name, v),
+                report,
+                retain,
+                path
+              )
+
+            {:halt, v, report, retain} ->
+              {:halt, Map.put(acc, name, v), report, retain}
+          end
+
+        :error ->
+          # a slot this reader cannot name is an excluded class (§6.6): the
+          # file's reader steps over its element by the element's length, so
+          # nothing inside it is read, counted or retained
+          report = %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1}
+          read_keyed_retain(f, rest, n - 1, nodes, ids, acc, report, retain, path)
+      end
+    else
+      _ -> {:cont, acc, %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_keyed_elem_retain(f, item, elem, nodes, ids, report, retain, path, slot) do
+    if f.elem_kind == 13 do
+      read_element_retain(
+        Map.fetch!(@tables, item.elem),
+        elem,
+        nodes,
+        ids,
+        report,
+        retain,
+        path,
+        f.ordinal,
+        slot
+      )
+    else
+      unknown_before = report.unknown
+      {status, v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
+
+      report =
+        if f.elem_kind == 30,
+          do: %{report | retain_lost: report.retain_lost + report.unknown - unknown_before},
+          else: report
+
+      {status, v, report, retain}
+    end
+  end
+
+  # the elements of an array of unions, and of pointers
+  defp read_pointers_retain(_f, _rest, 0, _nodes, _ids, acc, report, retain),
     do: {Enum.reverse(acc), report, retain}
 
-  defp read_elements_retain(desc, rest, n, nodes, ids, acc, report, retain, ordinal, path) do
+  defp read_pointers_retain(f, rest, n, nodes, ids, acc, report, retain) do
+    case leb(rest) do
+      {0, after_sub} ->
+        read_pointers_retain(f, after_sub, n - 1, nodes, ids, [nil | acc], report, retain)
+
+      {idx, after_sub} ->
+        {value, report, retain} =
+          case if(idx == 1,
+                 do: {{:value, root_reference(f)}, report, retain},
+                 else: node_value_retain(nodes, idx, ids, f, report, retain)
+               ) do
+            {{:value, v}, report, retain} when is_map(v) ->
+              {v, report, retain}
+
+            {:out_of_range, report, retain} ->
+              {nil, %{report | malformed: true}, retain}
+
+            {:null, report, retain} ->
+              {nil, report, retain}
+
+            {_, report, retain} ->
+              {nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+          end
+
+        read_pointers_retain(f, after_sub, n - 1, nodes, ids, [value | acc], report, retain)
+
+      :error ->
+        {Enum.reverse(acc), %{report | malformed: true}, retain}
+    end
+  end
+
+  defp node_value_retain(nodes, idx, ids, f, report, retain),
+    do: {node_value(nodes, idx, ids, f), report, retain}
+
+  defp decode_directory_retain(desc, fields, nodes, ids, retain, report, terminated) do
+    report = directory_report(nodes, report, true)
+
+    {records, report, retain} =
+      nodes
+      |> Enum.with_index(2)
+      |> Enum.reduce({%{}, report, retain}, fn
+        {{:table, name, body}, idx}, {records, report, retain} ->
+          {node_desc, node_fields, node_ok} = decoded_fields(name, body, ids)
+
+          {_status, value, report, retain} =
+            in_read_holder(idx, fn ->
+              decode_retain(
+                node_desc,
+                node_fields,
+                nodes,
+                ids,
+                retain,
+                report,
+                [{:node, idx}],
+                node_ok
+              )
+            end)
+
+          report = %{report | malformed: report.malformed or not node_ok}
+          value = Map.put(value, :__retain_node__, idx)
+          {Map.put(records, idx, value), report, retain}
+
+        _, state ->
+          state
+      end)
+
+    {_status, root, report, retain} =
+      decode_retain(desc, fields, nodes, ids, retain, report, [], terminated)
+
+    report = %{report | malformed: report.malformed or not terminated}
+    records = records |> Map.put(1, root) |> final_blob_slots(desc)
+    value = if report.malformed, do: %{}, else: assemble_directory(records)
+    {value, report, retain}
+  end
+
+  defp read_elements_retain(
+         _desc,
+         _rest,
+         0,
+         _nodes,
+         _ids,
+         acc,
+         report,
+         retain,
+         _ordinal,
+         _path,
+         _index
+       ),
+       do: {Enum.reverse(acc), report, retain}
+
+  defp read_elements_retain(desc, rest, n, nodes, ids, acc, report, retain, ordinal, path, index) do
     case leb(rest) do
       {len, body} when byte_size(body) >= len ->
         sub = binary_part(body, 0, len)
         after_sub = binary_part(body, len, byte_size(body) - len)
-        {value, report, retain} = read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, length(acc))
-        read_elements_retain(desc, after_sub, n - 1, nodes, ids, [value | acc], report, retain, ordinal, path)
+        desc = map_key_descriptor(desc)
+
+        case map_key_admission(desc, sub, acc, ids, report) do
+          {:mismatch, _desc, report} ->
+            # Records already admitted retain their history. With no map slots,
+            # saving counts them as unplaceable; a later map replacement resets them.
+            {:map_key_mismatch, report, retain}
+
+          {:malformed, _desc, report} ->
+            {Enum.reverse(acc), report, retain}
+
+          {:drop, desc, report} ->
+            read_elements_retain(
+              desc,
+              after_sub,
+              n - 1,
+              nodes,
+              ids,
+              acc,
+              report,
+              retain,
+              ordinal,
+              path,
+              index
+            )
+
+          {:keep, desc, report} ->
+            {:cont, value, report, retain} =
+              read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, index)
+
+            report = map_duplicate_report(desc, report)
+
+            case text_list_keep(desc, value, report) do
+              {:keep, desc, report} ->
+                read_elements_retain(
+                  desc,
+                  after_sub,
+                  n - 1,
+                  nodes,
+                  ids,
+                  [value | acc],
+                  report,
+                  retain,
+                  ordinal,
+                  path,
+                  index + 1
+                )
+
+              {:drop, report} ->
+                retain = retain_reset(retain, path, ordinal, index)
+                {Enum.reverse(acc), report, retain}
+            end
+        end
 
       _ ->
         {Enum.reverse(acc), %{report | malformed: true}, retain}
@@ -1611,24 +7154,24 @@ const variableRetainSource = `
   defp read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, index) do
     elem_path = path ++ [{ordinal, index}]
 
-    if ends_early?(sub, ids) do
-      {%{}, malformed_report(), retain}
-    else
-      case entries(sub, ids, false) do
-        {:ok, fields, []} ->
-          decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
+    case entries(sub, ids, false, :nested) do
+      {:ok, fields, []} ->
+        {status, value, report, retain} =
+          decode_retain(desc, fields, nodes, ids, retain, report, elem_path, true)
 
-        {:stop, fields, [], 0} ->
-          {value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
-          {value, %{report | malformed: true}, retain}
+        # damage ends this body and the enclosing body reads on (§4)
+        if status == :halt or ends_early?(sub, ids),
+          do: {:cont, %{}, %{report | malformed: true}, retain},
+          else: {:cont, value, report, retain}
 
-        {:stop, fields, [], _remaining} ->
-          {_value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
-          {%{}, %{report | malformed: true}, retain}
+      {:stop, fields, [], _remaining} ->
+        {_status, _value, report, retain} =
+          decode_retain(desc, fields, nodes, ids, retain, report, elem_path, false)
 
-        _ ->
-          {%{}, malformed_report(), retain}
-      end
+        {:cont, %{}, %{report | malformed: true}, retain}
+
+      _ ->
+        {:cont, %{}, %{report | malformed: true}, retain}
     end
   end
 
@@ -1638,9 +7181,69 @@ const variableRetainSource = `
     retain.used + 9 + 8 * length(path) + byte_size(resolved) <= retain.cap
   end
 
+  defp retain_cost(path, resolved), do: 9 + 8 * length(path) + byte_size(resolved)
+
+  # the records are kept newest first while a load runs, and in the order
+  # retained once it ends
   defp retain_put(retain, path, id, kind, resolved) do
-    cost = 9 + 8 * length(path) + byte_size(resolved)
-    %{retain | records: retain.records ++ [{path, id, kind, resolved}], used: retain.used + cost}
+    %{
+      retain
+      | records: [{path, id, kind, resolved} | retain.records],
+        used: retain.used + retain_cost(path, resolved)
+    }
+  end
+
+  # retain_reset discards what an earlier occurrence of a body retained, before
+  # a later legal occurrence is read (§6.6, record lifetime): the records whose
+  # path runs through the field's step, at one element index or at any. It
+  # moves neither counter, and the capacity comes back.
+  defp retain_reset(%{records: []} = retain, _path, _ordinal, _index), do: retain
+
+  defp retain_reset(retain, path, ordinal, index) do
+    n = length(path)
+
+    {kept, used} =
+      Enum.reduce(retain.records, {[], retain.used}, fn {p, _id, _kind, resolved} = rec,
+                                                        {kept, used} ->
+        case Enum.split(p, n) do
+          {^path, [{^ordinal, i} | _]} when index == nil or i == index ->
+            {kept, used - retain_cost(p, resolved)}
+
+          _ ->
+            {[rec | kept], used}
+        end
+      end)
+
+    %{retain | records: Enum.reverse(kept), used: used}
+  end
+
+  # retain_remap moves a map's records from the entry's place in the wire to
+  # its slot in ascending key order, and discards the records of an entry a
+  # later entry with the same key replaced.
+  defp retain_remap(%{records: []} = retain, _path, _ordinal, _slots), do: retain
+
+  defp retain_remap(retain, path, ordinal, slots) do
+    n = length(path)
+
+    {kept, used} =
+      Enum.reduce(retain.records, {[], retain.used}, fn {p, id, kind, resolved} = rec,
+                                                        {kept, used} ->
+        case Enum.split(p, n) do
+          {^path, [{^ordinal, i} | tail]} ->
+            case slots do
+              %{^i => slot} ->
+                {[{path ++ [{ordinal, slot} | tail], id, kind, resolved} | kept], used}
+
+              _ ->
+                {kept, used - retain_cost(p, resolved)}
+            end
+
+          _ ->
+            {[rec | kept], used}
+        end
+      end)
+
+    %{retain | records: Enum.reverse(kept), used: used}
   end
 
   defp retain_capture(ids, kind, payload) do
@@ -1670,7 +7273,7 @@ const variableRetainSource = `
         k when k in [1, 2, 6, 20, 25] -> 1
         k when k in [3, 7, 21, 26] -> 2
         k when k in [4, 8, 10, 22, 27] -> 4
-        k when k in [5, 9, 11, 23, 28] -> 8
+        k when k in [5, 9, 11, 23, 28, 36] -> 8
         k when k in [18, 19, 24, 29] -> 16
         _ -> nil
       end
@@ -1681,8 +7284,11 @@ const variableRetainSource = `
 
       kind in [12, 31, 32, 33] ->
         case leb(payload) do
-          {len, rest} when byte_size(rest) >= len -> {:ok, byte_size(payload) - byte_size(rest) + len}
-          _ -> :error
+          {len, rest} when byte_size(rest) >= len ->
+            {:ok, byte_size(payload) - byte_size(rest) + len}
+
+          _ ->
+            :error
         end
 
       true ->
@@ -1694,13 +7300,17 @@ const variableRetainSource = `
 
   defp retain_resolve(ids, 30, payload, _depth) do
     case leb(payload) do
-      {0, rest} -> {:ok, <<0::little-64>>, rest}
+      {0, rest} ->
+        {:ok, <<0::little-64>>, rest}
+
       {r, rest} ->
         case retain_id(ids, r) do
           {:ok, id} -> {:ok, <<id::little-64>>, rest}
           :error -> :error
         end
-      :error -> :error
+
+      :error ->
+        :error
     end
   end
 
@@ -1729,8 +7339,11 @@ const variableRetainSource = `
 
   defp retain_resolve(_ids, kind, payload, _depth) do
     case retain_skip(payload, kind) do
-      {:ok, n} -> {:ok, binary_part(payload, 0, n), binary_part(payload, n, byte_size(payload) - n)}
-      :error -> :error
+      {:ok, n} ->
+        {:ok, binary_part(payload, 0, n), binary_part(payload, n, byte_size(payload) - n)}
+
+      :error ->
+        :error
     end
   end
 
@@ -1761,8 +7374,11 @@ const variableRetainSource = `
           :error
         else
           case leb(rest) do
-            {count, elems} -> retain_array(ids, kind, ek, count, elems, depth, <<ek, count::little-64>>)
-            :error -> :error
+            {count, elems} ->
+              retain_array(ids, kind, ek, count, elems, depth, <<ek, count::little-64>>)
+
+            :error ->
+              :error
           end
         end
 
@@ -1784,8 +7400,11 @@ const variableRetainSource = `
 
   defp retain_body_fields(ids, sub, depth, acc) do
     case leb(sub) do
-      {0, _} ->
+      {0, <<>>} ->
         {:ok, acc <> <<0::little-64>>}
+
+      {0, _} ->
+        :error
 
       {ref, rest} ->
         with {:ok, id} <- retain_id(ids, ref),
@@ -1801,7 +7420,8 @@ const variableRetainSource = `
     end
   end
 
-  defp retain_array(_ids, _kind, _ek, 0, _elems, _depth, acc), do: {:ok, acc}
+  defp retain_array(_ids, _kind, _ek, 0, <<>>, _depth, acc), do: {:ok, acc}
+  defp retain_array(_ids, _kind, _ek, 0, _elems, _depth, _acc), do: :error
 
   defp retain_array(ids, kind, ek, count, elems, depth, acc) do
     if kind == 16 do
@@ -1809,7 +7429,15 @@ const variableRetainSource = `
         {r, rest} ->
           with {:ok, id} <- retain_id(ids, r),
                {:ok, framed, rest2} <- retain_framed(ids, ek, rest, depth) do
-            retain_array(ids, kind, ek, count - 1, rest2, depth, acc <> <<id::little-64, framed::binary>>)
+            retain_array(
+              ids,
+              kind,
+              ek,
+              count - 1,
+              rest2,
+              depth,
+              acc <> <<id::little-64, framed::binary>>
+            )
           else
             _ -> :error
           end
@@ -1819,8 +7447,11 @@ const variableRetainSource = `
       end
     else
       case retain_resolve(ids, ek, elems, depth) do
-        {:ok, resolved, rest} -> retain_array(ids, kind, ek, count - 1, rest, depth, acc <> resolved)
-        :error -> :error
+        {:ok, resolved, rest} ->
+          retain_array(ids, kind, ek, count - 1, rest, depth, acc <> resolved)
+
+        :error ->
+          :error
       end
     end
   end
@@ -1851,11 +7482,15 @@ const variableRetainSource = `
 
   defp retain_emit(ids, order, retain, 30, resolved) do
     case resolved do
-      <<0::little-64, rest::binary>> -> {:ok, <<0>>, rest, ids, order, retain}
+      <<0::little-64, rest::binary>> ->
+        {:ok, <<0>>, rest, ids, order, retain}
+
       <<id::little-64, rest::binary>> ->
         {ref, ids, order, retain} = retain_ref(ids, order, retain, id)
         if ref == 0, do: :error, else: {:ok, leb_encode(ref), rest, ids, order, retain}
-      _ -> :error
+
+      _ ->
+        :error
     end
   end
 
@@ -1871,8 +7506,11 @@ const variableRetainSource = `
           :error
         else
           case retain_emit_framed(ids, order, retain, arm_kind, rest) do
-            {:ok, framed, rest2, ids, order, retain} -> {:ok, leb_encode(ref) <> <<arm_kind>> <> framed, rest2, ids, order, retain}
-            :error -> :error
+            {:ok, framed, rest2, ids, order, retain} ->
+              {:ok, leb_encode(ref) <> <<arm_kind>> <> framed, rest2, ids, order, retain}
+
+            :error ->
+              :error
           end
         end
 
@@ -1887,8 +7525,12 @@ const variableRetainSource = `
 
   defp retain_emit(ids, order, retain, kind, resolved) do
     case retain_skip(resolved, kind) do
-      {:ok, n} -> {:ok, binary_part(resolved, 0, n), binary_part(resolved, n, byte_size(resolved) - n), ids, order, retain}
-      :error -> :error
+      {:ok, n} ->
+        {:ok, binary_part(resolved, 0, n), binary_part(resolved, n, byte_size(resolved) - n), ids,
+         order, retain}
+
+      :error ->
+        :error
     end
   end
 
@@ -1899,8 +7541,11 @@ const variableRetainSource = `
         rest = binary_part(sub, len, byte_size(sub) - len)
 
         case retain_emit_content(ids, order, retain, kind, content) do
-          {:ok, emitted, ids, order, retain} -> {:ok, leb_encode(byte_size(emitted)) <> emitted, rest, ids, order, retain}
-          :error -> :error
+          {:ok, emitted, ids, order, retain} ->
+            {:ok, leb_encode(byte_size(emitted)) <> emitted, rest, ids, order, retain}
+
+          :error ->
+            :error
         end
 
       _ ->
@@ -1909,12 +7554,23 @@ const variableRetainSource = `
   end
 
   defp retain_emit_content(_ids, _order, _retain, 17, _sub), do: :error
-  defp retain_emit_content(ids, order, retain, 13, sub), do: retain_emit_body(ids, order, retain, sub)
+
+  defp retain_emit_content(ids, order, retain, 13, sub),
+    do: retain_emit_body(ids, order, retain, sub)
 
   defp retain_emit_content(ids, order, retain, kind, sub) when kind in [14, 16] do
     case sub do
       <<ek, count::little-64, elems::binary>> ->
-        case retain_emit_array(ids, order, retain, kind, ek, count, elems, <<ek, leb_encode(count)::binary>>) do
+        case retain_emit_array(
+               ids,
+               order,
+               retain,
+               kind,
+               ek,
+               count,
+               elems,
+               <<ek, leb_encode(count)::binary>>
+             ) do
           {:ok, emitted, ids, order, retain} -> {:ok, emitted, ids, order, retain}
           :error -> :error
         end
@@ -1933,7 +7589,8 @@ const variableRetainSource = `
 
   defp retain_emit_content(ids, order, retain, _kind, sub), do: {:ok, sub, ids, order, retain}
 
-  defp retain_emit_body(ids, order, retain, <<0::little-64>>), do: {:ok, <<0>>, ids, order, retain}
+  defp retain_emit_body(ids, order, retain, <<0::little-64>>),
+    do: {:ok, <<0>>, ids, order, retain}
 
   defp retain_emit_body(ids, order, retain, <<id::little-64, kind, rest::binary>>) do
     {ref, ids, order, retain} = retain_ref(ids, order, retain, id)
@@ -1944,8 +7601,11 @@ const variableRetainSource = `
       case retain_emit(ids, order, retain, kind, rest) do
         {:ok, emitted, rest2, ids, order, retain} ->
           case retain_emit_body(ids, order, retain, rest2) do
-            {:ok, more, ids, order, retain} -> {:ok, leb_encode(ref) <> <<kind>> <> emitted <> more, ids, order, retain}
-            :error -> :error
+            {:ok, more, ids, order, retain} ->
+              {:ok, leb_encode(ref) <> <<kind>> <> emitted <> more, ids, order, retain}
+
+            :error ->
+              :error
           end
 
         :error ->
@@ -1956,7 +7616,8 @@ const variableRetainSource = `
 
   defp retain_emit_body(_ids, _order, _retain, _sub), do: :error
 
-  defp retain_emit_array(ids, order, retain, _kind, _ek, 0, _elems, acc), do: {:ok, acc, ids, order, retain}
+  defp retain_emit_array(ids, order, retain, _kind, _ek, 0, _elems, acc),
+    do: {:ok, acc, ids, order, retain}
 
   defp retain_emit_array(ids, order, retain, kind, ek, count, elems, acc) do
     if kind == 16 do
@@ -1969,7 +7630,16 @@ const variableRetainSource = `
           else
             case retain_emit_framed(ids, order, retain, ek, rest) do
               {:ok, framed, rest2, ids, order, retain} ->
-                retain_emit_array(ids, order, retain, kind, ek, count - 1, rest2, acc <> leb_encode(ref) <> framed)
+                retain_emit_array(
+                  ids,
+                  order,
+                  retain,
+                  kind,
+                  ek,
+                  count - 1,
+                  rest2,
+                  acc <> leb_encode(ref) <> framed
+                )
 
               :error ->
                 :error
@@ -2000,72 +7670,407 @@ func enumRef(f *ir.Field) *ir.Enum {
 	return e
 }
 
-// tableDescriptor spells one variable table's fields as data the engine walks
-// (docs/SPEC-TABLES.md §3): each field's effective id, its wire kind, and the
-// facts a codec needs — a string's bound, an int's clamp range, an enum's
-// variant names, a list's element table, a *string's blob.
+// unionRef is the union a field names, or nil (docs/SPEC-TABLES.md §2.6).
+func unionRef(f *ir.Field) *ir.Union {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	un, _ := f.Type.Ref.(*ir.Union)
+	return un
+}
+
+// flagsRef is the flags declaration a field names, or nil.
+func flagsRef(f *ir.Field) *ir.Flags {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	fl, _ := f.Type.Ref.(*ir.Flags)
+	return fl
+}
+
+// armDescriptor spells one union arm as the field line it is
+// (docs/SPEC-TABLES.md §2.6, §3): the arm's own name and json key, its wire
+// id from the arm's WireName (so a `was` on the arm keeps its identity, §5),
+// and arm_kind, the kind byte of its arm header. A payload-free arm is kind 32
+// with L = 0.
+func armDescriptor(u *ir.Unit, owner string, arm ir.UnionVariant, ordinal int) string {
+	id := ir.TableWireId(arm.WireName())
+	if arm.Void() {
+		// ordinal is the arm's declaration position; its cooked tag is that
+		// plus one, tag 0 being None (docs/SPEC-TABLES.md §7.2)
+		return fmt.Sprintf("%%{name: %q, json: %q, id: 0x%016X, arm_id: 0x%016X, kind: 32, ordinal: %d, arm_kind: 32, t: :void, default: nil},\n", arm.Name, arm.Name, id, id, ordinal)
+	}
+	f := *arm.F
+	f.Name = arm.Name
+	f.WasName = ""
+	f.JsonKey = ""
+	d := strings.TrimSuffix(fieldDescriptor(u, owner, &f, ordinal, nil), "},\n")
+	// the arm header's kind byte is the arm's announced entry kind
+	// (ir.TableArmEntry, docs/SPEC-TABLES.md §2.6, §3), the one answer the
+	// message vocabulary already gives
+	return fmt.Sprintf("%s, arm_id: 0x%016X, arm_kind: %d},\n", d, id, ir.TableArmEntry(arm).Kind)
+}
+
+// closureStruct is a closure member whether it was declared `table` or
+// `type` (docs/SPEC-TABLES.md §3.1). A by-value `type` is a nested body the
+// same way a nested table is, so its descriptor has to be in @tables or a
+// load of the owner raises on the missing name.
+func closureStruct(u *ir.Unit, name string) *ir.Struct {
+	if st := u.Tables[name]; st != nil {
+		return st
+	}
+	return u.Structs[name]
+}
+
+// tableDescriptor spells one table's fields as data the engine walks
+// (docs/SPEC-TABLES.md §3, §8.1): its name, doc comment and tags, each
+// field's effective id, its wire kind, and the facts a codec needs — a string's bound, an int's clamp range, an enum's
+// variant names, a list's element table, a *string/*bytes blob's type id, a
+// pointer's target. The descriptor covers the closure, fixed tables included,
+// because a pointer can name one.
+func jsonArrayDescriptor(st *ir.Struct) string {
+	if st.JsonArray {
+		return ", json_array: true"
+	}
+	return ""
+}
+
 func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	ml := ir.RecordLayout(u, st)
-	_, str := ir.PointerReachableBlobs(st)
-	fmt.Fprintf(&b, "    %q => %%{size: %d, string_blob: %v, fields: [\n", st.Name, ml.Size, str)
+	byt, str := ir.PointerReachableBlobs(st)
+	integrity := ""
+	if st.Integrity != "" {
+		integrity = ", integrity: true"
+	}
+	// variable is this table's own class (docs/SPEC-TABLES.md §3.1). A variable
+	// root carries the node-table id as transport. A fixed root cannot name
+	// that id, so a body that brings one counts it unknown, once (§4).
+	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, node_align: %d, has_extent: %v, bytes_blob: %v, string_blob: %v, variable: %v%s%s, doc: %s, tags: %s, fields: [\n",
+		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookNodeAlign(u, st), cookHasExtent(u, st), byt, str, ir.VariableTables(u)[st.Name], jsonArrayDescriptor(st), integrity, elixirQuote(st.Doc), elixirTags(st.Tags))
+	var nodes strings.Builder
+	nodes.WriteString("%{")
+	for _, node := range ir.PointerReachable(st) {
+		fmt.Fprintf(&nodes, "0x%016X => %q, ", ir.TableWireId(node.WireName()), node.Name)
+	}
+	nodes.WriteString("}")
+	held := b.String()
+	b.Reset()
+	b.WriteString(strings.Replace(held, "fields: [", "node_types: "+nodes.String()+", fields: [", 1))
 	for i, f := range st.Fields {
-		b.WriteString("      " + fieldDescriptor(u, f, i))
+		b.WriteString("      " + fieldDescriptor(u, st.DeclaredName(), f, i, ml.FieldByName(f.Name)))
 	}
 	b.WriteString("    ]},\n")
 	return b.String()
 }
 
-func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
+// fieldDescriptor spells one field's descriptor: its §8.1 facts (type name,
+// wire id, kind, element bound) and its doc comment and tags (§8.1), beside
+// what the codecs read, including the §16.2 clamp range the text reader
+// applies (docs/SPEC-TABLES.md §8.1, §16.2).
+//
+// owner is the table, type or union that declares the field. A float field,
+// or an array of floats, carries `non_finite: "<owner>.<field>"`, the name a
+// read's non_finite_float refusal gives it (docs/SPEC-TABLES.md §3.3).
+func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.FieldLayout) string {
 	var b strings.Builder
 	id := ir.TableFieldWireId(f)
 	kind := ir.TableWireFieldKind(f)
-	fmt.Fprintf(&b, "%%{name: %q, json: %q, id: 0x%016X, kind: %d, ordinal: %d", f.Name, ir.TableFieldJsonKey(f), id, kind, ordinal)
+	fmt.Fprintf(&b, "%%{name: %q, json: %q, type_name: %s, id: 0x%016X, kind: %d, ordinal: %d", f.Name, ir.TableFieldJsonKey(f), elixirQuote(viewTableTypeSpelling(f)), id, kind, ordinal)
+	if f.Type.Timestamp {
+		fmt.Fprintf(&b, ", timestamp: %q", f.Name)
+	}
+	if f.Required {
+		b.WriteString(", required: true")
+	}
+	if f.Guard != "" {
+		fmt.Fprintf(&b, ", guard: %q", f.Guard)
+	}
 	switch {
-	case f.Type.Pointer && f.Type.Blob():
-		b.WriteString(", t: :blob")
-	case f.IsList():
-		b.WriteString(", t: :list")
-		fmt.Fprintf(&b, ", elem: %q", f.Type.Name)
-		elemSize, elemAlign := ir.ListElementLayout(u, f)
-		fmt.Fprintf(&b, ", elem_size: %d, elem_align: %d", elemSize, elemAlign)
-	case enumRef(f) != nil:
-		b.WriteString(", t: :enum, by_name: %{")
-		e := enumRef(f)
-		for i, v := range e.Variants {
-			fmt.Fprintf(&b, "%q => 0x%016X, ", v, ir.TableWireId(e.VariantWireName(i)))
+	case f.IsMap():
+		// SPEC-TABLES §2.8, §3: a map is kind 14 over framed table
+		// entries. Its key kind determines the canonical ascending order.
+		keyKind := 0
+		if len(f.MapEntry.Fields) == 2 {
+			keyKind = ir.TableWireScalarKind(ir.MapKeyField(f))
 		}
-		b.WriteString("}, by_id: %{")
-		for i, v := range e.Variants {
-			fmt.Fprintf(&b, "0x%016X => %q, ", ir.TableWireId(e.VariantWireName(i)), v)
+		fmt.Fprintf(&b, ", t: :map, elem: %q, elem_kind: 13, key_kind: %d", f.MapEntry.Name, keyKind)
+	case f.Type.Pointer && f.Type.Blob():
+		blob := "bytes"
+		if f.Type.Kind == ir.TString {
+			blob = "string"
+		}
+		fmt.Fprintf(&b, ", t: :blob, blob: :%s, type_id: 0x%016X", blob, ir.BlobWireTypeId(f))
+	case f.KeyEnum != "":
+		// SPEC-TABLES §2.4, §3.2: an enum-keyed array is kind 16, one
+		// (key, L, element) pair per slot off its default, slots in the key
+		// enum's value order; the text is an object keyed by variant name.
+		elem := *f
+		elem.Array = ir.ArrayNone
+		elem.ArrayBound = 0
+		elem.KeyEnum = ""
+		elem.KeyEnumRef = nil
+		elemKind := ir.TableWireElemKind(f)
+		fmt.Fprintf(&b, ", t: :keyed, elem_kind: %d, key_names: [", elemKind)
+		for i := 0; i < int(f.ArrayBound) && i < len(f.KeyEnumRef.Variants); i++ {
+			fmt.Fprintf(&b, "%q, ", f.KeyEnumRef.Variants[i])
+		}
+		b.WriteString("], key_ids: %{")
+		for i := 0; i < int(f.ArrayBound) && i < len(f.KeyEnumRef.Variants); i++ {
+			fmt.Fprintf(&b, "%q => 0x%016X, ", f.KeyEnumRef.Variants[i], ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
+		}
+		b.WriteString("}, key_by_id: %{")
+		for i := 0; i < int(f.ArrayBound) && i < len(f.KeyEnumRef.Variants); i++ {
+			fmt.Fprintf(&b, "0x%016X => %q, ", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), f.KeyEnumRef.Variants[i])
 		}
 		b.WriteString("}")
+		elemDesc := strings.TrimSuffix(fieldDescriptor(u, owner, &elem, ordinal, nil), "},\n")
+		fmt.Fprintf(&b, ", item: %s}", elemDesc)
+	case f.Array != ir.ArrayNone:
+		elemKind := ir.TableWireElemKind(f)
+		fmt.Fprintf(&b, ", t: :list, elem_kind: %d", elemKind)
+		if f.IsTextList() {
+			value := ir.TextListValue(f)
+			fmt.Fprintf(&b, ", text_list: true, text_optional: %v, text_size: %d, text_total: %d, text_unbounded: %v", ir.TextListOptional(f), value.Type.Size, f.TextTotal, ir.TextListUnbounded(f))
+			if ir.TextListPlain(f) {
+				fmt.Fprintf(&b, ", elem: %q", f.TextListElem().Name)
+			}
+		}
+		if f.Type.Kind == ir.TFixed {
+			fmt.Fprintf(&b, ", elem_frac: %d", f.Type.FracBits)
+		}
+		if f.Type.Kind == ir.TBits {
+			fmt.Fprintf(&b, ", elem_bits: %d", f.Type.Width)
+		}
+		if f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed {
+			// §16.2: the declared range holds every element
+			if lo, hi, ok := ir.TableRawRange(f); ok {
+				fmt.Fprintf(&b, ", elem_min: %s, elem_max: %s", lo.String(), hi.String())
+			}
+		}
+		if f.HasFloatRange {
+			fmt.Fprintf(&b, ", elem_min: %s, elem_max: %s", fixedFloatLiteral(f.FMin), fixedFloatLiteral(f.FMax))
+		}
+		if fl := flagsRef(f); fl != nil {
+			// an array of flags: each element's text is its set names
+			b.WriteString(", elem_flags: [")
+			for _, v := range fl.Variants {
+				fmt.Fprintf(&b, "%q, ", v)
+			}
+			b.WriteString("]")
+		}
+		if f.Array != ir.ArrayList {
+			fmt.Fprintf(&b, ", array_bound: %d", f.ArrayBound)
+		}
+		if f.Array == ir.ArrayFixed {
+			// SPEC-TABLES §3: a [N]T writes all N elements; a table element
+			// array is never elided, any other is elided when every element
+			// sits at the declared default.
+			elem := *f
+			elem.Array = ir.ArrayNone
+			elem.ArrayBound = 0
+			elem.Type.Optional = false
+			fmt.Fprintf(&b, ", fixed_array: %d, elem_default: %s", f.ArrayBound, variableFieldDefault(&elem))
+		}
+		switch elemKind {
+		case ir.TableKindTable:
+			fmt.Fprintf(&b, ", elem: %q", f.Type.Name)
+		case ir.TableKindPointer:
+			ref := f.Type.Ref.(*ir.Struct)
+			fmt.Fprintf(&b, ", elem: %q, elem_type_id: 0x%016X", ref.Name, ir.TableWireId(ref.WireName()))
+		case ir.TableKindEnum:
+			writeEnumMaps(&b, enumRef(f))
+		case ir.TableKindUnion:
+			// SPEC-TABLES §2.6, §3: each element is one arm header, or a
+			// zero reference for None.
+			fmt.Fprintf(&b, ", elem: %q", f.Type.Name)
+		case ir.TableKindString:
+			size := f.Type.Size
+			if f.IsTextList() {
+				size = ir.TextListValue(f).Type.Size
+			}
+			fmt.Fprintf(&b, ", size: %d", size)
+		}
+		elemSize, elemAlign := ir.ListElementLayout(u, f)
+		fmt.Fprintf(&b, ", elem_size: %d, elem_align: %d", elemSize, elemAlign)
+	case f.Type.Pointer && isStruct(f):
+		ref := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(&b, ", t: :pointer, elem: %q, type_id: 0x%016X", ref.Name, ir.TableWireId(ref.WireName()))
+	case isStruct(f):
+		fmt.Fprintf(&b, ", t: :table, elem: %q", f.Type.Name)
+	case unionRef(f) != nil:
+		fmt.Fprintf(&b, ", t: :union, elem: %q", f.Type.Name)
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(&b, ", t: :bytes, size: %d", f.Type.Size)
+	case enumRef(f) != nil:
+		b.WriteString(", t: :enum")
+		writeEnumMaps(&b, enumRef(f))
+	case flagsRef(f) != nil:
+		// a flags mask rides as its unsigned storage kind; the text is the
+		// list of set variant names (docs/SPEC-TABLES.md §3, §16.2).
+		fmt.Fprintf(&b, ", t: :int, width: %d, signed: false, flags: [", ir.TableKindWidth(ir.TableScalarKind(f)))
+		for _, v := range flagsRef(f).Variants {
+			fmt.Fprintf(&b, "%q, ", v)
+		}
+		b.WriteString("]")
 	case f.Type.Kind == ir.TString:
 		b.WriteString(", t: :string")
-		fmt.Fprintf(&b, ", size: %d", f.Type.Size)
-	case f.Type.Kind == ir.TInt:
+		fmt.Fprintf(&b, ", size: %d, unbounded: %v", f.Type.Size, f.Type.TextUnbounded())
+	case f.Type.Kind == ir.TWString:
+		// wstring(N) is kind 33 on the variable wire: L counts UTF-16LE bytes,
+		// two per code unit (docs/SPEC-TABLES.md §3). The value is UTF-8.
+		fmt.Fprintf(&b, ", t: :wstring, size: %d", f.Type.Size)
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed:
 		b.WriteString(", t: :int")
-		fmt.Fprintf(&b, ", width: %d, signed: %v", f.Type.Width/8, f.Type.Signed)
-		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-			fmt.Fprintf(&b, ", min: %s, max: %s", f.IntMin.String(), f.IntMax.String())
+		width := (f.Type.Width + 7) / 8
+		if f.Type.Kind == ir.TFixed || f.Type.Kind == ir.TBits || f.Type.Width == 128 {
+			// SPEC-TABLES §3, §4.12: the fixed-point and 128-bit kinds take
+			// their storage width from the kind, never from the bit count.
+			// So does bits(N): it rides as the narrowest unsigned kind that
+			// holds it (4 bytes up to 32 bits, 8 above), so bits(24) and
+			// bits(48) are 4 and 8 on the wire, not the 3 and 6 that
+			// (N+7)/8 spells. int_bytes/int_of have no clause for those.
+			width = ir.TableKindWidth(ir.TableScalarKind(f))
+		}
+		fmt.Fprintf(&b, ", width: %d, signed: %v", width, f.Type.Signed)
+		if f.Type.Kind == ir.TFixed {
+			// SPEC-TABLES §3 and §4.12: storage is the exact scaled integer;
+			// text divides it by 2^F without passing through a float.
+			fmt.Fprintf(&b, ", frac: %d", f.Type.FracBits)
+		}
+		if f.Type.Kind == ir.TBits {
+			fmt.Fprintf(&b, ", bits: %d", f.Type.Width)
+		}
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			fmt.Fprintf(&b, ", min: %s, max: %s", lo.String(), hi.String())
+		}
+	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		// A float's payload width is its kind (docs/SPEC-TABLES.md §3).
+		// FieldType.Width stays 0 for TFloat32 and TFloat64, so Width/8
+		// would hand float_bytes/2 a 0 and the clause would not match.
+		b.WriteString(", t: :float")
+		fmt.Fprintf(&b, ", width: %d", ir.TableKindWidth(kind))
+		if f.HasFloatRange {
+			fmt.Fprintf(&b, ", min: %s, max: %s", fixedFloatLiteral(f.FMin), fixedFloatLiteral(f.FMax))
 		}
 	case f.Type.Kind == ir.TBool:
 		b.WriteString(", t: :bool")
 	}
-	fmt.Fprintf(&b, ", shape: %s, bound: %s", cardShape(f), cardBound(f))
+	if (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) && !f.IsMap() {
+		// the name a read's refusal of a NaN or an infinity gives this field
+		// (docs/SPEC-TABLES.md §3.3): the field and the table, type or union
+		// that declares it, as the reference leg's floatOwner spells it
+		fmt.Fprintf(&b, ", non_finite: %q", owner+"."+f.Name)
+	}
+	if f.Type.Optional {
+		// presence is the field, not a kind (docs/SPEC-TABLES.md §2.3): a present
+		// optional writes its frame even when the body is all defaults.
+		b.WriteString(", optional: true")
+	}
+	writeCookLayout(&b, u, f, fl)
+	fmt.Fprintf(&b, ", shape: %s, bound: %s, doc: %s, tags: %s", cardShape(f), cardBound(f), elixirQuote(f.Doc), elixirTags(f.Tags))
+	fmt.Fprintf(&b, ", default: %s", variableFieldDefault(f))
 	b.WriteString("},\n")
 	return b.String()
 }
 
+// variableFieldDefault is a field's declared default as an Elixir literal, the
+// value an absent field reads and a text renders (§4, §16.1): the declared
+// default overrides the type's zero, exactly as the reference's prefill does.
+func variableFieldDefault(f *ir.Field) string {
+	if f.Type.Optional {
+		// SPEC-TABLES §2.3: a missing optional is absent, even when its
+		// underlying value has a nonzero declared default.
+		return "nil"
+	}
+	switch {
+	case f.KeyEnum != "":
+		return "%{}"
+	case f.Array != ir.ArrayNone:
+		return "[]"
+	case f.IsMap():
+		return "%{}"
+	case f.Type.Kind == ir.TWString:
+		return "\"\""
+	case flagsRef(f) != nil:
+		if f.HasDefault && f.DefInt != nil {
+			return fixedIntLiteral(f.DefInt)
+		}
+		return "0"
+	case f.Type.Pointer && f.Type.Blob():
+		return "nil"
+	case f.Type.Pointer && isStruct(f):
+		return "nil"
+	case isStruct(f):
+		return "%{}"
+	case f.Type.Kind == ir.TBytes:
+		if len(f.DefBytes) == 0 {
+			return "<<>>"
+		}
+		return fixedBinaryLiteral(f.DefBytes, 0)
+	case f.Type.Kind == ir.TBool:
+		if f.HasDefault && f.DefBool {
+			return "true"
+		}
+		return "false"
+	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		if f.HasDefault {
+			value := f.DefFloat
+			if f.Type.Kind == ir.TFloat32 {
+				value = float64(float32(value))
+			}
+			return fixedFloatLiteral(value)
+		}
+		return "0.0"
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed:
+		if f.HasDefault && f.DefInt != nil {
+			return fixedIntLiteral(f.DefInt)
+		}
+		return "0"
+	case f.Type.Kind == ir.TString:
+		if len(f.DefBytes) == 0 {
+			return "<<>>"
+		}
+		return fixedBinaryLiteral(f.DefBytes, 0)
+	case enumRef(f) != nil:
+		if f.HasDefault && f.DefVariant != "" {
+			return fmt.Sprintf("%q", f.DefVariant)
+		}
+		return "nil"
+	}
+	return "nil"
+}
+
+// writeEnumMaps spells an enum's two name↔id maps (docs/SPEC-TABLES.md §5, §3).
+func writeEnumMaps(b *strings.Builder, e *ir.Enum) {
+	if e == nil {
+		return
+	}
+	b.WriteString(", by_name: %{")
+	for i, v := range e.Variants {
+		fmt.Fprintf(b, "%q => 0x%016X, ", v, ir.TableWireId(e.VariantWireName(i)))
+	}
+	b.WriteString("}, by_id: %{")
+	for i, v := range e.Variants {
+		fmt.Fprintf(b, "0x%016X => %q, ", ir.TableWireId(e.VariantWireName(i)), v)
+	}
+	b.WriteString("}")
+}
+
 // cardShape is the descriptor's shape column (docs/SPEC-TABLES.md §8.1):
 // :value for a scalar or enum field, :list for an unbounded array, :blob for a
-// *string. It is the one column a tool keys a walk on without naming a type.
+// *string/*bytes, :pointer for a pointer to a table, :table for a nested table.
+// It is the one column a tool keys a walk on without naming a type.
 func cardShape(f *ir.Field) string {
 	switch {
 	case f.Type.Pointer && f.Type.Blob():
 		return ":blob"
 	case f.IsList():
 		return ":list"
+	case f.Type.Pointer && isStruct(f):
+		return ":pointer"
+	case isStruct(f):
+		return ":table"
 	default:
 		return ":value"
 	}
@@ -2076,7 +8081,7 @@ func cardShape(f *ir.Field) string {
 // for every field that declares no bound.
 func cardBound(f *ir.Field) string {
 	switch {
-	case f.Type.Kind == ir.TString && !f.Type.Pointer:
+	case f.Type.Kind == ir.TString && !f.Type.Pointer && !f.Type.TextUnbounded():
 		return fmt.Sprintf("%d", f.Type.Size)
 	case f.Type.Kind == ir.TInt && f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
 		return "{" + f.IntMin.String() + ", " + f.IntMax.String() + "}"

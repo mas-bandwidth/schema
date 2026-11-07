@@ -197,7 +197,7 @@ static void one( int32_t many_count, int32_t few_count, int banks_shape )
     /* a load and a re-save reproduce the file, which is what says the id
        table's order and the references into it agree with the bytes */
     memset( &report, 0, sizeof( report ) );
-    if ( !outer_load( &back, buffer, wrote, &report ) )
+    if ( !outer_load_tolerant( &back, buffer, wrote, &report ) )
     {
         printf( "LOAD FAILED %d/%d/%d\n", many_count, few_count, banks_shape ); failures++;
     }
@@ -302,7 +302,7 @@ func runCRefOrdinal(t *testing.T, files map[string][]byte, driver, binary, runFa
 // C emitter wrote, over elided nested tables, an enum-keyed array at every
 // elision shape, and an array long enough to move a reference's LEB128 width.
 func TestCTableRefOrdinalBytes(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, cRefOrdinalSchema()), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, cRefOrdinalSchema()))
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -436,7 +436,7 @@ int main( void )
     }
 
     memset( &report, 0, sizeof( report ) );
-    if ( !root_load( &back, buffer, wrote, &report ) )
+    if ( !root_load_tolerant( &back, buffer, wrote, &report ) )
     {
         printf( "LOAD FAILED\n" );
         return 1;
@@ -464,7 +464,7 @@ int main( void )
 // reached by both call sites, an eliding keyed slot beside a live one, and the
 // value still there after a load and a re-save.
 func TestCTableRefOrdinalSharedId(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, cRefOrdinalCollisionSchema), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, cRefOrdinalCollisionSchema))
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}

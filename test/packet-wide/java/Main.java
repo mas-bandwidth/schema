@@ -9,6 +9,8 @@ import wide.WideText;
 import wideprobe.Shapes;
 
 public final class Main {
+    // the Bits writer from offset 0 returns the exact wire bits (SPEC §6.1: no measure)
+    static final byte[] BITS = new byte[4096];
     interface Reader<T> { boolean read(T v, byte[] wire, int bits); }
     static void check(boolean ok,String message) { if(!ok) throw new AssertionError(message); }
     static <T> void replay(byte[] wire,T v,Reader<T> read,ToIntBiFunction<T,byte[]> write,ToIntFunction<T> measure,Function<T,char[]> text,ToIntFunction<T> length) {
@@ -42,25 +44,25 @@ public final class Main {
         check(WideText.readWideSeven(v,wire,35) && v.text[0]==0xffff && v.text[1]==0x7f7f && v.text[6]==0x7f7f,"tail");
         var c=new Shapes.Conditional(); c.enabled=true; c.textLength=2;
         c.text[0]=(char)0xd800; c.text[1]=(char)0xdc00;
-        int bits=Shapes.measureConditional(c);
+        int bits=Shapes.writeConditionalBits(c, BITS, 0);
         Shapes.writeConditional(c,wire);
         check(bits==68 && (wire[0]&15)==5,"unaligned groups");
         var co=new Shapes.Conditional();
         check(Shapes.readConditional(co,wire,bits) && co.textLength==2 && co.text[1]==0xdc00,"conditional");
         c.enabled=false; Shapes.writeConditional(c,wire);
         check(Shapes.readConditional(co,wire,1) && co.textLength==0 && co.text[0]==0 && co.text[1]==0,"branch zero");
-        var choice=new Shapes.Choice(); choice.type=Shapes.ChoiceType.text;
+        var choice=new Shapes.Choice(); choice.type=Shapes.ChoiceType.TEXT;
         choice.text.valueLength=1; choice.text.value[0]=(char)0xffff;
-        Shapes.writeChoice(choice,wire); bits=Shapes.measureChoice(choice);
+        Shapes.writeChoice(choice,wire); bits=Shapes.writeChoiceBits(choice, BITS, 0);
         var out=new Shapes.Choice();
         for(int i=0;i<2;i++) { out.text.value[3]=(char)0x7f7f; check(Shapes.readChoice(out,wire,bits) && out.text.valueLength==1 && out.text.value[0]==0xffff && out.text.value[3]==0,"union reset"); }
         var box=new Shapes.Box(); check(box.countedCount==1,"born count");
         box.items[0].valueLength=1; box.items[0].value[0]=(char)0xffff;
         box.counted[0].valueLength=1; box.counted[0].value[0]='A';
-        box.choice.type=Shapes.ChoiceType.text;
-        Shapes.writeBox(box,wire); bits=Shapes.measureBox(box);
+        box.choice.type=Shapes.ChoiceType.TEXT;
+        Shapes.writeBox(box,wire); bits=Shapes.writeBoxBits(box, BITS, 0);
         var bo=new Shapes.Box(); bo.counted[1].value[0]=(char)0x7f7f;
-        check(Shapes.readBox(bo,wire,bits) && bo.items[0].value[0]==0xffff && bo.countedCount==1 && bo.counted[0].value[0]=='A' && bo.counted[1].value[0]==0x7f7f && bo.choice.type==Shapes.ChoiceType.text,"composition");
+        check(Shapes.readBox(bo,wire,bits) && bo.items[0].value[0]==0xffff && bo.countedCount==1 && bo.counted[0].value[0]=='A' && bo.counted[1].value[0]==0x7f7f && bo.choice.type==Shapes.ChoiceType.TEXT,"composition");
         check(!Shapes.readBox(bo,wire,bits-1),"composition truncation");
     }
     public static void main(String[] args) throws Exception {
@@ -71,8 +73,8 @@ public final class Main {
             String[] parts=line.split(" ");
             byte[] wire=parts[1].equals("-")?new byte[0]:HexFormat.of().parseHex(parts[1]);
             switch(parts[0]) {
-                case "7": replay(wire,new WideText.WideSeven(),WideText::readWideSeven,WideText::writeWideSeven,WideText::measureWideSeven,v->v.text,v->v.textLength); break;
-                case "4": replay(wire,new WideText.WideFour(),WideText::readWideFour,WideText::writeWideFour,WideText::measureWideFour,v->v.text,v->v.textLength); break;
+                case "7": replay(wire,new WideText.WideSeven(),WideText::readWideSeven,WideText::writeWideSeven,v -> WideText.writeWideSevenBits(v, BITS, 0),v->v.text,v->v.textLength); break;
+                case "4": replay(wire,new WideText.WideFour(),WideText::readWideFour,WideText::writeWideFour,v -> WideText.writeWideFourBits(v, BITS, 0),v->v.text,v->v.textLength); break;
                 default: throw new AssertionError("unexpected bound");
             }
         }

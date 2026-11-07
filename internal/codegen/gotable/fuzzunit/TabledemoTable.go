@@ -27,19 +27,19 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xe8122cedd2bc1d3d)
-const _ = uint64(0xe8122cedd2bc1d3d - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xa9a32f918d49425e)
+const _ = uint64(0xa9a32f918d49425e - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
 const TableDocNone = goruntime.TableDocNone
 
-func tableJsonGetRaw(a0 unsafe.Pointer, a1 uint32) uint64 { return goruntime.TableJsonGetRaw(a0, a1) }
+func tableJSONGetRaw(a0 unsafe.Pointer, a1 uint32) uint64 { return goruntime.TableJSONGetRaw(a0, a1) }
 
-func tableJsonSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJsonSetRaw(a0, a1, a2) }
+func tableJSONSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJSONSetRaw(a0, a1, a2) }
 
-func tableJsonGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
-	return goruntime.TableJsonGetSigned(a0, a1)
+func tableJSONGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
+	return goruntime.TableJSONGetSigned(a0, a1)
 }
 
 type TableRefuseReason = goruntime.TableRefuseReason
@@ -67,7 +67,7 @@ const TableRefuseKindMismatch = goruntime.TableRefuseKindMismatch
 const TableRefuseBase64Damaged = goruntime.TableRefuseBase64Damaged
 const TableRefuseBase64NotCanonical = goruntime.TableRefuseBase64NotCanonical
 const TableRefuseIntegrityMismatch = goruntime.TableRefuseIntegrityMismatch
-const TableRefuseNonFinite = goruntime.TableRefuseNonFinite
+const TableRefuseNonFiniteFloat = goruntime.TableRefuseNonFiniteFloat
 const TableRefuseBlobShared = goruntime.TableRefuseBlobShared
 const TableRefusePreviousForm = goruntime.TableRefusePreviousForm
 const TableRefuseNewerForm = goruntime.TableRefuseNewerForm
@@ -98,11 +98,17 @@ type TableBuildVersionMismatch = goruntime.TableBuildVersionMismatch
 
 type TableMissingRequired = goruntime.TableMissingRequired
 
-func tableNonFinite(a0 *string, a1 string) { goruntime.TableNonFinite(a0, a1) }
+func tableNonFiniteFloat(a0 *string, a1 string) { goruntime.TableNonFiniteFloat(a0, a1) }
+
+func tableNonFiniteRefused(a0 *TableReport) bool { return goruntime.TableNonFiniteRefused(a0) }
 
 func tableTextClamped(a0 *string, a1 string) { goruntime.TableTextClamped(a0, a1) }
 
 type TableClampedField = goruntime.TableClampedField
+
+func tableTextMalformed(a0 *TableReport, a1 string) { goruntime.TableTextMalformed(a0, a1) }
+
+type TableMalformedField = goruntime.TableMalformedField
 
 func tableLebBytes(a0 uint64) int64 { return goruntime.TableLebBytes(a0) }
 
@@ -117,11 +123,11 @@ func tableKindBytes(a0 uint8) int64 { return goruntime.TableKindBytes(a0) }
 
 func tableKindWidens(a0, a1 uint8) bool { return goruntime.TableKindWidens(a0, a1) }
 
-func tableUtf8Word(a0 []byte) uint64 { return goruntime.TableUtf8Word(a0) }
+func tableUTF8Word(a0 []byte) uint64 { return goruntime.TableUTF8Word(a0) }
 
-func tableUtf8Valid(a0 []byte) bool { return goruntime.TableUtf8Valid(a0) }
+func tableUTF8Valid(a0 []byte) bool { return goruntime.TableUTF8Valid(a0) }
 
-func tableUtf8Clamp(a0 []byte, a1 int64) int64 { return goruntime.TableUtf8Clamp(a0, a1) }
+func tableUTF8Clamp(a0 []byte, a1 int64) int64 { return goruntime.TableUTF8Clamp(a0, a1) }
 
 type TableBitWriter = goruntime.TableBitWriter
 
@@ -132,6 +138,8 @@ type TableMessageShape = goruntime.TableMessageShape
 type TableMessageEntry = goruntime.TableMessageEntry
 
 type TableVocabulary = goruntime.TableVocabulary
+
+type TableMessageReader = goruntime.TableMessageReader
 
 const TableFixedForm = goruntime.TableFixedForm
 
@@ -149,7 +157,7 @@ const tableFixedWidenF = goruntime.TableFixedWidenF
 const tableFixedBool = goruntime.TableFixedBool
 const tableFixedTag = goruntime.TableFixedTag
 
-const tableFixedTextUtf8 = goruntime.TableFixedTextUtf8
+const tableFixedTextUTF8 = goruntime.TableFixedTextUTF8
 const tableFixedTextWide = goruntime.TableFixedTextWide
 const tableFixedTextBytes = goruntime.TableFixedTextBytes
 
@@ -233,7 +241,7 @@ func tableFixedTextIllFormed(a0 uint8, a1 uint32, a2 []byte) bool {
 	return goruntime.TableFixedTextIllFormed(a0, a1, a2)
 }
 
-func tableFixedUtf8Ok(a0 []byte) bool { return goruntime.TableFixedUtf8Ok(a0) }
+func tableFixedUTF8Ok(a0 []byte) bool { return goruntime.TableFixedUTF8Ok(a0) }
 
 func tableFixedUnitsIllFormed(a0 []uint16) bool { return goruntime.TableFixedUnitsIllFormed(a0) }
 
@@ -330,6 +338,12 @@ func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]by
 func tableMessageWriteScalar(a0 *TableBitWriter, a1 *int32, a2 TableMessageShape, a3, a4 uint64) {
 	goruntime.TableMessageWriteScalar(a0, a1, a2, a3, a4)
 }
+
+func tableMessageBatchOpen(a0 *TableVocabulary, a1 []byte, a2 *TableReport) (TableMessageReader, int64) {
+	return goruntime.TableMessageBatchOpen(a0, a1, a2)
+}
+
+func tableMessageBatchClose(a0 *TableMessageReader) bool { return goruntime.TableMessageBatchClose(a0) }
 
 // GlobalSettingsRow — a block row, or a record one nests by value. `Row` is a CLAIMED
 // suffix (mas-bandwidth/schema docs/SPEC-TABLES.md §11), so no declaration in the unit can take it.
@@ -478,7 +492,7 @@ type PatrolRow struct {
 	Speed      float32
 	HasTarget  bool
 	_          [3]byte // generated padding
-	TargetId   int32
+	TargetID   int32
 	Wander     float32
 	Note       [9]byte // string(8): buffer, used length beside it
 	_          [3]byte // generated padding
@@ -620,8 +634,8 @@ type EffectRow struct {
 
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
-// announcement carries before the first body so a peer's build is knowable.
-const BuildVersion uint64 = 0x81b9d8ee7522a549
+// announcement carries before the first body so an endpoint's build is knowable.
+const BuildVersion uint64 = 0x93ff58e3111cb4d4
 
 // ---- reflection (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
 //
@@ -649,12 +663,12 @@ type TableFieldInfo struct {
 	UnboundedContainer bool
 	ElemAlign          uint32
 	Name               string // schema field name, e.g. "health"
-	Json               string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)
+	JSON               string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)
 	TypeName           string // schema element type, e.g. "float32", "Grade"
 	DeclaredTypeName   string // complete schema spelling including arrays, bounds and pointers
-	Id                 uint64 // table-wire field id (name hash; the was alias's hash after a rename)
+	ID                 uint64 // table-wire field id (name hash; the was alias's hash after a rename)
 	Pointer            bool
-	TargetId           uint64
+	TargetID           uint64
 	Kind               uint8 // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
 	IsArray            bool  // fixed or counted array (bytes included)
 	Counted            bool  // a <Name>Count/<Name>Length int32 companion exists
@@ -687,12 +701,12 @@ type TableFieldInfo struct {
 	// enum's value -> name, a union's tag -> arm name, a FLAGS field's bit
 	// index -> variant name. nil for every other kind.
 	EnumName func(value uint64) string
-	// VariantId is the TABLE-WIRE id of one variant (mas-bandwidth/schema docs/SPEC-TABLES.md §5): for
+	// VariantID is the TABLE-WIRE id of one variant (mas-bandwidth/schema docs/SPEC-TABLES.md §5): for
 	// an enum, the hash of the variant's name; for a union, the hash of the
 	// arm's name. Hash zero is an ordinary id; ordinal zero is None. nil
 	// for every other kind — a FLAGS field's variants have no per-variant wire
 	// id (§4), so a nil here beside a non-nil EnumName is what says "flags".
-	VariantId func(value uint64) uint64
+	VariantID func(value uint64) uint64
 	// EnumDefault is the ordinal an enum read lands when the wire or text names
 	// a variant marked | deprecated (mas-bandwidth/schema docs/SPEC-TABLES.md §2.15): the FIELD's
 	// declared default, or 0 (None) for an array, list, map or keyed ELEMENT.
@@ -704,12 +718,12 @@ type TableFieldInfo struct {
 
 	// an ENUM-KEYED array (mas-bandwidth/schema docs/SPEC-TABLES.md §2.4, §8): the array has one slot
 	// per variant of KeyTypeName, indexed by the variant's value, and its
-	// slots ride under variant ids rather than positions. KeyName and KeyId
+	// slots ride under variant ids rather than positions. KeyName and KeyID
 	// are the key's vocabulary — walk [0, ArrayBound) to print slots by name.
 	// All three are nil/"" on every other field.
 	KeyTypeName string
 	KeyName     func(value uint64) string
-	KeyId       func(value uint64) uint64
+	KeyID       func(value uint64) uint64
 
 	// Arms is a union field's shape: the tag and the arms indexed by it, behind
 	// a function so a descriptor graph needs no initialization order. nil for
@@ -736,7 +750,7 @@ type TableFieldInfo struct {
 
 // TableUnionArmInfo is one arm of a union field: where its payload sits inside
 // the union's storage and what its payload looks like. The arm's NAME and its
-// table-wire id come from the field's EnumName/VariantId functions at the same
+// table-wire id come from the field's EnumName/VariantID functions at the same
 // tag, so nothing is spelled twice (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 type TableUnionArmInfo struct {
 	Field  TableFieldInfo               // arm shape; offsets are relative to union storage
@@ -757,21 +771,22 @@ type TableUnionInfo struct {
 
 // TableTypeInfo is one type's descriptor.
 type TableTypeInfo struct {
-	SaveBodyRetain        func(*TableRetainWriter, unsafe.Pointer) bool
-	LoadBodyRetain        func(TableRetainReader, unsafe.Pointer) bool
-	LoadMessageBodyRetain func(TableRetainMessageReader, unsafe.Pointer) (TableRetainMessageReader, bool)
-	CookSize, CookAlign   uint32
-	Name                  string // schema type name
-	Size                  uint32 // unsafe.Sizeof the storage struct
-	Id                    uint64
-	Variable              bool
-	NodeType              func(uint64) *TableTypeInfo
-	SaveBody              func(*TableWriter, unsafe.Pointer) bool
-	LoadBody              func(TableReader, unsafe.Pointer) bool
-	SaveMessageBody       func(*TableMessageWriter, unsafe.Pointer) bool
-	LoadMessageBody       func(TableMessageReader, unsafe.Pointer) (TableMessageReader, bool)
-	NumFields             int32
-	Fields                []TableFieldInfo
+	SaveBodyRetain      func(*TableRetainWriter, unsafe.Pointer) bool
+	LoadBodyRetain      func(TableRetainReader, unsafe.Pointer) bool
+	CookSize, CookAlign uint32
+	Name                string // schema type name
+	Size                uint32 // unsafe.Sizeof the storage struct
+	ID                  uint64
+	Variable            bool
+	CycleIndex          uint64
+	CycleType           func(uint64) *TableTypeInfo
+	NodeType            func(uint64) *TableTypeInfo
+	SaveBody            func(*TableWriter, unsafe.Pointer) bool
+	LoadBody            func(TableReader, unsafe.Pointer) bool
+	SaveMessageBody     func(*TableMessageWriter, unsafe.Pointer) bool
+	LoadMessageBody     func(TableMessageReader, unsafe.Pointer) (TableMessageReader, bool)
+	NumFields           int32
+	Fields              []TableFieldInfo
 	// Reset puts one instance back at its declared defaults, in place. A
 	// generic walker that fills a value has to be able to establish the
 	// defaults an absent field takes, and it holds no type to spell — this is
@@ -790,7 +805,7 @@ type TableTypeInfo struct {
 // evaluate the same guards, so they are declared here, once, and the text
 // form's own file only adds its walk (mas-bandwidth/schema docs/SPEC-TABLES.md, "GO's optional forms").
 
-type tableJsonGraphNode struct {
+type tableJSONGraphNode struct {
 	refs    int
 	label   uint64
 	written bool
@@ -817,9 +832,9 @@ func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo) tableMapKey {
 		}
 		key.text = unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(n))
 	} else {
-		key.raw = tableJsonGetRaw(unsafe.Add(p, f.Offset), f.ElemSize)
+		key.raw = tableJSONGetRaw(unsafe.Add(p, f.Offset), f.ElemSize)
 		if f.Kind >= 2 && f.Kind <= 5 {
-			key.raw = uint64(tableJsonGetSigned(unsafe.Add(p, f.Offset), f.ElemSize))
+			key.raw = uint64(tableJSONGetSigned(unsafe.Add(p, f.Offset), f.ElemSize))
 		}
 	}
 	return key
@@ -830,7 +845,7 @@ func tableMapStoreKey(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey) {
 		copy(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), len(k.text)), k.text)
 		*(*int32)(unsafe.Add(p, f.CountOffset)) = int32(len(k.text))
 	} else {
-		tableJsonSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw)
+		tableJSONSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw)
 	}
 }
 func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
@@ -876,7 +891,7 @@ func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
 // evaluating it is a walk of the same descriptor. Nothing is inferred in the
 // other direction: reading places every key it can name, and the guard is a
 // plain bool key (§16.2).
-func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
+func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
 	p := 0
 	for {
 		for p < len(guard) && (guard[p] == ' ' || guard[p] == '&') {
@@ -899,7 +914,7 @@ func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 		for i := range info.Fields {
 			f := &info.Fields[i]
 			if f.Name == name {
-				value = tableJsonGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
+				value = tableJSONGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
 				break
 			}
 		}
@@ -909,24 +924,24 @@ func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 	}
 }
 
-const tableIdCapacity = 155
-const tableIdBuckets = 512
+const tableIDCapacity = 155
+const tableIDBuckets = 512
 
 // TableIds interns the writer's ids in first-use order. Bucket links are
 // one-based so its zero value is ready to use, including for hash zero.
 type TableIds struct {
 	Numbering *TableNumbering
-	Values    [tableIdCapacity]uint64
-	chain     [tableIdCapacity]int
-	head      [tableIdBuckets]int
-	slot      [tableIdCapacity]uint32
-	ordinalOf [tableIdCapacity]int32
+	Values    [tableIDCapacity]uint64
+	chain     [tableIDCapacity]int
+	head      [tableIDBuckets]int
+	slot      [tableIDCapacity]uint32
+	ordinalOf [tableIDCapacity]int32
 	Count     int
 	Overflow  bool
 }
 
 func (ids *TableIds) Ref(id uint64) uint64 {
-	b := (id ^ id>>32) & (tableIdBuckets - 1)
+	b := (id ^ id>>32) & (tableIDBuckets - 1)
 	for i := ids.head[b]; i != 0; i = ids.chain[i-1] {
 		if ids.Values[i-1] == id {
 			return uint64(i)
@@ -982,7 +997,7 @@ func (ids *TableIds) Truncate(mark int) {
 	for ids.Count > mark {
 		ids.Count--
 		id := ids.Values[ids.Count]
-		ids.head[(id^id>>32)&(tableIdBuckets-1)] = ids.chain[ids.Count]
+		ids.head[(id^id>>32)&(tableIDBuckets-1)] = ids.chain[ids.Count]
 		if o := ids.ordinalOf[ids.Count]; o >= 0 {
 			ids.slot[o] = 0
 		}
@@ -1104,8 +1119,8 @@ func (w *TableWriter) PutLeb(v uint64) {
 	}
 }
 
-func (w *TableWriter) Id(id uint64)                { w.PutLeb(w.Ids.Ref(id)) }
-func (w *TableWriter) IdAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
+func (w *TableWriter) ID(id uint64)                { w.PutLeb(w.Ids.Ref(id)) }
+func (w *TableWriter) IDAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
 
 // headerPair writes a field header whose reference is one LEB byte. False
 // means the reference needs headerRest. Overflow on a short buffer is handled
@@ -1313,6 +1328,9 @@ func (r TableReader) EndsEarly() bool {
 
 func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
 	r := TableReader{Report: report}
+	if report != nil {
+		report.NonFiniteFloat = ""
+	} // this read's own refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3)
 	if len(data) == 0 {
 		return r, TableOpenDamaged
 	}
@@ -1415,27 +1433,10 @@ func (r *TableReader) Signed(kind uint8) int64 {
 	}
 }
 
-func tableWidenFloat(b uint32) uint64 {
-	if b&0x7f800000 == 0x7f800000 {
-		return uint64(b>>31)<<63 | 0x7ff0000000000000 | uint64(b&0x7fffff)<<29
-	}
-	return math.Float64bits(float64(math.Float32frombits(b)))
-}
-
-type TableMessageReader struct {
-	Nodes      TableNodeMap
-	Bits       TableBitReader
-	Vocabulary *TableVocabulary
-	Report     TableReport
-	IndexBits  int64
-}
-
 type TableMessageWriter struct {
 	TableBitWriter
 	IndexBits int64
 	Clamped   int32
-	Numbering *TableNumbering
-	numbering TableNumbering
 }
 
 // THE FIXED LOAD'S REFUSAL NAMES ARE THE ONE ENUM (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -1557,9 +1558,9 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 	return at
 }
 
-// census is whether THIS entry is the first time the peer's field is seen:
+// census is whether THIS entry is the first time the writer's field is seen:
 // an array's element subtree is compiled once per element and the unknown
-// count is ONCE PER FIELD PER PEER (§5.4), so only element 0 censuses.
+// count is ONCE PER FIELD PER ENDPOINT (§5.4), so only element 0 censuses.
 func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
@@ -1570,7 +1571,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		theirOff := theirAt
 		for range te.Children {
 			tc := tableFixedEntryAt(theirs, theirChild)
-			if tc.Id == mc.Id {
+			if tc.ID == mc.ID {
 				tableFixedCompileEntry(c, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg, census)
 				break
 			}
@@ -1585,7 +1586,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		named := false
 		mcAt := mi + 1
 		for range me.Children {
-			if tableFixedEntryAt(mine, mcAt).Id == tc.Id {
+			if tableFixedEntryAt(mine, mcAt).ID == tc.ID {
 				named = true
 				break
 			}
@@ -1677,9 +1678,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
 		tee := tableFixedEntryAt(theirs, tel)
 		for k := range mkey.Children {
-			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).Id
+			keyID := tableFixedEntryAt(mine, mi+2+int32(k)).ID
 			for j := range tkey.Children {
-				if tableFixedEntryAt(theirs, ti+2+int32(j)).Id != keyId {
+				if tableFixedEntryAt(theirs, ti+2+int32(j)).ID != keyID {
 					continue
 				}
 				tableFixedCompileEntry(c, theirs, tel, theirAt+j*tee.Size, mine, mel, dst, at+k*d.Stride, guard, arg, census && k == 0)
@@ -1719,7 +1720,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			theirArm := ti + 1
 			for j := range te.Children {
 				ta := tableFixedEntryAt(theirs, theirArm)
-				if ta.Id == ma.Id {
+				if ta.ID == ma.ID {
 					// THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT
 					// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1): one link is pushed
 					// on the way into the arm, the arm's own tag const included,
@@ -1760,10 +1761,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 		m := make([]uint16, n)
 		for j := range n {
-			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).Id
+			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).ID
 			var landed uint16
 			for k := range me.Children {
-				if tableFixedEntryAt(mine, mi+1+int32(k)).Id == vid {
+				if tableFixedEntryAt(mine, mi+1+int32(k)).ID == vid {
 					landed = uint16(k + 1)
 					break
 				}
@@ -1928,8 +1929,8 @@ func (value *EffectRow) Debuff() *struct {
 }
 
 const tableRegionAlign int64 = 8
-const tableBytesTypeId uint64 = 0x2f2ec0474f1c4fe4
-const tableStringTypeId uint64 = 0x704be0d8faaffc58
+const tableBytesTypeID uint64 = 0x2f2ec0474f1c4fe4
+const tableStringTypeID uint64 = 0x704be0d8faaffc58
 
 // TableAllocator owns authoring and temporary writer storage. Both callbacks
 // are required together; an empty pair uses Go-owned storage. Alloc supplies
@@ -2138,7 +2139,7 @@ func (a *TableArena) grab(bytes int64) (int64, int64) {
 type TableWorker struct {
 	Arena      *TableArena
 	front, end int64
-	refused    bool
+	refused    TableRefuseReason
 }
 
 func (w *TableWorker) Alloc(n int64) (unsafe.Pointer, TableRef) {
@@ -2184,7 +2185,7 @@ func tableRegionCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 func tableRegionRound(n int64) int64 { return (n + tableRegionAlign - 1) & -tableRegionAlign }
 
 type tableNodeEntry struct {
-	json   tableJsonGraphNode
+	json   tableJSONGraphNode
 	node   unsafe.Pointer
 	info   *TableTypeInfo
 	id     uint64
@@ -2308,7 +2309,7 @@ func (n *TableNumbering) visit(p unsafe.Pointer, t *TableTypeInfo, id uint64) bo
 		if f.Table != nil {
 			target = f.Table()
 		}
-		return n.visit(tableRefAt(slot, a), target, f.TargetId)
+		return n.visit(tableRefAt(slot, a), target, f.TargetID)
 	}) {
 		return false
 	}
@@ -2323,7 +2324,7 @@ func tableNumber(root unsafe.Pointer, info *TableTypeInfo, a *TableArena, alloca
 	if len(allocator) > 0 {
 		n.allocator = allocator[0]
 	}
-	if root == nil || !n.visit(root, info, info.Id) {
+	if root == nil || !n.visit(root, info, info.ID) {
 		if n.reason == TableRefuseOk {
 			n.reason = TableRefuseInvalidValue
 		}
@@ -2335,7 +2336,7 @@ func tableNumber(root unsafe.Pointer, info *TableTypeInfo, a *TableArena, alloca
 func tableRegionEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
 	for i := range info.Fields {
 		f := &info.Fields[i]
-		if !tableJsonGuardHolds(base, info, f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base, f.PresentOffset)) {
+		if !tableJSONGuardHolds(base, info, f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base, f.PresentOffset)) {
 			continue
 		}
 		p := unsafe.Add(base, f.Offset)
@@ -2364,7 +2365,7 @@ func tableRegionValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*Tabl
 	}
 	if f.Kind == 15 && f.Arms != nil {
 		arms := f.Arms()
-		tag := tableJsonGetRaw(unsafe.Add(p, arms.TagOffset), arms.TagSize)
+		tag := tableJSONGetRaw(unsafe.Add(p, arms.TagOffset), arms.TagSize)
 		if tag >= uint64(len(arms.Arms)) {
 			return false
 		}
@@ -2444,7 +2445,7 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 	}
 	w.Offset--
 	if len(n.entries) > 1 {
-		w.Id(0xffffffffffffffff)
+		w.ID(0xffffffffffffffff)
 		w.Put8(12)
 		payload := tableLebBytes(uint64(len(n.entries) - 1))
 		for i := 1; i < len(n.entries); i++ {
@@ -2460,7 +2461,7 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 		w.PutLeb(uint64(len(n.entries) - 1))
 		for i := 1; i < len(n.entries); i++ {
 			e := &n.entries[i]
-			w.Id(e.id)
+			w.ID(e.id)
 			size := tableNodeMeasure(&frame.measure, ids, e)
 			if size < 0 {
 				return -1, TableRefuseInvalidValue
@@ -2485,13 +2486,14 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 // slot first names it; a second slot names the same node, never a copy, and
 // counts BlobShared, which the strict read refuses (mas-bandwidth/schema docs/SPEC-TABLES.md §2.5,
 // §6.5). The message form's region reader resolves under Once too.
-type TableNodeDirEntry struct{ Offset, TypeId uint64 }
+type TableNodeDirEntry struct{ Offset, TypeID uint64 }
 type TableNodeMap struct {
 	Base    unsafe.Pointer
 	Entries []TableNodeDirEntry
 	Good    bool
 	Arena   bool
 	Once    bool
+	Indexed bool
 }
 
 func (m TableNodeMap) Resolve(slot *TableRef, index, target uint64, r *TableReport) {
@@ -2507,14 +2509,18 @@ func (m TableNodeMap) Resolve(slot *TableRef, index, target uint64, r *TableRepo
 	if entry.Offset == ^uint64(0) {
 		return
 	}
-	if entry.TypeId != target {
-		if !m.Once || entry.TypeId != ^target || target != tableBytesTypeId && target != tableStringTypeId {
+	if entry.TypeID != target {
+		if !m.Once || entry.TypeID != ^target || target != tableBytesTypeID && target != tableStringTypeID {
 			r.KindMismatch++
 			return
 		}
 		r.BlobShared++
-	} else if m.Once && (target == tableBytesTypeId || target == tableStringTypeId) {
-		m.Entries[index-1].TypeId = ^target
+	} else if m.Once && (target == tableBytesTypeID || target == tableStringTypeID) {
+		m.Entries[index-1].TypeID = ^target
+	}
+	if m.Indexed && target != tableBytesTypeID && target != tableStringTypeID {
+		*slot = int64(index)
+		return
 	}
 	if m.Arena {
 		*slot = int64(entry.Offset)
@@ -2599,9 +2605,9 @@ func tableNodeStorageReason(id uint64, body TableReader, nodeType func(uint64) *
 	if t := nodeType(id); t != nil {
 		return tableRegionRound(int64(t.Size)), TableRefuseOk
 	}
-	if id == tableBytesTypeId && blobs&1 != 0 || id == tableStringTypeId && blobs&2 != 0 {
+	if id == tableBytesTypeID && blobs&1 != 0 || id == tableStringTypeID && blobs&2 != 0 {
 		extra := int64(0)
-		if id == tableStringTypeId {
+		if id == tableStringTypeID {
 			extra = 1
 		}
 		if int64(len(body.Buffer)) > 0xffffffff {
@@ -2619,8 +2625,9 @@ func tableRegionMeasure(wire []byte, root *TableTypeInfo, nodeType func(uint64) 
 // tableRegionMeasureReason is the one measure body; a second copy would leave the
 // lists.go:154 container patch on the first only. Strict by default, it refuses any
 // framing damage. A trailing true makes it tolerant: it skips the framing walk and the
-// whole-scan check, so tableRegionMeasure and tableRegionLoad keep the decoded prefix
-// of a damaged wire (mas-bandwidth/schema docs/SPEC-TABLES.md section 4). No new package-scope name.
+// whole-scan check, so tableRegionLoad can size a region for a damaged wire, read it,
+// count the report, and then discard the whole load (mas-bandwidth/schema docs/SPEC-TABLES.md section 4).
+// No new package-scope name.
 func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, tolerant ...bool) (int64, int64, TableOpenVerdict, TableRefuseReason) {
 	strict := len(tolerant) == 0 || !tolerant[0]
 	var ignored TableReport
@@ -2697,7 +2704,7 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 			if !ok {
 				break
 			}
-			if id == tableStringTypeId && blobs&2 != 0 && !tableUtf8Valid(body.Buffer) {
+			if id == tableStringTypeID && blobs&2 != 0 && !tableUTF8Valid(body.Buffer) {
 				return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 			}
 			if t := nodeType(id); t != nil && tableWireExtent(&body, t, &at, nodes) != TableRefuseOk {
@@ -2717,6 +2724,9 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		var ignored TableReport
 		report = &ignored
 	}
+	pre := report.Malformed
+	report.Malformed = false
+	defer func() { report.Malformed = report.Malformed || pre }()
 	r, verdict := tableOpenFramed(wire, report)
 	report.Verdict = verdict
 	if verdict != TableOpenOk {
@@ -2724,12 +2734,8 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 			report.Malformed = true
 		} else {
 			report.Reason = "newer_form"
-			if len(wire) > 0 {
-				if wire[0] == 2 {
-					report.Reason = "message_form_as_file"
-				} else if wire[0] == 0 {
-					report.Reason = "previous_form"
-				}
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
 			}
 		}
 		return nil
@@ -2743,9 +2749,10 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	data := n - attr
 	base := unsafe.Pointer(&region[0])
 	directory := unsafe.Slice((*TableNodeDirEntry)(unsafe.Add(base, data)), int(attr/16))
-	directory[0] = TableNodeDirEntry{0, root.Id}
+	directory[0] = TableNodeDirEntry{0, root.ID}
 	nodes := TableNodeMap{Base: base, Entries: directory}
 	nodes.Once = true
+	nodes.Indexed = true
 	root.Reset(base)
 	s := tableNodeScanBegin(r)
 	used := tableRegionRound(int64(root.Size))
@@ -2757,8 +2764,8 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 			break
 		}
 		size := tableNodeStorage(id, body, nodeType, blobs)
-		directory[k].TypeId = id
-		if id == tableStringTypeId && blobs&2 != 0 && !tableUtf8Valid(body.Buffer) {
+		directory[k].TypeID = id
+		if id == tableStringTypeID && blobs&2 != 0 && !tableUTF8Valid(body.Buffer) {
 			directory[k].Offset = ^uint64(0)
 			report.Malformed = true
 		} else if size <= 0 {
@@ -2805,14 +2812,25 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	r.Nodes = nodes
 	r.Nested = false
 	root.LoadBody(r, base)
-	return base
+	if tableNonFiniteRefused(report) {
+		clear(region)
+		return nil
+	}
+	if !report.Malformed && !tableCycleCheck(base, root, nil, directory, nodeType) {
+		report.Malformed = true
+	}
+	if report.Malformed {
+		clear(region)
+		return nil
+	}
+	return base // DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4)
 }
 func tablePackNodeBytes(e *tableNodeEntry, a *TableArena) int64 {
 	if e.info != nil {
 		return tableRegionRound(int64(e.info.Size))
 	}
 	extra := int64(0)
-	if e.id == tableStringTypeId {
+	if e.id == tableStringTypeID {
 		extra = 1
 	}
 	return tableRegionRound(8 + int64(*(*uint32)(e.node)) + extra)
@@ -2957,11 +2975,22 @@ func TableStringEmplace(worker *TableWorker, slot *TableRef, text []byte) []byte
 	return data
 }
 
-func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport) bool {
+func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport) (loaded bool) {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
 	}
+	pre := report.Malformed
+	report.Malformed = false
+	defer func() {
+		if !loaded && p != nil {
+			root.Reset(p)
+		}
+		if !loaded && report.Verdict == TableOpenOk && !report.Malformed && worker.refused == TableRefuseCountOverExtentCap && !tableNonFiniteRefused(report) {
+			report.Reason = TableRefuseCountOverExtentCap.Error()
+		}
+		report.Malformed = report.Malformed || pre
+	}()
 	r, verdict := tableOpenFramed(wire, report)
 	report.Verdict = verdict
 	if verdict != TableOpenOk {
@@ -2969,12 +2998,8 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 			report.Malformed = true
 		} else {
 			report.Reason = "newer_form"
-			if len(wire) > 0 {
-				if wire[0] == 2 {
-					report.Reason = "message_form_as_file"
-				} else if wire[0] == 0 {
-					report.Reason = "previous_form"
-				}
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
 			}
 		}
 		return false
@@ -2983,7 +3008,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		report.Malformed = true
 		return false
 	}
-	worker.refused = false // mas-bandwidth/schema docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
+	worker.refused = TableRefuseOk // mas-bandwidth/schema docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
 	scan := tableNodeScanBegin(r)
 	for {
 		_, _, ok := scan.next()
@@ -3000,9 +3025,10 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	defer worker.Arena.Allocator.free(memory)
 	clear(memory)
 	directory := unsafe.Slice((*TableNodeDirEntry)(unsafe.Pointer(&memory[0])), int(count))
-	directory[0] = TableNodeDirEntry{uint64(ref), root.Id}
+	directory[0] = TableNodeDirEntry{uint64(ref), root.ID}
 	nodes := TableNodeMap{Entries: directory, Arena: true}
 	nodes.Once = true
+	nodes.Indexed = true
 	scan = tableNodeScanBegin(r)
 	k := 1
 	unknown := int32(0)
@@ -3013,13 +3039,13 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		}
 		directory[k] = TableNodeDirEntry{^uint64(0), id}
 		t := nodeType(id)
-		isblob := id == tableBytesTypeId && blobs&1 != 0 || id == tableStringTypeId && blobs&2 != 0
+		isblob := id == tableBytesTypeID && blobs&1 != 0 || id == tableStringTypeID && blobs&2 != 0
 		if t == nil && !isblob {
 			unknown++
 			k++
 			continue
 		}
-		if id == tableStringTypeId && !tableUtf8Valid(body.Buffer) {
+		if id == tableStringTypeID && !tableUTF8Valid(body.Buffer) {
 			report.Malformed = true
 			k++
 			continue
@@ -3032,7 +3058,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 				return false
 			}
 			size = 8 + int64(len(body.Buffer))
-			if id == tableStringTypeId {
+			if id == tableStringTypeID {
 				size++
 			}
 		}
@@ -3068,7 +3094,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 				if t := nodeType(id); t != nil {
 					body.Nodes = nodes
 					t.LoadBody(body, worker.Arena.At(int64(directory[k].Offset)))
-					if worker.refused {
+					if worker.refused != TableRefuseOk {
 						return false
 					}
 				}
@@ -3079,7 +3105,13 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	r.Nodes = nodes
 	r.Nested = false
 	ok := root.LoadBody(r, p)
-	return ok && !worker.refused
+	if tableNonFiniteRefused(report) {
+		return false
+	}
+	if ok && worker.refused == TableRefuseOk && !report.Malformed && !tableCycleCheck(p, root, worker.Arena, directory, nodeType) {
+		report.Malformed = true
+	}
+	return ok && worker.refused == TableRefuseOk && !report.Malformed // DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4)
 }
 
 func tableWireExtent(r *TableReader, t *TableTypeInfo, at *int64, nodes int64) TableRefuseReason {
@@ -3105,7 +3137,7 @@ func tableWireExtent(r *TableReader, t *TableTypeInfo, at *int64, nodes int64) T
 		}
 		var f *TableFieldInfo
 		for i := range t.Fields {
-			if t.Fields[i].Id == id {
+			if t.Fields[i].ID == id {
 				f = &t.Fields[i]
 				break
 			}
@@ -3180,7 +3212,7 @@ func (r *TableReader) wireValueExtent(f *TableFieldInfo, kind uint8, at *int64, 
 		return tableWireUnionExtent(r, f, at, nodes)
 	case 12:
 		body, ok := r.Body()
-		if !ok || nodes >= 0 && !tableUtf8Valid(body.Buffer) {
+		if !ok || nodes >= 0 && !tableUTF8Valid(body.Buffer) {
 			return bad
 		}
 	case 17:
@@ -3265,8 +3297,8 @@ func tableWireArrayExtent(r TableReader, f *TableFieldInfo, keyed, arm bool, at 
 					return bad
 				}
 				known := false
-				for v := uint64(1); f.KeyId != nil && v <= uint64(f.ArrayBound); v++ {
-					if f.KeyId(v) == id {
+				for v := uint64(1); f.KeyID != nil && v <= uint64(f.ArrayBound); v++ {
+					if f.KeyID(v) == id {
 						known = true
 						break
 					}
@@ -3356,7 +3388,7 @@ func tableWireUnionExtent(r *TableReader, f *TableFieldInfo, at *int64, nodes in
 	}
 	u := f.Arms()
 	for i := 1; i < len(u.Arms); i++ {
-		if f.VariantId(uint64(i)) != id {
+		if f.VariantID(uint64(i)) != id {
 			continue
 		}
 		arm := &u.Arms[i]
@@ -3399,7 +3431,7 @@ func tableWireUnionExtent(r *TableReader, f *TableFieldInfo, at *int64, nodes in
 				}
 				return body.wireValueExtent(af, want, at, nodes)
 			case want == 12:
-				if !tableUtf8Valid(body.Buffer) {
+				if !tableUTF8Valid(body.Buffer) {
 					return bad
 				}
 				return TableRefuseOk
@@ -3429,6 +3461,241 @@ func tableWireUnionExtent(r *TableReader, f *TableFieldInfo, at *int64, nodes in
 	}
 	return TableRefuseOk
 }
+func tableCycleType(index uint64) *TableTypeInfo {
+	switch index {
+	case 1:
+		return ArchiveConfigTableType()
+	case 2:
+		return AttachmentTableType()
+	case 3:
+		return BuffTableType()
+	case 4:
+		return DebuffTableType()
+	case 5:
+		return GlobalSettingsTableType()
+	case 6:
+		return GunnerConfigTableType()
+	case 7:
+		return GunnerSettingsTableType()
+	case 8:
+		return HullConfigTableType()
+	case 9:
+		return KeyedConfigTableType()
+	case 10:
+		return LoadoutConfigTableType()
+	case 11:
+		return PackConfigTableType()
+	case 12:
+		return PatrolTableType()
+	case 13:
+		return ProfileConfigTableType()
+	case 14:
+		return RangedSignedTableType()
+	case 15:
+		return RangedUnsignedTableType()
+	case 16:
+		return RangedWidthsTableType()
+	case 17:
+		return RootConfigTableType()
+	case 18:
+		return ScoreBoardTableType()
+	case 19:
+		return ShipEntryTableType()
+	case 20:
+		return TeamConfigTableType()
+	case 21:
+		return TurretConfigTableType()
+	case 22:
+		return WeaponConfigTableType()
+	case 23:
+		return WideBlobTableType()
+	}
+	return nil
+}
+func tableCycleEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if f.Optional && !*(*bool)(unsafe.Add(base, f.PresentOffset)) {
+			continue
+		}
+		p := unsafe.Add(base, f.Offset)
+		count := int32(1)
+		if f.IsArray {
+			count = tableRegionCount(base, f)
+			if count < 0 || count > f.ArrayBound {
+				return false
+			}
+		}
+		for j := range count {
+			at := unsafe.Add(p, uintptr(j)*uintptr(f.ElemSize))
+			if !tableCycleValueEdges(at, f, visit) {
+				return false
+			}
+		}
+	}
+	return true
+}
+func tableCycleValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
+	if f.Pointer {
+		return visit((*TableRef)(p), f)
+	}
+	if f.Kind == 13 && f.Table != nil {
+		return tableCycleEdges(p, f.Table(), visit)
+	}
+	if f.Kind == 15 && f.Arms != nil {
+		arms := f.Arms()
+		tag := tableJSONGetRaw(unsafe.Add(p, arms.TagOffset), arms.TagSize)
+		if tag >= uint64(len(arms.Arms)) {
+			return false
+		}
+		if tag != 0 {
+			arm := &arms.Arms[tag]
+			if arm.Void {
+				return true
+			}
+			af := &arm.Field
+			at := unsafe.Add(p, af.Offset)
+			count := int32(1)
+			if af.IsArray {
+				count = tableRegionCount(p, af)
+				if count < 0 || count > af.ArrayBound {
+					return false
+				}
+			}
+			for j := range count {
+				if !tableCycleValueEdges(unsafe.Add(at, uintptr(j)*uintptr(af.ElemSize)), af, visit) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func tableCycleCheck(base unsafe.Pointer, root *TableTypeInfo, a *TableArena, dir []TableNodeDirEntry, nodeType func(uint64) *TableTypeInfo) bool {
+	const mask = uint64(1)<<48 - 1
+	if uint64(len(dir)) > math.MaxUint32 {
+		return false
+	}
+	vertices := 0
+	for i := range dir {
+		e := &dir[i]
+		if e.Offset == ^uint64(0) {
+			continue
+		}
+		t := nodeType(e.TypeID)
+		if i == 0 {
+			t = root
+		}
+		if t == nil {
+			continue
+		}
+		if e.Offset > mask || t.CycleIndex == 0 || t.CycleIndex >= 65535 {
+			return false
+		}
+		e.Offset |= t.CycleIndex << 48
+		e.TypeID = 0
+		vertices++
+	}
+	each := func(i int, visit func(*TableRef, *TableFieldInfo) bool) bool {
+		e := &dir[i]
+		ordinal := e.Offset >> 48
+		if ordinal == 0 || ordinal == 65535 {
+			return true
+		}
+		t := root.CycleType(ordinal)
+		if t == nil {
+			return false
+		}
+		var p unsafe.Pointer
+		if a != nil {
+			p = a.At(int64(e.Offset & mask))
+		} else {
+			p = unsafe.Add(base, e.Offset&mask)
+		}
+		return tableCycleEdges(p, t, visit)
+	}
+	count := func(slot *TableRef, f *TableFieldInfo) bool {
+		if *slot == 0 || f.Table == nil {
+			return true
+		}
+		index := uint64(*slot)
+		if index > uint64(len(dir)) {
+			return false
+		}
+		e := &dir[index-1]
+		if e.Offset>>48 == 0 || e.Offset>>48 == 65535 || e.TypeID == math.MaxUint32 {
+			return false
+		}
+		e.TypeID++
+		return true
+	}
+	for i := range dir {
+		if !each(i, count) {
+			return false
+		}
+	}
+	head := uint32(0)
+	push := func(i int) { dir[i].TypeID = uint64(head) << 32; head = uint32(i + 1) }
+	for i := range dir {
+		ordinal := dir[i].Offset >> 48
+		if ordinal != 0 && ordinal != 65535 && dir[i].TypeID == 0 {
+			push(i)
+		}
+	}
+	release := func(slot *TableRef, f *TableFieldInfo) bool {
+		if *slot == 0 || f.Table == nil {
+			return true
+		}
+		i := int(*slot - 1)
+		if uint32(dir[i].TypeID) == 0 {
+			return false
+		}
+		dir[i].TypeID--
+		if uint32(dir[i].TypeID) == 0 {
+			push(i)
+		}
+		return true
+	}
+	visited := 0
+	for head != 0 {
+		i := int(head - 1)
+		head = uint32(dir[i].TypeID >> 32)
+		visited++
+		if !each(i, release) {
+			return false
+		}
+	}
+	if visited != vertices {
+		return false
+	}
+	resolve := func(slot *TableRef, f *TableFieldInfo) bool {
+		if *slot == 0 || f.Table == nil {
+			return true
+		}
+		off := dir[int(*slot-1)].Offset & mask
+		if a != nil {
+			*slot = int64(off)
+		} else {
+			*slot = int64(uintptr(unsafe.Add(base, off)) - uintptr(unsafe.Pointer(slot)))
+		}
+		return true
+	}
+	for i := range dir {
+		if !each(i, resolve) {
+			return false
+		}
+	}
+	for i := range dir {
+		e := &dir[i]
+		ordinal := e.Offset >> 48
+		if ordinal != 0 && ordinal != 65535 {
+			e.TypeID = root.CycleType(ordinal).ID
+			e.Offset &= mask
+		}
+	}
+	return true
+}
 
 const tableRetainPathDepth = 7
 
@@ -3439,13 +3706,13 @@ var tableRetainKnown = [...]uint64{0x0117ad66e0fff227, 0x01986b0b27400fb2, 0x031
 // Maximum nesting of a retained resolved payload (SPEC-TABLES §6.6).
 const tableRetainWalkDepthMax = 64
 
-type TableRetainId struct {
-	Id   uint64
+type TableRetainID struct {
+	ID   uint64
 	Slot int
 }
 type TableRetain struct {
 	Bytes     []byte
-	Ids       []TableRetainId
+	Ids       []TableRetainID
 	Used      int64
 	Count     int
 	idUsed    int
@@ -3543,7 +3810,11 @@ func (r *TableRetainReader) Body() (TableRetainReader, bool) {
 	sub, ok := r.tableRetainPlainReader.Body()
 	return TableRetainReader{tableRetainPlainReader: sub, Retain: r.Retain, Path: r.Path}, ok
 }
-func (r *TableRetainReader) capture(id uint64, kind uint8) bool {
+
+// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's or 11's raw bits, and a NaN
+// or an infinity refuses the read as non_finite_float, named <owner>.0x<id>.
+func (r *TableRetainReader) capture(id uint64, kind uint8, owner string) bool {
 	at := r.Offset
 	if !r.Skip(kind) {
 		return false
@@ -3553,6 +3824,10 @@ func (r *TableRetainReader) capture(id uint64, kind uint8) bool {
 	}
 	t := r.Retain
 	p := r.Path
+	if kind == 10 && binary.LittleEndian.Uint32(r.Buffer[at:])&0x7f800000 == 0x7f800000 || kind == 11 && binary.LittleEndian.Uint64(r.Buffer[at:])&0x7ff0000000000000 == 0x7ff0000000000000 {
+		tableNonFiniteFloat(&r.Report.NonFiniteFloat, tableRetainedFloatName(owner, id))
+		return true
+	}
 	limit := int64(len(t.Bytes)) - t.Used - int64(26+p.depth*8)
 	if limit < 0 {
 		r.Report.RetainLost++
@@ -3590,6 +3865,18 @@ func (r *TableRetainReader) capture(id uint64, kind uint8) bool {
 	t.Count++
 	r.Report.Retained++
 	return true
+}
+
+// tableRetainedFloatName names a retained unknown float for the
+// non_finite_float refusal: the body's table and the id it cannot name.
+func tableRetainedFloatName(owner string, id uint64) string {
+	const digits = "0123456789abcdef"
+	var hex [16]byte
+	for i := 15; i >= 0; i-- {
+		hex[i] = digits[id&0xf]
+		id >>= 4
+	}
+	return owner + ".0x" + string(hex[:])
 }
 
 type tableRetainIn struct {
@@ -3775,7 +4062,7 @@ type tableRetainFrame struct {
 }
 type TableRetainIds struct {
 	known          TableIds
-	slots          [tableIdCapacity]int
+	slots          [tableIDCapacity]int
 	Numbering      *TableNumbering
 	Retain         *TableRetain
 	Path           tableRetainPath
@@ -3841,7 +4128,7 @@ func (i *TableRetainIds) recordRef(id uint64) uint64 {
 		return 0
 	}
 	for k := range t.idUsed {
-		if t.Ids[k].Id == id {
+		if t.Ids[k].ID == id {
 			return uint64(t.Ids[k].Slot)
 		}
 	}
@@ -3850,7 +4137,7 @@ func (i *TableRetainIds) recordRef(id uint64) uint64 {
 		return 0
 	}
 	i.Count++
-	t.Ids[t.idUsed] = TableRetainId{id, i.Count}
+	t.Ids[t.idUsed] = TableRetainID{id, i.Count}
 	t.idUsed++
 	return uint64(i.Count)
 }
@@ -3875,7 +4162,7 @@ func (i *TableRetainIds) trailer(w *TableRetainWriter) {
 			w.Put64(i.known.Values[a])
 			a++
 		} else {
-			w.Put64(i.Retain.Ids[b].Id)
+			w.Put64(i.Retain.Ids[b].ID)
 			b++
 		}
 	}
@@ -4075,12 +4362,6 @@ func tableRetainTail(w *TableRetainWriter) bool {
 	return !w.Overflow && !ids.Overflow
 }
 
-type tableMessagePlainReader = TableMessageReader
-type TableRetainMessageReader struct {
-	tableMessagePlainReader
-	Retain *TableRetain
-	Path   tableRetainPath
-}
 type TableRetainWriter struct {
 	Buffer    []byte
 	Offset    int64
@@ -4194,8 +4475,8 @@ func (w *TableRetainWriter) PutLeb(v uint64) {
 	}
 }
 
-func (w *TableRetainWriter) Id(id uint64)                { w.PutLeb(w.Ids.Ref(id)) }
-func (w *TableRetainWriter) IdAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
+func (w *TableRetainWriter) ID(id uint64)                { w.PutLeb(w.Ids.Ref(id)) }
+func (w *TableRetainWriter) IDAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
 
 // headerPair writes a field header whose reference is one LEB byte. False
 // means the reference needs headerRest. Overflow on a short buffer is handled
@@ -4245,6 +4526,9 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		var ignored TableReport
 		report = &ignored
 	}
+	pre := report.Malformed
+	report.Malformed = false
+	defer func() { report.Malformed = report.Malformed || pre }()
 	r, verdict := tableOpenFramed(wire, report)
 	report.Verdict = verdict
 	if verdict != TableOpenOk {
@@ -4252,12 +4536,8 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 			report.Malformed = true
 		} else {
 			report.Reason = "newer_form"
-			if len(wire) > 0 {
-				if wire[0] == 2 {
-					report.Reason = "message_form_as_file"
-				} else if wire[0] == 0 {
-					report.Reason = "previous_form"
-				}
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
 			}
 		}
 		return nil
@@ -4271,9 +4551,10 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	data := n - attr
 	base := unsafe.Pointer(&region[0])
 	directory := unsafe.Slice((*TableNodeDirEntry)(unsafe.Add(base, data)), int(attr/16))
-	directory[0] = TableNodeDirEntry{0, root.Id}
+	directory[0] = TableNodeDirEntry{0, root.ID}
 	nodes := TableNodeMap{Base: base, Entries: directory}
 	nodes.Once = true
+	nodes.Indexed = true
 	root.Reset(base)
 	retain.reset(base, directory)
 	s := tableNodeScanBegin(r)
@@ -4286,8 +4567,8 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 			break
 		}
 		size := tableNodeStorage(id, body, nodeType, blobs)
-		directory[k].TypeId = id
-		if id == tableStringTypeId && blobs&2 != 0 && !tableUtf8Valid(body.Buffer) {
+		directory[k].TypeID = id
+		if id == tableStringTypeID && blobs&2 != 0 && !tableUTF8Valid(body.Buffer) {
 			directory[k].Offset = ^uint64(0)
 			report.Malformed = true
 		} else if size <= 0 {
@@ -4337,7 +4618,20 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	r.Nodes = nodes
 	r.Nested = false
 	root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: r, Retain: retain, Path: tableRetainPath{at: base, node: 1}}, base)
-	return base
+	if tableNonFiniteRefused(report) {
+		clear(region)
+		retain.reset(nil, nil)
+		return nil
+	}
+	if !report.Malformed && !tableCycleCheck(base, root, nil, directory, nodeType) {
+		report.Malformed = true
+	}
+	if report.Malformed {
+		clear(region)
+		retain.reset(nil, nil)
+		return nil
+	}
+	return base // DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4)
 }
 func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, retain *TableRetain, report *TableReport, allocator ...TableAllocator) int64 {
 	if retain != nil {
@@ -4366,7 +4660,7 @@ func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 	}
 	w.Offset--
 	if len(n.entries) > 1 {
-		w.Id(0xffffffffffffffff)
+		w.ID(0xffffffffffffffff)
 		w.Put8(12)
 		payload := tableLebBytes(uint64(len(n.entries) - 1))
 		for i := 1; i < len(n.entries); i++ {
@@ -4382,7 +4676,7 @@ func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 		w.PutLeb(uint64(len(n.entries) - 1))
 		for i := 1; i < len(n.entries); i++ {
 			e := &n.entries[i]
-			w.Id(e.id)
+			w.ID(e.id)
 			size := tableNodeMeasureRetain(&frame.measure, ids, e)
 			if size < 0 {
 				return -1

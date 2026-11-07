@@ -282,6 +282,10 @@ func TestRustIdTableReaderContract(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// the table enums live once per crate (table_enums.rs); empty when none
+	if err := os.WriteFile(filepath.Join(work, "table_enums.rs"), modules["table_enums.rs"], 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for name, data := range map[string][]byte{
 		"w4097.wire":    wire4097,
 		"w4096.wire":    wire4096,
@@ -332,6 +336,7 @@ func TestRustIdTableReaderContract(t *testing.T) {
 		"variable_runtime.rs": modules["variable_runtime.rs"],
 		"probe_table.rs":      []byte(sabotaged),
 		"probe_variable.rs":   modules["probe_variable.rs"],
+		"table_enums.rs":      modules["table_enums.rs"],
 		"w4097.wire":          wire4097,
 		"w4096.wire":          wire4096,
 		"wdup.wire":           wireDup,
@@ -362,11 +367,14 @@ func TestRustIdTableReaderContract(t *testing.T) {
 
 const idTableBoundRustMain = `
 mod variable_runtime;
+mod table_enums;
 mod probe_table;
 mod probe_variable;
 
 use probe_table::*;
 use variable_runtime::*;
+#[allow(unused_imports)]
+use table_enums::*;
 
 fn assert_clean_report(rep: &TableReport, want_unknown: u64) {
     assert!(!rep.malformed, "unexpected malformed: {:?}", rep);

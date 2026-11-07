@@ -132,7 +132,7 @@ func writeTextFormSurface(b *strings.Builder, n, storage string, variable bool) 
 	if variable {
 		fmt.Fprintf(b, "\tvar builder %sBuilder\n", n)
 		b.WriteString("\tif !builder.Init() { return nil, nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
-		fmt.Fprintf(b, "\tif !%sFromJson(&builder, js, &report) || report != (TableReport{}) {\n", n)
+		fmt.Fprintf(b, "\tif !%sFromJSON(&builder, js, &report) || report != (TableReport{}) {\n", n)
 		b.WriteString("\t\tbuilder.Shutdown()\n")
 		b.WriteString("\t\treturn nil, nil, tableTextFormReportError(report)\n")
 		b.WriteString("\t}\n")
@@ -140,7 +140,7 @@ func writeTextFormSurface(b *strings.Builder, n, storage string, variable bool) 
 		b.WriteString("\treturn doc, builder.AsConst(), nil\n}\n\n")
 	} else {
 		fmt.Fprintf(b, "\tvar value %s\n", storage)
-		fmt.Fprintf(b, "\tif !%sFromJson(&value, js, &report) || report != (TableReport{}) {\n", n)
+		fmt.Fprintf(b, "\tif !%sFromJSON(&value, js, &report) || report != (TableReport{}) {\n", n)
 		b.WriteString("\t\treturn nil, nil, tableTextFormReportError(report)\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn doc, &value, nil\n}\n\n")
@@ -772,7 +772,7 @@ func (r *tableTextFormResolver) record(n *tableTextFormNode, info *TableTypeInfo
 		}
 		index := -1
 		for j := range info.Fields {
-			if info.Fields[j].Json == string(k.text) {
+			if info.Fields[j].JSON == string(k.text) {
 				index = j
 				break
 			}
@@ -781,7 +781,7 @@ func (r *tableTextFormResolver) record(n *tableTextFormNode, info *TableTypeInfo
 			return r.fail(TableTextFormUnknownKey, n, k.start)
 		}
 		f := &info.Fields[index]
-		fp := tableTextFormJoin(path, f.Json)
+		fp := tableTextFormJoin(path, f.JSON)
 		k.path, k.pathed = fp, true
 		if seen[index] != nil {
 			return r.fail(TableTextFormDuplicateKey, k, k.start)
@@ -941,7 +941,7 @@ func (r *tableTextFormResolver) scalar(v *tableTextFormNode, f *TableFieldInfo, 
 		return r.union(v, f, path)
 	case f.Kind == 13:
 		return r.record(v, f.Table(), path, 0, "")
-	case f.VariantId != nil:
+	case f.VariantID != nil:
 		return r.enum(v, f)
 	case f.EnumName != nil:
 		return r.flags(v, f, path)
@@ -1016,7 +1016,7 @@ func (r *tableTextFormResolver) enum(v *tableTextFormNode, f *TableFieldInfo) bo
 		return r.fail(TableTextFormKindMismatch, v, v.start)
 	}
 	for value := int64(0); value <= f.EnumMax; value++ {
-		if name := f.EnumName(uint64(value)); tableJsonNamed(name) && name == string(v.text) {
+		if name := f.EnumName(uint64(value)); tableJSONNamed(name) && name == string(v.text) {
 			v.canon = name
 			r.jsonString(v.text)
 			return true
@@ -1038,7 +1038,7 @@ func (r *tableTextFormResolver) flags(v *tableTextFormNode, f *TableFieldInfo, p
 		}
 		bit := int64(-1)
 		for b := int64(0); b <= f.EnumMax; b++ {
-			if name := f.EnumName(uint64(b)); tableJsonNamed(name) && name == string(item.text) {
+			if name := f.EnumName(uint64(b)); tableJSONNamed(name) && name == string(item.text) {
 				bit = b
 				break
 			}
@@ -1159,7 +1159,7 @@ func (r *tableTextFormResolver) integer(v *tableTextFormNode, f *TableFieldInfo)
 		}
 		raw = value.Num()
 	}
-	signed := f.Kind >= 2 && f.Kind <= 5 || f.Kind >= 18 && tableJsonWideSigned(f.Kind)
+	signed := f.Kind >= 2 && f.Kind <= 5 || f.Kind >= 18 && tableJSONWideSigned(f.Kind)
 	width := uint(f.ElemSize) * 8
 	low, high := new(big.Int), new(big.Int).Lsh(big.NewInt(1), width)
 	if signed {
@@ -1234,7 +1234,7 @@ func (r *tableTextFormResolver) keyed(v *tableTextFormNode, f *TableFieldInfo, p
 		slot := int32(-1)
 		for s := range f.ArrayBound {
 			// nothing is stored for None, so it names no slot (§2.4)
-			if tableJsonKeyedSlotValid(f, s) && f.KeyName(tableJsonKeyedSlotKey(s)) == string(k.text) {
+			if tableJSONKeyedSlotValid(f, s) && f.KeyName(tableJSONKeyedSlotKey(s)) == string(k.text) {
 				slot = s
 				break
 			}

@@ -13,24 +13,29 @@ package bench;
 public final class MixedStatFixed {
     private MixedStatFixed() {}
 
-    /** MixedStat's storage: public fields, every buffer allocated at construction,
-     *  which is the packet codec's own shape. Declared defaults are here and
-     *  nowhere else. */
+    /**
+     * MixedStat's storage: public fields, every buffer allocated at construction, which is the
+     * packet codec's own shape. Declared defaults are here and nowhere else.
+     */
     public static final class Value {
         /** bits(8) */
         public int statId;
+
         /** int32 */
         public int delta;
     }
 
-    /** THE BODY IS A CONSTANT SIZE, for every value this type can hold: the
-     *  measure is a constant and not a function that reads the value (§3.4). */
+    /**
+     * THE BODY IS A CONSTANT SIZE, for every value this type can hold: the measure is a constant
+     * and not a function that reads the value (§3.4).
+     */
     public static final int bodyBytes = 8;
 
-    /** MixedStat's stores. The caller lays the template down first — the hash, then
-     *  zeros — which is also what zero-fills every byte of declared slack, so
-     *  this is a straight line of byte-width stores at constant offsets and
-     *  nothing else. */
+    /**
+     * MixedStat's stores. The caller lays the template down first — the hash, then zeros — which is
+     * also what zero-fills every byte of declared slack, so this is a straight line of byte-width
+     * stores at constant offsets and nothing else.
+     */
     public static void writeBody(byte[] b, int at, Value v) {
         assert checkWrite(v);
         TableFixed.put32(b, at + 0, v.statId);
@@ -45,16 +50,26 @@ public final class MixedStatFixed {
         return true;
     }
 
-    /** land one record image into a value. The image is this reader's own
-     *  body layout, so every offset here is a constant. */
+    /**
+     * land one record image into a value. The image is this reader's own body layout, so every
+     * offset here is a constant.
+     */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
         v.statId = TableFixed.get32(b, at + 0);
-        if (v.statId > 255L) { v.statId = (int) (255L); r.clamped++; } // bits(8) clamps to 2^N - 1
+        if (v.statId > 255L) {
+            v.statId = (int) (255L);
+            r.clamped++;
+        } // bits(8) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
-            if (q < -512L) { q = -512L; r.clamped++; } else if (q > 511L) { q = 511L; r.clamped++; }
+            if (q < -512L) {
+                q = -512L;
+                r.clamped++;
+            } else if (q > 511L) {
+                q = 511L;
+                r.clamped++;
+            }
             v.delta = (int) (q);
         }
     }
-
 }

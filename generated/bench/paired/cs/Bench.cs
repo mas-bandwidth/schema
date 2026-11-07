@@ -92,8 +92,22 @@ namespace Bench
         Turret = 13,
         Drone = 14,
         Repair = 15,
-        Count = 15, // the declared variant count (SPEC §4.2)
-        Max = 15, // the exported extent (SPEC §4.2)
+    }
+
+    // MixedDamage — one bit per variant, consumed as masks; wire 8 bits (SPEC §4.2).
+    // The backing type is ulong in every declaration, the full width §4.2
+    // requires, so bits a newer build appended survive a read and a rewrite.
+    [Flags]
+    public enum MixedDamage : ulong
+    {
+        Bleeding = 1ul << 0,
+        Burning = 1ul << 1,
+        Stunned = 1ul << 2,
+        Slowed = 1ul << 3,
+        Poisoned = 1ul << 4,
+        Shielded = 1ul << 5,
+        Airborne = 1ul << 6,
+        Downed = 1ul << 7,
     }
 
     // type MixedEntity
@@ -110,7 +124,7 @@ namespace Bench
         public int VelZ; // wire [-2048, 2047]
         public int Health; // wire [0, 1000]
         public MixedWeapon Weapon;
-        public ulong Damage; // MixedDamage — consumed as masks, ulong storage (SPEC §4.2)
+        public MixedDamage Damage;
         public bool Moving;
         public bool Firing;
     }
@@ -152,8 +166,6 @@ namespace Bench
         Hit = 1,
         Chat = 2,
         Pickup = 3,
-        Count = 3, // the declared variant count (SPEC §4.2)
-        Max = 3, // the exported extent (SPEC §4.2)
     }
 
     // MixedEvent — at most one of the arms; Type says which. Construction is the empty
@@ -227,28 +239,11 @@ namespace Bench
 
         // BenchPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BenchPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long BenchPacketMaxBits = 392;
-        public const long BenchPacketMaxBytes = 56;
+        public const int BenchPacketMaxBits = 392;
+        public const int BenchPacketMaxBytes = 56;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchPacket(BenchPacket value)
-        {
-            value.A = 0;
-            value.B = 0;
-            value.C = 0;
-            value.Bits7 = 0;
-            value.Bits13 = 0;
-            value.Bits23 = 0;
-            value.Flag = false;
-            value.X = 0.0f;
-            value.Y = 0.0f;
-            value.Z = 0.0f;
-            value.Big = 0;
-            Array.Clear(value.Blob, 0, 17);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitBenchPacket(BenchPacket value)
         {
             value.A = 0;
             value.B = 0;
@@ -377,26 +372,11 @@ namespace Bench
 
         // BenchIntsMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BenchIntsMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long BenchIntsMaxBits = 110;
-        public const long BenchIntsMaxBytes = 16;
+        public const int BenchIntsMaxBits = 110;
+        public const int BenchIntsMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchInts(BenchInts value)
-        {
-            value.F0 = 0;
-            value.F1 = 0;
-            value.F2 = 0;
-            value.F3 = 0;
-            value.F4 = 0;
-            value.F5 = 0;
-            value.F6 = 0;
-            value.F7 = 0;
-            value.F8 = 0;
-            value.F9 = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitBenchInts(BenchInts value)
         {
             value.F0 = 0;
             value.F1 = 0;
@@ -523,24 +503,11 @@ namespace Bench
 
         // BenchBitsMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BenchBitsMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long BenchBitsMaxBits = 156;
-        public const long BenchBitsMaxBytes = 24;
+        public const int BenchBitsMaxBits = 156;
+        public const int BenchBitsMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchBits(BenchBits value)
-        {
-            value.B7 = 0;
-            value.B13 = 0;
-            value.B23 = 0;
-            value.B3 = 0;
-            value.B32 = 0;
-            value.B11 = 0;
-            value.B19 = 0;
-            value.B48 = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitBenchBits(BenchBits value)
         {
             value.B7 = 0;
             value.B13 = 0;
@@ -640,60 +607,51 @@ namespace Bench
             return true;
         }
 
-        // EnumNameMixedWeapon: debug/log/tooling name for any MixedWeapon wire value —
+        public const MixedWeapon MixedWeaponMax = (MixedWeapon)15; // the exported extent (SPEC §4.2)
+
+        // EnumNameMixedWeapon: debug/log/tooling name for any MixedWeapon value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameMixedWeapon(ulong value)
+        public static string EnumNameMixedWeapon(MixedWeapon value)
         {
             switch (value)
             {
-                case (ulong)MixedWeapon.None:
+                case MixedWeapon.None:
                     return "None";
-                case (ulong)MixedWeapon.Fists:
+                case MixedWeapon.Fists:
                     return "Fists";
-                case (ulong)MixedWeapon.Pistol:
+                case MixedWeapon.Pistol:
                     return "Pistol";
-                case (ulong)MixedWeapon.Shotgun:
+                case MixedWeapon.Shotgun:
                     return "Shotgun";
-                case (ulong)MixedWeapon.Rifle:
+                case MixedWeapon.Rifle:
                     return "Rifle";
-                case (ulong)MixedWeapon.Sniper:
+                case MixedWeapon.Sniper:
                     return "Sniper";
-                case (ulong)MixedWeapon.Smg:
+                case MixedWeapon.Smg:
                     return "Smg";
-                case (ulong)MixedWeapon.Rocket:
+                case MixedWeapon.Rocket:
                     return "Rocket";
-                case (ulong)MixedWeapon.Grenade:
+                case MixedWeapon.Grenade:
                     return "Grenade";
-                case (ulong)MixedWeapon.Plasma:
+                case MixedWeapon.Plasma:
                     return "Plasma";
-                case (ulong)MixedWeapon.Railgun:
+                case MixedWeapon.Railgun:
                     return "Railgun";
-                case (ulong)MixedWeapon.Flamer:
+                case MixedWeapon.Flamer:
                     return "Flamer";
-                case (ulong)MixedWeapon.Mine:
+                case MixedWeapon.Mine:
                     return "Mine";
-                case (ulong)MixedWeapon.Turret:
+                case MixedWeapon.Turret:
                     return "Turret";
-                case (ulong)MixedWeapon.Drone:
+                case MixedWeapon.Drone:
                     return "Drone";
-                case (ulong)MixedWeapon.Repair:
+                case MixedWeapon.Repair:
                     return "Repair";
                 default:
                     return "???";
             }
         }
 
-        // MixedDamage — one bit per variant, consumed as masks; flags-typed fields store a
-        // plain ulong, wire 8 bits (SPEC §4.2). Masks are flat PascalCase — the Go
-        // target's spelling exactly, so the checker's existing claims cover them.
-        public const ulong MixedDamageBleeding = 1ul << 0;
-        public const ulong MixedDamageBurning = 1ul << 1;
-        public const ulong MixedDamageStunned = 1ul << 2;
-        public const ulong MixedDamageSlowed = 1ul << 3;
-        public const ulong MixedDamagePoisoned = 1ul << 4;
-        public const ulong MixedDamageShielded = 1ul << 5;
-        public const ulong MixedDamageAirborne = 1ul << 6;
-        public const ulong MixedDamageDowned = 1ul << 7;
         public const long MixedDamageCount = 8; // the declared variant count (SPEC §4.2)
 
         // FlagNameMixedDamage: debug/log/tooling name for bit i of MixedDamage —
@@ -716,74 +674,56 @@ namespace Bench
 
         // FlagNamesMixedDamage renders the set bits of value as "A|B" — "0" for the
         // empty set, bits past the declared variants as hex
-        public static string FlagNamesMixedDamage(ulong value)
+        public static string FlagNamesMixedDamage(MixedDamage value)
         {
             string names = "";
-            if ((value & (1ul << 0)) != 0)
+            if ((value & MixedDamage.Bleeding) != 0)
             {
                 names += "|Bleeding";
             }
-            if ((value & (1ul << 1)) != 0)
+            if ((value & MixedDamage.Burning) != 0)
             {
                 names += "|Burning";
             }
-            if ((value & (1ul << 2)) != 0)
+            if ((value & MixedDamage.Stunned) != 0)
             {
                 names += "|Stunned";
             }
-            if ((value & (1ul << 3)) != 0)
+            if ((value & MixedDamage.Slowed) != 0)
             {
                 names += "|Slowed";
             }
-            if ((value & (1ul << 4)) != 0)
+            if ((value & MixedDamage.Poisoned) != 0)
             {
                 names += "|Poisoned";
             }
-            if ((value & (1ul << 5)) != 0)
+            if ((value & MixedDamage.Shielded) != 0)
             {
                 names += "|Shielded";
             }
-            if ((value & (1ul << 6)) != 0)
+            if ((value & MixedDamage.Airborne) != 0)
             {
                 names += "|Airborne";
             }
-            if ((value & (1ul << 7)) != 0)
+            if ((value & MixedDamage.Downed) != 0)
             {
                 names += "|Downed";
             }
-            if ((value >> 8) != 0)
+            ulong unknown = (ulong)value >> 8;
+            if (unknown != 0)
             {
-                names += "|0x" + ((value >> 8) << 8).ToString("x");
+                names += "|0x" + (unknown << 8).ToString("x");
             }
             return names.Length == 0 ? "0" : names.Substring(1);
         }
 
         // MixedEntityMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // MixedEntityMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long MixedEntityMaxBits = 135;
-        public const long MixedEntityMaxBytes = 24;
+        public const int MixedEntityMaxBits = 135;
+        public const int MixedEntityMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroMixedEntity(MixedEntity value)
-        {
-            value.EntityId = 0;
-            value.PosX = 0;
-            value.PosY = 0;
-            value.PosZ = 0;
-            value.Yaw = 0;
-            value.Pitch = 0;
-            value.VelX = 0;
-            value.VelY = 0;
-            value.VelZ = 0;
-            value.Health = 0;
-            value.Weapon = MixedWeapon.None;
-            value.Damage = 0;
-            value.Moving = false;
-            value.Firing = false;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitMixedEntity(MixedEntity value)
         {
             value.EntityId = 0;
             value.PosX = 0;
@@ -825,7 +765,7 @@ namespace Bench
                 Debug.Assert(value.VelZ >= -2048 && value.VelZ <= 2047, "value.VelZ out of range [-2048, 2047]");
                 Debug.Assert(value.Health >= 0 && value.Health <= 1000, "value.Health out of range [0, 1000]");
                 Debug.Assert((uint)value.Weapon <= 15, "value.Weapon above the enum wire range [0, 15]"); // headroom above the wire range cannot ride
-                Debug.Assert(value.Damage < 1ul << 8, "value.Damage has a mask bit above the 8-bit wire width"); // a mask bit above the wire width cannot ride
+                Debug.Assert((ulong)value.Damage < 1ul << 8, "value.Damage has a mask bit above the 8-bit wire width"); // a mask bit above the wire width cannot ride
                 ulong f0 = ((ulong)value.EntityId) & 0xfffUL;
                 ulong f1 = ((ulong)((uint)(value.PosX) - unchecked((uint)(-16383)))) & 0x7fffUL;
                 ulong f2 = ((ulong)((uint)(value.PosY) - unchecked((uint)(-16383)))) & 0x7fffUL;
@@ -837,7 +777,7 @@ namespace Bench
                 ulong f8 = ((ulong)((uint)(value.VelZ) - unchecked((uint)(-2048)))) & 0xfffUL;
                 ulong f9 = ((ulong)((uint)(value.Health))) & 0x3ffUL;
                 ulong f10 = ((ulong)(uint)value.Weapon) & 0xfUL;
-                ulong f11 = (value.Damage) & 0xffUL;
+                ulong f11 = ((ulong)value.Damage) & 0xffUL;
                 ulong f12 = value.Moving ? 1UL : 0UL;
                 ulong f13 = value.Firing ? 1UL : 0UL;
                 ulong w0 = f0 | (f1 << 12) | (f2 << 27) | (f3 << 42) | (f4 << 57);
@@ -923,7 +863,7 @@ namespace Bench
                 ulong v0 = c0 & 0xfUL;
                 value.Weapon = (MixedWeapon)(int)v0;
                 ulong v1 = (c0 >> 4) & 0xffUL;
-                value.Damage = v1;
+                value.Damage = (MixedDamage)v1;
                 ulong v2 = (c0 >> 12) & 0x1UL;
                 value.Moving = v2 != 0UL;
                 ulong v3 = (c0 >> 13) & 0x1UL;
@@ -934,18 +874,11 @@ namespace Bench
 
         // MixedStatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // MixedStatMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long MixedStatMaxBits = 18;
-        public const long MixedStatMaxBytes = 8;
+        public const int MixedStatMaxBits = 18;
+        public const int MixedStatMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroMixedStat(MixedStat value)
-        {
-            value.StatId = 0;
-            value.Delta = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitMixedStat(MixedStat value)
         {
             value.StatId = 0;
             value.Delta = 0;
@@ -1010,20 +943,11 @@ namespace Bench
 
         // MixedHitEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // MixedHitEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long MixedHitEventMaxBits = 28;
-        public const long MixedHitEventMaxBytes = 8;
+        public const int MixedHitEventMaxBits = 28;
+        public const int MixedHitEventMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroMixedHitEvent(MixedHitEvent value)
-        {
-            value.TargetId = 0;
-            value.Damage = 0;
-            value.HitKind = 0;
-            value.Crit = false;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitMixedHitEvent(MixedHitEvent value)
         {
             value.TargetId = 0;
             value.Damage = 0;
@@ -1097,18 +1021,11 @@ namespace Bench
 
         // MixedChatEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // MixedChatEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long MixedChatEventMaxBits = 14;
-        public const long MixedChatEventMaxBytes = 8;
+        public const int MixedChatEventMaxBits = 14;
+        public const int MixedChatEventMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroMixedChatEvent(MixedChatEvent value)
-        {
-            value.Channel = 0;
-            value.Speaker = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitMixedChatEvent(MixedChatEvent value)
         {
             value.Channel = 0;
             value.Speaker = 0;
@@ -1173,18 +1090,11 @@ namespace Bench
 
         // MixedPickupEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // MixedPickupEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long MixedPickupEventMaxBits = 18;
-        public const long MixedPickupEventMaxBytes = 8;
+        public const int MixedPickupEventMaxBits = 18;
+        public const int MixedPickupEventMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroMixedPickupEvent(MixedPickupEvent value)
-        {
-            value.ItemId = 0;
-            value.Amount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitMixedPickupEvent(MixedPickupEvent value)
         {
             value.ItemId = 0;
             value.Amount = 0;
@@ -1247,19 +1157,21 @@ namespace Bench
             return true;
         }
 
-        // EnumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
-        // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameMixedEventType(ulong value)
+        public const MixedEventType MixedEventTypeMax = (MixedEventType)3; // the exported extent (SPEC §4.2)
+
+        // EnumNameMixedEventType: debug/log/tooling name for any MixedEventType value —
+        // out-of-set values name as "???"
+        public static string EnumNameMixedEventType(MixedEventType value)
         {
             switch (value)
             {
-                case (ulong)MixedEventType.None:
+                case MixedEventType.None:
                     return "None";
-                case (ulong)MixedEventType.Hit:
+                case MixedEventType.Hit:
                     return "Hit";
-                case (ulong)MixedEventType.Chat:
+                case MixedEventType.Chat:
                     return "Chat";
-                case (ulong)MixedEventType.Pickup:
+                case MixedEventType.Pickup:
                     return "Pickup";
                 default:
                     return "???";
@@ -1268,8 +1180,8 @@ namespace Bench
 
         // MixedEventMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
         // MixedEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long MixedEventMaxBits = 30;
-        public const long MixedEventMaxBytes = 8;
+        public const int MixedEventMaxBits = 30;
+        public const int MixedEventMaxBytes = 8;
 
         // ZeroMixedEvent resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
@@ -1332,13 +1244,13 @@ namespace Bench
             switch (value.Type)
             {
                 case MixedEventType.Hit:
-                    InitMixedHitEvent(value.Hit); // every selection starts from construction defaults
+                    ZeroMixedHitEvent(value.Hit); // every selection starts from construction defaults
                     return ReadMixedHitEventBatch(ref batch, value.Hit);
                 case MixedEventType.Chat:
-                    InitMixedChatEvent(value.Chat); // every selection starts from construction defaults
+                    ZeroMixedChatEvent(value.Chat); // every selection starts from construction defaults
                     return ReadMixedChatEventBatch(ref batch, value.Chat);
                 case MixedEventType.Pickup:
-                    InitMixedPickupEvent(value.Pickup); // every selection starts from construction defaults
+                    ZeroMixedPickupEvent(value.Pickup); // every selection starts from construction defaults
                     return ReadMixedPickupEventBatch(ref batch, value.Pickup);
             }
             return true; // None
@@ -1346,8 +1258,8 @@ namespace Bench
 
         // BenchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BenchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long BenchMixedMaxBits = 3630;
-        public const long BenchMixedMaxBytes = 456;
+        public const int BenchMixedMaxBits = 3630;
+        public const int BenchMixedMaxBytes = 456;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBenchMixed(BenchMixed value)
@@ -1405,12 +1317,12 @@ namespace Bench
             value.ServerTime = 0;
             for (int i = 0; i < 8; i++)
             {
-                InitMixedEntity(value.Entities[i]);
+                ZeroMixedEntity(value.Entities[i]);
             }
             value.EntitiesCount = 1;
             for (int i = 0; i < 80; i++)
             {
-                InitMixedStat(value.Stats[i]);
+                ZeroMixedStat(value.Stats[i]);
             }
             value.StatsCount = 0;
             ZeroMixedEvent(value.GameEvent);

@@ -9,14 +9,14 @@ import (
 	"testing"
 )
 
-// §5.4 says the compile census lands "once per peer AND NEVER PER RECORD". The
+// §5.4 says the compile census lands "once per endpoint AND NEVER PER RECORD". The
 // landed `unknown_census` row reads `old_unknown_census.bin`, which holds ONE
-// record, and with one record "once per peer" and "once per record" are THE SAME
+// record, and with one record "once per endpoint" and "once per record" are THE SAME
 // NUMBER — 1 — so that row cannot close the clause. A per-record `Unknown++`
 // really exists in these runtimes (the union-tag path) and the one-record row
 // never reaches it. This test reads `many_unknown_census.bin`, THREE records of
 // the same Census root, and asserts `unknown == 1` EXACTLY: `Item.drop` is ONE
-// field of ONE peer, so the census is 1 however many records carry it — 3 is the
+// field of ONE endpoint, so the census is 1 however many records carry it — 3 is the
 // divergence this gate exists to catch.
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
 	corpus := csFixedCorpus(t)
@@ -43,7 +43,7 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
             }
             if (r.Unknown != 1)
             {
-                bad += ProbeLog.Fail(@NAME@, "the census is once per peer, not per record: unknown=" + r.Unknown);
+                bad += ProbeLog.Fail(@NAME@, "the census is once per endpoint, not per record: unknown=" + r.Unknown);
             }
             if (r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
             {

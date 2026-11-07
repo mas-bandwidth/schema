@@ -29,7 +29,7 @@ int main(void)
     /* capacity=1, wire has 2 records => batch_too_large */
     memset(&report, 0, sizeof(report));
     cfg_reset(&values[0]);
-    loaded = cfg_fixed_load(values, 1, buffer, need, NULL, 0, NULL, &report);
+    loaded = cfg_fixed_load_tolerant(values, 1, buffer, need, NULL, 0, NULL, &report);
     free(buffer);
 
     if (loaded != -1 || report.refused != 1)
@@ -47,7 +47,7 @@ int main(void)
     { printf("FAIL: save\n"); free(buffer); return 1; }
     memset(&report, 0, sizeof(report));
     cfg_reset(&values[0]); cfg_reset(&values[1]);
-    loaded = cfg_fixed_load(values, 2, buffer, need, NULL, 0, NULL, &report);
+    loaded = cfg_fixed_load_tolerant(values, 2, buffer, need, NULL, 0, NULL, &report);
     free(buffer);
     if (loaded != 2 || report.refused != 0)
     {

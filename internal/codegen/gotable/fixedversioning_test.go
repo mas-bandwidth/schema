@@ -154,6 +154,7 @@ var versionRows = []versionRow{
 
 func TestFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := fixedCorpus(t)
+	nonFinite := fixedOracleManifestNonFinite(t, filepath.Join(corpus, "manifest.txt"))
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
@@ -169,6 +170,33 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			counters := "if r.Widened != 0 { t.Fatalf(\"widened %d, and an append is not an event\", r.Widened) }"
 			if r.widens {
 				counters = "if r.Widened == 0 { t.Fatalf(\"a widening row moved no widened counter\") }"
+			}
+			if leaf := nonFinite["old_"+r.row+".bin"]; leaf != "" {
+				// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung),
+				// and under the finite rule of 2026-10-27 the newer reader
+				// refuses it by name before the bounds pass (docs/SPEC-TABLES.md
+				// §3.3): a must-refuse vector until the finite-tables plan's C++
+				// card regenerates the corpus, and an ordinary row after.
+				src := fmt.Sprintf(`package probe
+
+import ("os"; "strings"; "testing")
+
+func TestNewReadsOld(t *testing.T) {
+	data, err := os.ReadFile(%q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back := make([]%s, 8)
+	var r TableReport
+	if n := %sFixedLoadTolerant(back, data, make([]TableFixedEntry, 4096), &r); n != -1 || r.Err() != TableRefuseNonFiniteFloat || !strings.HasSuffix(r.NonFiniteFloat, %q) {
+		t.Fatalf("the non-finite float the older writer wrote was not refused by name: n=%%d %%+v", n, r)
+	}
+}
+`, filepath.Join(corpus, "old_"+r.row+".bin"), table, table, "."+leaf)
+				if out, err := runVersionProbe(t, newer, []string{older}, src); err != nil {
+					t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
+				}
+				return
 			}
 			src := fmt.Sprintf(`package probe
 
@@ -418,7 +446,10 @@ func TestFixedVersioningHash(t *testing.T) {
 	old := filepath.Join(corpus, "old_field_append.bin")
 	fresh := filepath.Join(corpus, "new_field_append.bin")
 
-	src := fmt.Sprintf(`package probe
+	// One probe per case, each a named subtest, so a case that fails or never
+	// runs is visible by name to go test -json and to nightly-readiness.
+	cases := []struct{ name, src string }{
+		{"hash_unknown", `package probe
 
 import ("encoding/binary"; "os"; "testing")
 
@@ -437,6 +468,10 @@ func TestHashUnknown(t *testing.T) {
 		t.Fatalf("hash_unknown: n=%%d %%+v", n, r)
 	}
 }
+`},
+		{"hash_known_bytes_differ", `package probe
+
+import ("os"; "testing")
 
 // hash_known_bytes_differ: a KNOWN hash whose layout bytes differ from the
 // lock's is ONE name, layout_malformed — "a lie about a known version". The
@@ -456,6 +491,10 @@ func TestHashKnownBytesDiffer(t *testing.T) {
 		t.Fatalf("hash_known_bytes_differ: n=%%d %%+v", n, r)
 	}
 }
+`},
+		{"hash_identity", `package probe
+
+import ("os"; "testing")
 
 // hash_identity: the reader's own hash selects the identity plan.
 func TestHashIdentity(t *testing.T) {
@@ -474,10 +513,16 @@ func TestHashIdentity(t *testing.T) {
 		t.Fatalf("the identity plan lost a value: %%+v", back[0])
 	}
 }
-`, old, fresh, table)
-	out, err := runVersionProbe(t, newer, []string{older}, src)
-	if err != nil {
-		t.Fatalf("hash cases: %v\n%s", err, out)
+`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			src := fmt.Sprintf(c.src, old, fresh, table)
+			out, err := runVersionProbe(t, newer, []string{older}, src)
+			if err != nil {
+				t.Fatalf("%s: %v\n%s", c.name, err, out)
+			}
+		})
 	}
 }
 
@@ -1105,7 +1150,7 @@ func runVersionProbeRetired(t *testing.T, reader string, older []string, retire 
 	maps.Copy(files, tables)
 	dir := t.TempDir()
 	runtime := slowtest.SerializeGo(t, "../../..")
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	// The probe lives IN the generated package, whose name is the schema's own.
 	files["version_test.go"] = []byte(strings.Replace(testSource, "package probe", "package "+u.Package, 1))
 	for name, data := range files {

@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -72,7 +73,7 @@ func batchManifest(t *testing.T) []batchRow {
 		case len(fields) == 5 && fields[0] == "connection":
 			connUnit[fields[1]] = fields[2]
 			connWire[fields[1]] = fields[4]
-		case len(fields) == 6 && fields[0] == "message":
+		case len(fields) == 6 && fields[0] == "message" && fields[5] != "-": // a named refusal row (a variable table, §3.3) carries no message bytes
 			msgs = append(msgs, msgLine{fields[1], fields[2], fields[3], fields[4], fields[5]})
 		}
 	}
@@ -125,46 +126,6 @@ func batchUnit(t *testing.T, path string) *ir.Unit {
 		t.Fatalf("no schema files under %s: %v", path, err)
 	}
 	return loadUnit(t, schemas...)
-}
-
-// fixedHomeUnionGap reports whether a table of the unit's fixed closure names a
-// UNION WHOSE ARMS ARE TABLES and that the fixed form does not claim as local
-// (docs/SPEC-TABLES.md §2.6, §3.4). Such a union's storage class is emitted by
-// neither this backend (it is not local) nor the packet emitter (which emits no
-// table-arm union), so the generated home references a class nothing defines and
-// does not compile. That gap is the fixed form's and is outside this card.
-func fixedHomeUnionGap(u *ir.Unit) bool {
-	seen := map[string]bool{}
-	var closure []*ir.Struct
-	for _, f := range u.Files {
-		for _, st := range fixedRoots(f.Tables) {
-			fixedCollectTypes(st, seen, &closure)
-		}
-	}
-	local := map[string]bool{}
-	for _, un := range fixedLocalUnions(closure) {
-		local[un.Name] = true
-	}
-	for _, st := range closure {
-		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			un, ok := f.Type.Ref.(*ir.Union)
-			if !ok || local[un.Name] {
-				continue
-			}
-			for _, v := range un.Variants {
-				if v.F == nil || v.F.Type.Kind != ir.TNamed {
-					continue
-				}
-				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && s.IsTable {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 const batchProbeTemplate = `import 'dart:typed_data';
@@ -274,14 +235,11 @@ func TestMessageFormBatchDart(t *testing.T) {
 				u := batchUnit(t, row.path)
 				st := findTable(t, u, row.root)
 				if !st.IsTable || !st.FixedDeclared {
-					// "THE FORM IS A FIXED TABLE'S ... a plain `table T` may
+					// "THE FORM IS A FIXED TABLE'S ... a variable table may
 					// not" (docs/SPEC-TABLES.md §3.3): the manifest carries a
 					// `message` row for the variable root Scene, and what the
 					// Dart leg owes a variable root is reported, not decided.
-					t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
-				}
-				if fixedHomeUnionGap(u) {
-					t.Skipf("not run: the unit's fixed home does not compile (a table names a table-arm union the fixed form does not claim); outside this card")
+					t.Skipf("§3.3 is a fixed table's; %s is a variable table", row.root)
 				}
 				out, err := runBatchProbe(t, u, row.root, roundTripBody(row.root, row.announce, row.message))
 				if err != nil {
@@ -293,7 +251,7 @@ func TestMessageFormBatchDart(t *testing.T) {
 
 	// 2.2 "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME" and "`M` ABOVE
 	// THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... The reader
-	// sets the returned count to the wire's `M`", and "A BODY FROM A PEER THAT
+	// sets the returned count to the wire's `M`", and "A BODY FROM AN ENDPOINT THAT
 	// NEVER ANNOUNCED IS REFUSED BY NAME" (`no_vocabulary`).
 	t.Run("batch_refusals", func(t *testing.T) {
 		t.Parallel()
@@ -336,7 +294,7 @@ fixed table Root {
 // batch of two empty bodies is two zero references.
 const batchRefusalsBody = `
   final entries = List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0));
-  // "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+  // "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
   // decoded, no counter moves and 'malformed' does not fire."
   final v = h.Root();
   h.initRoot(v);
@@ -390,7 +348,7 @@ const batchDamageBody = `
   final wire = Uint8List.fromList([2, 2, 0xF0, 0x00]);
   final damageRep = h.TableReport();
   final damageCount = r.rootLoadMessages(<h.Root>[h.Root(), h.Root(), h.Root()], wire, vocab, damageRep);
-  check(damageCount == 1 && damageRep.malformed && !damageRep.refused,
+  check(damageCount == 0 && damageRep.malformed && !damageRep.refused,
       'damage in body 2: count=$damageCount malformed=${damageRep.malformed}');
   // "BYTES AFTER THE PAD ARE MALFORMED ... a buffer with bytes left over
   // describes no batch this reader can name."
@@ -403,7 +361,7 @@ const batchDamageBody = `
   padded.setRange(0, m, buf);
   final padRep = h.TableReport();
   final padCount = r.rootLoadMessages(<h.Root>[h.Root()], padded, vocab, padRep);
-  check(padCount == 1 && padRep.malformed && !padRep.refused,
+  check(padCount == 0 && padRep.malformed && !padRep.refused,
       'bytes after the pad: count=$padCount malformed=${padRep.malformed}');
   // "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does
   // not know is a REFUSAL by name and never damage."
@@ -461,10 +419,17 @@ fixed table T
 
 	// The bits, both ways, at each kind's own width (docs/SPEC-TABLES.md §3.3).
 	want := []string{
-		"setFloat32(0, value.b, Endian.little)).getUint32(0, Endian.little), 32)",
-		"setFloat64(0, value.d, Endian.little)).getUint64(0, Endian.little), 64)",
-		"setUint32(0, r.bits.get(32), Endian.little)).getFloat32(0, Endian.little)",
-		"setUint64(0, r.bits.get(64), Endian.little)).getFloat64(0, Endian.little)",
+		"final f = value.b;",
+		"w.put(TableBitWriter._float32Words[0], 32);",
+		"final f = value.d;",
+		"w.put(TableBitWriter._float64Words[0], 64);",
+		"value.b = TableBitWriter._float32Cell[0];",
+		"TableBitWriter._float64Words[0] = b;",
+		"value.d = TableBitWriter._float64Cell[0];",
+		// a NaN or an infinity is refused both ways (docs/SPEC-TABLES.md §3.3)
+		"if (!f.isFinite) return false;",
+		"if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat(",
+		"if ((b & 0x7ff0000000000000) == 0x7ff0000000000000) return r.report.RefuseNonFiniteFloat(",
 	}
 	for _, w := range want {
 		if !strings.Contains(src, w) {
@@ -489,3 +454,292 @@ fixed table T
 		}
 	}
 }
+
+// fixedClosureUnions answers every union a table of the unit's fixed closure
+// names, by name, and whether its arms include a TABLE (docs/SPEC-TABLES.md
+// §2.6): a union with a table arm lives in ir.Unit.TableUnions, beside Decls,
+// so the packet emitter never sees it and the fixed form is its only home.
+func fixedClosureUnions(u *ir.Unit) map[string]bool {
+	seen := map[string]bool{}
+	var closure []*ir.Struct
+	for _, f := range u.Files {
+		for _, st := range fixedRoots(f.Tables) {
+			fixedCollectTypes(st, seen, &closure)
+		}
+	}
+	out := map[string]bool{}
+	for _, st := range closure {
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			un, ok := f.Type.Ref.(*ir.Union)
+			if !ok {
+				continue
+			}
+			tableArm := false
+			for _, v := range un.Variants {
+				if v.F == nil || v.F.Type.Kind != ir.TNamed {
+					continue
+				}
+				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && s.IsTable {
+					tableArm = true
+				}
+			}
+			out[un.Name] = out[un.Name] || tableArm
+		}
+	}
+	return out
+}
+
+// TestFixedHomeDefinesItsTableArmUnionsDart pins that the fixed home of every
+// manifest `message` unit defines each union class it references
+// (docs/SPEC-TABLES.md §2.6, §3.4). A union whose arms are TABLES is a
+// table-closure construct the packet emitter never sees, so if the fixed form
+// does not claim it as local, nothing defines the class the home names and the
+// library does not compile — which kept TestMessageFormBatchDart from running
+// the backend_conn rows. Pure Go over the generated text: no toolchain.
+func TestFixedHomeDefinesItsTableArmUnionsDart(t *testing.T) {
+	t.Parallel()
+	units := map[string]string{}
+	for _, row := range batchManifest(t) {
+		units[row.unit] = row.path
+	}
+	tableArm := 0
+	for unit, path := range units {
+		u := batchUnit(t, path)
+		unions := fixedClosureUnions(u)
+		if len(unions) == 0 {
+			continue
+		}
+		files, err := dart.Generate(u)
+		if err != nil {
+			t.Fatalf("%s: generate packet: %v", unit, err)
+		}
+		tables, err := Generate(u)
+		if err != nil {
+			t.Fatalf("%s: generate table: %v", unit, err)
+		}
+		maps.Copy(files, tables)
+		var all strings.Builder
+		for name, data := range files {
+			if !strings.HasSuffix(name, ".dart") {
+				continue
+			}
+			all.Write(data)
+			all.WriteString("\n")
+		}
+		home := string(files[runtimeHome(u)+"Fixed.dart"])
+		if home == "" {
+			t.Fatalf("%s: no fixed home %sFixed.dart was generated", unit, runtimeHome(u))
+		}
+		for name, arm := range unions {
+			if arm {
+				tableArm++
+			}
+			if !regexp.MustCompile(`\b` + name + `\b`).MatchString(home) {
+				continue
+			}
+			def := regexp.MustCompile(`(?m)^(?:abstract |sealed |base |final )*class ` + name + `\s*\{`)
+			// Dart files are separate libraries: a definition in a sibling
+			// packet file cannot satisfy an unqualified type in this fixed home.
+			// A table-arm union must therefore be defined in the home itself.
+			if arm && !def.MatchString(home) {
+				t.Errorf("%s: the fixed home %sFixed.dart references table-arm union %s but does not define its class locally (docs/SPEC-TABLES.md §2.6, §3.4)",
+					unit, runtimeHome(u), name)
+				continue
+			}
+			if !def.MatchString(all.String()) {
+				t.Errorf("%s: the fixed home %sFixed.dart references union %s (table arm: %v) but no generated library defines class %s (docs/SPEC-TABLES.md §2.6, §3.4)",
+					unit, runtimeHome(u), name, arm, name)
+			}
+		}
+	}
+	if tableArm == 0 {
+		t.Fatal("no manifest message unit names a table-arm union, so this test pins nothing (backenddemo's Payload was the one)")
+	}
+}
+
+// TestMessageFormNestedDefaultElidesDart pins §3.3's elision of a nested
+// table/type: "an all-default nested table" is not written at all. A fixed
+// table holding a by-value type whose fields are all their defaults writes the
+// SAME body as a table with no such field. Before this test the emitter gated
+// the nested field on `value.child != 0`, comparing a record to an int: the
+// strict Dart analyzer's unrelated_type_equality_checks named it, and the field
+// always rode. The comparison is red here because Root's batch is then one
+// reference plus a child body larger than Bare's.
+func TestMessageFormNestedDefaultElidesDart(t *testing.T) {
+	t.Parallel()
+	u := unitFrom(t, `package probe
+
+type Child
+{
+    x int32
+}
+
+fixed table Root
+{
+    child Child
+    n     int32
+}
+
+fixed table Bare
+{
+    n int32
+}
+`)
+	out, err := runBatchProbe(t, u, "Root", nestedDefaultElidesBody)
+	if err != nil {
+		t.Fatalf("a nested table's default elision did not run green: %v\n%s", err, out)
+	}
+}
+
+const nestedDefaultElidesBody = `
+  final root = h.Root();
+  h.initRoot(root);
+  final bare = h.Bare();
+  h.initBare(bare);
+  final rootMeasure = r.rootMeasureMessages(<h.Root>[root], h.TableReport());
+  final bareMeasure = r.bareMeasureMessages(<h.Bare>[bare], h.TableReport());
+  check(rootMeasure == bareMeasure,
+      'an all-default nested Child must elide: Root=$rootMeasure Bare=$bareMeasure');
+
+  root.child.x = 7;
+  final liveMeasure = r.rootMeasureMessages(<h.Root>[root], h.TableReport());
+  check(liveMeasure > rootMeasure, 'a set nested field must ride: empty=$rootMeasure live=$liveMeasure');
+
+  final vocab = h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
+  check(h.announceRead(vocab, h.tableAnnouncement, h.TableReport()), 'announce');
+  final buffer = Uint8List(liveMeasure);
+  check(r.rootSaveMessages(<h.Root>[root], buffer, h.TableReport()) == liveMeasure, 'save');
+  final back = <h.Root>[h.Root()];
+  final rep = h.TableReport();
+  final count = r.rootLoadMessages(back, buffer, vocab, rep);
+  check(count == 1 && !rep.refused && !rep.malformed, 'load count=$count reason=${rep.reason}');
+  check(back[0].child.x == 7, 'the nested value did not round trip: ${back[0].child.x}');
+`
+
+// TestMessageFormSkipDepthDart is the message_skip_depth boundary on the
+// generated Dart reader (docs/SPEC-TABLES.md, limit value 128). The typed body
+// reads references at tableMessageRefBits, and skip reads vocabulary.refBits,
+// so the probe sets those equal. Slots 1..3 are Root's fields; the unknown
+// entry rides at slot 8. Verdicts are the spec's. The above-limit rows are
+// complete zero-padded batches whose only fault is depth past 128.
+func TestMessageFormSkipDepthDart(t *testing.T) {
+	t.Parallel()
+	u := unitFrom(t, `package probe
+
+fixed table Root {
+    a int32
+    b bool
+    c uint8
+}
+`)
+	out, err := runBatchProbe(t, u, "Root", dartSkipDepthBody)
+	if err != nil {
+		t.Fatalf("skip_depth_above_128: %v\n%s", err, out)
+	}
+}
+
+const dartSkipDepthBody = `
+  // Slot 8 is the Root name, not a field of this root (a, b, c are 1..3).
+  // A reference width below 4 cannot spell it.
+  check(h.tableMessageRefBits >= 4, 'skip depth slot needs four reference bits, got ${h.tableMessageRefBits}');
+  final width = h.tableMessageRefBits;
+  final sig14 = Uint8List(12);
+  sig14[9] = 1;
+  sig14[10] = 1;
+  sig14[11] = 13;
+
+  h.TableVocabulary vocabAt(int kind) {
+    final entries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(0, 0));
+    entries[7] = h.TableMessageEntry(1, kind, Uint8List(9));
+    final vocab = h.TableVocabulary(entries: entries);
+    vocab.count = 8;
+    vocab.refBits = width;
+    vocab.announced = true;
+    return vocab;
+  }
+
+  final body = vocabAt(13);
+  final arm = vocabAt(15);
+  final arrayEntries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(0, 0));
+  arrayEntries[6] = h.TableMessageEntry(1, 13, Uint8List(9));
+  arrayEntries[7] = h.TableMessageEntry(2, 14, sig14);
+  final array = h.TableVocabulary(entries: arrayEntries);
+  array.count = 8;
+  array.refBits = width;
+  array.announced = true;
+
+  h.TableVocabulary keyedVocab(int elemKind) {
+    final sig16 = Uint8List(12);
+    sig16[9] = (1 << width) - 1;
+    sig16[10] = elemKind;
+    final entries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(0, 0));
+    entries[6] = h.TableMessageEntry(1, 13, Uint8List(9));
+    entries[7] = h.TableMessageEntry(2, 16, sig16);
+    final vocab = h.TableVocabulary(entries: entries);
+    vocab.count = 8;
+    vocab.refBits = width;
+    vocab.announced = true;
+    return vocab;
+  }
+
+  final keyed6 = keyedVocab(6);
+  final keyed32 = keyedVocab(32);
+  final keyed13 = keyedVocab(13);
+
+  Uint8List pack(int nlead, int lead, int nmid, int mid, int ntail) {
+    final n = nlead + nmid + ntail;
+    final bits = 16 + n * width;
+    final buf = Uint8List((bits + 7) >> 3);
+    buf[0] = 2;
+    buf[1] = 0;
+    var at = 16;
+    for (var i = 0; i < n; i++) {
+      final slot = i < nlead ? lead : (i < nlead + nmid ? mid : 0);
+      for (var b = 0; b < width; b++) {
+        if (((slot >> b) & 1) != 0) {
+          buf[at >> 3] |= 1 << (at & 7);
+        }
+        at++;
+      }
+    }
+    return buf;
+  }
+
+  void expectOk(String row, h.TableVocabulary vocab, Uint8List buf) {
+    final value = h.Root();
+    h.initRoot(value);
+    final rep = h.TableReport();
+    final count = r.rootLoadMessages(<h.Root>[value], buf, vocab, rep);
+    check(count == 1 && !rep.malformed && !rep.refused && rep.unknown == 1 && value.a == 0,
+        '$row: count=$count malformed=${rep.malformed} unknown=${rep.unknown} a=${value.a}');
+  }
+
+  void expectBad(String row, h.TableVocabulary vocab, Uint8List buf) {
+    final value = h.Root();
+    h.initRoot(value);
+    final rep = h.TableReport();
+    final count = r.rootLoadMessages(<h.Root>[value], buf, vocab, rep);
+    check(count == 0 && rep.malformed, '$row: count=$count malformed=${rep.malformed}');
+  }
+
+  expectOk('skip_depth_body_below_128', body, pack(127, 8, 0, 0, 128));
+  final at = pack(128, 8, 0, 0, 129);
+  expectOk('skip_depth_body_at_128', body, at);
+  expectOk('skip_depth_continuation', body, at);
+  final cut = pack(128, 8, 0, 0, 128);
+  check(cut.length * 8 == 16 + 256 * width, 'skip_depth_truncation alignment');
+  expectBad('skip_depth_truncation', body, cut);
+  expectBad('skip_depth_above_128 body', body, pack(129, 8, 0, 0, 130));
+  expectOk('skip_depth_union_below_128', arm, pack(128, 8, 0, 0, 2));
+  expectOk('skip_depth_union_at_128', arm, pack(129, 8, 0, 0, 2));
+  expectBad('skip_depth_above_128 union', arm, pack(130, 8, 0, 0, 2));
+  expectOk('skip_depth_array_below_128', array, pack(125, 7, 1, 8, 127));
+  expectOk('skip_depth_array_at_128', array, pack(126, 7, 1, 8, 128));
+  expectBad('skip_depth_above_128 array', array, pack(127, 7, 1, 8, 129));
+  expectOk('skip_depth_keyed_fixed_at_128', keyed6, pack(128, 7, 2, 8, 153));
+  expectOk('skip_depth_keyed_nopayload_at_128', keyed32, pack(128, 7, 2, 8, 137));
+  expectBad('skip_depth_above_128 keyed', keyed13, pack(127, 7, 2, 8, 137));
+`

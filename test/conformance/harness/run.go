@@ -22,7 +22,7 @@ import (
 )
 
 // surfaces, in the order the matrix prints them.
-var surfaces = []string{"wire", "message", "report", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+var surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"cook-reason", "block-reason"}
 
@@ -48,6 +48,40 @@ type result struct {
 	// leg may give it.
 	named    int
 	failures []string
+	// outcome is what each CASE came to, by the file the driver writes:
+	// outcomePass, outcomeFail, outcomeAbsent or outcomeNamed. The nightly's
+	// claims and its coverage table read it (test/conformance/README.md, "The
+	// nightly"); the matrix above it still reads the counters.
+	outcome map[string]string
+	// cases is each case's verdict, by the file name the driver writes: pass,
+	// named (the row's named writer refusal), absent or fail. The proof table
+	// (tools/matrix proof) reads it from the --results file, so a cell can name
+	// the exact case that holds it and the exact case that is still absent.
+	cases map[string]string
+}
+
+// The four things a case can come to.
+const (
+	outcomePass   = "pass"
+	outcomeFail   = "fail"
+	outcomeAbsent = "absent" // `<case>.absent`, a missing feature
+	outcomeNamed  = "named"  // the row's named writer refusal (§2.5)
+)
+
+// mark records what one case came to.
+func (r *result) mark(name, outcome string) {
+	if r.outcome == nil {
+		r.outcome = map[string]string{}
+	}
+	r.outcome[name] = outcome
+}
+
+// verdict records one case's verdict.
+func (r *result) verdict(name, v string) {
+	if r.cases == nil {
+		r.cases = map[string]string{}
+	}
+	r.cases[name] = v
 }
 
 // materialise writes the fixtures a driver cannot be handed as committed text:
@@ -172,10 +206,6 @@ func deriveManifest(m *Manifest, path string) error {
 		// the wire and the two capacities and nothing about the counters or the
 		// bytes it owes (docs/SPEC-TABLES.md §6.6). `short` and `full` travel as
 		// the RULES they are, because a record's byte cost is the port's own.
-		kind, who := "retain", rc.Unit
-		if rc.Message {
-			kind, who = "retain-message", rc.Connection+" "+rc.Unit
-		}
 		ids := "full"
 		if rc.Ids >= 0 {
 			ids = strconv.Itoa(rc.Ids)
@@ -184,10 +214,19 @@ func deriveManifest(m *Manifest, path string) error {
 		if rc.Short {
 			capacity = "short"
 		}
-		fmt.Fprintf(&b, "%s %s %s %s %s %s %s\n", kind, rc.Name, who, rc.Root, rc.Wire, capacity, ids)
+		fmt.Fprintf(&b, "retain %s %s %s %s %s %s\n", rc.Name, rc.Unit, rc.Root, rc.Wire, capacity, ids)
 	}
 	for _, r := range m.Reports {
 		fmt.Fprintf(&b, "report %s %s %s %s\n", r.Name, r.Unit, r.Root, r.Wire)
+	}
+	for _, fc := range m.Framings {
+		// the verdict and the value file are the answer and stay withheld; a
+		// driver still has to know which rows owe the report alone
+		marker := ""
+		if fc.Value == "" {
+			marker = " no-value"
+		}
+		fmt.Fprintf(&b, "framing %s %s %s %s%s\n", fc.Name, fc.Unit, fc.Root, fc.Wire, marker)
 	}
 	for _, h := range m.Hostiles {
 		fmt.Fprintf(&b, "json-hostile %s %s %s %s\n", h.Name, h.Unit, h.Root, h.Tree)
@@ -225,6 +264,20 @@ func deriveManifest(m *Manifest, path string) error {
 type expectation struct {
 	name string // the file the driver writes
 	want []byte
+	// damaged says the case is DAMAGED INPUT (docs/SPEC-TABLES.md §4):
+	// the load is discarded whole, so the answer is scored on the refusal
+	// alone, the report line saying `malformed`, and nothing after it.
+	damaged bool
+	// value is the oracle's §16 text of the value the read leaves, a file
+	// whose bytes the answer owes after the verdict line in want. A `report`
+	// row and a `json-hostile` row that read owe it: THE DECODED VALUE IS
+	// COMPARED, not only the counters, because two legs can count the same
+	// events and land different values.
+	value string
+	// verdictOnly scores the first line alone: a json-hostile row's uncarried
+	// verdict is a port's behaviour before the ruling, and the value that
+	// behaviour leaves is not the standard's.
+	verdictOnly bool
 }
 
 // hostileExpectations is the answer each port owes the hostile battery: the
@@ -237,13 +290,28 @@ func hostileExpectations(m *Manifest, lang string) ([]expectation, []string) {
 	out := make([]expectation, 0, len(m.Hostiles))
 	var exemptions []string
 	for _, h := range m.Hostiles {
-		out = append(out, expectation{h.Name, []byte(h.VerdictFor(lang) + "\n")})
+		out = append(out, hostileExpectation(h, lang))
 		if !h.Carries(lang) && h.Uncarried != "" {
 			exemptions = append(exemptions, fmt.Sprintf("%s / json-hostile / %s: the row is carried by %s; %s keeps %s (docs/SPEC-TABLES.md §16.3)",
 				lang, h.Name, strings.Join(h.CarriedBy, ","), lang, h.Uncarried))
 		}
 	}
 	return out, exemptions
+}
+
+// hostileExpectation is one hostile row's answer for lang: the verdict it
+// owes, then the oracle's value when that verdict is the standard's read. A
+// port on the row's uncarried verdict is held to that verdict line alone.
+func hostileExpectation(h Hostile, lang string) expectation {
+	verdict := h.VerdictFor(lang)
+	e := expectation{name: h.Name, want: []byte(verdict + "\n")}
+	switch {
+	case verdict != h.Verdict():
+		e.verdictOnly = true
+	case !h.Refused:
+		e.value = h.Value
+	}
+	return e
 }
 
 func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDir string) ([]expectation, error) {
@@ -258,19 +326,25 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{i.Name, want})
+			out = append(out, expectation{name: i.Name, want: want})
 		}
 	case "message":
 		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): read the message
 		// against the connection's announced table and write it back. The
 		// expectation is the message golden itself, exactly as the wire
 		// surface's is the wire golden.
+		// A ROW OVER A VARIABLE TABLE IS A NAMED REFUSAL (§3.3): it carries
+		// no expected bytes, and scoreAnswer holds the leg to the reason.
 		for _, msg := range m.Messages {
+			if msg.Refused() {
+				out = append(out, expectation{name: msg.Name})
+				continue
+			}
 			want, err := os.ReadFile(msg.MessageWire)
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{msg.Name, want})
+			out = append(out, expectation{name: msg.Name, want: want})
 		}
 	case "retain":
 		// RETAIN-UNKNOWN's COUNTERS (docs/SPEC-TABLES.md §6.6): the load's two
@@ -278,27 +352,21 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		// `retain_lost` behind them. The bytes are the other surface's, so each
 		// of the two is one shape.
 		for _, rc := range m.Retains {
-			out = append(out, expectation{rc.Name, []byte(rc.Load.String() + " " + strconv.Itoa(rc.SaveLost) + "\n")})
+			out = append(out, expectation{name: rc.Name, want: []byte(rc.Load.String() + " " + strconv.Itoa(rc.SaveLost) + "\n")})
 		}
 	case "retain-save":
 		// AND THE BYTES THE PAIR WRITES BACK, which a counter cannot see: a
 		// dropped record moves a field out of a body and every reference behind
-		// it. A row that does not save is not a case here. A MESSAGE row's
-		// saves are FILES, one a body, back to back in body order, because a
-		// form-2 SaveRetain refuses by name (§3.3).
+		// it. A row that does not save is not a case here.
 		for _, rc := range m.Retains {
-			if len(rc.Saves) == 0 {
+			if rc.Saves == "" {
 				continue
 			}
-			var want []byte
-			for _, path := range rc.Saves {
-				bytes, err := os.ReadFile(path)
-				if err != nil {
-					return nil, err
-				}
-				want = append(want, bytes...)
+			want, err := os.ReadFile(rc.Saves)
+			if err != nil {
+				return nil, err
 			}
-			out = append(out, expectation{rc.Name, want})
+			out = append(out, expectation{name: rc.Name, want: want})
 		}
 	case "json-write":
 		for _, i := range m.Instances {
@@ -309,7 +377,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{i.Name + ".json", want})
+			out = append(out, expectation{name: i.Name + ".json", want: want})
 		}
 	case "report":
 		for _, r := range m.Reports {
@@ -317,7 +385,26 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if !ok {
 				return nil, fmt.Errorf("reports.txt names no case %q — run: make conformance-generate", r.Name)
 			}
-			out = append(out, expectation{r.Name, []byte(c.String() + "\n")})
+			e := expectation{name: r.Name, want: []byte(c.String() + "\n"), damaged: c.Malformed}
+			if !c.Malformed && !c.Refused {
+				e.value = r.Value
+			}
+			out = append(out, e)
+		}
+	case "framing":
+		// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the report line the
+		// row owes, then the §16 text of the value where the row owes one.
+		// Both are hand-authored, so neither is regenerated from any leg.
+		for _, fc := range m.Framings {
+			want := []byte(fc.Verdict() + "\n")
+			if fc.Value != "" {
+				text, err := os.ReadFile(fc.Value)
+				if err != nil {
+					return nil, err
+				}
+				want = append(want, text...)
+			}
+			out = append(out, expectation{name: fc.Name, want: want, damaged: fc.Damaged})
 		}
 	case "cook":
 		for _, c := range m.Cooks {
@@ -325,7 +412,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{c.Case, want})
+			out = append(out, expectation{name: c.Case, want: want})
 		}
 	case "cook-write":
 		// THE TOOL IS THE REFERENCE (§7.6): a runtime writes the cook and the
@@ -342,16 +429,20 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w — run: make conformance-generate", cw.Instance, err)
 			}
-			out = append(out, expectation{cw.Instance, little})
-			out = append(out, expectation{cw.Instance + "-be", big})
+			out = append(out, expectation{name: cw.Instance, want: little})
+			out = append(out, expectation{name: cw.Instance + "-be", want: big})
 		}
 	case "json-hostile":
 		for _, h := range m.Hostiles {
-			out = append(out, expectation{h.Name, []byte(h.Verdict() + "\n")})
+			e := expectation{name: h.Name, want: []byte(h.Verdict() + "\n")}
+			if !h.Refused {
+				e.value = h.Value
+			}
+			out = append(out, e)
 		}
 	case "block":
 		for _, b := range m.Blocks {
-			out = append(out, expectation{b.Name, []byte("open\n")})
+			out = append(out, expectation{name: b.Name, want: []byte("open\n")})
 		}
 	case "block-foreign", "cook-foreign":
 		// THE FOREIGN-ORDER REFUSAL, and the expectation is a constant because
@@ -362,12 +453,12 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		// depended on the host's own order could only ever be green on one.
 		if surface == "block-foreign" {
 			for _, b := range m.Blocks {
-				out = append(out, expectation{b.Name, []byte("refuse\n")})
+				out = append(out, expectation{name: b.Name, want: []byte("refuse\n")})
 			}
 			break
 		}
 		for _, c := range m.Cooks {
-			out = append(out, expectation{c.Case, []byte("refuse\n")})
+			out = append(out, expectation{name: c.Case, want: []byte("refuse\n")})
 		}
 	case "block-dump":
 		for _, b := range m.Blocks {
@@ -375,7 +466,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{b.Name, want})
+			out = append(out, expectation{name: b.Name, want: want})
 		}
 	case "cook-reason", "block-reason":
 		// THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §7, §19.2): one word
@@ -389,7 +480,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if r.Kind != kind {
 				continue
 			}
-			out = append(out, expectation{r.Forgery, []byte(r.Reason + "\n")})
+			out = append(out, expectation{name: r.Forgery, want: []byte(r.Reason + "\n")})
 		}
 	case "forgery", "cook-forgery":
 		// one surface per KIND: a backend can have a block reader and no cook
@@ -403,7 +494,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if f.Kind != kind {
 				continue
 			}
-			out = append(out, expectation{f.Name, []byte(f.Verdict + "\n")})
+			out = append(out, expectation{name: f.Name, want: []byte(f.Verdict + "\n")})
 		}
 	default:
 		return nil, fmt.Errorf("%q is not a surface", surface)
@@ -430,6 +521,25 @@ func skipSet(list string) (map[string]bool, error) {
 }
 
 func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string) (bool, error) {
+	return runWith(w, m, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip, runOptions{})
+}
+
+// runOptions is what the NIGHTLY and the proof add to a run
+// (test/conformance/README.md, "The nightly"; tools/matrix proof); the zero
+// value is the per-commit gate exactly as it was.
+type runOptions struct {
+	// claims, when set, turns a CLAIMED case answered ABSENT into a failure:
+	// a case whose unit uses a registered construct the leg's target carries
+	// (compiler/carries.go), on a surface the leg runs.
+	claims *claimSet
+	// coverage, when set, receives one row per leg, surface and class.
+	coverage *[]coverageRow
+	// results, when set, is where every case's verdict is written
+	// (writeResults), the input tools/matrix proof reads.
+	results string
+}
+
+func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string, opts runOptions) (bool, error) {
 	drivers, discovered, err := loadDrivers(driversPath)
 	if err != nil {
 		return false, err
@@ -505,6 +615,9 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 			results[d.lang][s] = r
 			if !listed[s] {
 				r.absent = true
+				for _, e := range legWant {
+					r.verdict(e.name, "absent")
+				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "`list` does not name it"))
 				}
@@ -523,20 +636,40 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 			}
 			if code == 2 {
 				r.absent = true
+				for _, e := range legWant {
+					r.verdict(e.name, "absent")
+				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "the driver exited 2"))
 				}
 				continue
 			}
 			if code != 0 {
+				for _, e := range legWant {
+					r.verdict(e.name, "fail")
+				}
 				r.failures = append(r.failures, fmt.Sprintf("the driver exited %d\n%s", code, indent(stderr, "    ")))
+				for _, e := range legWant {
+					r.mark(e.name, outcomeFail)
+				}
 				continue
 			}
 			for _, line := range exemptions {
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
+				pass, named, missing := r.pass, r.named, r.missing
 				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
+				switch {
+				case r.pass > pass:
+					r.verdict(e.name, "pass")
+				case r.named > named:
+					r.verdict(e.name, "named")
+				case r.missing > missing:
+					r.verdict(e.name, "absent")
+				default:
+					r.verdict(e.name, "fail")
+				}
 			}
 			if reference && r.missing > r.named {
 				r.failures = append(r.failures, fmt.Sprintf(
@@ -544,9 +677,20 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 						"losing its own expectation, not a missing feature; the reference answers every case "+
 						"it registers a surface for", r.missing-r.named))
 			}
+			if opts.claims != nil {
+				opts.claims.enforce(d.lang, s, legWant, r)
+			}
 		}
 	}
 
+	if opts.coverage != nil {
+		*opts.coverage = append(*opts.coverage, coverageRows(langs, results, want, m, opts.claims)...)
+	}
+	if opts.results != "" {
+		if err := writeResults(opts.results, langs, results); err != nil {
+			return false, err
+		}
+	}
 	return report(w, langs, results), nil
 }
 
@@ -556,26 +700,55 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 // Instance for a case that carries no marker.
 func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *result) {
 	answer := filepath.Join(out, e.name)
+	if surface == "message" && e.want == nil {
+		// THE NAMED REFUSAL ROW (docs/SPEC-TABLES.md §3.3): a message row over
+		// a variable table, which no leg carries, and every leg names why.
+		if _, err := os.Stat(answer); err == nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: a variable table carries no message form, and the leg wrote bytes", e.name))
+			r.mark(e.name, outcomeFail)
+			return
+		}
+		reason, err := os.ReadFile(answer + ".absent")
+		if err != nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, VariableMessageRefusal))
+			r.mark(e.name, outcomeFail)
+			return
+		}
+		if string(reason) != VariableMessageRefusal {
+			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), VariableMessageRefusal))
+			r.mark(e.name, outcomeFail)
+			return
+		}
+		r.missing++
+		r.named++
+		r.mark(e.name, outcomeNamed)
+		return
+	}
 	if goWireRefusal := inst.WireRefusal(lang); surface == "wire" && goWireRefusal != "" {
 		if _, err := os.Stat(answer); err == nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected named writer refusal %q, got bytes", e.name, goWireRefusal))
+			r.mark(e.name, outcomeFail)
 			return
 		} else if !errors.Is(err, os.ErrNotExist) {
 			r.failures = append(r.failures, fmt.Sprintf("%s: checking wire answer: %v", e.name, err))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		marker := answer + ".absent"
 		reason, err := os.ReadFile(marker)
 		if err != nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, goWireRefusal))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		if string(reason) != goWireRefusal {
 			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), goWireRefusal))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		r.missing++
 		r.named++
+		r.mark(e.name, outcomeNamed)
 		return
 	}
 	// ANOTHER LEG MAY GIVE THE SAME NAMED REFUSAL, and must give it by that
@@ -586,6 +759,7 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			if reason, err := os.ReadFile(answer + ".absent"); err == nil && string(reason) == inst.GoWireRefusal {
 				r.missing++
 				r.named++
+				r.mark(e.name, outcomeNamed)
 				return
 			}
 		}
@@ -596,16 +770,97 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		if _, absent := os.Stat(answer + ".absent"); absent == nil {
 			// An ordinary per-case absence is a missing feature for this leg.
 			r.missing++
+			r.mark(e.name, outcomeAbsent)
 			return
 		}
 		r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote nothing", e.name))
+		r.mark(e.name, outcomeFail)
 		return
 	}
-	if !bytes.Equal(got, e.want) {
-		r.failures = append(r.failures, describeDiff(e.name, e.want, got))
+	if e.damaged {
+		if !answersDamage(got) {
+			r.failures = append(r.failures, fmt.Sprintf("%s: damaged input owes the refusal, a report line saying malformed; got %q", e.name, firstLine(got)))
+			r.mark(e.name, outcomeFail)
+			return
+		}
+		r.pass++
+		r.mark(e.name, outcomePass)
+		return
+	}
+	want := e.want
+	if e.verdictOnly {
+		got = append([]byte(firstLine(got)), '\n')
+	}
+	if e.value != "" {
+		text, err := os.ReadFile(e.value)
+		if err != nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: the oracle's value golden: %v — run: make conformance-generate", e.name, err))
+			r.mark(e.name, outcomeFail)
+			return
+		}
+		want = append(append([]byte{}, e.want...), text...)
+		if _, err := os.Stat(answer + ".absent"); err == nil && bytes.Equal(got, e.want) {
+			// THE VALUE IS ABSENT, THE VERDICT IS NOT: a leg with no text
+			// writer for this root answers the report line alone beside
+			// `<case>.absent`. The line is held as before; the value counts
+			// as the missing feature it is.
+			r.missing++
+			r.mark(e.name, outcomeAbsent)
+			return
+		}
+		if firstLine(got) == firstLine(want) && !bytes.Equal(got, want) {
+			// the counters agree and the VALUE does not: say so, and where
+			r.failures = append(r.failures, describeValueDiff(e.name, e.want, text, got))
+			r.mark(e.name, outcomeFail)
+			return
+		}
+	}
+	if !bytes.Equal(got, want) {
+		r.failures = append(r.failures, describeDiff(e.name, want, got))
+		r.mark(e.name, outcomeFail)
 		return
 	}
 	r.pass++
+	r.mark(e.name, outcomePass)
+}
+
+// describeValueDiff names a value that differs under an agreeing verdict
+// line: the first byte of the value text that differs, and the line it sits
+// on in each text, because the line names the field.
+func describeValueDiff(name string, verdict, want, got []byte) string {
+	got = got[min(len(verdict), len(got)):]
+	at := 0
+	for at < len(want) && at < len(got) && want[at] == got[at] {
+		at++
+	}
+	return fmt.Sprintf("%s: the verdict agrees and the VALUE differs at text byte %d — expected %q, got %q",
+		name, at, lineAt(want, at), lineAt(got, at))
+}
+
+// lineAt is the line of text holding byte at, trimmed of its indentation.
+func lineAt(text []byte, at int) string {
+	if at > len(text) {
+		at = len(text)
+	}
+	start := bytes.LastIndexByte(text[:at], '\n') + 1
+	end := bytes.IndexByte(text[at:], '\n')
+	if end < 0 {
+		end = len(text) - at
+	}
+	return strings.TrimSpace(string(text[start : at+end]))
+}
+
+// answersDamage reports whether a leg's answer opens with a report line that
+// says `malformed`. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4):
+// the counters and any value after the line are undefined and are not read.
+func answersDamage(got []byte) bool {
+	c, err := ParseCounts(firstLine(got))
+	return err == nil && c.Malformed
+}
+
+func firstLine(b []byte) string {
+	line, _, _ := bytes.Cut(b, []byte{'\n'})
+	return string(line)
 }
 
 // absentReference is what the REFERENCE leg's absence reads as in the failure

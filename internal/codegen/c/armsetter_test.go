@@ -2,6 +2,7 @@ package c
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cqualify"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,11 @@ func TestUnionArmSetterSetsTagAndArmC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// the goldens are the target's output, which the package qualifies
+	qualified, err := cqualify.Qualify(exampleFiles, examples.Package)
+	if err != nil {
+		t.Fatal(err)
+	}
 	mixed := unitFromSource(t, "SetterArms.schema", setterArmsSource)
 	mixedFiles, err := Generate(mixed)
 	if err != nil {
@@ -79,7 +85,7 @@ func TestUnionArmSetterSetsTagAndArmC(t *testing.T) {
 
 	// The wire must not move: every example's write/read pair is the
 	// committed golden, byte for byte, and no selector rides in a wire header.
-	for name, data := range exampleFiles {
+	for name, data := range qualified {
 		if !isWireHeader(examples, name) {
 			continue
 		}

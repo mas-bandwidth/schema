@@ -948,7 +948,7 @@ rust         00.0            00.0         00.0           PASS          PASS     
 cs           00.0            00.0         00.0           PASS          PASS          0.00
 java         00.0            00.0         00.0           PASS          PASS          0.00
 js           00.0            00.0         00.0           PASS          PASS          0.00
-dart           —               —            —             —             —             —     no runner on this tree
+dart         00.0            00.0         00.0           PASS          PASS          0.00
 elixir       00.0            00.0         00.0           PASS          PASS          0.00
 ```
 
@@ -964,10 +964,10 @@ names:
 - **A leg with no runner is NAMED with its reason**, in §1.9's and
   `nine.sh`'s own vocabulary — "no runner on this tree", "no leg in this driver
   yet", "runner present, but its rows do not belong to this sitting" are
-  different facts about the merge, and none is ever estimated. Eight table
-  runners exist under `bench/tables/` today; Dart's fixed-form leg has landed
-  and its bench runner has not, so the ninth line is a named refusal until it
-  does.
+  different facts about the merge, and none is ever estimated. Nine table
+  runners exist under `bench/tables/` today, Dart's (`bench/tables/dart`, a
+  table-only leg whose packet number is the type board's) the last to land, so
+  no line of the nine is a named refusal on this tree.
 - **The first ratio is C++'s alone and the board says so.** Arm B is
   hand-written, and nine hand-maintained layouts would be nine chances for the
   comparand to be wrong in a leg-specific way. The form's rule is one reference
@@ -1328,8 +1328,10 @@ comparison costs minutes, not an evening; nothing it prints publishes.
   the #184 redefinition — see §1.3a: the shape grew 20.9x, so the count drops
   10x to keep a measured run above §2.1's 200 ms floor and the leg inside the
   one-minute bound), except where a language still cannot hold that bound:
-  elixir runs 400,000 (the BEAM is ~2 orders behind the native legs). Every
-  count is recorded in the `iters` column as always.
+  elixir runs 400,000 (the BEAM is ~2 orders behind the native legs), and luau
+  runs 12,800 (the interpreter, native codegen off, is ~3 orders behind; its
+  tables leg runs 6,400 against 400,000, `bench/README.md`, "The Luau leg").
+  Every count is recorded in the `iters` column as always.
 - The driver prints **one blended section** — family `gen`, every language's
   schema-GENERATED code, the estate's only benchmark subject since schema#196
   retired family `rt`. **AMENDED 2026-08-31 by §2.9 and the owner's

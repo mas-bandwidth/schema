@@ -1,4 +1,6 @@
 #include "CaptionTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE wide
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER WIDE
 #include "unit.h"
 SCHEMA_CONFORMANCE_CODEC( Caption, caption )
 SCHEMA_CONFORMANCE_CODEC( Stamp, stamp )

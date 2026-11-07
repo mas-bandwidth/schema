@@ -204,7 +204,7 @@ fixed table C14 {
 //
 // docs/roadmap.sexp cpp/W4, "read slack unspecified"; docs/SPEC-TABLES.md §3.4
 // and the read pass's rule (fixedform.go: "a counted array's LIVE elements and
-// never its slack"). A peer leaves non-zero garbage in the declared slack of a
+// never its slack"). An endpoint leaves non-zero garbage in the declared slack of a
 // text field and of a counted array; the read must succeed, move NO counter and
 // name no refusal, while the live prefix reads and the field past the slack
 // stands. The first read of the same writer's own file proves the garbage is
@@ -237,7 +237,7 @@ fixed table W4 {
     memset( &r, 0, sizeof( r ) );
     static TableFixedEntry plan[256];
     const int64_t n = W4FixedLoadTolerant( &back, 1, buf, need, plan, 256, NULL, &r );
-    if ( n != 1 ) { printf( "W4: a peer's garbage in the slack refused the record: n=%lld\n", (long long) n ); return 1; }
+    if ( n != 1 ) { printf( "W4: an endpoint's garbage in the slack refused the record: n=%lld\n", (long long) n ); return 1; }
     if ( r.clamped || r.unknown || r.kind_mismatch || r.duplicate || r.malformed || r.refused )
         { printf( "W4: read slack unspecified: garbage in declared slack moved a counter: c=%d u=%d km=%d d=%d m=%d x=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.duplicate, (int) r.malformed, (int) r.refused ); return 1; }
     if ( back.label_length != 2 || back.label[0] != 'h' || back.label[1] != 'i' )
@@ -413,10 +413,10 @@ fixed table Probe {
 	h := cppT07Header(t, src, "w8")
 	blob := "{ 16, 1, 24, 1, 3 }, // blob"
 	label := "{ 12, 0, 0, 0, 1 }, // label"
-	if !strings.Contains(h, blob) {
+	if !strings.Contains(cppSourceSpelling(h), blob) {
 		t.Errorf("W8: bytes(N) takes the array row: the bytes destination row must be the array's — buffer at dst, stride one, live count at aux — got no line %q", blob)
 	}
-	if !strings.Contains(h, label) {
+	if !strings.Contains(cppSourceSpelling(h), label) {
 		t.Errorf("W8: bytes(N) takes the array row: the text row is the CONTROL and must stay the text convention %q", label)
 	}
 }

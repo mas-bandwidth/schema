@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"os/exec"
@@ -97,13 +98,15 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 				}
 				p := s
 				p.name += "+unknown"
-				p.data = plantUnknown(t, wire)
+				p.data = plantUnknown(t, wire, units[s.unit].unit.Tables[s.root].Integrity)
 				seeds = append(seeds, p)
 			}
 		}
-		// A forged pointer cycle is accepted on load and refused on save
-		// (docs/SPEC-TABLES.md §3.1). The ordinary corpus contains only
-		// acyclic writers, so exercise the pinned hostile vector explicitly.
+		// A forged pointer cycle is damage and the whole load is refused
+		// (docs/SPEC-TABLES.md §3.1, §4; Glenn, 2026-10-31). The ordinary
+		// corpus contains only acyclic writers, so exercise the pinned
+		// hostile vector explicitly: the Rust leg must answer the oracle's
+		// refusal.
 		if carried["graphdemo.Scene"] {
 			seeds = append(seeds, rosterSeed{
 				name: "graph_self_cycle", unit: "graphdemo", root: "Scene",
@@ -118,6 +121,21 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 		}
 		if carried["listdemo.Mixed"] {
 			seeds = append(seeds, repeatedUnionSeeds(t)...)
+		}
+		// A POINTER UNDER A FALSE GUARD IS NOT AN EDGE (docs/SPEC-TABLES.md
+		// §3.1, test/tables/G1.schema): guard_true_both_edges with its
+		// `at_rest` byte cleared still carries `resting` and its record, which
+		// the reader places and the save, numbering included, must drop.
+		if carried["tblg1.Guarded"] {
+			both, err := os.ReadFile(filepath.Join(repo, "testdata/wire/tables/guard_true_both_edges.bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if both[3] != 1 {
+				t.Fatalf("guard_true_both_edges no longer opens with at_rest = true: % x", both[:4])
+			}
+			both[3] = 0
+			seeds = append(seeds, rosterSeed{name: "guard_false_resting_rides", unit: "tblg1", root: "Guarded", data: both})
 		}
 		for _, retain := range []bool{false, true} {
 			driveSeeds(t, repo, bin, units, seeds, retain)
@@ -198,12 +216,25 @@ func repeatedUnionSeeds(t *testing.T) []rosterSeed {
 // trailer gains, which every reader skips as one `unknown` and a retaining
 // reader keeps. References are trailer slots and node indices, never offsets,
 // so nothing behind the planted field moves meaning.
-func plantUnknown(t *testing.T, wire []byte) []byte {
+func plantUnknown(t *testing.T, wire []byte, integrity string) []byte {
 	t.Helper()
 	if len(wire) < 9 || wire[0] != byte(ir.TableWireForm) {
 		t.Fatalf("a seed is not a variable-form file")
 	}
+	if integrity != "" {
+		if integrity != "crc32c" || len(wire) < 13 {
+			t.Fatal("unsupported integrity seed")
+		}
+		n := len(wire) - 4
+		if crc32.Checksum(wire[:n], crc32.MakeTable(crc32.Castagnoli)) != binary.LittleEndian.Uint32(wire[n:]) {
+			t.Fatal("invalid seed CRC")
+		}
+		wire = wire[:n]
+	}
 	count := binary.LittleEndian.Uint64(wire[len(wire)-8:])
+	if count > uint64((len(wire)-9)/8) {
+		t.Fatal("seed ID table exceeds input")
+	}
 	estart := len(wire) - 8 - 8*int(count)
 	const planted = uint64(0x52455441494e0001) // "RETAIN" and a one
 	for i := 0; i < int(count); i++ {
@@ -218,7 +249,11 @@ func plantUnknown(t *testing.T, wire []byte) []byte {
 	out = append(out, wire[1:estart]...)
 	out = append(out, wire[estart:len(wire)-8]...)
 	out = binary.LittleEndian.AppendUint64(out, planted)
-	return binary.LittleEndian.AppendUint64(out, count+1)
+	out = binary.LittleEndian.AppendUint64(out, count+1)
+	if integrity != "" {
+		out = binary.LittleEndian.AppendUint32(out, crc32.Checksum(out, crc32.MakeTable(crc32.Castagnoli)))
+	}
+	return out
 }
 
 // manifestRoster reads the default roster's FILE seeds from the conformance
@@ -331,8 +366,8 @@ func layoutRustUnit(t *testing.T, dir, name string, modules map[string][]byte) {
 	}
 	var files []string
 	for file := range modules {
-		if file == BuildVersionModule+".rs" || file == VariableRuntimeModule+".rs" ||
-			file == FixedRuntimeModule+".rs" || file == MessageRuntimeModule+".rs" ||
+		if file == BuildVersionModule+".rs" || file == VariableRuntimeModule+".rs" || file == TableEnumsModule+".rs" ||
+			file == FixedRuntimeModule+".rs" || file == MessageRuntimeModule+".rs" || file == integrityRuntimeModule+".rs" ||
 			strings.HasSuffix(file, "_records.rs") || strings.HasSuffix(file, "_fixed.rs") ||
 			strings.HasSuffix(file, "_table.rs") || strings.HasSuffix(file, "_variable.rs") ||
 			strings.HasSuffix(file, "_message.rs") {
@@ -463,6 +498,15 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 			binary.LittleEndian.Uint32(reply[13:]), binary.LittleEndian.Uint32(reply[17:]), reply[21] != 0, reply[22] != 0,
 			binary.LittleEndian.Uint32(reply[31:]), binary.LittleEndian.Uint32(reply[35:]))
 		want, encoded := oracleSeed(t, units[s.unit].unit, s.root, wire, retain)
+		if counts := strings.Split(strings.Fields(want)[0], ","); counts[5] == "true" {
+			// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+			// leg owes the refusal, and no counter, retention report or
+			// saved byte is compared
+			if reply[21] == 0 {
+				t.Errorf("%s (%s.%s, retain=%t): the oracle discards a damaged load and the leg reports %s", s.name, s.unit, s.root, retain, leg)
+			}
+			continue
+		}
 		if retain && s.retainedAtLeast > 0 {
 			var kept int
 			_, after, _ := strings.Cut(want, "retained=")
@@ -473,8 +517,18 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 		if retain && s.retainWant != "" {
 			want = s.retainWant
 		}
-		if retain && strings.HasSuffix(s.name, "+unknown") && !strings.Contains(want, "retained=1 ") {
-			t.Errorf("%s (%s.%s): the planted unknown was not retained by the oracle (%s), so this seed proves nothing", s.name, s.unit, s.root, want)
+		if retain && strings.HasSuffix(s.name, "+unknown") {
+			// the planted field is ONE MORE retained record than the seed it
+			// was planted in already carries: a seed read by a later build
+			// (tblscalars2 over scalars_full) retains its own unknowns too
+			base, err := os.ReadFile(filepath.Join(repo, s.wire))
+			if err != nil {
+				t.Fatal(err)
+			}
+			baseWant, _ := oracleSeed(t, units[s.unit].unit, s.root, base, true)
+			if retainedOf(want) != retainedOf(baseWant)+1 {
+				t.Errorf("%s (%s.%s): the planted unknown was not retained by the oracle (%s, unplanted %s), so this seed proves nothing", s.name, s.unit, s.root, want, baseWant)
+			}
 		}
 		if leg != want {
 			t.Errorf("%s (%s.%s, retain=%t): the leg reports %s, the oracle %s", s.name, s.unit, s.root, retain, leg, want)
@@ -596,4 +650,16 @@ fn main() {
 	if !bytes.Equal(saved, want) {
 		t.Errorf("the widened value saves %d bytes, the oracle %d, first difference at byte %d", len(saved), len(want), firstDiff(saved, want))
 	}
+}
+
+// retainedOf is the `retained=N` count of one report line, -1 when it has none.
+func retainedOf(report string) int {
+	_, after, ok := strings.Cut(report, "retained=")
+	n := -1
+	if ok {
+		if _, err := fmt.Sscanf(after, "%d", &n); err != nil {
+			return -1
+		}
+	}
+	return n
 }

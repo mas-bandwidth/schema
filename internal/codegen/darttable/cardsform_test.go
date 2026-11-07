@@ -31,7 +31,7 @@ func buildUnit(t *testing.T, src string) *ir.Unit {
 // backend refuses variable-class constructs that are not part of the card
 // record's closure, naming the table, field, and construct
 // (docs/SPEC-TABLES.md §2.1, §2.3, §2.4, §2.5, §2.6, §2.8, §11). The card's
-// own constructs — a plain table, bool/int32/int64/enum fields, string(N),
+// own constructs — a variable table, bool/int32/int64/enum fields, string(N),
 // *string and unbounded []T of table elements — are accepted.
 func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	t.Parallel()
@@ -45,7 +45,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		construct string
 	}{
 		{
-			name: "plain table with card constructs",
+			name: "variable table with card constructs",
 			def: `package test
 				enum Tier { flash, pro, heavy, frontier }
 				table PathText { s string(192) }
@@ -57,38 +57,35 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					flag bool
 					paths []PathText
 					body *string
+					data *bytes
 				}
 			`,
 			refuse: false,
 		},
 		{
-			name: "*bytes is refused by table and field name",
-			def: `package test
-				table Blobbed {
-					id string(64)
-					data *bytes
-				}
-			`,
-			refuse:    true,
-			table:     "Blobbed",
-			field:     "data",
-			construct: "*bytes",
-		},
-		{
-			name: "map is refused by table and field name",
+			name: "map is carried on form 1",
 			def: `package test
 				table Mapped {
 					id string(64)
 					meta map[uint8]int32
 				}
 			`,
-			refuse:    true,
-			table:     "Mapped",
-			field:     "meta",
-			construct: "map[K]V",
+			refuse: false,
 		},
 		{
-			name: "pointer to a table outside a list element is refused by table and field name",
+			// maps-and-arms: an optional map value rides as the optional it is
+			// (docs/SPEC-TABLES.md §2.3, §2.8), so this case is carried now
+			name: "map of an optional value is carried on form 1",
+			def: `package test
+				table Mapped {
+					id string(64)
+					meta map[uint8]?int32
+				}
+			`,
+			refuse: false,
+		},
+		{
+			name: "pointer to a table is carried",
 			def: `package test
 				table Child { s string(32) }
 				table Pointed {
@@ -96,26 +93,25 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					kid *Child
 				}
 			`,
-			refuse:    true,
-			table:     "Pointed",
-			field:     "kid",
-			construct: "a pointer to a table outside an unbounded list element",
+			refuse: false,
 		},
 		{
-			name: "optional ?T is refused by table and field name",
+			// maps-and-arms: presence rides as the field's own presence (§2.3)
+			name: "optional ?T is carried on form 1",
 			def: `package test
+				type Pos { x int32 }
 				table Optional {
 					id string(64)
 					maybe ?int32
+					at    ?Pos
+					few   ?[..2]int32
+					pair  ?[2]int32
 				}
 			`,
-			refuse:    true,
-			table:     "Optional",
-			field:     "maybe",
-			construct: "optional ?T",
+			refuse: false,
 		},
 		{
-			name: "enum-keyed array is refused by table and field name",
+			name: "enum-keyed array is carried on form 1",
 			def: `package test
 				enum Slot { alpha, beta, gamma }
 				table Keyed {
@@ -123,13 +119,10 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					slots [Slot]int32
 				}
 			`,
-			refuse:    true,
-			table:     "Keyed",
-			field:     "slots",
-			construct: "enum-keyed array",
+			refuse: false,
 		},
 		{
-			name: "union arm is refused by table and field name",
+			name: "union arm is carried on form 1",
 			def: `package test
 				union Pick { plain int32 }
 				table Armed {
@@ -137,10 +130,35 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					u Pick
 				}
 			`,
-			refuse:    true,
-			table:     "Armed",
-			field:     "u",
-			construct: "union arm",
+			refuse: false,
+		},
+		{
+			// maps-and-arms: a `type` arm and a table arm are one framing
+			// (§2.6), so this case is carried now
+			name: "union arm of a type is carried on form 1",
+			def: `package test
+				type Pos { x int32 }
+				union Pick { at Pos }
+				table Armed {
+					id string(64)
+					u Pick
+				}
+			`,
+			refuse: false,
+		},
+		{
+			// maps-and-arms: the wide scalars ride kinds 18-29 (§3, §15)
+			name: "fixed-point and 128-bit scalars are carried on form 1",
+			def: `package test
+				table Wide {
+					id string(64)
+					q  fixed(16, 16)  | min = -8, max = 8
+					u  ufixed(48, 16) | min = 0, max = 1000
+					n  int128         | min = -5000000000, max = 5000000000
+					m  [..2]uint128
+				}
+			`,
+			refuse: false,
 		},
 	}
 
@@ -176,7 +194,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 // still owes; this test pins the acceptance boundary it must reach.
 // TestCardDeclarationsPinTheVariableFormGap loads the two declarations of the
 // testdata/cards pair (base.schema, new.schema) and proves they parse, check
-// and generate with the constructs the card record uses — a plain table root,
+// and generate with the constructs the card record uses — a variable table root,
 // a table as an unbounded list element, an int32 with min/max, a bool, an enum
 // and a `was` rename on a *string field (docs/SPEC-TABLES.md §2.5, §2.9, §3,
 // §5). The pair is the comparison the variable-form round trip owes; the
@@ -246,6 +264,7 @@ func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -344,6 +363,7 @@ func TestCardTextFormMatchesGo(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -444,6 +464,7 @@ func TestCardTextFormEnumNoneRoundTrips(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -33,7 +33,7 @@ func TestDepsTargetProvisionsTheSerializeGoSibling(t *testing.T) {
 			t.Errorf("Makefile and make/go.mk do not contain %q", want)
 		}
 	}
-	for _, target := range []string{"test", "test-go", "slow-gate-coverage", "tables-go-sibling-runtime"} {
+	for _, target := range []string{"test", "test-go", "slow-gate-coverage", "slow-gate-coverage-codegen", "slow-gate-coverage-rest", "tables-go-sibling-runtime"} {
 		re := regexp.MustCompile("(?m)^" + regexp.QuoteMeta(target) + ":\\s+deps(?:\\s|$)")
 		if !re.MatchString(all) {
 			t.Errorf("target %s does not list deps as a prerequisite", target)

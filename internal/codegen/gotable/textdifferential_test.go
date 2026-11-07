@@ -4,13 +4,12 @@ package gotable
 // implementation: the leg emits random instances as (wire, text), the
 // compiler's own engine (schema unpack, internal/tabletext, written from the
 // spec and from neither backend) reads the same wire and writes its text, the
-// two are byte-compared, then the other direction. Every cell of I13's matrix
-// row is open at this head, so this is the Go leg's cell.
+// two are byte-compared, then the other direction. This is the Go leg's cell.
 //
 // The engine and the emitted walker share NO code even though both are Go: the
 // engine's float loop is internal/tabletext/write.go's writeFloat/formatG
 // (C's %.*g spelled out over the double), while the leg's is
-// tableJsonWriteFloat, emitted SOURCE (tableJsonWalkSource) and reaching for
+// tableJSONWriteFloat, emitted SOURCE (tableJSONWalkSource) and reaching for
 // strconv.AppendFloat. Two implementations, one language, which is what makes
 // this row cheap (no subprocess protocol) and NOT circular.
 //
@@ -18,7 +17,7 @@ package gotable
 // tie, so the random source is built here. Non-finite floats have no JSON
 // spelling and both writers REFUSE rather than lose one, so the generator
 // redraws until a pattern is finite. Instance 0 is the fixture proof:
-// RootReset and nothing else. docs/PORTING.md's cell is owed, not edited.
+// RootReset and nothing else.
 
 import (
 	"bytes"
@@ -136,13 +135,13 @@ func TestProbe(t *testing.T) {
 		if err := os.WriteFile(dir+"/inst-"+strconv.Itoa(i)+".wire", wire, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		textSize := RootToJsonMeasure(&v)
+		textSize := RootToJSONMeasure(&v)
 		if textSize < 0 {
-			t.Fatalf("instance %d: RootToJsonMeasure refused (%d)", i, textSize)
+			t.Fatalf("instance %d: RootToJSONMeasure refused (%d)", i, textSize)
 		}
 		text := make([]byte, textSize)
-		if RootToJson(&v, text) != int64(len(text)) {
-			t.Fatalf("instance %d: RootToJson wrote short", i)
+		if RootToJSON(&v, text) != int64(len(text)) {
+			t.Fatalf("instance %d: RootToJSON wrote short", i)
 		}
 		if err := os.WriteFile(dir+"/inst-"+strconv.Itoa(i)+".json", text, 0o600); err != nil {
 			t.Fatal(err)

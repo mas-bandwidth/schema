@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-// §5.4: the compile census lands ONCE PER PEER AND NEVER PER RECORD. The landed
+// §5.4: the compile census lands ONCE PER ENDPOINT AND NEVER PER RECORD. The landed
 // one-record row reads old_unknown_census.bin, which holds ONE record, where
-// once-per-peer and once-per-record are both 1 and the second half of the
+// once-per-endpoint and once-per-record are both 1 and the second half of the
 // clause is never gated. many_unknown_census.bin holds THREE records of the
 // same Census root: a per-record Unknown++ would land 3 there, so the unknown
 // counter is asserted == 1 exactly, and never >= 1.
@@ -19,10 +19,10 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
 	corpus := versionCorpus(t)
 
 	tests := fmt.Sprintf(`
-/// §5.4, the MANY half: the compile census lands once per peer, never per
+/// §5.4, the MANY half: the compile census lands once per endpoint, never per
 /// record. The landed row reads old_unknown_census.bin (ONE record), where the
 /// two counts are both 1. This probe reads many_unknown_census.bin (THREE
-/// records of the same Census root): Item.drop is ONE field of ONE peer (Item),
+/// records of the same Census root): Item.drop is ONE field of ONE endpoint (Item),
 /// so the census counts it ONCE across the whole file — unknown == 1 — while a
 /// reader that counts once per RECORD lands 3. All three records, each with its
 /// own distinct a values, must come back intact.
@@ -45,7 +45,7 @@ fn v_unknown_census_many_new_reads_old() {
     assert!(!report.malformed, "a clean backward read is not damage: {:?}", report);
     assert_eq!(
         report.unknown, 1,
-        "unknown == {}, want 1: Item.drop is ONE field of ONE peer, not one per record", report.unknown
+        "unknown == {}, want 1: Item.drop is ONE field of ONE endpoint, not one per record", report.unknown
     );
     assert!(
         report.kind_mismatch == 0 && report.widened == 0 && report.clamped == 0,

@@ -16,14 +16,19 @@
 //     and works in every context C has — array bounds, case labels, other
 //     #defines — which a const int does not.
 //
-//   - Type names keep their schema spelling (Vec3), matching the C++ target.
-//     C has no namespaces, so a unit's names live in the global namespace; the
-//     package name is not prefixed because that would double the length of
-//     every identifier for a collision that a caller can avoid by not mixing
-//     two schema units in one translation unit.
+//   - This emitter writes the schema's own spellings (Vec3, write_vec3,
+//     MAX_OBJECTS), and the target then gives every name the unit declares
+//     its package in one pass over both emitters' files
+//     (internal/codegen/cqualify): example_vec3_t, example_write_vec3,
+//     EXAMPLE_MAX_OBJECTS. C has no namespace; the package is the namespace,
+//     and two units' headers share a translation unit (SPEC §6.3).
 //
 //   - Functions are snake_case (write_vec3), matching the serialize.c runtime
 //     they call into rather than the type names they carry.
+//
+//   - What every unit shares is the same text in every unit and lives in one
+//     header, SchemaRuntime.h (ccommon.RuntimeHeader), versioned by a hash of
+//     its own text that every generated header checks.
 //
 //   - Enums are a fixed-width typedef plus #define constants, NOT a C enum. A C
 //     enum's underlying type is implementation-defined, which would break the
@@ -51,13 +56,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	for _, f := range u.Files {
 		bases[f.Base] = true
 	}
+	if bases[strings.TrimSuffix(ccommon.RuntimeHeaderName, ".h")] {
+		return nil, fmt.Errorf("a schema file named %s collides with the C emitter's shared runtime header %s; rename it", strings.TrimSuffix(ccommon.RuntimeHeaderName, ".h")+".schema", ccommon.RuntimeHeaderName)
+	}
 	for _, f := range u.Files {
 		if bases[f.Base+"Wire"] {
 			return nil, fmt.Errorf("schema files %s and %sWire collide — the C emitter writes %sWire.h as %s's wire header; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}
 	}
 
-	out := map[string][]byte{}
+	out := map[string][]byte{ccommon.RuntimeHeaderName: ccommon.RuntimeHeader()}
 	home := ir.ProtocolIdHome(u)
 	deps := ir.FileDeps(u)
 
@@ -91,15 +99,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 type gen struct {
-	unit     *ir.Unit
-	errs     []error
-	needs128 bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
+	unit      *ir.Unit
+	errs      []error
+	needs128  bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
+	needsBool bool // a bool storage member needs <stdbool.h> in the DATA header
 
-	saidReadSlack  bool // the read-slack buffer contract is stated once per file, on its first MAX_BYTES
-	saidFlagAppend bool // the flag_names_* append helpers are emitted once per file
-	file           *ir.File
-	deps           []string
-	body           strings.Builder
+	saidReadSlack bool // the read-slack buffer contract is stated once per file, on its first MAX_BYTES
+	file          *ir.File
+	deps          []string
+	body          strings.Builder
 
 	// fixed [N]uint8 arrays of the struct being emitted whose element bytes
 	// are statically byte-aligned (ir.AlignedFixedByteArrays) — the same map
@@ -144,7 +152,11 @@ func (g *gen) assembleHeader() []byte {
 	// carries an include nothing in it uses (a contains check can only ever
 	// keep one too many, never drop one in use)
 	body := g.body.String()
+	if g.needsBool {
+		h.WriteString("#include <stdbool.h>\n")
+	}
 	h.WriteString("#include <stdint.h>\n")
+	h.WriteString(ccommon.RuntimeInclude())
 	if strings.Contains(body, "memset") {
 		h.WriteString("#include <string.h>   /* memset — the zero form (SPEC §4.2) */\n")
 	}
@@ -152,15 +164,12 @@ func (g *gen) assembleHeader() []byte {
 		h.WriteString("#include <math.h>     /* floor — the quantize pair */\n")
 	}
 	if strings.Contains(body, "SCHEMA_C_ALIGN16") {
-		h.WriteString(ccommon.Align16)
+		h.WriteString(ccommon.Align16Check)
 	}
 	if g.needs128 {
 		// serialize_int128_t / serialize_uint128_t are STORAGE here, so the
 		// runtime header has to reach the data header and not only the wire one
 		h.WriteString("#include \"serialize.h\"   /* serialize_int128_t: C has no 128-bit builtin */\n")
-	}
-	if strings.Contains(body, "SCHEMA_UNUSED") {
-		h.WriteString(unusedMacro)
 	}
 	for _, d := range g.deps {
 		fmt.Fprintf(&h, "#include \"%s.h\"\n", d)
@@ -183,9 +192,6 @@ func (g *gen) assembleWireHeader() []byte {
 		h.WriteString("#include <string.h>   /* memset, strlen */\n")
 	}
 	h.WriteString("#include \"serialize.h\"\n")
-	if strings.Contains(body, "SCHEMA_UNUSED") {
-		h.WriteString(unusedMacro)
-	}
 	for _, d := range g.deps {
 		fmt.Fprintf(&h, "#include \"%sWire.h\"\n", d)
 	}
@@ -195,20 +201,6 @@ func (g *gen) assembleWireHeader() []byte {
 	fmt.Fprintf(&h, "#endif /* %s */\n", guard)
 	return []byte(h.String())
 }
-
-// unusedMacro guards the header-static functions. A translation unit that
-// includes a header but calls only some of its functions would otherwise warn
-// on every one it did not use -- and this target is compiled with -Wall
-// -Wextra -Werror in CI, so a warning is a build failure for the CONSUMER.
-const unusedMacro = `
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
-`
 
 func (g *gen) header(h *strings.Builder, base string) {
 	fmt.Fprintf(h, "/* Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", base)
@@ -225,7 +217,7 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 	if carriesProtocolId {
 		g.pf("/* The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two\n")
 		g.pf("   sides at the same id speak identical bits; there is no other versioning. */\n")
-		g.pf("#define %s_PROTOCOL_ID 0x%016xULL\n\n", screaming(g.unit.Package), g.unit.ProtocolId)
+		g.pf("#define PROTOCOL_ID 0x%016xULL\n\n", g.unit.ProtocolId)
 	}
 
 	// emission order, not declaration order: C needs every same-file named
@@ -266,7 +258,12 @@ func (g *gen) constValue(d *ir.Const) string {
 		return "0"
 	}
 	// parenthesised so a #define used inside an expression cannot reassociate
-	return "(" + g.renderInt(d.Expr, d.Int) + ")"
+	// — once: a folded INT64_MIN is already its own group
+	v := g.renderInt(d.Expr, d.Int)
+	if wrapped(v) {
+		return v
+	}
+	return "( " + v + " )"
 }
 
 func formatFloat(v float64) string {
@@ -308,7 +305,6 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "", "//"))
 		g.pf("#define %s_%s %d\n", screaming(d.Name), screaming(v), i+1)
 	}
-	g.pf("#define %s_COUNT %d\n", screaming(d.Name), len(d.Variants))
 	g.pf("#define %s_MAX %d\n", screaming(d.Name), d.Max)
 
 	// the debug/log name, the counterpart of C++'s and Go's EnumName
@@ -329,7 +325,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	g.pf("typedef uint64_t %s;\n", d.Name)
 	for i, v := range d.Variants {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "", "//"))
-		g.pf("#define %s_%s (1ULL << %d)\n", screaming(d.Name), screaming(v), i)
+		g.pf("#define %s_%s ( 1ULL << %d )\n", screaming(d.Name), screaming(v), i)
 	}
 	g.pf("#define %s_COUNT %d /* the declared variant count (SPEC §4.2) */\n", screaming(d.Name), len(d.Variants))
 	g.pf("\n")
@@ -342,7 +338,6 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	}
 	g.pf("        default: return \"???\";\n    }\n}\n\n")
 
-	g.emitFlagAppendHelpers()
 	g.pf("/* Renders the set bits of value into buffer as \"A|B\" — \"0\" for the empty\n")
 	g.pf("   set, bits past the declared variants as hex — NUL-terminates and returns\n")
 	g.pf("   buffer; %s_NAMES_MAX bytes always suffice. */\n", screaming(d.Name))
@@ -370,42 +365,30 @@ func flagNamesMax(d *ir.Flags) int {
 	return n + len("|0x") + 16 + 1
 }
 
-// emitFlagAppendHelpers emits the bounded append pair the flag_names_*
-// renderers share, once per file — guarded like the SCHEMA_UNUSED macro
-// because two data headers can land in one translation unit.
-func (g *gen) emitFlagAppendHelpers() {
-	if g.saidFlagAppend {
-		return
-	}
-	g.saidFlagAppend = true
-	g.pf("#ifndef SCHEMA_FLAG_APPEND_DEFINED\n#define SCHEMA_FLAG_APPEND_DEFINED\n")
-	g.pf("static SCHEMA_UNUSED int schema_flag_append_( char * buffer, int buffer_size, int position, const char * name )\n{\n")
-	g.pf("    if ( position > 0 && position < buffer_size - 1 )\n    {\n        buffer[position++] = '|';\n    }\n")
-	g.pf("    while ( *name && position < buffer_size - 1 )\n    {\n        buffer[position++] = *name++;\n    }\n")
-	g.pf("    return position;\n}\n\n")
-	g.pf("static SCHEMA_UNUSED int schema_flag_append_hex_( char * buffer, int buffer_size, int position, uint64_t bits )\n{\n")
-	g.pf("    int shift = 60;\n")
-	g.pf("    position = schema_flag_append_( buffer, buffer_size, position, \"0x\" );\n")
-	g.pf("    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )\n    {\n        shift -= 4;\n    }\n")
-	g.pf("    for ( ; shift >= 0; shift -= 4 )\n    {\n")
-	g.pf("        if ( position < buffer_size - 1 )\n        {\n            buffer[position++] = \"0123456789abcdef\"[( bits >> shift ) & 0xf];\n        }\n    }\n")
-	g.pf("    return position;\n}\n#endif /* SCHEMA_FLAG_APPEND_DEFINED */\n\n")
-}
-
 func (g *gen) emitStruct(d *ir.Struct) {
 	g.pf("\n%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("/* type %s */\n", d.Name)
 	if len(d.Fields) == 0 {
 		// C forbids an empty struct; one padding byte keeps sizeof() legal and
 		// the type usable. It carries no wire bits.
-		g.pf("typedef struct %s {\n    char unused_; /* C has no empty struct; carries no wire bits */\n} %s;\n\n", d.Name, d.Name)
+		g.pf("typedef struct %s\n{\n    char unused_; /* C has no empty struct; carries no wire bits */\n} %s;\n\n", d.Name, d.Name)
 		return
 	}
-	g.pf("typedef struct %s {\n", d.Name)
+	g.pf("typedef struct %s\n{\n", d.Name)
 	for _, f := range d.Fields {
 		g.pf("%s", ir.DocComment(f.Doc, "    ", "//"))
 		if f.Type.Width == 128 && ir.TableClosure(g.unit)[d.Name] {
-			g.pf("    SCHEMA_C_ALIGN16 ")
+			// the alignment rides in front of the member's own line, at the
+			// member's indent: emitField writes the line, and its four-space
+			// indent is replaced by the attribute
+			at := g.body.Len()
+			g.emitField(f)
+			line := g.body.String()[at:]
+			rest := g.body.String()[:at]
+			g.body.Reset()
+			g.body.WriteString(rest)
+			g.body.WriteString("    SCHEMA_C_ALIGN16 " + strings.TrimPrefix(line, "    "))
+			continue
 		}
 		g.emitField(f)
 	}
@@ -435,7 +418,6 @@ func (g *gen) emitUnion(d *ir.Union) {
 		g.pf("%s", ir.DocComment(v.Doc, "", "//"))
 		g.pf("#define %s_%s %d\n", screaming(tag), screaming(v.Name), i+1)
 	}
-	g.pf("#define %s_COUNT %d\n", screaming(tag), len(d.Variants))
 	g.pf("#define %s_MAX %d\n", screaming(tag), d.Max)
 
 	g.pf("\n/* Debug/log name for any %s value, out-of-set included. */\n", tag)
@@ -450,11 +432,11 @@ func (g *gen) emitUnion(d *ir.Union) {
 	if !hasPayload {
 		g.pf("/* No arm has a payload; C forbids an empty union member, so the\n")
 		g.pf("   struct is the tag alone. */\n")
-		g.pf("typedef struct %s {\n    %s type;\n} %s;\n\n", d.Name, tag, d.Name)
+		g.pf("typedef struct %s\n{\n    %s type;\n} %s;\n\n", d.Name, tag, d.Name)
 	} else {
-		g.pf("typedef struct %s {\n", d.Name)
+		g.pf("typedef struct %s\n{\n", d.Name)
 		g.pf("    %s type;\n", tag)
-		g.pf("    union {\n")
+		g.pf("    union\n    {\n")
 		for _, v := range d.Variants {
 			if v.Void() {
 				continue // a payload-free arm has only its tag (SPEC §4.8)
@@ -467,7 +449,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 
 	maxBits := ir.MaxBitsUnion(d)
 	g.pf("#define %s_MAX_BITS %d   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */\n", screaming(d.Name), maxBits)
-	g.pf("#define %s_MAX_BYTES %d  %s\n\n", screaming(d.Name), ir.MaxBytes(maxBits), g.maxBytesTail())
+	g.pf("#define %s_MAX_BYTES %d%s\n\n", screaming(d.Name), ir.MaxBytes(maxBits), g.maxBytesTail())
 	g.emitUnionSelectors(d)
 }
 
@@ -515,14 +497,14 @@ func armInit(v ir.UnionVariant) string {
 	return fmt.Sprintf("memset( &value->as.%s, 0, sizeof( value->as.%s ) );", v.Name, v.Name)
 }
 
-// maxBytesTail is the comment after a MAX_BYTES define: the whole buffer
-// contract on the file's first, the short form after.
+// maxBytesTail is the comment after a MAX_BYTES define: the buffer contract,
+// said ONCE per file on its first MAX_BYTES, and nothing after it.
 func (g *gen) maxBytesTail() string {
 	if g.saidReadSlack {
-		return "/* 8-byte write granularity; read slack per the contract above */"
+		return ""
 	}
 	g.saidReadSlack = true
-	return "/* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */"
+	return "  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */"
 }
 
 func (g *gen) emitField(f *ir.Field) {
@@ -555,10 +537,13 @@ func (g *gen) emitField(f *ir.Field) {
 func (g *gen) storageType(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
-		// C has no bool in C99 without <stdbool.h>, and the layout
-		// contract pins a bool to ONE byte. uint8_t is that byte,
-		// spelled the way every other width in this family is.
-		return "uint8_t"
+		// C99's own bool, from <stdbool.h>: one byte, alignment one, on
+		// every ABI this family builds for — which is what the layout model
+		// pins a bool to (docs/SPEC-TABLES.md §19.3, §20.3), and the table
+		// emitter's layout asserts refuse a compiler that disagrees at build
+		// time. Matches the C++ target's bool.
+		g.needsBool = true
+		return "bool"
 	case ir.TInt:
 		if f.Type.Width == 128 {
 			// C has no int128_t. serialize.c models it as two 64-bit lanes,
@@ -655,17 +640,16 @@ func (g *gen) emitWireHeader() {
 	if g.fileEmitsWire() {
 		// the calling convention, once per wire header — the per-function
 		// comments below it stay one line each
-		g.pf("/* Every write_x/read_x returns 1 on success, 0 on failure — the stream\n")
-		g.pf("   latches the error, so a caller may check once at the end of a message.\n")
+		// (comments pass cqualify untouched, so the prefixed spelling is
+		// written here: the one a caller actually calls)
+		pkg := strings.ToLower(g.unit.Package)
+		g.pf("/* Every %s_write_x/%s_read_x returns 1 on success, 0 on failure — the\n", pkg, pkg)
+		g.pf("   stream latches the error, so a caller may check once at the end of a\n")
+		g.pf("   message.\n")
 		g.pf("   Reads REFUSE out-of-range values, never clamp, in every build. A tag on\n")
 		g.pf("   WRITE is asserted before it rides — caller error, gone under NDEBUG — and\n")
 		g.pf("   every read reconstructs the selected arm with its declared initial values\n")
 		g.pf("   before decoding it (SPEC §4.8, §5). */\n\n")
-		g.emitSpineInlineMacros()
-	}
-	if fileHasStrings(g.file) {
-		g.emitUtf8Validator()
-		g.emitInteriorNullScan()
 	}
 	// emission order for the same reason as the data header: write_a calls
 	// write_b, and C99 has no implicit declarations
@@ -725,7 +709,7 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	}
 	g.pf("    {\n        serialize_uint32_t tag_value = 0;\n")
 	g.call("        ", fmt.Sprintf("serialize_read_bits( stream, &tag_value, %d )", bits))
-	g.pf("        if ( tag_value > %s_MAX )\n        {\n            return 0; /* not a wire-legal tag */\n        }\n", screaming(tag))
+	g.pf("        if ( tag_value > %s_MAX )\n        {\n            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal tag */\n        }\n", screaming(tag))
 	g.pf("        value->type = (%s) tag_value;\n    }\n", tag)
 	g.pf("    switch ( value->type )\n    {\n")
 	for i, v := range d.Variants {
@@ -808,7 +792,7 @@ func (g *gen) emitReadFunc(st *ir.Struct) {
 	// no guard: it reads nothing, so there is nothing to prove.
 	if bits, fixed := ir.FixedWireBits(st); fixed && bits > 0 {
 		g.pf("    /* fixed %d-bit wire: one guard, and every per-field past-end test below folds into it */\n", bits)
-		g.pf("    if ( serialize_read_bits_remaining( stream ) < %d )\n    {\n        return serialize_read_fail( stream );\n    }\n\n", bits)
+		g.pf("    if ( serialize_read_bits_remaining( stream ) < %d )\n    {\n        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );\n    }\n\n", bits)
 	}
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; /* items only — reserved/const/align carry no storage */\n")
@@ -858,12 +842,12 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 			// a desynchronized stream, refused rather than ignored
 			g.pf("%s{\n%s    serialize_uint32_t const_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &const_value, %d )", n.Bits))
-			g.pf("%s    if ( const_value != (serialize_uint32_t) %sULL )\n%s    {\n%s        return 0;\n%s    }\n%s}\n",
+			g.pf("%s    if ( const_value != (serialize_uint32_t) %sULL )\n%s    {\n%s        return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );\n%s    }\n%s}\n",
 				ind, n.Value.String(), ind, ind, ind, ind)
 		case *ir.ReservedItem:
 			g.pf("%s{\n%s    serialize_uint32_t reserved_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &reserved_value, %d )", n.Bits))
-			g.pf("%s    if ( reserved_value != 0 )\n%s    {\n%s        return 0;\n%s    }\n%s}\n", ind, ind, ind, ind, ind)
+			g.pf("%s    if ( reserved_value != 0 )\n%s    {\n%s        return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );\n%s    }\n%s}\n", ind, ind, ind, ind, ind)
 		case *ir.AlignItem:
 			g.call(ind, "serialize_read_align( stream )")
 		case *ir.Branch:

@@ -10,8 +10,10 @@
 //
 //	releasetag release -version vX.Y.Z [-commit REV] [-main REF] [-push]
 //	    tags one commit vX.Y.Z (annotated). Refuses, by name, a version that
-//	    does not parse, one not greater than the newest v tag, and a commit
-//	    not on main (not in `git rev-list REF`, default origin/main).
+//	    does not parse, one not greater than the newest v tag, a commit not
+//	    on main (not in `git rev-list REF`, default origin/main), and a PATCH
+//	    release whose commit moves the build version's form
+//	    (ir.BuildVersionForm) from the newest v tag's.
 //	    .github/workflows/release.yml runs it, through
 //	    `make release VERSION=vX.Y.Z PUSH=1`, when dispatched.
 //
@@ -20,7 +22,8 @@
 // tag.
 //
 // The names and the refusals are pure functions of their arguments
-// (PromotionTag, PromotionDecision, ParseVersion, NewestRelease, ReleaseTag),
+// (PromotionTag, PromotionDecision, ParseVersion, NewestRelease, ReleaseTag,
+// ParseBuildVersionForm, FormGate),
 // unit-tested with no git; Promote and Release drive git through the Git
 // interface, which the tests fake. Only main execs git.
 package main
@@ -44,7 +47,41 @@ var (
 	ErrVersionGrammar = errors.New("version does not parse as vMAJOR.MINOR.PATCH")
 	ErrNotGreater     = errors.New("version is not greater than the newest v tag")
 	ErrNotOnMain      = errors.New("commit is not on main")
+	ErrFormMoved      = errors.New("a patch release moves the build version's form")
+	ErrNoForm         = errors.New("no BuildVersionForm constant")
 )
+
+// FormSource is the file that declares the build version's form.
+const FormSource = "ir/buildversion.go"
+
+var formConst = regexp.MustCompile(`(?m)^const BuildVersionForm = ([0-9]+)$`)
+
+// ParseBuildVersionForm reads `const BuildVersionForm = N` out of the source
+// of FormSource.
+func ParseBuildVersionForm(src string) (int, error) {
+	m := formConst.FindAllStringSubmatch(src, -1)
+	if len(m) != 1 {
+		return 0, fmt.Errorf("%w: %d declarations in %s", ErrNoForm, len(m), FormSource)
+	}
+	n, err := strconv.Atoi(m[0][1])
+	if err != nil {
+		return 0, fmt.Errorf("%w: %w", ErrNoForm, err)
+	}
+	return n, nil
+}
+
+// FormGate is the build version's release policy (docs/VERSIONING.md, "The
+// release policy"): no patch release moves the form. A minor may, only
+// together with the wire and announced first, which no tool can read; a major
+// may. So the gate refuses exactly a patch release, one with the newest
+// release's major and minor, whose form differs from that release's.
+func FormGate(newest, next Version, newestForm, nextForm int) error {
+	if next.Major == newest.Major && next.Minor == newest.Minor && nextForm != newestForm {
+		return fmt.Errorf("%w: %s is a patch release over %s, and the form moves from %d to %d; release it as a minor, announced with the wire, or a major",
+			ErrFormMoved, next, newest, newestForm, nextForm)
+	}
+	return nil
+}
 
 // PromotionPrefix begins every promotion tag.
 const PromotionPrefix = "main-"
@@ -220,6 +257,22 @@ func Release(g Git, version, rev, mainRef string, push bool, out io.Writer) erro
 	tag, err := ReleaseTag(version, sha, fields(tags), fields(ancestry))
 	if err != nil {
 		return err
+	}
+	if newest, ok := NewestRelease(fields(tags)); ok {
+		next, _ := ParseVersion(tag)
+		forms := [2]int{}
+		for i, rev := range []string{newest.String(), sha} {
+			src, err := g.Run("show", rev+":"+FormSource)
+			if err != nil {
+				return err
+			}
+			if forms[i], err = ParseBuildVersionForm(src); err != nil {
+				return fmt.Errorf("%s: %w", rev, err)
+			}
+		}
+		if err := FormGate(newest, next, forms[0], forms[1]); err != nil {
+			return err
+		}
 	}
 	if !push {
 		_, _ = fmt.Fprintf(out, "release: would tag %s %s (dry run; PUSH=1 to tag and push)\n", tag, sha)

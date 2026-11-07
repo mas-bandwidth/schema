@@ -73,13 +73,13 @@ func cppRunUnit(t *testing.T, schema, pkg, body string, includes []string) ([]by
 	if err := os.WriteFile(filepath.Join(dir, base), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// THE NIL-LOCK SIBLING CONVENTION reads a VOLD_ peer off the sibling path
+	// THE NIL-LOCK SIBLING CONVENTION reads a VOLD_ endpoint off the sibling path
 	// (docs/FIXED-FORM-ALGORITHM.md §5.8 row 1's interim), so a VNEW_ side is
-	// copied beside its peer exactly as the driver merges the two.
+	// copied beside its endpoint exactly as the driver merges the two.
 	if after, ok := strings.CutPrefix(base, "VNEW_"); ok {
-		peer := filepath.Join(filepath.Dir(schema), "VOLD_"+after)
-		if pd, err := os.ReadFile(peer); err == nil {
-			if err := os.WriteFile(filepath.Join(dir, filepath.Base(peer)), pd, 0o644); err != nil {
+		endpoint := filepath.Join(filepath.Dir(schema), "VOLD_"+after)
+		if pd, err := os.ReadFile(endpoint); err == nil {
+			if err := os.WriteFile(filepath.Join(dir, filepath.Base(endpoint)), pd, 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}

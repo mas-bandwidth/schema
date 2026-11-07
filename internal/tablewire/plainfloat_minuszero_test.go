@@ -22,7 +22,7 @@ const plainMinusZeroSchema = `package pmz
 
 enum Level { Low, High }
 
-table Z
+fixed table Z
 {
     x float32
     y float64

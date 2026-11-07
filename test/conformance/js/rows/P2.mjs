@@ -78,18 +78,18 @@ function putText(buf, str) {
 function makeValues() {
   const full = new Chain();
   InitChain(full);
-  putText(full.Name, "write-read-write"); // 16 bytes, the bound exactly
-  full.NameLength = 16;
-  full.Link.Value = 7;
-  putText(full.Link.Tag, "p2-row");
-  full.Link.TagLength = 6;
+  putText(full.name, "write-read-write"); // 16 bytes, the bound exactly
+  full.nameLength = 16;
+  full.link.value = 7;
+  putText(full.link.tag, "p2-row");
+  full.link.tagLength = 6;
 
   const short = new Chain();
   InitChain(short);
-  putText(short.Name, "p2");
-  short.NameLength = 2;
-  short.Link.Value = 0; // the declared default
-  short.Link.TagLength = 0;
+  putText(short.name, "p2");
+  short.nameLength = 2;
+  short.link.value = 0; // the declared default
+  short.link.tagLength = 0;
 
   return [full, short];
 }
@@ -126,17 +126,17 @@ const first = write(written);
 const back = read(first, written.length);
 
 // Verify the values moved correctly.
-check(back[0].NameLength === 16, "record 0 NameLength = 16");
-check(back[0].Link.Value === 7, "record 0 Link.Value did not move");
-check(back[0].Link.TagLength === 6, "record 0 Link.TagLength = 6");
-check(back[1].NameLength === 2, "record 1 NameLength = 2");
-check(back[1].Link.Value === 0, "record 1 Link.Value = default 0");
-check(back[1].Link.TagLength === 0, "record 1 Link.TagLength = 0 (empty tag)");
+check(back[0].nameLength === 16, "record 0 NameLength = 16");
+check(back[0].link.value === 7, "record 0 Link.Value did not move");
+check(back[0].link.tagLength === 6, "record 0 Link.TagLength = 6");
+check(back[1].nameLength === 2, "record 1 NameLength = 2");
+check(back[1].link.value === 0, "record 1 Link.Value = default 0");
+check(back[1].link.tagLength === 0, "record 1 Link.TagLength = 0 (empty tag)");
 
 // Slack behind a short name must be zero (the template's zeros).
 let slackZero = true;
-for (let i = back[1].NameLength; i < back[1].Name.length; i++) {
-  if (back[1].Name[i] !== 0) { slackZero = false; break; }
+for (let i = back[1].nameLength; i < back[1].name.length; i++) {
+  if (back[1].name[i] !== 0) { slackZero = false; break; }
 }
 check(slackZero, "record 1: slack bytes behind Name are zero");
 

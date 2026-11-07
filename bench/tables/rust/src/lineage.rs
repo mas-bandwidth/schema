@@ -83,12 +83,13 @@ const NAME: &str = "bench_plan_read";
 // record cannot hold), and an OLD writer cannot have written an ordinal it
 // never declared — the VOLD reader's bounds pass clamps every one (gate 4).
 // So an ordinal past the OLD variant count is folded back onto the OLD
-// variants, deterministically and never onto None: `((v - 1) mod COUNT) + 1`.
+// variants, deterministically and never onto None: `((v - 1) mod MAX) + 1`
+// (the OLD enum declares no headroom, so its MAX is its variant count).
 // The fold changes no width and no class; the reader's answer for that slot
 // is the OLD value, and the gate's expectation (expected) carries the same
 // fold. The gate prints how many ordinals it moved.
 fn old_ordinal(v: u8) -> u8 {
-    let count = old::MixedWeapon::COUNT.0;
+    let count = old::MixedWeapon::MAX.0;
     if v > count { (v - 1) % count + 1 } else { v }
 }
 

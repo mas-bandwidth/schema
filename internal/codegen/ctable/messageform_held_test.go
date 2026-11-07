@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
@@ -43,12 +44,17 @@ fixed table Root {
 		{"damage_inside_body", cMsgDamageInsideBodyProbe},
 		{"bytes_after_pad", cMsgBytesAfterPadProbe},
 		{"form_byte", cMsgFormByteProbe},
+		{"skip_depth_above_128", cMsgSkipDepthProbe},
 	}
 	cMessageManifestRows(t)
 	for _, clause := range clauses {
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
-			runCGenerated(t, schema, clause.probe)
+			if clause.name == "skip_depth_above_128" {
+				runCGenerated(t, schema, clause.probe, "-fsanitize=address,undefined", "-fno-omit-frame-pointer")
+			} else {
+				runCGenerated(t, schema, clause.probe)
+			}
 		})
 	}
 }
@@ -62,7 +68,7 @@ const cMsgShared = `
 #define CHECK(x) do { if(!(x)){ fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
 `
 
-// "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+// "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
 // decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3).
 const cMsgNoVocabularyProbe = cMsgShared + `
 int main(void)
@@ -73,7 +79,7 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
     CHECK(count == 0);
     CHECK(report.refused && !report.malformed && report.reason == SCHEMA_TABLE_NO_VOCABULARY);
     return 0;
@@ -115,7 +121,7 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport body; memset(&body, 0, sizeof(body));
-    CHECK(!root_load_messages(storage, &count, &w, wire, (int64_t)sizeof(wire), &body));
+    CHECK(!root_load_messages_tolerant(storage, &count, &w, wire, (int64_t)sizeof(wire), &body));
     CHECK(count == 0 && body.reason == SCHEMA_TABLE_NO_VOCABULARY);
     return 0;
 }
@@ -253,16 +259,16 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
     CHECK(count == 2 && report.refused && !report.malformed && report.reason == SCHEMA_TABLE_BATCH_TOO_LARGE);
     CHECK(storage[0].a == 0 && storage[0].b == 0 && storage[0].c == 0);
     return 0;
 }
 `
 
-// "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
-// states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
-// read." (docs/SPEC-TABLES.md §3.3).
+// "DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH" (docs/SPEC-TABLES.md
+// §3.3, §4): no body is delivered, the returned count is 0, every body's
+// storage is at its declared defaults, and the report says malformed.
 const cMsgDamageInsideBodyProbe = cMsgShared + `
 int main(void)
 {
@@ -278,11 +284,12 @@ int main(void)
        nibble and body 2's high nibble. */
     uint8_t wire[] = { 2, 2, 0xF0 };
     Root storage[3]; int i;
-    for(i = 0; i < 3; i++) root_reset(storage + i);
+    for(i = 0; i < 3; i++) { root_reset(storage + i); storage[i].a = 7; }
     int64_t count = 3;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
-    CHECK(count == 1);
+    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(count == 0);
+    for(i = 0; i < 3; i++) CHECK(storage[i].a == 0);
     CHECK(report.malformed && !report.refused);
     return 0;
 }
@@ -301,11 +308,11 @@ int main(void)
     TableReport ar; memset(&ar, 0, sizeof(ar));
     CHECK(announce_read(&v, ann, (int64_t)sizeof(ann), &ar));
     uint8_t wire[] = { 2, 0, 0, 0 }; /* a valid one-body batch, one byte over */
-    Root storage[1]; root_reset(storage);
+    Root storage[1]; root_reset(storage); storage[0].a = 7;
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
-    CHECK(count == 1 && report.malformed && !report.refused);
+    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(count == 0 && storage[0].a == 0 && report.malformed && !report.refused);
     return 0;
 }
 `
@@ -327,7 +334,7 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages(storage, &count, &v, form1, (int64_t)sizeof(form1), &report));
+    CHECK(!root_load_messages_tolerant(storage, &count, &v, form1, (int64_t)sizeof(form1), &report));
     CHECK(count == 0 && report.refused && !report.malformed && report.reason == SCHEMA_TABLE_NEWER_FORM);
     /* a form-2 batch handed to the FILE reader -- the announcement's form-1
        reader -- refuses by name and moves no counter. */
@@ -337,6 +344,142 @@ int main(void)
     TableReport r2; memset(&r2, 0, sizeof(r2));
     CHECK(!announce_read(&w, form2, (int64_t)sizeof(form2), &r2));
     CHECK(r2.refused && !r2.malformed && r2.reason == SCHEMA_TABLE_MESSAGE_FORM_AS_FILE);
+    return 0;
+}
+`
+
+// cMsgSkipDepthProbe is the message_skip_depth boundary (docs/SPEC-TABLES.md,
+// limit value 128). A nested body, a union arm and a walked array element are
+// accepted at 128 and at 127, and a complete zero-padded batch whose only fault
+// is depth 129 is malformed. Verdicts are the spec's, not this emitter's.
+// Truncation drops the root terminator of the at-limit body; 16 + 256 bits is
+// a whole number of bytes, so a pad bit cannot stand in for that terminator.
+const cMsgSkipDepthProbe = cMsgShared + `
+static void fill_entry(TableMessageEntry * e, uint8_t kind)
+{
+    memset(e, 0, sizeof(*e));
+    e->value_bits = e->elem_value_bits = -1;
+    e->id = 1;
+    e->kind = kind;
+}
+static TableVocabulary vocab_of(TableMessageEntry * entries, int64_t count, int64_t bits)
+{
+    TableVocabulary v = table_vocabulary(entries, count);
+    v.count = count;
+    v.ref_bits = bits;
+    v.announced = 1;
+    return v;
+}
+static int64_t pack_refs(uint8_t * buf, int cap, int width, int nlead, uint64_t lead, int nmid, uint64_t mid, int ntail)
+{
+    int at = 16, i, b, n;
+    if (cap < 2) return -1;
+    memset(buf, 0, (size_t)cap);
+    buf[0] = 2;
+    buf[1] = 0;
+    n = nlead + nmid + ntail;
+    for (i = 0; i < n; i++) {
+        uint64_t ref = i < nlead ? lead : (i < nlead + nmid ? mid : 0);
+        for (b = 0; b < width; b++) {
+            if ((at >> 3) >= cap) return -1;
+            if ((ref >> b) & 1) buf[at >> 3] |= (uint8_t)(1u << (at & 7));
+            at++;
+        }
+    }
+    return (int64_t)(at + 7) / 8;
+}
+static int load_one(const TableVocabulary * v, const uint8_t * buf, int64_t n, Root * storage, int64_t * count, TableReport * report)
+{
+    root_reset(storage);
+    *count = 1;
+    memset(report, 0, sizeof(*report));
+    return root_load_messages_tolerant(storage, count, v, buf, n, report);
+}
+static int expect_ok(const char * row, const TableVocabulary * v, const uint8_t * buf, int64_t n)
+{
+    Root storage; int64_t count; TableReport report; int ok;
+    ok = load_one(v, buf, n, &storage, &count, &report);
+    if (!(ok && !report.malformed && report.unknown == 1 && storage.a == 0 && count == 1)) {
+        fprintf(stderr, "%s: ok=%d malformed=%d unknown=%d a=%d count=%lld\n",
+            row, ok, report.malformed, (int)report.unknown, (int)storage.a, (long long)count);
+        return 1;
+    }
+    return 0;
+}
+static int expect_bad(const char * row, const TableVocabulary * v, const uint8_t * buf, int64_t n)
+{
+    Root storage; int64_t count; TableReport report; int ok;
+    ok = load_one(v, buf, n, &storage, &count, &report);
+    if (!(!ok && report.malformed && count == 0)) {
+        fprintf(stderr, "%s: ok=%d malformed=%d count=%lld\n", row, ok, report.malformed, (long long)count);
+        return 1;
+    }
+    return 0;
+}
+int main(void)
+{
+    uint8_t buf[128];
+    int64_t n;
+    TableMessageEntry body, arm, arr[2], keyed6[2], keyed32[2], keyed13[2];
+    TableVocabulary body_v, arm_v, arr_v, keyed6_v, keyed32_v, keyed13_v;
+    fill_entry(&body, 13);
+    body_v = vocab_of(&body, 1, 1);
+    fill_entry(&arm, 15);
+    arm_v = vocab_of(&arm, 1, 1);
+    fill_entry(&arr[0], 13);
+    fill_entry(&arr[1], 14);
+    arr[1].id = 2;
+    arr[1].min = 1;
+    arr[1].max = 1;
+    arr[1].elem_kind = 13;
+    arr_v = vocab_of(arr, 2, 2);
+    fill_entry(&keyed6[0], 13);
+    fill_entry(&keyed6[1], 16);
+    keyed6[1].id = 2;
+    keyed6[1].max = 3;
+    keyed6[1].elem_kind = 6;
+    keyed6[1].elem_value_bits = 8;
+    keyed6_v = vocab_of(keyed6, 2, 2);
+    fill_entry(&keyed32[0], 13);
+    fill_entry(&keyed32[1], 16);
+    keyed32[1].id = 2;
+    keyed32[1].max = 3;
+    keyed32[1].elem_kind = 32;
+    keyed32_v = vocab_of(keyed32, 2, 2);
+    fill_entry(&keyed13[0], 13);
+    fill_entry(&keyed13[1], 16);
+    keyed13[1].id = 2;
+    keyed13[1].max = 3;
+    keyed13[1].elem_kind = 13;
+    keyed13_v = vocab_of(keyed13, 2, 2);
+    n = pack_refs(buf, 128, 1, 127, 1, 0, 0, 128);
+    if (n < 0 || expect_ok("skip_depth_body_below_128", &body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 129);
+    if (n < 0 || expect_ok("skip_depth_body_at_128", &body_v, buf, n)) return 1;
+    if (expect_ok("skip_depth_continuation", &body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 128);
+    if (n < 0 || n * 8 != 16 + 256) { fprintf(stderr, "skip_depth_truncation alignment\n"); return 1; }
+    if (expect_bad("skip_depth_truncation", &body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 129, 1, 0, 0, 130);
+    if (n < 0 || expect_bad("skip_depth_above_128 body", &body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 2);
+    if (n < 0 || expect_ok("skip_depth_union_below_128", &arm_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 129, 1, 0, 0, 2);
+    if (n < 0 || expect_ok("skip_depth_union_at_128", &arm_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 130, 1, 0, 0, 2);
+    if (n < 0 || expect_bad("skip_depth_above_128 union", &arm_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 125, 1, 1, 2, 127);
+    if (n < 0 || expect_ok("skip_depth_array_below_128", &arr_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 126, 1, 1, 2, 128);
+    if (n < 0 || expect_ok("skip_depth_array_at_128", &arr_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 127, 1, 1, 2, 129);
+    if (n < 0 || expect_bad("skip_depth_above_128 array", &arr_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 139);
+    if (n < 0 || expect_ok("skip_depth_keyed_fixed_at_128", &keyed6_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 131);
+    if (n < 0 || expect_ok("skip_depth_keyed_nopayload_at_128", &keyed32_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 127, 1, 2, 2, 132);
+    if (n < 0 || expect_bad("skip_depth_above_128 keyed", &keyed13_v, buf, n)) return 1;
     return 0;
 }
 `
@@ -352,6 +495,11 @@ func cMessageManifestRows(t *testing.T) {
 	}
 	units, connections := map[string]string{}, map[string][]string{}
 	var rows [][]string
+	// ONE COMPILE PER UNIT, shared by every row of that unit: the 18 rows name
+	// five units, and each row used to regenerate and recompile its unit's
+	// whole C surface beside a three-line main. The unit's objects are built
+	// once, on first use, and each row compiles only its own main against them.
+	builds := newCMessageUnitBuilds(t)
 	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
@@ -418,6 +566,14 @@ func cMessageManifestRows(t *testing.T) {
 			if row[0] == "connection" {
 				// "The announcement is a compile-time constant byte array with a length." (§3.3)
 				source += "int main(void){uint8_t out[sizeof(expected)];return announce(out,sizeof(out))!=sizeof(expected)||memcmp(out,expected,sizeof(out));}\n"
+			} else if row[5] == "-" {
+				// a NAMED REFUSAL row: its root must be a variable table, which
+				// carries no message form (docs/SPEC-TABLES.md §3.3); that no
+				// backend emits one is compiler/messageformlock_test.go's
+				if st := unit.Tables[row[3]]; st == nil || st.FixedDeclared {
+					t.Fatalf("message row %s is a refusal row over %s, which is not a variable table", row[1], row[3])
+				}
+				return
 			} else {
 				wire, err := os.ReadFile(filepath.Join(root, row[5]))
 				if err != nil {
@@ -436,15 +592,16 @@ func cMessageManifestRows(t *testing.T) {
 					}
 				}
 				source += "int main(void){TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};int64_t count=1;uint8_t out[sizeof(wire)];if(!announce_read(&v,expected,sizeof(expected),&report))return 1;"
-				if row[1] == "graph_tree" {
-					source += fmt.Sprintf("const %s * values[1]={0};int64_t need=%s_load_measure_messages(&v,wire,sizeof(wire));if(need<0)return 2;uint8_t * region=malloc((size_t)need);if(!region)return 3;if(!%s_load_messages(values,&count,region,need,&v,wire,sizeof(wire),&report))return 4;", row[3], fn, fn)
-				} else {
-					source += fmt.Sprintf("%s values[1];if(!%s_load_messages(values,&count,&v,wire,sizeof(wire),&report))return 4;", row[3], fn)
+				// Only a fixed table rides the message form (§3.3): a row whose
+				// root is a variable table names a codec C does not emit.
+				if st := unit.Tables[row[3]]; st == nil || !st.FixedDeclared {
+					t.Fatalf("message row %s: %s is not a fixed table, and the message form is fixed tables only", row[1], row[3])
 				}
+				source += fmt.Sprintf("%s values[1];if(!%s_load_messages_tolerant(values,&count,&v,wire,sizeof(wire),&report))return 4;", row[3], fn)
 				// "A batch of bodies is the unit this form reads and writes." (§3.3)
 				source += fmt.Sprintf("if(count!=1||%s_measure_messages(values,count,&report)!=sizeof(wire)||%s_save_messages(values,count,out,sizeof(out),&report)!=sizeof(wire))return 5;return memcmp(out,wire,sizeof(wire));}\n", fn, fn)
 			}
-			runCMessageUnit(t, unit, source)
+			runCMessageUnit(t, builds.of(t, connection[2], unit), source)
 		})
 	}
 }
@@ -458,39 +615,99 @@ func cMessageBytes(data []byte) string {
 	return strings.Join(parts, ",")
 }
 
-// runCMessageUnit executes the generated C announcement and batch surface (§3.3).
-func runCMessageUnit(t *testing.T, u *ir.Unit, source string) {
+// cMessageUnitBuild is one unit's generated C surface, written and compiled
+// to objects once and shared by every manifest row of that unit.
+type cMessageUnitBuild struct {
+	once sync.Once
+	dir  string
+	objs []string
+	err  error
+}
+
+// cMessageUnitBuilds holds the shared builds for one run of the manifest
+// rows, under a directory the parent test removes when every row is done.
+type cMessageUnitBuilds struct {
+	root string
+	mu   sync.Mutex
+	by   map[string]*cMessageUnitBuild
+}
+
+func newCMessageUnitBuilds(t *testing.T) *cMessageUnitBuilds {
+	t.Helper()
+	// the parent's TempDir outlives its parallel subtests: they run before
+	// the parent's cleanups do
+	return &cMessageUnitBuilds{root: t.TempDir(), by: map[string]*cMessageUnitBuild{}}
+}
+
+// of returns the unit's shared build, compiling it on first use.
+func (b *cMessageUnitBuilds) of(t *testing.T, name string, u *ir.Unit) *cMessageUnitBuild {
+	t.Helper()
+	b.mu.Lock()
+	build, ok := b.by[name]
+	if !ok {
+		build = &cMessageUnitBuild{dir: filepath.Join(b.root, name)}
+		b.by[name] = build
+	}
+	b.mu.Unlock()
+	build.once.Do(func() { build.err = build.compile(u) })
+	if build.err != nil {
+		t.Fatal(build.err)
+	}
+	return build
+}
+
+func (b *cMessageUnitBuild) compile(u *ir.Unit) error {
+	cc, err := exec.LookPath("cc")
+	if err != nil {
+		return fmt.Errorf("C message conformance requires cc")
+	}
+	files, err := cgen.Generate(u)
+	if err != nil {
+		return err
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		return err
+	}
+	maps.Copy(files, tables)
+	if err := os.MkdirAll(b.dir, 0o700); err != nil {
+		return err
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(b.dir, name), data, 0600); err != nil {
+			return err
+		}
+	}
+	for name := range files {
+		if !strings.HasSuffix(name, ".c") {
+			continue
+		}
+		obj := filepath.Join(b.dir, strings.TrimSuffix(name, ".c")+".o")
+		args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", b.dir, "-c", filepath.Join(b.dir, name), "-o", obj}
+		if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("compile %s: %w\n%s", name, err, out)
+		}
+		b.objs = append(b.objs, obj)
+	}
+	return nil
+}
+
+// runCMessageUnit executes the generated C announcement and batch surface
+// (§3.3): the row's own main, compiled against its unit's shared objects.
+func runCMessageUnit(t *testing.T, build *cMessageUnitBuild, source string) {
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Fatal("C message conformance requires cc")
 	}
-	files, err := cgen.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tables, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	maps.Copy(files, tables)
 	dir := t.TempDir()
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
 	main := filepath.Join(dir, "main.c")
 	if err := os.WriteFile(main, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", dir, main}
-	for name := range files {
-		if strings.HasSuffix(name, ".c") {
-			args = append(args, filepath.Join(dir, name))
-		}
-	}
 	binary := filepath.Join(dir, "probe")
+	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", build.dir, main}
+	args = append(args, build.objs...)
 	args = append(args, "-lm", "-o", binary)
 	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)

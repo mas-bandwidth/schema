@@ -249,6 +249,10 @@ func retainBinary(t *testing.T, schemaPath, probe string) string {
 			t.Fatal(err)
 		}
 	}
+	// the table enums live once per crate (table_enums.rs); empty when none
+	if err := os.WriteFile(filepath.Join(root, "table_enums.rs"), modules["table_enums.rs"], 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -273,9 +277,12 @@ func testdataCards(t *testing.T, name string) string {
 
 const retainProducerProbe = `
 mod variable_runtime;
+mod table_enums;
 mod probe_table;
 use probe_table::*;
 use variable_runtime::*;
+#[allow(unused_imports)]
+use table_enums::*;
 
 fn main() {
     let path = std::env::args().nth(1).unwrap();
@@ -291,9 +298,12 @@ fn main() {
 // would otherwise drown out (docs/SPEC-TABLES.md §6.6).
 const retainEnumProducerProbe = `
 mod variable_runtime;
+mod table_enums;
 mod probe_table;
 use probe_table::*;
 use variable_runtime::*;
+#[allow(unused_imports)]
+use table_enums::*;
 
 fn main() {
     let path = std::env::args().nth(1).unwrap();
@@ -306,9 +316,12 @@ fn main() {
 
 const retainRoundTripProbe = `
 mod variable_runtime;
+mod table_enums;
 mod probe_table;
 use probe_table::*;
 use variable_runtime::*;
+#[allow(unused_imports)]
+use table_enums::*;
 
 fn main() {
     let wire_path = std::env::args().nth(1).unwrap();
@@ -328,9 +341,12 @@ fn main() {
 
 const retainVerifyProbe = `
 mod variable_runtime;
+mod table_enums;
 mod probe_table;
 use probe_table::*;
 use variable_runtime::*;
+#[allow(unused_imports)]
+use table_enums::*;
 
 fn main() {
     let path = std::env::args().nth(1).unwrap();

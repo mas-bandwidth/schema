@@ -41,7 +41,7 @@ __attribute__(( noinline ))
 #endif
 static void copy_run( uint8_t * d, const uint8_t * s, uint32_t n )
 {
-    table_fixed_copy_run( d, s, n );
+    scalardemo_table_fixed_copy_run( d, s, n );
 }
 
 int main( void )

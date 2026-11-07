@@ -6,7 +6,7 @@
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
-// write/read/measure functions per type, zero runtime dependencies.
+// write/read functions per type, zero runtime dependencies.
 //
 // write<Name>(value, view) -> bytes written. The writer TRUSTS the caller
 // (the C++ stance): contracts are asserted — active under --enable-asserts,
@@ -19,119 +19,13 @@
 // tags — and NEVER throw on hostile bytes. No slack past the payload is
 // required: the reader prices its 64-bit windows inside the buffer.
 //
-// measure<Name>(value) -> exact wire bits for that value (trusted, like
-// the writer). zero<Name>(value) -> the §5 zero form.
+// zero<Name>(value) -> the §5 zero form. There is no measure function
+// (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.
 
 import 'dart:typed_data';
 
 import 'Int128.dart' show Int128, UInt128;
-
-// Malformed UTF-8 fails the read in every build mode (SPEC §4.7).
-bool _schemaUtf8Valid(Uint8List bytes, int length) {
-  var index = 0;
-  while (index < length) {
-    final lead = bytes[index++];
-    if (lead < 0x80) continue;
-    int remaining, point;
-    if ((lead & 0xE0) == 0xC0) {
-      remaining = 1;
-      point = lead & 0x1F;
-    } else if ((lead & 0xF0) == 0xE0) {
-      remaining = 2;
-      point = lead & 0x0F;
-    } else if ((lead & 0xF8) == 0xF0) {
-      remaining = 3;
-      point = lead & 0x07;
-    } else {
-      return false;
-    }
-    if (remaining > length - index) return false;
-    for (var part = 0; part < remaining; part++) {
-      final byte = bytes[index++];
-      if ((byte & 0xC0) != 0x80) return false;
-      point = (point << 6) | (byte & 0x3F);
-    }
-    if (remaining == 1 && point < 0x80) return false;
-    if (remaining == 2 &&
-        (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) {
-      return false;
-    }
-    if (remaining == 3 && (point < 0x10000 || point > 0x10FFFF)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// One 8-byte conversion scratch under overlaid typed-data views — single
-// threaded per isolate, always consumed in the same operation that fills it.
-final Float32List _f32 = Float32List(2);
-final Uint32List _u32 = _f32.buffer.asUint32List();
-final Float64List _f64 = _f32.buffer.asFloat64List();
-final Uint64List _u64 = _f32.buffer.asUint64List();
-
-// value rounded to the nearest float32, as a double: the float32 rounding
-// boundary the compressed-float arithmetic is pinned to (SPEC §4.3).
-@pragma('vm:prefer-inline')
-double _fround(double value) {
-  _f32[0] = value;
-  return _f32[0];
-}
-
-// The 32 bits of the IEEE-754 single representation of value. Non-NaN goes
-// through the hardware conversion; a NaN narrows in software — sign kept,
-// top 23 mantissa bits kept, the quiet bit forced only for the all-low-
-// payload case — so every pattern the read half produces round trips.
-@pragma('vm:prefer-inline')
-int _float32BitsFromDouble(double value) {
-  if (!value.isNaN) {
-    _f32[0] = value;
-    return _u32[0];
-  }
-  _f64[0] = value;
-  final bits64 = _u64[0];
-  final sign = (bits64 >>> 63) << 31;
-  var mantissa = (bits64 >>> 29) & 0x7fffff;
-  if (mantissa == 0) {
-    mantissa = 0x400000;
-  }
-  return sign | 0x7f800000 | mantissa;
-}
-
-// The double whose IEEE-754 single representation is bits. NaN patterns
-// widen in software (the hardware conversion quiets a signaling NaN); the
-// reader reproduces the transmitted pattern exactly.
-@pragma('vm:prefer-inline')
-double _doubleFromFloat32Bits(int bits) {
-  if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-    _u64[0] =
-        ((bits >>> 31) << 63) | 0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
-    return _f64[0];
-  }
-  _u32[0] = bits;
-  return _f32[0];
-}
-
-// The 64 bits of the IEEE-754 double representation of value — exactly the
-// bits of the Dart double — and the inverse.
-@pragma('vm:prefer-inline')
-int _float64BitsFromDouble(double value) {
-  _f64[0] = value;
-  return _u64[0];
-}
-
-@pragma('vm:prefer-inline')
-double _doubleFromFloat64Bits(int bits) {
-  _u64[0] = bits;
-  return _f64[0];
-}
-
-// Hex of a uint64 bit pattern held in a signed int (toRadixString would
-// render the sign, not the pattern).
-String _hex64(int value) => value < 0
-    ? (value >>> 32).toRadixString(16) +
-          (value & 0xffffffff).toRadixString(16).padLeft(8, '0')
-    : value.toRadixString(16);
+import 'Schema.dart' show Schema;
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
@@ -212,20 +106,14 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
   assert(value.c <= 1000000);
   v =
       ((value.a + 100) & 0xff) |
-      (((value.b) & 0xffff) << 8) |
+      ((value.b & 0xffff) << 8) |
       (((value.c + 1000000) & 0x1fffff) << 24) |
-      (((value.bits7) & 0x7f) << 45);
+      ((value.bits7 & 0x7f) << 45);
   scratch |= v << scratchBits;
   scratchBits += 52;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (52 - scratchBits);
-  }
   v =
-      ((value.bits13) & 0x1fff) |
-      (((value.bits23) & 0x7fffff) << 13) |
+      (value.bits13 & 0x1fff) |
+      ((value.bits23 & 0x7fffff) << 13) |
       ((value.flag ? 1 : 0) << 36);
   scratch |= v << scratchBits;
   scratchBits += 37;
@@ -235,16 +123,9 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (37 - scratchBits);
   }
-  v = _float32BitsFromDouble(value.x) | (_float32BitsFromDouble(value.y) << 32);
-  scratch |= v << scratchBits;
-  scratchBits += 64;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (64 - scratchBits);
-  }
-  v = _float32BitsFromDouble(value.z);
+  Schema.f32[0] = value.x;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -253,7 +134,29 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
-  v = (value.big);
+  Schema.f32[0] = value.y;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  Schema.f32[0] = value.z;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = value.big;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -377,7 +280,11 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.x = _doubleFromFloat32Bits(v);
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  Schema.u32[0] = v;
+  value.x = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -385,7 +292,11 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.y = _doubleFromFloat32Bits(v);
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  Schema.u32[0] = v;
+  value.y = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -393,7 +304,11 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.z = _doubleFromFloat32Bits(v);
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  Schema.u32[0] = v;
+  value.z = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -437,16 +352,6 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
     value.blob[i0] = v;
   }
   return true;
-}
-
-// measureBenchPacket is the exact wire bits writeBenchPacket would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureBenchPacket(BenchPacket value) {
-  var bits = 0;
-  bits += 249;
-  bits += (8 - (bits & 7)) & 7;
-  bits += 136;
-  return bits;
 }
 
 // type BenchInts
@@ -533,19 +438,13 @@ int writeBenchInts(BenchInts value, ByteData view) {
   assert(value.f6 <= 2047);
   v =
       ((value.f0 + 100) & 0xff) |
-      (((value.f1) & 0xffff) << 8) |
+      ((value.f1 & 0xffff) << 8) |
       (((value.f2 + 1000000) & 0x1fffff) << 24) |
-      (((value.f3) & 0x3) << 45) |
+      ((value.f3 & 0x3) << 45) |
       (((value.f4 + 15) & 0x1f) << 47) |
-      (((value.f5) & 0x3ff) << 52);
+      ((value.f5 & 0x3ff) << 52);
   scratch |= v << scratchBits;
   scratchBits += 62;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (62 - scratchBits);
-  }
   assert(value.f7 >= 0);
   assert(value.f7 <= 255);
   assert(value.f8 >= -600000);
@@ -554,9 +453,9 @@ int writeBenchInts(BenchInts value, ByteData view) {
   assert(value.f9 <= 100);
   v =
       ((value.f6 + 2048) & 0xfff) |
-      (((value.f7) & 0xff) << 12) |
+      ((value.f7 & 0xff) << 12) |
       (((value.f8 + 600000) & 0x1fffff) << 20) |
-      (((value.f9) & 0x7f) << 41);
+      ((value.f9 & 0x7f) << 41);
   scratch |= v << scratchBits;
   scratchBits += 48;
   if (scratchBits >= 64) {
@@ -662,10 +561,6 @@ bool readBenchInts(BenchInts value, ByteData view, int numBits) {
   return true;
 }
 
-// measureBenchInts is the exact wire bits writeBenchInts would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureBenchInts(BenchInts value) => 110;
-
 // type BenchBits
 final class BenchBits {
   int b7 = 0;
@@ -719,22 +614,16 @@ int writeBenchBits(BenchBits value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   v =
-      ((value.b7) & 0x7f) |
-      (((value.b13) & 0x1fff) << 7) |
-      (((value.b23) & 0x7fffff) << 20) |
-      (((value.b3) & 0x7) << 43);
+      (value.b7 & 0x7f) |
+      ((value.b13 & 0x1fff) << 7) |
+      ((value.b23 & 0x7fffff) << 20) |
+      ((value.b3 & 0x7) << 43);
   scratch |= v << scratchBits;
   scratchBits += 46;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (46 - scratchBits);
-  }
   v =
-      ((value.b32) & 0xffffffff) |
-      (((value.b11) & 0x7ff) << 32) |
-      (((value.b19) & 0x7ffff) << 43);
+      (value.b32 & 0xffffffff) |
+      ((value.b11 & 0x7ff) << 32) |
+      ((value.b19 & 0x7ffff) << 43);
   scratch |= v << scratchBits;
   scratchBits += 62;
   if (scratchBits >= 64) {
@@ -743,7 +632,7 @@ int writeBenchBits(BenchBits value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (62 - scratchBits);
   }
-  v = ((value.b48) & 0xffffffffffff);
+  v = value.b48 & 0xffffffffffff;
   scratch |= v << scratchBits;
   scratchBits += 48;
   if (scratchBits >= 64) {
@@ -831,32 +720,27 @@ bool readBenchBits(BenchBits value, ByteData view, int numBits) {
   return true;
 }
 
-// measureBenchBits is the exact wire bits writeBenchBits would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureBenchBits(BenchBits value) => 156;
-
 // MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
-// an int-constant namespace — the Dart translation of the family's integer-
-// backed enums: storage must hold every wire-legal value, and | max = ...
-// headroom values have no Dart enum member to be
-abstract final class MixedWeapon {
-  static const int none = 0;
-  static const int fists = 1;
-  static const int pistol = 2;
-  static const int shotgun = 3;
-  static const int rifle = 4;
-  static const int sniper = 5;
-  static const int smg = 6;
-  static const int rocket = 7;
-  static const int grenade = 8;
-  static const int plasma = 9;
-  static const int railgun = 10;
-  static const int flamer = 11;
-  static const int mine = 12;
-  static const int turret = 13;
-  static const int drone = 14;
-  static const int repair = 15;
-  static const int count = 15; // the declared variant count (SPEC §4.2)
+// an extension type over int — the Dart translation of the family's
+// integer-backed enums: storage holds every wire-legal value, | max = ...
+// headroom included (MixedWeapon(n)), at no runtime cost over a bare int
+extension type const MixedWeapon(int _value) implements int {
+  static const MixedWeapon none = MixedWeapon(0);
+  static const MixedWeapon fists = MixedWeapon(1);
+  static const MixedWeapon pistol = MixedWeapon(2);
+  static const MixedWeapon shotgun = MixedWeapon(3);
+  static const MixedWeapon rifle = MixedWeapon(4);
+  static const MixedWeapon sniper = MixedWeapon(5);
+  static const MixedWeapon smg = MixedWeapon(6);
+  static const MixedWeapon rocket = MixedWeapon(7);
+  static const MixedWeapon grenade = MixedWeapon(8);
+  static const MixedWeapon plasma = MixedWeapon(9);
+  static const MixedWeapon railgun = MixedWeapon(10);
+  static const MixedWeapon flamer = MixedWeapon(11);
+  static const MixedWeapon mine = MixedWeapon(12);
+  static const MixedWeapon turret = MixedWeapon(13);
+  static const MixedWeapon drone = MixedWeapon(14);
+  static const MixedWeapon repair = MixedWeapon(15);
   static const int max = 15; // the exported extent (SPEC §4.2)
 }
 
@@ -969,7 +853,7 @@ String flagNamesMixedDamage(int value) {
     names.add('Downed');
   }
   if (value >>> 8 != 0) {
-    names.add('0x${_hex64((value >>> 8) << 8)}');
+    names.add('0x${Schema.hex64((value >>> 8) << 8)}');
   }
   return names.isEmpty ? '0' : names.join('|');
 }
@@ -993,7 +877,7 @@ final class MixedEntity {
   int velZ = 0;
   // wire [0, 1000]
   int health = 0;
-  int weapon = MixedWeapon.none;
+  MixedWeapon weapon = MixedWeapon.none;
   // MixedDamage — consumed as masks, uint64 storage (SPEC §4.2)
   int damage = 0;
   bool moving = false;
@@ -1018,7 +902,7 @@ void zeroMixedEntity(MixedEntity value) {
   value.velY = 0;
   value.velZ = 0;
   value.health = 0;
-  value.weapon = 0;
+  value.weapon = MixedWeapon.none;
   value.damage = 0;
   value.moving = false;
   value.firing = false;
@@ -1036,7 +920,7 @@ void initMixedEntity(MixedEntity value) {
   value.velY = 0;
   value.velZ = 0;
   value.health = 0;
-  value.weapon = 0;
+  value.weapon = MixedWeapon.none;
   value.damage = 0;
   value.moving = false;
   value.firing = false;
@@ -1059,18 +943,12 @@ int writeMixedEntity(MixedEntity value, ByteData view) {
   assert(value.posZ >= -16383);
   assert(value.posZ <= 16383);
   v =
-      ((value.entityId) & 0xfff) |
+      (value.entityId & 0xfff) |
       (((value.posX + 16383) & 0x7fff) << 12) |
       (((value.posY + 16383) & 0x7fff) << 27) |
       (((value.posZ + 16383) & 0x7fff) << 42);
   scratch |= v << scratchBits;
   scratchBits += 57;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (57 - scratchBits);
-  }
   assert(value.velX >= -2048);
   assert(value.velX <= 2047);
   assert(value.velY >= -2048);
@@ -1082,12 +960,12 @@ int writeMixedEntity(MixedEntity value, ByteData view) {
   assert(value.weapon >= 0);
   assert(value.weapon <= 15);
   v =
-      ((value.yaw) & 0x1ff) |
-      (((value.pitch) & 0x1ff) << 9) |
+      (value.yaw & 0x1ff) |
+      ((value.pitch & 0x1ff) << 9) |
       (((value.velX + 2048) & 0xfff) << 18) |
       (((value.velY + 2048) & 0xfff) << 30) |
       (((value.velZ + 2048) & 0xfff) << 42) |
-      (((value.health) & 0x3ff) << 54);
+      ((value.health & 0x3ff) << 54);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1098,8 +976,8 @@ int writeMixedEntity(MixedEntity value, ByteData view) {
   }
   assert(value.damage >>> 8 == 0);
   v =
-      ((value.weapon) & 0xf) |
-      (((value.damage) & 0xff) << 4) |
+      (value.weapon & 0xf) |
+      ((value.damage & 0xff) << 4) |
       ((value.moving ? 1 : 0) << 12) |
       ((value.firing ? 1 : 0) << 13);
   scratch |= v << scratchBits;
@@ -1200,7 +1078,7 @@ bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
   value.health = v;
   v = (window >>> 10) & 0xf;
   bitsRead += 4;
-  value.weapon = v;
+  value.weapon = MixedWeapon(v);
   v = (window >>> 14) & 0xff;
   bitsRead += 8;
   value.damage = v;
@@ -1212,10 +1090,6 @@ bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
   value.firing = v != 0;
   return true;
 }
-
-// measureMixedEntity is the exact wire bits writeMixedEntity would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureMixedEntity(MixedEntity value) => 135;
 
 // type MixedStat
 final class MixedStat {
@@ -1254,15 +1128,9 @@ int writeMixedStat(MixedStat value, ByteData view) {
   var v = 0;
   assert(value.delta >= -512);
   assert(value.delta <= 511);
-  v = ((value.statId) & 0xff) | (((value.delta + 512) & 0x3ff) << 8);
+  v = (value.statId & 0xff) | (((value.delta + 512) & 0x3ff) << 8);
   scratch |= v << scratchBits;
   scratchBits += 18;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (18 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -1307,10 +1175,6 @@ bool readMixedStat(MixedStat value, ByteData view, int numBits) {
   value.delta = -512 + v;
   return true;
 }
-
-// measureMixedStat is the exact wire bits writeMixedStat would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureMixedStat(MixedStat value) => 18;
 
 // type MixedHitEvent
 final class MixedHitEvent {
@@ -1359,18 +1223,12 @@ int writeMixedHitEvent(MixedHitEvent value, ByteData view) {
   assert(value.hitKind >= 0);
   assert(value.hitKind <= 7);
   v =
-      ((value.targetId) & 0xfff) |
-      (((value.damage) & 0xfff) << 12) |
-      (((value.hitKind) & 0x7) << 24) |
+      (value.targetId & 0xfff) |
+      ((value.damage & 0xfff) << 12) |
+      ((value.hitKind & 0x7) << 24) |
       ((value.crit ? 1 : 0) << 27);
   scratch |= v << scratchBits;
   scratchBits += 28;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (28 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -1422,10 +1280,6 @@ bool readMixedHitEvent(MixedHitEvent value, ByteData view, int numBits) {
   return true;
 }
 
-// measureMixedHitEvent is the exact wire bits writeMixedHitEvent would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureMixedHitEvent(MixedHitEvent value) => 28;
-
 // type MixedChatEvent
 final class MixedChatEvent {
   // wire [0, 3]
@@ -1463,15 +1317,9 @@ int writeMixedChatEvent(MixedChatEvent value, ByteData view) {
   var v = 0;
   assert(value.channel >= 0);
   assert(value.channel <= 3);
-  v = ((value.channel) & 0x3) | (((value.speaker) & 0xfff) << 2);
+  v = (value.channel & 0x3) | ((value.speaker & 0xfff) << 2);
   scratch |= v << scratchBits;
   scratchBits += 14;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (14 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -1517,10 +1365,6 @@ bool readMixedChatEvent(MixedChatEvent value, ByteData view, int numBits) {
   return true;
 }
 
-// measureMixedChatEvent is the exact wire bits writeMixedChatEvent would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureMixedChatEvent(MixedChatEvent value) => 14;
-
 // type MixedPickupEvent
 final class MixedPickupEvent {
   int itemId = 0;
@@ -1558,15 +1402,9 @@ int writeMixedPickupEvent(MixedPickupEvent value, ByteData view) {
   var v = 0;
   assert(value.amount >= 0);
   assert(value.amount <= 255);
-  v = ((value.itemId) & 0x3ff) | (((value.amount) & 0xff) << 10);
+  v = (value.itemId & 0x3ff) | ((value.amount & 0xff) << 10);
   scratch |= v << scratchBits;
   scratchBits += 18;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (18 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -1612,17 +1450,12 @@ bool readMixedPickupEvent(MixedPickupEvent value, ByteData view, int numBits) {
   return true;
 }
 
-// measureMixedPickupEvent is the exact wire bits writeMixedPickupEvent would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureMixedPickupEvent(MixedPickupEvent value) => 18;
-
 // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
-abstract final class MixedEventType {
-  static const int none = 0;
-  static const int hit = 1;
-  static const int chat = 2;
-  static const int pickup = 3;
-  static const int count = 3; // the declared variant count (SPEC §4.2)
+extension type const MixedEventType(int _value) implements int {
+  static const MixedEventType none = MixedEventType(0);
+  static const MixedEventType hit = MixedEventType(1);
+  static const MixedEventType chat = MixedEventType(2);
+  static const MixedEventType pickup = MixedEventType(3);
   static const int max = 3; // the exported extent (SPEC §4.2)
 }
 
@@ -1648,7 +1481,7 @@ String enumNameMixedEventType(int value) {
 // construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class MixedEvent {
-  int type = MixedEventType.none;
+  MixedEventType type = MixedEventType.none;
   final MixedHitEvent hit = MixedHitEvent();
   final MixedChatEvent chat = MixedChatEvent();
   final MixedPickupEvent pickup = MixedPickupEvent();
@@ -1678,60 +1511,34 @@ int writeMixedEvent(MixedEvent value, ByteData view) {
   var v = 0;
   assert(value.type >= 0);
   assert(value.type <= 3);
-  v = ((value.type) & 0x3);
+  v = value.type & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   switch (value.type) {
-    case 1:
+    case MixedEventType.hit:
       assert(value.hit.damage >= 0);
       assert(value.hit.damage <= 4095);
       assert(value.hit.hitKind >= 0);
       assert(value.hit.hitKind <= 7);
       v =
-          ((value.hit.targetId) & 0xfff) |
-          (((value.hit.damage) & 0xfff) << 12) |
-          (((value.hit.hitKind) & 0x7) << 24) |
+          (value.hit.targetId & 0xfff) |
+          ((value.hit.damage & 0xfff) << 12) |
+          ((value.hit.hitKind & 0x7) << 24) |
           ((value.hit.crit ? 1 : 0) << 27);
       scratch |= v << scratchBits;
       scratchBits += 28;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (28 - scratchBits);
-      }
-    case 2:
+    case MixedEventType.chat:
       assert(value.chat.channel >= 0);
       assert(value.chat.channel <= 3);
-      v = ((value.chat.channel) & 0x3) | (((value.chat.speaker) & 0xfff) << 2);
+      v = (value.chat.channel & 0x3) | ((value.chat.speaker & 0xfff) << 2);
       scratch |= v << scratchBits;
       scratchBits += 14;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (14 - scratchBits);
-      }
-    case 3:
+    case MixedEventType.pickup:
       assert(value.pickup.amount >= 0);
       assert(value.pickup.amount <= 255);
-      v =
-          ((value.pickup.itemId) & 0x3ff) |
-          (((value.pickup.amount) & 0xff) << 10);
+      v = (value.pickup.itemId & 0x3ff) | ((value.pickup.amount & 0xff) << 10);
       scratch |= v << scratchBits;
       scratchBits += 18;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (18 - scratchBits);
-      }
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -1771,13 +1578,9 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
   }
   v = window & 0x3;
   bitsRead += 2;
-  value.type = v;
+  value.type = MixedEventType(v);
   switch (value.type) {
-    case 1:
-      value.hit.targetId = 0;
-      value.hit.damage = 0;
-      value.hit.hitKind = 0;
-      value.hit.crit = false;
+    case MixedEventType.hit:
       if (bitsRead + 28 > numBits) {
         return false;
       }
@@ -1799,9 +1602,7 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
       v = (window >>> 27) & 0x1;
       bitsRead += 1;
       value.hit.crit = v != 0;
-    case 2:
-      value.chat.channel = 0;
-      value.chat.speaker = 0;
+    case MixedEventType.chat:
       if (bitsRead + 14 > numBits) {
         return false;
       }
@@ -1817,9 +1618,7 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
       v = (window >>> 2) & 0xfff;
       bitsRead += 12;
       value.chat.speaker = v;
-    case 3:
-      value.pickup.itemId = 0;
-      value.pickup.amount = 0;
+    case MixedEventType.pickup:
       if (bitsRead + 18 > numBits) {
         return false;
       }
@@ -1837,22 +1636,6 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
       value.pickup.amount = v;
   }
   return true;
-}
-
-// measureMixedEvent is the exact wire bits writeMixedEvent would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureMixedEvent(MixedEvent value) {
-  var bits = 0;
-  bits += 2;
-  switch (value.type) {
-    case 1:
-      bits += 28;
-    case 2:
-      bits += 14;
-    case 3:
-      bits += 18;
-  }
-  return bits;
 }
 
 // type BenchMixed
@@ -1929,7 +1712,7 @@ void zeroBenchMixed(BenchMixed value) {
     zeroMixedStat(value.stats[i0]);
   }
   value.statsCount = 0;
-  value.gameEvent.type = 0;
+  value.gameEvent.type = MixedEventType.none;
   value.loadout.fillRange(0, value.loadout.length, 0);
   value.playerName.fillRange(0, value.playerName.length, 0);
   value.playerNameLength = 0;
@@ -1968,7 +1751,7 @@ void initBenchMixed(BenchMixed value) {
     initMixedStat(value.stats[i0]);
   }
   value.statsCount = 0;
-  value.gameEvent.type = 0;
+  value.gameEvent.type = MixedEventType.none;
   value.loadout.fillRange(0, value.loadout.length, 0);
   value.playerName.fillRange(0, value.playerName.length, 0);
   value.playerNameLength = 0;
@@ -2002,17 +1785,11 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   assert(value.ackSequence <= 65535);
   v =
       49374 |
-      (((value.sequence) & 0xffff) << 16) |
-      (((value.ackSequence) & 0xffff) << 32);
+      ((value.sequence & 0xffff) << 16) |
+      ((value.ackSequence & 0xffff) << 32);
   scratch |= v << scratchBits;
   scratchBits += 48;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (48 - scratchBits);
-  }
-  v = ((value.ackBits) & 0xffffffff);
+  v = value.ackBits & 0xffffffff;
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -2021,7 +1798,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
-  v = (value.sessionId);
+  v = value.sessionId;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2030,7 +1807,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = ((value.clientId) & 0xffffffff);
+  v = value.clientId & 0xffffffff;
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -2041,7 +1818,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   assert(value.worldTime >= -1000000000000);
   assert(value.worldTime <= 1000000000000);
-  v = (value.nonce);
+  v = value.nonce;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2050,7 +1827,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = ((value.worldTime + 1000000000000) & 0x1ffffffffff);
+  v = (value.worldTime + 1000000000000) & 0x1ffffffffff;
   scratch |= v << scratchBits;
   scratchBits += 41;
   if (scratchBits >= 64) {
@@ -2061,7 +1838,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   assert(value.serverTime >= 0);
   assert(value.serverTime <= 16776960);
-  v = ((value.frameTick) & 0xffffffffffff);
+  v = value.frameTick & 0xffffffffffff;
   scratch |= v << scratchBits;
   scratchBits += 48;
   if (scratchBits >= 64) {
@@ -2072,9 +1849,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   assert(value.entitiesCount >= 1);
   assert(value.entitiesCount <= 8);
-  v =
-      ((value.serverTime) & 0xffffff) |
-      (((value.entitiesCount - 1) & 0x7) << 24);
+  v = (value.serverTime & 0xffffff) | (((value.entitiesCount - 1) & 0x7) << 24);
   scratch |= v << scratchBits;
   scratchBits += 27;
   if (scratchBits >= 64) {
@@ -2092,7 +1867,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     assert(e0.posZ >= -16383);
     assert(e0.posZ <= 16383);
     v =
-        ((e0.entityId) & 0xfff) |
+        (e0.entityId & 0xfff) |
         (((e0.posX + 16383) & 0x7fff) << 12) |
         (((e0.posY + 16383) & 0x7fff) << 27) |
         (((e0.posZ + 16383) & 0x7fff) << 42);
@@ -2115,12 +1890,12 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     assert(e0.weapon >= 0);
     assert(e0.weapon <= 15);
     v =
-        ((e0.yaw) & 0x1ff) |
-        (((e0.pitch) & 0x1ff) << 9) |
+        (e0.yaw & 0x1ff) |
+        ((e0.pitch & 0x1ff) << 9) |
         (((e0.velX + 2048) & 0xfff) << 18) |
         (((e0.velY + 2048) & 0xfff) << 30) |
         (((e0.velZ + 2048) & 0xfff) << 42) |
-        (((e0.health) & 0x3ff) << 54);
+        ((e0.health & 0x3ff) << 54);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -2131,8 +1906,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     }
     assert(e0.damage >>> 8 == 0);
     v =
-        ((e0.weapon) & 0xf) |
-        (((e0.damage) & 0xff) << 4) |
+        (e0.weapon & 0xf) |
+        ((e0.damage & 0xff) << 4) |
         ((e0.moving ? 1 : 0) << 12) |
         ((e0.firing ? 1 : 0) << 13);
     scratch |= v << scratchBits;
@@ -2146,7 +1921,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   assert(value.statsCount >= 0);
   assert(value.statsCount <= 80);
-  v = ((value.statsCount) & 0x7f);
+  v = value.statsCount & 0x7f;
   scratch |= v << scratchBits;
   scratchBits += 7;
   if (scratchBits >= 64) {
@@ -2168,11 +1943,11 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       assert(e0g2.delta >= -512);
       assert(e0g2.delta <= 511);
       v =
-          ((e0.statId) & 0xff) |
+          (e0.statId & 0xff) |
           (((e0.delta + 512) & 0x3ff) << 8) |
-          (((e0g1.statId) & 0xff) << 18) |
+          ((e0g1.statId & 0xff) << 18) |
           (((e0g1.delta + 512) & 0x3ff) << 26) |
-          (((e0g2.statId) & 0xff) << 36) |
+          ((e0g2.statId & 0xff) << 36) |
           (((e0g2.delta + 512) & 0x3ff) << 44);
       scratch |= v << scratchBits;
       scratchBits += 54;
@@ -2187,7 +1962,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       final e0 = value.stats[i0];
       assert(e0.delta >= -512);
       assert(e0.delta <= 511);
-      v = ((e0.statId) & 0xff) | (((e0.delta + 512) & 0x3ff) << 8);
+      v = (e0.statId & 0xff) | (((e0.delta + 512) & 0x3ff) << 8);
       scratch |= v << scratchBits;
       scratchBits += 18;
       if (scratchBits >= 64) {
@@ -2200,7 +1975,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   assert(value.gameEvent.type >= 0);
   assert(value.gameEvent.type <= 3);
-  v = ((value.gameEvent.type) & 0x3);
+  v = value.gameEvent.type & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
   if (scratchBits >= 64) {
@@ -2210,15 +1985,15 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratch = v >>> (2 - scratchBits);
   }
   switch (value.gameEvent.type) {
-    case 1:
+    case MixedEventType.hit:
       assert(value.gameEvent.hit.damage >= 0);
       assert(value.gameEvent.hit.damage <= 4095);
       assert(value.gameEvent.hit.hitKind >= 0);
       assert(value.gameEvent.hit.hitKind <= 7);
       v =
-          ((value.gameEvent.hit.targetId) & 0xfff) |
-          (((value.gameEvent.hit.damage) & 0xfff) << 12) |
-          (((value.gameEvent.hit.hitKind) & 0x7) << 24) |
+          (value.gameEvent.hit.targetId & 0xfff) |
+          ((value.gameEvent.hit.damage & 0xfff) << 12) |
+          ((value.gameEvent.hit.hitKind & 0x7) << 24) |
           ((value.gameEvent.hit.crit ? 1 : 0) << 27);
       scratch |= v << scratchBits;
       scratchBits += 28;
@@ -2228,12 +2003,12 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
         scratchBits -= 64;
         scratch = v >>> (28 - scratchBits);
       }
-    case 2:
+    case MixedEventType.chat:
       assert(value.gameEvent.chat.channel >= 0);
       assert(value.gameEvent.chat.channel <= 3);
       v =
-          ((value.gameEvent.chat.channel) & 0x3) |
-          (((value.gameEvent.chat.speaker) & 0xfff) << 2);
+          (value.gameEvent.chat.channel & 0x3) |
+          ((value.gameEvent.chat.speaker & 0xfff) << 2);
       scratch |= v << scratchBits;
       scratchBits += 14;
       if (scratchBits >= 64) {
@@ -2242,12 +2017,12 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
         scratchBits -= 64;
         scratch = v >>> (14 - scratchBits);
       }
-    case 3:
+    case MixedEventType.pickup:
       assert(value.gameEvent.pickup.amount >= 0);
       assert(value.gameEvent.pickup.amount <= 255);
       v =
-          ((value.gameEvent.pickup.itemId) & 0x3ff) |
-          (((value.gameEvent.pickup.amount) & 0xff) << 10);
+          (value.gameEvent.pickup.itemId & 0x3ff) |
+          ((value.gameEvent.pickup.amount & 0xff) << 10);
       scratch |= v << scratchBits;
       scratchBits += 18;
       if (scratchBits >= 64) {
@@ -2264,7 +2039,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       (value.loadout[1] << 8) |
       (value.loadout[2] << 16) |
       (value.loadout[3] << 24) |
-      (((value.playerNameLength) & 0xf) << 32);
+      ((value.playerNameLength & 0xf) << 32);
   scratch |= v << scratchBits;
   scratchBits += 36;
   if (scratchBits >= 64) {
@@ -2316,7 +2091,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   assert(value.payloadLength >= 0);
   assert(value.payloadLength <= 16);
-  v = ((value.payloadLength) & 0x1f);
+  v = value.payloadLength & 0x1f;
   scratch |= v << scratchBits;
   scratchBits += 5;
   if (scratchBits >= 64) {
@@ -2367,15 +2142,15 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     }
   }
   {
-    final x = _fround(value.aimX);
+    final x = Schema.fround(value.aimX);
     assert(x.isFinite);
-    var n = _fround(_fround(x - -1.0) / 2.0);
+    var n = Schema.fround(Schema.fround(x + 1.0) / 2.0);
     if (!(n >= 0.0)) {
       n = 0.0;
     } else if (!(n <= 1.0)) {
       n = 1.0;
     }
-    v = _fround(_fround(n * 200.0) + 0.5).floor();
+    v = Schema.fround(Schema.fround(n * 200.0) + 0.5).floor();
     if (v > 200) v = 200;
   }
   scratch |= v << scratchBits;
@@ -2387,15 +2162,15 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratch = v >>> (8 - scratchBits);
   }
   {
-    final x = _fround(value.aimY);
+    final x = Schema.fround(value.aimY);
     assert(x.isFinite);
-    var n = _fround(_fround(x - -1.0) / 2.0);
+    var n = Schema.fround(Schema.fround(x + 1.0) / 2.0);
     if (!(n >= 0.0)) {
       n = 0.0;
     } else if (!(n <= 1.0)) {
       n = 1.0;
     }
-    v = _fround(_fround(n * 200.0) + 0.5).floor();
+    v = Schema.fround(Schema.fround(n * 200.0) + 0.5).floor();
     if (v > 200) v = 200;
   }
   scratch |= v << scratchBits;
@@ -2407,15 +2182,15 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratch = v >>> (8 - scratchBits);
   }
   {
-    final x = _fround(value.aimZ);
+    final x = Schema.fround(value.aimZ);
     assert(x.isFinite);
-    var n = _fround(_fround(x - -1.0) / 2.0);
+    var n = Schema.fround(Schema.fround(x + 1.0) / 2.0);
     if (!(n >= 0.0)) {
       n = 0.0;
     } else if (!(n <= 1.0)) {
       n = 1.0;
     }
-    v = _fround(_fround(n * 200.0) + 0.5).floor();
+    v = Schema.fround(Schema.fround(n * 200.0) + 0.5).floor();
     if (v > 200) v = 200;
   }
   scratch |= v << scratchBits;
@@ -2426,7 +2201,9 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (8 - scratchBits);
   }
-  v = _float32BitsFromDouble(value.recoil);
+  Schema.f32[0] = value.recoil;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -2435,7 +2212,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.drift);
+  assert(value.drift.isFinite);
+  v = Schema.float64BitsFromDouble(value.drift);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2444,7 +2222,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.wideKey.lo);
+  v = value.wideKey.lo;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2453,7 +2231,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.wideKey.hi);
+  v = value.wideKey.hi;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2468,7 +2246,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     assert(value.flux >= min);
     assert(value.flux <= max);
     final off = (value.flux - min).toUnsigned();
-    v = (off.lo);
+    v = off.lo;
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -2477,7 +2255,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = ((off.hi) & 0x3fffffffff);
+    v = off.hi & 0x3fffffffff;
     scratch |= v << scratchBits;
     scratchBits += 38;
     if (scratchBits >= 64) {
@@ -2489,7 +2267,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   assert(value.ping >= 0);
   assert(value.ping <= 64000);
-  v = ((value.ping) & 0xffff) | (0 << 16);
+  v = value.ping & 0xffff;
   scratch |= v << scratchBits;
   scratchBits += 20;
   if (scratchBits >= 64) {
@@ -2515,10 +2293,10 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   assert(value.idleTicks >= 0);
   assert(value.idleTicks <= 15);
   v =
-      ((value.crcHint) & 0xffffff) |
+      (value.crcHint & 0xffffff) |
       ((value.hasExtra ? 1 : 0) << 24) |
-      (((value.extra) & 0xff) << 25) |
-      (((value.idleTicks) & 0xf) << 33);
+      ((value.extra & 0xff) << 25) |
+      ((value.idleTicks & 0xf) << 33);
   scratch |= v << scratchBits;
   scratchBits += 37;
   if (scratchBits >= 64) {
@@ -2726,7 +2504,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     e0.health = v;
     v = (window >>> 10) & 0xf;
     bitsRead += 4;
-    e0.weapon = v;
+    e0.weapon = MixedWeapon(v);
     v = (window >>> 14) & 0xff;
     bitsRead += 8;
     e0.damage = v;
@@ -2811,13 +2589,9 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   }
   v = window & 0x3;
   bitsRead += 2;
-  value.gameEvent.type = v;
+  value.gameEvent.type = MixedEventType(v);
   switch (value.gameEvent.type) {
-    case 1:
-      value.gameEvent.hit.targetId = 0;
-      value.gameEvent.hit.damage = 0;
-      value.gameEvent.hit.hitKind = 0;
-      value.gameEvent.hit.crit = false;
+    case MixedEventType.hit:
       if (bitsRead + 28 > numBits) {
         return false;
       }
@@ -2839,9 +2613,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
       v = (window >>> 27) & 0x1;
       bitsRead += 1;
       value.gameEvent.hit.crit = v != 0;
-    case 2:
-      value.gameEvent.chat.channel = 0;
-      value.gameEvent.chat.speaker = 0;
+    case MixedEventType.chat:
       if (bitsRead + 14 > numBits) {
         return false;
       }
@@ -2857,9 +2629,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
       v = (window >>> 2) & 0xfff;
       bitsRead += 12;
       value.gameEvent.chat.speaker = v;
-    case 3:
-      value.gameEvent.pickup.itemId = 0;
-      value.gameEvent.pickup.amount = 0;
+    case MixedEventType.pickup:
       if (bitsRead + 18 > numBits) {
         return false;
       }
@@ -2924,7 +2694,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     }
   }
   bitsRead += value.playerNameLength * 8;
-  if (!_schemaUtf8Valid(value.playerName, value.playerNameLength)) {
+  if (!Schema.utf8Valid(value.playerName, value.playerNameLength)) {
     return false;
   }
   for (var i0 = 0; i0 < value.playerNameLength; i0++) {
@@ -2981,28 +2751,35 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   if (v > 200) {
     return false; // headroom above the quantum count is refused
   }
-  value.aimX = _fround(
-    _fround(_fround(_fround(v.toDouble()) / 200.0) * 2.0) + -1.0,
-  );
+  {
+    final q = Schema.fround(Schema.fround(v.toDouble()) / 200.0);
+    value.aimX = Schema.fround(Schema.fround(q * 2.0) - 1.0);
+  }
   v = (window >>> 8) & 0xff;
   bitsRead += 8;
   if (v > 200) {
     return false; // headroom above the quantum count is refused
   }
-  value.aimY = _fround(
-    _fround(_fround(_fround(v.toDouble()) / 200.0) * 2.0) + -1.0,
-  );
+  {
+    final q = Schema.fround(Schema.fround(v.toDouble()) / 200.0);
+    value.aimY = Schema.fround(Schema.fround(q * 2.0) - 1.0);
+  }
   v = (window >>> 16) & 0xff;
   bitsRead += 8;
   if (v > 200) {
     return false; // headroom above the quantum count is refused
   }
-  value.aimZ = _fround(
-    _fround(_fround(_fround(v.toDouble()) / 200.0) * 2.0) + -1.0,
-  );
+  {
+    final q = Schema.fround(Schema.fround(v.toDouble()) / 200.0);
+    value.aimZ = Schema.fround(Schema.fround(q * 2.0) - 1.0);
+  }
   v = (window >>> 24) & 0xffffffff;
   bitsRead += 32;
-  value.recoil = _doubleFromFloat32Bits(v);
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  Schema.u32[0] = v;
+  value.recoil = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -3019,7 +2796,10 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.drift = _doubleFromFloat64Bits(lo);
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
+  value.drift = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -3139,33 +2919,4 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   bitsRead += 4;
   value.idleTicks = v;
   return true;
-}
-
-// measureBenchMixed is the exact wire bits writeBenchMixed would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureBenchMixed(BenchMixed value) {
-  var bits = 0;
-  bits += 356;
-  bits += value.entitiesCount * 135;
-  bits += 7;
-  bits += value.statsCount * 18;
-  bits += 2;
-  switch (value.gameEvent.type) {
-    case 1:
-      bits += 28;
-    case 2:
-      bits += 14;
-    case 3:
-      bits += 18;
-  }
-  bits += 36;
-  bits += (8 - (bits & 7)) & 7;
-  bits += value.playerNameLength * 8;
-  bits += 5;
-  bits += (8 - (bits & 7)) & 7;
-  bits += value.payloadLength * 8;
-  bits += 370;
-  bits += (8 - (bits & 7)) & 7;
-  bits += 37;
-  return bits;
 }

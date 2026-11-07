@@ -176,7 +176,7 @@ function TableMessageKindBytes(kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;
     case 3: case 7: case 21: case 26: return 2;
     case 4: case 8: case 10: case 22: case 27: return 4;
-    case 5: case 9: case 11: case 23: case 28: return 8;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 8;
     case 18: case 19: case 24: case 29: return 16;
   }
   return 0;
@@ -196,7 +196,7 @@ function TableMessageOpenFramed(data) {
   return [r, verdict];
 }
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
-function TableMessageKnownKind(k) { return k <= 33; }
+function TableMessageKnownKind(k) { return k <= 33 || k === 36; }
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -204,7 +204,7 @@ function TableMessageKindBits(k) {
     case 2: case 6: case 20: case 25: return 8;
     case 3: case 7: case 21: case 26: return 16;
     case 4: case 8: case 10: case 22: case 27: return 32;
-    case 5: case 9: case 11: case 23: case 28: return 64;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 64;
     case 18: case 19: case 24: case 29: return 128;
   }
   return -1;
@@ -358,7 +358,7 @@ function TableAnnounceRead(v, data, report) {
   }
   if (versionCount !== 1 || wordsCount !== 1) { report.Malformed = true; return false; }
   if (v.Strict && v.BuildVersion !== v.BuildVersionOwn) {
-    report.BuildVersionPeer = v.BuildVersion;
+    report.BuildVersionRemote = v.BuildVersion;
     report.BuildVersionOwn = v.BuildVersionOwn;
     return TableMessageRefuse(report, "build_version_mismatch");
   }

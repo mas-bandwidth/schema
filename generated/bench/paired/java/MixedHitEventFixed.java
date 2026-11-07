@@ -13,28 +13,35 @@ package bench;
 public final class MixedHitEventFixed {
     private MixedHitEventFixed() {}
 
-    /** MixedHitEvent's storage: public fields, every buffer allocated at construction,
-     *  which is the packet codec's own shape. Declared defaults are here and
-     *  nowhere else. */
+    /**
+     * MixedHitEvent's storage: public fields, every buffer allocated at construction, which is the
+     * packet codec's own shape. Declared defaults are here and nowhere else.
+     */
     public static final class Value {
         /** bits(12) */
         public int targetId;
+
         /** int32 */
         public int damage;
+
         /** int32 */
         public int hitKind;
+
         /** bool */
         public boolean crit;
     }
 
-    /** THE BODY IS A CONSTANT SIZE, for every value this type can hold: the
-     *  measure is a constant and not a function that reads the value (§3.4). */
+    /**
+     * THE BODY IS A CONSTANT SIZE, for every value this type can hold: the measure is a constant
+     * and not a function that reads the value (§3.4).
+     */
     public static final int bodyBytes = 13;
 
-    /** MixedHitEvent's stores. The caller lays the template down first — the hash, then
-     *  zeros — which is also what zero-fills every byte of declared slack, so
-     *  this is a straight line of byte-width stores at constant offsets and
-     *  nothing else. */
+    /**
+     * MixedHitEvent's stores. The caller lays the template down first — the hash, then zeros —
+     * which is also what zero-fills every byte of declared slack, so this is a straight line of
+     * byte-width stores at constant offsets and nothing else.
+     */
     public static void writeBody(byte[] b, int at, Value v) {
         assert checkWrite(v);
         TableFixed.put32(b, at + 0, v.targetId);
@@ -51,22 +58,38 @@ public final class MixedHitEventFixed {
         return true;
     }
 
-    /** land one record image into a value. The image is this reader's own
-     *  body layout, so every offset here is a constant. */
+    /**
+     * land one record image into a value. The image is this reader's own body layout, so every
+     * offset here is a constant.
+     */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
         v.targetId = TableFixed.get32(b, at + 0);
-        if (v.targetId > 4095L) { v.targetId = (int) (4095L); r.clamped++; } // bits(12) clamps to 2^N - 1
+        if (v.targetId > 4095L) {
+            v.targetId = (int) (4095L);
+            r.clamped++;
+        } // bits(12) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
-            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 4095L) { q = 4095L; r.clamped++; }
+            if (q < 0L) {
+                q = 0L;
+                r.clamped++;
+            } else if (q > 4095L) {
+                q = 4095L;
+                r.clamped++;
+            }
             v.damage = (int) (q);
         }
         {
             long q = TableFixed.get32(b, at + 8);
-            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 7L) { q = 7L; r.clamped++; }
+            if (q < 0L) {
+                q = 0L;
+                r.clamped++;
+            } else if (q > 7L) {
+                q = 7L;
+                r.clamped++;
+            }
             v.hitKind = (int) (q);
         }
         v.crit = b[at + 12] != 0;
     }
-
 }

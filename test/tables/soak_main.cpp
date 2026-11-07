@@ -19,10 +19,14 @@
 // -DSCHEMA_SOAK_PLANT_PAIR, one matched new/delete pair per iteration, and
 // requires the count to go red while the drift line stays flat.
 //
-// It runs SOAK_SECONDS of real time, so it is a FUNCTIONAL test reached by a
-// make target (`make tables-cpp-soak`), never a unit test.
+// ITS LENGTH IS AN ITERATION COUNT, NOT A CLOCK. What the soak watches is the
+// allocation count per pass, so the number of passes is the quantity that
+// matters, and a count runs the same loop on every machine. It reads no clock
+// (`make shape-gate` refuses a timing primitive outside the sanctioned bench).
+// It is still a FUNCTIONAL test, reached by a make target (`make
+// tables-cpp-soak`), never a unit test.
 //
-//   ./build/schema_test_tables_soak <seconds>
+//   ./build/schema_test_tables_soak <iterations>
 
 #include <cstdint>
 #include <cstdio>
@@ -30,7 +34,6 @@
 #include <cstring>
 
 #include <atomic>
-#include <chrono>
 #include <new>
 
 #include <fcntl.h>
@@ -519,10 +522,10 @@ static int iterate( const char ** why )
 
 int main( int argc, char ** argv )
 {
-    const double seconds = argc > 1 ? strtod( argv[1], NULL ) : 20.0;
+    const unsigned long long target = argc > 1 ? strtoull( argv[1], NULL, 10 ) : 4096ULL; // the `make test` short form
 
     // ---- setup: read the corpus, size every buffer, and hold each exact case
-    // to its own bytes before anything is timed ----
+    // to its own bytes before the loop starts ----
     for ( size_t i = 0; i < kCases; i++ )
     {
         const Case & c = cases[i];
@@ -562,7 +565,7 @@ int main( int argc, char ** argv )
     }
 
     // stdio's first write allocates its buffer: done here, before the warmup
-    printf( "c++ tables soak: %zu cases, %.0f s, the allocation count read at every sample%s\n", kCases, seconds,
+    printf( "c++ tables soak: %zu cases, %llu iterations, the allocation count read at every sample%s\n", kCases, target,
 #if defined( SCHEMA_SOAK_PLANT_PAIR )
             " — PLANTED: one matched new/delete pair per iteration"
 #else
@@ -574,7 +577,7 @@ int main( int argc, char ** argv )
     const long long news_at_start = soak_news.load();
     const long long mallocs_at_start = malloc_calls();
 
-    // ---- the warmup: one iteration of the loop body, untimed and ungated, so
+    // ---- the warmup: one iteration of the loop body, uncounted and ungated, so
     // a lazily built table — or the allocator's own per-thread cache filling
     // on a first allocation — is charged to it rather than to the loop ----
     const char * why = "";
@@ -593,7 +596,6 @@ int main( int argc, char ** argv )
     const long long mallocs_warm = malloc_calls();
 
     // ---- the soak ----
-    const auto start = std::chrono::steady_clock::now();
     unsigned long long iterations = 0, samples = 0;
     unsigned long long moved_sample = 0, moved_iteration = 0;
     long long moved_news = 0, moved_mallocs = 0;
@@ -621,18 +623,15 @@ int main( int argc, char ** argv )
             moved_mallocs = mallocs_now;
             break;
         }
-        const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
-        if ( elapsed.count() >= seconds ) { break; }
+        if ( iterations >= target ) { break; }
     }
     const long long news_end = soak_news.load();
     const long long mallocs_end = malloc_calls();
     const long long heap_end = live_heap_bytes();
     const long long rss_end = resident_kib();
-    const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
 
     // ---- the report: the count, then drift, then the verdict ----
-    printf( "c++ tables soak: %llu iterations over %zu cases in %.1f s, %llu samples\n", iterations, kCases,
-            elapsed.count(), samples );
+    printf( "c++ tables soak: %llu iterations over %zu cases, %llu samples\n", iterations, kCases, samples );
     printf( "c++ tables soak: operator new calls: %lld in the warmup, %lld after it\n", news_warm - news_at_start,
             news_end - news_warm );
 #if SCHEMA_SOAK_COUNTS_MALLOC

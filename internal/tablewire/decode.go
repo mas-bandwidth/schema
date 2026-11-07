@@ -1,8 +1,8 @@
 // The wire's READ half (docs/SPEC-TABLES.md §4): any reader reads any data, and
-// the differences are reported, never fatal. Unknown ids are skipped by their
+// evolution is reported, never fatal. Unknown ids are skipped by their
 // length and counted, a kind mismatch is skipped rather than misdecoded,
-// out-of-range values clamp, framing damage stops the damaged nesting level
-// and the parent reads on. Every decision mirrors the generated C++ reader.
+// out-of-range values clamp. Damage anywhere discards the whole load and
+// reports `malformed`. Every decision mirrors the generated C++ reader.
 package tablewire
 
 import (
@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -28,9 +29,10 @@ func (e *FormRefusal) Error() string {
 
 // Decode fills one instance from a root table's wire bytes, counting every
 // evolution event in the report. The error is a REFUSAL — a wire this engine
-// does not decode at all — and is returned rather than folded into the report;
-// false with a nil error is framing damage past the point the walk could
-// continue, and the instance keeps what it decoded.
+// does not decode at all — and is returned rather than folded into the report.
+// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): false with
+// `malformed` in the report means the instance holds its declared defaults
+// and nothing the walk read.
 func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
 	return decodeWith(m, inst, data, report, nil, false)
 }
@@ -49,6 +51,49 @@ func DecodeRegion(m *tabletext.Model, inst *tabletext.Instance, data []byte, rep
 // names are ADDITIVE: nothing below reads a byte differently, counts an event
 // differently or places a value differently because retention is on.
 func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, region bool) (bool, error) {
+	// A NON-FINITE FLOAT IS THIS READ'S OWN REFUSAL (docs/SPEC-TABLES.md
+	// §3.3): a name an earlier read left on a reused report neither refuses
+	// this one nor is lost by it.
+	prior := report.NonFiniteFloat
+	report.NonFiniteFloat = ""
+	priorMalformed := report.Malformed
+	missingBefore := report.MissingRequired
+	report.Malformed = false
+	ok, err := decodeWalk(m, inst, data, report, rt, region)
+	if report.MissingRequired != missingBefore {
+		m.Clear(inst)
+		if rt != nil {
+			rt.store.reset()
+		}
+		report.Malformed = report.Malformed || priorMalformed
+		return false, &tabletext.MissingRequired{Reason: report.Reason}
+	}
+	if refusal := refusedNonFinite(report); refusal != nil {
+		// Refusal publishes no value or retained prefix, just as damage does.
+		m.Clear(inst)
+		if rt != nil {
+			rt.store.reset()
+		}
+		report.Malformed = report.Malformed || priorMalformed
+		return false, refusal
+	}
+	report.NonFiniteFloat = prior
+	if report.Malformed {
+		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
+		// the walk decoded, defaulted or retained before or after the damage
+		// is handed back. The instance returns to its declared defaults and
+		// the retention store to empty, and `malformed` is the answer.
+		m.Clear(inst)
+		if rt != nil {
+			rt.store.reset()
+		}
+		return false, err
+	}
+	report.Malformed = priorMalformed
+	return ok, err
+}
+
+func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, region bool) (bool, error) {
 	// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so
 	// a file that is both a newer form and damaged is a refusal and never
 	// damage (§3).
@@ -67,6 +112,13 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 			return false, &MessageRefusal{Reason: ReasonMessageFormAsFile}
 		}
 		return false, &FormRefusal{Form: data[0]}
+	}
+	var valid bool
+	data, valid = fileIntegrityBody(inst.Def, data)
+	if !valid {
+		report.Malformed = true
+		report.Reason = "integrity_mismatch"
+		return false, nil
 	}
 	body, ids, ok := trailer(data)
 	if !ok {
@@ -101,11 +153,21 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 // the file, a count whose `8 × count + 8` runs past the front, a count that
 // leaves no room for the form byte, or ONE ID IN TWO ENTRIES.
 func trailer(data []byte) (body []byte, ids []uint64, ok bool) {
+	return trailerBounded(data, ir.TableWireIdTableBound)
+}
+
+// trailerBounded is trailer under an explicit entry-count bound, so a test can
+// show that the bound is what refuses a table of bound + 1 entries and nothing
+// else is (docs/LAYERS/1-framing.md F6).
+func trailerBounded(data []byte, bound uint64) (body []byte, ids []uint64, ok bool) {
 	if len(data) < 9 {
 		return nil, nil, false
 	}
 	count := binary.LittleEndian.Uint64(data[len(data)-8:])
-	if count > uint64(len(data))/8 {
+	if count > uint64(len(data))/8 || count > bound {
+		// THE ENTRY COUNT HAS A MAXIMUM (§3, THE DISTINCTNESS CHECK): a
+		// table above it is malformed on the whole-wire rule, whatever the
+		// buffer would hold
 		return nil, nil, false
 	}
 	span := int(count)*8 + 8
@@ -159,6 +221,7 @@ func bodyExtent(body []byte, ids []uint64) (end int, terminated bool) {
 }
 
 type wireReader struct {
+	fieldSkipped bool // the current field had an incompatible collection header
 	// Installed by decodeVariable and shared by its nested readers. Only
 	// value-only and framing/key scanners omit it; none can decode a list.
 	countRefusal *bool // a storage refusal, not a malformed event
@@ -329,6 +392,8 @@ func (r *wireReader) body(inst *tabletext.Instance) bool {
 // the numbering's own rule — a second numbering cannot exist, so a body
 // claiming one is damaged (§3.1).
 func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
+	missingBefore := r.report.MissingRequired
+	seen := make([]bool, len(inst.Fields))
 	index := map[uint64]int{}
 	for i := range inst.Fields {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
@@ -343,7 +408,7 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			return false
 		}
 		if ref == 0 {
-			return true // the body ENDS AT ITS OWN ZERO REFERENCE
+			return r.report.MissingRequired == missingBefore && r.report.RequireSeen(inst, func(i int) bool { return seen[i] })
 		}
 		id, named := r.id(ref)
 		if !named {
@@ -397,6 +462,14 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 				return false
 			}
 			if r.rt != nil {
+				if !retainedPayloadFinite(kind, r.buf[from:r.off]) {
+					// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE
+					// (docs/SPEC-TABLES.md §3.3, §6.6), and a NaN or an
+					// infinity refuses the read: uniformity wins over carrying
+					// bytes this reader cannot name
+					r.report.RefuseNonFinite(retainedFloatName(inst, id))
+					continue
+				}
 				r.rt.capture(inst, id, kind, r.buf[from:r.off], r.ids, r.report)
 			}
 			continue
@@ -410,6 +483,7 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 				if !r.scalarAt(&fv.Cell, fv.Def, int(kind)) {
 					return false
 				}
+				seen[i] = true
 				if !inst.Def.IsMapEntry() || fv.Def.Name != ir.MapKeyFieldName {
 					r.report.Widened++
 				}
@@ -433,9 +507,10 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			// record under it goes before the winning occurrence is read.
 			r.rt.forgetField(fv)
 		}
-		if !r.field(fv) {
+		if !r.field(fv) || r.report.MissingRequired != missingBefore {
 			return false
 		}
+		seen[i] = seen[i] || !r.fieldSkipped
 		if fv.Def.Type.Optional && fv.Def.Array == ir.ArrayNone {
 			// the field rode, so it is PRESENT — content decides nothing here
 			// either (docs/SPEC-TABLES.md §2.3). An optional ARRAY's presence is
@@ -447,15 +522,15 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 }
 
 func (r *wireReader) field(fv *tabletext.Field) bool {
+	r.fieldSkipped = false
 	f := fv.Def
 	switch {
 	case f.IsMap():
 		return r.mapField(fv)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		// A pointer field's payload is a NUMBER: it is bounds-checked and
-		// stored, never followed. There is no traversal on the load path, and
-		// therefore no traversal bound — no depth cap, no visited set, no
-		// ordering rule on the indices (docs/SPEC-TABLES.md §3.1).
+		// stored, and the decode never follows it. The cycle check runs once
+		// the scan has resolved every index (decodenodes.go, cyclic; §3.1).
 		index, ok := r.leb()
 		if !ok {
 			r.report.Malformed = true
@@ -481,7 +556,7 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 			return true
 		}
 		keep := int(n)
-		if bound := int(f.Type.Size); keep > bound {
+		if bound := int(f.Type.Size); !f.Type.TextUnbounded() && keep > bound {
 			// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3): the last whole code
 			// point that fits within the bound
 			keep = textBoundary(r.buf[r.off:r.off+int(n)], bound)
@@ -549,16 +624,11 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		} else {
 			r.m.Refill(fv.Cell.Tab)
 		}
-		sub.bodyAt(fv.Cell.Tab, true)
-		if r.countRefused() {
+		whole, stop := r.nested(sub, fv.Cell.Tab, int(n))
+		if stop {
 			return false
 		}
-		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): a body whose
-		// terminator is not the last byte of its L is framing damage — the
-		// payload stops, the field reads its declared defaults, and the
-		// enclosing body continues past it by L.
-		if sub.off != int(n) {
-			r.report.Malformed = true
+		if !whole {
 			// THE BODY FALLS BACK ON ITS DECLARED DEFAULTS AND STAYS THE BODY
 			// IT WAS: damage is not a later occurrence, so the records already
 			// retained under it are neither discarded nor counted here (§6.6)
@@ -568,6 +638,28 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		return true
 	}
 	return r.scalarAt(&fv.Cell, f, ir.TableScalarKind(f))
+}
+
+// nested decodes one L-framed nested body: a by-value table field, a table
+// element, a keyed slot, a map entry or a union arm's table body.
+//
+// DAMAGE ENDS THE BODY IT IS MET IN (docs/SPEC-TABLES.md §4): damage inside
+// the body, or a terminator that is not the last byte of its L (§3), counts
+// one malformed and ends this body, and the enclosing body steps over it by
+// its L and reads on, so a non-finite float later in the read is still
+// reached. `whole` is false for a damaged body. `stop` is true only where the
+// whole read stops: a storage refusal, or a required field the body lacks.
+func (r *wireReader) nested(sub *wireReader, inst *tabletext.Instance, n int) (whole, stop bool) {
+	missingBefore := r.report.MissingRequired
+	ended := sub.bodyAt(inst, true)
+	if r.countRefused() || r.report.MissingRequired != missingBefore {
+		return false, true
+	}
+	if !ended || sub.off != n {
+		r.report.Malformed = true
+		return false, false
+	}
+	return true, false
 }
 
 // enumCell reads an enum value: kind 30's payload is the reference to the
@@ -645,6 +737,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 		// A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array kind
 		// mismatch of §4, and nothing about a map is special-cased
 		if int(elemKind) != ir.TableKindTable {
+			r.fieldSkipped = true
 			r.report.KindMismatch++
 			r.off = end
 			return true
@@ -687,6 +780,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 				// A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
 				// to EMPTY, ONE kind_mismatch counts for it, and the rest is
 				// skipped. Events counted inside earlier entries stand.
+				r.fieldSkipped = true
 				r.report.KindMismatch++
 				fv.Entries = nil
 				break
@@ -717,11 +811,18 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			whole.buf = body.buf
 			whole.off = 0
 			decoded := r.m.NewMapEntry(f)
-			whole.bodyAt(decoded, true)
-			r.rt.builtMapEntry(fv, decoded)
-			if r.countRefused() {
+			missingBefore := r.report.MissingRequired
+			ended := whole.bodyAt(decoded, true)
+			if r.countRefused() || r.report.MissingRequired != missingBefore {
 				return false
 			}
+			if !ended {
+				// DAMAGE ENDS THE BODY IT IS MET IN (§4): the entry is
+				// dropped and the map steps over it by its L and reads on
+				r.report.Malformed = true
+				continue
+			}
+			r.rt.builtMapEntry(fv, decoded)
 			if order == 0 {
 				// EQUAL: a DUPLICATE. Last wins WHOLE — the slot the earlier
 				// entry took is replaced by this one's decode, so a field the
@@ -740,10 +841,14 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 	return true
 }
 
+// capDamages reports whether collectionCap answers damage rather than the
+// builder's refusal: a region read, or a reader with no refusal to set.
+func (r *wireReader) capDamages() bool { return r.region || r.countRefusal == nil }
+
 // collectionCap matches TableListFillBegin and TableMapFillBegin: builder storage refuses the
 // partial value, while a region read reports damage and resumes after L.
 func (r *wireReader) collectionCap() bool {
-	if r.region || r.countRefusal == nil {
+	if r.capDamages() {
 		r.report.Malformed = true
 		return true
 	}
@@ -783,6 +888,7 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, wid
 			cell := &entry.Fields[0].Cell
 			if int(kind) != want && ir.TableKindWidens(int(kind), want) {
 				*widened = true
+				*kindBad = false // this occurrence replaces the earlier key kind
 				if !scan.scalarAt(cell, keyField, int(kind)) {
 					return key, false
 				}
@@ -830,7 +936,8 @@ func (r *wireReader) scalarOrString(cell *tabletext.Cell, f *ir.Field) bool {
 }
 
 func (r *wireReader) array(fv *tabletext.Field) bool {
-	ok, _ := r.arrayBody(fv, -1)
+	ok, selected := r.arrayBody(fv, -1)
+	r.fieldSkipped = !selected
 	return ok
 }
 
@@ -885,6 +992,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			}
 			return true, false
 		}
+		widened := false
 		if int(ek) != ir.TableWireElemKind(f) {
 			if !ir.TableKindWidens(int(ek), ir.TableWireElemKind(f)) {
 				// the element kind is part of the array's identity (§3): counted,
@@ -897,8 +1005,10 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			}
 			// WIDENED at an element kind (§4): every element decodes at the
 			// wire kind's width, and ONE `widened` counts for the field
-			// however many elements it holds
-			r.report.Widened++
+			// however many elements it holds. It counts once the count is
+			// known to land: a builder's count-cap refusal moves no counter
+			// (§2.9)
+			widened = true
 		}
 		// THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
 		// records under this field go with the value it is about to lose. An
@@ -917,6 +1027,9 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			fv.Elems = fv.Elems[:0]
 			if count > uint64(math.MaxInt32) {
 				r.off = end
+				if widened && r.capDamages() {
+					r.report.Widened++
+				}
 				return r.collectionCap(), false
 			}
 			// Slots grow one at a time against the body's own length.
@@ -928,6 +1041,9 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 				// a text-list COUNT clamp names the field (§2.13), as the Go leg does
 				r.report.Reason = "clamped: " + f.TextListElem().MapEntryOf
 			}
+		}
+		if widened {
+			r.report.Widened++
 		}
 		// elements are BOUNDED by the field body: a count the length cannot
 		// cover keeps the decoded prefix, flags malformed, and the parent
@@ -946,6 +1062,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			}
 			fv.Cell.Str = payload
 		} else {
+			var spent int64
 			for i := 0; i < keep; i++ {
 				if f.Array == ir.ArrayList {
 					fv.Elems = append(fv.Elems, r.m.ElementZero(f))
@@ -953,7 +1070,10 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 				if !sub.element(fv, i, int(ek)) {
 					break
 				}
-				decoded = i + 1
+				decoded = r.textTotal(fv, i+1, &spent)
+				if decoded != i+1 {
+					break
+				}
 			}
 			if f.Array == ir.ArrayList {
 				fv.Elems = fv.Elems[:decoded] // the prefix the body covered
@@ -1032,12 +1152,11 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 		} else {
 			r.m.Refill(fv.Elems[i].Tab)
 		}
-		sub.bodyAt(fv.Elems[i].Tab, true)
-		if r.countRefused() {
+		whole, stop := r.nested(sub, fv.Elems[i].Tab, int(n))
+		if stop {
 			return false
 		}
-		if sub.off != int(n) {
-			r.report.Malformed = true
+		if !whole {
 			r.m.Refill(fv.Elems[i].Tab)
 		}
 		r.off += int(n)
@@ -1046,6 +1165,23 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 	// a scalar element decodes at the ELEMENT KIND the header carried, which
 	// is the declared kind or one it widens (§4)
 	return r.scalarAt(&fv.Elems[i], f, ek)
+}
+
+// textTotal holds a text list's `| total = N` on the read (docs/SPEC-TABLES.md
+// §2.13): it keeps the longest PREFIX of the decoded elements whose byte
+// lengths sum within N, each element already clamped at its M, drops the first
+// element that would carry the sum past N and every element after it, and
+// counts `clamped` ONCE for the field, naming it. A count clamped against
+// `[..N]` above is counted apart. It returns the count the field keeps.
+func (r *wireReader) textTotal(fv *tabletext.Field, decoded int, spent *int64) int {
+	f := fv.Def
+	if f.TextTotal <= 0 || !f.IsTextList() {
+		return decoded
+	}
+	if r.m.KeepTextTotal(fv, decoded-1, spent, r.report) {
+		return decoded
+	}
+	return decoded - 1
 }
 
 // textListElement reads one element of a PLAIN text list (docs/SPEC-TABLES.md
@@ -1065,7 +1201,7 @@ func (r *wireReader) textListElement(fv *tabletext.Field, i int) bool {
 		return false
 	}
 	keep := int(n)
-	if bound := int(ir.TextListValue(f).Type.Size); keep > bound {
+	if bound := int(ir.TextListValue(f).Type.Size); !ir.TextListUnbounded(f) && keep > bound {
 		keep = textBoundary(r.buf[r.off:r.off+int(n)], bound)
 		r.report.Clamped++
 		if r.report.Reason == "" {
@@ -1117,6 +1253,7 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 	}
 	if int(elemKind) != ir.TableWireElemKind(f) {
 		if !ir.TableKindWidens(int(elemKind), ir.TableWireElemKind(f)) {
+			r.fieldSkipped = true
 			r.report.KindMismatch++
 			r.off = end
 			return true
@@ -1173,12 +1310,11 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 			} else {
 				r.m.Refill(fv.Elems[slot].Tab)
 			}
-			elem.bodyAt(fv.Elems[slot].Tab, true)
-			if r.countRefused() {
+			whole, stop := r.nested(elem, fv.Elems[slot].Tab, int(elemLen))
+			if stop {
 				return false
 			}
-			if elem.off != int(elemLen) {
-				r.report.Malformed = true
+			if !whole {
 				r.m.Refill(fv.Elems[slot].Tab)
 			}
 		default:
@@ -1286,15 +1422,14 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 		if arm.Body() {
 			payload := r.m.New(arm.Ref)
 			r.rt.builtArm(fv, index, payload)
-			sub.bodyAt(payload, true)
-			if r.countRefused() {
+			whole, stop := r.nested(sub, payload, length)
+			if stop {
 				return false
 			}
-			if sub.off != length {
-				// a body whose terminator is not the last byte of its L is
-				// framing damage: the union reads None and the enclosing body
-				// continues past the arm by L (§3)
-				r.report.Malformed = true
+			if !whole {
+				// a damaged arm body, or one whose terminator is not the last
+				// byte of its L: the union reads None and the enclosing body
+				// continues past the arm by L (§3, §4)
 				cell.U = 0
 				cell.Tab = nil
 			} else {
@@ -1437,25 +1572,20 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 		return true
 	case ir.TableKindF32:
 		bits := r.u32()
-		if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 {
-			// a NaN's PAYLOAD IS DATA the reference carries bit for bit: the
-			// hardware float32→float64 conversion would set the quiet bit, so
-			// the widening is done on the bits. EXCEPT UNDER A DECLARED RANGE:
-			// a compressed float's NaN is a value outside [min, max], and it
-			// clamps to min and counts exactly as -Inf does (§3.3, the
-			// special values). A comparison against a NaN is false, so the
-			// clamp below cannot see it, and this is where it is held.
-			if f.HasFloatRange && declared == ir.TableKindF32 {
-				cell.F = float64(float32(f.FMin))
-				r.report.Clamped++
-				return true
-			}
-			cell.F = widenF32NaN(bits)
+		if !tabletext.FiniteF32(bits) {
+			// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+			// become a value and before the field is written
+			// (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule as
+			// packets"): every read refuses it as non_finite_float, a compressed
+			// float included, whose test runs before its bounds. The walk goes
+			// on so the framing verdict is the one a finite wire gets, and the
+			// read answers the refusal at its end (refusedNonFinite).
+			r.report.RefuseNonFinite(FloatOwner(r.m, f))
 			return true
 		}
 		v := float64(math.Float32frombits(bits))
 		if declared == ir.TableKindF64 {
-			// f32 WIDENED into f64 (§4): every float32 value is exactly
+			// f32 WIDENED into f64 (§4): every finite float32 value is exactly
 			// representable, and a float64 field's declared range clamps
 			// nothing on this wire, exactly as a payload at eight bytes
 			cell.F = v
@@ -1476,7 +1606,12 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 		cell.F = float64(float32(v))
 		return true
 	case ir.TableKindF64:
-		cell.F = math.Float64frombits(r.u64())
+		bits := r.u64()
+		if !tabletext.FiniteF64(bits) {
+			r.report.RefuseNonFinite(FloatOwner(r.m, f))
+			return true
+		}
+		cell.F = math.Float64frombits(bits)
 		return true
 	}
 	if ir.TableKindWide(kind) {
@@ -1591,3 +1726,68 @@ func (*CountRefusal) Error() string {
 }
 
 func (r *wireReader) countRefused() bool { return r.countRefusal != nil && *r.countRefusal }
+
+// NonFiniteRefusal is every read's refusal of a float whose bits are a NaN or
+// an infinity (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+// finite-only too, same rule as packets"): the tolerant read refuses it as the
+// strict one does, so the caller must discard the partial value. Field names
+// the first such field, <Table>.<field>, and the report carries the same name.
+type NonFiniteRefusal struct{ Field string }
+
+func (e *NonFiniteRefusal) Error() string { return "non_finite_float: " + e.Field }
+
+// refusedNonFinite answers a read whose walk recorded a non-finite float: the
+// refusal outranks every other verdict a body could reach after it, because a
+// non-finite float is not a value any reader can repair or keep.
+func refusedNonFinite(report *tabletext.Report) error {
+	if report.NonFiniteFloat == "" {
+		return nil
+	}
+	report.Reason = "non_finite_float: " + report.NonFiniteFloat
+	return &NonFiniteRefusal{Field: report.NonFiniteFloat}
+}
+
+// FloatOwner names a float field as <Owner>.<field> for the non_finite_float
+// refusal (docs/SPEC-TABLES.md §3.3), the owner being the table, type or union
+// that declares it — the name the generated readers record. The cook's engine
+// (internal/tablecook) names its refusals by it too.
+func FloatOwner(m *tabletext.Model, f *ir.Field) string {
+	if m != nil && m.Unit != nil {
+		for _, set := range []map[string]*ir.Struct{m.Unit.Tables, m.Unit.Structs} {
+			for _, st := range set {
+				if slices.Contains(st.Fields, f) {
+					return st.Name + "." + f.Name
+				}
+			}
+		}
+		for _, set := range []map[string]*ir.Union{m.Unit.Unions, m.Unit.TableUnions} {
+			for _, u := range set {
+				for i := range u.Variants {
+					if u.Variants[i].F == f {
+						return u.Name + "." + f.Name
+					}
+				}
+			}
+		}
+	}
+	return f.Name
+}
+
+// retainedPayloadFinite is the raw-bits test on an unknown entry the read is
+// retaining (docs/SPEC-TABLES.md §3.3, §6.6): kind 10's four bytes and kind
+// 11's eight, little-endian, and true for every other kind.
+func retainedPayloadFinite(kind uint8, payload []byte) bool {
+	switch int(kind) {
+	case ir.TableKindF32:
+		return len(payload) != 4 || tabletext.FiniteF32(binary.LittleEndian.Uint32(payload))
+	case ir.TableKindF64:
+		return len(payload) != 8 || tabletext.FiniteF64(binary.LittleEndian.Uint64(payload))
+	}
+	return true
+}
+
+// retainedFloatName names a retained unknown float for the refusal: the body's
+// table and the field id it cannot name, as <Table>.0x<id>.
+func retainedFloatName(inst *tabletext.Instance, id uint64) string {
+	return fmt.Sprintf("%s.0x%016x", inst.Def.Name, id)
+}

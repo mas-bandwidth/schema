@@ -36,8 +36,6 @@ func generateRegion(u *ir.Unit) []byte {
 		g.pf("public static long %sLoadMeasure(System.ReadOnlySpan<byte> bytes, out long dataBytes, out long attributionBytes, out TableRefuseReason reason) { long n = TableWire.LoadMeasureParts(%sTableType(), bytes, out dataBytes, out attributionBytes, out string text); reason = text == null ? TableRefuseReason.ok : System.Enum.Parse<TableRefuseReason>(text); return n; }\n", st.Name, st.Name)
 		g.pf("public static unsafe %sRow* %sLoadRetain(IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { return (%sRow*)TableWire.LoadRetainRegion(%sTableType(), region, capacity, bytes, ref retain, report); }\n", st.Name, st.Name, st.Name, st.Name)
 		g.pf("public static unsafe %sRow* %sLoadRetain(IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { return (%sRow*)TableWire.LoadRetainRegion(%sTableType(), region, capacity, attribution, attributionCapacity, bytes, ref retain, report); }\n", st.Name, st.Name, st.Name, st.Name)
-		g.pf("public static TableWire.Verdict %sLoadRetainMessages(IntPtr region, long capacity, Span<IntPtr> roots, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, Span<TableRetain> retains, TableReport report, out int count) { return TableWire.LoadMessageRetainRegion(%sTableType(), region, capacity, IntPtr.Zero, 0, false, roots, bytes, vocabulary, retains, report, out count); }\n", st.Name, st.Name)
-		g.pf("public static TableWire.Verdict %sLoadRetainMessages(IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, Span<IntPtr> roots, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, Span<TableRetain> retains, TableReport report, out int count) { return TableWire.LoadMessageRetainRegion(%sTableType(), region, capacity, attribution, attributionCapacity, true, roots, bytes, vocabulary, retains, report, out count); }\n", st.Name, st.Name)
 		cap := ir.TableWireIdCapacity(u)
 		g.pf("public static long %sMeasureRetain(IntPtr region, ref TableRetain retain) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), Span<byte>.Empty, ids, slots, ref retain, null, true); }\n", st.Name, cap, cap, st.Name)
 		g.pf("public static long %sMeasureRetain(IntPtr region, ref TableRetain retain, TableAllocator allocator) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), Span<byte>.Empty, ids, slots, ref retain, null, true, allocator); }\n", st.Name, cap, cap, st.Name)
@@ -47,19 +45,11 @@ func generateRegion(u *ir.Unit) []byte {
 		g.pf("public static long %sMeasure(System.IntPtr region, TableAllocator allocator) { Span<ulong> ids = stackalloc ulong[%d]; return TableWire.SaveRegion(region, %sTableType(), Span<byte>.Empty, ids, true, allocator); }\n", st.Name, cap, st.Name)
 		g.pf("public static long %sSave(System.IntPtr region, Span<byte> bytes) { Span<ulong> ids = stackalloc ulong[%d]; return TableWire.SaveRegion(region, %sTableType(), bytes, ids, false); }\n", st.Name, cap, st.Name)
 		g.pf("public static long %sSave(System.IntPtr region, Span<byte> bytes, TableAllocator allocator) { Span<ulong> ids = stackalloc ulong[%d]; return TableWire.SaveRegion(region, %sTableType(), bytes, ids, false, allocator); }\n", st.Name, cap, st.Name)
-		g.pf("public static TableWire.Verdict %sLoadMessages(System.IntPtr region, long capacity, Span<System.IntPtr> roots, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.LoadMessageRegion(%sTableType(), region, capacity, roots, bytes, vocabulary, report, out count); }\n", st.Name, st.Name)
-		g.pf("public static TableWire.Verdict %sLoadMessages(System.IntPtr region, long capacity, System.IntPtr attribution, long attributionCapacity, Span<System.IntPtr> roots, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.LoadMessageRegion(%sTableType(), region, capacity, attribution, attributionCapacity, roots, bytes, vocabulary, report, out count); }\n", st.Name, st.Name)
-		g.pf("public static long %sMeasureMessages(ReadOnlySpan<System.IntPtr> roots) { return TableWire.SaveMessageRegion(roots, %sTableType(), Span<byte>.Empty, true); }\n", st.Name, st.Name)
-		g.pf("public static long %sMeasureMessages(ReadOnlySpan<System.IntPtr> roots, TableAllocator allocator) { return TableWire.SaveMessageRegion(roots, %sTableType(), Span<byte>.Empty, true, allocator); }\n", st.Name, st.Name)
-		g.pf("public static long %sSaveMessages(ReadOnlySpan<System.IntPtr> roots, Span<byte> bytes) { return TableWire.SaveMessageRegion(roots, %sTableType(), bytes, false); }\n", st.Name, st.Name)
-		g.pf("public static long %sSaveMessages(ReadOnlySpan<System.IntPtr> roots, Span<byte> bytes, TableAllocator allocator) { return TableWire.SaveMessageRegion(roots, %sTableType(), bytes, false, allocator); }\n", st.Name, st.Name)
-		g.pf("public static long %sSaveMessages(ReadOnlySpan<System.IntPtr> roots, Span<byte> bytes, TableReport report) { if (roots.Length > 256 && report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; } return %sSaveMessages(roots, bytes); }\n", st.Name, st.Name)
-		g.pf("public static long %sLoadMeasure(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes, out long dataBytes, out long attributionBytes) { return TableWire.MessageLoadMeasureParts(%sTableType(), bytes, vocabulary, out dataBytes, out attributionBytes); }\n", st.Name, st.Name)
 	}
 	g.emitRetain()
 	g.emitRegionCookSurface(names)
 	g.emitBuilders(names)
-	g.pf("public static unsafe partial class TableWire\n{\n%s\n}\n", tableBuilderLoadSource+tableBuilderCollectionWireSource+tableBuilderWireSource+tableRegionCookSource+tableRegionSource+tableRegionGraphSource+tableRegionWriteSource+tableRegionMessageReadSource+tableRegionMessageLoadSource+tableRegionMessageWriteSource+tableRetainRegionSource()+tableRetainWriteSource()+tableRetainMessageSource())
+	g.pf("public static unsafe partial class TableWire\n{\n%s\n}\n", tableNativeTextListSource+tableBuilderLoadSource+tableBuilderCollectionWireSource+tableBuilderWireSource+tableRegionCookSource+tableRegionSource+tableRegionGraphSource+tableRegionWriteSource+tableRetainRegionSource()+tableRetainWriteSource())
 	return g.assemble()
 }
 
@@ -94,13 +84,13 @@ const tableRegionSource = `
             if (f.NativeGuardOffsets != null) { for (int i = 0; i < f.NativeGuardOffsets.Length; i++) { if ((Base[At + f.NativeGuardOffsets[i]] != 0) != f.NativeGuardValues[i]) { return false; } } }
             return true;
         }
-        public int Count(TableFieldInfo f) { return f.NativeCountOffset < 0 ? f.ArrayBound : (int)NativeWord(Base + At + f.NativeCountOffset, 4); }
+        public int Count(TableFieldInfo f) { if(f.Unbounded){byte* slot=Slot(f);long delta=(long)NativeWord(slot,8);return delta==0?0:checked((int)NativeWord(slot+delta,4));} return f.NativeCountOffset < 0 ? f.ArrayBound : (int)NativeWord(Base + At + f.NativeCountOffset, 4); }
         public UInt128 Wide(TableFieldInfo f, int index) { return NativeWord(Slot(f, index), 16); }
         public void SetRaw(TableFieldInfo f, int index, ulong raw) { if (Base != null) { NativePut(Slot(f, index), raw, f.NativeElementSize); } }
         public void SetWide(TableFieldInfo f, int index, UInt128 raw) { if (Base != null) { NativePut(Slot(f, index), raw, 16); } }
-        public Span<byte> Buffer(TableFieldInfo f) { return new Span<byte>(Slot(f), f.ArrayBound + (f.Kind == 12 ? 1 : 0)); }
+        public Span<byte> Buffer(TableFieldInfo f) { if(f.Unbounded){byte* slot=Slot(f);long delta=(long)NativeWord(slot,8);return delta==0?Span<byte>.Empty:new Span<byte>(slot+delta+8,checked((int)NativeWord(slot+delta,4)));} return new Span<byte>(Slot(f), f.ArrayBound + (f.Kind == 12 ? 1 : 0)); }
         public Span<char> Chars(TableFieldInfo f) { return new Span<char>(Slot(f), f.ArrayBound + 1); }
-        public void SetCount(TableFieldInfo f, int n) { if (Base != null) { NativePut(Base + At + f.NativeCountOffset, (uint)n, 4); } }
+        public void SetCount(TableFieldInfo f, int n) { if(f.Unbounded){byte* slot=Slot(f);long delta=(long)NativeWord(slot,8);if(delta!=0){NativePut(slot+delta,(uint)n,4);}return;} if (Base != null) { NativePut(Base + At + f.NativeCountOffset, (uint)n, 4); } }
         public void SetPresent(TableFieldInfo f, bool present) { if (Base != null) { Base[At + f.NativePresentOffset] = present ? (byte)1 : (byte)0; } }
         public void SetTag(TableFieldInfo f, ulong tag) { if (Base != null) { NativePut(Base + At, tag, f.Arms.NativeTagSize); } }
     }
@@ -131,6 +121,7 @@ const tableRegionSource = `
     static unsafe void NativeResetField(NativeValue value, TableFieldInfo f, bool defaults)
     {
         if (value.Base == null) { return; }
+        if (f.Unbounded) { NativePut(value.Base + value.At + f.NativeOffset, 0, 8); if(f.Optional){value.SetPresent(f,false);} return; }
         if (f.Dynamic) { NativePut(value.Base + value.At + f.NativeOffset, 0, 16); return; }
         if (f.GetBuffer != null)
         {
@@ -143,7 +134,7 @@ const tableRegionSource = `
             int n = f.IsArray ? f.ArrayBound : 1;
             for (int i = 0; i < n; i++)
             {
-                if (f.Kind == 13) { NativeReset(value.Child(f, i), f.Table); }
+                if (f.Kind == 13 || f.TextList) { NativeReset(value.Child(f, i), f.Table); }
                 else if (f.Kind == 15) { System.Runtime.InteropServices.NativeMemory.Clear(value.Slot(f, i), (nuint)f.NativeElementSize); }
                 else if (f.GetWide != null) { value.SetWide(f, i, defaults ? f.DefaultWide : 0); }
                 else { value.SetRaw(f, i, defaults ? f.DefaultRaw : 0); }
@@ -155,7 +146,7 @@ const tableRegionSource = `
     static unsafe void NativeResetElement(NativeValue value, TableFieldInfo f, int i)
     {
         if (value.Base == null) { return; }
-        if (f.Kind == 13) { NativeReset(value.Child(f, i), f.Table); }
+        if (f.Kind == 13 || f.TextList) { NativeReset(value.Child(f, i), f.Table); }
         else if (f.Kind == 15) { System.Runtime.InteropServices.NativeMemory.Clear(value.Slot(f, i), (nuint)f.NativeElementSize); }
         else if (f.GetWide != null) { value.SetWide(f, i, f.DefaultWide); }
         else { value.SetRaw(f, i, f.DefaultRaw); }
@@ -171,7 +162,7 @@ const tableRegionSource = `
     {
         if (state.Worker != null)
         {
-            if (count > int.MaxValue) { state.Refused = true; return false; }
+            if (count > int.MaxValue) { state.Refused = true; return CollectionCap(report); }
             return true; // allocate only the prefix that actually decodes
         }
         long at = Align(state.Next, f.StorageAlign);
@@ -183,7 +174,7 @@ const tableRegionSource = `
         NativePut(slot + 8, 0, 4); state.Next = at + bytes;
         for (int i = 0; i < (int)count; i++)
         {
-            if (f.Kind == 13) { NativeReset(value.Child(f, i), f.Table); }
+            if (f.Kind == 13 || f.TextList) { NativeReset(value.Child(f, i), f.Table); }
             else if (f.Kind == 15) { System.Runtime.InteropServices.NativeMemory.Clear(value.Slot(f, i), (nuint)f.NativeElementSize); }
             else if (f.GetWide != null) { value.SetWide(f, i, f.DefaultWide); }
             else { value.SetRaw(f, i, f.DefaultRaw); }
@@ -210,7 +201,7 @@ const tableRegionSource = `
                 { if (id != f.PointerTypeId) { report.KindMismatch++; } else { target = offset; } }
             }
         }
-        value.SetRaw(f, index, target == long.MinValue ? 0 : unchecked((ulong)(target - (value.Slot(f, index) - value.Base))));
+        value.SetRaw(f, index, target == long.MinValue ? 0 : (f.BlobKind == 0 ? node : unchecked((ulong)(target - (value.Slot(f, index) - value.Base)))));
     }
     ref struct NativeMapKey
     {
@@ -227,7 +218,7 @@ const tableRegionSource = `
             if (!body.Has(1)) { return false; }
             byte kind = body.Byte();
             if (id != field.Id) { if (!body.Skip(kind)) { return false; } continue; }
-            if (kind != field.Kind && Widen(kind, field.Kind)) { widened = true; }
+            if (kind != field.Kind && Widen(kind, field.Kind)) { mismatch = false; widened = true; }
             else
             {
                 mismatch = kind != field.Kind;
@@ -252,8 +243,11 @@ const tableRegionSource = `
         if (!header.Var(out ulong count)) { Damage(report); return true; }
         a.Offset = Math.Min(a.Buffer.Length, header.Offset);
         if (kind != 13) { report.KindMismatch++; return true; }
+        // A REGION READ WHOSE COUNT THE FRAMED STORAGE CANNOT HOLD reports
+        // damage and resumes after the map's L, as the Go oracle's
+        // collectionCap does; only a builder's refusal stops the read.
         NativeResetField(value, f, true);
-        if (!NativeReserve(ref state, value, f, count, report)) { return false; }
+        if (!NativeReserve(ref state, value, f, count, report)) { return !state.Refused; }
         int landed = 0; bool widened = false; NativeMapKey last = default;
         TableFieldInfo keyField = f.Table.Fields[0];
         for (ulong i = 0; i < count; i++)
@@ -269,7 +263,7 @@ const tableRegionSource = `
             int slot = order == 0 ? landed - 1 : landed;
             if (!NativeEnsure(ref state, value, f, slot)) { return false; }
             NativeReadBody(ref state, ref body, value.Child(f, slot), f.Table, report, true);
-            if (state.Refused) { return false; }
+            if (state.Refused || report.Refused) { return false; }
             if (order == 0) { report.Duplicate++; } else { last = key; landed++; }
         }
         value.SetCount(f, landed); return true;
@@ -302,7 +296,10 @@ const tableRegionSource = `
             raw = r.Fixed(width);
             if (kind >= 2 && kind <= 5 && width < 8)
             { int shift = 64 - width * 8; raw = unchecked((ulong)((long)(raw << shift) >> shift)); }
-            if (kind == 1) { raw = raw == 0 ? 0ul : 1ul; }
+            // A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on the
+            // tolerant read (docs/SPEC-TABLES.md §6.5), as the Go oracle counts it.
+            if (kind == 1) { if (raw > 1) { report.Malformed = true; } raw = raw == 0 ? 0ul : 1ul; }
+            if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw)) { NonFinite(f, report); return true; }
             if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
             if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
         }
@@ -312,6 +309,13 @@ const tableRegionSource = `
     }
     static bool NativeReadElement(ref NativeState state, ref Reader r, NativeValue value, TableFieldInfo f, int index, byte kind, TableReport report, bool framed)
     {
+        if (f.TextList && kind == 12)
+        {
+            Reader text=r;if(framed&&!r.Slice(out text)){return Damage(report);}
+            if(!framed){r.Offset=r.Buffer.Length;}
+            int before=report.Clamped;bool good=NativeReadText(ref state, text.Buffer,value.Child(f,index),f.Table.Fields[0],report);
+            if(report.Clamped!=before){TextClamp(report,f);}return good;
+        }
         if (kind == 17)
         {
             if (!r.Var(out ulong indexValue)) { return Damage(report); }
@@ -322,8 +326,9 @@ const tableRegionSource = `
             Reader sub = r;
             if (framed && !r.Slice(out sub)) { return Damage(report); }
             NativeValue child = value.Child(f, index);
-            NativeReadBody(ref state, ref sub, child, f.Table, report, true);
-            if (state.Refused) { return false; }
+            int before=report.Clamped;NativeReadBody(ref state, ref sub, child, f.Table, report, true);
+            if(f.TextList&&report.Clamped!=before){TextClamp(report,f);}
+            if (state.Refused || report.Refused) { return false; }
             if (sub.Offset != sub.Buffer.Length) { NativeReset(child, f.Table); Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
             return true;
@@ -399,7 +404,7 @@ const tableRegionSource = `
         if (kind == 13)
         {
             NativeReadBody(ref state, ref r, value.Child(f, 0), f.Table, report, true);
-            if (state.Refused) { return false; }
+            if (state.Refused || report.Refused) { return false; }
             return r.Offset == r.Buffer.Length || Damage(report);
         }
         if (kind == 15) { return NativeReadElement(ref state, ref r, value, f, 0, kind, report, true); }
@@ -412,7 +417,7 @@ const tableRegionSource = `
         if (kind == 12 || kind == 33)
         {
             NativeResetArm(value, f);
-            return kind == 33 ? NativeReadChars(r.Buffer, value, f, report) : NativeReadText(r.Buffer, value, f, report);
+            return kind == 33 ? NativeReadChars(r.Buffer, value, f, report) : NativeReadText(ref state, r.Buffer, value, f, report);
         }
         if (kind == 14)
         {
@@ -422,7 +427,7 @@ const tableRegionSource = `
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-            if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
+            if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
             if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return false; }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
@@ -437,7 +442,7 @@ const tableRegionSource = `
         if (!NativeReadScalar(ref state, ref r, value, f, 0, kind, report)) { return false; }
         return r.Offset == r.Buffer.Length || Damage(report);
     }
-    static bool NativeReadText(ReadOnlySpan<byte> text, NativeValue value, TableFieldInfo f, TableReport report)
+    static bool NativeReadText(ref NativeState state, ReadOnlySpan<byte> text, NativeValue value, TableFieldInfo f, TableReport report)
     {
         if (!TextValid(text)) { return Damage(report); }
         int keep = text.Length;
@@ -445,6 +450,15 @@ const tableRegionSource = `
         {
             keep = f.ArrayBound; report.Clamped++;
             while (keep > 0 && (text[keep] & 0xc0) == 0x80) { keep--; }
+        }
+        if(f.Unbounded)
+        {
+            if(keep==0){if(value.Base!=null){NativePut(value.Slot(f),0,8);}return true;}
+            long size=Align(9L+keep,8);byte* blob;
+            if(state.Worker!=null){blob=state.Worker.Raw(size);if(blob==null){state.Refused=true;return false;}}
+            else {long at=Align(state.Next,8);if(at>state.End||size>state.End-at){return Damage(report);}state.Next=at+size;if(value.Base==null){return true;}blob=value.Base+at;}
+            System.Runtime.InteropServices.NativeMemory.Clear(blob,(nuint)size);NativePut(blob,(uint)keep,4);
+            text.Slice(0,keep).CopyTo(new Span<byte>(blob+8,keep));NativePut(value.Slot(f),unchecked((ulong)(blob-value.Slot(f))),8);return true;
         }
         if (value.Base != null) { text.Slice(0, keep).CopyTo(value.Buffer(f)); value.SetCount(f, keep); }
         return true;
@@ -481,7 +495,7 @@ const tableRegionSource = `
         if (kind == 12 || kind == 33)
         {
             if (!r.Slice(out Reader text)) { return Damage(report); }
-            if (!(kind == 33 ? NativeReadChars(text.Buffer, value, f, report) : NativeReadText(text.Buffer, value, f, report)))
+            if (!(kind == 33 ? NativeReadChars(text.Buffer, value, f, report) : NativeReadText(ref state, text.Buffer, value, f, report)))
             { NativeResetField(value, f, true); }
             return true;
         }
@@ -511,14 +525,21 @@ const tableRegionSource = `
             else
             {
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
-                if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return false; }
+                if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
+                // the same rule for a list: damage, then the parent resumes
+                // after the array's L (the Go oracle's collectionCap)
+                if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return !state.Refused; }
                 int previous = f.Counted ? value.Count(f) : 0;
-                int decoded = 0;
+                int decoded = 0; long textSpent = 0;
                 for (int i = 0; i < keep; i++)
                 {
                     if (f.Dynamic) { if (!array.Has(1)) { Damage(report); break; } if (!NativeEnsure(ref state, value, f, i)) { return false; } }
                     if (!NativeReadElement(ref state, ref array, value, f, i, elementKind, report, true)) { break; }
+                    if(f.TextTotal>0){
+                        NativeValue child=value.Child(f,i);TableFieldInfo text=f.Table.Fields[0];
+                        int length=text.Optional&&!child.Present(text)?0:child.Count(text);
+                        if(!TextTotalKeep(f,length,ref textSpent,report)){NativeResetElement(value,f,i);break;}
+                    }
                     decoded++;
                 }
                 if (f.Counted) { NativeResetCountedTail(value, f, previous, decoded); }
@@ -527,13 +548,28 @@ const tableRegionSource = `
         }
         return NativeReadElement(ref state, ref r, value, f, 0, kind, report, true);
     }
+    static bool NativeRequireSeen(NativeValue value, TableTypeInfo type, ReadOnlySpan<ulong> seen, TableReport report)
+    {
+        if (!type.HasRequired) { return !report.Refused; }
+        System.Text.StringBuilder missing = null;
+        foreach (TableFieldInfo f in type.Fields)
+        {
+            if (!f.Required || !value.Guard(f) || (seen[f.Ordinal >> 6] & (1ul << (f.Ordinal & 63))) != 0) { continue; }
+            if (missing == null) { missing = new System.Text.StringBuilder(); } else { missing.Append(", "); }
+            missing.Append(f.Name);
+        }
+        return RequiredMissing(report, missing?.ToString());
+    }
     static bool NativeReadBody(ref NativeState state, ref Reader r, NativeValue value, TableTypeInfo type, TableReport report, bool nested)
     {
+        int words = type.HasRequired ? (type.NumFields + 63) / 64 : 0;
+        Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
+        seen.Clear();
         NativeReset(value, type);
         for (; ; )
         {
             if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
-            if (reference == 0) { return true; }
+            if (reference == 0) { return NativeRequireSeen(value, type, seen, report); }
             if ((nested && id == ulong.MaxValue) || id == ulong.MaxValue - 1 || id == ulong.MaxValue - 2) { return Damage(report); }
             if (!r.Has(1)) { return Damage(report); }
             byte kind = r.Byte();
@@ -555,7 +591,8 @@ const tableRegionSource = `
             }
             if (field.MapKey) { report.Widened = beforeWidened; }
             if (!NativeReadField(ref state, ref r, value, field, kind, report, out bool placed)) { return false; }
-            if (state.Refused) { return false; }
+            if (state.Refused || report.Refused) { return false; }
+            if (field.Required && placed) { seen[field.Ordinal >> 6] |= 1ul << (field.Ordinal & 63); }
             if (field.Optional && placed) { value.SetPresent(field, true); }
         }
     }
@@ -577,6 +614,12 @@ const tableRegionSource = `
         if (f.Dynamic) { f.EnsureCount(target, n); }
         if (f.NativeCountOffset >= 0) { f.SetCount(target, source.Count(f)); }
         if (f.Optional) { f.SetPresent(target, source.Base[source.At + f.NativePresentOffset] != 0); }
+        if (f.Unbounded)
+        {
+            ReadOnlySpan<byte> text = source.Buffer(f);
+            f.EnsureCount(target, text.Length); f.SetCount(target, text.Length);
+            text.CopyTo(f.GetBuffer(target)); return;
+        }
         if (f.GetBuffer != null) { source.Buffer(f).Slice(0, f.GetBuffer(target).Length).CopyTo(f.GetBuffer(target)); return; }
         if (f.GetChars != null) { source.Chars(f).Slice(0, f.GetChars(target).Length).CopyTo(f.GetChars(target)); return; }
         for (int i = 0; i < n; i++)
@@ -600,7 +643,7 @@ const tableRegionSource = `
                 }
                 f.SetChild(target, i, child);
             }
-            else if (f.Kind == 13) { NativeCopyBody(source.Child(f, i), f.GetChild(target, i), f.Table, nodes); }
+            else if (f.Kind == 13 || f.TextList) { NativeCopyBody(source.Child(f, i), f.GetChild(target, i), f.Table, nodes); }
             else if (f.Kind == 15)
             {
                 NativeValue union = source.Child(f, i); ulong tag = (ulong)NativeWord(union.Base + union.At, f.Arms.NativeTagSize);
@@ -617,6 +660,7 @@ const tableRegionSource = `
     {
         dataBytes = attributionBytes = 0;
         long total = LoadMeasure(type, bytes, out reason); if (total < 0) { return -1; }
+        if (type.Integrity) { bytes = bytes.Slice(0, bytes.Length - 4); }
         int idsCount = (int)Read64(bytes, bytes.Length - 8), end = bytes.Length - 8 - idsCount * 8;
         Reader root = new Reader(bytes.Slice(1, end - 1), bytes.Slice(end, idsCount * 8));
         if (!NodeFrames(root, out _, out int nodes)) { nodes = 0; }
@@ -638,9 +682,10 @@ const tableRegionSource = `
     static unsafe IntPtr NativeLoadRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report, long total, long dataBytes, string reason)
     {
         if (report == null) { throw new ArgumentNullException(nameof(report)); }
-        report.Refused = false; report.Reason = null;
+        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
         if (total < 0)
         {
+            if (reason == "integrity_mismatch") { IntegrityDamage(report); return IntPtr.Zero; }
             if (reason != null) { report.Refused = true; report.Reason = reason == "unknown_form" ? (bytes[0] == 2 ? "message_form_as_file" : "newer_form") : reason; Finish(report, Verdict.Refused); }
             else { Damage(report); Finish(report, Verdict.Damaged); }
             return IntPtr.Zero;
@@ -649,10 +694,13 @@ const tableRegionSource = `
         if (region == IntPtr.Zero || attribution == IntPtr.Zero || capacity < dataBytes || attributionCapacity < attributionBytes || ((ulong)region % (ulong)type.RegionAlign) != 0 || ((ulong)attribution & 7) != 0) { return IntPtr.Zero; }
         ulong dataAddress = (ulong)region, attrAddress = (ulong)attribution;
         if (dataAddress <= attrAddress ? attrAddress - dataAddress < (ulong)dataBytes : dataAddress - attrAddress < (ulong)attributionBytes) { return IntPtr.Zero; }
+        if (type.Integrity) { bytes = bytes.Slice(0, bytes.Length - 4); }
         ulong idsCount = Read64(bytes, bytes.Length - 8);
         int end = bytes.Length - 8 - (int)idsCount * 8;
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)idsCount * 8);
         Reader root = new Reader(bytes.Slice(1, end - 1), ids);
+        bool malformedBefore = report.Malformed;
+        report.Malformed = false;
         bool good = NodeFrames(root, out Reader records, out int count);
         if (!good) { count = 0; Damage(report); }
         byte* data = (byte*)region; byte* directory = (byte*)attribution;
@@ -694,6 +742,13 @@ const tableRegionSource = `
         }
         state.Next = Align(type.StorageSize, type.RegionAlign); state.End = state.Next + rootExtent;
         bool complete = NativeReadBody(ref state, ref root, new NativeValue(data, 0), type, report, false);
+        // a non-finite float refuses the load and lands nothing (docs/SPEC-TABLES.md §3.3)
+        if (NonFiniteRefused(report) || report.Refused) { report.Malformed |= malformedBefore; System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
+        // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
+        if (good && RegionCyclic(data, directory, count, type, default, false)) { Damage(report); }
+        // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no root, and the region holds nothing.
+        if (report.Malformed) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }
+        report.Malformed = malformedBefore;
         Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped); return region;
     }
 `

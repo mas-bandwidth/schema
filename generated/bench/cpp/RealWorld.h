@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 
 namespace realworld {
 
@@ -15,14 +15,14 @@ namespace realworld {
 inline constexpr uint64_t ProtocolId = 0x1922430092518648ull;
 
 // enum PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2)
-enum class PacketMode : uint8_t {
+enum class PacketMode : uint8_t
+{
     None = 0,
     Idle = 1,
     Active = 2,
     Combat = 3,
     Docked = 4,
     Warping = 5,
-    Count = 5, // the declared variant count (SPEC §4.2)
     Max = 5, // the exported extent (SPEC §4.2)
 };
 
@@ -142,7 +142,8 @@ inline const char * FlagNamesPacketFlags( uint64_t value, char * buffer, int buf
 }
 
 // type RealPacket
-struct RealPacket {
+struct RealPacket
+{
     int32_t f001_int = 0; // wire [-805495, 805495]
     double f002_f64 = 0.0;
     int32_t f003_int = 0; // wire [-835897, 835897]

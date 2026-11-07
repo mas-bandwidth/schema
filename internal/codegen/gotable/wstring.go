@@ -28,8 +28,8 @@ func tableUtf16Clamp(data []byte,keep int) int {
 }
 `
 
-const tableJsonWStringSource = `
-func tableJsonWriteWString(out *tableJsonOut,units []uint16) {
+const tableJSONWStringSource = `
+func tableJSONWriteWString(out *tableJSONOut,units []uint16) {
  out.put('"')
  for i:=0;i<len(units);i++ {
   code:=uint32(units[i])
@@ -37,8 +37,8 @@ func tableJsonWriteWString(out *tableJsonOut,units []uint16) {
    code=0x10000+(code-0xd800)<<10+(uint32(units[i+1])-0xdc00);i++
   }
   if code>=0xd800 && code<=0xdfff {code=0xfffd}
-  var encoded [4]byte;n:=tableJsonEncodeUtf8(code,encoded[:])
-  tableJsonWriteStringBody(out,encoded[:n])
+  var encoded [4]byte;n:=tableJSONEncodeUTF8(code,encoded[:])
+  tableJSONWriteStringBody(out,encoded[:n])
  }
  out.put('"')
 }

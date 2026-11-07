@@ -120,7 +120,16 @@ func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
-	return string(out)
+	// The JVM prints a `Picked up JAVA_TOOL_OPTIONS: ...` banner on stderr
+	// when the variable is set; it is not part of the driver's output.
+	var lines []string
+	for l := range strings.SplitSeq(string(out), "\n") {
+		if strings.HasPrefix(l, "Picked up JAVA_TOOL_OPTIONS") {
+			continue
+		}
+		lines = append(lines, l)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // driverPrologue is shared by every driver: the class header and helpers.
@@ -585,7 +594,7 @@ func refusalsMain(u *ir.Unit) string {
             fail("second announcement was not refused by name");
         }
         if (first.count != before) { fail("a second announcement replaced the vocabulary"); }
-        // A refused FIRST announcement is terminal: a peer whose announcement was
+        // A refused FIRST announcement is terminal: an endpoint whose announcement was
         // refused holds no retry on that connection (§3.3).
         final TableVocabulary refused = new TableVocabulary();
         refused.reset(%d);
@@ -605,6 +614,17 @@ func refusalsMain(u *ir.Unit) string {
         final TableVocabulary.Report e1 = new TableVocabulary.Report();
         if (TableVocabulary.announceRead(smallEntries, ann, e1) || !e1.refused || !"vocabulary_too_large".equals(e1.reason) || e1.malformed || smallEntries.announced) {
             fail("entry count bound was not refused by name");
+        }
+        // The entry bound is maxEntries too, not the storage's capacity alone:
+        // a receiver that keeps room for every entry and sets maxEntries = 1
+        // refuses an announcement of more than one (the hostile corpus's
+        // announce-entries-too-large; the Go engine's Vocabulary.MaxEntries).
+        final TableVocabulary narrowEntries = new TableVocabulary();
+        narrowEntries.reset(%d);
+        narrowEntries.maxEntries = 1;
+        final TableVocabulary.Report e3 = new TableVocabulary.Report();
+        if (TableVocabulary.announceRead(narrowEntries, ann, e3) || !e3.refused || !"vocabulary_too_large".equals(e3.reason) || e3.malformed || narrowEntries.announced) {
+            fail("maxEntries bound was not refused by name");
         }
         final TableVocabulary smallBytes = new TableVocabulary();
         smallBytes.reset(%d);
@@ -634,5 +654,5 @@ func refusalsMain(u *ir.Unit) string {
         }
         System.out.println("ok");
     }
-`, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, cases.String(), len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, hexOf(announcement(append(versionField(version), 2, 13))), version)
+`, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, cases.String(), len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, hexOf(announcement(append(versionField(version), 2, 13))), version)
 }

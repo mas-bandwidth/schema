@@ -111,7 +111,7 @@ func runTextFormUnit(t *testing.T, schema string, tests map[string]string) {
 	maps.Copy(files, tables)
 	dir := t.TempDir()
 	runtime := slowtest.SerializeGo(t, "../../../")
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	for name, src := range tests {
 		files[name] = []byte(src)
 	}
@@ -239,12 +239,12 @@ func decode(t testing.TB, b []byte) map[string]any {
 
 func docJSON(t testing.TB, v *Document) map[string]any {
 	t.Helper()
-	n := DocumentToJsonMeasure(v)
+	n := DocumentToJSONMeasure(v)
 	if n < 0 {
 		t.Fatal("the value read from a document does not write as JSON")
 	}
 	b := make([]byte, n)
-	if DocumentToJson(v, b) != n {
+	if DocumentToJSON(v, b) != n {
 		t.Fatal("json write")
 	}
 	return decode(t, b)
@@ -765,12 +765,12 @@ import (
 
 func graphJSON(t *testing.T, v *Graph) map[string]any {
 	t.Helper()
-	n := GraphToJsonMeasure(v)
+	n := GraphToJSONMeasure(v)
 	if n < 0 {
 		t.Fatal("graph json measure")
 	}
 	b := make([]byte, n)
-	if GraphToJson(v, b) != n {
+	if GraphToJSON(v, b) != n {
 		t.Fatal("graph json write")
 	}
 	return decode(t, b)

@@ -1,5 +1,6 @@
-// Package roadmap holds the test that keeps ROADMAP.md honest about its
-// tables: every row carries one cell per language, every cell is ✅ or ❌,
-// and no sentence outside the tables counts a language by hand, since a
-// count written in prose is the line that goes stale when a cell moves.
+// Package roadmap holds the gates that keep ROADMAP.md's tables generated and
+// its hand-written text Glenn's. render.lisp rewrites only what sits between
+// each pair of nova-work markers; every block holds a table and its source
+// link and nothing else; and a change outside the markers is refused unless
+// Glenn Fiedler authored it.
 package roadmap

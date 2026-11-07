@@ -417,7 +417,7 @@ static class ProbeMain
 
 // t12R29 holds cs/R29's second half: the bounds pass clamping to the WRITER's
 // bounds. The writer carries its ranged leaves in the lineage entry; the
-// compiled lane's bounds pass holds a peer to what IT declared and never to
+// compiled lane's bounds pass holds an endpoint to what IT declared and never to
 // this reader's wider own (§4.6, bill §12.5, TableFixedClampKnownRanges).
 func t12R29(t *testing.T) {
 	writer := unitFrom(t, "package wband\n\nfixed table Band\n{\n    n int32 = 0 | min = 0, max = 100\n}\n")
@@ -426,7 +426,6 @@ func t12R29(t *testing.T) {
 	if !ok {
 		t.Fatal("no lineage entry for the writer")
 	}
-	we.Ranges = []FixedRangeSpec{{Name: "n", Lo: 0, Hi: 100}}
 	files, err := GenerateLineage(reader, map[string][]FixedLineageEntry{"Band": {we}})
 	if err != nil {
 		t.Fatalf("GenerateLineage: %v", err)
@@ -496,7 +495,6 @@ func t12R29Forged(t *testing.T) {
 	if !ok {
 		t.Fatal("no lineage entry for the writer")
 	}
-	we.Ranges = []FixedRangeSpec{{Name: "n", Lo: 0, Hi: 100}}
 	dir := t.TempDir()
 	write := func(root string, files map[string][]byte) {
 		for name, data := range files {

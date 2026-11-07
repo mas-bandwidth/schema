@@ -24,32 +24,15 @@ impl From<serialize::Error> for Error {
     }
 }
 
-// serialize.rs 2.0.0 writes are infallible: their Result carries an
-// uninhabited error, and `?` on one needs this vacuous conversion.
-impl From<core::convert::Infallible> for Error {
-    fn from(e: core::convert::Infallible) -> Error {
-        match e {}
-    }
-}
-
 pub type Result<T = ()> = core::result::Result<T, Error>;
 
 // type WideSeven
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct WideSeven {
     pub text: [u16; 7], // UTF-16 code units (SPEC §4.12)
     pub text_length: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for WideSeven {
-    fn default() -> Self {
-        WideSeven {
-            text: [0; 7],
-            text_length: 0,
-        }
-    }
 }
 
 // WIDE_SEVEN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -61,7 +44,7 @@ pub const WIDE_SEVEN_MAX_BYTES: usize = 32;
 pub fn write_wide_seven(stream: &mut WriteStream<'_>, value: &WideSeven) -> Result {
     {
         let mut length = value.text_length;
-        debug_assert!(length >= 0 && length <= 7, "text_length out of range [0, 7]");
+        debug_assert!((0..=7).contains(&length), "text_length out of range [0, 7]");
         stream.serialize_int(&mut length, 0, 7)?;
         for &unit in &value.text[..length as usize] {
             debug_assert!(unit != 0, "text carries an interior null within its used length");
@@ -93,21 +76,12 @@ pub fn read_wide_seven(stream: &mut ReadStream<'_>, value: &mut WideSeven) -> Re
 }
 
 // type WideFour
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct WideFour {
     pub text: [u16; 4], // UTF-16 code units (SPEC §4.12)
     pub text_length: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for WideFour {
-    fn default() -> Self {
-        WideFour {
-            text: [0; 4],
-            text_length: 0,
-        }
-    }
 }
 
 // WIDE_FOUR_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -119,7 +93,7 @@ pub const WIDE_FOUR_MAX_BYTES: usize = 24;
 pub fn write_wide_four(stream: &mut WriteStream<'_>, value: &WideFour) -> Result {
     {
         let mut length = value.text_length;
-        debug_assert!(length >= 0 && length <= 4, "text_length out of range [0, 4]");
+        debug_assert!((0..=4).contains(&length), "text_length out of range [0, 4]");
         stream.serialize_int(&mut length, 0, 4)?;
         for &unit in &value.text[..length as usize] {
             debug_assert!(unit != 0, "text carries an interior null within its used length");
@@ -151,21 +125,12 @@ pub fn read_wide_four(stream: &mut ReadStream<'_>, value: &mut WideFour) -> Resu
 }
 
 // type NarrowFifteen
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct NarrowFifteen {
     pub text: [u8; 15], // string(15): max length, used length beside it (SPEC §4.7)
     pub text_length: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for NarrowFifteen {
-    fn default() -> Self {
-        NarrowFifteen {
-            text: [0; 15],
-            text_length: 0,
-        }
-    }
 }
 
 // NARROW_FIFTEEN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -200,21 +165,12 @@ pub fn read_narrow_fifteen(stream: &mut ReadStream<'_>, value: &mut NarrowFiftee
 }
 
 // type WideInterop
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct WideInterop {
     pub caption: [u16; 7], // UTF-16 code units (SPEC §4.12)
     pub caption_length: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for WideInterop {
-    fn default() -> Self {
-        WideInterop {
-            caption: [0; 7],
-            caption_length: 0,
-        }
-    }
 }
 
 // WIDE_INTEROP_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -226,7 +182,7 @@ pub const WIDE_INTEROP_MAX_BYTES: usize = 32;
 pub fn write_wide_interop(stream: &mut WriteStream<'_>, value: &WideInterop) -> Result {
     {
         let mut length = value.caption_length;
-        debug_assert!(length >= 0 && length <= 7, "caption_length out of range [0, 7]");
+        debug_assert!((0..=7).contains(&length), "caption_length out of range [0, 7]");
         stream.serialize_int(&mut length, 0, 7)?;
         for &unit in &value.caption[..length as usize] {
             debug_assert!(unit != 0, "caption carries an interior null within its used length");

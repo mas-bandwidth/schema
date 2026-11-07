@@ -23,8 +23,12 @@ static partial class Program
             for(long i=n;i<n+64;i++) { Check(region[i]==0xa5,name+" exact-size load stays inside allocation"); }
             new ReadOnlySpan<byte>(region,(int)n).CopyTo(new Span<byte>(relocated,(int)n));
             NativeMemory.Clear(region,(nuint)n);
-            long nativeSize=regionMeasure((IntPtr)relocated); Check(nativeSize==bytes.Length,name+" native save measure");
-            if(nativeSize>=0) { byte[] native=new byte[nativeSize]; Check(regionSave((IntPtr)relocated,native)==nativeSize && native.AsSpan().SequenceEqual(bytes),name+" native writer reproduces C++ wire"); }
+            long nativeSize=regionMeasure((IntPtr)relocated);
+            // the native region writer is a writer of the wire too (docs/SPEC-TABLES.md
+            // §2.5): a blob two slots name is refused by Measure and by Save
+            if(name=="blob_shared") { Check(nativeSize<0 && regionSave((IntPtr)relocated,new byte[bytes.Length])<0,name+" native region writer refuses the shared blob"); }
+            else { Check(nativeSize==bytes.Length,name+" native save measure"); }
+            if(nativeSize>=0 && name!="blob_shared") { byte[] native=new byte[nativeSize]; Check(regionSave((IntPtr)relocated,native)==nativeSize && native.AsSpan().SequenceEqual(bytes),name+" native writer reproduces C++ wire"); }
             T value=copy((IntPtr)relocated); long wireSize=fileMeasure(value);
             // a blob two slots name is refused by every writer of the wire
             // (docs/SPEC-TABLES.md §2.5, blob_shared): the copy holds the one

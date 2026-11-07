@@ -71,12 +71,12 @@ func vector(t testing.TB, name string) []byte {
 
 func tagsJSON(t *testing.T, v *Tags) map[string]any {
 	t.Helper()
-	n := TagsToJsonMeasure(v)
+	n := TagsToJSONMeasure(v)
 	if n < 0 {
 		t.Fatal("json measure")
 	}
 	b := make([]byte, n)
-	if TagsToJson(v, b) != n {
+	if TagsToJSON(v, b) != n {
 		t.Fatal("json write")
 	}
 	d := json.NewDecoder(bytes.NewReader(b))

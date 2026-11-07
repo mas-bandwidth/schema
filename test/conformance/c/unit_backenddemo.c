@@ -1,4 +1,6 @@
 #include "BackendTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE backenddemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER BACKENDDEMO
 #include "unit.h"
 SCHEMA_CONFORMANCE_CODEC( LoginRequest, login_request )
 SCHEMA_CONFORMANCE_CODEC( MatchResult, match_result )

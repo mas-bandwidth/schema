@@ -615,11 +615,13 @@ One bit.
 
 `float32` and `float64`, written whole (32 and 64 bits).
 
-On the table wire a plain float rides as its bit pattern: `-0` is kept apart
-from `+0` (the default elision compares bits, so `-0` rides), and a NaN or an
-infinity rides too, but `<Name>ReadStrict` refuses one as `non_finite`,
-because the JSON text has no spelling for it (docs/SPEC-TABLES.md §3.3, a
-plain float's special values).
+A float is finite, on the packet wire and the table wire alike: a write of a
+NaN or an infinity is refused, and every read, tolerant or strict, refuses
+one as `non_finite_float` (SPEC.md §4.3; docs/SPEC-TABLES.md §3.3, a plain
+float's special values). `-0` and the subnormals ride as their exact bits:
+`-0` is kept apart from `+0` (the default elision compares bits, so `-0`
+rides). A target that has not landed the 2026-10-27 rule yet still carries
+the older behaviour; docs/SPEC-TABLES.md §3.3 says which.
 
 ### Compressed floats
 
@@ -764,8 +766,8 @@ whose payload is a byte length holding half as many code units, two bytes each
 little-endian. So respelling a field between `string(N)` and `wstring(N)` is
 an ordinary counted kind mismatch and never UTF-8 bytes read as code units.
 The validation above holds on both wires, and only the SHAPE of the refusal
-differs: a packet read stops, while a table read gives the field its declared
-default, counts one `malformed`, and reads on. It is refused as a MAP key,
+differs: a packet read stops, and a table read refuses the whole load as
+`malformed` (SPEC-TABLES.md §4). It is refused as a MAP key,
 with `string(N)` named as the key that works, because `memcmp` over UTF-8 is
 a portable order and little-endian code units have none.
 
@@ -810,10 +812,7 @@ Types nest freely. A composed field writes its parts inline — no pointers,
 no offsets, no indirection:
 
 ```cpp
-if ( !WriteVector3( stream, value.position ) )
-{
-    return false;
-}
+schema_write_object( stream, WriteVector3, value.position );
 ```
 
 ---
@@ -839,10 +838,7 @@ wire carries only the taken one:
 write_bool( stream, value.at_rest );
 if ( !value.at_rest )
 {
-    if ( !WriteVector3( stream, value.velocity ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteVector3, value.velocity );
 }
 ```
 
@@ -1020,9 +1016,11 @@ pays for its check by storing only the live extent, as
 [FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §3.1 always said it must: a
 counted array's `count` elements and a text field's `length` bytes, onto the
 zeroed template, never all `Max` and never the slack of the caller's storage.
-The write path is benchmarked before and after (`TestGoTableWriterSpeedTable`,
-a functional test: `NOVA_WRITER_BENCH=1`) under a speed gate: a save may not
-get slower than the before-run's spread. The packet writers and the other
+The write path is measured before and after through the one sanctioned
+benchmark, the tables bench ([bench/tables](../bench/tables/README.md), the
+variable form) and the paired pass ([bench/paired](../bench/paired/README.md),
+the fixed form), under a speed gate: a save may not get slower than the
+before-run's spread. The packet writers and the other
 languages' table writers are unchanged by this paragraph.
 A variable-wire `bool` a Go table writer saves always holds `0` or `1`; a read
 that meets any other byte on the variable wire keeps the value (`true`), counts
@@ -1108,10 +1106,9 @@ skipped by their kind, absent fields take their declared defaults, a field
 whose kind changed is skipped rather than misdecoded, a field whose kind
 merely GREW — an integer to a wider integer of the same signedness, or
 `float32` to `float64` — decodes exactly and counts `widened`, and
-out-of-range values are clamped. Every such event is counted in a report;
-framing damage stops the damaged nesting level, keeps what it decoded there
-and reads on past the field's own length, so one bad subtable never takes
-down the rest of the file. Tables never touch the protocol id —
+out-of-range values are clamped. Every such event is counted in a report.
+Framing damage is not an evolution event: a read that meets it refuses the
+whole load as `malformed` and hands back nothing to use (SPEC-TABLES.md §4). Tables never touch the protocol id —
 add, edit or remove one and no packet byte and no id moves.
 
 **An array's BOUND is not part of that identity either.** Resize a bounded
@@ -1185,7 +1182,8 @@ TableReport report;
 ShipConfig loaded;
 if ( !ShipConfigLoad( loaded, buffer.data(), size, &report ) )
 {
-    // framing damage: report.malformed is set, the good prefix is kept
+    // framing damage: report.malformed is set and loaded holds its defaults —
+    // nothing of a damaged file is used
 }
 if ( report.unknown || report.kind_mismatch || report.clamped )
 {
@@ -1221,8 +1219,8 @@ TableReport report = new TableReport();
 ShipConfig loaded = new ShipConfig();
 if (!Schema.ShipConfigLoad(loaded, buffer, report))
 {
-    // report.Refused names an unsupported form; report.Malformed marks damage.
-    // A stopped root preserves its decoded prefix; invalid file framing resets it.
+    // report.Refused names an unsupported form; report.Malformed marks damage,
+    // and a damaged load is discarded whole: nothing of it is used.
 }
 if (report.Unknown != 0 || report.KindMismatch != 0 || report.Widened != 0 || report.Clamped != 0)
 {
@@ -1250,8 +1248,8 @@ import { ShipConfig, ShipConfigMeasure, ShipConfigSave, ShipConfigSaveInto, Ship
   from "./ConfigTable.js";
 
 const ship = new ShipConfig();
-ship.Health = 250.0;
-ship.SettingsPresent = true;           // ?T: presence decides whether it rides
+ship.health = 250.0;
+ship.settingsPresent = true;           // ?T: presence decides whether it rides
 
 const bytes = ShipConfigSave(ship);    // a fresh Uint8Array of exactly Measure's size
 const size = ShipConfigMeasure(ship);  // exact, writes nothing
@@ -1264,8 +1262,8 @@ const report = new TableReport();
 const loaded = ShipConfigLoad(bytes, report);        // the value, fresh
 ShipConfigLoad(bytes, report, loaded);               // or your own, overlaid in place
 if (report.Malformed) {
-  // framing damage: the good prefix is kept — what the DATA did is always
-  // the report, never an exception
+  // framing damage: the load is discarded whole and nothing of it is used —
+  // what the DATA did is always the report, never an exception
 }
 if (report.Unknown || report.KindMismatch || report.Clamped) {
   // the data came from a different schema generation — loaded is still
@@ -1299,8 +1297,9 @@ for (const message of stream) {
 }
 ```
 
-A `string(N)` or a `bytes(N)` is a `Uint8Array` with a `<Name>Length` beside
-it, and a bounded array a preallocated `Array` beside a `<Name>Count`, exactly
+A `string(N)` or a `bytes(N)` is a `Uint8Array` with a `<name>Length` beside
+it, and a bounded array a preallocated `Array` beside a `<name>Count` (members
+are lowerCamelCase in JavaScript: `object_id` is `objectId`), exactly
 as C++ and C# hold them — and exactly as the packet emitter already spells them
 for the unit's `type`s, which is not a free choice: a table's closure decodes
 into those very classes, and one unit is one spelling. The codec never builds a
@@ -1308,8 +1307,8 @@ JavaScript string, so a read allocates nothing for one. Decode at the boundary,
 where the allocation is your own choice:
 
 ```js
-const name = new TextDecoder().decode(loaded.Name.subarray(0, loaded.NameLength));
-loaded.NameLength = new TextEncoder().encodeInto("Rowan", loaded.Name).written;
+const name = new TextDecoder().decode(loaded.name.subarray(0, loaded.nameLength));
+loaded.nameLength = new TextEncoder().encodeInto("Rowan", loaded.name).written;
 ```
 
 The bytes are the same bytes: a shared golden corpus pins C++'s encoding of a
@@ -1378,7 +1377,7 @@ ShipConfig loaded;
 memset( &report, 0, sizeof( report ) );
 if ( !ship_config_load( &loaded, buffer, size, &report ) )
 {
-    /* framing damage: report.malformed is set, the good prefix is kept */
+    /* framing damage: report.malformed is set and nothing of the load is used */
 }
 if ( report.unknown || report.kind_mismatch || report.clamped )
 {
@@ -1404,23 +1403,23 @@ standing one rather than anything tables added.
 
 An enum-keyed array is a plain `T slots[E_MAX]` — one slot per named variant,
 nothing for `None`, the key `k` at index `k - 1`. **Index it by the ENUM
-VALUE through `TableKeyedAt`**, which is where the left shift and the `None`
+VALUE through `SCHEMA_<PACKAGE>_TABLE_KEYED_AT`**, which is where the left shift and the `None`
 refusal live; the refusal is an assert plus an abort and it stands in every
 build, exactly as C++'s accessor refuses. This fragment is compiled and run
 against the `tables/examples` unit by `make tables-c-usage`:
 
 <!-- c-table-usage -->
 ```c
-KeyedConfig config;
-keyed_config_reset( &config );
+tabledemo_keyed_config_t config;
+tabledemo_keyed_config_reset( &config );
 
-SCHEMA_TABLE_KEYED_AT( config.hulls, HULL_GUNSHIP, HULL_MAX ).health *= 2.0f;
+SCHEMA_TABLEDEMO_TABLE_KEYED_AT( config.hulls, TABLEDEMO_HULL_GUNSHIP, TABLEDEMO_HULL_MAX ).health *= 2.0f;
 
 /* walking every slot: the key is 1 .. E_MAX, never a storage index */
 int32_t key;
-for ( key = 1; key <= HULL_MAX; key++ )
+for ( key = 1; key <= TABLEDEMO_HULL_MAX; key++ )
 {
-    HullConfig * hull = &SCHEMA_TABLE_KEYED_AT( config.hulls, key, HULL_MAX );
+    tabledemo_hull_config_t * hull = &SCHEMA_TABLEDEMO_TABLE_KEYED_AT( config.hulls, key, TABLEDEMO_HULL_MAX );
     hull->health *= 2.0f;
 }
 ```
@@ -1440,33 +1439,45 @@ lambda, and a named function per enum would claim a name per enum, so the
 same facts ride as constant data — every question the descriptors answer
 elsewhere has an answer here, asked of an array instead of a call.
 
-The Rust surface is the same three functions, name first, as free functions in
-the generated crate, over slices the caller owns. Storage is a `#[repr(C)]`
-struct of public fields — every buffer fixed at its declared capacity, so
-`load` allocates nothing and overlays in place after restoring the declared
-defaults:
+The Rust surface is the same three questions, name first, as free functions
+in the generated crate. On the table wire a value is an owned storage struct
+(`String`, `Vec`, `Option`, an `Rc` for each pointer) whose `Default` is the
+DECLARED defaults: `<t>_save` returns the bytes, `<t>_load` reads them back with
+the report as a parameter, and `<t>_to_json_checked` / `<t>_from_json` are the
+text form. A fixed table also has a `#[repr(C)]` `<T>Row` for the fixed form and
+the block, which `<t>_fixed_save` and `<t>_fixed_load` write and read. This
+complete example uses the `tables/examples` crate, and `make tables-rust-usage`
+runs it directly from this page:
 
+<!-- rust-table-usage -->
 ```rust
-use example::*;
+use tabledemo::*;
 
-let mut ship = ShipConfig::default();   // the DECLARED defaults, not zeros
-ship.health = 250.0;
-ship.settings_present = true;           // ?T: presence decides whether it rides
+fn main() {
+    let mut config = RootConfig::default();   // the DECLARED defaults, not zeros
+    config.version_note = "v7".to_string();
+    config.weapons.push(WeaponConfig::default());
+    config.weapons[0].damage = 30.0;
 
-let size = ship_config_measure(&ship);  // exact, writes nothing
-let mut buffer = vec![0u8; size as usize];
-ship_config_save(&ship, &mut buffer);   // returns size, or -1
+    let wire = root_config_save(&config);     // form 1: the id-table wire
 
-let mut report = TableReport::default();
-let mut loaded = ShipConfig::default();
-if !ship_config_load(&mut loaded, &buffer, &mut report) {
-    // framing damage: report.malformed is set, the good prefix is kept
-}
-if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
-    // the data came from a different schema generation — loaded is still
-    // fully usable; log the counts so drift is visible
+    let mut report = TableReport::default();
+    let Some(loaded) = root_config_load(&wire, &mut report) else {
+        panic!("framing damage: report.malformed is set");
+    };
+    if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
+        // the data came from a different schema generation: loaded is still
+        // fully usable; log the counts so drift is visible
+    }
+    assert_eq!(loaded.weapons[0].damage, 30.0);
+    assert_eq!(loaded.weapons[0].speed, 500.0); // the declared default rode back
+
+    let text = root_config_to_json_checked(&loaded).expect("a finite value has a text");
+    let again = root_config_from_json(&text, &mut report).expect("the text reads back");
+    assert_eq!(root_config_save(&again), wire);
 }
 ```
+<!-- /rust-table-usage -->
 
 **The Go surface is the same three functions again**, name first at package
 scope over a `*T` the caller owns. Storage is a plain struct — the Go packet
@@ -1489,7 +1500,7 @@ example.ShipConfigSave(&ship, buffer)      // returns size, or -1
 var report example.TableReport
 var loaded example.ShipConfig
 if !example.ShipConfigLoad(&loaded, buffer, &report) {
-    // framing damage: report.Malformed is set, the good prefix is kept
+    // framing damage: report.Malformed is set and nothing of the load is used
 }
 if report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 {
     // the data came from a different schema generation — loaded is still
@@ -1712,6 +1723,20 @@ is not stable before 22. The `long length` on both `open`s is the seat that
 overload takes when the floor moves — it is a named follow-on, not an oversight,
 and until it lands a cook past 2 GiB has no Java reader.
 
+**A Java `*bytes` blob is one `byte[]`, and a `*string` blob is numbered by its slot.**
+§2.5 owns a blob by one slot. On a `*bytes` field, the Java writers (`save`,
+`saveRetain`, the measure by save, `measureRetain`, `toJson`) number the blob
+by the identity of the `byte[]` it holds: two slots holding the same `byte[]`
+are a shared blob (`blob_shared`, answering `null` or `-1`), while equal bytes
+in distinct arrays are two records and save. On a `*string` field, each slot is
+numbered by value as its own blob record, so two slots set to the same
+`String` — including an interned literal (`v.note = "x"; v.head.caption = "x";`)
+— write two records. The tolerant `load` and `loadRetain` of a wire whose two
+slots name one `*bytes` or `*string` record keep the value in both slots and
+mark the second slot as shared (cleared by `Descriptor.reset()`), so a later
+save or `toJson` of that loaded value refuses as the oracle does
+(`TestJavaWritersRefuseASharedBlob`).
+
 **Elixir carries the two accelerators and no table wire.** A unit that
 declares tables grows `<Base>Block.ex` and `<Base>Cook.ex` beside its packet
 modules, with `BlockRuntime.ex`, `CookRuntime.ex` and `BuildVersion.ex` once
@@ -1725,8 +1750,8 @@ marks the cells.
 **What Elixir does with the two forms it has, and it is the language rather
 than the port:** it never PRODUCES a block or a cook. A BEAM term has no layout
 a producer could write. It OPENS one another build wrote and reads every slot
-at its offset — `ExampleBlock.block_open_render_frame(bytes)` and
-`ExampleCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
+at its offset — `Blockdemo.RenderBlock.block_open_render_frame(bytes)` and
+`Graphdemo.GraphCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
 the runtime shares rather than copies. Both answer `{:ok, handle}` or `:error`,
 the packet emitter's own reader verdict, and refuse a forged image rather than
 raising on it (`make tables-elixir-fuzz` is that oracle over mutated corpus
@@ -1819,23 +1844,16 @@ if ( !backenddemo::LoginRequestLoadMessages( received, &received_count, vocabula
     // received_count now holds the wire's count. Call again with a capacity
     // at or above it. You never parse the bytes yourself.
     //
-    // report.malformed is DAMAGE, and it is terminal for the batch. The
-    // bodies before the damaged one stand and received_count is how many:
-    // read the count and never the slot after it.
+    // report.malformed is DAMAGE, and it discards the whole batch:
+    // received_count is 0 and no body, before the damage or after it, is
+    // a value to use.
 }
 ```
 
-**A POINTERED root takes ONE region for the whole batch**, sized by the same
-`LoadMeasure` the variable form uses, and the roots come back in an array you own:
-
-```cpp
-int64_t region_bytes = graphdemo::SceneLoadMeasure( vocabulary, wire, wire_bytes );
-std::vector<uint8_t> region( region_bytes );
-const graphdemo::Scene * roots[3];
-int64_t root_count = 3;
-graphdemo::SceneLoadMessages( roots, &root_count, region.data(), region_bytes,
-                              vocabulary, wire, wire_bytes, &report );
-```
+**The message form is fixed tables only** (docs/SPEC-TABLES.md §3.3). A
+variable table such as `graphdemo::Scene` has no `LoadMessages`,
+`SaveMessages` or `MeasureMessages`: it goes in the file form, and
+`schema pack --message` refuses it naming the table.
 
 In C the same operations use `announce_measure`, `announce`, `announce_read`,
 `<root>_measure_messages`, `<root>_save_messages` and `<root>_load_messages`.
@@ -1845,12 +1863,9 @@ and must outlive the vocabulary; the announcement buffer can be released after
 `announce_read`. Keep one vocabulary per connection direction. Its default byte
 limit is 65,536; `max_bytes` and the entry capacity are independent caller limits.
 
-Fixed roots take an array of values. Variable roots take an array of pointers to
-loaded or locked roots; reads use one caller-owned region sized by
-`<root>_load_measure_messages(vocabulary, wire, bytes)`. The `_ex` variant also
-returns attribution bytes and a refusal reason. The variable message writers
-provide `_with_allocator` variants for their temporary graph numbering. Message
-reads allocate nothing. A damaged body can return a partially decoded root, but
+The message form is fixed tables only (docs/SPEC-TABLES.md §3.3): a fixed root
+takes an array of values, and a variable table has no message functions at all.
+Message reads allocate nothing. A damaged body can return a partially decoded root, but
 the output count includes only complete bodies.
 
 **What you get.** The three backend messages measured on schema#523 go from
@@ -1888,10 +1903,10 @@ wrap the message set in one union root (§2.6).
 more than 256 to `SaveMessages` and it refuses by name and writes nothing, so
 call it again with the rest.
 
-**Damage stops the batch.** A bit stream has no place to resume, so a reference
-past the vocabulary, a length past the buffer or exhaustion stops the batch
-there: the fields decoded before it stand, one `malformed` counts, and nothing
-after is read. An UNKNOWN field does not stop anything, because the announcement
+**Damage discards the batch.** A reference past the vocabulary, a length past
+the buffer or exhaustion is damage, and damage discards the whole load
+(SPEC-TABLES.md §4): `malformed` counts, the count is 0, and no body of the
+batch is delivered. An UNKNOWN field does not stop anything, because the announcement
 gave the reader its width.
 
 **One thing behaves differently here than in a file, and it is `flags`.** A file
@@ -1928,10 +1943,12 @@ $ schema unpack --in backend_conn.bin tables/backend
 ```
 
 **FORM BYTE `2` CARRIES THE BITPACKED MESSAGE BODY** (SPEC-TABLES.md §3.3,
-§6.6). The C++ reference, the tool and Go read and write the bitpacked form-`2`
-path. An earlier byte-framed body for form `2` was never released; bitpacking
-replaced it before release, and the form-`2` corpus pins the current body. The
-other seven language backends carry the variable form alone.
+§6.6). An earlier byte-framed body for form `2` was never released; bitpacking
+replaced it before release, and the form-`2` corpus pins the current body.
+Which of the nine emitted runtimes reads and writes that body, and the subset
+each one carries, is one list: SPEC-TABLES.md §3.3, "WHERE THE FORM IS
+CARRIED". It is not a C++ and Go-only path, and it is not the same subset in
+every language.
 
 ### Nesting: a root table IS a format
 
@@ -2566,8 +2583,8 @@ is refused naming the map. **Go carries the same eight names** over its
 and a locked, loaded or opened holder's in ascending key order.
 
 **Evolution.** A repeated key on read is last-wins and counts `duplicate`. A
-DESCENDING key is not something a conforming writer produces, so the map keeps
-its ascending prefix, flags `malformed`, and the parent reads on. A key that
+DESCENDING key is not something a conforming writer produces, so it is damage:
+the whole load is refused as `malformed` (SPEC-TABLES.md §4). A key that
 does not fit the reader's bound drops its entry and counts `clamped`, one per
 entry, so keys never clamp into each other. A key kind that disagrees resets
 the map to empty and counts one `kind_mismatch`, and a key kind the reader's
@@ -2975,6 +2992,7 @@ runtime reads it.
 schema cook --root Scene --in config/ --out Scene.cook .
 ```
 
+<!-- cpp-cook-usage-read -->
 ```cpp
 #include "GraphTable.h"
 
@@ -2999,6 +3017,7 @@ for ( const ListNode * n = graphdemo::ListNodeAt( scene->head ); n != NULL;
     printf( "  %s = %d\n", n->name, n->value );
 }
 ```
+<!-- /cpp-cook-usage-read -->
 
 `SceneOpen` takes `const void *` and a `uint64_t` length and returns
 `const Scene *` or `NULL`. The length is unsigned because every number the
@@ -3008,8 +3027,10 @@ caller holding an `int64_t` from a `stat` casts once, at the call site.
 **The same cook, from C#.** The bytes are memory your engine already holds — an
 mmap, a native allocation, or an array you pinned — and this side takes a pointer
 and a length and points at it, so the generated source is `unsafe` and your
-project sets `AllowUnsafeBlocks`:
+project sets `AllowUnsafeBlocks`. `make tables-cs-usage` compiles and runs
+this example from this page:
 
+<!-- cs-table-usage -->
 ```csharp
 using Graphdemo;
 
@@ -3033,6 +3054,7 @@ for ( ListNodeRow * n = ListNodeCook.At( &scene->Head ); n != null; n = ListNode
     Console.WriteLine( "  " + Encoding.UTF8.GetString( ListNodeCook.Name( n ) ) + " = " + n->Value );
 }
 ```
+<!-- /cs-table-usage -->
 
 There is a `ReadOnlySpan<byte>` overload beside the pointer form for a consumer
 that already holds the bytes — the same contract, spelled differently. Its length
@@ -3043,11 +3065,11 @@ Two things about the C# side worth knowing before you reach for it. **A cooked
 record is the same blittable `<Name>Row` struct the block form uses**, from the
 same layout model, so the two accelerators share one set of records; the layout
 is checked once, at start-up, and throws naming the record and the field if your
-runtime disagrees. And **a pointered unit's C# WIRE surface is refused by name**:
-you get the unit's `*Cook.cs` and `*Block.cs` and no Table sources at all, because the
-codec for the variable class is a named follow-on and neither accelerator needs
-one. Your cooked assets open in full; `Measure`, `Save` and `Load` for those
-tables are C++'s or the tool's for now.
+runtime disagrees. And **a pointered unit's C# WIRE surface is carried**: beside
+the unit's `*Cook.cs` and `*Block.cs` you get its Table sources, with `Measure`,
+`Save`, `Load` and `LoadMeasure` for every table, over the managed value and
+over a native region alike, so a cooked asset and its wire file are read by the
+same unit.
 
 **The same cook, from Rust**, on the same two terms — the records are the same
 `<Name>Row` structs the block form uses, and a pointered unit's WIRE surface is
@@ -3125,6 +3147,7 @@ the reference and the conformance harness holds the two to one file over every
 instance it carries — so a cook your editor wrote and a cook your build farm
 ran the tool for are the same artifact.
 
+<!-- cpp-cook-usage-write -->
 ```cpp
 // measure, then write: the buffer is yours and nothing here allocates
 const int64_t bytes = graphdemo::SettingsCookMeasure( settings );
@@ -3135,6 +3158,7 @@ if ( !graphdemo::SettingsCook( settings, file.data(), file.size(),
     return false; // the only refusal: a capacity short of the measure
 }
 ```
+<!-- /cpp-cook-usage-write -->
 
 A pointered root is a region and a root pointer, never a value, so its `Cook`
 takes the builder — locked or not — or a region root, the same two forms
@@ -3142,6 +3166,7 @@ takes the builder — locked or not — or a region root, the same two forms
 the numbering: a node named from three places is written once, and a data cycle
 is refused as it is everywhere else.
 
+<!-- cpp-cook-usage-write-pointered -->
 ```cpp
 // a pointered root is a region and a root pointer, so its Cook takes the
 // builder — locked or not — or a region root, and never a value. What it
@@ -3154,6 +3179,7 @@ if ( !graphdemo::SceneCook( builder, file.data(), file.size(),
     return false; // a capacity short of the measure, or a data cycle
 }
 ```
+<!-- /cpp-cook-usage-write-pointered -->
 
 The byte order is a PARAMETER and it is the TARGET's, not yours: pass
 `TableByteOrder::Big` and a little-endian machine writes the file a big-endian
@@ -3221,7 +3247,7 @@ cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
-0xe1fbe3acd0a181af
+0xc06e89a209a3dda7
 ```
 
 ```cpp
@@ -3697,11 +3723,11 @@ And the same three in Go, package-level over a `*T` and a `[]byte`:
 ```go
 var report example.TableReport
 var ship example.ShipConfig
-example.ShipConfigFromJson(&ship, text, &report)     // fills ONE instance
+example.ShipConfigFromJSON(&ship, text, &report)     // fills ONE instance
 
-size := example.ShipConfigToJsonMeasure(&ship)       // exact, writes nothing
+size := example.ShipConfigToJSONMeasure(&ship)       // exact, writes nothing
 buffer := make([]byte, size)
-example.ShipConfigToJson(&ship, buffer)
+example.ShipConfigToJSON(&ship, buffer)
 ```
 
 Nothing to add to a Go build either, for C#'s reason: a package compiles as a
@@ -3714,10 +3740,10 @@ Go also takes a text `encoding/json` wrote, and writes one back in its
 habits, through three options passed to the `With` calls (SPEC-TABLES §16.2):
 
 ```go
-legacy := example.TableJsonOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
-example.ShipConfigFromJsonWith(&ship, text, &report, legacy) // "tags": null reads as []
-buffer = make([]byte, example.ShipConfigToJsonMeasureWith(&ship, legacy))
-example.ShipConfigToJsonWith(&ship, buffer, legacy)          // {"hull":3}, no newline
+legacy := example.TableJSONOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
+example.ShipConfigFromJSONWith(&ship, text, &report, legacy) // "tags": null reads as []
+buffer = make([]byte, example.ShipConfigToJSONMeasureWith(&ship, legacy))
+example.ShipConfigToJSONWith(&ship, buffer, legacy)          // {"hull":3}, no newline
 ```
 
 `NullAsEmpty` reads `null` as an empty list or map instead of a kind
@@ -3824,7 +3850,7 @@ an instance a read produced must be one `Save` can write (SPEC-TABLES.md §16.3)
 
 A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
 line, a config field, a terminal. In Go every table — `fixed table` and
-plain `table` alike — has two text carriers:
+variable table alike — has two text carriers:
 
 - **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
   wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
@@ -3863,12 +3889,12 @@ loaded, err := example.ShipConfigLoadText(text, &report)
 if err != nil { /* base64_damaged | unknown_form | wire_damaged | malformed | clamped | ... */ }
 
 // A person: the JSON form, for reading, diffing or editing.
-buf := make([]byte, example.ShipConfigToJsonMeasure(&ship))
-n := example.ShipConfigToJson(&ship, buf)
-var edited example.ShipConfigBuilder // ShipConfig is a plain table: a builder
+buf := make([]byte, example.ShipConfigToJSONMeasure(&ship))
+n := example.ShipConfigToJSON(&ship, buf)
+var edited example.ShipConfigBuilder // ShipConfig is a variable table: a builder
 if !edited.Init() { /* allocation_failed */ }
 defer edited.Shutdown()
-if !example.ShipConfigFromJson(&edited, buf[:n], &report) {
+if !example.ShipConfigFromJSON(&edited, buf[:n], &report) {
 	// report.Malformed: the JSON document is damaged.
 }
 ```
@@ -3953,11 +3979,11 @@ imports the standard library alone, so the files drop into any Go module
 with nothing added to its `go.mod`. The one exception is the 128-bit widths:
 a field of `int128`, `uint128` or a 128-bit `fixed`/`ufixed` stores in the
 generated code as `serialize.Int128`/`serialize.Uint128`, so the unit imports
-`github.com/mas-bandwidth/serialize.go` — and then the module carries the
+`github.com/mas-bandwidth/serialize.go/v2` — and then the module carries the
 one dependency, resolved at a tagged version with NO `replace`:
 
 ```
-require github.com/mas-bandwidth/serialize.go <tag>
+require github.com/mas-bandwidth/serialize.go/v2 <tag>
 ```
 
 **The two classes are two units.** A variable table — a `table`, pointers
@@ -4147,7 +4173,7 @@ read years later by whoever asks why.
 
 ### Text lists and array-root tables
 
-A plain `table` may hold a list of text directly (docs/SPEC-TABLES.md §2.13):
+A variable table may hold a list of text directly (docs/SPEC-TABLES.md §2.13):
 
 ```
 table Handover
@@ -4188,7 +4214,7 @@ field, so `HandoverReadStrict` refuses it (docs/SPEC-TABLES.md §2.13).
 ### Unbounded text in lists and map keys
 
 When no code bounds a list's elements or a map's keys, leave the bound off
-(docs/SPEC-TABLES.md §2.13.1), in a plain `table` only:
+(docs/SPEC-TABLES.md §2.13.1), in a variable table only:
 
 ```
 table Where
@@ -4208,7 +4234,7 @@ Only Go generates the construct today; every other `--lang` refuses it by name.
 
 ### A checksum on a saved file: `integrity`
 
-A plain `table` may declare that the file it is the root of carries a CRC-32C
+A variable table may declare that the file it is the root of carries a CRC-32C
 trailer (docs/SPEC-TABLES.md §2.14):
 
 ```
@@ -4446,8 +4472,11 @@ namespaced engine type — `math::Vec2`, the common case — is written
 `cpp_native = math::Vec2` and emits as `::math::Vec2`. No global alias in
 your own header is needed.
 
-**C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.
-Reads scalars without boxing.
+**C#** — modern .NET: .NET 8 or later and C# 12 or later. Types and unions
+are structs with `[InlineArray]` buffers, taken by `ref`; assigning one
+copies it. Reads scalars without boxing. Unity's runtime (C# 9,
+netstandard2.1) is the job of a separate Unity generator, which is not
+landed yet; this target no longer compiles there.
 
 **Dart** — Dart 3, VM and AOT (Flutter release ships AOT — the deployment
 the backend is tuned for). Generated code is **self-contained**: it imports
@@ -4476,17 +4505,43 @@ if (!ok) {
 }
 ```
 
-Dart carries the two **table accelerators** (docs/SPEC-TABLES.md §19 and §7)
-and not the table wire: a unit that declares tables grows `<Base>Block.dart`
-and `<Base>Cook.dart` beside its packet library, plus one runtime home per
-unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`. A block
-is pointed at and a cook is opened; neither parses a wire, both are read-only,
-and both refuse a forged image rather than throwing on it (`make
-tables-dart-fuzz` is that oracle over mutated corpus images, with its planted
-control). There is no `<Base>Table.dart`: the Dart port of the table wire wrote
-the form that preceded the id-table wire, which the current specification does
-not describe, and it was removed rather than carried; schema#514 is the row that
-brings the id-table wire to Dart, and ROADMAP.md marks the cells.
+A unit that declares tables grows `<Package>Wire.dart`, the table wire
+(docs/SPEC-TABLES.md §3): one class per table, `<root>WireLoad(bytes,
+[report])` and `<root>WireSave(value)` for the id-table form, and
+`<root>ToJson` / `<root>FromJson(text, [report])` for the §16 text form, beside
+`<Package>Fixed.dart` (the fixed form, §3.4) and the two **table accelerators**
+(§19 and §7): `<Base>Block.dart` and `<Base>Cook.dart`, plus one runtime home
+per unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`. A
+wire load never throws on hostile bytes: it answers what it could read and
+says why in a `TableWireReport` (`malformed`, `refused`, and `reason`, the
+refusal by name). A text read is tolerant in the same way, counting what it set
+aside in a `TableTextReport`, and refuses text that is not JSON, or a text
+string that holds U+0000 (§16.3), by throwing a `FormatException`. A block is
+pointed at and a cook is opened; neither parses a wire, both are read-only, and
+both refuse a forged image rather than throwing on it (`make tables-dart-fuzz`
+is that oracle over mutated corpus images, with its planted control). This
+fragment is compiled and run against the `tables/pointers` unit by `make
+tables-dart-usage`:
+
+<!-- dart-table-usage -->
+```dart
+import 'GraphdemoWire.dart';
+
+final report = TableWireReport();
+final scene = sceneWireLoad(bytes, report); // never throws on hostile bytes
+if (report.malformed || report.refused) {
+  // drop it: report.reason names why (wire_damaged, unknown_form)
+} else {
+  for (var node = scene.head; node != null; node = node.next) {
+    use(node.value);
+  }
+  final again = sceneWireSave(scene); // the canonical id-table wire
+  final text = sceneToJson(scene); // the §16 text form
+  final back = sceneFromJson(text, TableTextReport());
+  use(again.length + back.name.length);
+}
+```
+<!-- /dart-table-usage -->
 
 **Go** — accessors, file/message loads and block fill avoid allocation and
 operate on caller-owned buffers. Variable table builders own a `TableArena`;
@@ -4531,7 +4586,7 @@ wire malformed (clamped, `kind_mismatch`, widened, duplicate keys, unknown ids)
 do not fail the measure, and `LoadMeasure` (the tolerant sizing) is unchanged. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
-`kind_mismatch`, `malformed`, `non_finite`, `unknown_form`, `wire_damaged`), a
+`kind_mismatch`, `malformed`, `non_finite_float`, `unknown_form`, `wire_damaged`), a
 `TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
 the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
 and `retained` alone do not refuse. `TableReport.Err()` answers the same
@@ -4626,9 +4681,11 @@ the wire binary, `read_<name>(data, num_bits)` returns the family verdict as
 packing intermediate stays under the BEAM's small-integer boundary (32-bit
 groups through a byte-granular scratch on the write side, the port's 40-bit
 windows on the read side), and loops are tail-recursive function heads.
-Integers of every width — 128-bit included — ride plain BEAM integers;
-non-finite float patterns, which no BEAM float term can hold, travel as
-`{:nonfinite, bits}`. Validation is always on: there is no compile-out
+Integers of every width — 128-bit included — ride plain BEAM integers.
+Floats are finite (SPEC §4.3): a write of anything but a float that fits the
+width raises `ArgumentError` with a `non_finite_float` message, a read refuses
+a NaN or an infinity on its raw bits, and `-0.0` and subnormals ride bit
+exact. Validation is always on: there is no compile-out
 assert on the BEAM, so writer contracts raise `ArgumentError` in every
 build (the O(1) checks only) and readers validate everything:
 
@@ -4640,6 +4697,35 @@ case Example.Types.read_ship_create(packet, byte_size(packet) * 8) do
   :error -> :drop # malformed or hostile
 end
 ```
+
+The same two accelerator readers as above, reached through the names the
+emitter writes — the package namespace, the file base and the form: a block is
+`Blockdemo.RenderBlock.block_open_render_frame(bytes)`, a cook is
+`Graphdemo.GraphCook.cook_open_scene(bytes)`. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-elixir-usage`:
+
+<!-- elixir-table-usage -->
+```elixir
+# open the cook another build wrote; :error is a foreign build, a corrupt
+# file or the other byte order — fall back to the tolerant wire
+case Graphdemo.GraphCook.cook_open_scene(bytes) do
+  {:ok, cook} ->
+    walk = fn walk, at ->
+      case at do
+        :null -> :ok
+        :error -> raise "the cook's head reference leaves the region"
+        {:ok, node} ->
+          IO.puts(Graphdemo.GraphCook.list_node_node_value(cook.region, node))
+          walk.(walk, Graphdemo.GraphCook.list_node_node_next(cook.region, node))
+      end
+    end
+
+    walk.(walk, Graphdemo.GraphCook.scene_node_head(cook.region, 0))
+  :error ->
+    raise "the Scene cook did not open — fall back to the tolerant wire"
+end
+```
+<!-- /elixir-table-usage -->
 
 **Java** — Java 17 on the JVM, built to issue #156's measured directives.
 Generated code is **self-contained**: it references only `java.lang`,
@@ -4670,6 +4756,26 @@ if (!ok) {
     // malformed or hostile — drop it
 }
 ```
+
+The Java accelerators read the same two forms, as members of the generated
+`<Table>Block` and `<Root>Cook` types. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-java-usage`:
+
+<!-- java-table-usage -->
+```java
+// open the cook another build wrote; a null is a foreign build, a corrupt
+// file or the other byte order — fall back to the tolerant wire
+SceneCook cook = SceneCook.open(bytes, 0, bytes.length);
+if (cook != null) {
+    int root = cook.root();
+    int at = cook.at(SceneRow.headSlot(root), ListNodeRow.size);
+    while (at >= 0) {            // -1 is null AND a delta whose record does not fit
+        use(ListNodeRow.value(cook.data(), at));
+        at = cook.at(ListNodeRow.nextSlot(at), ListNodeRow.size);
+    }
+}
+```
+<!-- /java-table-usage -->
 
 **Rust** — no `unsafe` in the generated PACKET code, `Result`-returning read
 and write. **The generated TABLE WIRE is safe Rust too**: `<name>_measure`,
@@ -4711,16 +4817,16 @@ buffers, and measures 8–10x the runtime tier (within a few x of native C):
 
 ```js
 import { ShipCreate } from "./Wire.js";
-import { WriteShipCreateFlat, ReadShipCreateFlat, FLAT_READ_SLACK } from "./WireFlat.js";
+import { WriteShipCreateFlat, ReadShipCreateFlat, FlatReadSlack } from "./WireFlat.js";
 import { ShipCreateMaxBytes } from "./Wire.js";
 
 const buf = new Uint8Array(ShipCreateMaxBytes);        // write: MaxBytes suffices
 const view = new DataView(buf.buffer);
-const bytes = WriteShipCreateFlat(ship, view);          // bytes written, or -1 (checked refusal)
+const bytes = WriteShipCreateFlat(view, ship);          // bytes written, or -1 (checked refusal)
 
-const rbuf = new Uint8Array(bytes + FLAT_READ_SLACK);   // read: 8 bytes of slack past the payload
+const rbuf = new Uint8Array(bytes + FlatReadSlack);   // read: 8 bytes of slack past the payload
 rbuf.set(buf.subarray(0, bytes));                       // (copy exactly-sized receive buffers in)
-const ok = ReadShipCreateFlat(out, new DataView(rbuf.buffer), bytes * 8);
+const ok = ReadShipCreateFlat(new DataView(rbuf.buffer), bytes * 8, out);
 ```
 
 Reads validate in every mode; writes fork checked/production once at module
@@ -4807,6 +4913,226 @@ constants and data members are UpperCamelCase (`ship.Health`, `report.Unknown`,
 variant's name stay the schema's own spelling — they are data in a descriptor,
 not identifiers.
 
+**Lua** — vanilla Lua 5.4 (PUC-Rio; LuaJIT is not covered), no dependencies.
+Generated code is self-contained: a module per schema file beside the
+serialize runtime, and for tables a `<Package>Tables.lua` of descriptors with
+the runtime modules (`load`, `save`, `cook`, `uncook`, `block`, ...) beside it,
+so the directory is the whole program and `package.path = "./?.lua;"` reaches
+it. A value is a plain Lua table and its kind lives in the descriptor, never in
+the value, so a value of the wrong Lua type on write is a named refusal, not a
+coercion. A buffer is a Lua string, which has no address, so the cook's `Open`
+takes the buffer's lead past an aligned base as an optional fourth argument.
+`Open` answers a handle, or `nil` and the refusal's name (`unaligned_base`, a
+foreign build, the other byte order); `uncook.Read` runs cook-check's two
+passes over a cook nothing has checked and builds the root. This fragment is
+compiled and run against the `tables/pointers` unit by `make tables-lua-usage`:
+
+<!-- lua-table-usage -->
+```lua
+local T = require("GraphdemoTables")
+local cook = require("cook")
+local uncook = require("uncook")
+
+-- open the cook another build wrote; nil and a reason is a foreign build, a
+-- corrupt file or the other byte order: fall back to the tolerant wire
+local handle, why = cook.Open(T, "Scene", bytes)
+if handle == nil then error("the Scene cook did not open: " .. why) end
+local scene, refused = uncook.Read(T, handle)   -- nil and a reason for a forged cook
+if scene == nil then error("the Scene cook is corrupt: " .. refused) end
+local node = scene.head
+while node ~= nil do
+  use(node.value)
+  node = node.next                              -- nil is the null reference
+end
+```
+<!-- /lua-table-usage -->
+
+**Goose** — the pinned Goose compiler (`make dist-goose`), no dependencies.
+Generated code is one module per schema file and per surface
+(`<File>Table.goose`, `<File>Cook.goose`, `<File>Block.goose`, ...) in the
+schema's package namespace, with the runtime modules (`schema_rt`) emitted
+beside them, so the directory is the whole program. A slice has no address, so
+the cook's `<Root>CookOpenReason(bytes, lead)` takes the buffer's lead past a
+64-byte-aligned base as a stated fact, and answers `schema_rt::TableRefuseOk`
+or the refusal's number (`schema_rt::table_refuse_name` spells it: an
+unaligned base, a foreign build, the other byte order). On a match the root is
+at offset zero of `schema_rt::cook_region(bytes)`, and every field is a typed
+accessor at an offset into that view: a `*T` answers the target's offset, or
+below zero for null. This fragment is compiled and run against the
+`tables/pointers` unit by `make tables-goose-usage`:
+
+<!-- goose-table-usage -->
+```goose
+// open the cook another build wrote; a refusal is a foreign build, a corrupt
+// file or the other byte order: fall back to the tolerant wire
+let why = graphdemo::SceneCookOpenReason(bytes, 0);
+if why != schema_rt::TableRefuseOk {
+    write_stderr(str("the Scene cook did not open: ", schema_rt::table_refuse_name(why), "\n"));
+    exit(1);
+}
+let region = schema_rt::cook_region(bytes);
+var node = graphdemo::SceneRowHead(region, 0);
+var walked: i64 = 0;
+var total: i64 = 0;
+while node >= 0 {
+    total += graphdemo::ListNodeRowValue(region, node) as i64;
+    walked += 1;
+    node = graphdemo::ListNodeRowNext(region, node); // below zero is null
+}
+```
+<!-- /goose-table-usage -->
+
+**Squirrel** — Squirrel 3.2, no dependencies. Generated code is self-contained: a
+module per schema file beside the serialize runtime, and for tables a
+`<Package>Tables.nut` of classes and descriptors with the runtime modules
+(`schema_table_load`, `schema_table_save`, `schema_table_json`, ...) beside
+it, all reached through the directory's `schema_module.nut` loader, so the
+directory is the whole program. A table is a class whose members are
+UpperCamelCase (`scene.Head`, `node.Value`); a field's wire name and a JSON key
+stay the schema's own spelling. A pointer is a reference to another instance,
+so two slots naming one node are one node on the wire. `<Table>Save` answers the
+bytes or `null` for a writer's refusal; `<Table>Load` is the strict read, and
+answers the value or `null` with the refusal's name in `report.reason`. An
+enum-keyed array is a plain array with key k at slot k-1, and the module's
+`Keyed(table, field)` takes the key and refuses None and any key past the last
+variant by name. This fragment is compiled and run against the
+`tables/pointers` unit by `make tables-squirrel-usage`:
+
+<!-- squirrel-table-usage -->
+```squirrel
+local T = dofile("schema_module.nut", true).require("GraphdemoTables");
+
+// a two-node list, its tail also named by `alias`: one node on the wire
+local tail = T.ListNode();
+tail.Value = 2;
+local head = T.ListNode();
+head.Value = 1;
+head.Next = tail;
+local scene = T.Scene();
+scene.Name = "intro";
+scene.Head = head;
+scene.Alias = tail;
+
+local bytes = T.SceneSave(scene);              // null: the writer refused
+local report = {};
+local back = T.SceneLoad(bytes, report);       // null: report.reason names why
+if (back == null) throw "the Scene did not load: " + report.reason;
+local node = back.Head;
+while (node != null) {
+  use(node.Value);
+  node = node.Next;                            // null is the null reference
+}
+```
+<!-- /squirrel-table-usage -->
+
+**Luau** — Luau 0.741, no dependencies. Generated code is self-contained: a
+`<Base>Table.luau` of descriptors per schema file, with the runtime modules
+(`schema_tables`, `schema_load`, `schema_save`, `schema_cookread`, ...) beside
+them, each reached as `require("./<module>")`. A value is a plain Luau table
+built by its descriptor's constructor, its fields in UpperCamelCase slots
+(`hull.Turrets`, `turret.Damage`), and the bytes are a Luau `buffer`. An
+enum-keyed array is a plain array with key k at index k; `S.keyed(table,
+field)` is the accessor that refuses None and any key past the enum's last
+variant by name. The plain read is the strict one: it answers the value, or
+`nil` with the refusal's name in `report.reason`. This fragment is run against
+the `tables/examples` unit by `make tables-luau-usage`:
+
+<!-- luau-table-usage -->
+```luau
+local S = require("./schema_tables")
+local save = require("./schema_save")
+local load = require("./schema_load")
+require("./KeyedTable")
+
+local hulls = S.lookup("HullConfig")
+local hull = hulls.new()                            -- every field at its declared default
+local turrets = S.keyed("HullConfig", "turrets")    -- one slot per Weapon variant
+turrets.get(hull.Turrets, turrets.key("Missile")).Damage = 25
+
+local bytes = save.save(hulls, hull)                -- the id-table wire, as a buffer
+local report = {}
+local back = load.load("HullConfig", bytes, report) -- nil and report.reason on a refusal
+if back == nil then error("the hull did not read: " .. report.reason) end
+for key, turret in turrets.each(back.Turrets) do
+  use(turret.Damage)
+end
+```
+<!-- /luau-table-usage -->
+
+**moo** — moo v1.3.0 (the deterministic Luau fork whose one number is
+Q48.16), no dependencies. Generated code is self-contained: a
+`<Base>Table.moo` of descriptors per schema file, with the runtime modules
+(`schema_tables`, `table_load`, `table_save`, `table_cookread`, ...) beside
+them, each reached as `require("./<module>")`. A value is a plain table built
+by its descriptor's constructor, its fields in UpperCamelCase slots
+(`hull.Turrets`, `turret.Damage`), and the bytes are a `buffer`. moo has no
+float: a `float32` field holds its binary32 PATTERN as a number (25.0 is
+`0x41C80000`). An enum-keyed array is a plain array with key k at index k;
+`S.keyed(table, field)` is the accessor that refuses None and any key past the
+enum's last variant by name. The plain read is the strict one: it answers the
+value, or `nil` with the refusal's name in `report.reason`. This fragment is
+run against the `tables/examples` unit by `make tables-moo-usage`:
+
+<!-- moo-table-usage -->
+```lua
+local S = require("./schema_tables")
+local save = require("./table_save")
+local load = require("./table_load")
+require("./KeyedTable")
+
+local hulls = S.lookup("HullConfig")
+local hull = hulls.new()                            -- every field at its declared default
+local turrets = S.keyed("HullConfig", "turrets")    -- one slot per Weapon variant
+turrets.get(hull.Turrets, turrets.key("Missile")).Damage = 0x41C80000 -- 25.0
+
+local bytes = save.save(hulls, hull)                -- the id-table wire, as a buffer
+local report = load.newReport()
+local back = load.load("HullConfig", bytes, report) -- nil and report.reason on a refusal
+if back == nil then error("the hull did not read: " .. report.reason) end
+for key, turret in turrets.each(back.Turrets) do
+  use(turret.Damage)
+end
+```
+<!-- /moo-table-usage -->
+
+**Lobster** — the pinned Lobster release (`make dist-lobster`), no
+dependencies. Generated code is self-contained: a module per schema file, and
+for tables a `<Base>Table.lobster` module per file of descriptors and per-table
+functions, with the runtime modules (`schema_tables`, `load`, `schema_save`,
+`cook`, `json`, ...) beside them, every one in `namespace schema_rt`, so the
+directory is the whole program. Lobster has no reflection, so a load does not
+fill a generated class: it reads the table AS DATA into a `schema_rt.Record`
+(one `Slot` per field, in declaration order; `slot_named` reaches one by its
+schema name, and a name the table does not declare is refused by name), and
+the same `Record` is what a save, a cook and a text write take. A buffer is a
+Lobster string, which has no address, so a cook's `<Table>OpenReason` (in the
+unit's namespace, its package: `graphdemo.SceneOpenReason`) takes the
+buffer's lead past an aligned base and answers `"ok"` or the refusal's name
+(`unaligned_base`, a foreign build, the other byte order); `<Table>ReadCook`
+reads a cook back into a `Record`, `nil` for a corrupt one. An enum-keyed array
+is a plain vector with key k at slot k-1, and `<Owner><Field>Slot(key)`,
+`<Owner><Field>At(v, key)` and `<Owner><Field>Each(v) key, e:` take the key
+instead, refusing None and a key past the enum's `Max` by name. This fragment
+is compiled and run against the `tables/pointers` unit by
+`make tables-lobster-usage`:
+
+<!-- lobster-table-usage -->
+```lobster
+import .GraphTable
+
+// open the cook another build wrote; a refusal names a foreign build, a
+// corrupt file or the other byte order: fall back to the tolerant wire
+let why = graphdemo.SceneOpenReason(bytes, 0, false)
+assert why == "ok"
+let scene = graphdemo.SceneReadCook(bytes)      // nil for a forged cook
+assert scene
+var node = schema_rt.slot_named(scene, "head").cell.node
+while node:
+    use(schema_rt.slot_named(node, "value").cell.i)
+    node = schema_rt.slot_named(node, "next").cell.node   // nil is the null reference
+```
+<!-- /lobster-table-usage -->
+
 All nine are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is
 bit-identity — if they ever disagree by one bit, the build fails.
@@ -4843,7 +5169,7 @@ edited, ship, err := example.ShipConfigEditTextForm(doc,
 	example.TableTextFormEdit{Path: "weapons[0].damage", Text: "12"})
 ```
 
-`LoadTextForm` returns the document and the typed value (for a plain table,
+`LoadTextForm` returns the document and the typed value (for a variable table,
 the locked root of a builder of its own, as `LoadText` does). `SaveTextForm`
 writes the retained document. `EditTextForm` replaces existing scalar values:
 each edit's `Text` is one token of the form, replaced at its original span,

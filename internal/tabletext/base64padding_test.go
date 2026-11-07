@@ -102,7 +102,7 @@ func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 		var v Blob
 		BlobReset(&v)
 		var r TableReport
-		ok := BlobFromJsonTolerant(&v, []byte(c.text), &r)
+		ok := BlobFromJSONTolerant(&v, []byte(c.text), &r)
 		got := append([]byte(nil), v.Data[:v.DataLength]...)
 		if ok != c.ok || !bytes.Equal(got, c.data) || r.KindMismatch != c.km || r.Clamped != c.cl || r.Malformed != c.mal {
 			t.Fatalf("%q: walk ok=%t data=%x km=%d cl=%d mal=%t; text ok=%t data=%x km=%d cl=%d mal=%t",
@@ -123,7 +123,7 @@ func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 	maps.Copy(files, tables)
 	dir := t.TempDir()
 	runtime := slowtest.SerializeGo(t, "../..")
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	files["values_test.go"] = []byte(src.String())
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {

@@ -187,7 +187,7 @@ type TableEntityBlockProjection struct {
 	Magic        uint64 // generated: identifies a schema block
 	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
 	ByteOrder    uint64 // generated: 1 little, 2 big
-	EntityId     uint32
+	EntityID     uint32
 	PosX         int32
 	PosY         int32
 	PosZ         int32
@@ -216,7 +216,7 @@ type TableStatBlockProjection struct {
 	Magic        uint64 // generated: identifies a schema block
 	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
 	ByteOrder    uint64 // generated: 1 little, 2 big
-	StatId       uint32
+	StatID       uint32
 	Delta        int32
 }
 
@@ -230,7 +230,7 @@ func init() {
 	tableBlockLayoutOffset("TableEntityBlockProjection.Magic", unsafe.Offsetof(TableEntityBlockProjection{}.Magic), 0)
 	tableBlockLayoutOffset("TableEntityBlockProjection.BuildVersion", unsafe.Offsetof(TableEntityBlockProjection{}.BuildVersion), 8)
 	tableBlockLayoutOffset("TableEntityBlockProjection.ByteOrder", unsafe.Offsetof(TableEntityBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("TableEntityBlockProjection.EntityId", unsafe.Offsetof(TableEntityBlockProjection{}.EntityId), 24)
+	tableBlockLayoutOffset("TableEntityBlockProjection.EntityID", unsafe.Offsetof(TableEntityBlockProjection{}.EntityID), 24)
 	tableBlockLayoutOffset("TableEntityBlockProjection.PosX", unsafe.Offsetof(TableEntityBlockProjection{}.PosX), 28)
 	tableBlockLayoutOffset("TableEntityBlockProjection.PosY", unsafe.Offsetof(TableEntityBlockProjection{}.PosY), 32)
 	tableBlockLayoutOffset("TableEntityBlockProjection.PosZ", unsafe.Offsetof(TableEntityBlockProjection{}.PosZ), 36)
@@ -249,7 +249,7 @@ func init() {
 	tableBlockLayoutOffset("TableStatBlockProjection.Magic", unsafe.Offsetof(TableStatBlockProjection{}.Magic), 0)
 	tableBlockLayoutOffset("TableStatBlockProjection.BuildVersion", unsafe.Offsetof(TableStatBlockProjection{}.BuildVersion), 8)
 	tableBlockLayoutOffset("TableStatBlockProjection.ByteOrder", unsafe.Offsetof(TableStatBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("TableStatBlockProjection.StatId", unsafe.Offsetof(TableStatBlockProjection{}.StatId), 24)
+	tableBlockLayoutOffset("TableStatBlockProjection.StatID", unsafe.Offsetof(TableStatBlockProjection{}.StatID), 24)
 	tableBlockLayoutOffset("TableStatBlockProjection.Delta", unsafe.Offsetof(TableStatBlockProjection{}.Delta), 28)
 }
 

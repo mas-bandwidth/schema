@@ -124,10 +124,7 @@ fixed table Point {
 	if !strings.Contains(load, "PointLoadBody") {
 		t.Error("PointLoad of a DECLARED fixed table must still walk form 1")
 	}
-	// The only `previous_form` this entry point names is the unassigned byte
-	// 0, which is OLDER than the form 1 it reads (docs/SPEC-TABLES.md §3,
-	// §6.5); form 1 itself is still walked by PointLoadBody above.
-	if strings.Contains(load, "previous_form") && !strings.Contains(load, "data[0] == 0") {
+	if strings.Contains(load, "previous_form") {
 		t.Error("PointLoad, the form-1 entry point, refuses form 1")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoadTolerant(")
@@ -525,7 +522,7 @@ func TestHashCheckedLast(t *testing.T) {
 // a stranger's layout ... the recompute of the header's hash". Under §5 every
 // one of these files comes back layout_unknown, which is the new law and not a
 // regression. What is OWED is the same coverage on the lineage harness
-// (fixedversioning_test.go's runVersionProbe): the plan path with the peer's
+// (fixedversioning_test.go's runVersionProbe): the plan path with the endpoint's
 // entry handed to the reader as its lock, and §1.1's seven rules moved to the
 // LOCK's validation of what it records.
 func TestFixedFormPlanPath(t *testing.T) {
@@ -764,7 +761,7 @@ func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 			t.Fatal(err)
 		}
 	}
-	mod := fmt.Sprintf("module %s\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", pkg, runtime)
+	mod := fmt.Sprintf("module %s\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", pkg, runtime)
 	if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -1361,7 +1358,7 @@ fixed table Root {
 	if err := os.MkdirAll(testDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	mod := fmt.Sprintf("module arglanetest\n\ngo 1.26\n\nrequire (\n\ttblw v0.0.0\n\ttblr v0.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\nreplace tblw => ../w\nreplace tblr => ../r\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
+	mod := fmt.Sprintf("module arglanetest\n\ngo 1.26\n\nrequire (\n\ttblw v0.0.0\n\ttblr v0.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\nreplace tblw => ../w\nreplace tblr => ../r\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime)
 	if err := os.WriteFile(filepath.Join(testDir, "go.mod"), []byte(mod), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -1486,7 +1483,7 @@ func TestOldArgLaneControl(t *testing.T) {
 			continue
 		}
 		found = true
-		if plan[i].Arg != 2 || plan[i].Meta != tableFixedTextUtf8 {
+		if plan[i].Arg != 2 || plan[i].Meta != tableFixedTextUTF8 {
 			t.Fatalf("text entry is not arm-2/utf8: Arg=%d Meta=%d", plan[i].Arg, plan[i].Meta)
 		}
 		// OLD ENCODING: flavour in Arg, Meta unused
@@ -1521,7 +1518,7 @@ func TestOldArgLaneControl(t *testing.T) {
 // THE SPLIT ON THIS LEG IS READ OFF THE PLAN, not carried beside it: the plan
 // object is Entries+Count (tableFixedPlan), the run loop tests the guard per
 // entry — which item 42 allows outright — and the builders (tableFixedBuildPlan
-// for identity, tableFixedCompile for a peer's layout, both in the emitted
+// for identity, tableFixedCompile for an endpoint's layout, both in the emitted
 // runtime) stable-partition unguarded-first before they hand the plan over. So
 // the split is the index of the first guarded entry, and a plan with no
 // guarded entry has its split at the END, not at zero. The case runs in the
@@ -1726,21 +1723,21 @@ func TestRecordBound(t *testing.T) {
 	if why != "" {
 		t.Fatalf("W10: my own layout does not parse: %s", why)
 	}
-	rootID := tableFixedEntryAt(mine, 0).Id
+	rootID := tableFixedEntryAt(mine, 0).ID
 	var keepID, blobID, blobElemID, labelID uint64
 	for i := int32(1); i < mine.Count; i++ {
 		e := tableFixedEntryAt(mine, i)
 		if e.Kind == 8 && e.Size == 4 && keepID == 0 {
-			keepID = e.Id // keep, a uint32
+			keepID = e.ID // keep, a uint32
 		}
 		if e.Kind == 12 && labelID == 0 {
-			labelID = e.Id // label, a string(8)
+			labelID = e.ID // label, a string(8)
 		}
 		if e.Kind == 14 && i+1 < mine.Count {
 			el := tableFixedEntryAt(mine, i+1)
 			if el.Kind == 6 && el.Size == 1 {
-				blobID = e.Id     // blob, bytes(6): an array of u8
-				blobElemID = el.Id // the u8 element; may be zero
+				blobID = e.ID     // blob, bytes(6): an array of u8
+				blobElemID = el.ID // the u8 element; may be zero
 			}
 		}
 	}
@@ -3027,8 +3024,8 @@ func TestDuplicateStaysZero(t *testing.T) {
 // TestFixedFormReadSlackUnspecified is W4: a fixed record's declared slack is
 // UNSPECIFIED ON READ (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
 // §3.1): a reader validates the USED UNITS ONLY and never looks at the slack,
-// so a peer that leaves garbage past a string's stated length or an array's
-// live count is a peer this reader reads correctly. NON-ZERO SLACK IS NOT
+// so an endpoint that leaves garbage past a string's stated length or an array's
+// live count is an endpoint this reader reads correctly. NON-ZERO SLACK IS NOT
 // malformed, NOT A REFUSAL, AND MOVES NO COUNTER.
 //
 // The C++ reference's slack_case (test/tables/fixedform_main.cpp:715-777)
@@ -3068,7 +3065,7 @@ func TestReadSlackUnspecified(t *testing.T) {
 	// (4) + four int32 elements (16), then tail (4).
 	const labelSlackAt = 4 + 2              // past the stated length of 2
 	const marksSlackAt = 4 + 8 + 4 + 4      // past the live count of 1
-	// A PEER left garbage in the declared slack: a byte no clean record carries.
+	// AN ENDPOINT left garbage in the declared slack: a byte no clean record carries.
 	copy(body[labelSlackAt:], []byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA})
 	for i := 0; i < 3; i++ {
 		binary.LittleEndian.PutUint32(body[marksSlackAt+4*i:], 0x5A5A5A5A)
@@ -3083,10 +3080,10 @@ func TestReadSlackUnspecified(t *testing.T) {
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
 	if n := SlackFixedLoadTolerant(got, buf, plan, &r); n != 1 {
-		t.Fatalf("a peer's garbage in the slack refused the record: n=%d %+v", n, r)
+		t.Fatalf("an endpoint's garbage in the slack refused the record: n=%d %+v", n, r)
 	}
 	if r != (TableReport{}) {
-		t.Fatalf("a peer's garbage in the slack moved a counter or named a refusal: %+v", r)
+		t.Fatalf("an endpoint's garbage in the slack moved a counter or named a refusal: %+v", r)
 	}
 	if got[0].LabelLength != 2 || got[0].Label[0] != 'h' || got[0].Label[1] != 'i' {
 		t.Fatalf("the used text did not read: %+v", got[0])

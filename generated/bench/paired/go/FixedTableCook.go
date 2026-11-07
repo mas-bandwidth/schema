@@ -139,8 +139,8 @@ func init() {
 	tableCookLayoutOffset("BenchMixedRow.Sequence", unsafe.Offsetof(BenchMixedRow{}.Sequence), 0)
 	tableCookLayoutOffset("BenchMixedRow.AckSequence", unsafe.Offsetof(BenchMixedRow{}.AckSequence), 4)
 	tableCookLayoutOffset("BenchMixedRow.AckBits", unsafe.Offsetof(BenchMixedRow{}.AckBits), 8)
-	tableCookLayoutOffset("BenchMixedRow.SessionId", unsafe.Offsetof(BenchMixedRow{}.SessionId), 16)
-	tableCookLayoutOffset("BenchMixedRow.ClientId", unsafe.Offsetof(BenchMixedRow{}.ClientId), 24)
+	tableCookLayoutOffset("BenchMixedRow.SessionID", unsafe.Offsetof(BenchMixedRow{}.SessionID), 16)
+	tableCookLayoutOffset("BenchMixedRow.ClientID", unsafe.Offsetof(BenchMixedRow{}.ClientID), 24)
 	tableCookLayoutOffset("BenchMixedRow.Nonce", unsafe.Offsetof(BenchMixedRow{}.Nonce), 32)
 	tableCookLayoutOffset("BenchMixedRow.WorldTime", unsafe.Offsetof(BenchMixedRow{}.WorldTime), 40)
 	tableCookLayoutOffset("BenchMixedRow.FrameTick", unsafe.Offsetof(BenchMixedRow{}.FrameTick), 48)
@@ -172,7 +172,7 @@ func init() {
 	tableCookLayoutOffset("MixedChatEventRow.Speaker", unsafe.Offsetof(MixedChatEventRow{}.Speaker), 4)
 	tableCookLayoutSize("MixedEntityRow", unsafe.Sizeof(MixedEntityRow{}), 64)
 	tableCookLayoutSize("MixedEntityRow alignment", unsafe.Alignof(MixedEntityRow{}), 8)
-	tableCookLayoutOffset("MixedEntityRow.EntityId", unsafe.Offsetof(MixedEntityRow{}.EntityId), 0)
+	tableCookLayoutOffset("MixedEntityRow.EntityID", unsafe.Offsetof(MixedEntityRow{}.EntityID), 0)
 	tableCookLayoutOffset("MixedEntityRow.PosX", unsafe.Offsetof(MixedEntityRow{}.PosX), 4)
 	tableCookLayoutOffset("MixedEntityRow.PosY", unsafe.Offsetof(MixedEntityRow{}.PosY), 8)
 	tableCookLayoutOffset("MixedEntityRow.PosZ", unsafe.Offsetof(MixedEntityRow{}.PosZ), 12)
@@ -188,17 +188,17 @@ func init() {
 	tableCookLayoutOffset("MixedEntityRow.Firing", unsafe.Offsetof(MixedEntityRow{}.Firing), 57)
 	tableCookLayoutSize("MixedHitEventRow", unsafe.Sizeof(MixedHitEventRow{}), 16)
 	tableCookLayoutSize("MixedHitEventRow alignment", unsafe.Alignof(MixedHitEventRow{}), 4)
-	tableCookLayoutOffset("MixedHitEventRow.TargetId", unsafe.Offsetof(MixedHitEventRow{}.TargetId), 0)
+	tableCookLayoutOffset("MixedHitEventRow.TargetID", unsafe.Offsetof(MixedHitEventRow{}.TargetID), 0)
 	tableCookLayoutOffset("MixedHitEventRow.Damage", unsafe.Offsetof(MixedHitEventRow{}.Damage), 4)
 	tableCookLayoutOffset("MixedHitEventRow.HitKind", unsafe.Offsetof(MixedHitEventRow{}.HitKind), 8)
 	tableCookLayoutOffset("MixedHitEventRow.Crit", unsafe.Offsetof(MixedHitEventRow{}.Crit), 12)
 	tableCookLayoutSize("MixedPickupEventRow", unsafe.Sizeof(MixedPickupEventRow{}), 8)
 	tableCookLayoutSize("MixedPickupEventRow alignment", unsafe.Alignof(MixedPickupEventRow{}), 4)
-	tableCookLayoutOffset("MixedPickupEventRow.ItemId", unsafe.Offsetof(MixedPickupEventRow{}.ItemId), 0)
+	tableCookLayoutOffset("MixedPickupEventRow.ItemID", unsafe.Offsetof(MixedPickupEventRow{}.ItemID), 0)
 	tableCookLayoutOffset("MixedPickupEventRow.Amount", unsafe.Offsetof(MixedPickupEventRow{}.Amount), 4)
 	tableCookLayoutSize("MixedStatRow", unsafe.Sizeof(MixedStatRow{}), 8)
 	tableCookLayoutSize("MixedStatRow alignment", unsafe.Alignof(MixedStatRow{}), 4)
-	tableCookLayoutOffset("MixedStatRow.StatId", unsafe.Offsetof(MixedStatRow{}.StatId), 0)
+	tableCookLayoutOffset("MixedStatRow.StatID", unsafe.Offsetof(MixedStatRow{}.StatID), 0)
 	tableCookLayoutOffset("MixedStatRow.Delta", unsafe.Offsetof(MixedStatRow{}.Delta), 4)
 }
 
@@ -429,7 +429,7 @@ func FixedTableAt(slot *int64) *FixedTableRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c FixedTableCook) Type() *TableCookInfo { return &tableCookRecords[1] }
 
-const tableCookBuildVersion uint64 = 0x23753a84972a054e
+const tableCookBuildVersion uint64 = 0x41d3559378bfa852
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8
@@ -468,7 +468,7 @@ func (w *tableCookWriter) header(data, nodes, align int64) {
 func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, live bool) bool {
 	for i := range t.Fields {
 		f := &t.Fields[i]
-		rides := live && tableJsonGuardHolds(p, t, f.Guard)
+		rides := live && tableJSONGuardHolds(p, t, f.Guard)
 		if f.Optional {
 			rides = rides && *(*bool)(unsafe.Add(p, f.PresentOffset))
 		}
@@ -503,7 +503,7 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
 		width := f.CookElemSize
 		for i := range used {
-			v := tableJsonGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
+			v := tableJSONGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
 			w.put(dest+int64(i)*int64(width), v, width)
 		}
 		return true
@@ -527,7 +527,7 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 	}
 	if f.Arms != nil {
 		u := f.Arms()
-		tag := tableJsonGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
+		tag := tableJSONGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
 		if tag >= uint64(len(u.Arms)) {
 			return false
 		}
@@ -551,7 +551,8 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		w.put(at+8, hi, 8)
 		return true
 	}
-	value := tableJsonGetRaw(p, f.ElemSize)
+	// A cooked float is finite (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): NaN and infinity refuse.
+	value := tableJSONGetRaw(p, f.ElemSize)
 	if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
 		return false
 	}
@@ -560,6 +561,9 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		if *(*bool)(p) {
 			value = 1
 		}
+	}
+	if f.Kind == 10 && value&0x7f800000 == 0x7f800000 || f.Kind == 11 && value&0x7ff0000000000000 == 0x7ff0000000000000 {
+		return false
 	}
 	w.put(at, value, width)
 	return true
@@ -585,7 +589,7 @@ func tableCookFixed(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order Tab
 		return false
 	}
 	w.put(64+data, 0, 8)
-	w.put(64+data+8, t.Id, 8)
+	w.put(64+data+8, t.ID, 8)
 	return true
 }
 func (w *tableCookWriter) reference(slot *int64, at int64) bool { return *slot == 0 }

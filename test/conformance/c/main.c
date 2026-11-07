@@ -174,7 +174,7 @@ static const UnitFn units[] = {
     conformance_codecs_tblp3,
     conformance_codecs_widedemo,
     conformance_codecs_scalars,
-    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2
+    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_widelist, conformance_codecs_featurewitnesses
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
@@ -264,6 +264,28 @@ static int spill_absent_reason( const char * dir, const char * name, const char 
     return spill( dir, marker, reason, strlen( reason ) );
 }
 
+/* The value half of a `report` and `json-hostile` answer
+   (test/conformance/README.md): the report line, then the §16 text of the
+   value the read left. A codec with no text writer answers the line alone,
+   and the harness names the missing value. */
+static int spill_with_value( const char * out, const char * name, const char * head, int n,
+                             const ConformanceCodec * codec, void * value )
+{
+    int64_t size;
+    char * answer;
+    int ok;
+    if ( codec->to_json == NULL ) { return spill( out, name, head, (size_t) n ); }
+    size = codec->to_json( value, NULL, 0 );
+    if ( size < 0 ) { return 0; }
+    answer = (char *) malloc( (size_t) n + (size_t) size + 1 );
+    if ( answer == NULL ) { return 0; }
+    memcpy( answer, head, (size_t) n );
+    if ( codec->to_json( value, answer + n, size ) != size ) { free( answer ); return 0; }
+    ok = spill( out, name, answer, (size_t) n + (size_t) size );
+    free( answer );
+    return ok;
+}
+
 static int surface_report( const char * out )
 {
     int i;
@@ -276,7 +298,7 @@ static int surface_report( const char * out )
         void * value;
         ConformanceReport report;
         char text[128];
-        int n;
+        int n, ok, malformed;
         if ( strcmp( f->field[0], "report" ) != 0 ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
         if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
@@ -284,12 +306,71 @@ static int surface_report( const char * out )
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
         memset( &report, 0, sizeof( report ) );
-        codec->load( value, wire, (int64_t) bytes, &report );
+        ok = codec->load( value, wire, (int64_t) bytes, &report );
         free( wire );
+        malformed = report.malformed || ( !ok && !report.refused );
         n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%d,%s,%s\n",
                       report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
-                      report.malformed ? "true" : "false", report.refused ? "refused" : "read" );
-        if ( !spill( out, f->field[1], text, (size_t) n ) ) { return 1; }
+                      malformed ? "true" : "false", report.refused ? "refused" : "read" );
+        if ( report.refused || malformed )
+        {
+            if ( !spill( out, f->field[1], text, (size_t) n ) ) { return 1; }
+            continue;
+        }
+        if ( !spill_with_value( out, f->field[1], text, n, codec, value ) ) { return 1; }
+    }
+    return 0;
+}
+
+/* THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+   `report` surface prints it, then the §16 text of the value the read left,
+   unless the row says `no-value` or the read refused or met damage. Damaged
+   input discards the whole load (docs/SPEC-TABLES.md §4), so a damaged row
+   owes the report line alone. A derived line is
+   `framing <case> <unit> <root> <wire> [no-value]`. */
+static int surface_framing( const char * out )
+{
+    int i;
+    for ( i = 0; i < num_lines; i++ )
+    {
+        const Line * f = &lines[i];
+        const ConformanceCodec * codec;
+        uint8_t * wire;
+        size_t bytes = 0;
+        void * value;
+        ConformanceReport report;
+        char head[128];
+        char * answer;
+        int64_t size = 0;
+        int n, ok, malformed, no_value;
+        if ( strcmp( f->field[0], "framing" ) != 0 ) { continue; }
+        no_value = f->count > 5 && strcmp( f->field[5], "no-value" ) == 0;
+        codec = find_codec( f->field[2], f->field[3] );
+        if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
+        wire = slurp( f->field[4], &bytes );
+        if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
+        value = codec->storage();
+        memset( &report, 0, sizeof( report ) );
+        ok = codec->load( value, wire, (int64_t) bytes, &report );
+        free( wire );
+        malformed = report.malformed || ( !ok && !report.refused );
+        n = snprintf( head, sizeof( head ), "%d,%d,%d,%d,%d,%s,%s\n",
+                      report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
+                      malformed ? "true" : "false", report.refused ? "refused" : "read" );
+        if ( report.refused || malformed || no_value || codec->to_json == NULL )
+        {
+            if ( !spill( out, f->field[1], head, (size_t) n ) ) { return 1; }
+            continue;
+        }
+        size = codec->to_json( value, NULL, 0 );
+        if ( size < 0 ) { return 1; }
+        answer = (char *) malloc( (size_t) n + (size_t) size + 1 );
+        if ( answer == NULL ) { return 1; }
+        memcpy( answer, head, (size_t) n );
+        if ( codec->to_json( value, answer + n, size ) != size ) { free( answer ); return 1; }
+        ok = spill( out, f->field[1], answer, (size_t) n + (size_t) size );
+        free( answer );
+        if ( !ok ) { return 1; }
     }
     return 0;
 }
@@ -361,7 +442,8 @@ static int surface_json_write( const char * out )
 }
 
 /* json-hostile: one tree per rule the text form states (§16.2, §16.3, §17.5).
-   The answer is the REPORT the read produces, or `refused`. */
+   The answer is the REPORT the read produces, then the §16 text of the value
+   it left, or `refused`. */
 static int surface_json_hostile( const char * out )
 {
     int i;
@@ -390,13 +472,12 @@ static int surface_json_hostile( const char * out )
         if ( !ok || report.malformed )
         {
             n = snprintf( verdict, sizeof( verdict ), "refused\n" );
+            if ( !spill( out, f->field[1], verdict, (size_t) n ) ) { return 1; }
+            continue;
         }
-        else
-        {
-            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,%d,false,read\n",
-                          report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate );
-        }
-        if ( !spill( out, f->field[1], verdict, (size_t) n ) ) { return 1; }
+        n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,%d,false,read\n",
+                      report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate );
+        if ( !spill_with_value( out, f->field[1], verdict, n, codec, value ) ) { return 1; }
     }
     return 0;
 }
@@ -521,7 +602,7 @@ static int surface_cook_write(const char * out)
         }
         if(instance==NULL) { return 1; }
         codec=find_codec(instance->field[2],instance->field[3]);
-        if(codec==NULL) { return 2; }
+        if(codec==NULL) { continue; }
         wire=slurp(instance->field[4],&wire_bytes); if(wire==NULL) { return 1; }
         value=codec->storage();
         if(!codec->load(value,wire,(int64_t)wire_bytes,&report)) { free(wire); return 1; } free(wire);
@@ -623,6 +704,8 @@ static int surface_message(const char * out)
   if(strcmp(f->field[0],"message")!=0)continue;
   for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){connection=lines+j;break;}
   if(!connection){return 1;}codec=find_codec(connection->field[2],f->field[3]);if(!codec)return 1;
+  /* only a fixed table rides the message form: a variable root has no message codec */
+  if(codec->message==NULL){if(!spill_absent_reason(out,f->field[1],"variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"))return 1;continue;}
   announcement=slurp(connection->field[4],&an);message=slurp(f->field[5],&n);
   if(!announcement||!message){free(announcement);free(message);return 1;}
   ok=codec->message(announcement,(int64_t)an,message,(int64_t)n,&answer,&size,&report);
@@ -635,16 +718,15 @@ static int surface_message(const char * out)
 
 static int surface_retain(const char * out,int saved)
 {
- int i,j;
+ int i;
  for(i=0;i<num_lines;i++){
-  const Line * f=lines+i;int message=!strcmp(f->field[0],"retain-message"),shift=message;uint8_t * a=NULL,*wire,*answer=NULL;size_t an=0,n;int counters[4]={0},ok;int64_t size=0,ids;char summary[128];
-  if(!message&&strcmp(f->field[0],"retain"))continue;
-  if(strcmp(f->field[2+shift],"tblrt1")||strcmp(f->field[3+shift],"Node"))return 1;
-  if(message){for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){a=slurp(lines[j].field[4],&an);break;}if(!a)return 1;}
-  wire=slurp(f->field[4+shift],&n);if(!wire){free(a);return 1;}ids=!strcmp(f->field[6+shift],"full")?-1:strtoll(f->field[6+shift],NULL,10);
-  ok=conformance_retain(message,a,(int64_t)an,wire,(int64_t)n,!strcmp(f->field[5+shift],"short"),ids,counters,&answer,&size);
+  const Line * f=lines+i;uint8_t * wire,*answer=NULL;size_t n;int counters[4]={0},ok;int64_t size=0,ids;char summary[128];
+  if(strcmp(f->field[0],"retain"))continue;
+  if(strcmp(f->field[2],"tblrt1")||strcmp(f->field[3],"Node"))return 1;
+  wire=slurp(f->field[4],&n);if(!wire)return 1;ids=!strcmp(f->field[6],"full")?-1:strtoll(f->field[6],NULL,10);
+  ok=conformance_retain(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size);
   if(ok){if(saved)ok=spill(out,f->field[1],answer,(size_t)size);else{int length=snprintf(summary,sizeof(summary),"%d,%d,%d %d\n",counters[0],counters[1],counters[2],counters[3]);ok=spill(out,f->field[1],summary,(size_t)length);}}
-  free(answer);free(wire);free(a);if(!ok){fprintf(stderr,"retain %s failed\n",f->field[1]);return 1;}
+  free(answer);free(wire);if(!ok){fprintf(stderr,"retain %s failed\n",f->field[1]);return 1;}
  }
  return 0;
 }
@@ -662,7 +744,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nmessage\nretain\nretain-save\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
+        printf( "wire\nmessage\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -676,6 +758,7 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "message" ) == 0 ) { return surface_message(out); }
     if ( strcmp( surface, "wire" ) == 0 ) { return surface_wire( out ); }
     if ( strcmp( surface, "report" ) == 0 ) { return surface_report( out ); }
+    if ( strcmp( surface, "framing" ) == 0 ) { return surface_framing( out ); }
     if ( strcmp( surface, "json-read" ) == 0 ) { return surface_json_read( out ); }
     if ( strcmp( surface, "json-write" ) == 0 ) { return surface_json_write( out ); }
     if ( strcmp( surface, "json-hostile" ) == 0 ) { return surface_json_hostile( out ); }

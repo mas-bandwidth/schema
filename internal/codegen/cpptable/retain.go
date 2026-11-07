@@ -47,7 +47,7 @@ func tableRetainDepth(u *ir.Unit, closure map[string]bool) int {
 	}
 
 	fieldDepth = func(f *ir.Field, open map[string]bool) int {
-		if f.Type.Pointer {
+		if f.Type.Pointer || ir.TextListPlain(f) {
 			return 0 // a pointer target is a NODE and takes a first step of its own
 		}
 		if f.IsMap() {
@@ -114,14 +114,8 @@ func tableRetainDepth(u *ir.Unit, closure map[string]bool) int {
 func tableRetainKnownIds(u *ir.Unit) (string, int) {
 	ids := ir.TableWireIds(u)
 	var b strings.Builder
-	for i, id := range ids {
-		if i%4 == 0 {
-			b.WriteString("\n    ")
-		}
-		fmt.Fprintf(&b, "0x%016xull,", id)
-		if i%4 != 3 && i != len(ids)-1 {
-			b.WriteString(" ")
-		}
+	for _, id := range ids {
+		fmt.Fprintf(&b, "\n    0x%016xull,", id)
 	}
 	b.WriteString("\n")
 	return b.String(), len(ids)
@@ -177,7 +171,7 @@ struct TableRetainPath
     const void * at;
     uint32_t node;
     int32_t depth;
-    TableRetainStep steps[ kTableRetainDepthMax ];
+    TableRetainStep steps[kTableRetainDepthMax];
 };
 
 inline TableRetainPath TableRetainPathRoot( const void * at, uint32_t node )
@@ -197,8 +191,8 @@ inline TableRetainPath TableRetainStepInto( const TableRetainPath & path, uint32
     TableRetainPath out = path;
     if ( out.depth < kTableRetainDepthMax )
     {
-        out.steps[ out.depth ].ordinal = ordinal;
-        out.steps[ out.depth ].index = index;
+        out.steps[out.depth].ordinal = ordinal;
+        out.steps[out.depth].index = index;
     }
     out.depth++;
     return out;
@@ -264,7 +258,10 @@ inline uint64_t TableRetainRead64( const uint8_t * p )
 
 inline void TableRetainWrite32( uint8_t * p, uint32_t v )
 {
-    p[0] = uint8_t( v ); p[1] = uint8_t( v >> 8 ); p[2] = uint8_t( v >> 16 ); p[3] = uint8_t( v >> 24 );
+    p[0] = uint8_t( v );
+    p[1] = uint8_t( v >> 8 );
+    p[2] = uint8_t( v >> 16 );
+    p[3] = uint8_t( v >> 24 );
 }
 
 inline void TableRetainWrite64( uint8_t * p, uint64_t v )
@@ -296,7 +293,7 @@ inline const void * TableRetainRecordAt( const TableRetain & retain, const uint8
 {
     const uint32_t node = TableRetainRecordNode( record );
     if ( retain.directory == NULL || node == 0 || (int64_t) node > retain.directory_count ) { return NULL; }
-    return (const void *) ( retain.base + retain.directory[ node - 1 ].offset );
+    return (const void *) ( retain.base + retain.directory[node - 1].offset );
 }
 
 // Does this record belong to the body the walk is standing in? The node first,
@@ -323,7 +320,7 @@ static const int32_t kTableRetainKnownIds = @KNOWNCOUNT@;
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
 // the hoisted descriptor's tag lists and wide ranges take.
-inline const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {@KNOWN@};
+inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {@KNOWN@};
 
 inline bool TableRetainNameable( uint64_t id )
 {
@@ -332,7 +329,11 @@ inline bool TableRetainNameable( uint64_t id )
     {
         const int32_t mid = low + ( high - low ) / 2;
         if ( kTableRetainKnown[mid] == id ) { return true; }
-        if ( kTableRetainKnown[mid] < id ) { low = mid + 1; } else { high = mid - 1; }
+        if ( kTableRetainKnown[mid] < id ) { low = mid + 1; }
+        else
+        {
+            high = mid - 1;
+        }
     }
     return false;
 }
@@ -346,7 +347,7 @@ inline bool TableRetainNameable( uint64_t id )
 struct TableRetainIds
 {
     TableIds known;
-    int32_t known_slot[ TableIds::kCapacity ];
+    int32_t known_slot[TableIds::kCapacity];
     TableRetain * retain;
     int32_t count;
     bool overflow;
@@ -359,9 +360,13 @@ struct TableRetainIds
     {
         const int32_t before = known.count;
         const uint64_t k = known.ref( id );
-        if ( known.overflow ) { overflow = true; return 1; }
-        if ( known.count != before ) { known_slot[ (int32_t) k - 1 ] = ++count; }
-        return (uint64_t) known_slot[ (int32_t) k - 1 ];
+        if ( known.overflow )
+        {
+            overflow = true;
+            return 1;
+        }
+        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
     // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
@@ -384,14 +389,22 @@ struct TableRetainIds
     uint64_t record_ref( uint64_t id )
     {
         if ( TableRetainNameable( id ) ) { return ref( id ); }
-        if ( retain == NULL ) { lost = true; return 0; }
+        if ( retain == NULL )
+        {
+            lost = true;
+            return 0;
+        }
         for ( int32_t i = 0; i < retain->id_used; i++ )
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity ) { lost = true; return 0; }
-        retain->ids[ retain->id_used ].id = id;
-        retain->ids[ retain->id_used ].slot = ++count;
+        if ( retain->id_used >= retain->id_capacity )
+        {
+            lost = true;
+            return 0;
+        }
+        retain->ids[retain->id_used].id = id;
+        retain->ids[retain->id_used].slot = ++count;
         retain->id_used++;
         return (uint64_t) count;
     }
@@ -400,8 +413,8 @@ struct TableRetainIds
     // slot order, so an entry removed is the last one of its store.
     void truncate( int32_t mark )
     {
-        while ( known.count > 0 && known_slot[ known.count - 1 ] > mark ) { known.truncate( known.count - 1 ); }
-        while ( retain != NULL && retain->id_used > 0 && retain->ids[ retain->id_used - 1 ].slot > mark ) { retain->id_used--; }
+        while ( known.count > 0 && known_slot[known.count - 1] > mark ) { known.truncate( known.count - 1 ); }
+        while ( retain != NULL && retain->id_used > 0 && retain->ids[retain->id_used - 1].slot > mark ) { retain->id_used--; }
         count = mark;
     }
 };
@@ -489,7 +502,11 @@ inline void TableRetainInLeb( TableRetainIn & s, uint64_t v )
 {
     uint8_t b[10];
     int64_t n = 0;
-    while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+    while ( v >= 0x80 )
+    {
+        b[n++] = uint8_t( v ) | 0x80;
+        v >>= 7;
+    }
     b[n++] = uint8_t( v );
     TableRetainInRaw( s, b, n );
 }
@@ -508,7 +525,7 @@ inline bool TableRetainInLebRead( TableRetainIn & s, uint64_t & value )
     for ( int32_t i = 0; i < 10; i++ )
     {
         if ( s.at >= s.size ) { return false; }
-        const uint8_t b = s.in[ s.at++ ];
+        const uint8_t b = s.in[s.at++];
         if ( i == 9 && b > 1 ) { return false; }
         value |= uint64_t( b & 0x7F ) << shift;
         if ( ( b & 0x80 ) == 0 ) { return i == 0 || b != 0; }
@@ -555,7 +572,7 @@ static const int64_t kTableRetainSlotBytes = 8;
 inline int64_t TableRetainInSlot( TableRetainIn & s )
 {
     const int64_t at = s.out_at;
-    const uint8_t zero[ kTableRetainSlotBytes ] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    const uint8_t zero[kTableRetainSlotBytes] = { 0, 0, 0, 0, 0, 0, 0, 0 };
     TableRetainInRaw( s, zero, kTableRetainSlotBytes );
     return at;
 }
@@ -595,11 +612,15 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
                 // THE TERMINATOR IS A REFERENCE, and a reference in the
                 // resolved form is a fixed eight-byte id: the zero that ends a
                 // body rides at the width every other one does.
-                if ( ref == 0 ) { TableRetainInId( s, 0 ); break; }
+                if ( ref == 0 )
+                {
+                    TableRetainInId( s, 0 );
+                    break;
+                }
                 s.at = mark;
                 if ( !TableRetainInRef( s, false ) ) { return -1; }
                 if ( s.at >= end ) { return -1; }
-                const uint8_t field_kind = s.in[ s.at++ ];
+                const uint8_t field_kind = s.in[s.at++];
                 TableRetainInRaw( s, &field_kind, 1 );
                 if ( TableRetainInPayload( s, field_kind, depth ) < 0 ) { return -1; }
                 if ( s.at > end ) { return -1; }
@@ -609,7 +630,7 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
         case 14: // an ARRAY body: the element kind, the count, then the elements
         {
             if ( s.at >= end ) { return -1; }
-            const uint8_t elem_kind = s.in[ s.at++ ];
+            const uint8_t elem_kind = s.in[s.at++];
             TableRetainInRaw( s, &elem_kind, 1 );
             uint64_t n = 0;
             if ( !TableRetainInLebRead( s, n ) ) { return -1; }
@@ -624,7 +645,7 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
         case 16: // an ENUM-KEYED body: N triples of a KEY REFERENCE, an L and the element
         {
             if ( s.at >= end ) { return -1; }
-            const uint8_t elem_kind = s.in[ s.at++ ];
+            const uint8_t elem_kind = s.in[s.at++];
             TableRetainInRaw( s, &elem_kind, 1 );
             uint64_t n = 0;
             if ( !TableRetainInLebRead( s, n ) ) { return -1; }
@@ -640,7 +661,8 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             }
             break;
         }
-        case 15: case 30:
+        case 15:
+        case 30:
             // A UNION ARM AND AN ENUM'S VARIANT REFERENCE RESOLVE AS A FRAMED
             // CONTENT TOO (§6.6): a kind 15 arm whose own payload is a union,
             // and a kind 16 slot whose element kind is 15 or 30, both arrive
@@ -669,19 +691,53 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
     const int64_t began = s.out_at;
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25: // the fixed-width kinds, by width
-        case 3: case 7: case 21: case 26:
-        case 4: case 8: case 10: case 22: case 27:
-        case 5: case 9: case 11: case 23: case 28:
-        case 18: case 19: case 24: case 29:
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: // the fixed-width kinds, by width
+        case 3:
+        case 7:
+        case 21:
+        case 26:
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27:
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36:
+        case 18:
+        case 19:
+        case 24:
+        case 29:
         {
             int64_t width = 1;
             switch ( kind )
             {
-                case 3: case 7: case 21: case 26: width = 2; break;
-                case 4: case 8: case 10: case 22: case 27: width = 4; break;
-                case 5: case 9: case 11: case 23: case 28: width = 8; break;
-                case 18: case 19: case 24: case 29: width = 16; break;
+                case 3:
+                case 7:
+                case 21:
+                case 26: width = 2; break;
+                case 4:
+                case 8:
+                case 10:
+                case 22:
+                case 27: width = 4; break;
+                case 5:
+                case 9:
+                case 11:
+                case 23:
+                case 28:
+                case 36: width = 8; break; // 36 is the timestamp, the i64's eight bytes (§2.11, §3)
+                case 18:
+                case 19:
+                case 24:
+                case 29: width = 16; break;
                 default: width = 1; break;
             }
             if ( s.at + width > s.size ) { return -1; }
@@ -689,7 +745,10 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             s.at += width;
             break;
         }
-        case 12: case 31: case 32: case 33: // L, then L bytes, nothing framed inside
+        case 12:
+        case 31:
+        case 32:
+        case 33: // L, then L bytes, nothing framed inside
         {
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
@@ -699,7 +758,9 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             s.at += (int64_t) length;
             break;
         }
-        case 13: case 14: case 16: // L, then a body the walk resolves
+        case 13:
+        case 14:
+        case 16: // L, then a body the walk resolves
         {
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
@@ -716,7 +777,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             if ( !TableRetainInRef( s, true ) ) { return -1; }
             if ( arm == 0 ) { break; }
             if ( s.at >= s.size ) { return -1; }
-            const uint8_t arm_kind = s.in[ s.at++ ];
+            const uint8_t arm_kind = s.in[s.at++];
             TableRetainInRaw( s, &arm_kind, 1 );
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
@@ -743,12 +804,26 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
 // for, and nothing else: retention can lose a field, it can never turn a good
 // read into a bad one.
 inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const TableRetainPath & path,
-                                uint64_t field_id, uint8_t kind )
+    uint64_t field_id, uint8_t kind )
 {
     const int64_t start = r.offset;
     if ( !r.skip( kind ) ) { return false; }
     if ( retain == NULL ) { return true; }
     const int64_t wire_bytes = r.offset - start;
+    // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+    // §3.3, §6.6): kind 10's or 11's raw bits, and a NaN or an infinity refuses
+    // the read as non_finite_float. The read goes on, as it does for a known
+    // field, and the load answers the refusal at its end.
+    if ( kind == 10 || kind == 11 )
+    {
+        uint64_t raw = 0;
+        for ( int64_t i = wire_bytes - 1; i >= 0; i-- ) { raw = ( raw << 8 ) | r.buffer[start + i]; }
+        if ( kind == 10 ? !TableBitsFinite32( (uint32_t) raw ) : !TableBitsFinite64( raw ) )
+        {
+            TableNonFiniteFloat( r.report );
+            return true;
+        }
+    }
 
     TableRetainIn probe;
     probe.in = r.buffer + start;
@@ -758,7 +833,11 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     probe.out = NULL;
     probe.out_at = 0;
     const int64_t payload = TableRetainInPayload( probe, kind, 0 );
-    if ( payload < 0 || probe.at != wire_bytes ) { r.report->retain_lost++; return true; }
+    if ( payload < 0 || probe.at != wire_bytes )
+    {
+        r.report->retain_lost++;
+        return true;
+    }
 
     const int64_t need = kTableRetainRecordHeader + 8 * (int64_t) path.depth + payload;
     if ( need > 0xFFFFFFFFll || retain->used + need > retain->capacity )
@@ -788,7 +867,11 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     write.ids = r.ids;
     write.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
     write.out_at = 0;
-    if ( TableRetainInPayload( write, kind, 0 ) < 0 ) { r.report->retain_lost++; return true; }
+    if ( TableRetainInPayload( write, kind, 0 ) < 0 )
+    {
+        r.report->retain_lost++;
+        return true;
+    }
     retain->used += need;
     retain->count++;
     r.report->retained++;
@@ -827,9 +910,9 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
 // inside one occurrence of a map, where the field is read once and the entry
 // twice.
 inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
-                              const TableRetainPath & path, bool field, uint32_t ordinal )
+    const TableRetainPath & path, bool field, uint32_t ordinal )
 {
-    if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
+    if ( path.node != 0 ? TableRetainRecordNode( record ) != path.node : TableRetainRecordAt( retain, record ) != at ) { return false; }
     const int32_t depth = TableRetainRecordDepth( record );
     if ( field )
     {
@@ -920,7 +1003,7 @@ inline bool TableRetainOutLebRead( TableRetainOut & s, uint64_t & value )
     for ( int32_t i = 0; i < 10; i++ )
     {
         if ( s.at >= s.size ) { return false; }
-        const uint8_t b = s.in[ s.at++ ];
+        const uint8_t b = s.in[s.at++];
         value |= uint64_t( b & 0x7F ) << shift;
         if ( ( b & 0x80 ) == 0 ) { return true; }
         shift += 7;
@@ -933,7 +1016,11 @@ inline bool TableRetainOutRef( TableRetainOut & s )
     if ( s.at + 8 > s.size ) { return false; }
     const uint64_t id = TableRetainRead64( s.in + s.at );
     s.at += 8;
-    if ( id == 0 ) { TableRetainOutLeb( s, 0 ); return true; } // the wire's own no-id
+    if ( id == 0 )
+    {
+        TableRetainOutLeb( s, 0 );
+        return true;
+    } // the wire's own no-id
     const uint64_t ref = s.ids->record_ref( id );
     if ( s.ids->lost || s.ids->overflow ) { return false; }
     TableRetainOutLeb( s, ref );
@@ -988,10 +1075,15 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             {
                 if ( s.at + 8 > end ) { return false; }
                 const uint64_t id = TableRetainRead64( s.in + s.at );
-                if ( id == 0 ) { s.at += 8; TableRetainOutLeb( s, 0 ); break; }
+                if ( id == 0 )
+                {
+                    s.at += 8;
+                    TableRetainOutLeb( s, 0 );
+                    break;
+                }
                 if ( !TableRetainOutRef( s ) ) { return false; }
                 if ( s.at >= end ) { return false; }
-                const uint8_t field_kind = s.in[ s.at++ ];
+                const uint8_t field_kind = s.in[s.at++];
                 TableRetainOutRaw( s, &field_kind, 1 );
                 if ( !TableRetainOutPayload( s, field_kind, depth ) ) { return false; }
             }
@@ -1000,7 +1092,7 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
         case 14:
         {
             if ( s.at >= end ) { return false; }
-            const uint8_t elem_kind = s.in[ s.at++ ];
+            const uint8_t elem_kind = s.in[s.at++];
             TableRetainOutRaw( s, &elem_kind, 1 );
             uint64_t n = 0;
             if ( !TableRetainOutLebRead( s, n ) ) { return false; }
@@ -1014,7 +1106,7 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
         case 16:
         {
             if ( s.at >= end ) { return false; }
-            const uint8_t elem_kind = s.in[ s.at++ ];
+            const uint8_t elem_kind = s.in[s.at++];
             TableRetainOutRaw( s, &elem_kind, 1 );
             uint64_t n = 0;
             if ( !TableRetainOutLebRead( s, n ) ) { return false; }
@@ -1026,7 +1118,8 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             }
             break;
         }
-        case 15: case 30:
+        case 15:
+        case 30:
             // the emit side of the capture's own rule (§6.6): an arm and a
             // variant reference resolve as a framed content too
             if ( !TableRetainOutPayload( s, kind, depth ) ) { return false; }
@@ -1045,19 +1138,53 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
 {
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25:
-        case 3: case 7: case 21: case 26:
-        case 4: case 8: case 10: case 22: case 27:
-        case 5: case 9: case 11: case 23: case 28:
-        case 18: case 19: case 24: case 29:
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25:
+        case 3:
+        case 7:
+        case 21:
+        case 26:
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27:
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36:
+        case 18:
+        case 19:
+        case 24:
+        case 29:
         {
             int64_t width = 1;
             switch ( kind )
             {
-                case 3: case 7: case 21: case 26: width = 2; break;
-                case 4: case 8: case 10: case 22: case 27: width = 4; break;
-                case 5: case 9: case 11: case 23: case 28: width = 8; break;
-                case 18: case 19: case 24: case 29: width = 16; break;
+                case 3:
+                case 7:
+                case 21:
+                case 26: width = 2; break;
+                case 4:
+                case 8:
+                case 10:
+                case 22:
+                case 27: width = 4; break;
+                case 5:
+                case 9:
+                case 11:
+                case 23:
+                case 28:
+                case 36: width = 8; break; // 36 is the timestamp, the i64's eight bytes (§2.11, §3)
+                case 18:
+                case 19:
+                case 24:
+                case 29: width = 16; break;
                 default: width = 1; break;
             }
             if ( s.at + width > s.size ) { return false; }
@@ -1065,7 +1192,10 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             s.at += width;
             break;
         }
-        case 12: case 31: case 32: case 33:
+        case 12:
+        case 31:
+        case 32:
+        case 33:
         {
             uint64_t length = 0;
             if ( !TableRetainOutLebRead( s, length ) ) { return false; }
@@ -1075,7 +1205,9 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             s.at += (int64_t) length;
             break;
         }
-        case 13: case 14: case 16:
+        case 13:
+        case 14:
+        case 16:
         {
             if ( !TableRetainOutFramed( s, kind, depth + 1 ) ) { return false; }
             break;
@@ -1087,7 +1219,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             if ( !TableRetainOutRef( s ) ) { return false; }
             if ( arm == 0 ) { break; }
             if ( s.at >= s.size ) { return false; }
-            const uint8_t arm_kind = s.in[ s.at++ ];
+            const uint8_t arm_kind = s.in[s.at++];
             TableRetainOutRaw( s, &arm_kind, 1 );
             if ( !TableRetainOutFramed( s, arm_kind, depth + 1 ) ) { return false; }
             break;
@@ -1204,7 +1336,7 @@ inline void TableRetainClearPlaced( TableRetain * retain )
     int64_t at = 0;
     for ( int32_t k = 0; k < retain->count; k++ )
     {
-        retain->bytes[ at + 25 ] = 0;
+        retain->bytes[at + 25] = 0;
         at += TableRetainRecordBytes( retain->bytes + at );
     }
 }
@@ -1228,7 +1360,7 @@ inline void TableRetainCountLost( const TableRetain * retain, TableReport * repo
 // cost this feature is not allowed to have.
 template <typename Ctx, typename Measure>
 inline int64_t TableNodeTablePayloadRetain( const Ctx & ctx, TableRetainIds & ids, const TableNumbering & n,
-                                            TableRetain * retain, Measure measure )
+    TableRetain * retain, Measure measure )
 {
     int64_t payload = TableLebBytes( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -1243,7 +1375,7 @@ inline int64_t TableNodeTablePayloadRetain( const Ctx & ctx, TableRetainIds & id
 
 template <typename Ctx, typename Measure>
 inline int64_t TableNodeTableMeasureRetain( const Ctx & ctx, TableRetainIds & ids, const TableNumbering & n,
-                                            TableRetain * retain, Measure measure )
+    TableRetain * retain, Measure measure )
 {
     if ( n.count == 0 ) { return 0; }
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
@@ -1254,7 +1386,7 @@ inline int64_t TableNodeTableMeasureRetain( const Ctx & ctx, TableRetainIds & id
 
 template <typename Ctx, typename Measure, typename Save>
 inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRetainIds & ids, const TableNumbering & n,
-                                      TableRetain * retain, Measure measure, Save save )
+    TableRetain * retain, Measure measure, Save save )
 {
     if ( n.count == 0 ) { return true; }
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
@@ -1272,473 +1404,6 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
         if ( !save( ctx, n, w, ids, n.entries[k].type_id, n.entries[k].node, retain ) ) { return false; }
     }
     return true;
-}
-
-// ---- RETENTION ON THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3) ----
-//
-// LoadRetain reads a form 2 body as it reads a file's, the resolving walk
-// replacing every reference with the id it names AGAINST THE CONNECTION'S
-// VOCABULARY instead of a trailer, and SaveRetain writing form 2 refuses by
-// name. So retention crosses the forms in ONE DIRECTION, and the record a
-// message body produces is the VARIABLE FORM'S OWN, to the byte: a retained record
-// carries the field's bytes with every reference resolved so that re-emitting
-// it into any id table is correct, and the table it is re-emitted into is a
-// file's. The capture below is therefore a TRANSCODE as well as a resolve, a
-// bitpacked value is read at the width its announced shape states and written
-// at the width the variable form spells, and from there it is the same record,
-// laid down in the same slots and read back by the same emit walk.
-//
-// THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits. The plain
-// read's verdict on an unknown entry is the SKIP's, whether or not this build
-// retains, and running the skip first is what keeps that verdict exactly what
-// it was with retention off. The capture re-reads the bits the skip delimited,
-// and a capture that lands anywhere but the skip's own end drops the record. It
-// is two flat passes over one record's bits and never a walk that doubles at
-// every level, which is what the cost rule forbids.
-
-struct TableMessageRetainIn
-{
-    TableRetainIn out;               // its in/size/at/ids are unused: the input is BITS
-    TableBitReader * r;
-    const TableVocabulary * vocabulary;
-    int64_t index_bits;
-    int64_t limit = 0;               // the record's remaining resolved bytes: the bound on the walk
-};
-
-// THE ELEMENT'S OWN ENTRY, which a resolved entry carries flattened beside its
-// own: an array's and a keyed body's elements are read through it.
-inline TableMessageEntry TableMessageRetainElement( const TableMessageEntry & entry )
-{
-    TableMessageEntry e;
-    e.kind = entry.elem_kind;
-    e.packing = entry.elem_packing;
-    e.value_bits = entry.elem_value_bits;
-    e.max = entry.elem_max;
-    e.base_lo = entry.elem_base_lo;
-    e.base_hi = entry.elem_base_hi;
-    e.qmin = entry.elem_qmin;
-    e.qdelta = entry.elem_qdelta;
-    e.qcount = entry.elem_qcount;
-    return e;
-}
-
-// the kinds whose file bytes are TWO'S COMPLEMENT, which is what decides
-// whether a narrow raw value sign-extends into its storage width
-inline bool TableMessageRetainSigned( uint8_t kind )
-{
-    switch ( kind )
-    {
-        case 2: case 3: case 4: case 5: case 18:
-        case 20: case 21: case 22: case 23: case 24: return true;
-        default: return false;
-    }
-}
-
-inline int64_t TableMessageRetainWidth( uint8_t kind )
-{
-    switch ( kind )
-    {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
-        case 18: case 19: case 24: case 29: return 16;
-        default: return -1;
-    }
-}
-
-// THE LEAST A RESOLVED ELEMENT CAN WEIGH, which is what bounds an announced
-// count against the caller's remaining record before one element is converted.
-// A scalar takes its storage width whatever its announced value bits, an opaque
-// takes at least its zero length, a body at least its terminator, and a union
-// or enum its id. The answer is a LOWER bound: a count that cannot fit this many
-// bytes per element cannot fit the record at all, and a zero-bit count is
-// refused here rather than walked (§6.6, THE SECURITY BOUND).
-inline int64_t TableMessageRetainElementMinimum( uint8_t kind )
-{
-    const int64_t width = TableMessageRetainWidth( kind );
-    if ( width > 0 ) { return width; }
-    switch ( kind )
-    {
-        case 12: case 31: case 32: case 33: return 1;
-        case 13: case 14: case 16: case 15: case 30: return 8;
-        default: return 1;
-    }
-}
-
-// one integer at the FILE's own width for its kind, little endian
-inline void TableMessageRetainWord( TableMessageRetainIn & s, uint64_t value, int64_t width )
-{
-    uint8_t b[8];
-    for ( int64_t i = 0; i < width; i++ ) { b[i] = uint8_t( value >> ( 8 * i ) ); }
-    TableRetainInRaw( s.out, b, width );
-}
-
-inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth );
-inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth );
-
-// ONE REFERENCE resolved against the announced vocabulary. It is the file
-// walk's own verdict read against an announcement instead of a trailer: a
-// reference of zero where an entry is required, one above the entry count, and
-// one naming a RESERVED id, which would be re-emitted into a nested body where
-// it is malformed, all DROP THE RECORD.
-inline bool TableMessageRetainId( TableMessageRetainIn & s, uint64_t ref, uint64_t & id )
-{
-    if ( ref == 0 || ref > (uint64_t) s.vocabulary->count ) { return false; }
-    const TableMessageEntry & named = TableVocabularyEntryAt( *s.vocabulary, ref );
-    if ( named.id == 0 || TableRetainReservedId( named.id ) ) { return false; }
-    id = named.id;
-    return true;
-}
-
-inline bool TableMessageRetainRef( TableMessageRetainIn & s, uint64_t & id )
-{
-    uint64_t ref = 0;
-    if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return false; }
-    return TableMessageRetainId( s, ref, id );
-}
-
-// ONE OPAQUE PAYLOAD's bytes: a string or a byte buffer is a length at its own
-// width, the ALIGN that buys a memcpy and the bytes; a wide string is a length
-// and then SIXTEEN bits a code unit, which is two file bytes each; and the
-// ESCAPE aligns, reads a thirty-two bit L and takes L bytes. On the file each
-// is the same bytes behind a canonical LEB128 length, so the framed flag says which of
-// the two spellings this position takes.
-inline bool TableMessageRetainOpaque( TableMessageRetainIn & s, const TableMessageEntry & entry, bool framed )
-{
-    uint64_t n = 0;
-    if ( entry.kind == 12 || entry.kind == 33 )
-    {
-        if ( !s.r->get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
-        if ( entry.kind == 33 ) { n *= 2; }
-        else if ( !s.r->align() ) { return false; }
-    }
-    else
-    {
-        if ( !s.r->align() || !s.r->get( n, 32 ) ) { return false; }
-    }
-    if ( n > (uint64_t) INT32_MAX || !s.r->has( (int64_t) n * 8 ) ) { return false; }
-    if ( framed ) { TableRetainInLeb( s.out, n ); }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        uint64_t by = 0;
-        if ( !s.r->get( by, 8 ) ) { return false; }
-        const uint8_t one = uint8_t( by );
-        TableRetainInRaw( s.out, &one, 1 );
-    }
-    return true;
-}
-
-// ONE ANNOUNCED VALUE, transcoded. NO CLAMP FIRES AND NO RANGE IS APPLIED: the
-// value is the SENDER's, under an id this reader cannot name, so there is no
-// declaration to bound it by, and the walk takes no branch on a payload byte
-// (§6.6, THE SECURITY BOUND).
-inline bool TableMessageRetainScalar( TableMessageRetainIn & s, const TableMessageEntry & entry )
-{
-    const int64_t width = TableMessageRetainWidth( entry.kind );
-    if ( width < 0 ) { return false; }
-    if ( entry.kind == 1 )
-    {
-        uint64_t v = 0;
-        if ( !s.r->get( v, 1 ) ) { return false; }
-        TableMessageRetainWord( s, v, 1 );
-        return true;
-    }
-    if ( entry.kind == 10 )
-    {
-        if ( entry.packing == 2 )
-        {
-            // THE PACKET WIRE'S RULE, IN FLOAT32: the float an index names is
-            // the float a packet's reader names for it, and an index above
-            // the announced count is rejected rather than reconstructed (SPEC.md §4.3)
-            uint64_t index = 0;
-            if ( !s.r->get( index, entry.value_bits ) ) { return false; }
-            if ( index > (uint64_t) entry.qcount ) { return false; }
-            const float v = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount );
-            TableMessageRetainWord( s, table_float_to_bits( v ), 4 );
-            return true;
-        }
-        uint64_t raw = 0;
-        if ( !s.r->get( raw, 32 ) ) { return false; }
-        TableMessageRetainWord( s, raw, 4 );
-        return true;
-    }
-    if ( entry.kind == 11 )
-    {
-        uint64_t raw = 0;
-        if ( !s.r->get( raw, 64 ) ) { return false; }
-        TableMessageRetainWord( s, raw, 8 );
-        return true;
-    }
-    const int64_t bits = entry.value_bits;
-    if ( bits < 0 ) { return false; }
-    if ( width == 16 )
-    {
-        // a 128-bit kind reads in TWO LIMBS, and a ranged one adds the base the
-        // announcement carries in halves
-        uint64_t lo = 0, hi = 0;
-        if ( bits <= 64 )
-        {
-            if ( !s.r->get( lo, bits ) ) { return false; }
-        }
-        else if ( !s.r->get( lo, 64 ) || !s.r->get( hi, bits - 64 ) ) { return false; }
-        if ( entry.packing == 1 )
-        {
-            const uint64_t sum = lo + (uint64_t) entry.base_lo;
-            hi += (uint64_t) entry.base_hi + ( sum < lo ? 1u : 0u );
-            lo = sum;
-        }
-        TableMessageRetainWord( s, lo, 8 );
-        TableMessageRetainWord( s, hi, 8 );
-        return true;
-    }
-    uint64_t raw = 0;
-    if ( !s.r->get( raw, bits ) ) { return false; }
-    uint64_t value = raw;
-    if ( entry.packing == 1 )
-    {
-        value = raw + (uint64_t) entry.base_lo; // the domain, whole: the sum wraps into the bits below
-    }
-    else if ( TableMessageRetainSigned( entry.kind ) && bits > 0 && bits < 64 )
-    {
-        const int64_t shift = 64 - bits;
-        value = (uint64_t) ( ( (int64_t) ( raw << shift ) ) >> shift );
-    }
-    TableMessageRetainWord( s, value, width );
-    return true;
-}
-
-// one framed CONTENT: the slot, the content, and the slot filled in behind it,
-// exactly as the file capture's own framed content is.
-inline int64_t TableMessageRetainFramed( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    const int64_t slot = TableRetainInSlot( s.out );
-    const int64_t resolved = TableMessageRetainContent( s, entry, depth );
-    if ( resolved < 0 || resolved > 0xFFFFFFFFll ) { return -1; }
-    TableRetainInPatch( s.out, slot, resolved );
-    return resolved;
-}
-
-// one nested BODY: its fields, each an entry reference and the payload that
-// entry's shape frames, ending at the body's own ZERO REFERENCE.
-inline int64_t TableMessageRetainBody( TableMessageRetainIn & s, int32_t depth )
-{
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return -1; }
-        if ( ref == 0 )
-        {
-            // THE TERMINATOR IS A REFERENCE, and a reference in the resolved
-            // form is a fixed eight-byte id
-            TableRetainInId( s.out, 0 );
-            return 0;
-        }
-        uint64_t id = 0;
-        if ( !TableMessageRetainId( s, ref, id ) ) { return -1; }
-        const TableMessageEntry & field = TableVocabularyEntryAt( *s.vocabulary, ref );
-        TableRetainInId( s.out, id );
-        TableRetainInRaw( s.out, &field.kind, 1 );
-        if ( TableMessageRetainPayload( s, field, depth ) < 0 ) { return -1; }
-    }
-}
-
-// one array's or one keyed body's content: the element kind, the count, and the
-// elements. A KEYED SLOT IS A TRIPLE, the key reference, the element's own
-// length, and the element, and its keys resolve at EVERY element kind.
-inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    if ( entry.elem_kind == 17 )
-    {
-        // AN ARRAY WHOSE ELEMENT KIND IS 17 (§6.6): the excluded class, caught
-        // here for a keyed body exactly as for a positional one
-        return -1;
-    }
-    uint64_t n = (uint64_t) entry.min;
-    const int64_t width = entry.kind == 16 ? TableBitsRequired( 0, entry.max ) : TableBitsRequired( entry.min, entry.max );
-    if ( entry.kind == 16 ) { n = 0; }
-    if ( width > 0 )
-    {
-        uint64_t raw = 0;
-        if ( !s.r->get( raw, width ) ) { return -1; }
-        n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
-    }
-    if ( entry.kind == 14 && entry.elem_kind == 6 && !s.r->align() ) { return -1; }
-    const TableMessageEntry element = TableMessageRetainElement( entry );
-    TableRetainInRaw( s.out, &entry.elem_kind, 1 );
-    TableRetainInLeb( s.out, n ); // the count rides as the file capture spells it, and the emit reads it back
-    // A ZERO-BIT ELEMENT STILL LAYS DOWN ITS STORAGE WIDTH, so the announced
-    // count is tested against the caller's remaining record BEFORE one element
-    // is converted: a count no record can hold refuses here rather than four
-    // billion times through the loop (§6.6, THE SECURITY BOUND).
-    int64_t minimum = TableMessageRetainElementMinimum( element.kind );
-    if ( entry.kind == 16 ) { minimum += 16; } // the key id and the framed slot
-    if ( minimum > 0 && ( s.out.out_at > s.limit || n > (uint64_t) ( ( s.limit - s.out.out_at ) / minimum ) ) )
-    {
-        return -1;
-    }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        if ( entry.kind == 16 )
-        {
-            uint64_t key = 0;
-            if ( !TableMessageRetainRef( s, key ) ) { return -1; }
-            TableRetainInId( s.out, key );
-            if ( TableMessageRetainFramed( s, element, depth + 1 ) < 0 ) { return -1; }
-            continue;
-        }
-        if ( TableMessageRetainPayload( s, element, depth ) < 0 ) { return -1; }
-    }
-    return 0;
-}
-
-inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    if ( depth > kTableRetainWalkDepthMax || s.out.out_at > s.limit ) { return -1; }
-    const int64_t began = s.out.out_at;
-    switch ( entry.kind )
-    {
-        case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
-        case 13: if ( TableMessageRetainBody( s, depth ) < 0 ) { return -1; } break;
-        case 14: case 16: if ( TableMessageRetainElements( s, entry, depth ) < 0 ) { return -1; } break;
-        case 15: case 30: if ( TableMessageRetainPayload( s, entry, depth ) < 0 ) { return -1; } break;
-        case 32: break; // nothing rides, and the outer length is what says so
-        case 12: case 31: case 33:
-            // a content copied whole carries no inner length: the outer one
-            // frames it, which is what a keyed slot's element takes
-            if ( !TableMessageRetainOpaque( s, entry, false ) ) { return -1; }
-            break;
-        default:
-            if ( !TableMessageRetainScalar( s, entry ) ) { return -1; }
-            break;
-    }
-    return s.out.out_at - began;
-}
-
-inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    if ( s.out.out_at > s.limit ) { return -1; }
-    const int64_t began = s.out.out_at;
-    switch ( entry.kind )
-    {
-        case 17: return -1; // THE NODE-INDEX CLASS, met inside a payload (§6.6)
-        case 0: return -1;  // a KIND-0 ENTRY names no payload the variable form has a kind for
-        case 32: TableRetainInLeb( s.out, 0 ); break;
-        case 30:
-        {
-            uint64_t ref = 0;
-            if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return -1; }
-            if ( ref == 0 )
-            {
-                // A VARIANT REFERENCE OF ZERO IS THE ENUM'S None (§3): a value,
-                // not a reference, and it rides back as one
-                TableRetainInId( s.out, 0 );
-                break;
-            }
-            uint64_t id = 0;
-            if ( !TableMessageRetainId( s, ref, id ) ) { return -1; }
-            TableRetainInId( s.out, id );
-            break;
-        }
-        case 15:
-        {
-            uint64_t ref = 0;
-            if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return -1; }
-            if ( ref == 0 ) { TableRetainInId( s.out, 0 ); break; }
-            TableMessageEntry arm;
-            if ( !TableMessageArmEntry( *s.vocabulary, ref, arm ) || TableRetainReservedId( arm.id ) ) { return -1; }
-            TableRetainInId( s.out, arm.id );
-            TableRetainInRaw( s.out, &arm.kind, 1 );
-            if ( TableMessageRetainFramed( s, arm, depth + 1 ) < 0 ) { return -1; }
-            break;
-        }
-        case 13: case 14: case 16:
-            if ( TableMessageRetainFramed( s, entry, depth + 1 ) < 0 ) { return -1; }
-            break;
-        case 12: case 31: case 33:
-            if ( !TableMessageRetainOpaque( s, entry, true ) ) { return -1; }
-            break;
-        default:
-            if ( !TableMessageRetainScalar( s, entry ) ) { return -1; }
-            break;
-    }
-    return s.out.out_at - began;
-}
-
-// CAPTURE, the message form's load side. The entry has already been SKIPPED and
-// counted unknown exactly as it always was, and the start offset is where its payload
-// began: this re-reads those bits, and a record it cannot make changes nothing
-// else about the read.
-inline void TableMessageRetainCapture( TableRetain * retain, TableBitReader & r, const TableVocabulary & vocabulary,
-                                       int64_t index_bits, const TableMessageEntry & entry,
-                                       const TableRetainPath & path, TableReport * report, int64_t start )
-{
-    if ( retain == NULL ) { return; }
-    if ( entry.kind == 17 )
-    {
-        // A FIELD WHOSE PAYLOAD CARRIES A NODE INDEX: kind 17 itself, the
-        // excluded class at the outer kind (§6.6)
-        report->retain_lost++;
-        return;
-    }
-    const int64_t end = r.offset;
-    TableBitReader walk = r;
-    walk.offset = start;
-
-    TableMessageRetainIn probe;
-    probe.out.in = NULL;
-    probe.out.size = 0;
-    probe.out.at = 0;
-    probe.out.ids = NULL;
-    probe.out.out = NULL;
-    probe.out.out_at = 0;
-    probe.r = &walk;
-    probe.vocabulary = &vocabulary;
-    probe.index_bits = index_bits;
-    // THE RECORD'S REMAINING PAYLOAD BUDGET: what the caller's capacity leaves
-    // after this record's header and path, which bounds the walk before it
-    // converts a count the record could never hold (§6.6).
-    probe.limit = retain->capacity - retain->used - kTableRetainRecordHeader - 8 * (int64_t) path.depth;
-    const int64_t payload = TableMessageRetainPayload( probe, entry, 0 );
-    if ( payload < 0 || walk.offset != end )
-    {
-        // THE WALK CAN MEET WHAT THE SKIP STEPPED OVER, and its verdict changes
-        // nothing else: the record is dropped, one retain_lost counts, and
-        // malformed DOES NOT MOVE (§6.6).
-        report->retain_lost++;
-        return;
-    }
-
-    const int64_t need = kTableRetainRecordHeader + 8 * (int64_t) path.depth + payload;
-    if ( need > 0xFFFFFFFFll || retain->used + need > retain->capacity )
-    {
-        // REFUSAL IS PER RECORD AND NEVER PARTIAL (§6.6)
-        report->retain_lost++;
-        return;
-    }
-    uint8_t * record = retain->bytes + retain->used;
-    TableRetainWrite32( record, (uint32_t) need );
-    TableRetainWrite32( record + 4, path.node );
-    TableRetainWrite32( record + 8, (uint32_t) path.depth );
-    TableRetainWrite32( record + 12, (uint32_t) payload );
-    TableRetainWrite64( record + 16, entry.id );
-    record[24] = entry.kind;
-    record[25] = 0;
-    for ( int32_t i = 0; i < path.depth; i++ )
-    {
-        TableRetainWrite32( record + kTableRetainRecordHeader + 8 * i, path.steps[i].ordinal );
-        TableRetainWrite32( record + kTableRetainRecordHeader + 8 * i + 4, path.steps[i].index );
-    }
-    TableBitReader again = r;
-    again.offset = start;
-    TableMessageRetainIn write = probe;
-    write.r = &again;
-    write.out.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
-    write.out.out_at = 0;
-    if ( TableMessageRetainPayload( write, entry, 0 ) < 0 ) { report->retain_lost++; return; }
-    retain->used += need;
-    retain->count++;
-    report->retained++;
 }
 `
 
@@ -1770,17 +1435,15 @@ func (g *tableGen) emitRetainDeclarations(members []*ir.Struct) {
 	g.pf("// that does not ask instantiates none of them.\n\n")
 	for _, st := range members {
 		if g.isVar(st.Name) {
-			g.pf("template <typename Ctx> inline int64_t %sMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline bool %sSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline bool %sSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline int64_t %[1]sMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const %[2]s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline bool %[1]sSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const %[2]s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline bool %[1]sSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const %[2]s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
 			g.pf("inline bool %sLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
-			g.pf("inline bool %sLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
 			continue
 		}
 		g.pf("inline int64_t %sMeasureBodyRetain( TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
 		g.pf("%s bool %sSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
 		g.pf("%s bool %sLoadBodyRetain( TableReader & r, %s & value, TableRetain * retain, const TableRetainPath & path );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
-		g.pf("inline bool %sLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
 	}
 	g.pf("\n")
 }
@@ -1794,11 +1457,6 @@ func (g *tableGen) emitRetainBodies(members []*ir.Struct) {
 		g.emitTableMeasure(st)
 		g.emitTableWrite(st)
 		g.emitTableRead(st)
-		// AND THE MESSAGE FORM'S OWN BODY beside it (docs/SPEC-TABLES.md §3.3):
-		// a form-2 read retains where a form-2 write refuses by name, so the
-		// LOAD half of that family is emitted here and the measure and the save
-		// are not.
-		g.emitMessageLoadBody(st)
 	}
 	g.retain = false
 	g.setOwner(nil)
@@ -1815,9 +1473,9 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	// thunks on the numbering: a store per node on the plain save path would
 	// be a cost this feature is not allowed to have (§6.6, the owner's law)
 	dispatch := func(ind string) {
-		g.pf("%sauto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t\n%s{\n", ind, ind)
+		g.pf("%sauto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t {\n", ind)
 		g.pf("%s    const TableRetainPath at = TableRetainPathRoot( node, 0 );\n", ind)
-		g.pf("%s    (void) c; (void) nn; (void) ii; (void) rt; (void) at;\n", ind)
+		g.pf("%[1]s    (void) c;\n%[1]s    (void) nn;\n%[1]s    (void) ii;\n%[1]s    (void) rt;\n%[1]s    (void) at;\n", ind)
 		if nodeDispatchEmpty(reachable, blobs) {
 			g.pf("%s    (void) type_id;\n", ind)
 		} else {
@@ -1837,9 +1495,9 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 		g.pf("%s    return -1;\n%s};\n", ind, ind)
 	}
 	saveDispatch := func(ind string) {
-		g.pf("%sauto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool\n%s{\n", ind, ind)
+		g.pf("%sauto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool {\n", ind)
 		g.pf("%s    const TableRetainPath at = TableRetainPathRoot( node, 0 );\n", ind)
-		g.pf("%s    (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;\n", ind)
+		g.pf("%[1]s    (void) c;\n%[1]s    (void) nn;\n%[1]s    (void) ww;\n%[1]s    (void) ii;\n%[1]s    (void) rt;\n%[1]s    (void) at;\n", ind)
 		if nodeDispatchEmpty(reachable, blobs) {
 			g.pf("%s    (void) type_id;\n", ind)
 		} else {
@@ -1864,12 +1522,6 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.retain = true
 	g.emitRootNodeBody(st, reachable, blobs)
 	g.emitVariableLoad(st)
-	// THE MESSAGE FORM'S LoadRetain (docs/SPEC-TABLES.md §3.3): the batch's
-	// read half over this root, with the caller's stores threaded. There is no
-	// measure and no save beside it, because retention writing form 2 refuses
-	// by name and the variable form's own pair is what a caller saves through.
-	g.emitRootNodeMessageDispatch(st)
-	g.emitVariableMessageLoadSurface(st)
 	g.retain = false
 
 	g.pf("// %sMeasureRetain and %sSaveRetain: the pair, with the retained tail in\n", n, n)
@@ -1881,7 +1533,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    TableNumberingInit( numbering, allocator );\n")
 	g.pf("    int64_t bytes = -1;\n")
 	dispatch("    ")
-	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) )\n    {\n", n)
+	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) && !numbering.shared )\n    {\n", n)
 	g.pf("        TableRetainIds ids( retain );\n")
 	g.pf("        if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it\n")
 	g.pf("        bytes = %sMeasureBodyRetain( ctx, numbering, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) );\n", n)
@@ -1904,13 +1556,13 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    TableNumberingInit( numbering, TableDefaultAllocator() );\n")
 	dispatch("    ")
 	saveDispatch("    ")
-	g.pf("    if ( !%sNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }\n", n)
+	g.pf("    if ( !%[1]sNumberFrom( ctx, numbering, root ) || numbering.shared )\n    {\n        TableNumberingShutdown( numbering );\n        return -1;\n    }\n", n)
 	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
 	// writer's capacity leaves the four trailer bytes untouched, and the seal
 	// covers every byte before it, as the Go oracle's emitIntegrityRetain and
 	// tableIntegritySeal do (internal/codegen/gotable/integrity.go).
 	if st.Integrity != "" {
-		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+		g.pf("    TableWriter w( buffer, capacity < 4 ? 0 : capacity - 4 );\n")
 	} else {
 		g.pf("    TableWriter w( buffer, capacity );\n")
 	}
@@ -1922,7 +1574,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    // field: a retained field is one of the root's own values, and the tail\n")
 	g.pf("    // is pinned before the large and damage-prone part (§6.6, §3.1)\n")
 	g.pf("    bool ok = %sSaveBodyFieldsRetain( ctx, numbering, w, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) ) &&\n", n)
-	g.pf("              TableNodeTableSaveRetain( ctx, w, ids, numbering, retain, retain_measure, retain_save );\n")
+	g.pf("        TableNodeTableSaveRetain( ctx, w, ids, numbering, retain, retain_measure, retain_save );\n")
 	g.pf("    TableNumberingShutdown( numbering );\n")
 	g.pf("    if ( !ok || ids.overflow ) { return -1; }\n")
 	g.pf("    w.put8( 0 ); // the ZERO REFERENCE that ends the root body\n")
@@ -1951,24 +1603,6 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    if ( root == NULL || report == NULL ) { return -1; }\n")
 	g.pf("    TableRegionCtx ctx;\n")
 	g.pf("    return %sSaveWireRetain( ctx, *root, retain, buffer, capacity, report );\n}\n\n", n)
-
-	// RETENTION CROSSES THE FORMS IN ONE DIRECTION AND REFUSES IN THE OTHER
-	// (docs/SPEC-TABLES.md §3.3). A form-2 writer names entries through slots
-	// of a vocabulary the compiler settled, and a retained id is by definition
-	// one this build's closure does not contain, so it has no slot AND no
-	// announced shape. The caller's own retained-id list does not answer it
-	// either: that list names ids into a FILE's trailer, and a form-2 receiver
-	// reads slots and shapes from an announcement it never got.
-	g.pf("// %sSaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME\n", n)
-	g.pf("// (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own\n")
-	g.pf("// precedent and never a silent drop, and the two answers are named: a\n")
-	g.pf("// caller that must carry unknowns across a rewrite writes the VARIABLE form,\n")
-	g.pf("// which carries its own table and takes §6.6 unchanged, and a RELAY\n")
-	g.pf("// forwards the sending peer's announcement and its batch bytes verbatim.\n")
-	g.pf("template <typename... Args>\ninline int64_t %sSaveRetainMessages( Args &&... )\n{\n", n)
-	g.pf("    static_assert( sizeof...( Args ) == (size_t) -1,\n")
-	g.pf("        \"%s: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the VARIABLE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim.\" );\n", n)
-	g.pf("    return -1;\n}\n\n")
 }
 
 // emitRetainRefusals is RETENTION IS THE VARIABLE CLASS'S, AND A FIXED-CLASS
@@ -1979,9 +1613,8 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 // The refusal is IN THE SOURCE THE UNIT DOES EMIT rather than a missing symbol
 // (§11's rule for a surface a class does not carry): the five names are
 // declared, and naming one is a compile error that says why. The MESSAGE
-// form's two ride beside the variable form's three (§3.3, schema#680): a
-// variable-class root carries LoadRetainMessages and refuses
-// SaveRetainMessages by name, and a fixed-class root that declared neither
+// form's two ride beside the variable form's three (§3.3): the message form is
+// a fixed table's, and a fixed-class root that declared neither retaining verb
 // would answer a caller with a missing symbol, which is the one answer §11
 // refuses.
 //
@@ -2047,7 +1680,7 @@ func fieldHoldsBodies(f *ir.Field) bool {
 	if f.IsMap() {
 		return true
 	}
-	if f.Type.Kind != ir.TNamed {
+	if f.Type.Kind != ir.TNamed || ir.TextListPlain(f) {
 		return false
 	}
 	switch f.Type.Ref.(type) {

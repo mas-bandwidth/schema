@@ -1,4 +1,6 @@
 #include "StreamTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE streamdemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER STREAMDEMO
 #include "unit.h"
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Feed,feed)
 const ConformanceCodec * conformance_codecs_streamdemo(int * count)

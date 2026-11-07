@@ -13,21 +13,21 @@ import (
 // order the probes depend on — the sibling checkout before the fetched copy —
 // and that a directory of the right name without a go.mod is not a runtime.
 func TestSerializeGoFindsTheRuntime(t *testing.T) {
-	t.Parallel()
+	// Every candidate belongs to this test, regardless of the caller runtime pin.
+	t.Setenv("SERIALIZE_GO", "")
 
 	mkRuntime := func(t *testing.T, dir string) string {
 		t.Helper()
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module github.com/mas-bandwidth/serialize.go\n"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module github.com/mas-bandwidth/serialize.go/v2\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return dir
 	}
 
 	t.Run("the sibling wins over the fetched copy", func(t *testing.T) {
-		t.Parallel()
 		tmp := t.TempDir()
 		root := filepath.Join(tmp, "repo")
 		if err := os.MkdirAll(root, 0o755); err != nil {
@@ -41,7 +41,6 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 	})
 
 	t.Run("the fetched copy is used when there is no sibling", func(t *testing.T) {
-		t.Parallel()
 		tmp := t.TempDir()
 		root := filepath.Join(tmp, "repo")
 		if err := os.MkdirAll(root, 0o755); err != nil {
@@ -54,7 +53,6 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 	})
 
 	t.Run("a directory without go.mod is not a runtime", func(t *testing.T) {
-		t.Parallel()
 		tmp := t.TempDir()
 		root := filepath.Join(tmp, "repo")
 		if err := os.MkdirAll(root, 0o755); err != nil {
@@ -70,7 +68,7 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 	})
 
 	t.Run("absent under SCHEMA_REQUIRE_CORPUS fails by name", func(t *testing.T) {
-		setEnv(t, "SCHEMA_REQUIRE_CORPUS", "1")
+		t.Setenv("SCHEMA_REQUIRE_CORPUS", "1")
 		fake := &fakeTB{}
 		if got := SerializeGo(fake, filepath.Join(t.TempDir(), "repo")); got != "" {
 			t.Fatalf("SerializeGo = %q, want empty on the fail branch", got)
@@ -85,8 +83,8 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 	})
 
 	t.Run("absent with slow gate enabled fails by name", func(t *testing.T) {
-		setEnv(t, "SCHEMA_REQUIRE_CORPUS", "")
-		setEnv(t, "SCHEMA_SLOW", "1")
+		t.Setenv("SCHEMA_REQUIRE_CORPUS", "")
+		t.Setenv("SCHEMA_SLOW", "1")
 		fake := &fakeTB{}
 		if got := SerializeGo(fake, filepath.Join(t.TempDir(), "repo")); got != "" {
 			t.Fatalf("SerializeGo = %q, want empty on the fail branch", got)
@@ -98,8 +96,8 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 	})
 
 	t.Run("absent with slow gate disabled skips by marker", func(t *testing.T) {
-		setEnv(t, "SCHEMA_REQUIRE_CORPUS", "")
-		setEnv(t, "SCHEMA_SLOW", "")
+		t.Setenv("SCHEMA_REQUIRE_CORPUS", "")
+		t.Setenv("SCHEMA_SLOW", "")
 		fake := &fakeTB{}
 		if got := SerializeGo(fake, filepath.Join(t.TempDir(), "repo")); got != "" {
 			t.Fatalf("SerializeGo = %q, want empty on the skip branch", got)
@@ -120,28 +118,9 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 		}
 		want := mkRuntime(t, filepath.Join(tmp, "configured"))
 		mkRuntime(t, filepath.Join(tmp, "serialize.go"))
-		setEnv(t, "SERIALIZE_GO", want)
+		t.Setenv("SERIALIZE_GO", want)
 		if got := SerializeGo(t, root); got != want {
 			t.Fatalf("SerializeGo = %q, want override %q", got, want)
-		}
-	})
-}
-
-// setEnv sets a process variable and restores it when the test ends. The
-// parent test is parallel, so the testing package's t.Setenv (which forbids
-// parallel) cannot be used; the two subtests that need it do not call
-// t.Parallel and run inline before the parallel ones resume.
-func setEnv(t *testing.T, key, value string) {
-	t.Helper()
-	old, had := os.LookupEnv(key)
-	if err := os.Setenv(key, value); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if had {
-			_ = os.Setenv(key, old)
-		} else {
-			_ = os.Unsetenv(key)
 		}
 	})
 }

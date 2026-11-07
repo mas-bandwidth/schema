@@ -59,9 +59,6 @@ var sabotages = map[string][]edit{
 	"go-retain-file-count-floor": {
 		{old: "||count>uint64(max(int64(0),s.limit-s.w.Offset)/minimum)", new: "/* SABOTAGED */"},
 	},
-	"go-retain-message-depth": {
-		{old: "case 13,14,16:return s.framed(e,depth+1)", new: "case 13,14,16:return s.framed(e,depth) /* SABOTAGED */"},
-	},
 	// Packet defaults: remove only the constructor byte copy.
 	"packet-defaults-c-constructor-bytes": {{
 		old: "\t\t\tg.pf(\" };\\n        memcpy( value.%s, bytes, sizeof( bytes ) );\\n    }\\n\", f.Name)",
@@ -166,11 +163,11 @@ var sabotages = map[string][]edit{
 	// paths and every byte after the length field moves.
 	"wstring-align": {{
 		old: `		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
-			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
+			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, halves{}, ind) // int32_t length storage
 		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 		g.pf("%s    write_bits( stream, uint32_t( %s[i] ), 32 );\n%s}\n", ind, name, ind)`,
 		new: `		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
-			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
+			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, halves{}, ind) // int32_t length storage
 		g.pf("%swrite_align( stream );\n", ind) // SABOTAGED: an align between the length and the code units
 		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 		g.pf("%s    write_bits( stream, uint32_t( %s[i] ), 32 );\n%s}\n", ind, name, ind)`,

@@ -187,6 +187,7 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 		g.emitUnionPayloadMeasure(f, value, into, ind+"    ", sfx+"a")
 		g.pf("%s}\n", ind)
 	default:
+		g.emitFloatCheck(kind, value, ind, onBad)
 		g.pf("%s%s += %d; // %s\n", ind, into, tableKindWidth(kind), ir.FieldTypeSpelling(f))
 	}
 }
@@ -259,8 +260,8 @@ func armWireLength(v ir.UnionVariant) int { return ir.ArmWireFixedWidth(v.F) }
 // emitArmLoad reads ONE ARM'S PAYLOAD out of `rdr`, a reader bounded to the
 // arm's `L`. The caller has already checked the arm's KIND BYTE; `tag` is the
 // union's tag lvalue and `none` the tag value to put back where the LENGTH
-// says the payload cannot be the arm's — that is framing damage, the union
-// reads None, `malformed` counts, and the parent reads on past `L` (§3, §4).
+// says the payload cannot be the arm's — that is framing damage: `malformed`
+// counts, and damage discards the whole load (§3, §4).
 func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx string) {
 	if v.Void() {
 		g.pf("%sif ( %s.size != 0 ) { %s = %s; r.report->malformed = true; break; } // a payload-free arm carries no payload (§2.6, §3)\n", ind, rdr, tag, none)
@@ -285,13 +286,13 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			ind, rdr, rdr, tag, none)
 	case f.Type.Blob(), f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.emitNodeIndexLoad(f, value, ind, rdr,
-			fmt.Sprintf("%s = %s; r.report->malformed = true; break;", tag, none), sfx, true)
+			[]string{fmt.Sprintf("%s = %s;", tag, none), "r.report->malformed = true;", "break;"}, sfx, true)
 	case f.Type.Kind == ir.TString:
 		g.establishArm(v, base, ind)
 		length, keep := "arm_len"+sfx, "arm_keep"+sfx
 		g.pf("%s{\n%s    uint32_t %s = uint32_t( %s.size );\n", ind, ind, length, rdr)
 		g.pf("%s    uint32_t %s = %s;\n", ind, keep, length)
-		g.pf("%s    // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts\n", ind)
+		g.pf("%s    // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)\n", ind)
 		g.pf("%s    if ( !TableUtf8Valid( %s.buffer + %s.offset, %s.size ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, rdr, rdr, tag, none)
 		g.pf("%s    if ( %s > %d ) { %s = (uint32_t) TableUtf8Clamp( %s.buffer + %s.offset, %s.size, %d ); r.report->clamped++; } // at a code point boundary\n", ind, keep, f.Type.Size, keep, rdr, rdr, rdr, f.Type.Size)
 		g.pf("%s    memcpy( %s, %s.buffer + %s.offset, %s );\n", ind, value, rdr, rdr, keep)
@@ -306,7 +307,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		units, keep := "arm_units"+sfx, "arm_keep"+sfx
 		g.pf("%s{\n%s    const int64_t %s = %s.size / 2;\n", ind, ind, units, rdr)
 		g.pf("%s    int64_t %s = %s;\n", ind, keep, units)
-		g.pf("%s    // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts\n", ind)
+		g.pf("%s    // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)\n", ind)
 		g.pf("%s    if ( !TableUtf16Valid( %s.buffer + %s.offset, %s ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, rdr, units, tag, none)
 		g.pf("%s    if ( %s > %d ) { %s = TableUtf16Clamp( %s.buffer + %s.offset, %s, %d ); r.report->clamped++; } // never splitting a pair\n", ind, keep, f.Type.Size, keep, rdr, rdr, units, f.Type.Size)
 		g.pf("%s    for ( int64_t i%s = 0; i%s < %s; i%s++ ) { %s[i%s] = (char16_t) TableUtf16Unit( %s.buffer + %s.offset, i%s ); }\n", ind, sfx, sfx, keep, sfx, value, sfx, rdr, rdr, sfx)
@@ -394,8 +395,8 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s    if ( %s != 0 ) // the zero reference is the inner union's None\n%s    {\n", ind, ref, ind)
 		// A LENGTH-SHAPED ARM'S DAMAGED PAYLOAD IS THAT ARM'S OWN FRAMING
 		// DAMAGE (§3): the inner union runs past the arm's `L`, so the arm is
-		// not decoded — THIS union reads None, malformed counts, and the
-		// enclosing body continues past the arm by `L`
+		// not decoded: malformed counts, and damage discards the whole load
+		// (§4)
 		g.pf("%s        if ( %s > (uint64_t) r.ids->count ) { %s = %s; r.report->malformed = true; break; }\n", ind, ref, tag, none)
 		g.pf("%s        const uint64_t %s = r.ids->at( %s );\n", ind, id, ref)
 		g.pf("%s        if ( !%s.has( 1 ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, tag, none)
@@ -418,17 +419,19 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s        }\n", ind)
 		g.pf("%s        %s.offset += (int64_t) %s;\n", ind, rdr, length)
 		g.pf("%s    }\n", ind)
-		// AN ARM'S `L` FRAMES THE INNER UNION WHOLE (docs/SPEC-TABLES.md:3887):
-		// a nested-union arm whose reader stops short of its `L` leaves bytes
-		// inside the arm that no field claims — that arm's own framing damage,
-		// so the union reads None, malformed counts, and the parent reads on
-		// past `L` (:3900-3903). The body arm and the enum arm already check
-		// this (arms.go:284, arms.go:385).
-		g.pf("%s    if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true; }\n", ind, rdr, rdr, tag, none)
+		// BYTES LEFT INSIDE A NESTED-UNION ARM'S `L` ARE STEPPED OVER, as the
+		// Go oracle steps over them (internal/tablewire arm(), the
+		// UnionOf case) and as every other port does: the parent reads on
+		// past `L` and nothing counts. docs/SPEC-TABLES.md §3's arm table
+		// states the `L` a WRITER spells for a union arm, and its damage
+		// sentence names a fixed-width arm whose `L` is not its width and a
+		// length-shaped arm damaged inside its `L`; a whole inner union with
+		// bytes after it is neither, so the reader takes the oracle's reading
+		// until the spec rules on it (an open question for the owner).
 		g.pf("%s}\n", ind)
 	default:
 		g.emitTableReadScalarFrom(f, kind, value, ind, rdr,
-			fmt.Sprintf("%s = %s; r.report->malformed = true; break;", tag, none))
+			fmt.Sprintf("%s = %s;", tag, none), "r.report->malformed = true;", "break;")
 	}
 }
 

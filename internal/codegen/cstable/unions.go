@@ -27,10 +27,13 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 	for i, v := range un.Variants {
 		g.tf("%s    %s = %d,\n", ir.DocComment(v.Doc, "    ", "//"), ir.GoExportName(v.Name), i+1)
 	}
-	g.tf("    Count = %d,\n    Max = %d,\n}\n\n", len(un.Variants), len(un.Variants))
-	g.pf("public static string EnumName%sType(ulong value)\n{\n    switch (value)\n    {\n        case 0: return \"None\";\n", un.Name)
-	for i, v := range un.Variants {
-		g.pf("        case %d: return %q;\n", i+1, ir.GoExportName(v.Name))
+	g.tf("}\n\n")
+	// the extent is a typed constant on Schema, never a member: a member valued
+	// like the last arm would alias it (SPEC §4.2)
+	g.pf("public const %sType %sTypeMax = (%sType)%d; // the exported extent (SPEC §4.2)\n\n", un.Name, un.Name, un.Name, len(un.Variants))
+	g.pf("public static string EnumName%sType(%sType value)\n{\n    switch (value)\n    {\n        case %sType.None: return \"None\";\n", un.Name, un.Name, un.Name)
+	for _, v := range un.Variants {
+		g.pf("        case %sType.%s: return %q;\n", un.Name, ir.GoExportName(v.Name), ir.GoExportName(v.Name))
 	}
 	g.pf("        default: return \"???\";\n    }\n}\n\n")
 	g.tf("%s", ir.DocComment(un.Doc, "", "//"))
@@ -55,7 +58,9 @@ func (g *tableGen) unionArmsValue(un *ir.Union) string {
 	b.WriteString(", Arms = new TableUnionArmInfo[] { new TableUnionArmInfo()")
 	for _, v := range un.Variants {
 		b.WriteString(", new TableUnionArmInfo { ")
-		fmt.Fprintf(&b, "MessageSlot = %d, ", ir.TableVocabularySlots(g.unit)[ir.TableArmEntry(v).Key()])
+		if g.messageUnions()[un.Name] {
+			fmt.Fprintf(&b, "MessageSlot = %d, ", ir.TableVocabularySlots(g.unit)[ir.TableArmEntry(v).Key()])
+		}
 		if !v.Void() {
 			row := &tableGen{unit: g.unit, owner: unionOwner(un), arm: true, outside: g.outside}
 			row.emitTableFieldDescriptor(v.F, "")

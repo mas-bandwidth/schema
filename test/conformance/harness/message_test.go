@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -222,6 +223,9 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 		t.Fatal("the manifest names no message")
 	}
 	for _, msg := range m.Messages {
+		if msg.Refused() {
+			continue // a variable table: TestAMessageRowOverAVariableTableIsARefusal holds it
+		}
 		c, err := m.LookupConnection(msg.Connection)
 		if err != nil {
 			t.Errorf("%s: %v", msg.Name, err)
@@ -563,10 +567,10 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 // TestTheFiveAnswers holds the batch surface's stated answers (§3.3): M above
 // 256 on the write side refuses by name and writes nothing, M above the
 // caller's capacity on the read side refuses by name with the returned count
-// reading the wire's M and nothing decoded, and damage inside body k delivers
-// k - 1. Red if a leg writes consecutive batches, decodes a body before
-// refusing on capacity, leaves the returned count at the caller's capacity,
-// or returns two or three for the damaged batch.
+// reading the wire's M and nothing decoded, and damage anywhere in a batch
+// delivers no body (§4). Red if a leg writes consecutive batches, decodes a
+// body before refusing on capacity, leaves the returned count at the caller's
+// capacity, or delivers any body of the damaged batch.
 func TestTheFiveAnswers(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	login := model.Lookup("LoginRequest")
@@ -653,21 +657,24 @@ func TestTheFiveAnswers(t *testing.T) {
 		if derr != nil || ok || !report.Malformed || report.Refused {
 			t.Errorf("damage in body 2: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 		}
-		if count != 1 {
-			t.Errorf("damage in body 2: the returned count reads %d, not one", count)
+		// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): no body
+		// is delivered, and every body is at its declared defaults
+		if count != 0 {
+			t.Errorf("damage in body 2: the returned count reads %d, not zero", count)
 		}
-		if instU64(t, out[0], "client_build") != 100 {
-			t.Error("damage in body 2: the first body did not stand")
-		}
-		if instU64(t, out[2], "client_build") != 999 {
-			t.Error("damage in body 2: the third body was read")
+		fresh := instU64(t, model.New(login), "client_build")
+		for i := range out {
+			if instU64(t, out[i], "client_build") != fresh {
+				t.Errorf("damage in body 2: body %d was handed back", i+1)
+			}
 		}
 	}
 }
 
 // TestDamageIsTerminal plants damage inside the SECOND body of three, and
-// inside a NESTED body of the second. Red if a leg reads the third body,
-// counts more than one malformed, or discards the first body.
+// inside a NESTED body of the second. DAMAGE DISCARDS THE WHOLE BATCH
+// (docs/SPEC-TABLES.md §4): red if a leg delivers any body or reads damage as
+// clean.
 func TestDamageIsTerminal(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	match := model.Lookup("MatchResult")
@@ -712,14 +719,14 @@ func TestDamageIsTerminal(t *testing.T) {
 		if derr != nil || ok || !report.Malformed || report.Refused || report.Unknown != 0 {
 			t.Errorf("%s: count=%d ok=%v err=%v report=%+v", row.name, count, ok, derr, report)
 		}
-		if count != 1 {
-			t.Errorf("%s: the returned count reads %d, not one", row.name, count)
+		if count != 0 {
+			t.Errorf("%s: the returned count reads %d, not zero", row.name, count)
 		}
-		if instU64(t, out[0], "match_id") != 10 {
-			t.Errorf("%s: the first body did not stand", row.name)
-		}
-		if instU64(t, out[2], "match_id") != 999 {
-			t.Errorf("%s: the third body was read", row.name)
+		fresh := instU64(t, model.New(match), "match_id")
+		for i := range out {
+			if instU64(t, out[i], "match_id") != fresh {
+				t.Errorf("%s: body %d was handed back", row.name, i+1)
+			}
 		}
 	}
 }
@@ -746,9 +753,9 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 		if derr != nil || ok || !report.Malformed || report.Refused {
 			t.Errorf("a pad bit that is not zero read clean: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 		}
-		// the body before the pad stands, and the count says so
-		if count != 1 || instU64(t, inst, "quantity") != 7 {
-			t.Errorf("the body before the bad pad did not stand: count=%d", count)
+		// damage after the last body discards the batch too (§4)
+		if count != 0 || instU64(t, inst, "quantity") != instU64(t, model.New(model.Lookup("StorePurchase")), "quantity") {
+			t.Errorf("a batch with a bad pad delivered a body: count=%d", count)
 		}
 	}
 	trailing := append(append([]byte(nil), message...), 0)
@@ -768,8 +775,7 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 // TestAReferenceAtAndAboveTheEntryCount: E is 33 and a reference is six
 // bits, so 34, 35 and 63 are spellable and damage; the entry count itself is
 // the last legal slot and must resolve. Red if a leg resolves past E, refuses
-// E, discards the fields decoded before the bad reference, or reads a body
-// after it.
+// E, or hands back anything from a batch a bad reference damaged (§4).
 func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	login := model.Lookup("LoginRequest")
@@ -797,8 +803,8 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 		if derr != nil || ok || !report.Malformed || report.Refused || report.Unknown != 0 {
 			t.Errorf("reference %d: count=%d ok=%v err=%v report=%+v", past, count, ok, derr, report)
 		}
-		if instU64(t, out, "player_id") != 5 {
-			t.Errorf("reference %d: the field decoded before it did not stand", past)
+		if instU64(t, out, "player_id") != instU64(t, model.New(login), "player_id") {
+			t.Errorf("reference %d: a damaged batch handed back the field decoded before it", past)
 		}
 		if count != 0 {
 			t.Errorf("reference %d: the returned count reads %d", past, count)
@@ -961,68 +967,41 @@ func TestPerDirectionIndependence(t *testing.T) {
 	}
 }
 
-// TestAPointeredBatch: a form-2 batch over a pointered root, whose node table
-// is the FIRST field of each root body, whose count is thirty-two raw bits,
-// whose table records carry NO length and end at their own zero reference,
-// whose blob records carry a thirty-two bit length and align, and whose
-// indices are bits_required(0, node count) wide. Beside it a root reaching no
-// node, which must carry no node-table reference at all.
-func TestAPointeredBatch(t *testing.T) {
+// TestAMessageRowOverAVariableTableIsARefusal: the message form is fixed
+// tables only (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-31: "only fixed tables
+// support message form (bitpacked)"). A message row is a NAMED REFUSAL row
+// (its message-form wire is `-`) exactly when its root is a variable table,
+// and the engine every leg is fuzzed against refuses that root on both halves.
+func TestAMessageRowOverAVariableTableIsARefusal(t *testing.T) {
 	m, _, u := corpus(t)
-	c, err := m.LookupConnection("graph_conn")
-	if err != nil {
-		t.Fatal(err)
-	}
-	unit, vocabulary := announced(t, u, c)
-	model := tabletext.NewModel(unit)
-	slotOf := func(id uint64) uint64 {
-		for i, e := range vocabulary.Entries() {
-			if e.Id == id && e.Kind == 0 {
-				return uint64(i + 1)
-			}
+	refused := 0
+	for _, msg := range m.Messages {
+		c, err := m.LookupConnection(msg.Connection)
+		if err != nil {
+			t.Fatal(err)
 		}
-		t.Fatalf("the vocabulary names no kind-0 entry %016x", id)
-		return 0
+		unit, vocabulary := announced(t, u, c)
+		variable := ir.VariableTables(unit)[msg.Root]
+		if variable != msg.Refused() {
+			t.Errorf("%s: the root %s is variable=%v and the row is a refusal=%v; a message row over a variable table is a named refusal and no other row is", msg.Name, msg.Root, variable, msg.Refused())
+			continue
+		}
+		if !variable {
+			continue
+		}
+		refused++
+		model := tabletext.NewModel(unit)
+		inst := model.New(model.Lookup(msg.Root))
+		if _, err := tablewire.EncodeMessages(model, []*tabletext.Instance{inst}); err == nil || !strings.Contains(err.Error(), "fixed tables only") {
+			t.Errorf("%s: the engine's message writer took the variable root %s: %v", msg.Name, msg.Root, err)
+		}
+		var report tabletext.Report
+		if _, _, err := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, []byte{ir.TableWireMessageForm, 0}, vocabulary, &report); err == nil || !strings.Contains(err.Error(), "fixed tables only") {
+			t.Errorf("%s: the engine's message reader took the variable root %s: %v", msg.Name, msg.Root, err)
+		}
 	}
-	message := wireBytes(t, "testdata/wire/tables/graph_tree_message.bin")
-	r := newBits(message[1:])
-	if r.get(8) != 0 {
-		t.Fatal("graph_tree_message is not a batch of one")
-	}
-	if ref := r.get(vocabulary.RefBits()); ref != slotOf(ir.TableNodeWireId) {
-		t.Errorf("the node table is not the root body's first field: the first reference is %d", ref)
-	}
-	if nodes := r.get(32); nodes != 6 {
-		t.Errorf("the node count reads %d, not the six nodes the tree has", nodes)
-	}
-	// the message reads and re-saves through the engine
-	inst := messageInstance(t, model, vocabulary, "Scene", "testdata/wire/tables/graph_tree_message.bin")
-	again, err := tablewire.EncodeMessage(model, inst)
-	if err != nil || string(again) != string(message) {
-		t.Errorf("the pointered message does not re-save to its own bytes (%v)", err)
-	}
-	// and the batch of three shares one form byte and one count
-	batch := wireBytes(t, "testdata/wire/tables/graph_batch_message.bin")
-	insts := []*tabletext.Instance{model.New(model.Lookup("Scene")), model.New(model.Lookup("Scene")), model.New(model.Lookup("Scene"))}
-	var report tabletext.Report
-	count, ok, derr := tablewire.DecodeMessages(model, insts, batch, vocabulary, &report)
-	if derr != nil || !ok || count != 3 || !report.Silent() {
-		t.Fatalf("the pointered batch did not read: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
-	}
-	three, err := tablewire.EncodeMessages(model, insts)
-	if err != nil || string(three) != string(batch) {
-		t.Errorf("the pointered batch does not re-save to its own bytes (%v)", err)
-	}
-	// A ROOT THAT REACHES NO NODE carries no node-table reference at all
-	empty := wireBytes(t, "testdata/wire/tables/graph_empty_message.bin")
-	e := newBits(empty[1:])
-	e.get(8)
-	if ref := e.get(vocabulary.RefBits()); ref == slotOf(ir.TableNodeWireId) {
-		t.Error("a root that reaches no node wrote a node table")
-	}
-	one := messageInstance(t, model, vocabulary, "Scene", "testdata/wire/tables/graph_empty_message.bin")
-	if string(instStr(t, one, "name")) != "empty" {
-		t.Error("the empty scene did not read")
+	if refused == 0 {
+		t.Error("the manifest carries no named refusal row: the variable table's message row is what proves every leg refuses it")
 	}
 }
 

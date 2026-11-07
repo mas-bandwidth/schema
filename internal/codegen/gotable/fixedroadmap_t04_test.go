@@ -494,11 +494,11 @@ func t04GoE9(t *testing.T) {
 
 // ---- go/R16 -----------------------------------------------------------------
 
-// t04GoR16 asserts §5.4's counters exactly. The COMPILE census is once per peer
-// and never per record: §5.4's "once per peer and never per record" is emitted as
+// t04GoR16 asserts §5.4's counters exactly. The COMPILE census is once per endpoint
+// and never per record: §5.4's "once per endpoint and never per record" is emitted as
 // `censusUnknown, censusKind = lane.Unknown, lane.KindMismatch` (one lane read)
 // and ONE `report.Unknown += censusUnknown` after the record loop, so no record
-// and no second read of the same peer moves it. `widened` is once per entry per
+// and no second read of the same endpoint moves it. `widened` is once per entry per
 // record: the widen and float-widen op cases each carry exactly one
 // `report.Widened++` inside the per-entry loop, and §5.4's "a folded element run
 // is ONE" is the copy/present fold (`tableFixedRuns` folds only
@@ -521,7 +521,7 @@ func t04GoR16(t *testing.T) {
 		t.Errorf("R16: the read loop widens at %d sites, want the one widen op and the one float widen — once per entry per record", n)
 	}
 	if n := strings.Count(run, "report.KindMismatch++"); n != 0 {
-		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per peer", n)
+		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per endpoint", n)
 	}
 	refusal := funcSource(tableFixedRuntime, "func tableFixedTextRefusal(")
 	if refusal == "" {
@@ -554,10 +554,10 @@ func t04GoR16(t *testing.T) {
 		t.Error("R16: the compiled read does not run the bounds pass that counts a forged ordinal")
 	}
 	if n := strings.Count(load, "report.Unknown += censusUnknown"); n != 1 {
-		t.Errorf("R16: the load adds the unknown census %d times, want once per peer", n)
+		t.Errorf("R16: the load adds the unknown census %d times, want once per endpoint", n)
 	}
 	if n := strings.Count(load, "censusUnknown, censusKind = lane.Unknown, lane.KindMismatch"); n != 1 {
-		t.Errorf("R16: the census lane is read %d times, want once per peer", n)
+		t.Errorf("R16: the census lane is read %d times, want once per endpoint", n)
 	}
 }
 

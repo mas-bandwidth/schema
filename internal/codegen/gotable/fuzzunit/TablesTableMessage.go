@@ -15,210 +15,6 @@ import (
 	"unsafe"
 )
 
-func RootConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *RootConfig) bool {
-	RootConfigReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x8a67c9728746d394:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.VersionNote[:])
-					copy(value.VersionNote[:], text[:kept])
-					value.VersionNoteLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x41cbd901b87fabb6:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					base := &value.Weapons
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					r.Retain.discard(r.Path, true, 1)
-					keep := min(n, uint64(8))
-					if keep < n {
-						r.Report.Clamped++
-					}
-					walk := n
-					if element.Shape.Bits >= 0 {
-						walk = keep
-					}
-					for i := uint64(0); i < walk; i++ {
-						var scratch WeaponConfig
-						p := &scratch
-						if i < keep {
-							p = &base[i]
-						}
-						store := r.Retain
-						if i >= keep {
-							r.Retain = nil
-						}
-						{
-							payload11 := r.Path
-							r.Path = r.Path.step(1, uint32(i))
-							if !WeaponConfigLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload11
-						}
-						r.Retain = store
-					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
-						r.Report.Malformed = true
-						return false
-					}
-					value.WeaponsCount = int32(keep)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8181e61fc0436767:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					base := &value.Profiles
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					r.Retain.discard(r.Path, true, 2)
-					keep := min(n, uint64(4))
-					if keep < n {
-						r.Report.Clamped++
-					}
-					walk := n
-					if element.Shape.Bits >= 0 {
-						walk = keep
-					}
-					for i := uint64(0); i < walk; i++ {
-						var scratch ProfileConfig
-						p := &scratch
-						if i < keep {
-							p = &base[i]
-						}
-						store := r.Retain
-						if i >= keep {
-							r.Retain = nil
-						}
-						{
-							payload12 := r.Path
-							r.Path = r.Path.step(2, uint32(i))
-							if !ProfileConfigLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload12
-						}
-						r.Retain = store
-					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
-						r.Report.Malformed = true
-						return false
-					}
-					value.ProfilesCount = int32(keep)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
 func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 	{
 		if value.VersionNoteLength < 0 || value.VersionNoteLength > 16 {
@@ -328,11 +124,11 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x8a67c9728746d394:
 			{
 				widened := false
@@ -360,11 +156,11 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(16)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -498,8 +294,9 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 	}
 }
 
-// RootConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// RootConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // RootConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // RootConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -528,7 +325,9 @@ func RootConfigLoadMessagesTolerant(values []RootConfig, vocabulary *TableVocabu
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -536,367 +335,37 @@ func RootConfigLoadMessagesTolerant(values []RootConfig, vocabulary *TableVocabu
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !RootConfigLoadMessageBody(&r, &values[i]) {
-			return i, false
+		if !RootConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				RootConfigReset(&values[j])
+			}
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
-}
-func WeaponConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *WeaponConfig) bool {
-	WeaponConfigReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			RootConfigReset(&values[j])
 		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7f6308be8ab37fc0:
-			{
-				widened := false
-				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload8 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload8.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := math.Float32frombits(payload8.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "WeaponConfig.damage")
-						}
-						value.Damage = v
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x1733055702acb1d2:
-			{
-				widened := false
-				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload9 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload9.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := math.Float32frombits(payload9.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "WeaponConfig.speed")
-						}
-						value.Speed = v
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x4f31c5309e13e932:
-			{
-				widened := false
-				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload10 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload10.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload10.Signed(entry.Shape.Kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
-						} else if v > 10 {
-							v = 10
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
-						}
-						value.Penetration = int32(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa5013e9ad5caeda4:
-			{
-				widened := false
-				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload11 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload11.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload11.Unsigned(entry.Shape.Kind)
-						if v > 63 {
-							v = 63
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.channel")
-						}
-						value.Channel = uint32(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xad6587bc602e3f59:
-			{
-				widened := false
-				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload12 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload12.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						b := payload12.Get8()
-						if b > 1 {
-							r.Report.Malformed = true
-							if r.Report.Reason == "" {
-								r.Report.Reason = "malformed: Homing"
-							}
-						}
-						value.Homing = b != 0
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x36c1c83b51f24394:
-			{
-				widened := false
-				if entry.Shape.Kind != 15 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload13 := &value.Effect
-					r.Retain.discard(r.Path, true, 5)
-					{
-						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-						if !ok {
-							r.Report.Malformed = true
-							return false
-						}
-						if ref == 0 {
-							(*payload13).Type = EffectTypeNone
-						} else {
-							payload14, ok := r.Vocabulary.Entry(ref)
-							if !ok || payload14.Id >= 0xfffffffffffffffd || payload14.Shape.Kind == 0 {
-								r.Report.Malformed = true
-								return false
-							}
-							switch payload14.Id {
-							case 0xffb5be9be2e469cc:
-								{
-									widened := false
-									if payload14.Shape.Kind != 13 || payload14.Element.Kind != 0 {
-										if false {
-											widened = true
-										} else {
-											(*payload13).Type = EffectTypeNone
-											r.Report.KindMismatch++
-											if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload14, 0) {
-												r.Report.Malformed = true
-												return false
-											}
-											break
-										}
-									}
-									(*payload13).Type = EffectTypeBuff
-									{
-										payload15 := r.Path
-										r.Path = r.Path.step(5, uint32(1))
-										{
-											value := (*payload13).Buff()
-											BuffReset(&value.Value)
-										}
-										if !BuffLoadMessageBodyRetain(r, &(*payload13).Buff().Value) {
-											return false
-										}
-										r.Path = payload15
-									}
-									if widened {
-										r.Report.Widened++
-									}
-								}
-							case 0x13cdc5ede73d2fd7:
-								{
-									widened := false
-									if payload14.Shape.Kind != 13 || payload14.Element.Kind != 0 {
-										if false {
-											widened = true
-										} else {
-											(*payload13).Type = EffectTypeNone
-											r.Report.KindMismatch++
-											if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload14, 0) {
-												r.Report.Malformed = true
-												return false
-											}
-											break
-										}
-									}
-									(*payload13).Type = EffectTypeDebuff
-									{
-										payload16 := r.Path
-										r.Path = r.Path.step(5, uint32(2))
-										{
-											value := (*payload13).Debuff()
-											DebuffReset(&value.Value)
-										}
-										if !DebuffLoadMessageBodyRetain(r, &(*payload13).Debuff().Value) {
-											return false
-										}
-										r.Path = payload16
-									}
-									if widened {
-										r.Report.Widened++
-									}
-								}
-							default:
-								(*payload13).Type = EffectTypeNone
-								r.Report.Unknown++
-								if r.Retain != nil {
-									r.Report.RetainLost++
-								}
-								if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload14, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
+		return 0, false
 	}
+	return count, true
 }
 func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) bool {
 	{
 		if math.Float32bits(value.Damage) != math.Float32bits(21.0) {
 			w.Put(100, TableMessageRefBitsHere)
+			if value.Damage-value.Damage != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Damage)), uint64(0))
 		}
 	}
 	{
 		if math.Float32bits(value.Speed) != math.Float32bits(500.0) {
 			w.Put(102, TableMessageRefBitsHere)
+			if value.Speed-value.Speed != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Speed)), uint64(0))
 		}
 	}
@@ -1008,11 +477,11 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
 				widened := false
@@ -1040,11 +509,13 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 						return false
 					}
 					{
-						v := math.Float32frombits(payload10.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "WeaponConfig.damage")
+						b := payload10.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.damage")
+						} else {
+							v := math.Float32frombits(b)
+							value.Damage = v
 						}
-						value.Damage = v
 					}
 				}
 				if widened {
@@ -1078,11 +549,13 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 						return false
 					}
 					{
-						v := math.Float32frombits(payload11.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "WeaponConfig.speed")
+						b := payload11.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.speed")
+						} else {
+							v := math.Float32frombits(b)
+							value.Speed = v
 						}
-						value.Speed = v
 					}
 				}
 				if widened {
@@ -1241,11 +714,11 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 							(*payload15).Type = EffectTypeNone
 						} else {
 							payload16, ok := r.Vocabulary.Entry(ref)
-							if !ok || payload16.Id >= 0xfffffffffffffffd || payload16.Shape.Kind == 0 {
+							if !ok || payload16.ID >= 0xfffffffffffffffd || payload16.Shape.Kind == 0 {
 								r.Report.Malformed = true
 								return false
 							}
-							switch payload16.Id {
+							switch payload16.ID {
 							case 0xffb5be9be2e469cc:
 								{
 									widened := false
@@ -1327,8 +800,9 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 	}
 }
 
-// WeaponConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// WeaponConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // WeaponConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // WeaponConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -1357,7 +831,9 @@ func WeaponConfigLoadMessagesTolerant(values []WeaponConfig, vocabulary *TableVo
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -1365,435 +841,20 @@ func WeaponConfigLoadMessagesTolerant(values []WeaponConfig, vocabulary *TableVo
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !WeaponConfigLoadMessageBody(&r, &values[i]) {
-			return i, false
+		if !WeaponConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				WeaponConfigReset(&values[j])
+			}
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
-}
-func LoadoutConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *LoadoutConfig) bool {
-	LoadoutConfigReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			WeaponConfigReset(&values[j])
 		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x32a89b2977c48ad4:
-			{
-				widened := false
-				if entry.Shape.Kind != 30 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if ref == 0 {
-						value.Grade = GradeNone
-					} else {
-						id, ok := r.Vocabulary.Name(ref)
-						if !ok {
-							r.Report.Malformed = true
-							return false
-						}
-						if !value.Grade.TableEnumValue(id) {
-							r.Report.Unknown++
-							if r.Retain != nil {
-								r.Report.RetainLost++
-							}
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd90a4e7682f799c5:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 30 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					base := &value.Grades
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					r.Retain.discard(r.Path, true, 1)
-					keep := min(n, uint64(4))
-					if keep < n {
-						r.Report.Clamped++
-					}
-					walk := n
-					if element.Shape.Bits >= 0 {
-						walk = keep
-					}
-					for i := uint64(0); i < walk; i++ {
-						var scratch Grade
-						p := &scratch
-						if i < keep {
-							p = &base[i]
-						}
-						store := r.Retain
-						if i >= keep {
-							r.Retain = nil
-						}
-						{
-							ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-							if !ok {
-								r.Report.Malformed = true
-								return false
-							}
-							if ref == 0 {
-								(*p) = GradeNone
-							} else {
-								id, ok := r.Vocabulary.Name(ref)
-								if !ok {
-									r.Report.Malformed = true
-									return false
-								}
-								if !(*p).TableEnumValue(id) {
-									r.Report.Unknown++
-									if r.Retain != nil {
-										r.Report.RetainLost++
-									}
-								}
-							}
-						}
-						r.Retain = store
-					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
-						r.Report.Malformed = true
-						return false
-					}
-					value.GradesCount = int32(keep)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb46ff45a23d72549:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 30 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					base := &value.Podium
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					r.Retain.discard(r.Path, true, 2)
-					keep := min(n, uint64(3))
-					if keep < n {
-						r.Report.Clamped++
-					}
-					walk := n
-					if element.Shape.Bits >= 0 {
-						walk = keep
-					}
-					for i := uint64(0); i < walk; i++ {
-						var scratch Grade
-						p := &scratch
-						if i < keep {
-							p = &base[i]
-						}
-						store := r.Retain
-						if i >= keep {
-							r.Retain = nil
-						}
-						{
-							ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-							if !ok {
-								r.Report.Malformed = true
-								return false
-							}
-							if ref == 0 {
-								(*p) = GradeNone
-							} else {
-								id, ok := r.Vocabulary.Name(ref)
-								if !ok {
-									r.Report.Malformed = true
-									return false
-								}
-								if !(*p).TableEnumValue(id) {
-									r.Report.Unknown++
-									if r.Retain != nil {
-										r.Report.RetainLost++
-									}
-								}
-							}
-						}
-						r.Retain = store
-					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
-						r.Report.Malformed = true
-						return false
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x4b06f5847096e54a:
-			{
-				widened := false
-				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload19 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload19.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload19.Unsigned(entry.Shape.Kind)
-						value.Perks = Perks(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xbf31137ff783e939:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload20 := r.Path
-					r.Path = r.Path.step(4, uint32(0))
-					if !WeaponConfigLoadMessageBodyRetain(r, &value.Primary) {
-						return false
-					}
-					r.Path = payload20
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xde28f0f5118acc24:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					base := &value.Backups
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					r.Retain.discard(r.Path, true, 5)
-					keep := min(n, uint64(2))
-					if keep < n {
-						r.Report.Clamped++
-					}
-					walk := n
-					if element.Shape.Bits >= 0 {
-						walk = keep
-					}
-					for i := uint64(0); i < walk; i++ {
-						var scratch WeaponConfig
-						p := &scratch
-						if i < keep {
-							p = &base[i]
-						}
-						store := r.Retain
-						if i >= keep {
-							r.Retain = nil
-						}
-						{
-							payload21 := r.Path
-							r.Path = r.Path.step(5, uint32(i))
-							if !WeaponConfigLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload21
-						}
-						r.Retain = store
-					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
-						r.Report.Malformed = true
-						return false
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xf901aa0340249a41:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					base := &value.Attachments
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					r.Retain.discard(r.Path, true, 6)
-					keep := min(n, uint64(8))
-					if keep < n {
-						r.Report.Clamped++
-					}
-					walk := n
-					if element.Shape.Bits >= 0 {
-						walk = keep
-					}
-					for i := uint64(0); i < walk; i++ {
-						var scratch AttachmentRow
-						p := &scratch
-						if i < keep {
-							p = &base[i]
-						}
-						store := r.Retain
-						if i >= keep {
-							r.Retain = nil
-						}
-						{
-							payload22 := r.Path
-							r.Path = r.Path.step(6, uint32(i))
-							if !AttachmentLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload22
-						}
-						r.Retain = store
-					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
-						r.Report.Malformed = true
-						return false
-					}
-					value.AttachmentsCount = int32(keep)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
+		return 0, false
 	}
+	return count, true
 }
 func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) bool {
 	{
@@ -1802,7 +863,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 			if value.Grade == GradeNone {
 				w.Put(0, TableMessageRefBitsHere)
 			} else {
-				id, named := value.Grade.TableEnumId()
+				id, named := value.Grade.TableEnumID()
 				if !named {
 					return false
 				}
@@ -1828,7 +889,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 				if value.Grades[i] == GradeNone {
 					w.Put(0, TableMessageRefBitsHere)
 				} else {
-					id, named := value.Grades[i].TableEnumId()
+					id, named := value.Grades[i].TableEnumID()
 					if !named {
 						return false
 					}
@@ -1856,7 +917,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 				if value.Podium[i] == GradeNone {
 					w.Put(0, TableMessageRefBitsHere)
 				} else {
-					id, named := value.Podium[i].TableEnumId()
+					id, named := value.Podium[i].TableEnumID()
 					if !named {
 						return false
 					}
@@ -1978,11 +1039,11 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x32a89b2977c48ad4:
 			{
 				widened := false
@@ -2342,8 +1403,9 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 	}
 }
 
-// LoadoutConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// LoadoutConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // LoadoutConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // LoadoutConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -2372,7 +1434,9 @@ func LoadoutConfigLoadMessagesTolerant(values []LoadoutConfig, vocabulary *Table
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -2380,552 +1444,20 @@ func LoadoutConfigLoadMessagesTolerant(values []LoadoutConfig, vocabulary *Table
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !LoadoutConfigLoadMessageBody(&r, &values[i]) {
-			return i, false
+		if !LoadoutConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				LoadoutConfigReset(&values[j])
+			}
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
-}
-func ProfileConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *ProfileConfig) bool {
-	ProfileConfigReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			LoadoutConfigReset(&values[j])
 		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xc4bcadba8e631b86:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Name[:])
-					copy(value.Name[:], text[:kept])
-					value.NameLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdbff4cc56c2092f0:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 6 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := min(n, uint64(16))
-					if kept < n {
-						r.Report.Clamped++
-					}
-					clear(value.Icon[:])
-					copy(value.Icon[:], r.Bits.Buffer[start:start+int64(kept)])
-					value.IconLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xab8b6d521f80b969:
-			{
-				widened := false
-				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload9 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload9.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload9.Unsigned(entry.Shape.Kind)
-						value.Experience = uint32(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x1e5088ef2e9bafc6:
-			{
-				widened := false
-				if entry.Shape.Kind != 2 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload10 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload10.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload10.Signed(entry.Shape.Kind)
-						value.Tilt = int8(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb128829190ca0f75:
-			{
-				widened := false
-				if entry.Shape.Kind != 3 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 3) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload11 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload11.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload11.Signed(entry.Shape.Kind)
-						value.Heading = int16(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x5ddc92338ef53403:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload12 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload12.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload12.Signed(entry.Shape.Kind)
-						value.Timestamp = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x10bda981fe095518:
-			{
-				widened := false
-				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload13 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload13.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload13.Unsigned(entry.Shape.Kind)
-						value.Badge = uint8(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8c2cdb0da8933fa6:
-			{
-				widened := false
-				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload14 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload14.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload14.Unsigned(entry.Shape.Kind)
-						value.Port = uint16(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xfc9697d1196e6ba6:
-			{
-				widened := false
-				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload15 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload15.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload15.Unsigned(entry.Shape.Kind)
-						value.Epoch = uint64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x288427f5babd05f7:
-			{
-				widened := false
-				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload16 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload16.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						var v float64
-						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload16.Get32()))
-						} else {
-							v = math.Float64frombits(payload16.Get64())
-						}
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "ProfileConfig.precision")
-						}
-						value.Precision = v
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb921eb8a3d0cb0f9:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 10 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					base := &value.Ratings
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					r.Retain.discard(r.Path, true, 10)
-					keep := min(n, uint64(4))
-					if keep < n {
-						r.Report.Clamped++
-					}
-					walk := n
-					if element.Shape.Bits >= 0 {
-						walk = keep
-					}
-					for i := uint64(0); i < walk; i++ {
-						var scratch float32
-						p := &scratch
-						if i < keep {
-							p = &base[i]
-						}
-						store := r.Retain
-						if i >= keep {
-							r.Retain = nil
-						}
-						{
-							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
-								r.Report.Malformed = true
-								return false
-							}
-							payload17 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-							if !payload17.Has(tableKindBytes(element.Shape.Kind)) {
-								r.Report.Malformed = true
-								return false
-							}
-							{
-								v := math.Float32frombits(payload17.Get32())
-								if v != v || v-v != 0 {
-									tableNonFinite(&r.Report.Reason, "ProfileConfig.ratings")
-								}
-								(*p) = v
-							}
-						}
-						r.Retain = store
-					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
-						r.Report.Malformed = true
-						return false
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa06f5e0a148e253c:
-			{
-				widened := false
-				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload18 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload18.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						b := payload18.Get8()
-						if b > 1 {
-							r.Report.Malformed = true
-							if r.Report.Reason == "" {
-								r.Report.Reason = "malformed: HasLoadout"
-							}
-						}
-						value.HasLoadout = b != 0
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x5759ce7586bbb5a3:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload19 := r.Path
-					r.Path = r.Path.step(12, uint32(0))
-					if !LoadoutConfigLoadMessageBodyRetain(r, &value.Loadout) {
-						return false
-					}
-					r.Path = payload19
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
+		return 0, false
 	}
+	return count, true
 }
 func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) bool {
 	{
@@ -3002,6 +1534,9 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 	{
 		if math.Float64bits(value.Precision) != math.Float64bits(0.0) {
 			w.Put(47, TableMessageRefBitsHere)
+			if value.Precision-value.Precision != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Precision), uint64(0))
 		}
 	}
@@ -3017,6 +1552,9 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 			w.Put(48, TableMessageRefBitsHere)
 			w.Put(uint64(4)-4, 0)
 			for i := range int(4) {
+				if value.Ratings[i]-value.Ratings[i] != 0 {
+					return false
+				}
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Ratings[i])), uint64(0))
 			}
 		}
@@ -3106,11 +1644,11 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xc4bcadba8e631b86:
 			{
 				widened := false
@@ -3138,11 +1676,11 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(32)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -3464,16 +2002,19 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 						return false
 					}
 					{
-						var v float64
+						finite, v := true, float64(0)
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload43.Get32()))
+							b := payload43.Get32()
+							finite, v = b&0x7f800000 != 0x7f800000, float64(math.Float32frombits(b))
 						} else {
-							v = math.Float64frombits(payload43.Get64())
+							b := payload43.Get64()
+							finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b)
 						}
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "ProfileConfig.precision")
+						if !finite {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+						} else {
+							value.Precision = v
 						}
-						value.Precision = v
 					}
 				}
 				if widened {
@@ -3534,11 +2075,13 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 								return false
 							}
 							{
-								v := math.Float32frombits(payload44.Get32())
-								if v != v || v-v != 0 {
-									tableNonFinite(&r.Report.Reason, "ProfileConfig.ratings")
+								b := payload44.Get32()
+								if b&0x7f800000 == 0x7f800000 {
+									tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.ratings")
+								} else {
+									v := math.Float32frombits(b)
+									(*p) = v
 								}
-								(*p) = v
 							}
 						}
 					}
@@ -3624,8 +2167,9 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 	}
 }
 
-// ProfileConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// ProfileConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // ProfileConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // ProfileConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -3654,7 +2198,9 @@ func ProfileConfigLoadMessagesTolerant(values []ProfileConfig, vocabulary *Table
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -3662,120 +2208,20 @@ func ProfileConfigLoadMessagesTolerant(values []ProfileConfig, vocabulary *Table
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !ProfileConfigLoadMessageBody(&r, &values[i]) {
-			return i, false
+		if !ProfileConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				ProfileConfigReset(&values[j])
+			}
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
-}
-func AttachmentLoadMessageBodyRetain(r *TableRetainMessageReader, value *AttachmentRow) bool {
-	AttachmentReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			ProfileConfigReset(&values[j])
 		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x6a771618f6fe31d1:
-			{
-				widened := false
-				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload1 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload1.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload1.Signed(entry.Shape.Kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
-						} else if v > 7 {
-							v = 7
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
-						}
-						value.Slot = int32(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xeef9d1358ae7b4e6:
-			{
-				widened := false
-				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload2 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload2.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := math.Float32frombits(payload2.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "Attachment.power")
-						}
-						value.Power = v
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
+		return 0, false
 	}
+	return count, true
 }
 func AttachmentSaveMessageBody(w *TableMessageWriter, value *AttachmentRow) bool {
 	{
@@ -3787,6 +2233,9 @@ func AttachmentSaveMessageBody(w *TableMessageWriter, value *AttachmentRow) bool
 	{
 		if math.Float32bits(value.Power) != math.Float32bits(1.0) {
 			w.Put(4, TableMessageRefBitsHere)
+			if value.Power-value.Power != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Power)), uint64(0))
 		}
 	}
@@ -3805,11 +2254,11 @@ func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x6a771618f6fe31d1:
 			{
 				widened := false
@@ -3881,11 +2330,13 @@ func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool
 						return false
 					}
 					{
-						v := math.Float32frombits(payload47.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "Attachment.power")
+						b := payload47.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Attachment.power")
+						} else {
+							v := math.Float32frombits(b)
+							value.Power = v
 						}
-						value.Power = v
 					}
 				}
 				if widened {
@@ -3901,75 +2352,13 @@ func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool
 		}
 	}
 }
-func BuffLoadMessageBodyRetain(r *TableRetainMessageReader, value *BuffRow) bool {
-	BuffReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x9adc623a805c87c6:
-			{
-				widened := false
-				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload1 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload1.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := math.Float32frombits(payload1.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "Buff.multiplier")
-						}
-						value.Multiplier = v
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
 func BuffSaveMessageBody(w *TableMessageWriter, value *BuffRow) bool {
 	{
 		if math.Float32bits(value.Multiplier) != math.Float32bits(1.0) {
 			w.Put(5, TableMessageRefBitsHere)
+			if value.Multiplier-value.Multiplier != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Multiplier)), uint64(0))
 		}
 	}
@@ -3988,11 +2377,11 @@ func BuffLoadMessageBody(r *TableMessageReader, value *BuffRow) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x9adc623a805c87c6:
 			{
 				widened := false
@@ -4020,11 +2409,13 @@ func BuffLoadMessageBody(r *TableMessageReader, value *BuffRow) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload48.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "Buff.multiplier")
+						b := payload48.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Buff.multiplier")
+						} else {
+							v := math.Float32frombits(b)
+							value.Multiplier = v
 						}
-						value.Multiplier = v
 					}
 				}
 				if widened {
@@ -4034,77 +2425,6 @@ func BuffLoadMessageBody(r *TableMessageReader, value *BuffRow) bool {
 		default:
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func DebuffLoadMessageBodyRetain(r *TableRetainMessageReader, value *DebuffRow) bool {
-	DebuffReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x8113fe7ea2b16969:
-			{
-				widened := false
-				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload1 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload1.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload1.Signed(entry.Shape.Kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
-						} else if v > 100 {
-							v = 100
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
-						}
-						value.Amount = int32(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
 				r.Report.Malformed = true
 				return false
 			}
@@ -4133,11 +2453,11 @@ func DebuffLoadMessageBody(r *TableMessageReader, value *DebuffRow) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x8113fe7ea2b16969:
 			{
 				widened := false
@@ -4192,10 +2512,6 @@ func DebuffLoadMessageBody(r *TableMessageReader, value *DebuffRow) bool {
 	}
 }
 func init() {
-	RootConfigTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := RootConfigLoadMessageBodyRetain(&r, (*RootConfig)(p))
-		return r, ok
-	}
 	RootConfigTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return RootConfigSaveMessageBody(w, (*RootConfig)(p))
 	}
@@ -4206,10 +2522,6 @@ func init() {
 }
 
 func init() {
-	WeaponConfigTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := WeaponConfigLoadMessageBodyRetain(&r, (*WeaponConfig)(p))
-		return r, ok
-	}
 	WeaponConfigTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return WeaponConfigSaveMessageBody(w, (*WeaponConfig)(p))
 	}
@@ -4220,10 +2532,6 @@ func init() {
 }
 
 func init() {
-	LoadoutConfigTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := LoadoutConfigLoadMessageBodyRetain(&r, (*LoadoutConfig)(p))
-		return r, ok
-	}
 	LoadoutConfigTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return LoadoutConfigSaveMessageBody(w, (*LoadoutConfig)(p))
 	}
@@ -4234,10 +2542,6 @@ func init() {
 }
 
 func init() {
-	ProfileConfigTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := ProfileConfigLoadMessageBodyRetain(&r, (*ProfileConfig)(p))
-		return r, ok
-	}
 	ProfileConfigTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return ProfileConfigSaveMessageBody(w, (*ProfileConfig)(p))
 	}
@@ -4248,10 +2552,6 @@ func init() {
 }
 
 func init() {
-	AttachmentTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := AttachmentLoadMessageBodyRetain(&r, (*AttachmentRow)(p))
-		return r, ok
-	}
 	AttachmentTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return AttachmentSaveMessageBody(w, (*AttachmentRow)(p))
 	}
@@ -4262,10 +2562,6 @@ func init() {
 }
 
 func init() {
-	BuffTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := BuffLoadMessageBodyRetain(&r, (*BuffRow)(p))
-		return r, ok
-	}
 	BuffTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { return BuffSaveMessageBody(w, (*BuffRow)(p)) }
 	BuffTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := BuffLoadMessageBody(&r, (*BuffRow)(p))
@@ -4274,10 +2570,6 @@ func init() {
 }
 
 func init() {
-	DebuffTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := DebuffLoadMessageBodyRetain(&r, (*DebuffRow)(p))
-		return r, ok
-	}
 	DebuffTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { return DebuffSaveMessageBody(w, (*DebuffRow)(p)) }
 	DebuffTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := DebuffLoadMessageBody(&r, (*DebuffRow)(p))

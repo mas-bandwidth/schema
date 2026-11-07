@@ -37,11 +37,11 @@ const LAYOUT_HEAD = B.TableFixedHeaderBytes + B.TableFixedLayoutHeaderBytes;
 // 1. Save one RenderCamera record with distinctive values.
 const cam = new B.RenderCamera();
 B.InitRenderCamera(cam);
-cam.Position.X = 1.25; cam.Position.Y = 3.5; cam.Position.Z = 7.75;
-cam.CameraId = 0xC001CAFE;
-cam.CameraType = 3;
-cam.TargetObjectId = 4242;
-cam.Fov = 90.0;
+cam.position.x = 1.25; cam.position.y = 3.5; cam.position.z = 7.75;
+cam.cameraId = 0xC001CAFE;
+cam.cameraType = 3;
+cam.targetObjectId = 4242;
+cam.fov = 90.0;
 
 const saveBytes = new Uint8Array(Render.RenderCameraFixedMeasure(1));
 check(Render.RenderCameraFixedSave([cam], 1, saveBytes) === Render.RenderCameraFixedMeasure(1),
@@ -85,8 +85,8 @@ B.RenderMissileFixedDecode(wrongVal, wrongPlan.view, 0, wrongReport);
 //    ObjectId at 64 (Camera's TargetObjectId, 4242 = 0x1092).
 //    The values MUST disagree with a correct Camera read.
 check(
-  wrongVal.Flags !== 0n ||
-  wrongVal.Position.X !== right[0].Position.X,
+  wrongVal.flags !== 0n ||
+  wrongVal.position.x !== right[0].position.x,
   "identity plan over another table's record comes out WRONG");
 
 // 5. The CORRECT read is still correct — Position fields match because they
@@ -98,18 +98,18 @@ check(
 //    correct — so set CameraId to a nonzero value.
 
 // Negative control: the right reader's values are what we set.
-check(right[0].CameraId === 0xC001CAFE, "correct read preserves CameraId");
-check(right[0].TargetObjectId === 4242, "correct read preserves TargetObjectId");
-check(right[0].Fov === 90.0, "correct read preserves Fov");
+check(right[0].cameraId === 0xC001CAFE, "correct read preserves CameraId");
+check(right[0].targetObjectId === 4242, "correct read preserves TargetObjectId");
+check(right[0].fov === 90.0, "correct read preserves Fov");
 
 // The wrong reader interprets Camera bytes as Missile fields: flags at 56–63
 // (where Camera stores CameraId+CameraType) must not be zero with our inputs.
-check(wrongVal.Flags !== 0n, "wrong plan yields non-zero Flags at CameraId bytes");
+check(wrongVal.flags !== 0n, "wrong plan yields non-zero Flags at CameraId bytes");
 
 // and Position at 0–23 maps the same way in both, so it should match
-check(wrongVal.Position.X === right[0].Position.X &&
-      wrongVal.Position.Y === right[0].Position.Y &&
-      wrongVal.Position.Z === right[0].Position.Z,
+check(wrongVal.position.x === right[0].position.x &&
+      wrongVal.position.y === right[0].position.y &&
+      wrongVal.position.z === right[0].position.z,
   "shared-offset fields match under both plans");
 
 console.log("");

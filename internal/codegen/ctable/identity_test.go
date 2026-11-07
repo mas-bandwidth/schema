@@ -92,7 +92,7 @@ func fromNeedle(t *testing.T, s, needle string) string {
 
 func identityLoad(t *testing.T, h, name string) string {
 	t.Helper()
-	load := fromNeedle(t, h, name+"_fixed_load")
+	load := fromNeedle(t, h, name+"_fixed_load_tolerant")
 	body, _, found := strings.Cut(load, "\n}\n")
 	if !found {
 		t.Fatalf("%s_fixed_load not closed", name)
@@ -305,7 +305,7 @@ int main(void)
     CHECK(held_fixed_save(&value, 1, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = held_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
+    n = held_fixed_load_tolerant(&loaded, 1, file, need, plan, 64, NULL, &report);
     CHECK(n == 1);
     CHECK(!report.malformed && !report.refused && report.clamped == 0);
     CHECK(loaded.marks_count == 1 && loaded.marks[0] == 7);
@@ -322,7 +322,7 @@ int main(void)
     table_fixed_put32(body + 4 + 16, 99);
     memset(&loaded, 0, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = held_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
+    n = held_fixed_load_tolerant(&loaded, 1, file, need, plan, 64, NULL, &report);
     CHECK(n == 1);
     CHECK(report.clamped == 2);
     CHECK(loaded.marks_count == 4);
@@ -347,7 +347,7 @@ __attribute__((noinline))
 #endif
 static int64_t load_flat(Flat *loaded, const uint8_t *file, int64_t need, TableFixedEntry *plan, TableReport *report)
 {
-    return flat_fixed_load(loaded, 1, file, need, plan, 8, NULL, report);
+    return flat_fixed_load_tolerant(loaded, 1, file, need, plan, 8, NULL, report);
 }
 int main(void)
 {

@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// §5.4's compile census lands once per peer AND never per record, but the
+// §5.4's compile census lands once per endpoint AND never per record, but the
 // landed one-record row reads 'old_unknown_census.bin', ONE record, where
-// "once per peer" and "once per record" are the SAME number, 1. A per-record
+// "once per endpoint" and "once per record" are the SAME number, 1. A per-record
 // Unknown++ really exists in these runtimes (the union-tag path), and only a
 // many-record file tells it apart. 'many_unknown_census.bin' carries THREE
 // Census records; the counter is asserted == 1 EXACTLY, never >= 1, because a
@@ -39,7 +39,7 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
     {
         int64_t n2;
         memset( &r, 0, sizeof( r ) );
-        n2 = census_fixed_load( back, 8, data, len, plan, 4096, NULL, &r );
+        n2 = census_fixed_load_tolerant( back, 8, data, len, plan, 4096, NULL, &r );
         if ( n2 != 3 ) { printf( "unknown_census_many: the SECOND read did not return three records: %lld\n", (long long) n2 ); return 1; }
         if ( r.unknown != 1 ) { printf( "unknown_census_many: the SECOND read owes unknown == 1 again, not %d\n", r.unknown ); return 1; }
     }

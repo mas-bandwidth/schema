@@ -10,7 +10,7 @@ import (
 const cMessageRead = `
 typedef struct TableMessageReader {
  TableBitReader bits; const TableVocabulary * vocabulary; TableReport * report;
- int64_t index_bits; int extent_refused;@NODES@
+ int skip_depth;
 } TableMessageReader;
 /* Framing scans skip by announced shape, including a reserved transport id
    (kind 0, no extra bits). A NAME reference still refuses reserved ids.
@@ -46,25 +46,37 @@ static SCHEMA_UNUSED int table_message_count(TableMessageReader * r,const TableM
  return !(e->kind==14 && e->elem_kind==6) || table_bit_align_read(&r->bits);
 }
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader *,const TableMessageEntry *);
+/* skip_depth is one counter for the unknown-skip walk (docs/SPEC-TABLES.md
+   message_skip_depth). table_message_open zeroes it, so every external caller
+   starts at 0. A nested body, a union arm and a walked element each enter the
+   next call at skip_depth+1; the caller restores the saved value on every
+   path. Past 128 is malformed, and 128 itself still skips. */
 static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
 {
+ if(r->skip_depth>128)return 0;
  for(;;) {const TableMessageEntry * entry;
   if(!table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
   if(!table_message_skip(r,entry))return 0;
  }
 }
+static SCHEMA_UNUSED int table_message_skip_deeper(TableMessageReader * r,const TableMessageEntry * e)
+{
+ int saved=r->skip_depth,ok;
+ r->skip_depth=saved+1;ok=table_message_skip(r,e);r->skip_depth=saved;return ok;
+}
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
 {
- uint64_t n,i;const TableMessageEntry * entry;
+ uint64_t n,i;const TableMessageEntry * entry;int saved,ok;
+ if(r->skip_depth>128)return 0;
  switch(e->kind) {
  case 0:case 32:return 1;
  case 30:return table_message_ref(r,&entry,1);
- case 13:return table_message_skip_body(r);
- case 17:return r->index_bits>0 && table_bit_skip(&r->bits,r->index_bits);
+ case 13:saved=r->skip_depth;r->skip_depth=saved+1;ok=table_message_skip_body(r);r->skip_depth=saved;return ok;
+ case 17:return 0; /* a node reference: no fixed body holds one */
  case 15:
   if(!table_message_ref(r,&entry,0))return 0;
-  return entry==NULL || (entry->kind!=0 && table_message_skip(r,entry));
+  return entry==NULL || (entry->kind!=0 && table_message_skip_deeper(r,entry));
  case 12:case 33:
   if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max)))return 0;
   if(e->kind==12 && !table_bit_align_read(&r->bits))return 0;
@@ -75,11 +87,14 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
  case 14:case 16: {
   TableMessageEntry elem=table_message_element(e);
   if(!table_message_count(r,e,&n))return 0;
-  if(e->kind==14 && (elem.kind==0||elem.kind==32))return 1;
-  if(e->kind==14 && elem.value_bits>=0)return table_message_skip_run(r,n,elem.value_bits);
+  if(elem.value_bits>=0||elem.kind==0||elem.kind==32) {
+   int64_t width=elem.value_bits>0?elem.value_bits:0;
+   if(e->kind==16)width+=r->vocabulary->ref_bits;
+   return table_message_skip_run(r,n,width);
+  }
   for(i=0;i<n;i++) {
    if(e->kind==16 && !table_message_ref(r,&entry,1))return 0;
-   if(!table_message_skip(r,&elem))return 0;
+   if(!table_message_skip_deeper(r,&elem))return 0;
   }return 1;
  }
  default:return e->value_bits>=0 && table_bit_skip(&r->bits,e->value_bits);
@@ -100,6 +115,10 @@ static SCHEMA_UNUSED int table_message_number(TableMessageReader * r,const Table
  if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
  return 1;
 }
+/* 1 is a value, 0 damage, and 2 a float whose raw bits are a NaN or an
+   infinity (docs/SPEC-TABLES.md §3.3): refused as non_finite_float before the
+   bits become a value, *value untouched, and the walk goes on. A quantized
+   index names a finite value and is never tested. */
 static SCHEMA_UNUSED int table_message_float(TableMessageReader * r,const TableMessageEntry * e,float * value)
 {
  uint64_t raw;
@@ -107,7 +126,8 @@ static SCHEMA_UNUSED int table_message_float(TableMessageReader * r,const TableM
  if(e->packing==2) {
   if(raw>e->qcount)return 0;
   *value=table_message_dequantize((uint32_t)raw,e->qmin,e->qdelta,e->qcount);
- }else *value=table_bits_to_float((uint32_t)raw);
+ }else if(!table_bits_finite32((uint32_t)raw)){table_non_finite_float(r->report);return 2;}
+ else *value=table_bits_to_float((uint32_t)raw);
  return 1;
 }
 static SCHEMA_UNUSED int64_t table_message_open(TableMessageReader * r,const TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
@@ -132,7 +152,7 @@ func (g *tableGen) messageReadEnum(e *ir.Enum, dst, ind string) {
 	for i, v := range e.Variants {
 		g.pf("%s case UINT64_C(0x%016x): %s=%s;break;\n", ind, ir.TableWireId(e.VariantWireName(i)), dst, enumConst(e.Name, v))
 	}
-	g.pf("%s default:%s=%s;"+g.unknownEvent()+"break;\n%s } }\n", ind, dst, enumNoneConst(e.Name), ind)
+	g.pf("%s default:%s=%s;r->report->unknown++;break;\n%s } }\n", ind, dst, enumNoneConst(e.Name), ind)
 }
 
 func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
@@ -146,17 +166,23 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 		if kind == tkF64 {
 			typ = "double"
 		}
-		g.pf("%s{ %s decoded; if(%s->kind==10) {float narrow;if(!table_message_float(r,%s,&narrow))goto malformed;", ind, typ, e, e)
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
+		// §3.3), before the bounds and before the field is written, and the
+		// walk goes on; the batch answers the refusal at its end. Every finite
+		// float32 is exactly a float64, so the ordinary conversion is the
+		// float rung.
+		g.pf("%s{ %s decoded=0; int finite=1; if(%s->kind==10) {float narrow=0;int got=table_message_float(r,%s,&narrow);if(!got)goto malformed;finite=got==1;", ind, typ, e, e)
 		if kind == tkF64 {
-			g.pf("decoded=table_wire_widen_f32(table_float_to_bits(narrow));")
+			g.pf("decoded=(double)narrow;")
 		} else {
 			g.pf("decoded=narrow;")
 		}
-		g.pf("} else {uint64_t raw;if(!table_bit_get(&r->bits,&raw,64))goto malformed;decoded=(%s)table_bits_to_double(raw);}\n", typ)
+		g.pf("} else {uint64_t raw;if(!table_bit_get(&r->bits,&raw,64))goto malformed;finite=table_bits_finite64(raw);if(finite)decoded=(%s)table_bits_to_double(raw);else table_non_finite_float(r->report);}\n", typ)
+		g.pf("%s if(finite){", ind)
 		if f.HasFloatRange {
-			g.pf("%s if(decoded<%s){decoded=%s;r->report->clamped++;}else if(decoded>%s){decoded=%s;r->report->clamped++;}\n", ind, formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMax, kind == tkF32), formatFloat(f.FMax, kind == tkF32))
+			g.pf("if(decoded<%s){decoded=%s;r->report->clamped++;}else if(decoded>%s){decoded=%s;r->report->clamped++;}", formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMax, kind == tkF32), formatFloat(f.FMax, kind == tkF32))
 		}
-		g.pf("%s %s=decoded; }\n", ind, dst)
+		g.pf("%s=decoded;} }\n", dst)
 		return
 	}
 	g.pf("%s{ uint64_t lo,hi;if(!table_message_number(r,%s,&lo,&hi))goto malformed;\n", ind, e)
@@ -183,7 +209,7 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 		g.pf("%s %s=lo!=0; }\n", ind, dst)
 		return
 	}
-	signed := ir.TableKindSigned(kind)
+	signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 	typ := "uint64_t"
 	if signed {
 		typ = "int64_t"
@@ -224,14 +250,6 @@ func messageRange(signed bool, bits int) (*big.Int, *big.Int) {
 
 func (g *tableGen) messageReadElement(f *ir.Field, dst, e, ind string) {
 	switch {
-	case f.Type.Pointer:
-		target := ir.TableWireId(ir.PointeeWireName(f))
-		if f.Type.Blob() {
-			target = ir.BlobWireTypeId(f)
-			g.pf("%s{uint64_t index;if(r->index_bits<1 || !table_bit_get(&r->bits,&index,r->index_bits))goto malformed;table_node_resolve(r->nodes,&%s,index,UINT64_C(0x%016x),r->report);table_node_blob_mark(r->nodes,index,r->report);}\n", ind, dst, target)
-		} else {
-			g.pf("%s{uint64_t index;if(r->index_bits<1 || !table_bit_get(&r->bits,&index,r->index_bits))goto malformed;table_node_resolve(r->nodes,&%s,index,UINT64_C(0x%016x),r->report);}\n", ind, dst, target)
-		}
 	case ir.TableWireScalarKind(f) == tkTable:
 		g.pf("%sif(!%s(r,&%s))return 0;\n", ind, g.api(f.Type.Name, "load_message_body"), dst)
 	case ir.TableWireScalarKind(f) == tkUnion:
@@ -243,10 +261,6 @@ func (g *tableGen) messageReadElement(f *ir.Field, dst, e, ind string) {
 
 func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 	switch {
-	case f.IsList() || f.IsMap():
-		g.emitMessageSequenceRead(f, dst, e, ind)
-	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		g.messageReadElement(f, dst, e, ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		width := "table_bits_required(0," + e + "->max)"
 		bits := 8
@@ -282,24 +296,15 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 			g.pf("%s case UINT64_C(0x%016x):slot=%d;break;\n", ind, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 			_ = v
 		}
-		g.pf("%s default:break;} if(slot<0){"+g.unknownEvent()+"\n%s { %s scratch;memset(&scratch,0,sizeof(scratch));\n", ind, ind, g.sequenceType(f))
-		if g.retain {
-			g.pf("%s TableRetainWalk named_retention=retention;retention.retain=NULL;\n", ind)
-		}
+		g.pf("%s default:break;} if(slot<0){r->report->unknown++;\n%s { %s scratch;memset(&scratch,0,sizeof(scratch));\n", ind, ind, g.sequenceType(f))
 		g.messageReadElement(f, "scratch", "element_entry", ind+" ")
-		if g.retain {
-			g.pf("%s retention=named_retention;\n", ind)
-		}
 		g.pf("%s }continue;}\n", ind)
-		g.retainIndex(f, "slot", ind+" ")
 		g.messageReadElement(f, dst+"[slot]", "element_entry", ind+" ")
 		g.pf("%s} }\n", ind)
 	case f.Array != ir.ArrayNone:
 		g.pf("%s{uint64_t n,kept,walk,i;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n", ind, e)
 		g.pf("%s if(!table_message_count(r,%s,&n))goto malformed;kept=n>%d?%d:n;if(kept<n)r->report->clamped++;\n", ind, e, f.ArrayBound, f.ArrayBound)
-		g.retainReplace(f, ind+" ")
 		g.pf("%s walk=element_entry->value_bits>=0?kept:n;for(i=0;i<walk;i++){%s scratch; %s * item=i<kept ? &%s[i] : &scratch;\n", ind, g.sequenceType(f), g.sequenceType(f), dst)
-		g.retainIndex(f, "i", ind+" ")
 		g.messageReadElement(f, "(*item)", "element_entry", ind+" ")
 		g.pf("%s }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;\n", ind)
 		if f.Array == ir.ArrayCounted {
@@ -316,10 +321,10 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 func (g *tableGen) messageAccept(f *ir.Field, e ir.TableVocabularyEntry, ind string) {
 	condition := fmt.Sprintf("entry->kind==%d && entry->elem_kind==%d", e.Kind, e.Shape.Elem)
 	widen := "0"
-	if f != nil && !f.Type.Pointer {
-		if f.Array != ir.ArrayNone && f.KeyEnum == "" && !f.IsMap() && enumRef(f) == nil {
+	if f != nil {
+		if f.Array != ir.ArrayNone && f.KeyEnum == "" && enumRef(f) == nil {
 			widen = fmt.Sprintf("entry->kind==%d && table_kind_widens(entry->elem_kind,%d)", e.Kind, e.Shape.Elem)
-		} else if f.Array == ir.ArrayNone && !f.IsMap() && enumRef(f) == nil {
+		} else if f.Array == ir.ArrayNone && enumRef(f) == nil {
 			widen = fmt.Sprintf("entry->elem_kind==0 && table_kind_widens(entry->kind,%d)", e.Kind)
 		}
 	}
@@ -336,14 +341,11 @@ func (g *tableGen) emitMessageReadDeclarations(members []*ir.Struct, unions []*i
 }
 
 func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
-	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n const TableMessageEntry * entry;\n %sif(!table_message_ref(r,&entry,0))goto malformed;value->type=0;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto malformed;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name, g.retainUnionDiscard())
-	for ordinal, v := range un.Variants {
+	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;value->type=0;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto malformed;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name)
+	for _, v := range un.Variants {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableWireId(v.WireName()))
 		g.messageAccept(v.F, ir.TableArmEntry(v), " ")
 		if !v.Void() {
-			if g.retain {
-				g.pf(" retention=table_retain_step(retention,%d,0);\n", ordinal)
-			}
 			dst := armValue("(*value)", v)
 			count := dst + "_count"
 			if v.F.Array == ir.ArrayNone {
@@ -354,19 +356,15 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 		}
 		g.pf(" value->type=%s;break;}\n", enumConst(un.Name+"Type", v.Name))
 	}
-	g.pf("%s", " default:"+g.unknownEvent()+"if(!table_message_skip(r,entry))goto malformed;break;\n }return 1;\n malformed:r->report->malformed=1;return 0;\n}\n")
+	g.pf("%s", " default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;\n }return 1;\n malformed:r->report->malformed=1;return 0;\n}\n")
 }
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n", g.api(st.Name, "load_message_body"), st.Name)
-	if g.retain {
-		g.pf(" TableRetainWalk body_keep=retention;table_retain_discard(retention,0,0);\n")
-	}
 	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;switch(entry->id){\n", g.api(st.Name, "reset"))
-	for ordinal, f := range st.Fields {
+	for _, f := range st.Fields {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableFieldWireId(f))
 		g.messageAccept(f, ir.TableFieldEntry(f), " ")
-		g.retainReadField(f, ordinal, " ")
 		dst, count := "value->"+f.Name, "value->"+f.Name+"_count"
 		if f.Array == ir.ArrayNone {
 			count = "value->" + f.Name + "_length"
@@ -377,74 +375,26 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf(" break;}\n")
 	}
-	if g.retain {
-		g.pf(" default:r->report->unknown += 1;if(!table_retain_message_capture(r,entry,body_keep))goto malformed;break;\n } }\n malformed:r->report->malformed=1;return 0;\n}\n")
-	} else {
-		g.pf("%s", " default:"+g.unknownEvent()+"if(!table_message_skip(r,entry))goto malformed;break;\n } }\n malformed:r->report->malformed=1;return 0;\n}\n")
-	}
-	if !g.retain && !g.isVar(st.Name) && !st.IsMapEntry() {
-		g.emitFixedMessageRead(st)
-	}
+	g.pf("%s", " default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;\n } }\n malformed:r->report->malformed=1;return 0;\n}\n")
+	g.emitFixedMessageRead(st)
 }
 
 func (g *tableGen) emitFixedMessageRead(st *ir.Struct) {
-	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages"), st.Name)
-	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;if(report==NULL)report=&ignored;\n if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;\n bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))return 0;(*count)++;}return table_message_close(&r);\n}\n", g.api(st.Name, "load_message_body"))
-}
-
-func (g *tableGen) emitMessageMapKeyRead(f *ir.Field) {
-	n, key := f.MapEntry.Name, ir.MapKeyField(f)
-	readType := g.sym(n, "key_read")
-	kind := ir.TableWireScalarKind(key)
-	g.pf("static SCHEMA_UNUSED %s %s(TableMessageReader * r)\n{\n %s out;memset(&out,0,sizeof(out));for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return out;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;\n if(entry->id==UINT64_C(0x%016x)){\n", readType, g.sym(n, "message_key"), readType, ir.MapKeyWireId)
-	g.pf(" out.kind_bad=entry->kind!=%d && !table_kind_widens(entry->kind,%d);if(entry->kind!=%d && !out.kind_bad)out.widened=1;\n if(!out.kind_bad){\n", kind, kind, kind)
-	if key.Type.Kind == ir.TString {
-		g.pf(" uint64_t count;if(!table_bit_get(&r->bits,&count,table_bits_required(0,entry->max))||!table_bit_align_read(&r->bits)||!table_bit_has(&r->bits,(int64_t)count*8))goto malformed;\n out.key.data=(const char *)(r->bits.buffer+(r->bits.offset>>3));out.key.length=(int32_t)count;out.over=count>%d;\n if(!table_wire_utf8((const uint8_t *)out.key.data,count))goto malformed;r->bits.offset+=(int64_t)count*8;\n", key.Type.Size)
-	} else {
-		g.pf(" uint64_t low,high;if(!table_message_number(r,entry,&low,&high))goto malformed;(void)high;out.over=0;\n")
-		bits := tableKindWidth(kind) * 8
-		if bits < 64 {
-			lo, hi := messageRange(ir.TableKindSigned(kind), bits)
-			if ir.TableKindSigned(kind) {
-				g.pf(" if((int64_t)low<%s || (int64_t)low>%s)out.over=1;\n", tableIntLit(lo, true, 8), tableIntLit(hi, true, 8))
-			} else {
-				g.pf(" if(low>%s)out.over=1;\n", tableIntLit(hi, false, 8))
-			}
-		}
-		g.pf(" out.key=(%s)low;\n", g.mapKeyType(f))
+	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
+	// OWN (docs/SPEC-TABLES.md §6.5): the batch decode runs under the tolerant
+	// name, unchanged, and the plain name wraps it below.
+	g.pf("/* %s is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */\n", g.api(st.Name, "load_messages_tolerant"))
+	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages_tolerant"), st.Name)
+	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;int32_t non_finite_before;int ok;if(report==NULL)report=&ignored;\n if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;\n")
+	if st.Integrity != "" {
+		g.pf(" if(bytes<1||buffer==NULL){report->malformed=1;return 0;}\n if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return 0;}\n if(bytes<6||!schema_table_integrity_holds_(buffer,bytes)){report->malformed=1;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return 0;}\n bytes-=4;\n")
 	}
-	g.pf(" continue;} }\n if(!table_message_skip(r,entry))goto malformed;\n }malformed:out.malformed=1;return out;\n}\n")
-}
-
-func (g *tableGen) emitMessageSequenceRead(f *ir.Field, dst, e, ind string) {
-	n := g.sequenceType(f)
-	elem := sequenceElement(f)
-	g.pf("%s{uint64_t count,i;TableSequenceFill fill;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n", ind, e)
-	g.pf("%s if(!table_message_count(r,%s,&count))goto malformed;\n", ind, e)
-	g.retainReplace(f, ind)
-	g.pf("%s fill=table_sequence_fill(r->nodes?r->nodes->sink:NULL,&%s,count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s));\n", ind, dst, n, n)
-	g.pf("%s if(fill.refused){if(r->nodes)r->nodes->refused=1;return 0;}if(!fill.ok)goto malformed;\n", ind)
-	if f.IsMap() {
-		g.pf("%s { %s previous; %s * last=NULL;int widened=0;memset(&previous,0,sizeof(previous));(void)element_entry;\n", ind, g.sym(n, "key_read"), n)
-	}
-	g.pf("%s for(i=0;i<count;i++){%s * item;\n", ind, n)
-	if f.IsMap() {
-		g.pf("%s TableMessageReader scan=*r;%s key=%s(&scan);int order;\n", ind, g.sym(n, "key_read"), g.sym(n, "message_key"))
-		g.pf("%s if(key.widened&&!widened){widened=1;r->report->widened++;}\n", ind)
-		g.pf("%s if(key.malformed)goto malformed;if(key.kind_bad){r->report->kind_mismatch++;r->bits=scan.bits;for(i++;i<count;i++)if(!table_message_skip_body(r))goto malformed;memset(&%s,0,sizeof(%s));break;}\n", ind, dst, dst)
-		g.pf("%s if(key.over){r->report->clamped++;r->bits=scan.bits;continue;}order=last?%s(previous.key,key.key):-1;if(order>0)goto malformed;\n", ind, g.sym(n, "key_compare"))
-		g.pf("%s if(order==0){item=last;r->report->duplicate++;}else item=(%s *)table_sequence_fill_next(&fill);if(item==NULL)goto malformed;\n", ind, n)
-		g.retainIndex(f, "fill.value->count-1", ind+" ")
-		g.messageReadElement(elem, "(*item)", "element_entry", ind+" ")
-		g.pf("%s last=item;previous=key;\n", ind)
-	} else {
-		g.pf("%s item=(%s *)table_sequence_fill_next(&fill);if(item==NULL)goto malformed;\n", ind, n)
-		g.retainIndex(f, "i", ind+" ")
-		g.messageReadElement(elem, "(*item)", "element_entry", ind+" ")
-	}
-	g.pf("%s }\n", ind)
-	if f.IsMap() {
-		g.pf("%s }\n", ind)
-	}
-	g.pf("%s table_sequence_fill_end(&fill); }\n", ind)
+	g.pf(" bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n non_finite_before=report->non_finite_floats;\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))break;(*count)++;}ok=i==bodies&&table_message_close(&r);\n /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */\n if(table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */\n if(!ok){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n return ok;\n}\n", g.api(st.Name, "load_message_body"), g.api(st.Name, "reset"), g.api(st.Name, "reset"))
+	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */\n", g.api(st.Name, "load_messages"))
+	g.pf("static SCHEMA_UNUSED int %s( %s * values, int64_t * count, const TableVocabulary * vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load_messages"), st.Name)
+	g.pf("    TableReport ignored;\n    int64_t i;\n    int ok;\n    if ( report == NULL ) report = &ignored;\n    /* this read's report, not the caller's last one */\n    memset( report, 0, sizeof( *report ) );\n")
+	g.pf("    ok = %s( values, count, vocabulary, buffer, bytes, report );\n", g.api(st.Name, "load_messages_tolerant"))
+	g.pf("    if ( !ok )\n    {\n        (void) table_report_strict_refuses( report, 0 );\n        return 0;\n    }\n")
+	g.pf("    if ( !table_report_strict_refuses( report, 1 ) ) return 1;\n")
+	g.pf("    for ( i = 0; i < *count; i++ ) %s( values + i );\n    *count = 0;\n    return 0;\n}\n", g.api(st.Name, "reset"))
 }

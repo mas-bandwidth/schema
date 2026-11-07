@@ -47,15 +47,15 @@ typedef struct CardsRecord {
     int64_t wire_len;
     uint8_t *region;
     int64_t region_len;
-    const Card *root;
-    TableReport report;
+    const cards_card_t *root;
+    cards_table_report_t report;
 } CardsRecord;
 
 /* cards_load reads wire into a Record using the generated measured load
    (docs/SPEC-TABLES.md §6.2). Malformed wire refuses; tolerant events ride
    in the report. The ORIGINAL wire is copied, never rewritten. */
 int cards_load(const uint8_t *wire, int64_t wire_len, CardsRecord *out,
-               TableReport *report, char *err, size_t err_cap);
+               cards_table_report_t *report, char *err, size_t err_cap);
 
 /* cards_from_json builds a Record from JSON text through the generated
    builder and text read (docs/SPEC-TABLES.md §16), then the generated save.
@@ -94,13 +94,13 @@ int cards_render(const CardsRecord *record, uint8_t **out, int64_t *out_len,
    re-published by retain_bridge.c from the file-local generated functions
    (docs/SPEC-TABLES.md §6.6). The caller owns the region, retain bytes and
    retain id list. */
-const Card *cards_retain_load(uint8_t *region, int64_t region_bytes,
+const cards_card_t *cards_retain_load(uint8_t *region, int64_t region_bytes,
                               const uint8_t *wire, int64_t wire_bytes,
-                              TableRetain *retain, TableReport *report);
-int64_t cards_retain_measure(const Card *root, TableRetain *retain);
-int64_t cards_retain_save(const Card *root, TableRetain *retain,
+                              cards_table_retain_t *retain, cards_table_report_t *report);
+int64_t cards_retain_measure(const cards_card_t *root, cards_table_retain_t *retain);
+int64_t cards_retain_save(const cards_card_t *root, cards_table_retain_t *retain,
                           uint8_t *buffer, int64_t capacity,
-                          TableReport *report);
+                          cards_table_report_t *report);
 
 /* cards_upgrade rewrites wire through the generated retained region path
    (tla/CardVersioning.tla NoFieldLost, BodyUnchanged, RefusalKeepsOriginal;
@@ -108,7 +108,7 @@ int64_t cards_retain_save(const Card *root, TableRetain *retain,
    is kept at the end of its own body. Any loss event returns 0 with a named
    error and no output; the input is never mutated. */
 int cards_upgrade(const uint8_t *wire, int64_t wire_len, uint8_t **out,
-                  int64_t *out_len, TableReport *report, char *err,
+                  int64_t *out_len, cards_table_report_t *report, char *err,
                   size_t err_cap);
 
 /* cards_upgrade_ex is the retention seam Upgrade fixes at the customer
@@ -116,7 +116,7 @@ int cards_upgrade(const uint8_t *wire, int64_t wire_len, uint8_t **out,
    the same path so a tiny capacity can be shown to name retain-lost while the
    input is preserved. */
 int cards_upgrade_ex(const uint8_t *wire, int64_t wire_len, uint8_t **out,
-                     int64_t *out_len, TableReport *report, int64_t retain_bytes,
+                     int64_t *out_len, cards_table_report_t *report, int64_t retain_bytes,
                      int retain_ids, char *err, size_t err_cap);
 
 /* cards_task_hash writes 64 lowercase hex digits plus a terminator into
@@ -132,10 +132,10 @@ int cards_set_needs(CardsRecord *record, const char *const *values, int count,
                     char *err, size_t err_cap);
 int cards_set_paths(CardsRecord *record, const char *const *values, int count,
                     char *err, size_t err_cap);
-int cards_set_tier(CardsRecord *record, Tier tier, char *err, size_t err_cap);
-int cards_set_priority(CardsRecord *record, Priority priority, char *err,
+int cards_set_tier(CardsRecord *record, cards_tier_t tier, char *err, size_t err_cap);
+int cards_set_priority(CardsRecord *record, cards_priority_t priority, char *err,
                        size_t err_cap);
-int cards_set_column(CardsRecord *record, Column column, char *err,
+int cards_set_column(CardsRecord *record, cards_column_t column, char *err,
                      size_t err_cap);
 int cards_set_holder(CardsRecord *record, const char *holder, char *err,
                      size_t err_cap);

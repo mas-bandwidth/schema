@@ -14,7 +14,7 @@ import (
 func TestMessageLebTenthByteRefusalEmitted(t *testing.T) {
 	t.Parallel()
 	u := &ir.Unit{Package: "bench"}
-	src := tableMessageForm(u, false)
+	src := tableMessageForm(u)
 	want := "if ( shift == 63 && by > 1 ) { return false; }"
 	if !strings.Contains(src, want) {
 		t.Errorf("the emitted TableMessageLeb does not carry the tenth-byte refusal %q", want)

@@ -569,7 +569,7 @@ fixed table Host
 
 	// AN OLDER LEGAL ENTRY, the positive control: the same table with a
 	// narrower label — a real lineage widening whose plan must still compile, so
-	// the bound refuses the overreach and not the peer.
+	// the bound refuses the overreach and not the endpoint.
 	older := unitFrom(t, `package probe
 
 fixed table Host
@@ -653,7 +653,7 @@ void main() {
       'R14: the plan is refused WHOLE, never partly compiled (${plans[0].count} entries)');
 
   // 3. THE POSITIVE CONTROL: the legal older entry still compiles, so the
-  //    bound refuses the overreach and not the peer.
+  //    bound refuses the overreach and not the endpoint.
   check(plans[1].why == t.TableFixedRefusal.none && plans[1].count > 0,
       'R14: the legal older entry compiles: '
       '${t.TableFixedRefusal.name(plans[1].why)} count=${plans[1].count}');
@@ -709,9 +709,9 @@ func t03R22(t *testing.T) {
 		name, want, src string
 	}{
 		// "every table or type reached by value is itself fixed"
-		{"a plain table by value", "plain table Child",
+		{"a variable table by value", "variable table Child",
 			"package probe\n\ntable Child { x int32 }\n\nfixed table T { child Child }\n"},
-		{"a plain table in an array", "plain table Ship",
+		{"a variable table in an array", "variable table Ship",
 			"package probe\n\ntable Ship { hp int32 }\n\nfixed table T { ships [..4]Ship }\n"},
 		// "a pointer, map or unbounded array in the closure is a compile
 		// refusal"

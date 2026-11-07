@@ -254,7 +254,7 @@ func t07GoW8(t *testing.T) {
 	if !ok {
 		t.Fatal("W8: the emitted RootFixedDst names no blob row")
 	}
-	// meta 3 is tableFixedTextBytes and meta 1 is tableFixedTextUtf8 in the
+	// meta 3 is tableFixedTextBytes and meta 1 is tableFixedTextUTF8 in the
 	// runtime the unit carries (fixedruntime.go's tableFixedRuntime const).
 	if blob[1] != "1" || blob[3] != "1" || blob[5] != strconv.Itoa(t07TextBytes) {
 		t.Errorf("W8: bytes(N) takes the ARRAY row — stride 1, a live count, meta bytes — got %v", blob)

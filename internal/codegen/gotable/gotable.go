@@ -48,6 +48,7 @@ import (
 	"unicode"
 
 	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	schemaparser "github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -83,9 +84,9 @@ type tableGen struct {
 	home     bool // this file carries the unit's shared table runtime
 	anyKeyed bool
 	owner    *ir.Struct // the closure member whose codec is being emitted
-	// messageSkip is the set of tables the message form emits nothing for
-	// (docs/SPEC-TABLES.md §2.13.1), computed once, in a unit with unbounded text
-	messageSkip map[string]bool
+	// messageClosure is the set of declarations the message form emits a body
+	// codec for (docs/SPEC-TABLES.md §3.3), computed once
+	messageClosure map[string]bool
 
 	types  strings.Builder // the table storage structs
 	body   strings.Builder // everything else
@@ -478,10 +479,10 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		g.pf("// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the\n// one digest a block carries and BlockOpen compares, and the fact §3.3's\n// announcement carries before the first body so a peer's build is knowable.\nconst BuildVersion uint64 = 0x%016x\n\n", ir.BuildVersion(u))
+		g.pf("// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the\n// one digest a block carries and BlockOpen compares, and the fact §3.3's\n// announcement carries before the first body so an endpoint's build is knowable.\nconst BuildVersion uint64 = 0x%016x\n\n", ir.BuildVersion(u))
 		// the message form's TYPES are the core's: the descriptor's message
 		// columns are typed by them, and the core declares the descriptor
-		g.pf("%s", unboundedTextRuntime(u, textListRuntime(u, tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageCoreTypes(u)+tableFixedRuntime)))
+		g.pf("%s", unboundedTextRuntime(u, textListRuntime(u, tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageCoreTypes()+tableFixedRuntime)))
 		if s.Message {
 			g.into(&g.message, func() { g.pf("%s", tableMessageRuntime(u)) })
 		}
@@ -657,7 +658,7 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		}
 		maps.Copy(out, view)
 	}
-	return out, forms, nil
+	return out, forms, goname.RespellFiles(out) // every identifier in Go's initialisms
 }
 
 // emitForm assembles one optional form's buffer into its own file, when the
@@ -707,7 +708,7 @@ func (g *tableGen) assembleForm(name string, form Form, body string) ([]byte, er
 
 // formImports is every import an optional form's file may need, in the order
 // a core file spells them.
-var formImports = []string{`"encoding/binary"`, `"unicode/utf8"`, `"sync"`, `"sync/atomic"`, `"slices"`, `"math"`, `"time"`, `"unsafe"`, `"github.com/mas-bandwidth/serialize.go"`}
+var formImports = []string{`"encoding/binary"`, `"unicode/utf8"`, `"sync"`, `"sync/atomic"`, `"slices"`, `"math"`, `"time"`, `"unsafe"`, `"github.com/mas-bandwidth/serialize.go/v2"`}
 
 // usedImports keeps the imports body refers to: a selector on an identifier
 // the file does not declare (go/parser leaves it unresolved) names a package.
@@ -730,9 +731,7 @@ func usedImports(body string, candidates []string) []string {
 	var keep []string
 	for _, c := range candidates {
 		path := strings.Trim(c, `"`)
-		name := path[strings.LastIndex(path, "/")+1:]
-		name = strings.TrimSuffix(name, ".go")
-		if used[name] {
+		if used[goname.ImportName(path)] {
 			keep = append(keep, c)
 		}
 	}
@@ -799,7 +798,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 		std = append(std, `"unsafe"`)
 	}
 	if usesSerialize {
-		std = append(std, `"github.com/mas-bandwidth/serialize.go"`)
+		std = append(std, `"github.com/mas-bandwidth/serialize.go/v2"`)
 	}
 	// the core's imports are its own: what an optional form needed went with it
 	h.WriteString(goImports(usedImports(g.types.String()+g.body.String(), std)))
@@ -978,8 +977,11 @@ type TableReport struct {
 	Clamped      int32 // out-of-range values clamped to declared bounds
 	// ClampedField names the field or path whose value a read clamped
 	// (docs/SPEC-TABLES.md §6.5), empty when none: the strict read's clamped
-	// refusal carries it, apart from Reason, which non_finite may already own.
+	// refusal carries it, apart from Reason.
 	ClampedField string
+	// NonFiniteFloat names the first NaN or infinity float a read met,
+	// <Table>.<field>: every read refuses it (docs/SPEC-TABLES.md §3.3).
+	NonFiniteFloat string
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -993,11 +995,11 @@ type TableReport struct {
 	// already named (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
 	// node, never a copy per slot, and the strict read refuses blob_shared.
 	BlobShared int32
-	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
-	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the peer's
+	// BuildVersionRemote and BuildVersionOwn are the two build versions a strict
+	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the endpoint's
 	// announcement and this unit's own. They are zero on every other read.
-	BuildVersionPeer uint64
-	BuildVersionOwn  uint64
+	BuildVersionRemote uint64
+	BuildVersionOwn    uint64
 	// FixedRaised is true only on a FIXED form's refusal
 	// (docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
 	// BY NAME (via its TableRefuseReason member), and the four form-byte
@@ -1084,12 +1086,12 @@ type TableFieldInfo struct {
 	// enum's value -> name, a union's tag -> arm name, a FLAGS field's bit
 	// index -> variant name. nil for every other kind.
 	EnumName func(value uint64) string
-	// VariantId is the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for
+	// VariantID is the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for
 	// an enum, the hash of the variant's name; for a union, the hash of the
 	// arm's name. Hash zero is an ordinary id; ordinal zero is None. nil
 	// for every other kind — a FLAGS field's variants have no per-variant wire
 	// id (§4), so a nil here beside a non-nil EnumName is what says "flags".
-	VariantId func(value uint64) uint64
+	VariantID func(value uint64) uint64
 	// EnumDefault is the ordinal an enum read lands when the wire or text names
 	// a variant marked | deprecated (docs/SPEC-TABLES.md §2.15): the FIELD's
 	// declared default, or 0 (None) for an array, list, map or keyed ELEMENT.
@@ -1101,12 +1103,12 @@ type TableFieldInfo struct {
 
 	// an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
 	// per variant of KeyTypeName, indexed by the variant's value, and its
-	// slots ride under variant ids rather than positions. KeyName and KeyId
+	// slots ride under variant ids rather than positions. KeyName and KeyID
 	// are the key's vocabulary — walk [0, ArrayBound) to print slots by name.
 	// All three are nil/"" on every other field.
 	KeyTypeName string
 	KeyName     func(value uint64) string
-	KeyId       func(value uint64) uint64
+	KeyID       func(value uint64) uint64
 
 	// Arms is a union field's shape: the tag and the arms indexed by it, behind
 	// a function so a descriptor graph needs no initialization order. nil for
@@ -1133,7 +1135,7 @@ type TableFieldInfo struct {
 
 // TableUnionArmInfo is one arm of a union field: where its payload sits inside
 // the union's storage and what its payload looks like. The arm's NAME and its
-// table-wire id come from the field's EnumName/VariantId functions at the same
+// table-wire id come from the field's EnumName/VariantID functions at the same
 // tag, so nothing is spelled twice (docs/SPEC-TABLES.md §8).
 type TableUnionArmInfo struct {
  Field TableFieldInfo // arm shape; offsets are relative to union storage
@@ -1159,6 +1161,8 @@ type TableTypeInfo struct {
 	Size      uint32 // unsafe.Sizeof the storage struct
  Id uint64
  Variable bool
+ CycleIndex uint64
+ CycleType func(uint64)*TableTypeInfo
  NodeType func(uint64)*TableTypeInfo
  SaveBody func(*TableWriter, unsafe.Pointer) bool
  LoadBody func(TableReader, unsafe.Pointer) bool
@@ -1184,13 +1188,13 @@ type TableTypeInfo struct {
 // evaluate the same guards, so they are declared here, once, and the text
 // form's own file only adds its walk (docs/SPEC-TABLES.md, "GO's optional forms").
 
-type tableJsonGraphNode struct { refs int; label uint64; written bool }
+type tableJSONGraphNode struct { refs int; label uint64; written bool }
 
 // ---- storage access: the descriptors give an offset and a width, and the
 // ---- storage is the HOST's, so every load and store goes through a width
 // ---- switch rather than a copy into the low bytes of a wider word
 
-func tableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
+func tableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	switch width {
 	case 1:
 		return uint64(*(*uint8)(storage))
@@ -1204,7 +1208,7 @@ func tableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	return 0
 }
 
-func tableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
+func tableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
 	switch width {
 	case 1:
 		*(*uint8)(storage) = uint8(value)
@@ -1217,8 +1221,8 @@ func tableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
 	}
 }
 
-func tableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
-	raw := tableJsonGetRaw(storage, width)
+func tableJSONGetSigned(storage unsafe.Pointer, width uint32) int64 {
+	raw := tableJSONGetRaw(storage, width)
 	if width < 8 {
 		sign := uint64(1) << (width*8 - 1)
 		if raw&sign != 0 {
@@ -1230,8 +1234,8 @@ func tableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
 
 type tableMapKey struct { text []byte; raw uint64 }
 func tableMapKeyValid(k tableMapKey,f *TableFieldInfo)bool {return f.Kind!=12||k.raw==0&&len(k.text)<=int(f.ArrayBound)}
-func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo)tableMapKey {key:=tableMapKey{};if f.Kind==12 {n:=*(*int32)(unsafe.Add(p,f.CountOffset));if n<0||n>f.ArrayBound{return tableMapKey{text:nil,raw:1}};key.text=unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(n))}else{key.raw=tableJsonGetRaw(unsafe.Add(p,f.Offset),f.ElemSize);if f.Kind>=2&&f.Kind<=5 {key.raw=uint64(tableJsonGetSigned(unsafe.Add(p,f.Offset),f.ElemSize))}};return key}
-func tableMapStoreKey(p unsafe.Pointer,f *TableFieldInfo,k tableMapKey) {if f.Kind==12 {clear(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(f.ArrayBound)+1));copy(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),len(k.text)),k.text);*(*int32)(unsafe.Add(p,f.CountOffset))=int32(len(k.text))}else{tableJsonSetRaw(unsafe.Add(p,f.Offset),f.ElemSize,k.raw)}}
+func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo)tableMapKey {key:=tableMapKey{};if f.Kind==12 {n:=*(*int32)(unsafe.Add(p,f.CountOffset));if n<0||n>f.ArrayBound{return tableMapKey{text:nil,raw:1}};key.text=unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(n))}else{key.raw=tableJSONGetRaw(unsafe.Add(p,f.Offset),f.ElemSize);if f.Kind>=2&&f.Kind<=5 {key.raw=uint64(tableJSONGetSigned(unsafe.Add(p,f.Offset),f.ElemSize))}};return key}
+func tableMapStoreKey(p unsafe.Pointer,f *TableFieldInfo,k tableMapKey) {if f.Kind==12 {clear(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(f.ArrayBound)+1));copy(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),len(k.text)),k.text);*(*int32)(unsafe.Add(p,f.CountOffset))=int32(len(k.text))}else{tableJSONSetRaw(unsafe.Add(p,f.Offset),f.ElemSize,k.raw)}}
 func tableMapKeyOrder(a,b tableMapKey,f *TableFieldInfo)int {if f.Kind==12 {for i:=0;i<len(a.text)&&i<len(b.text);i++ {if a.text[i]<b.text[i]{return -1};if a.text[i]>b.text[i]{return 1}};if len(a.text)<len(b.text){return -1};if len(a.text)>len(b.text){return 1};return 0};if f.Kind>=2&&f.Kind<=5 {if int64(a.raw)<int64(b.raw){return -1};if int64(a.raw)>int64(b.raw){return 1};return 0};if a.raw<b.raw{return -1};if a.raw>b.raw{return 1};return 0}
 
 // A guarded group rides only when its guard reads true — the wire's own elision
@@ -1241,7 +1245,7 @@ func tableMapKeyOrder(a,b tableMapKey,f *TableFieldInfo)int {if f.Kind==12 {for 
 // evaluating it is a walk of the same descriptor. Nothing is inferred in the
 // other direction: reading places every key it can name, and the guard is a
 // plain bool key (§16.2).
-func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
+func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
 	p := 0
 	for {
 		for p < len(guard) && (guard[p] == ' ' || guard[p] == '&') {
@@ -1264,7 +1268,7 @@ func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 		for i := range info.Fields {
 			f := &info.Fields[i]
 			if f.Name == name {
-				value = tableJsonGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
+				value = tableJSONGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
 				break
 			}
 		}
@@ -1520,6 +1524,19 @@ table Root { numbers []int32
 `,
 	"package probe\nfixed table W { words wstring(8) }\n",
 	"package probe\ntable W { words wstring(8)\n n float64 }\n",
+	`package probe
+fixed table IntegrityChild | integrity = "crc32c" { n int32 = 7 }
+table ArrayOnly | json = "array" { items [..2]string(8) | total = 8 }
+table Rich | integrity = "crc32c", forms = "wire,json,cook" {
+ req int32 | required, min = -10, max = 10
+ stamped timestamp
+ note *string
+ notes []?string
+ tags [..2]?string(8) | total = 8
+ lookup ?map[string]?int32
+ child IntegrityChild
+}
+`,
 }
 
 // rtDecl is one top-level declaration of a probe's home file.
@@ -1972,14 +1989,13 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 }
 
 // rtImportName is the name a file refers to an import by: its own name, else
-// the path's last element without a ".go" suffix
-// (github.com/mas-bandwidth/serialize.go is package serialize).
+// goname.ImportName of its path.
 func rtImportName(is *ast.ImportSpec) string {
 	if is.Name != nil {
 		return is.Name.Name
 	}
 	path, _ := strconv.Unquote(is.Path.Value)
-	return strings.TrimSuffix(path[strings.LastIndex(path, "/")+1:], ".go")
+	return goname.ImportName(path)
 }
 
 // rtStructFields is a shared struct type's name and its field names in order,

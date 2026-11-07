@@ -40,6 +40,9 @@ const (
 	ReasonMessageFormAsFile  = "message_form_as_file"
 	ReasonBatchTooLarge      = "batch_too_large"
 	ReasonCountRefusal       = "count_refusal"
+	// ReasonNonFiniteFloat is every read's refusal of a float whose bits are a
+	// NaN or an infinity (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27).
+	ReasonNonFiniteFloat = "non_finite_float"
 
 	// ProbeSchemaPath is the manifest's name for the one schema that is not in
 	// the checkout: a variable root whose collection count can pass the int32
@@ -131,6 +134,7 @@ func EngineReasons() []string {
 		tablewire.ReasonBatchTooLarge.String(),
 		ReasonCountRefusal,
 		ReasonDamaged,
+		ReasonNonFiniteFloat,
 	}
 }
 
@@ -369,6 +373,9 @@ func RefusalReason(err error) (string, error) {
 	}
 	if _, ok := errors.AsType[*tablewire.CountRefusal](err); ok {
 		return ReasonCountRefusal, nil
+	}
+	if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](err); ok {
+		return ReasonNonFiniteFloat, nil
 	}
 	return "", fmt.Errorf("engine returned an unnamed refusal: %w", err)
 }

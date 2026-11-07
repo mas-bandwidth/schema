@@ -6,11 +6,11 @@ package javatable
 // deliberately UNLAWFUL — §5.1 refuses a removal — so the lineage entry is HANDED
 // IN by the probe and never read from a lock.
 //
-// `unknown` is asserted EXACTLY == 1: `Item.drop` is ONE field of ONE peer however
+// `unknown` is asserted EXACTLY == 1: `Item.drop` is ONE field of ONE endpoint however
 // many of the four elements carry it. A leg that counts once per ELEMENT lands 4,
 // and that 4 is the whole reason this row exists. The census lands ONCE, after the
 // record loop, on a read that RETURNS (§5.9 #6) — so a SECOND read of the same
-// peer owes the same number again, which is the second half of the row.
+// endpoint owes the same number again, which is the second half of the row.
 import (
 	"fmt"
 	"os"
@@ -38,7 +38,7 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
 	// is about the SECOND read. Each read is handed a FRESH report, exactly as
 	// the Go reference's probe does (fixedversioning_unknown_census_test.go in
 	// internal/codegen/gotable): the census is a per-read number, so two reads
-	// of one peer owe the same one.
+	// of one endpoint owe the same one.
 	const class = "Probe_census"
 	src := fmt.Sprintf(`import java.nio.file.*;
 
@@ -138,7 +138,7 @@ public final class %[1]s {
 			t.Errorf("%s: a counter that must not move did: %v", tag, reads[tag])
 		}
 		if u := num(tag, "unknown"); u != 1 {
-			t.Errorf("%s: unknown=%d, want 1 — Item.drop is ONE field of ONE peer, not one per element",
+			t.Errorf("%s: unknown=%d, want 1 — Item.drop is ONE field of ONE endpoint, not one per element",
 				tag, u)
 		}
 	}

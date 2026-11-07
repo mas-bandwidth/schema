@@ -1,0 +1,69 @@
+#!/bin/sh
+# THE NEGATIVE CONTROLS OF THE RUST COOK OF MAPS AND LISTS (docs/PORTING.md
+# M19). usage, from the repository root:
+#
+#   test/rust-cookmap/control sort     the carve lays a map's entries unsorted
+#   test/rust-cookmap/control align    the carve lays an array unaligned
+#   test/rust-cookmap/control wide     the extent of a node holding 128-bit
+#                                      elements starts at the floor of eight
+#
+# Each builds the compiler from a COPY of the generator source (go build
+# -overlay, so no tracked file is written), generates the two units the gate
+# reads from it, builds the gate against THOSE crates, and requires the gate to
+# turn red on its own failure line.
+#
+# RUSTUP_BIN and SERIALIZE_RS come from make/rust.mk.
+set -e
+mode=$1
+case "$mode" in
+sort)
+	sabotage=rust-cookmap-unsorted
+	expect='Fleet.ships: the entries do not ascend'
+	;;
+align)
+	sabotage=rust-cookmap-unaligned
+	expect='first difference at byte'
+	;;
+wide)
+	sabotage=rust-cookmap-wide-extent
+	expect='widelist_wide: '
+	;;
+*)
+	echo "usage: $0 sort|align|wide" >&2
+	exit 2
+	;;
+esac
+
+root=$(pwd)
+work=build/rust-cookmap-$mode-nc
+rm -rf "$work"
+mkdir -p "$work/gen" "$work/prog/src"
+
+go run ./tools/sabotage -name "$sabotage" -out "$work/src.go.txt" internal/codegen/rusttable/cookcarve.go
+printf '{"Replace":{"%s/internal/codegen/rusttable/cookcarve.go":"%s/%s/src.go.txt"}}\n' "$root" "$root" "$work" > "$work/overlay.json"
+go build -overlay "$work/overlay.json" -o "$work/schema" ./cmd/schema
+
+for unit in mapdemo:tables/maps listdemo:tables/lists widelistdemo:tables/widelist; do
+	name=${unit%%:*}
+	path=${unit#*:}
+	"./$work/schema" generate --lang rust --out "$work/gen/$name/src" "$path"
+	printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/%s" }\n' \
+		"$name" "$root" "${SERIALIZE_RS:-../serialize.rs}" > "$work/gen/$name/Cargo.toml"
+done
+
+cp test/rust-cookmap/src/main.rs "$work/prog/src/main.rs"
+sed -e "s|../../build/tables-generated-rust/|$root/$work/gen/|" test/rust-cookmap/Cargo.toml > "$work/prog/Cargo.toml"
+PATH="${RUSTUP_BIN:-/opt/homebrew/opt/rustup/bin}:$PATH" cargo build --quiet --manifest-path "$work/prog/Cargo.toml"
+
+if "./$work/prog/target/debug/rust-cookmap" > "$work/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: the Rust cook of maps and lists stayed green with the $mode sabotage"
+	tail -5 "$work/log"
+	exit 1
+fi
+if ! grep -q -- "$expect" "$work/log"; then
+	echo "NEGATIVE CONTROL FAILED: the gate went red, but not on: $expect"
+	cat "$work/log"
+	exit 1
+fi
+grep -m1 -- "$expect" "$work/log"
+echo "rust cook map negative control ($mode): the gate goes RED"

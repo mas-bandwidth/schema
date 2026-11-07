@@ -31,10 +31,11 @@ type Report struct {
 	// f32 into f64, decoded exactly. It is the one counter that names no
 	// loss, and the wire's own event: a text carries no kind to widen from,
 	// so the text form leaves it at zero (§16.2).
-	Widened   int
-	Clamped   int
-	Duplicate int
-	Malformed bool
+	Widened         int
+	Clamped         int
+	Duplicate       int
+	MissingRequired int // bodies refused for absent required fields
+	Malformed       bool
 	// BlobShared counts the extra slots that named a blob record another slot
 	// already named (docs/SPEC-TABLES.md §2.5). The tolerant read keeps the one
 	// node and never a copy per slot, and the strict read refuses blob_shared.
@@ -60,6 +61,12 @@ type Report struct {
 	// not have kept it.
 	Retained   int
 	RetainLost int
+	// NonFiniteFloat is a REFUSAL, not one of §4's events (docs/SPEC-TABLES.md
+	// §3.3, a plain float's special values; Glenn, 2026-10-27): the first float
+	// field, as <Table>.<field>, whose bits a read found to be a NaN or an
+	// infinity, and empty when there was none. Every read refuses such a wire,
+	// tolerant and strict alike, as `non_finite_float`, and lands nothing.
+	NonFiniteFloat string
 }
 
 // Add folds another report into this one, which is how a pack over a tree of
@@ -70,6 +77,7 @@ func (r *Report) Add(o Report) {
 	r.Widened += o.Widened
 	r.Clamped += o.Clamped
 	r.Duplicate += o.Duplicate
+	r.MissingRequired += o.MissingRequired
 	r.BlobShared += o.BlobShared
 	r.Malformed = r.Malformed || o.Malformed
 	if o.Reason != "" {
@@ -77,14 +85,35 @@ func (r *Report) Add(o Report) {
 	}
 	r.Retained += o.Retained
 	r.RetainLost += o.RetainLost
+	if r.NonFiniteFloat == "" {
+		r.NonFiniteFloat = o.NonFiniteFloat
+	}
 }
+
+// RefuseNonFinite records the first float field a read found holding a NaN
+// or an infinity (docs/SPEC-TABLES.md §3.3), by its <Table>.<field> name. The
+// first name a read records wins, and the read that recorded one refuses with
+// Reason `non_finite_float: <Table>.<field>` when its walk ends.
+func (r *Report) RefuseNonFinite(name string) {
+	if r.NonFiniteFloat == "" {
+		r.NonFiniteFloat = name
+	}
+}
+
+// FiniteF32 and FiniteF64 are the raw-bits test every read runs before a
+// float's bits become a value (docs/SPEC-TABLES.md §3.3): an exponent of all
+// ones is a NaN (any sign, any payload) or an infinity, and nothing else is.
+func FiniteF32(bits uint32) bool { return bits&0x7F800000 != 0x7F800000 }
+
+// FiniteF64 is FiniteF32 at sixty-four bits.
+func FiniteF64(bits uint64) bool { return bits&0x7FF0000000000000 != 0x7FF0000000000000 }
 
 // Silent reports whether nothing at all was counted. RETENTION'S TWO COUNTERS
 // ARE NOT IN IT: `retained` names no loss at all, and `retain_lost` is read
 // beside the other counters in the safety check §6.6 states rather than folded
 // into the read's own silence.
 func (r Report) Silent() bool {
-	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.BlobShared == 0 && !r.Malformed
+	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.BlobShared == 0 && r.MissingRequired == 0 && !r.Malformed
 }
 
 // Cell is one storage slot: a scalar in whichever representation its kind
@@ -252,6 +281,15 @@ func (m *Model) New(st *ir.Struct) *Instance {
 		m.reset(&inst.Fields[i])
 	}
 	return inst
+}
+
+// Clear returns every field of an instance to its declared defaults, as
+// [Model.New] built them. A load that meets damage discards what it read
+// (docs/SPEC-TABLES.md §4), and this is how the engine discards it.
+func (m *Model) Clear(inst *Instance) {
+	for i := range inst.Fields {
+		m.reset(&inst.Fields[i])
+	}
 }
 
 // reset returns one field to its declared defaults, mirroring the generated

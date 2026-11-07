@@ -72,6 +72,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -221,7 +222,30 @@ func masked(expr string, bits int64) string {
 	if m == "" {
 		return expr
 	}
+	if atomic(expr) {
+		return expr + " & " + m
+	}
 	return "(" + expr + ") & " + m
+}
+
+// atomic reports whether a rendered expression has no operator outside
+// parentheses (a call, a conversion, a name), so an operator beside it needs
+// none around it.
+func atomic(expr string) bool {
+	depth := 0
+	for i := 0; i < len(expr); i++ {
+		switch expr[i] {
+		case '(', '[':
+			depth++
+		case ')', ']':
+			depth--
+		case ' ':
+			if depth == 0 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // shiftLeft renders `expr << n`, dropping the shift at zero.
@@ -368,7 +392,7 @@ func (g *gen) flatPiecesOf(item ir.Item, base string) ([]flatPiece, bool) {
 		return []flatPiece{p}, true
 	}
 	f := it.F
-	name := base + ir.GoExportName(f.Name)
+	name := base + goname.Member(f.Name)
 
 	if f.Array == ir.ArrayFixed && !g.bulkBytes[f] {
 		// a fixed bound: the element offsets are
@@ -576,9 +600,9 @@ func (g *gen) flatConstPiece(it *ir.ConstItem) flatPiece {
 		bits:  it.Bits,
 		guard: noGuard,
 		emit: g.constEmit("uint64("+v+")", it.Bits,
-			fmt.Sprintf(" // const(%s, %d) — SPEC §4.3", v, it.Bits)),
+			fmt.Sprintf(" // const(%s, %d)", v, it.Bits)),
 		read: func(ind, src string) {
-			g.pf("%sif %s != %s { // const(%s, %d): a read rejects any other value (SPEC §4.3)\n", ind, src, v, v, it.Bits)
+			g.pf("%sif %s != %s { // const(%s, %d): a read rejects any other value\n", ind, src, v, v, it.Bits)
 			g.pf("%s\treturn ErrValidation\n%s}\n", ind, ind)
 		},
 	}
@@ -590,7 +614,7 @@ func (g *gen) flatReservedPiece(it *ir.ReservedItem) flatPiece {
 		guard: noGuard,
 		emit:  g.constEmit("uint64(0)", it.Bits, fmt.Sprintf(" // reserved(%d) — zeros on the wire", it.Bits)),
 		read: func(ind, src string) {
-			g.pf("%sif %s != 0 { // reserved(%d): a read rejects nonzero (SPEC §4.3)\n", ind, src, it.Bits)
+			g.pf("%sif %s != 0 { // reserved(%d): a read rejects nonzero\n", ind, src, it.Bits)
 			g.pf("%s\treturn ErrValidation\n%s}\n", ind, ind)
 		},
 	}
@@ -604,7 +628,7 @@ func (g *gen) flatArrayElemPiece(f *ir.Field, name string) (flatPiece, bool) {
 
 // flatFieldPiece classifies a scalar field against its base expression.
 func (g *gen) flatFieldPiece(f *ir.Field, base string) (flatPiece, bool) {
-	return g.flatScalarPiece(f, base+ir.GoExportName(f.Name))
+	return g.flatScalarPiece(f, base+goname.Member(f.Name))
 }
 
 // flatScalarPiece is the classification both reach. Fixed point and the
@@ -629,7 +653,7 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 		storage := g.goFieldType(f.Type)
 		return flatPiece{
 			bits: w, guard: noGuard,
-			emit: g.constEmit("uint64("+name+")", w, ""),
+			emit: g.constEmit(bitsValue(storage, name), w, ""),
 			read: func(ind, src string) {
 				if storage == "uint64" {
 					g.pf("%s%s = %s\n", ind, name, src)
@@ -640,7 +664,7 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 		}, true
 
 	// The float cases are the only classification that reaches the math
-	// package, and they set needsMath from inside their emit/read closures —
+	// package, and they set needsMath from inside their guard/emit/read closures —
 	// at EMISSION, never here. Classification is speculative: flatGroupSize,
 	// flatStructRun and the run accumulators all classify runs that may never
 	// be emitted, and a run that falls back to the per-field form calls
@@ -651,32 +675,12 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 		if f.HasFloatRange {
 			return g.flatCompressedPiece(f, name)
 		}
-		emit := g.constEmit("uint64(math.Float32bits("+name+"))", 32, "")
-		return flatPiece{
-			bits: 32, guard: noGuard,
-			emit: func(ind string, idx int) {
-				g.needsMath = true
-				emit(ind, idx)
-			},
-			read: func(ind, src string) {
-				g.needsMath = true
-				g.pf("%s%s = math.Float32frombits(uint32(%s))\n", ind, name, src)
-			},
-		}, true
+		return g.flatFloatPiece(32, "math.Float32bits("+name+")", "0x7f800000",
+			name+" = math.Float32frombits(uint32(%s))"), true
 
 	case ir.TFloat64:
-		emit := g.constEmit("math.Float64bits("+name+")", 64, "")
-		return flatPiece{
-			bits: 64, guard: noGuard,
-			emit: func(ind string, idx int) {
-				g.needsMath = true
-				emit(ind, idx)
-			},
-			read: func(ind, src string) {
-				g.needsMath = true
-				g.pf("%s%s = math.Float64frombits(%s)\n", ind, name, src)
-			},
-		}, true
+		return g.flatFloatPiece(64, "math.Float64bits("+name+")", "0x7ff0000000000000",
+			name+" = math.Float64frombits(%s)"), true
 
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -687,12 +691,15 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 			return flatPiece{
 				bits: bits,
 				guard: func(ind string, idx int) {
-					g.pf("%senumValue%d := int32(%s)\n", ind, idx, name)
-					g.pf("%sif enumValue%d < 0 || enumValue%d > %d {\n", ind, idx, idx, max)
-					g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
+					// the storage is unsigned and sized to max, so only the
+					// top can be out of range, and not at all when max fills it
+					if !rangeFillsBits(big.NewInt(max), int64(ref.StorageBits)) {
+						g.pf("%sif %s > %d {\n", ind, name, max)
+						g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
+					}
 				},
 				emit: func(ind string, idx int) {
-					g.pf("%sf%d := %s\n", ind, idx, masked(fmt.Sprintf("uint64(uint32(enumValue%d))", idx), bits))
+					g.pf("%sf%d := %s\n", ind, idx, masked("uint64("+name+")", bits))
 				},
 				read: func(ind, src string) {
 					// a tag above the exported extent reaches the storage's bit
@@ -701,7 +708,7 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 						g.pf("%sif %s > %d {\n", ind, src, max)
 						g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
 					}
-					g.pf("%s%s = %s(int32(%s))\n", ind, name, typeName, src)
+					g.pf("%s%s = %s(%s)\n", ind, name, typeName, src)
 				},
 			}, true
 
@@ -731,6 +738,40 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 	return flatPiece{}, false
 }
 
+// flatFloatPiece is a bare float32 or float64: its IEEE-754 bit pattern rides
+// as is, so the flat form places the bits itself and never reaches the
+// runtime's SerializeFloat32/64. It therefore owns the finite rule those carry
+// under serialize format 2.0 (SPEC §4.3): a NaN or an infinity, whose exponent
+// field is all ones, is refused with serialize.ErrNonFiniteFloat on write and
+// on read, tested on the raw bits; negative zero and the subnormals ride bit
+// exact. bitsExpr is the pattern at its own width, exponent the mask of its
+// exponent field, and store the field store with a %s for the extracted bits.
+func (g *gen) flatFloatPiece(bits int64, bitsExpr, exponent, store string) flatPiece {
+	wide := bitsExpr
+	if bits < 64 {
+		wide = "uint64(" + bitsExpr + ")"
+	}
+	emit := g.constEmit(wide, bits, "")
+	return flatPiece{
+		bits: bits,
+		guard: func(ind string, idx int) {
+			g.needsMath = true
+			g.pf("%sif %s&%s == %s { // NaN and the infinities are not values of the type\n", ind, bitsExpr, exponent, exponent)
+			g.pf("%s\treturn serialize.ErrNonFiniteFloat\n%s}\n", ind, ind)
+		},
+		emit: func(ind string, idx int) {
+			g.needsMath = true
+			emit(ind, idx)
+		},
+		read: func(ind, src string) {
+			g.needsMath = true
+			g.pf("%sif %s&%s == %s { // a NaN or infinity pattern is refused on its raw bits\n", ind, src, exponent, exponent)
+			g.pf("%s\treturn serialize.ErrNonFiniteFloat\n%s}\n", ind, ind)
+			g.pf("%s"+store+"\n", ind, src)
+		},
+	}
+}
+
 // flatCompressedPiece folds a ranged float's quantization into the run. The
 // arithmetic is emitWriteCompressedFold's and emitReadCompressedFold's,
 // statement for statement — including the float32() conversions that force the
@@ -747,7 +788,7 @@ func (g *gen) flatCompressedPiece(f *ir.Field, name string) (flatPiece, bool) {
 			if min32 == 0 {
 				g.pf("%s\tnormalizedValue := %s / %s\n", ind, name, f32lit(delta))
 			} else {
-				g.pf("%s\tnormalizedValue := (%s - (%s)) / %s\n", ind, name, f32lit(min32), f32lit(delta))
+				g.pf("%s\tnormalizedValue := (%s) / %s\n", ind, floatMinusMin(name, min32), f32lit(delta))
 			}
 			g.pf("%s\tif !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too\n", ind)
 			g.pf("%s\t\tnormalizedValue = 0\n%s\t} else if !(normalizedValue <= 1) {\n%s\t\tnormalizedValue = 1\n%s\t}\n", ind, ind, ind, ind)
@@ -757,15 +798,12 @@ func (g *gen) flatCompressedPiece(f *ir.Field, name string) (flatPiece, bool) {
 		},
 		read: func(ind, src string) {
 			if steps != uint64(1)<<uint(bits)-1 {
-				g.pf("%sif %s > %d { // a value smuggled into the bit headroom is refused (SPEC §4.3)\n", ind, src, steps)
+				g.pf("%sif %s > %d { // a value smuggled into the bit headroom is refused\n", ind, src, steps)
 				g.pf("%s\treturn ErrValidation\n%s}\n", ind, ind)
 			}
 			g.pf("%s{\n%s\tnormalizedValue := float32(%s) / %s\n", ind, ind, src, f32lit(float32(steps)))
-			if min32 == 0 {
-				g.pf("%s\t%s = float32(normalizedValue * %s)\n%s}\n", ind, name, f32lit(delta), ind)
-			} else {
-				g.pf("%s\t%s = float32(normalizedValue*%s) + (%s)\n%s}\n", ind, name, f32lit(delta), f32lit(min32), ind)
-			}
+			g.emitDequantize(f, name, ind+"\t", min32, delta)
+			g.pf("%s}\n", ind)
 		},
 	}, true
 }
@@ -787,13 +825,10 @@ func (g *gen) flatIntPiece(f *ir.Field, name string) (flatPiece, bool) {
 			value = "uint64(" + name + ")"
 		case f.Type.Width == 64:
 			value = name
-		case !f.Type.Signed:
-			value = "uint64(" + name + ")"
-		case f.Type.Width == 32:
-			value = "uint64(uint32(" + name + "))"
 		default:
-			// through the same-width unsigned so the sign bit cannot extend
-			value = fmt.Sprintf("uint64(uint%d(%s))", f.Type.Width, name)
+			// a signed value's sign extension lands above the width mask
+			// constEmit applies, so no same-width unsigned hop is needed
+			value = "uint64(" + name + ")"
 		}
 		signed, width := f.Type.Signed, f.Type.Width
 		return flatPiece{
@@ -840,101 +875,49 @@ func (g *gen) flatIntPiece(f *ir.Field, name string) (flatPiece, bool) {
 	case "int32":
 		exprIs32 := f.Type.Signed && f.Type.Width == 32
 		return flatPiece{
-			bits: bits,
-			guard: func(ind string, idx int) {
-				src := name
-				if !exprIs32 {
-					g.pf("%srangeValue%d := int32(%s)\n", ind, idx, name)
-					src = fmt.Sprintf("rangeValue%d", idx)
-				}
-				g.pf("%sif %s < %s || %s > %s {\n", ind, src, lo, src, hi)
-				g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
-			},
-			emit: func(ind string, idx int) {
-				src := name
-				if !exprIs32 {
-					src = fmt.Sprintf("rangeValue%d", idx)
-				}
-				expr := "uint64(uint32(" + src + "))"
-				if !loZero {
-					expr = "uint64(uint32(" + src + " - (" + lo + ")))"
-				}
-				g.pf("%sf%d := %s\n", ind, idx, masked(expr, bits))
-			},
+			bits:  bits,
+			guard: g.flatRangeGuard(f, name, lo, hi),
+			emit:  g.flatRangeEmit(f, name, lo, 32, bits),
 			read: func(ind, src string) {
 				if !rangeFillsBits(diff, bits) {
-					g.pf("%sif %s > %s { // a value smuggled into the bit headroom is refused (SPEC §4.3)\n", ind, src, diff.String())
+					g.pf("%sif %s > %s { // a value smuggled into the bit headroom is refused\n", ind, src, diff.String())
 					g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
 				}
-				if !loZero {
-					// add in the unsigned domain, as the runtime does: the range
-					// may be wider than 2^31. The bound binds to a typed local
-					// first — converting a NEGATIVE typed constant to uint32 is a
-					// compile error in Go, the same conversion of a variable is
-					// not. Its own block keeps the name free for the next piece.
-					g.pf("%s{\n%s\tlowValue := int32(%s)\n", ind, ind, lo)
-					decoded := fmt.Sprintf("int32(uint32(%s) + uint32(lowValue))", src)
-					if exprIs32 {
-						g.pf("%s\t%s = %s\n%s}\n", ind, name, decoded, ind)
-					} else {
-						g.pf("%s\t%s = %s(%s)\n%s}\n", ind, name, storage, decoded, ind)
-					}
-					return
-				}
 				decoded := fmt.Sprintf("int32(%s)", src)
+				if !loZero {
+					// the int32 add wraps exactly as the runtime's uint32 add
+					// does: the two agree modulo 2^32 and the true value lies in
+					// [lo, hi], so the range may be wider than 2^31
+					decoded = g.plusLow(decoded, lo, 32)
+				}
 				if exprIs32 {
 					g.pf("%s%s = %s\n", ind, name, decoded)
 					return
 				}
-				g.pf("%s%s = %s(%s)\n", ind, name, storage, decoded)
+				g.pf("%s%s = %s\n", ind, name, retype(storage, decoded))
 			},
 		}, true
 
 	case "int64":
 		exprIs64 := f.Type.Signed && f.Type.Width == 64
 		return flatPiece{
-			bits: bits,
-			guard: func(ind string, idx int) {
-				src := name
-				if !exprIs64 {
-					g.pf("%srangeValue%d := int64(%s)\n", ind, idx, name)
-					src = fmt.Sprintf("rangeValue%d", idx)
-				}
-				g.pf("%sif %s < %s || %s > %s {\n", ind, src, lo, src, hi)
-				g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
-			},
-			emit: func(ind string, idx int) {
-				src := name
-				if !exprIs64 {
-					src = fmt.Sprintf("rangeValue%d", idx)
-				}
-				expr := "uint64(" + src + ")"
-				if !loZero {
-					expr = "uint64(" + src + " - (" + lo + "))"
-				}
-				g.pf("%sf%d := %s\n", ind, idx, masked(expr, bits))
-			},
+			bits:  bits,
+			guard: g.flatRangeGuard(f, name, lo, hi),
+			emit:  g.flatRangeEmit(f, name, lo, 64, bits),
 			read: func(ind, src string) {
 				if !rangeFillsBits(diff, bits) {
-					g.pf("%sif %s > %s { // a value smuggled into the bit headroom is refused (SPEC §4.3)\n", ind, src, diff.String())
+					g.pf("%sif %s > %s { // a value smuggled into the bit headroom is refused\n", ind, src, diff.String())
 					g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
 				}
-				if !loZero {
-					g.pf("%s{\n%s\tlowValue := int64(%s)\n", ind, ind, lo)
-					decoded := fmt.Sprintf("int64(%s + uint64(lowValue))", src)
-					if exprIs64 {
-						g.pf("%s\t%s = %s\n%s}\n", ind, name, decoded, ind)
-					} else {
-						g.pf("%s\t%s = %s(%s)\n%s}\n", ind, name, storage, decoded, ind)
-					}
-					return
-				}
 				decoded := fmt.Sprintf("int64(%s)", src)
+				if !loZero {
+					decoded = g.plusLow(decoded, lo, 64)
+				}
 				if exprIs64 {
 					g.pf("%s%s = %s\n", ind, name, decoded)
 					return
 				}
-				g.pf("%s%s = %s(%s)\n", ind, name, storage, decoded)
+				g.pf("%s%s = %s\n", ind, name, retype(storage, decoded))
 			},
 		}, true
 	}
@@ -969,7 +952,7 @@ func (g *gen) flatIntPiece(f *ir.Field, name string) (flatPiece, bool) {
 		read: func(ind, src string) {
 			if diff.Cmp(maxUint64) != 0 {
 				// a full-width diff cannot overflow its own read — elided
-				g.pf("%sif %s > %s { // a read rejects out-of-range (SPEC §5)\n", ind, src, diff.String())
+				g.pf("%sif %s > %s { // a read rejects out-of-range\n", ind, src, diff.String())
 				g.pf("%s\treturn ErrValidation\n%s}\n", ind, ind)
 			}
 			if loVacuous {
@@ -979,4 +962,41 @@ func (g *gen) flatIntPiece(f *ir.Field, name string) (flatPiece, bool) {
 			g.pf("%s%s = %s + %s\n", ind, name, src, lo)
 		},
 	}, true
+}
+
+// flatRangeGuard is a ranged field's write-side refusal inside a run: the
+// per-field form's comparison, in the field's own storage type.
+func (g *gen) flatRangeGuard(f *ir.Field, name, lo, hi string) func(string, int) {
+	return func(ind string, _ int) {
+		if cond := g.rangeGuard(f, name, lo, hi); cond != "" {
+			g.pf("%sif %s {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, cond, ind, ind)
+		}
+	}
+}
+
+// flatRangeEmit places a ranged field's offset from lo. The guard leaves the
+// offset in [0, hi - lo]; it is computed in the int32 or int64 family's signed
+// domain, where a range wider than 2^31 wraps exactly as the runtime's
+// unsigned arithmetic does, and the mask drops uint64's sign extension.
+func (g *gen) flatRangeEmit(f *ir.Field, name, lo string, width uint, bits int64) func(string, int) {
+	return func(ind string, idx int) {
+		offset := name
+		if f.IntMin.Sign() != 0 {
+			src := name
+			if !f.Type.Signed || f.Type.Width != int(width) {
+				src = fmt.Sprintf("int%d(%s)", width, name)
+			}
+			offset = g.minusLow(src, lo, width)
+		}
+		g.pf("%sf%d := %s\n", ind, idx, masked("uint64("+offset+")", bits))
+	}
+}
+
+// bitsValue is a bits field's value as the uint64 a run packs: the field
+// itself when its storage already is one.
+func bitsValue(storage, name string) string {
+	if storage == "uint64" {
+		return name
+	}
+	return "uint64(" + name + ")"
 }

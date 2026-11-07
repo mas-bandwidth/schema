@@ -13,7 +13,10 @@ import (
 // only; pointer indices are never followed on load (SPEC-TABLES §3.1, §6.5).
 func (g *gen) emitNestedMeasureHelper(b *strings.Builder, root *ir.Struct) {
 	_ = root
-	fmt.Fprint(b, `    fn nested_measure(tid: u64, wire: &[u8], ids: &[u64], mut at: i64) -> i64 {
+	fmt.Fprint(b, `    // one arm per by-value edge the schema declares: a unit with none, or
+    // one, keeps a match of that size, and the walk does not move at
+    #[allow(unused_mut, clippy::match_single_binding, clippy::single_match)]
+    fn nested_measure(tid: u64, wire: &[u8], ids: &[u64], mut at: i64) -> i64 {
         let mut off = 0usize;
         while off < wire.len() {
             let Some(r) = leb_read(wire, &mut off) else { break; };
@@ -28,6 +31,11 @@ func (g *gen) emitNestedMeasureHelper(b *strings.Builder, root *ir.Struct) {
 		for _, f := range st.Fields {
 			fid := ir.TableFieldWireId(f)
 			switch {
+			case f.Type.TextUnbounded():
+				fmt.Fprintf(b, "                (0x%016x, 0x%016x) if kind == 12 => {\n", tid, fid)
+				fmt.Fprint(b, "                    let Some(n)=leb_read(wire,&mut off) else {break;}; if n > (wire.len()-off) as u64 {break;}\n")
+				emitUnboundedMeasure(b, "n", ir.TableRegionAlign(g.unit), "                    ")
+				fmt.Fprint(b, "                    off+=n as usize;\n                }\n")
 			case f.IsMap() || f.Array != ir.ArrayNone || f.KeyEnum != "":
 				g.emitMeasureArrayCase(b, tid, fid, f)
 			case classOf(f) == vTable:
@@ -94,8 +102,19 @@ func (g *gen) emitMeasureArrayCase(b *strings.Builder, tid, fid uint64, f *ir.Fi
                     let sub = off + n as usize;
                     if sub - off >= 2 {
                         let ek = wire[off]; off += 1;
-                        let Some(count) = leb_read(&wire[..sub], &mut off) else { off = sub; continue; };
 `)
+	var child *ir.Struct
+	if f.IsMap() {
+		child = f.MapEntry
+	} else if s, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer {
+		child = s
+	}
+	if f.IsMap() || f.IsList() || child != nil {
+		fmt.Fprint(b, "                        let Some(count) = leb_read(&wire[..sub], &mut off) else { off = sub; continue; };\n")
+	} else {
+		fmt.Fprint(b, "                        if leb_read(&wire[..sub], &mut off).is_none() { off = sub; continue; }\n")
+	}
+
 	fmt.Fprintf(b, "                        if ek == %d || table_kind_widens(ek, %d) {\n", want, want)
 	if f.IsMap() || f.IsList() {
 		var size, align int64
@@ -109,13 +128,7 @@ func (g *gen) emitMeasureArrayCase(b *strings.Builder, tid, fid uint64, f *ir.Fi
                             let floor = if ek == 13 { 2 } else { table_kind_width(ek).max(1) };
                             if off > sub || count as usize > (sub - off) / floor { return -1; }
 `)
-		fmt.Fprintf(b, "                            at = (at + %d - 1) & -%d; at += count as i64 * %d;\n", align, align, size)
-	}
-	var child *ir.Struct
-	if f.IsMap() {
-		child = f.MapEntry
-	} else if s, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer {
-		child = s
+		fmt.Fprintf(b, "                            %sat += %s;\n", alignStep(align), scaled("count as i64", size))
 	}
 	if child != nil {
 		fmt.Fprint(b, "                            for _ in 0..count {\n")
@@ -123,7 +136,12 @@ func (g *gen) emitMeasureArrayCase(b *strings.Builder, tid, fid uint64, f *ir.Fi
 			fmt.Fprint(b, "                                if leb_read(&wire[..sub], &mut off).is_none() { break; }\n")
 		}
 		fmt.Fprint(b, "                                if off >= sub { break; } let Some(el) = leb_read(&wire[..sub], &mut off) else { break; }; if el > (sub - off) as u64 { break; }\n")
-		fmt.Fprintf(b, "                                at = nested_measure(0x%016x, &wire[off..off + el as usize], ids, at); if at < 0 { return -1; } off += el as usize;\n", ir.TableWireId(child.WireName()))
+		if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+			emitUnboundedMeasure(b, "el", ir.TableRegionAlign(g.unit), "                                ")
+			fmt.Fprint(b, "                                off += el as usize;\n")
+		} else {
+			fmt.Fprintf(b, "                                at = nested_measure(0x%016x, &wire[off..off + el as usize], ids, at); if at < 0 { return -1; } off += el as usize;\n", ir.TableWireId(child.WireName()))
+		}
 		fmt.Fprint(b, "                            }\n")
 	}
 	fmt.Fprint(b, `                        }
@@ -163,4 +181,25 @@ func (g *gen) emitMeasureUnionCase(b *strings.Builder, tid, fid uint64, f *ir.Fi
                     off = sub;
                 }
 `)
+}
+
+// alignStep rounds the running extent `at` up to align, or is empty when the
+// alignment is 1 and the rounding would be an identity (clippy's identity_op).
+func alignStep(align int64) string {
+	if align <= 1 {
+		return ""
+	}
+	return fmt.Sprintf("at = (at + %d - 1) & -%d; ", align, align)
+}
+
+// scaled renders n * size, or n alone when size is 1 (clippy's identity_op).
+func scaled(n string, size int64) string {
+	if size == 1 {
+		return n
+	}
+	return fmt.Sprintf("%s * %d", n, size)
+}
+
+func emitUnboundedMeasure(b *strings.Builder, length string, align int64, ind string) {
+	fmt.Fprintf(b, "%sif %s > 0xffffffff { return -1; }\n%sif %s != 0 { at=(at+7)&!7; at+=(9+%s as i64+%d-1)&!(%d-1); }\n", ind, length, ind, length, length, align, align)
 }

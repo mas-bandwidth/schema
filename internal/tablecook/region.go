@@ -129,18 +129,19 @@ func Layout(m *tabletext.Model, g *tablewire.NodeGraph) (*Region, error) {
 		}
 		inst := node.Inst
 		ml := ir.RecordLayout(m.Unit, inst.Def)
-		if ml.Align > r.Align {
-			r.Align = ml.Align
+		align := nodeAlign(m.Unit, inst.Def)
+		if align > r.Align {
+			r.Align = align
 		}
 		// A NODE'S SIZE DEPENDS ON ITS VALUE where a list rides in its extent
-		// (§2.9, §7.2): the record's storage at the region's alignment floor,
-		// then the bytes the same walk the writer takes will carve there. The
+		// (§2.9, §7.2): the record's storage rounded to where its extent
+		// begins, then the bytes the same walk the writer takes will carve there. The
 		// layout reads the instance the numbering walked for that reason.
 		extent, err := extentOf(m, inst.Def, inst)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", inst.Def.Name, err)
 		}
-		offset = alignUp(offset, ml.Align)
+		offset = alignUp(offset, align)
 		n := Node{Offset: offset, Def: inst.Def, Inst: inst, Layout: ml,
 			Record: recordBytes(m.Unit, inst.Def), Extent: extent}
 		r.Nodes = append(r.Nodes, n)
@@ -261,6 +262,10 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		w.putBool(p.Offset, fv.Present)
 	}
 	switch {
+	case f.IsMap():
+		// THE SLOT IS THE EXTENT WRITER'S, as a list's is (docs/SPEC-TABLES.md
+		// §2.8): the carve points it at the entry array it lays
+		return nil
 	case f.Array == ir.ArrayList:
 		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.9): the
 		// reference is a delta to an array this record's own extent holds, and
@@ -281,6 +286,11 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 			return w.ref(value.Offset, f, nil)
 		}
 		return w.ref(value.Offset, f, fv.Cell.Node)
+	case f.Type.TextUnbounded():
+		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.13.1): the
+		// reference is a delta to a blob record in this record's own extent,
+		// and an empty string's encoding is the null reference (zero).
+		return nil
 	case f.Type.Kind == ir.TString:
 		// char[N+1]: the used bytes, then a zero tail — the terminator the
 		// generated buffer carries is the first byte of that tail
@@ -371,13 +381,18 @@ func (w *regionWriter) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 		w.putBool(at, cell.B)
 		return nil
 	case ir.TFloat32:
-		// A FLOAT RIDES AS ITS BIT PATTERN, WITH NO CANONICALISATION
-		// (docs/SPEC-TABLES.md §3, SPEC.md §4.3): the cell is a float64, so
-		// the narrowing is BIT SURGERY — the hardware conversion would set the
-		// quiet bit on a signalling NaN and lose its payload (schema#480).
-		w.putU32(at, tablewire.NarrowF32(cell.F))
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3, §3.3): a NaN or an
+		// infinity is refused, and a finite float32 narrows from its float64
+		// cell exactly through the ordinary conversion
+		if err := tablewire.RefuseNonFinite(w.m, f, cell.F); err != nil {
+			return err
+		}
+		w.putU32(at, math.Float32bits(float32(cell.F)))
 		return nil
 	case ir.TFloat64:
+		if err := tablewire.RefuseNonFinite(w.m, f, cell.F); err != nil {
+			return err
+		}
 		w.putU64(at, math.Float64bits(cell.F))
 		return nil
 	case ir.TInt, ir.TFixed:

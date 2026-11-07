@@ -1,0 +1,55 @@
+#!/bin/sh
+# THE LOBSTER CARD DRIVER (tables/cards/conformance/FORMAT.md).
+#
+# Lobster resolves `import .x` against the importing file's own directory, so
+# the facade (cards.lobster) and the program (driver.lobster) are STAGED into
+# the generated Card unit's directory, beside CardTable.lobster and the runtime
+# modules, and run there under the pinned toolchain. Each staged file is
+# written to a temporary name and moved into place, so drivers the harness runs
+# side by side never read a half-written copy.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, and the program reads and writes by
+# absolute path. A surface this leg does not answer exits 2.
+#
+# The negative controls set CARDS_LOBSTER_SABOTAGE_RENDER, _UPGRADE or _HASH
+# to 1; each damages that ONE surface's answer (test-only).
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+lobster=${LOBSTER:-dist/lobster-v2026.8/bin/lobster}
+gen=${CARDS_LOBSTER_GENERATED:-build/tables-generated-lobster/cards}
+root=$(pwd)
+here=tables/cards/lobster
+
+[ -f "$gen/CardTable.lobster" ] || { echo "driver: no generated Card unit under $gen; run make cards-lobster-generate" >&2; exit 1; }
+case "$1" in
+/*) manifest=$1 ;;
+*) manifest=$root/$1 ;;
+esac
+
+stage() {
+	cp "$here/$1" "$gen/.$2.$$" && mv -f "$gen/.$2.$$" "$gen/$2"
+}
+stage cards.lobster cards.lobster || exit 1
+stage driver.lobster cards_driver.lobster || exit 1
+
+case "$2" in
+list)
+	exec "$lobster" "$gen/cards_driver.lobster" -- "$root" "$manifest" list - none
+	;;
+load | save | render | parse | bounds | upgrade | edit | taskhash | view) ;;
+*) exit 2 ;;
+esac
+
+case "$3" in
+/*) outdir=$3 ;;
+*) outdir=$root/$3 ;;
+esac
+mkdir -p "$outdir" || exit 1
+
+sabotage=none
+[ "${CARDS_LOBSTER_SABOTAGE_RENDER:-}" = 1 ] && sabotage=render
+[ "${CARDS_LOBSTER_SABOTAGE_UPGRADE:-}" = 1 ] && sabotage=upgrade
+[ "${CARDS_LOBSTER_SABOTAGE_HASH:-}" = 1 ] && sabotage=taskhash
+exec "$lobster" "$gen/cards_driver.lobster" -- "$root" "$manifest" "$2" "$outdir" "$sabotage"

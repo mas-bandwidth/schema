@@ -53,11 +53,10 @@ the buffer. Specifically:
   unpaired surrogate, or a zero group among the transmitted units. The rules
   are stated once in SPEC §4.7 and §4.12 and every target owes the same
   verdict, so a target that skips one is a divergence bug as well as an
-  acceptance bug. **The TABLE wire enforces the same rules and reports rather
-  than stops** (SPEC-TABLES §3, §4): a kind `12` payload that is not
-  well-formed UTF-8 or that carries a zero byte, and a kind `33` payload with
-  an unpaired surrogate or a zero unit, each leave the field at its declared
-  default, count one `malformed`, and let the parent read on past `L`. **A
+  acceptance bug. **The TABLE wire enforces the same rules** (SPEC-TABLES §3,
+  §4): a kind `12` payload that is not well-formed UTF-8 or that carries a
+  zero byte, and a kind `33` payload with an unpaired surrogate or a zero
+  unit, are damage, and damage discards the whole load as `malformed`. **A
   table reader that STORES any of them is an acceptance bug on this list**,
   exactly as a packet reader that accepts one is. In scope beside it is the
   framing: a length past a declared bound, and an odd `L` on a kind `33`
@@ -71,8 +70,10 @@ the buffer. Specifically:
   length — materialize the largest record the schema can place, so a table
   read's amplification is bounded by that record (plus one directory entry)
   per two wire bytes, times only the records the framing actually carries
-  (SPEC-TABLES §6.5). The wire fuzzer pins that maximum region-over-wire
-  ratio and a mutant above it is a divergence.
+  (SPEC-TABLES §6.5). That is the FILE form's bound; a message batch is fixed
+  tables only and loads into the caller's own values, so it commands no region
+  and nothing on its wire amplifies. The wire fuzzer pins the file form's
+  maximum region-over-wire ratio and a mutant above it is a divergence.
 - Any read that continues past the end of the stream instead of failing.
 - Integer overflow in a bit or byte count computed from wire data.
 - **Any divergence between the nine languages on the above** — if C++ refuses
@@ -106,8 +107,32 @@ what the language specifies, in a way that weakens a check.
   input and re-run on every push.
 - The cross-language corpus generates the same schemas in C, C++, C#, Dart,
   Elixir, Go, Java, JavaScript and Rust
-  and compares emitted wire bit for bit against pinned goldens, on Linux and
-  macOS, on every push. Divergence between languages fails CI.
+  and compares emitted wire bit for bit against pinned goldens.
+  That comparison is not a per-push macOS job, and it is not promised on every
+  push. Per-push evidence is Linux.
+  [`.github/workflows/ci-fast.yml`](../.github/workflows/ci-fast.yml) runs on a
+  pull request into `main`, `dev`, or `fixed-table-form`, and on `workflow_dispatch`:
+  a path-selected lane on Linux (the fleet, or `ubuntu-latest` for a pull
+  request into a branch below `main`). It is not the full `make test` chain
+  and it does not run on macOS.
+  [`.github/workflows/ci-full.yml`](../.github/workflows/ci-full.yml) runs on a
+  push to `main`, `dev`, or `fixed-table-form`, on its nightly schedule
+  (`10 7 * * *`), on `workflow_dispatch`, and on a pull request into those
+  branches. Most of its jobs run on a pull request only when that pull request
+  carries the `full-ci` label. Fleet jobs on a pull request also require the
+  head repository to be this one. `generated` and `cs-tables` run on a pull
+  request without that label. `pins` runs on a same-repository pull request
+  without that label. Its runners are Linux and
+  Windows (`windows-latest`, `windows-2025`). It does not include `macos-latest`.
+  macOS certification of the full chain is
+  [`.github/workflows/certify.yml`](../.github/workflows/certify.yml), which
+  runs on its nightly schedule (`17 9 * * *`) and on `workflow_dispatch`
+  (`gh workflow run certify.yml --ref <branch>`), and has no push trigger.
+  Its `test` matrix is `ubuntu-latest` and `macos-latest` and runs `make test`.
+  Further macOS rows in that file cover the go, cpp, c, rust and cs legs.
+  A green pull request is not a macOS certificate. Divergence between
+  languages fails the run that actually executed. The same no-push rule is
+  recorded in [CONTRIBUTING.md](CONTRIBUTING.md).
 - Generated readers are exercised against hand-crafted hostile bytes.
 - The TABLES wire is read as untrusted input, exactly as the type wire is,
   and the claim has its own gate: `make tables-wire-fuzz` mutates every pinned

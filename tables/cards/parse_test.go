@@ -43,7 +43,7 @@ func TestParseRenderCorpus(t *testing.T) {
 		t.Fatalf("Parse normalized-valid: %v", err)
 	}
 	root := rec.root
-	if got := rowStr(root.Id[:], root.IdLength); got != "a-cut-ignores-the-previous-tags-cancelled-release-run" {
+	if got := rowStr(root.ID[:], root.IDLength); got != "a-cut-ignores-the-previous-tags-cancelled-release-run" {
 		t.Fatalf("id = %q", got)
 	}
 	if got := rowStr(root.Sha[:], root.ShaLength); got != "000000000000" {

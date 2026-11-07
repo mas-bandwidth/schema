@@ -2,6 +2,7 @@ package gotable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -58,7 +59,7 @@ func (g *tableGen) emitUnionRow(un *ir.Union) {
 		if v.Void() {
 			continue
 		}
-		g.pf("func (value *%sRow) %s() *%s { return (*%s)(unsafe.Add(unsafe.Pointer(value),%d)) }\n", un.Name, ir.GoExportName(v.Name), g.unionArmStorage(v), g.unionArmStorage(v), offset)
+		g.pf("func (value *%sRow) %s() *%s { return (*%s)(unsafe.Add(unsafe.Pointer(value),%d)) }\n", un.Name, goname.Member(v.Name), g.unionArmStorage(v), g.unionArmStorage(v), offset)
 	}
 }
 func (g *tableGen) unionArmStorage(v ir.UnionVariant) string {
@@ -73,9 +74,9 @@ func (g *tableGen) unionArmStorage(v ir.UnionVariant) string {
 }
 func (g *tableGen) unionArmExpr(un *ir.Union, v ir.UnionVariant, expr string) string {
 	if !g.regional {
-		return expr + "." + ir.GoExportName(v.Name)
+		return expr + "." + goname.Member(v.Name)
 	}
-	return expr + "." + ir.GoExportName(v.Name) + "().Value"
+	return expr + "." + goname.Member(v.Name) + "().Value"
 }
 func (g *tableGen) emitRegionUnionDescriptor(un *ir.Union) {
 	_, _, tag, offset := ir.UnionLayout(g.unit, un)

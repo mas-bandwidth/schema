@@ -189,7 +189,7 @@ public readonly struct TableFixedKnownLayout
 
 // TableFixedLineagePlan is ONE older entry's plan, laid down once from THE
 // LOCK'S bytes. Unknown and KindMismatch are the COMPILE CENSUS: a writer field
-// no reader field names is counted ONCE PER PEER and never per record (§5.4),
+// no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4),
 // and LOAD carries them onto the report after the record loop, on a read that
 // returns (§5.9 #6). Why is the name a load refuses by when the entry itself
 // could not be compiled — a bug in the lock, which at BUILD time fails the
@@ -239,6 +239,33 @@ public readonly struct TableFixedSlot<T>
 const tableFixedWireSource = `
 public static class TableFixedWire
 {
+    // FLAT ELEMENT ARRAYS IN THE WIRE'S BYTE ORDER (docs/FIXED-FORM-ALGORITHM.md:
+    // every integer is little-endian; docs/PORTING.md M12). On a little-endian
+    // host the bulk copy IS the wire image, so it stays one copy; on a
+    // big-endian host every element's bytes are reversed after it. The two
+    // copies below are the only host-order reinterpretations of wire bytes in
+    // the fixed form, and each is followed by that swap.
+    public static void ReadLittle<T>(ReadOnlySpan<byte> src, Span<T> dst) where T : unmanaged
+    {
+        int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+        int n = Math.Min(src.Length / width, dst.Length);
+        MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
+        if (!BitConverter.IsLittleEndian) { ReverseEach(MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
+    }
+    public static void WriteLittle<T>(ReadOnlySpan<T> src, Span<byte> dst) where T : unmanaged
+    {
+        int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+        MemoryMarshal.AsBytes(src).CopyTo(dst); /* byte order: swapped below on a big-endian host */
+        if (!BitConverter.IsLittleEndian) { ReverseEach(dst.Slice(0, src.Length * width), width); }
+    }
+    // Reverses each width-byte group of bytes in place: one element's host image
+    // to its little-endian image, and back.
+    public static void ReverseEach(Span<byte> bytes, int width)
+    {
+        if (width == 1) { return; }
+        for (int i = 0; i + width <= bytes.Length; i += width) { bytes.Slice(i, width).Reverse(); }
+    }
+
     public const byte Form = 3;
     public const int HeaderBytes = 16;
     public const int HashAt = 8;
@@ -293,26 +320,6 @@ public static class TableFixedWire
     public static bool SignedKind(byte kind)
     {
         return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
-    }
-
-    // THE FLOAT RUNG'S ONE WIDENING (ALG §4.2): the f32's bits as the f64's
-    // bits, exact by construction, NaN payloads included. The hardware's own
-    // conversion between the widths SETS THE QUIET BIT on a signalling NaN,
-    // so the all-ones-exponent pattern is spelled by the sign, exponent and
-    // payload shifts; only the finite case rides the conversion. EVERY call
-    // site — the scalar widenf and the folded flat-array widen alike — comes
-    // through here, as the C++ reference's one TableWidenF32 does.
-    public static double WidenF32(float f)
-    {
-        uint fbits = unchecked((uint)BitConverter.SingleToInt32Bits(f));
-        if ((fbits & 0x7F800000u) == 0x7F800000u)
-        {
-            ulong w = ((ulong)(fbits & 0x80000000u) << 32)
-                | 0x7FF0000000000000UL
-                | ((ulong)(fbits & 0x7FFFFFu) << 29);
-            return BitConverter.Int64BitsToDouble(unchecked((long)w));
-        }
-        return (double)f;
     }
 
     public static TableFixedLayoutEntry EntryAt(TableFixedLayoutView b, int i)
@@ -654,10 +661,10 @@ public static class TableFixedWire
         }
     }
 
-    // 'census' is whether THIS entry is the FIRST time the peer's field is
+    // 'census' is whether THIS entry is the FIRST time the writer's field is
     // seen. An array compiles its element ONCE PER SLOT, and the unknown count
-    // is ONCE PER FIELD PER PEER (ALG §5.4), so only element 0 censuses.
-    // Without it a peer field dropped from a [4]Item is counted FOUR times and
+    // is ONCE PER FIELD PER ENDPOINT (ALG §5.4), so only element 0 censuses.
+    // Without it a writer's field dropped from a [4]Item is counted FOUR times and
     // the report says 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md
     // §5.8 row 11). rust #1162 and cpp #1163 carry the same flag for the same
     // reason; this leg had no row 11 at all, so nothing here ever said so.
@@ -1089,7 +1096,7 @@ public static class TableFixedWire
     // layout_malformed and the loop continues; a plan that outgrows the cap
     // sets plan_too_large and the loop continues; no array is indexed out of
     // its own length and no input is trusted for a size. The refusal a bad
-    // entry earns is read at LOAD time, by the one peer that selects it
+    // entry earns is read at LOAD time, by the one endpoint that selects it
     // (§5.9 #8) — which is also why a lock bug here costs exactly the
     // version it broke rather than the type.
     public static TableFixedLineagePlan[] LineagePlans(
@@ -1391,7 +1398,7 @@ public static class TableFixedWire
                             int at = (int)p.Src + e * sw;
                             if (p.Sign == 2)
                             {
-                                double d2 = WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
                                 BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                 continue;
                             }
@@ -1533,17 +1540,11 @@ public static class TableFixedWire
                     }
                 case WidenF:
                     {
-                        // A FLOAT RIDES AS ITS BITS (SPEC-TABLES §3, the FU ruling),
-                        // so the widening is BY THE PATTERN and never through the
-                        // hardware's own conversion: the conversion between the two
-                        // widths SETS THE QUIET BIT on a signalling NaN and drops a
-                        // payload the narrower cell would have kept, and widenf owes
-                        // the bit-exact widening (ALG §4.2: "NaN payloads included").
-                        // The one helper carries sign, exponent and payload; every
-                        // finite value is exact through the conversion, so only the
-                        // all-ones exponent NaN and infinity share needs the pattern.
+                        // THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md
+                        // §3.3, ALG §4.2): exact for every finite float32; a NaN or an
+                        // infinity stays one, and the finite pass after the run refuses it.
                         float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                        slots[(int)p.Dst].SetDouble?.Invoke(dst, WidenF32(f));
+                        slots[(int)p.Dst].SetDouble?.Invoke(dst, (double)f);
                         if (report != null) { report.Widened++; }
                         break;
                     }

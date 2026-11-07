@@ -97,11 +97,11 @@ function lawfulFile() {
   const v = new home.Chain();
   // THE PAYLOAD IS SEQUENTIAL so the landed bytes are checkable by value:
   // name carries 0x68..0x77, tag carries "tag12345".
-  for (let i = 0; i < 16; i++) { v.Name[i] = 0x68 + i; }
-  v.NameLength = 16;
-  v.Link.Value = 7;
-  v.Link.Tag.set(new Uint8Array([0x74, 0x61, 0x67, 0x31, 0x32, 0x33, 0x34, 0x35]));
-  v.Link.TagLength = 8;
+  for (let i = 0; i < 16; i++) { v.name[i] = 0x68 + i; }
+  v.nameLength = 16;
+  v.link.value = 7;
+  v.link.tag.set(new Uint8Array([0x74, 0x61, 0x67, 0x31, 0x32, 0x33, 0x34, 0x35]));
+  v.link.tagLength = 8;
   const bytes = new Uint8Array(p1.ChainFixedMeasure(1));
   const wrote = p1.ChainFixedSave([v], 1, bytes);
   if (wrote !== bytes.length) {
@@ -138,7 +138,7 @@ function readProduction(bytes) {
   const r = readProduction(bytes);
   check(r.n === 1 && r.report.clamped === 0 && r.report.refused === 0 && !r.report.malformed,
     "C3 IDENTITY: a lawful record of this build's own layout reads and clamps nothing");
-  check(r.v.NameLength === 16 && r.v.Link.TagLength === 8 && r.v.Link.Value === 7,
+  check(r.v.nameLength === 16 && r.v.link.tagLength === 8 && r.v.link.value === 7,
     "C3 IDENTITY: the lawful lengths land as written (name 16, tag 8, value 7)");
 }
 
@@ -151,14 +151,14 @@ function readProduction(bytes) {
   const r = readProduction(bytes);
   check(r.n === 1 && r.report.refused === 0 && !r.report.malformed,
     "C3 IDENTITY: a forged name length past the cap is a clamp and not a refusal — the record still reads");
-  check(r.v.NameLength === 16,
-    "C3 IDENTITY: a forged name length of 9999 over string(16) lands the reader's own bound 16 (got " + r.v.NameLength + ")");
+  check(r.v.nameLength === 16,
+    "C3 IDENTITY: a forged name length of 9999 over string(16) lands the reader's own bound 16 (got " + r.v.nameLength + ")");
   check(r.report.clamped === 1,
     "C3 IDENTITY: a forged name length past the cap moves clamped exactly once (got " + r.report.clamped + ")");
   // THE CLAMP IS THE USED LENGTH AND NOTHING ELSE: the payload's copy is
   // whole, so all sixteen planted bytes sit behind the clamped length.
   let whole = true;
-  for (let i = 0; i < 16; i++) { whole = whole && r.v.Name[i] === 0x68 + i; }
+  for (let i = 0; i < 16; i++) { whole = whole && r.v.name[i] === 0x68 + i; }
   check(whole,
     "C3 IDENTITY: the payload lands whole behind the clamped length — the clamp is the USED length, never the copy");
 }
@@ -170,8 +170,8 @@ function readProduction(bytes) {
   const bytes = lawfulFile();
   plant(bytes, AT_NAME, -7);
   const r = readProduction(bytes);
-  check(r.v.NameLength === 0 && r.report.clamped === 1,
-    "C3 IDENTITY: a forged NEGATIVE name length lands 0 with one clamp (got length " + r.v.NameLength + ", clamped " + r.report.clamped + ")");
+  check(r.v.nameLength === 0 && r.report.clamped === 1,
+    "C3 IDENTITY: a forged NEGATIVE name length lands 0 with one clamp (got length " + r.v.nameLength + ", clamped " + r.report.clamped + ")");
 }
 
 {
@@ -181,8 +181,8 @@ function readProduction(bytes) {
   const bytes = lawfulFile();
   plant(bytes, AT_NAME, 16);
   const r = readProduction(bytes);
-  check(r.v.NameLength === 16 && r.report.clamped === 0,
-    "C3 IDENTITY: a name length AT the bound 16 is not a clamp and moves no counter (got length " + r.v.NameLength + ", clamped " + r.report.clamped + ")");
+  check(r.v.nameLength === 16 && r.report.clamped === 0,
+    "C3 IDENTITY: a name length AT the bound 16 is not a clamp and moves no counter (got length " + r.v.nameLength + ", clamped " + r.report.clamped + ")");
 }
 
 {
@@ -191,8 +191,8 @@ function readProduction(bytes) {
   const bytes = lawfulFile();
   plant(bytes, AT_TAG, 9999);
   const r = readProduction(bytes);
-  check(r.v.Link.TagLength === 8 && r.report.clamped === 1 && r.v.NameLength === 16,
-    "C3 IDENTITY: a forged tag length over the nested string(8) lands that field's own cap 8 with one clamp (got " + r.v.Link.TagLength + ", clamped " + r.report.clamped + ")");
+  check(r.v.link.tagLength === 8 && r.report.clamped === 1 && r.v.nameLength === 16,
+    "C3 IDENTITY: a forged tag length over the nested string(8) lands that field's own cap 8 with one clamp (got " + r.v.link.tagLength + ", clamped " + r.report.clamped + ")");
 }
 
 // ---- THE RUN'S TEXT OP, THE NARROW FLAVOUR --------------------------------

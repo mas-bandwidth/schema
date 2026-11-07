@@ -1,0 +1,4 @@
+{
+  "targets": "build/conformance-harness build/conformance-moo cards-moo-test cards-moo-conformance",
+  "moo": "pin"
+}

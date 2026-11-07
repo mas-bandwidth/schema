@@ -65,8 +65,8 @@ $(GOLANGCI_GATE_STAMP): bin/schema $(SCHEMAS) $(SCHEMAS128) $(SERIALIZE_GO_RUNTI
 	@mkdir -p $(GOLANGCI_GATE_DIR)/example $(GOLANGCI_GATE_DIR)/ludicrous
 	./bin/schema generate --lang go --out $(GOLANGCI_GATE_DIR)/example examples
 	./bin/schema generate --lang go --out $(GOLANGCI_GATE_DIR)/ludicrous examples128
-	@printf 'module example\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %s\n' "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_DIR)/example/go.mod
-	@printf 'module ludicrous\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %s\n' "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_DIR)/ludicrous/go.mod
+	@printf 'module example\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_DIR)/example/go.mod
+	@printf 'module ludicrous\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_DIR)/ludicrous/go.mod
 	@touch $@
 
 .PHONY: schema-go-generated-golangci-lint-gate-probe
@@ -146,7 +146,7 @@ schema-go-generated-golangci-lint-gate-nightly: schema-go-generated-golangci-lin
 	@for d in build/tables-generated-go/*/; do \
 		[ -f "$$d/go.mod" ] || continue; \
 		m=$$(sed -n 's/^module //p' "$$d/go.mod"); \
-		printf 'module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n\nreplace github.com/mas-bandwidth/serialize.go => %s\n' \
+		printf 'module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' \
 			"$$m" "$(CURDIR)" "$(GOLANGCI_GATE_RUNTIME)" > "$$d/go.mod"; \
 	done
 	@: > $(GOLANGCI_GATE_DIR)/tables.lint.log

@@ -67,13 +67,13 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 		t.Fatal("no Table.h was generated")
 	}
 
-	// The VOLD_ peer must be in the lineage, or this is not a NEW-reads-OLD row.
+	// The VOLD_ endpoint must be in the lineage, or this is not a NEW-reads-OLD row.
 	text := string(files[header])
 	if !strings.Contains(text, "FixedLineage[]") {
 		t.Fatalf("the generated header carries no FixedLineage[]; the nil-lock convention did not fire:\n%s", text)
 	}
 	if !strings.Contains(text, "vold_nested_append") {
-		t.Fatalf("the lineage is missing the VOLD_ peer; the probe needs it to select the OLD entry:\n%s", text)
+		t.Fatalf("the lineage is missing the VOLD_ endpoint; the probe needs it to select the OLD entry:\n%s", text)
 	}
 
 	root := cppFixedRootName(t, u)

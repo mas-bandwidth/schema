@@ -80,9 +80,15 @@ func variableModules(u *ir.Unit) map[string][]byte {
 		return nil
 	}
 	out := map[string][]byte{}
+	if len(ir.TableIntegrityTables(u)) > 0 {
+		out[integrityRuntimeModule+".rs"] = []byte(header(runtimeSourceName(u), u.Package, "CRC-32C integrity trailers") + integrityRuntimeRust)
+	}
 	out[VariableRuntimeModule+".rs"] = []byte(variableRuntimeModule(u))
 	if d := variableDescriptorModule(u); d != nil {
 		out[VariableDescriptorModule+".rs"] = d
+	}
+	if body := tableEnumsModule(u, vc); body != nil {
+		out[TableEnumsModule+".rs"] = body
 	}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, closure: ir.TableClosure(u), vc: vc}
@@ -286,6 +292,7 @@ pub enum TableNodeRecord {
 
 #[derive(Default)]
 pub struct TableNodeGraph {
+    pub invalid_required: bool,
     pub records: Vec<TableNodeRecord>,
     tables: HashMap<usize, u64>,
     blobs: HashMap<usize, u64>,
@@ -363,6 +370,8 @@ pub enum TableNodeSlot {
 /// names is decoded once, the first time a slot resolves it, and shared.
 pub struct TableNodeReader {
     pub good: bool,
+    /// This load hit the int32 collection storage cap; report history is not control state.
+    pub count_refused: bool,
     pub root_type: u64,
     pub retaining: bool,
     pub retain_capacity: usize,
@@ -372,12 +381,26 @@ pub struct TableNodeReader {
     /// which blob records a slot has already named (§2.5): each later naming
     /// of the same record counts blob_shared on the tolerant read
     pub blob_named: Vec<bool>,
+    /// the ROOT's descent is open while its body decodes and closed after:
+    /// a slot naming the root while it is open is a cycle (§3.1)
+    pub root_open: bool,
+    pub stubs: Vec<Option<Rc<dyn Any>>>,
+    pub stub_index: HashMap<usize, usize>,
+    pub decoded: Vec<Option<Rc<dyn Any>>>,
 }
 
 impl TableNodeReader {
-    /// Gather the numbering out of a ROOT body ending at end (§3.1). None
-    /// is framing damage on the root body the gathering scan cannot pass, and
-    /// it counts malformed. A node table under a kind other than 12, a record
+    /// A storage-cap refusal is terminal but adds no malformed event (§2.9).
+    pub fn refuse_count(&mut self, report: &mut TableReport) -> bool {
+        self.count_refused = true;
+        report.refused = true;
+        report.reason = TableReason::CountOverExtentCap;
+        false
+    }
+
+    /// Gather the numbering out of a ROOT body ending at end (§3.1). Framing
+    /// damage on the root body ends the gathering scan with what it found and
+    /// is counted by the body read, not here. A node table under a kind other than 12, a record
     /// that runs past its field, bytes left over, or a node_count the scan
     /// does not match make the TABLE malformed: good is false, one malformed
     /// counts, and nothing in it is counted unknown, because the numbering it
@@ -386,24 +409,27 @@ impl TableNodeReader {
     /// not well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
     pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new() };
+        let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new() };
         let mut off = 1usize;
         while off < end {
             let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
             if r == 0 { break; }
-            if off >= end { report.malformed = true; return None; }
+            // Damage in a field the gathering scan cannot pass ends the scan
+            // and refuses nothing: the body read meets the same damage and
+            // counts it, after decoding the fields before it (the oracle's
+            // nodeTableBytes).
+            if off >= end { break; }
             let kind = wire[off]; off += 1;
-            let Some(id) = ref_id(ids, r) else { report.malformed = true; return None; };
+            let Some(id) = ref_id(ids, r) else { break; };
             if id != NODE_TABLE_ID {
-                if !leb_skip(wire, &mut off, end, kind) { report.malformed = true; return None; }
+                if !leb_skip(wire, &mut off, end, kind) { break; }
                 continue;
             }
             if kind != 12 {
                 report.malformed = true;
                 reader.good = false;
                 reader.recs.clear();
-                if !leb_skip(wire, &mut off, end, kind) { return None; }
-                continue;
+                break;
             }
             // A truncated node-table length cannot borrow trailer bytes. The
             // root body still decodes its preceding fields with null nodes.
@@ -469,16 +495,105 @@ impl TableNodeReader {
     /// otherwise with the event counted — an index above node_count + 1 is
     /// malformed, a record of another type (or a blob) is a kind mismatch, and
     /// an index of 1 names the ROOT, which a node slot whose target is not the
-    /// reader's own root table takes as a kind mismatch. (A root pointing at
-    /// itself is a cycle no writer produces, §3.1, and this storage cannot hold
-    /// one: it reads null.)
+    /// reader's own root table takes as a kind mismatch. A slot of the root's
+    /// own table naming it while the root's descent is open is a cycle no
+    /// writer produces (§3.1): it reads null and marks the cycle, which
+    /// refuses the whole load. Once the root is closed it reads null.
+    pub fn init_stubs(&mut self, root_stub: Rc<dyn Any>, alloc: fn(u64) -> Option<Rc<dyn Any>>) {
+        self.stubs.clear();
+        self.stub_index.clear();
+        self.decoded.clear();
+        if !self.good {
+            return;
+        }
+        let root_ptr = Rc::as_ptr(&root_stub) as *const () as usize;
+        self.stub_index.insert(root_ptr, 0);
+        self.stubs.push(Some(root_stub));
+        self.decoded.resize_with(self.slots.len(), || None);
+        for slot in &self.slots {
+            if let TableNodeSlot::Table(tid) = slot && let Some(s) = alloc(*tid) {
+                let v = self.stubs.len();
+                let ptr = Rc::as_ptr(&s) as *const () as usize;
+                self.stub_index.insert(ptr, v);
+                self.stubs.push(Some(s));
+            } else {
+                self.stubs.push(None);
+            }
+        }
+    }
+
+    pub fn stub_slot(&self, v: usize) -> Option<Rc<dyn Any>> {
+        self.stubs.get(v).and_then(|s| s.clone())
+    }
+
+    pub fn push_edge(&self, ptr: usize, out: &mut Vec<usize>) {
+        if let Some(&target) = self.stub_index.get(&ptr) {
+            out.push(target);
+        }
+    }
+
+    pub fn stub_record(&self, ptr: usize) -> Option<usize> {
+        match self.stub_index.get(&ptr).copied() {
+            Some(v) if v >= 1 => Some(v - 1),
+            _ => None,
+        }
+    }
+
+    /// Iterative 3-color DFS over the loaded graph's final stored pointer slots
+    /// (docs/SPEC-TABLES.md §3.1, §4): vertex 0 is the root and vertex k + 1 is
+    /// record k. Every vertex is entered once (0 = unvisited, 1 = open, 2 =
+    /// closed), so a diamond chain is linear in vertices plus edges; an edge to
+    /// an open vertex is a cycle, and an unreached cycle refuses too. Returns
+    /// the closed vertices in post-order (children before parents).
+    pub fn check_cycles(&self, edges: &[Vec<usize>], report: &mut TableReport) -> Vec<usize> {
+        let n = edges.len();
+        let mut mark = vec![0u8; n];
+        let mut post_order = Vec::with_capacity(n);
+        let mut stack: Vec<(usize, usize)> = Vec::new();
+        for start in 0..n {
+            if mark[start] != 0 {
+                continue;
+            }
+            if start > 0 && self.decoded.get(start - 1).and_then(|d| d.as_ref()).is_none() {
+                continue;
+            }
+            mark[start] = 1;
+            stack.push((start, 0));
+            while let Some((u, idx)) = stack.last_mut() {
+                let u = *u;
+                if *idx == edges[u].len() {
+                    mark[u] = 2;
+                    post_order.push(u);
+                    stack.pop();
+                    continue;
+                }
+                let t = edges[u][*idx];
+                *idx += 1;
+                if t >= n {
+                    continue;
+                }
+                match mark[t] {
+                    1 => {
+                        report.cycle_on_save = true;
+                    }
+                    2 => {}
+                    _ => {
+                        mark[t] = 1;
+                        stack.push((t, 0));
+                    }
+                }
+            }
+        }
+        post_order
+    }
+
     pub fn node_slot(&self, index: u64, want: u64, report: &mut TableReport) -> Option<usize> {
         if !self.good || index == 0 {
             return None;
         }
         if index == 1 {
-            if want != self.root_type { report.kind_mismatch += 1; }
-            return None;
+            if want != self.root_type { report.kind_mismatch += 1; return None; }
+            return Some(0);
         }
         let k = (index - 2) as usize;
         if index - 2 >= self.slots.len() as u64 {
@@ -489,10 +604,10 @@ impl TableNodeReader {
             TableNodeSlot::Null => None,
             TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.kind_mismatch += 1; None }
             TableNodeSlot::Table(t) | TableNodeSlot::Built(t, _) => {
-                if *t == want { Some(k) } else { report.kind_mismatch += 1; None }
+                if *t == want { Some(k + 1) } else { report.kind_mismatch += 1; None }
             }
             TableNodeSlot::Building => {
-                if self.recs[k].0 == want { Some(k) } else { report.kind_mismatch += 1; None }
+                if self.recs[k].0 == want { Some(k + 1) } else { report.kind_mismatch += 1; None }
             }
         }
     }
@@ -558,18 +673,19 @@ impl TableNodeReader {
 /// size, 0 for every framed or reference-shaped kind.
 pub fn table_kind_width(kind: u8) -> usize {
     match kind {
-        1 | 2 | 6 => 1,
-        3 | 7 => 2,
-        4 | 8 | 10 => 4,
-        5 | 9 | 11 | 36 => 8,
-        18 | 19 => 16,
+        1 | 2 | 6 | 20 | 25 => 1,
+        3 | 7 | 21 | 26 => 2,
+        4 | 8 | 10 | 22 | 27 => 4,
+        5 | 9 | 11 | 23 | 28 | 36 => 8,
+        18 | 19 | 24 | 29 => 16,
         _ => 0,
     }
 }
 
 /// Whether a payload under kind decodes EXACTLY into a field declared at
 /// declared (§4): an integer into a WIDER integer of the same signedness, and
-/// f32 into f64. Every other pair is a kind mismatch.
+/// f32 into f64. Every other pair is a kind mismatch, the fixed-point kinds
+/// 20–29 every way: a raw value read at another F is another number (§4).
 pub fn table_kind_widens(kind: u8, declared: u8) -> bool {
     match declared {
         3..=5 => (2..declared).contains(&kind),
@@ -594,7 +710,7 @@ pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> O
         raw |= (buf[*off + i] as u64) << (8 * i);
     }
     *off += w;
-    if matches!(kind, 2..=5) && w < 8 {
+    if matches!(kind, 2..=5 | 20..=23) && w < 8 {
         let s = 64 - 8 * w as u32;
         raw = (((raw << s) as i64) >> s) as u64;
     }
@@ -603,6 +719,7 @@ pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> O
 
 /// Read one 128-bit scalar (or a narrower integer widened into it) at kind's
 /// own width (§3, §4): little-endian, sign-extended into u128 for signed kinds.
+/// A fixed128 or ufixed128 (kinds 24, 29) is its sixteen raw bytes.
 pub fn scalar_read_128(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Option<u128> {
     let w = table_kind_width(kind);
     if w == 0 || *off + w > end {
@@ -620,16 +737,30 @@ pub fn scalar_read_128(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Opt
     Some(raw)
 }
 
-/// A float32 WIDENED into a float64 (§4): the value for a finite one, and for a
-/// NaN its payload in the top of the double's mantissa, by bit surgery, because
-/// the hardware conversion would set the quiet bit (SPEC.md §4.3).
-pub fn table_widen_f32(bits: u32) -> f64 {
-    if bits & 0x7F80_0000 == 0x7F80_0000 && bits & 0x007F_FFFF != 0 {
-        let sign = ((bits >> 31) as u64) << 63;
-        let payload = ((bits & 0x007F_FFFF) as u64) << 29;
-        return f64::from_bits(sign | 0x7FF0_0000_0000_0000 | payload);
+/// THE FINITE RULE ON A RETAINED UNKNOWN (docs/SPEC-TABLES.md §3.3, §6.6): a
+/// payload of a float kind is tested on its raw bits like a known field's, and
+/// a NaN or an infinity refuses the read. Every other kind, and a payload that
+/// is not its kind's width, is the walk's to judge.
+pub fn table_retained_float_finite(kind: u8, payload: &[u8]) -> bool {
+    match (kind, payload.len()) {
+        (10, 4) => table_finite_f32(u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])),
+        (11, 8) => {
+            let mut b = [0u8; 8];
+            b.copy_from_slice(payload);
+            table_finite_f64(u64::from_le_bytes(b))
+        }
+        _ => true,
     }
-    f32::from_bits(bits) as f64
+}
+
+/// THE WRITER'S FINITE RULE (docs/SPEC-TABLES.md §3.3, the same rule as the
+/// packet wire's, SPEC.md §4.3): a NaN or an infinity is
+/// not a value of the type, so the save refuses it BY NAME (at is
+/// <owner>.<field>) for <root>_save_checked, as for a value over its bound.
+pub fn table_float_refuse(ids: &mut IdTable, at: &str) {
+    if ids.refused.is_none() {
+        ids.refused = Some(format!("non_finite_float: {at}"));
+    }
 }
 
 /// Walk past a payload the reader does not store, by kind (§4), bounded by the
@@ -655,7 +786,7 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         5 | 9 | 11 | 23 | 28 | 36 => fixed(off, 8),
         18 | 19 | 24 | 29 => fixed(off, 16),
         17 | 30 => {
-            if let Some(_) = leb_read(bounded, off) { *off <= end } else { false }
+            leb_read(bounded, off).is_some() && *off <= end
         }
         12 | 13 | 14 | 16 | 31 | 32 | 33 => {
             let Some(n) = leb_read(bounded, off) else { return false; };
@@ -1081,7 +1212,7 @@ pub fn retain_ref(ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], id
 pub fn retain_emit_tail(out: &mut Vec<u8>, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], path: TableRetainPath, report: &mut TableReport) {
     let mut at = 0usize;
     while at + 4 <= retain.bytes.len() {
-        let len = retain_record_len(&retain.bytes[at..]) as usize;
+        let len = retain_record_len(&retain.bytes[at..]);
         if len < 17 || at + len > retain.bytes.len() {
             break;
         }
@@ -1126,7 +1257,7 @@ pub fn retain_discard(retain: &mut TableRetain, path: TableRetainPath, ordinal: 
     let mut read = 0usize;
     let mut write = 0usize;
     while read + 4 <= retain.bytes.len() {
-        let len = retain_record_len(&retain.bytes[read..]) as usize;
+        let len = retain_record_len(&retain.bytes[read..]);
         if len < 17 || read + len > retain.bytes.len() {
             break;
         }
@@ -1179,6 +1310,7 @@ fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetai
     retain_ref(ids, retain, known, id)
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_resolve(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     if *bad || depth > TABLE_RETAIN_DEPTH_CAP {
         *bad = true;
@@ -1219,6 +1351,7 @@ fn retain_emit_resolve(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableR
     }
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_framed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     if c.off + 8 > c.buf.len() {
         *bad = true;
@@ -1241,6 +1374,7 @@ fn retain_emit_framed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRe
     out.extend_from_slice(&content);
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_content(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     if *bad || depth > TABLE_RETAIN_DEPTH_CAP {
         *bad = true;
@@ -1289,6 +1423,7 @@ fn retain_emit_content(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableR
     }
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_keyed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], ek: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     let slot = retain_emit_ref(c, ids, retain, known, bad);
     leb_write(out, slot);
@@ -1338,6 +1473,11 @@ pub static KNOWN_IDS: &[u64] = &[
 	}
 	b.WriteString("];\n")
 	b.WriteString(textHelpers())
+	if len(ir.TableTimestampFields(u)) > 0 {
+		b.WriteString(timestampHelpersRust)
+	}
+	b.WriteString(cookRegionWriterRust)
+	b.WriteString(cookCarveRust)
 	text := b.String()
 	text = strings.Replace(text, "STRING_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.StringWireTypeId), 1)
 	text = strings.Replace(text, "BYTES_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.BytesWireTypeId), 1)
@@ -1422,4 +1562,117 @@ func (g *gen) emitVariableConstants(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "    pub const %s: (u64, u8) = (0x%016x, %d);\n", strings.ToUpper(ir.RustSnake(f.Name)), id, kind)
 	}
 	b.WriteString("}\n")
+}
+
+// TableEnumsModule holds every enum the unit's variable tables reach, with its
+// JSON name maps, ONCE per crate: each file's table module imports it rather
+// than declaring its own copy, so one schema enum is one Rust type across the
+// table layer (docs/SPEC-TABLES.md, the Rust backend's notes).
+const TableEnumsModule = "table_enums"
+
+// tableEnumsModule emits TableEnumsModule; nil when no carried table reaches an
+// enum. The order is the files' declaration order, then first reach.
+func tableEnumsModule(u *ir.Unit, vc *variableClass) []byte {
+	seen := map[string]bool{}
+	var enums []*ir.Enum
+	for _, f := range u.Files {
+		g := &gen{unit: u, file: f, closure: ir.TableClosure(u), vc: vc}
+		names := cardVariableTableNames(g)
+		if len(names) == 0 {
+			continue
+		}
+		for _, e := range g.collectVariableEnums(names) {
+			if !seen[e.Name] {
+				seen[e.Name] = true
+				enums = append(enums, e)
+			}
+		}
+	}
+	if len(enums) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString(header(runtimeSourceName(u), u.Package, "the table layer's enums and their JSON names, once per crate (docs/SPEC-TABLES.md §3, §16.2)"))
+	b.WriteString("\n")
+	emitVariableEnums(&b, enums)
+	emitKeyedAccessors(&b, enums)
+	b.WriteString("// ---- the JSON text form's names (docs/SPEC-TABLES.md §16.2) ----\n\n")
+	for _, e := range enums {
+		emitEnumText(&b, e)
+	}
+	return []byte(b.String())
+}
+
+// emitKeyedAccessors emits the keyed array's accessor (docs/PORTING.md M5,
+// docs/SPEC-TABLES.md §2.3): key 1 lives in slot 0 and E.Max in the last, and
+// None (key 0) and any key past E.Max are REFUSED in every build by one
+// unsigned compare covering both ends, then a panic that names the KEY. The
+// slice's own bounds check is not the technique: it names an index, and the
+// shift would be the caller's to spell. Every keyed array is a slice of its
+// slots, a `Vec` on the variable struct and an array on a fixed row, so the
+// runtime is generic over the slice; each enum gets the typed spelling, and
+// iteration yields the key beside the element.
+func emitKeyedAccessors(b *strings.Builder, enums []*ir.Enum) {
+	b.WriteString(`// ---- keyed arrays index by KEY, refused at both ends (docs/SPEC-TABLES.md §2.3) ----
+
+/// The slot a key owns in a keyed array of that many slots: key 1 in slot 0, E.Max
+/// in the last. None (key 0) and every key past E.Max are refused in every
+/// build: one unsigned compare covers both ends.
+#[inline(always)]
+pub fn table_key_slot(key: usize, slots: usize) -> usize {
+    let slot = key.wrapping_sub(1);
+    if slot >= slots {
+        table_key_refused(key, slots);
+    }
+    slot
+}
+
+/// The refusal: a panic naming the key, never an index.
+#[cold]
+#[inline(never)]
+#[track_caller]
+pub fn table_key_refused(key: usize, slots: usize) -> ! {
+    panic!("keyed array: key {key} names no slot (keys are 1 to {slots}; None is 0) (docs/SPEC-TABLES.md §2.3)")
+}
+
+/// The slot the key owns.
+#[inline(always)]
+#[track_caller]
+pub fn table_keyed<T>(slots: &[T], key: usize) -> &T {
+    &slots[table_key_slot(key, slots.len())]
+}
+
+/// The slot the key owns, to write.
+#[inline(always)]
+#[track_caller]
+pub fn table_keyed_mut<T>(slots: &mut [T], key: usize) -> &mut T {
+    let slot = table_key_slot(key, slots.len());
+    &mut slots[slot]
+}
+
+/// Every slot beside the key that owns it, in key order.
+pub fn table_keyed_iter<T>(slots: &[T]) -> impl Iterator<Item = (usize, &T)> {
+    slots.iter().enumerate().map(|(i, x)| (i + 1, x))
+}
+
+`)
+	for _, e := range enums {
+		fmt.Fprintf(b, "impl %s {\n", e.Name)
+		fmt.Fprintf(b, "    /// The slot of a `[%s]T` keyed array this key owns; None is refused.\n", e.Name)
+		b.WriteString("    #[inline(always)]\n    #[track_caller]\n")
+		b.WriteString("    pub fn keyed<T>(self, slots: &[T]) -> &T {\n        table_keyed(slots, self as usize)\n    }\n\n")
+		fmt.Fprintf(b, "    /// The slot of a `[%s]T` keyed array this key owns, to write; None is refused.\n", e.Name)
+		b.WriteString("    #[inline(always)]\n    #[track_caller]\n")
+		b.WriteString("    pub fn keyed_mut<T>(self, slots: &mut [T]) -> &mut T {\n        table_keyed_mut(slots, self as usize)\n    }\n\n")
+		fmt.Fprintf(b, "    /// Every slot of a `[%s]T` keyed array beside the key that owns it.\n", e.Name)
+		fmt.Fprintf(b, "    pub fn keyed_iter<T>(slots: &[T]) -> impl Iterator<Item = (%s, &T)> {\n", e.Name)
+		fmt.Fprintf(b, "        const KEYS: [%s; %d] = [", e.Name, len(e.Variants))
+		for i, v := range e.Variants {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(b, "%s::%s", e.Name, rustVariant(v))
+		}
+		b.WriteString("];\n        KEYS.iter().copied().zip(slots.iter())\n    }\n}\n\n")
+	}
 }

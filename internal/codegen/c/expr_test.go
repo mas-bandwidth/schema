@@ -54,17 +54,17 @@ func TestExprConstDefines(t *testing.T) {
 	data, _ := generateExprCorpus(t)
 	for _, want := range []string{
 		// a reference chain renders as the author's expression
-		"#define PRODUCT (MAX_OBJECTS * MAX_UNITS)\n",
+		"#define PRODUCT ( MAX_OBJECTS * MAX_UNITS )\n",
 		// int carrier would overflow on the way to the value: 2000000000 * 3
 		// is an int * int in C — the fold is the only correct spelling
-		"#define INT_OVERFLOW (6000000000)\n",
+		"#define INT_OVERFLOW ( 6000000000 )\n",
 		// a wide leaf (3000000000 self-promotes past int) makes the subtree
 		// long long, so the symbolic form is safe
-		"#define WIDE_PLUS (WIDE + 1)\n",
+		"#define WIDE_PLUS ( WIDE + 1 )\n",
 		// hex source spelling survives
-		"#define HEX_ID (0xDEADBEEF)\n",
+		"#define HEX_ID ( 0xDEADBEEF )\n",
 		// E.Max has no C twin: fold, schema spelling in the comment
-		"#define NUM_TEAMS (2) /* = Team.Max */\n",
+		"#define NUM_TEAMS ( 2 ) /* = Team.Max */\n",
 	} {
 		if !strings.Contains(data, want) {
 			t.Errorf("generated data header must contain %q:\n%s", want, data)
@@ -82,7 +82,7 @@ func TestExprBounds(t *testing.T) {
 		// (the write-side bound is a serialize_assert — see emitRangeAssertWrite)
 		"(serialize_int64_t) value->object_id <= MAX_OBJECTS - 1",
 		// doubled minus parenthesizes — "--MAX_UNITS" would be a decrement
-		"(serialize_int64_t) value->doubled >= -(-MAX_UNITS)",
+		"(serialize_int64_t) value->doubled >= -( -MAX_UNITS )",
 		"(serialize_int64_t) value->doubled <= MAX_UNITS * 2",
 		// hex bound keeps its source spelling
 		"(serialize_int64_t) value->hexed <= 0x10",
@@ -216,8 +216,8 @@ func TestExtremeLiterals(t *testing.T) {
 	data, wire := generateExtremesCorpus(t)
 	for _, want := range []string{
 		// #define bodies: the C twin of C++'s emitConst guards
-		"#define FLOOR_LIMIT (( -9223372036854775807LL - 1 ))",
-		"#define CEILING_COUNT (18446744073709551615ULL)",
+		"#define FLOOR_LIMIT ( -9223372036854775807LL - 1 )\n",
+		"#define CEILING_COUNT ( 18446744073709551615ULL )",
 		// defaults fold through the same guard
 		"value.floor_default = ( -9223372036854775807LL - 1 );",
 		"value.ceiling_default = 18446744073709551615ULL;",
@@ -229,13 +229,16 @@ func TestExtremeLiterals(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		// the wire offset arithmetic folds the INT64_MIN bound guarded
-		"(value->floor_bound) - (( -9223372036854775807LL - 1 ))",
-		"offset_value + (( -9223372036854775807LL - 1 ))",
+		// the wire offset arithmetic folds the INT64_MIN bound guarded, and
+		// subtracts in UNSIGNED 64-bit arithmetic: in int64 the difference
+		// overflows for every value >= 0 (TestRangedOffsetsSubtractUnsigned)
+		"(serialize_uint64_t) value->floor_bound - (serialize_uint64_t) ( -9223372036854775807LL - 1 )",
+		"offset_value + (serialize_uint64_t) ( -9223372036854775807LL - 1 )",
 		// the doubled minus AT the extreme folds too: the intermediate
 		// -(-9223372036854775808) overflows the long long carrier even
 		// though the final value fits (two extreme classes meet)
-		"(value->doubled_floor) - (( -9223372036854775807LL - 1 ))",
+		"(serialize_uint64_t) value->doubled_floor - (serialize_uint64_t) ( -9223372036854775807LL - 1 )",
+		"(serialize_uint64_t) value->clamped_floor - (serialize_uint64_t) ( -9223372036854775807LL - 1 )",
 		// a 128-bit fixed bound that fits int64 rides from_int64, guarded
 		"serialize_write_fixed128( stream, fixed_value, 128, 0, ( -9223372036854775807LL - 1 ), 0 )",
 	} {

@@ -11,12 +11,12 @@ import (
 	"testing"
 )
 
-// TestMessageFormRefusesAPlainTable: the surface that REQUESTS the message
+// TestMessageFormRefusesAVariableTable: the surface that REQUESTS the message
 // form — `schema pack --message` and `schema unpack --announce`, both of which
-// come through PackMessages / UnpackMessages — refuses a plain `table` NAMING
+// come through PackMessages / UnpackMessages — refuses a variable table NAMING
 // THE TABLE, rather than quietly writing another form. The file form is every
 // table's, and the refusal says so.
-func TestMessageFormRefusesAPlainTable(t *testing.T) {
+func TestMessageFormRefusesAVariableTable(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, "package probe\ntable Loose { n int32 }\nfixed table Tight { n int32 }\n")
 	dir := t.TempDir()
@@ -25,9 +25,9 @@ func TestMessageFormRefusesAPlainTable(t *testing.T) {
 	}
 	_, _, _, err := c.PackMessage(u, "Loose", dir)
 	if err == nil {
-		t.Fatal("the message form accepted a plain `table`")
+		t.Fatal("the message form accepted a variable table")
 	}
-	for _, want := range []string{"Loose", "plain `table`", "MESSAGE FORM is a fixed table's", "§3.3"} {
+	for _, want := range []string{"Loose", "names a variable table", "MESSAGE FORM is a fixed table's", "§3.3"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not carry %q: %v", want, err)
 		}
@@ -50,10 +50,10 @@ func TestMessageFormRefusesAPlainTable(t *testing.T) {
 
 // TestTheCorpusCompilesWithTheKeyword: every corpus this branch marked up
 // still loads, and the tables that took `fixed` are on the fixed wire while
-// the ones left plain are on the variable one. The guard-carrying corpus
+// the ones left variable are on the variable one. The guard-carrying corpus
 // tables dropped their guards to take the keyword (#823), so `RootConfig`,
 // `ProfileConfig` and `ArchiveConfig` are pinned here beside the rest;
-// `tables/examples/Guarded.schema`'s `Patrol` is what stays plain, and it is
+// `tables/examples/Guarded.schema`'s `Patrol` is what stays variable, and it is
 // the one this suite does NOT name.
 func TestTheCorpusCompilesWithTheKeyword(t *testing.T) {
 	c := New()

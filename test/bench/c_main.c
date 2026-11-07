@@ -89,21 +89,21 @@ static int golden_wire( const char * name, const serialize_uint8_t * data, int b
         return 0;                                                              \
     }
 
-PIN_SHAPE( bench_packet, BenchPacket, write_bench_packet, read_bench_packet, 49, "BENCH-STANDARD.md §1.3" )
-PIN_SHAPE( bench_ints, BenchInts, write_bench_ints, read_bench_ints, 14, "BENCH-STANDARD.md §1.3" )
-PIN_SHAPE( bench_bits, BenchBits, write_bench_bits, read_bench_bits, 20, "BENCH-STANDARD.md §1.3" )
-PIN_SHAPE( bench_mixed, BenchMixed, write_bench_mixed, read_bench_mixed, 438, "BENCH-STANDARD.md §1.3" )
-PIN_SHAPE( real_packet, RealPacket, write_real_packet, read_real_packet, 204, "RealWorld.schema" )
+PIN_SHAPE( bench_packet, bench_bench_packet_t, bench_write_bench_packet, bench_read_bench_packet, 49, "BENCH-STANDARD.md §1.3" )
+PIN_SHAPE( bench_ints, bench_bench_ints_t, bench_write_bench_ints, bench_read_bench_ints, 14, "BENCH-STANDARD.md §1.3" )
+PIN_SHAPE( bench_bits, bench_bench_bits_t, bench_write_bench_bits, bench_read_bench_bits, 20, "BENCH-STANDARD.md §1.3" )
+PIN_SHAPE( bench_mixed, bench_bench_mixed_t, bench_write_bench_mixed, bench_read_bench_mixed, 438, "BENCH-STANDARD.md §1.3" )
+PIN_SHAPE( real_packet, realworld_real_packet_t, realworld_write_real_packet, realworld_read_real_packet, 204, "RealWorld.schema" )
 
 int main( void )
 {
     int i;
 
-    BenchPacket packet;
-    BenchInts ints;
-    BenchBits bits;
-    BenchMixed mixed;
-    RealPacket real;
+    bench_bench_packet_t packet;
+    bench_bench_ints_t ints;
+    bench_bench_bits_t bits;
+    bench_bench_mixed_t mixed;
+    realworld_real_packet_t real;
 
     memset( &packet, 0, sizeof( packet ) );
     packet.a = -37;
@@ -167,8 +167,8 @@ int main( void )
         mixed.entities[i].vel_y = 2047 - i * 512;
         mixed.entities[i].vel_z = -1024 + i * 256;
         mixed.entities[i].health = 1000 - i * 100;
-        mixed.entities[i].weapon = (MixedWeapon) ( 1 + i );
-        mixed.entities[i].damage = (MixedDamage) ( 0x5A + i );
+        mixed.entities[i].weapon = (bench_mixed_weapon_t) ( 1 + i );
+        mixed.entities[i].damage = (bench_mixed_damage_t) ( 0x5A + i );
         mixed.entities[i].moving = ( i % 2 ) == 0;
         mixed.entities[i].firing = ( i % 3 ) == 0;
     }
@@ -178,7 +178,7 @@ int main( void )
         mixed.stats[i].stat_id = (uint32_t) ( ( i * 3 ) % 256 );
         mixed.stats[i].delta = -512 + ( i * 13 ) % 1024;
     }
-    mixed.game_event.type = MIXED_EVENT_TYPE_HIT;
+    mixed.game_event.type = BENCH_MIXED_EVENT_TYPE_HIT;
     mixed.game_event.as.hit.target_id = 4095;
     mixed.game_event.as.hit.damage = 4095;
     mixed.game_event.as.hit.hit_kind = 7;
@@ -203,7 +203,7 @@ int main( void )
     mixed.idle_ticks = 9;   /* rides now: the branch that gated it is gone */
 
     /* §1.7: the all-defaults instance IS the pin (gate defaults included) */
-    real = new_real_packet();
+    real = realworld_new_real_packet();
 
     if ( pin_bench_packet( &packet ) ) return 1;
     if ( pin_bench_ints( &ints ) ) return 1;

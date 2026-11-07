@@ -8,11 +8,9 @@ import (
 )
 
 // TestHostileIllFormedRowExemptsUnportedLegs pins the ill-formed-UTF-8 hostile
-// row to docs/SPEC-TABLES.md §16.3's hold: the rule is held first in Go, so Go
-// owes `refused`, and C++ still owes the counters its port answers until it
-// takes the rule. A C++ answer of `refused` and a Go answer of those counters
-// each score red, because the exemption is a different expectation and never a
-// skip.
+// row to docs/SPEC-TABLES.md §16.3's rule. Go, C, C++ and Rust owe refusal;
+// a synthetic unported leg owes the explicit original counters. Reversing
+// either answer scores red: an exemption is an expectation, never a skip.
 func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 	t.Parallel()
 
@@ -38,9 +36,11 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"go":  "refused",
-		"c":   "refused",
-		"cpp": oldCounters,
+		"go":       "refused",
+		"c":        "refused",
+		"rust":     "refused",
+		"cpp":      "refused",
+		"unported": oldCounters,
 	}
 	for lang, verdict := range want {
 		if got := row.VerdictFor(lang); got != verdict {
@@ -64,19 +64,21 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 			}
 		}
 	}
-	if exemptNamed["go"] || exemptNamed["c"] {
-		t.Fatalf("%s: Go and C carry the rule and must not be exempted", caseName)
+	if exemptNamed["go"] || exemptNamed["c"] || exemptNamed["cpp"] || exemptNamed["rust"] {
+		t.Fatalf("%s: Go, C, C++ and Rust carry the rule and must not be exempted", caseName)
 	}
-	if !exemptNamed["cpp"] {
-		t.Fatalf("%s: C++ is exempted but the harness names no exemption on its line; it must never skip the row in silence", caseName)
+	if !exemptNamed["unported"] {
+		t.Fatalf("%s: the synthetic unported leg is exempted but the harness names no exemption on its line; it must never skip the row in silence", caseName)
 	}
 
 	dir := t.TempDir()
 
 	// the reversed witness: each leg answering the OTHER leg's verdict is red
 	reversed := map[string]string{
-		"go":  oldCounters,
-		"cpp": "refused",
+		"go":       oldCounters,
+		"rust":     oldCounters,
+		"cpp":      oldCounters,
+		"unported": "refused",
 	}
 	for lang, answer := range reversed {
 		e, ok := byLang[lang]

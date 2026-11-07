@@ -72,6 +72,10 @@ func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// the table enums live once per crate (table_enums.rs); empty when none
+	if err := os.WriteFile(filepath.Join(root, "table_enums.rs"), modules["table_enums.rs"], 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(cardRoundTripProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -98,11 +102,14 @@ func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
 
 const cardRoundTripProbe = `
 mod variable_runtime;
+mod table_enums;
 mod card_table;
 mod card_variable;
 
 use card_table::*;
 use variable_runtime::*;
+#[allow(unused_imports)]
+use table_enums::*;
 
 fn main() {
     let path = std::env::args().nth(1).expect("wire path");

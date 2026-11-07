@@ -33,9 +33,11 @@ m1_open_as_m2      0,0,0,0,0,false,read
 m1_save_as_m2      1,0,0,0,0,false,read
 m2_close_as_m1     1,0,0,0,0,false,read
 m2_open_as_m1      1,0,0,0,0,false,read
+map_depth_root_kind 0,1,0,0,0,false,read
 map_key_widen      0,0,1,0,0,false,read
 marks_unknown_variant 1,0,0,0,0,false,read
 message_as_file    0,0,0,0,0,false,refused
+nested_arm_trailing 0,0,0,0,0,false,read
 nopayload_named_field 0,1,0,0,0,false,read
 p1_as_p2           0,1,0,0,0,false,read
 p1_as_p3           0,0,0,0,0,false,read
@@ -56,6 +58,7 @@ r1_ping_as_r2      0,0,0,0,0,false,read
 r2_cfg_as_r1       0,0,0,0,0,false,read
 scalars_edges_as_2 1,2,0,2,0,false,read
 scalars_full_as_2  2,2,0,2,0,false,read
+text_total_and_count 0,0,0,2,0,false,read
 trace_count_past_bound 0,0,0,1,0,false,read
 trace_elem_kind    0,1,0,0,0,false,read
 v1_cfg_as_v2       1,1,0,1,0,false,read

@@ -360,7 +360,7 @@ func t05CsE9(t *testing.T) {
 // ---- cs/R16 -----------------------------------------------------------------
 
 // t05CsR16 holds R16 to §5.4's exact counters. Unknown is the COMPILE census,
-// once per peer and never per record: the load adds census_unknown once, after
+// once per endpoint and never per record: the load adds census_unknown once, after
 // the record loop. Widened moves once per entry per record (the widen and
 // widenf cases) and the folded wide run reports its element count. Clamped
 // moves once per entry for the count and text ops. The copy and const ops move
@@ -374,7 +374,7 @@ func t05CsR16(t *testing.T) {
 		t.Error("R16: the folded wide run does not report its element count (§5.2 EMIT kind 14)")
 	}
 	if n := strings.Count(run, "report.KindMismatch++"); n != 0 {
-		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per peer", n)
+		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per endpoint", n)
 	}
 	for _, op := range []string{"Count", "Text"} {
 		if !strings.Contains(t05OpBlock(t, op), "report.Clamped++") {
@@ -382,11 +382,11 @@ func t05CsR16(t *testing.T) {
 		}
 	}
 	if !strings.Contains(run, "if (!named && census && c.Report != null) { c.Report.Unknown++; }") {
-		t.Error("R16: the COMPILE census does not count unknown once per field per peer")
+		t.Error("R16: the COMPILE census does not count unknown once per field per endpoint")
 	}
 	_, src := t02Table(t, t02Flat)
 	if n := strings.Count(src, "report.Unknown += census_unknown;"); n != 1 {
-		t.Errorf("R16: the load adds the unknown census %d times, want exactly once per peer", n)
+		t.Errorf("R16: the load adds the unknown census %d times, want exactly once per endpoint", n)
 	}
 }
 

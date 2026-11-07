@@ -83,8 +83,9 @@ public final class WireFuzz {
                 measure = cards.CardVariable.loadMeasure(wire);
                 loaded = v != null ? 1 : 0;
                 if (v != null) {
+                    // a save that refuses (a shared blob, §2.5) answers null
                     savedBytes = cards.CardVariable.save(v);
-                    saved = savedBytes.length;
+                    saved = savedBytes == null ? -1 : savedBytes.length;
                 }
             }
 

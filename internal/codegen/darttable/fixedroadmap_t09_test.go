@@ -37,6 +37,7 @@ import (
 const t09Probe = `import 'dart:io';
 import 'dart:typed_data';
 
+import './Probe.dart' as p;
 import './ProbeFixed.dart' as t;
 
 void check(bool ok, String what) {
@@ -161,11 +162,11 @@ fixed table T
 			body: `  values[0].scorePresent = true;
   values[0].score = -2147483648;
   values[0].gradePresent = true;
-  values[0].grade = 3;
+  values[0].grade = p.Grade.gold;
   values[1].scorePresent = false;
   values[1].score = 12345;
   values[1].gradePresent = false;
-  values[1].grade = 2;
+  values[1].grade = p.Grade.silver;
 `,
 			checks: `  check(back[0].scorePresent && back[0].score == -2147483648,
       'a present optional scalar at its floor landed ${back[0].score}');
@@ -294,7 +295,7 @@ fixed table T
   check(values[0].g == 2, 'the fresh enum default = ${values[0].g}, want Silver (2)');
   values[1].a = -2147483648;
   values[1].b = 3.5;
-  values[1].g = 3;
+  values[1].g = p.Grade.gold;
 `,
 			checks: `  check(back[0].a == 7 && back[0].b == 0.0 && back[0].g == 2,
       'the declared defaults did not round trip: ${back[0].a} ${back[0].b} ${back[0].g}');
@@ -304,7 +305,7 @@ fixed table T
 `,
 			want: []string{
 				"int a = 7;",
-				"int g = Grade.silver;",
+				"Grade g = Grade.silver;",
 				"value.a = 7;",
 			},
 		},

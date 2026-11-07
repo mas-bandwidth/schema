@@ -68,7 +68,7 @@ func cT12Header(t *testing.T, src string) string {
 // cT12Load is the emitted `<snake>_fixed_load` of the unit's root.
 func cT12Load(t *testing.T, src string) string {
 	t.Helper()
-	load := cT04Fn(cT12Header(t, src), "lineage_fixed_load")
+	load := cT04Fn(cT12Header(t, src), "lineage_fixed_load_tolerant")
 	if load == "" {
 		t.Fatal("lineage_fixed_load is not emitted")
 	}

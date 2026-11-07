@@ -13,9 +13,9 @@ const NUMBER_SCRATCH = { value: 0 };
 // type DefaultArm
 export class DefaultArm {
   constructor() {
-    this.Entries = Array.from({ length: 2 }, () => new ProbeConfig());
-    this.EntriesCount = 0;
-    this.Marker = 0; // wire [0, 7]
+    this.entries = Array.from({ length: 2 }, () => new ProbeConfig());
+    this.entriesCount = 0;
+    this.marker = 0; // wire [0, 7]
   }
 }
 
@@ -27,39 +27,39 @@ export const DefaultArmMaxBytes = 16;
 // InitDefaultArm restores fresh construction values in place, preserving storage.
 export function InitDefaultArm(value) {
   for (let initIndex0 = 0; initIndex0 < 2; initIndex0++) {
-    const initValue0 = value.Entries[initIndex0];
+    const initValue0 = value.entries[initIndex0];
     InitProbeConfig(initValue0);
   }
-  value.EntriesCount = 0;
-  value.Marker = 0;
+  value.entriesCount = 0;
+  value.marker = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroDefaultArm(value) {
   for (let i = 0; i < 2; i++) {
-    ZeroProbeConfig(value.Entries[i]);
+    ZeroProbeConfig(value.entries[i]);
   }
-  value.EntriesCount = 0;
-  value.Marker = 0;
+  value.entriesCount = 0;
+  value.marker = 0;
 }
 
 export function WriteDefaultArm(stream, value) {
-  if (!Number.isInteger(value.EntriesCount) || value.EntriesCount < 0 || value.EntriesCount > 2) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.entriesCount) || value.entriesCount < 0 || value.entriesCount > 2) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.EntriesCount;
+  NUMBER_SCRATCH.value = value.entriesCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  for (let i = 0; i < value.EntriesCount; i++) {
-    if (!WriteProbeConfig(stream, value.Entries[i])) {
+  for (let i = 0; i < value.entriesCount; i++) {
+    if (!WriteProbeConfig(stream, value.entries[i])) {
       return false;
     }
   }
-  if (!Number.isInteger(value.Marker) || value.Marker < 0 || value.Marker > 7) {
+  if (!Number.isInteger(value.marker) || value.marker < 0 || value.marker > 7) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Marker;
+  NUMBER_SCRATCH.value = value.marker;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
@@ -70,16 +70,16 @@ export function ReadDefaultArm(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.EntriesCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.EntriesCount; i++) {
-    if (!ReadProbeConfig(stream, value.Entries[i])) {
+  value.entriesCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.entriesCount; i++) {
+    if (!ReadProbeConfig(stream, value.entries[i])) {
       return false;
     }
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 7)) {
     return false;
   }
-  value.Marker = NUMBER_SCRATCH.value;
+  value.marker = NUMBER_SCRATCH.value;
   return true;
 }
 
@@ -88,9 +88,8 @@ export const DefaultChoiceType = Object.freeze({
   None: 0,
   First: 1,
   Second: 2,
-  Count: 2, // the declared variant count (SPEC §4.2)
-  Max: 2, // the exported extent (SPEC §4.2)
 });
+export const DefaultChoiceTypeMax = 2; // the exported extent (SPEC §4.2)
 
 // EnumNameDefaultChoiceType: debug/log/tooling name for any DefaultChoiceType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -113,9 +112,9 @@ export function EnumNameDefaultChoiceType(value) {
 // reused-storage discipline. Consumers read the selected arm only.
 export class DefaultChoice {
   constructor() {
-    this.Type = DefaultChoiceType.None;
-    this.First = new DefaultArm();
-    this.Second = new DefaultArm();
+    this.type = DefaultChoiceType.None;
+    this.first = new DefaultArm();
+    this.second = new DefaultArm();
   }
 }
 
@@ -128,22 +127,22 @@ export const DefaultChoiceMaxBytes = 16;
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
 // is unselected at None; an arm is initialized at its next selection.
 export function ZeroDefaultChoice(value) {
-  value.Type = DefaultChoiceType.None;
+  value.type = DefaultChoiceType.None;
 }
 
 export function WriteDefaultChoice(stream, value) {
-  if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 2) {
+  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
-  NUMBER_SCRATCH.value = value.Type;
+  NUMBER_SCRATCH.value = value.type;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  switch (value.Type) {
+  switch (value.type) {
     case DefaultChoiceType.First:
-      return WriteDefaultArm(stream, value.First);
+      return WriteDefaultArm(stream, value.first);
     case DefaultChoiceType.Second:
-      return WriteDefaultArm(stream, value.Second);
+      return WriteDefaultArm(stream, value.second);
   }
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
@@ -152,14 +151,14 @@ export function ReadDefaultChoice(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
-  value.Type = NUMBER_SCRATCH.value;
-  switch (value.Type) {
+  value.type = NUMBER_SCRATCH.value;
+  switch (value.type) {
     case DefaultChoiceType.First:
-      InitDefaultArm(value.First); // fresh declared defaults on every selection
-      return ReadDefaultArm(stream, value.First);
+      InitDefaultArm(value.first); // fresh declared defaults on every selection
+      return ReadDefaultArm(stream, value.first);
     case DefaultChoiceType.Second:
-      InitDefaultArm(value.Second); // fresh declared defaults on every selection
-      return ReadDefaultArm(stream, value.Second);
+      InitDefaultArm(value.second); // fresh declared defaults on every selection
+      return ReadDefaultArm(stream, value.second);
   }
   return true; // None
 }
@@ -167,7 +166,7 @@ export function ReadDefaultChoice(stream, value) {
 // type DefaultChoicePacket
 export class DefaultChoicePacket {
   constructor() {
-    this.Choice = new DefaultChoice();
+    this.choice = new DefaultChoice();
   }
 }
 
@@ -178,23 +177,23 @@ export const DefaultChoicePacketMaxBytes = 16;
 
 // InitDefaultChoicePacket restores fresh construction values in place, preserving storage.
 export function InitDefaultChoicePacket(value) {
-  value.Choice.Type = 0; // None; dormant arms keep their storage
+  value.choice.type = 0; // None; dormant arms keep their storage
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroDefaultChoicePacket(value) {
-  ZeroDefaultChoice(value.Choice);
+  ZeroDefaultChoice(value.choice);
 }
 
 export function WriteDefaultChoicePacket(stream, value) {
-  if (!WriteDefaultChoice(stream, value.Choice)) {
+  if (!WriteDefaultChoice(stream, value.choice)) {
     return false;
   }
   return true;
 }
 
 export function ReadDefaultChoicePacket(stream, value) {
-  if (!ReadDefaultChoice(stream, value.Choice)) {
+  if (!ReadDefaultChoice(stream, value.choice)) {
     return false;
   }
   return true;
@@ -203,9 +202,9 @@ export function ReadDefaultChoicePacket(stream, value) {
 // type DefaultBulkArm
 export class DefaultBulkArm {
   constructor() {
-    this.Payload = new DefaultArm();
-    this.Data = new Uint8Array(2); // bytes(2): fixed buffer, used length beside it (SPEC §4.7)
-    this.DataLength = 0;
+    this.payload = new DefaultArm();
+    this.data = new Uint8Array(2); // bytes(2): fixed buffer, used length beside it (SPEC §4.7)
+    this.dataLength = 0;
   }
 }
 
@@ -216,44 +215,44 @@ export const DefaultBulkArmMaxBytes = 16;
 
 // InitDefaultBulkArm restores fresh construction values in place, preserving storage.
 export function InitDefaultBulkArm(value) {
-  InitDefaultArm(value.Payload);
-  value.Data.fill(0);
-  value.DataLength = 0;
+  InitDefaultArm(value.payload);
+  value.data.fill(0);
+  value.dataLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroDefaultBulkArm(value) {
-  ZeroDefaultArm(value.Payload);
-  value.Data.fill(0);
-  value.DataLength = 0;
+  ZeroDefaultArm(value.payload);
+  value.data.fill(0);
+  value.dataLength = 0;
 }
 
 export function WriteDefaultBulkArm(stream, value) {
-  if (!WriteDefaultArm(stream, value.Payload)) {
+  if (!WriteDefaultArm(stream, value.payload)) {
     return false;
   }
-  if (!Number.isInteger(value.DataLength) || value.DataLength < 0 || value.DataLength > 2) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
-  NUMBER_SCRATCH.value = value.DataLength;
+  NUMBER_SCRATCH.value = value.dataLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  if (!stream.serializeBytes(value.Data.subarray(0, value.DataLength))) {
+  if (!stream.serializeBytes(value.data.subarray(0, value.dataLength))) {
     return false;
   }
   return true;
 }
 
 export function ReadDefaultBulkArm(stream, value) {
-  if (!ReadDefaultArm(stream, value.Payload)) {
+  if (!ReadDefaultArm(stream, value.payload)) {
     return false;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // the length guards the slice (§6.3)
     return false;
   }
-  value.DataLength = NUMBER_SCRATCH.value;
-  if (!stream.serializeBytes(value.Data.subarray(0, value.DataLength))) {
+  value.dataLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.data.subarray(0, value.dataLength))) {
     return false;
   }
   return true;
@@ -264,9 +263,8 @@ export const DefaultBulkChoiceType = Object.freeze({
   None: 0,
   First: 1,
   Second: 2,
-  Count: 2, // the declared variant count (SPEC §4.2)
-  Max: 2, // the exported extent (SPEC §4.2)
 });
+export const DefaultBulkChoiceTypeMax = 2; // the exported extent (SPEC §4.2)
 
 // EnumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -289,9 +287,9 @@ export function EnumNameDefaultBulkChoiceType(value) {
 // reused-storage discipline. Consumers read the selected arm only.
 export class DefaultBulkChoice {
   constructor() {
-    this.Type = DefaultBulkChoiceType.None;
-    this.First = new DefaultBulkArm();
-    this.Second = new DefaultBulkArm();
+    this.type = DefaultBulkChoiceType.None;
+    this.first = new DefaultBulkArm();
+    this.second = new DefaultBulkArm();
   }
 }
 
@@ -304,22 +302,22 @@ export const DefaultBulkChoiceMaxBytes = 16;
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
 // is unselected at None; an arm is initialized at its next selection.
 export function ZeroDefaultBulkChoice(value) {
-  value.Type = DefaultBulkChoiceType.None;
+  value.type = DefaultBulkChoiceType.None;
 }
 
 export function WriteDefaultBulkChoice(stream, value) {
-  if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 2) {
+  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
-  NUMBER_SCRATCH.value = value.Type;
+  NUMBER_SCRATCH.value = value.type;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  switch (value.Type) {
+  switch (value.type) {
     case DefaultBulkChoiceType.First:
-      return WriteDefaultBulkArm(stream, value.First);
+      return WriteDefaultBulkArm(stream, value.first);
     case DefaultBulkChoiceType.Second:
-      return WriteDefaultBulkArm(stream, value.Second);
+      return WriteDefaultBulkArm(stream, value.second);
   }
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
@@ -328,14 +326,14 @@ export function ReadDefaultBulkChoice(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
-  value.Type = NUMBER_SCRATCH.value;
-  switch (value.Type) {
+  value.type = NUMBER_SCRATCH.value;
+  switch (value.type) {
     case DefaultBulkChoiceType.First:
-      InitDefaultBulkArm(value.First); // fresh declared defaults on every selection
-      return ReadDefaultBulkArm(stream, value.First);
+      InitDefaultBulkArm(value.first); // fresh declared defaults on every selection
+      return ReadDefaultBulkArm(stream, value.first);
     case DefaultBulkChoiceType.Second:
-      InitDefaultBulkArm(value.Second); // fresh declared defaults on every selection
-      return ReadDefaultBulkArm(stream, value.Second);
+      InitDefaultBulkArm(value.second); // fresh declared defaults on every selection
+      return ReadDefaultBulkArm(stream, value.second);
   }
   return true; // None
 }

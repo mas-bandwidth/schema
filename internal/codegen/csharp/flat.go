@@ -285,11 +285,11 @@ func (g *gen) flatWriteFieldPiece(item *ir.FieldItem) (flatPiece, bool) {
 			}
 			return flatPiece{item: item, bits: w,
 				guard: func(ind string) {
-					g.writeAssert(ind, fmt.Sprintf("%s < 1ul << %d", name, w),
+					g.writeAssert(ind, fmt.Sprintf("(ulong)%s < 1ul << %d", name, w),
 						fmt.Sprintf("%s has a mask bit above the %d-bit wire width", name, w),
 						" // a mask bit above the wire width cannot ride")
 				},
-				expr: flatMasked(name, w)}, true
+				expr: flatMasked("(ulong)"+name, w)}, true
 		}
 	}
 	return flatPiece{}, false
@@ -573,7 +573,7 @@ func (g *gen) flatReadFieldPiece(item *ir.FieldItem) (flatPiece, bool) {
 				return flatPiece{}, false
 			}
 			return flatPiece{item: item, bits: w, read: func(ind, src string) {
-				g.sf("%s%s = %s;\n", ind, name, src)
+				g.sf("%s%s = (%s)%s;\n", ind, name, f.Type.Name, src)
 			}}, true
 		}
 	}

@@ -4,7 +4,7 @@ package gotable
 // (docs/SPEC-TABLES.md §3.4, DEPRECATED SLOT), whatever the field's supported
 // fixed shape: scalar, array, optional, text/bytes, or nested record. The
 // writer must not leak live values, and both the identity and compiled reader
-// plans must ignore peer bytes and restore the same default image.
+// plans must ignore endpoint bytes and restore the same default image.
 
 import "testing"
 
@@ -41,7 +41,7 @@ import (
 
 const wantB int64 = 4294967303 // 0x1_00000007: both four-byte lanes carry bits
 
-func setPeerBytes(body []byte) {
+func setRemoteBytes(body []byte) {
 	binary.LittleEndian.PutUint64(body[4:], 0x0000000900003039)
 	body[12] = 77
 	binary.LittleEndian.PutUint16(body[13:], 0x1111)
@@ -133,7 +133,7 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 		t.Fatalf("writer changed retired/live ranged values: %v %v", body[50], body[51])
 	}
 
-	setPeerBytes(body)
+	setRemoteBytes(body)
 	back := make([]T, 1)
 	plan := make([]TableFixedEntry, TFixedPlanMax)
 	var r TableReport
@@ -173,7 +173,7 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 
 // A DEPRECATED NAMED-SHAPE FIELD (enum, flags, keyed array) is the same rule
 // (§3.4 DEPRECATED SLOT): FixedSave writes the declared default, FixedLoad
-// ignores peer bytes and yields the declared default. The other scalar and
+// ignores endpoint bytes and yields the declared default. The other scalar and
 // container shapes are covered by TestFixedDeprecatedSlotIsTheDeclaredDefault
 // above; these are the named-shape leaves the const op cannot land.
 func TestFixedDeprecatedSlotEnumFlagsKeyed(t *testing.T) {

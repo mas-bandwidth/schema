@@ -1,0 +1,49 @@
+#!/bin/sh
+# THE SQUIRREL RELEASE TIER's negative control (docs/PORTING.md J3;
+# make/squirrel-fuzz.mk, tables-squirrel-release).
+#
+# The release tier scales the leg's wire fuzzer over both of its arms. This
+# control overlays the emitted load runtime so a builder whose root body
+# stopped is reported as finished (the caller is never told to discard a
+# partial value, docs/SPEC-TABLES.md §4.2), regenerates the corpus into
+# build/, and runs the release tier's builder-arm fuzz against it through
+# $SCHEMA_SQUIRREL_CONFORMANCE. It must go red on the builder's completion.
+# No tracked file is written to.
+#
+# usage: release-negative-control <harness flags...>
+# The working directory is the repository root; $SQ is the pinned interpreter.
+set -eu
+out=build/squirrel-release-negative-control
+rm -rf "$out"
+mkdir -p "$out"
+runtime=load.nut
+source=internal/codegen/squirreltable/runtime/$runtime
+sed 's/report.stopped = !finished;/report.stopped = false;/' "$source" > "$out/$runtime"
+if cmp -s "$source" "$out/$runtime"; then
+	echo "NEGATIVE CONTROL FAILED (release): the sabotage patched nothing" >&2
+	exit 1
+fi
+root=$(pwd)
+printf '{"Replace":{"%s/%s":"%s/%s/%s"}}\n' "$root" "$source" "$root" "$out" "$runtime" > "$out/overlay.json"
+"${GO:-go}" build -overlay "$root/$out/overlay.json" -o "$out/schema" ./cmd/schema
+mkdir -p "$out/conformance-squirrel"
+: > "$out/conformance-squirrel/REFUSED.txt"
+grep '^unit ' testdata/conformance/tables/MANIFEST.txt | while read -r _ key paths; do
+	# shellcheck disable=SC2086 # a unit's paths are words
+	if ! "$out/schema" generate --lang squirrel --out "$out/conformance-squirrel/$key" $paths > "$out/$key.log" 2>&1; then
+		printf '%s %s\n' "$key" "$(tr '\n' ' ' < "$out/$key.log")" >> "$out/conformance-squirrel/REFUSED.txt"
+	fi
+	rm -f "$out/$key.log"
+done
+if SCHEMA_SQUIRREL_CONFORMANCE="$root/$out/conformance-squirrel" ./build/conformance-harness wire-fuzz \
+	--driver "$SQ test/conformance/squirrel/wirefuzz.nut builder" --builder "$@" --failed "$out/failed.bin" > "$out/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED (release): the sabotage left the builder arm green" >&2
+	cat "$out/log" >&2
+	exit 1
+fi
+if ! grep -q "builder completion differs from the oracle" "$out/log"; then
+	echo "NEGATIVE CONTROL FAILED (release): the builder arm went red for another reason" >&2
+	cat "$out/log" >&2
+	exit 1
+fi
+echo "Squirrel release negative control: a stopped builder reported finished turns the release tier's builder arm red"

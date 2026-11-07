@@ -1,24 +1,25 @@
-// THE MESSAGE FORM'S ANNOUNCEMENT ON THE ELIXIR LEG (docs/SPEC-TABLES.md
-// §3.3). The message form is a batch of bitpacked bodies under one announced
-// vocabulary, and the announcement is an ordinary form-`1` file the compiler
-// settles byte for byte. This card emits the ANNOUNCEMENT SURFACE only:
+// THE MESSAGE FORM ON THE ELIXIR LEG (docs/SPEC-TABLES.md §3.3). The message
+// form is a batch of bitpacked bodies under one announced vocabulary, and the
+// announcement is an ordinary form-`1` file the compiler settles byte for byte.
+// When the unit has a fixed root, this file emits both surfaces:
 //
-//	Announce / AnnounceMeasure — the constant and its length, not a walk;
-//	AnnounceRead — reads the announcement file and fills a TableVocabulary;
-//	the refusals the page names, and the two strict checks answered malformed.
+//	announce / announce_measure — the constant and its length, not a walk;
+//	announce_read — reads the announcement file and fills a TableVocabulary;
+//	measure_messages / save_messages / load_messages — the bitpacked batch,
+//	form byte 2, over the vocabulary announce_read resolved.
 //
-// The batch verbs (MeasureMessages / SaveMessages / LoadMessages) are the NEXT
-// card; nothing here reads a form-`2` body. The announcement's form-`1` reader
-// below is the whole of the wire this surface owes, and it is emitted once per
-// unit that declares a fixed table, beside BuildVersion — the announcement is a
-// compile-time constant of the unit and its vocabulary is a pure function of
-// the build version (docs/SPEC-TABLES.md §3.3).
+// The batch runtime below reads and writes that form-`2` body. The
+// announcement's form-`1` reader is emitted once per unit that declares a
+// fixed table, beside BuildVersion. The announcement is a compile-time constant
+// of the unit and its vocabulary is a pure function of the build version
+// (docs/SPEC-TABLES.md §3.3). The batch verbs are the module's, not a generated
+// verb per root.
 //
 // THE BEAM HAS NO CALLER-OWNED ARRAY, so §3.3's "the resolved vocabulary's
 // storage is the caller's, declared by capacity" is honoured the way this leg's
 // fixed form honours §3.4's own capacity rules: the entry bound and the byte
 // bound are FIELDS of the TableVocabulary the caller may state, defaulted to
-// 4096 entries and 64 KiB, and a peer past either is refused by name
+// 4096 entries and 64 KiB, and an endpoint past either is refused by name
 // `:vocabulary_too_large`.
 package elixirtable
 
@@ -29,21 +30,23 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TableMessageModule is the message form's announcement surface module, one per
-// unit that declares a fixed table, claimed beside BuildVersion and the two
-// accelerators' runtimes (docs/SPEC-TABLES.md §3.3, §11).
+// TableMessageModule is the message form's module, one per unit that declares
+// a fixed table, claimed beside BuildVersion and the two accelerators'
+// runtimes (docs/SPEC-TABLES.md §3.3, §11). It carries the announcement
+// surface and the batch verbs that read and write a form-`2` body.
 const TableMessageModule = "TableMessage"
 
 // messageformModule emits <ns>.TableMessage: the announcement constant, its
-// measure, and the reader that resolves it into a TableVocabulary.
+// measure, the reader that resolves it into a TableVocabulary, and the batch
+// verbs that measure, save and load a form-`2` body.
 func messageformModule(u *ir.Unit, ns string) []byte {
 	var b strings.Builder
-	b.WriteString(header(TableMessageModule, u.Package, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3)"))
+	b.WriteString(header(TableMessageModule, u.Package, "the MESSAGE FORM, announcement and batch (docs/SPEC-TABLES.md §3.3)"))
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "defmodule %s.%s do\n", ns, TableMessageModule)
 	b.WriteString("  @moduledoc \"\"\"\n")
-	b.WriteString("  The MESSAGE FORM's announcement (docs/SPEC-TABLES.md §3.3), form byte 2.\n\n")
-	b.WriteString("  A message is a bitpacked body under a vocabulary the peer announces once,\n")
+	b.WriteString("  The MESSAGE FORM's announcement and batch runtime (docs/SPEC-TABLES.md §3.3), form byte 2.\n\n")
+	b.WriteString("  A message is a bitpacked body under a vocabulary the endpoint announces once,\n")
 	b.WriteString("  before the first body and never again. The announcement is an ordinary\n")
 	b.WriteString("  form-`1` FILE whose body carries the unit's BUILD VERSION and the unit's\n")
 	b.WriteString("  whole VOCABULARY, and whose trailer is those two reserved ids. It is a\n")
@@ -51,17 +54,18 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  are the constant and its length and not a walk.\n\n")
 	b.WriteString("  `announce_read/2` resolves the vocabulary ONCE into the caller's\n")
 	b.WriteString("  `TableMessage` struct — the `TableVocabulary` of §3.3's surface — keeping\n")
-	b.WriteString("  the peer's build version. A second announcement is `:second_announcement`,\n")
+	b.WriteString("  the endpoint's build version. A second announcement is `:second_announcement`,\n")
 	b.WriteString("  a vocabulary past either bound is `:vocabulary_too_large`, and the two\n")
 	b.WriteString("  strict checks — the build version present exactly once at kind 9 eight\n")
 	b.WriteString("  bytes wide, the vocabulary present exactly once at kind 14 element kind 6\n")
-	b.WriteString("  — answer `:malformed`, never a refusal.\n")
+	b.WriteString("  — answer `:malformed`, never a refusal. `measure_messages/2`,\n")
+	b.WriteString("  `save_messages/2` and `load_messages/2,3` measure, write and read a\n")
+	b.WriteString("  form-`2` batch of bodies against that resolved vocabulary.\n")
 	b.WriteString("  \"\"\"\n\n")
 	b.WriteString("  import Bitwise\n\n")
-	fmt.Fprintf(&b, "  @announcement <<%s>>\n", elixirBytes(ir.TableAnnouncement(u)))
+	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(ir.TableAnnouncement(u))))
 	fmt.Fprintf(&b, "  @entries_here %d\n\n", len(ir.TableVocabulary(u)))
-	b.WriteString(messageRuntimeBody)
-	b.WriteString(messageBatchRuntimeBody)
+	b.WriteString(messageIntegrity(u, messageRuntimeBody+messageBatchRuntimeBody))
 	b.WriteString("end\n")
 	return []byte(b.String())
 }
@@ -94,10 +98,13 @@ const messageBatchRuntimeBody = `  @batch_max 256
       {:error, :batch_too_large}
     else
       case encode_bodies(vocab, values, {0, 0}) do
-        {:ok, {acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
+        {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
       end
     end
+  catch
+    # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
+    :non_finite_float -> {:error, :non_finite_float}
   end
 
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -116,6 +123,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
         :error -> {:error, :malformed}
       end
     end
+  catch
+    :non_finite_float -> {:error, :non_finite_float}
   end
 
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -134,20 +143,22 @@ const messageBatchRuntimeBody = `  @batch_max 256
       # returns the refusal" (docs/SPEC-TABLES.md §3.3).
       {:error, :batch_too_large, count}
     else
+      # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
+      # (docs/SPEC-TABLES.md §3.3, §4): no body is delivered and the count is
+      # zero, for damage inside a body and for "BYTES AFTER THE PAD" alike.
       case read_bodies(vocab, {bytes_to_int(rest), 0, bit_size(rest)}, count, []) do
         {:ok, bodies, r} ->
-          if batch_ends_clean?(r) do
-            {:ok, bodies}
-          else
-            # "BYTES AFTER THE PAD ARE MALFORMED" (docs/SPEC-TABLES.md §3.3).
-            {:malformed, count, bodies}
-          end
+          if batch_ends_clean?(r), do: {:ok, bodies}, else: {:malformed, 0, []}
 
-        # "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1" (§3.3).
-        {:malformed, k, bodies} ->
-          {:malformed, k, bodies}
+        {:malformed, _k, _bodies} ->
+          {:malformed, 0, []}
       end
     end
+  catch
+    # A NaN OR AN INFINITY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3), the
+    # first one the walk meets, and outranks any damage after it: no body is
+    # delivered.
+    :non_finite_float -> {:error, :non_finite_float}
   end
 
   def load_messages(%__MODULE__{announced: true}, <<2>>, _capacity), do: {:error, :malformed}
@@ -175,7 +186,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # own low-bit-first order; int_to_bytes spills it into bytes at the end.
   # ---------------------------------------------------------------------------
 
-  defp put_bits({acc, nbits}, value, n), do: {acc ||| ((value &&& bit_mask(n)) <<< nbits), nbits + n}
+  defp put_bits({acc, nbits}, value, n),
+    do: {acc ||| (value &&& bit_mask(n)) <<< nbits, nbits + n}
 
   defp align_write({acc, nbits}), do: {acc, nbits + rem(8 - rem(nbits, 8), 8)}
 
@@ -218,7 +230,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp encode_value(_vocab, 1, _shape, _elem, value, acc), do: {:ok, put_bits(acc, value, 1)}
 
   defp encode_value(_vocab, kind, shape, _elem, value, acc)
-       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36],
        do: {:ok, encode_scalar(kind, shape, value, acc)}
 
   defp encode_value(_vocab, 10, shape, _elem, value, acc), do: encode_float(shape, value, acc)
@@ -273,7 +285,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp encode_elements(_vocab, _elem, [], acc), do: {:ok, acc}
 
   defp encode_elements(vocab, elem, [v | rest], acc) do
-    case encode_value(vocab, elem.kind, elem.shape, nil, v, acc) do
+    case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), v, acc) do
       {:ok, acc2} -> encode_elements(vocab, elem, rest, acc2)
       :error -> :error
     end
@@ -285,8 +297,11 @@ const messageBatchRuntimeBody = `  @batch_max 256
     acc2 = put_bits(acc, ref, vocab.ref_bits)
 
     case entry_at(vocab, ref) do
-      {:ok, entry} -> encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2)
-      :error -> :error
+      {:ok, entry} ->
+        encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2)
+
+      :error ->
+        :error
     end
   end
 
@@ -294,7 +309,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # align that precedes a string or a bytes array guarantees.
   defp put_bytes({acc, nbits}, bytes) do
     n = byte_size(bytes)
-    {acc ||| (bytes_to_int(bytes) <<< nbits), nbits + n * 8}
+    {acc ||| bytes_to_int(bytes) <<< nbits, nbits + n * 8}
   end
 
   # ---------------------------------------------------------------------------
@@ -308,13 +323,15 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp read_bodies(_vocab, r, 0, acc), do: {:ok, Enum.reverse(acc), r}
 
   defp read_bodies(vocab, r, n, acc) do
-    case read_body(vocab, r, []) do
+    case read_body(vocab, r, [], 0) do
       {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc])
       :malformed -> {:malformed, length(acc), Enum.reverse(acc)}
     end
   end
 
-  defp read_body(vocab, r, acc) do
+  defp read_body(_vocab, _r, _acc, depth) when depth > 128, do: :malformed
+
+  defp read_body(vocab, r, acc, depth) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, Enum.reverse(acc), rest}
@@ -322,8 +339,10 @@ const messageBatchRuntimeBody = `  @batch_max 256
       {:ok, ref, rest} ->
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
-            case read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest) do
-              {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc])
+            elem = Map.get(entry, :element)
+
+            case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
+              {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc], depth)
               :malformed -> :malformed
             end
 
@@ -336,13 +355,25 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
+  defp read_value(_vocab, _kind, _shape, _elem, _r, depth) when depth > 128, do: :malformed
+
+  defp read_value(vocab, 13, _shape, _elem, r, depth), do: read_body(vocab, r, [], depth + 1)
+
+  defp read_value(vocab, 14, shape, elem, r, depth),
+    do: read_array(vocab, shape, elem, r, depth)
+
+  defp read_value(vocab, 15, _shape, _elem, r, depth), do: read_union(vocab, r, depth)
+
+  defp read_value(vocab, kind, shape, elem, r, _depth),
+    do: read_value(vocab, kind, shape, elem, r)
+
   defp read_value(_vocab, 0, _shape, _elem, r), do: {:ok, :name, r}
   defp read_value(_vocab, 32, _shape, _elem, r), do: {:ok, :none, r}
 
   defp read_value(_vocab, 1, _shape, _elem, r), do: get_bits(r, 1)
 
   defp read_value(_vocab, kind, shape, _elem, r)
-       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36],
        do: read_scalar(kind, shape, r)
 
   defp read_value(_vocab, 10, shape, _elem, r), do: read_float(shape, r)
@@ -355,12 +386,6 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 
   defp read_value(_vocab, 12, shape, _elem, r), do: read_string(shape, r)
-
-  defp read_value(vocab, 13, _shape, _elem, r), do: read_body(vocab, r, [])
-
-  defp read_value(vocab, 14, shape, elem, r), do: read_array(vocab, shape, elem, r)
-
-  defp read_value(vocab, 15, _shape, _elem, r), do: read_union(vocab, r)
 
   defp read_value(vocab, 30, _shape, _elem, r), do: read_enum(vocab, r)
 
@@ -394,28 +419,69 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp read_array(vocab, shape, elem, r) do
+  defp read_array(vocab, shape, elem, r, depth) do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
          {:ok, rest2} <- maybe_align(elem, rest) do
-      read_elements(vocab, elem, shape.min + offset, rest2, [])
+      next_depth = elem_depth(elem, depth)
+      read_elements(vocab, shape, elem, shape.min + offset, rest2, [], next_depth)
     else
       _ -> :malformed
     end
   end
 
+  defp elem_depth(%{kind: kind}, depth) when kind in [12, 13, 14, 15, 16, 17, 30], do: depth + 1
+  defp elem_depth(_elem, depth), do: depth
+
   defp maybe_align(%{kind: 6}, r), do: align(r)
   defp maybe_align(_elem, r), do: {:ok, r}
 
-  defp read_elements(_vocab, _elem, 0, r, acc), do: {:ok, Enum.reverse(acc), r}
+  defp read_elements(_vocab, _shape, _elem, 0, r, acc, _depth), do: {:ok, Enum.reverse(acc), r}
 
-  defp read_elements(vocab, elem, n, r, acc) do
-    case read_value(vocab, elem.kind, elem.shape, nil, r) do
-      {:ok, v, rest} -> read_elements(vocab, elem, n - 1, rest, [v | acc])
-      :malformed -> :malformed
+  # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a
+  # ranged scalar whose bit width is 0, or a nested run of those. Looping on
+  # the count would allocate a list in proportion to the announcement and
+  # consume no input. This reader returns the list, so zero_width_run holds an
+  # unbounded list (shape.max == 0xFFFFFFFF, ir.TableMessageListMax) to the
+  # bits the batch still holds (internal/tablewire/messagedecode.go) before any
+  # cell is allocated. A fixed or bounded array's count is a declared capacity,
+  # not a wire claim, so it is materialized without that limit.
+  defp read_elements(vocab, shape, elem, n, r, acc, depth) when is_map(elem) and n > 0 do
+    case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r, depth) do
+      {:ok, v, ^r} ->
+        zero_width_run(vocab, shape, n, r, acc, v)
+
+      {:ok, v, rest} ->
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth)
+
+      :malformed ->
+        :malformed
     end
   end
 
-  defp read_union(vocab, r) do
+  defp read_elements(_vocab, _shape, _elem, n, _r, _acc, _depth) when n > 0, do: :malformed
+
+  defp zero_width_run(_vocab, shape, n, r, acc, v) do
+    # A fixed or bounded array (shape.max < 0xFFFFFFFF) declares its count in
+    # the schema, so its elements are legitimate required capacity regardless
+    # of the vocabulary's byte budget (vocab.max_bytes bounds the announcement,
+    # not an element count) or the bits the batch still holds; a valid
+    # last-field arrangement must not depend on following payload or padding.
+    # An unbounded array (shape.max == 0xFFFFFFFF, ir.TableMessageListMax) has
+    # no declared bound and is held to the bits left in the batch
+    # (internal/tablewire/messagedecode.go): an element costs at least one bit
+    # (floor 1), so a count the batch cannot back is refused before any cell is
+    # allocated. The uint32 ceiling on the announced shape is untouched.
+    if shape.max == 0xFFFFFFFF and n > bits_left(r) do
+      :malformed
+    else
+      {:ok, Enum.reverse(acc, List.duplicate(v, n)), r}
+    end
+  end
+
+  defp bits_left({_int, off, total}) when total > off, do: total - off
+  defp bits_left({_int, _off, _total}), do: 0
+
+  defp read_union(vocab, r, depth) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, :none, rest}
@@ -423,7 +489,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
       {:ok, ref, rest} ->
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.kind != 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
-            case read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest) do
+            elem = Map.get(entry, :element)
+
+            case read_value(vocab, entry.kind, entry.shape, elem, rest, depth + 1) do
               {:ok, value, rest2} -> {:ok, {ref, value}, rest2}
               :malformed -> :malformed
             end
@@ -464,15 +532,15 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp scalar_bits(kind, _shape), do: kind_bits(kind)
 
-  defp scalar_value(kind, %{packing: 1, base: base}, raw), do: base + raw
+  defp scalar_value(_kind, %{packing: 1, base: base}, raw), do: base + raw
 
-  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18],
+  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 36],
     do: sign_extend(raw, kind_bits(kind))
 
   defp scalar_value(_kind, _shape, raw), do: raw
 
   defp sign_extend(raw, bits) do
-    if ((raw >>> (bits - 1)) &&& 1) == 1 do
+    if (raw >>> (bits - 1) &&& 1) == 1 do
       raw - (1 <<< bits)
     else
       raw
@@ -488,14 +556,14 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if off + n > total do
       :error
     else
-      {:ok, (int >>> off) &&& bit_mask(n), {int, off + n, total}}
+      {:ok, int >>> off &&& bit_mask(n), {int, off + n, total}}
     end
   end
 
   defp align({int, off, total}) do
     pad = rem(8 - rem(off, 8), 8)
 
-    if off + pad > total or ((int >>> off) &&& bit_mask(pad)) != 0 do
+    if off + pad > total or (int >>> off &&& bit_mask(pad)) != 0 do
       :error
     else
       {:ok, {int, off + pad, total}}
@@ -503,12 +571,20 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 
   # r is byte-aligned here (align precedes the call), so read n bytes whole.
-  defp take_bytes({int, off, total}, n) do
-    if off + n * 8 > total do
+  # A legal zero-length text is an exact empty binary and the cursor unchanged.
+  # 0..(n - 1) with no step is the descending range 0..-1 when n is 0, and that
+  # range walks two bytes. Positive lengths step //1. A run past the batch
+  # stays :error.
+  defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}
+
+  defp take_bytes({int, off, total}, n) when is_integer(n) and n > 0 do
+    need = n * 8
+
+    if off + need > total do
       :error
     else
-      bytes = for i <- 0..(n - 1), into: <<>>, do: <<(int >>> (off + 8 * i)) &&& 0xFF>>
-      {:ok, bytes, {int, off + n * 8, total}}
+      bytes = for i <- 0..(n - 1)//1, into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
+      {:ok, bytes, {int, off + need, total}}
     end
   end
 
@@ -524,23 +600,31 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # and all of them zero (docs/SPEC-TABLES.md §3.3).
   defp batch_ends_clean?({int, off, total}) do
     rem_bits = total - off
-    rem_bits < 8 and (rem_bits == 0 or ((int >>> off) &&& bit_mask(rem_bits)) == 0)
+    rem_bits < 8 and (rem_bits == 0 or (int >>> off &&& bit_mask(rem_bits)) == 0)
   end
 
   defp int_to_bytes(_int, 0), do: <<>>
 
   defp int_to_bytes(int, nbytes) do
-    for i <- 0..(nbytes - 1), into: <<>>, do: <<(int >>> (8 * i)) &&& 0xFF>>
+    for i <- 0..(nbytes - 1), into: <<>>, do: <<int >>> (8 * i) &&& 0xFF>>
   end
 
   defp bytes_to_int(bin), do: bytes_to_int(bin, 0, 0)
   defp bytes_to_int(<<>>, _i, acc), do: acc
-  defp bytes_to_int(<<b, rest::binary>>, i, acc), do: bytes_to_int(rest, i + 1, acc ||| (b <<< (8 * i)))
+
+  defp bytes_to_int(<<b, rest::binary>>, i, acc),
+    do: bytes_to_int(rest, i + 1, acc ||| b <<< (8 * i))
 
   defp bit_length(0), do: 0
   defp bit_length(n), do: bit_length(n, 0)
   defp bit_length(n, b) when n > 0, do: bit_length(n >>> 1, b + 1)
   defp bit_length(_n, b), do: b
+
+  # A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a read tests the raw bits for
+  # an all-ones exponent before they become a float and refuses the batch, and
+  # a write refuses a float64 that narrows past float32's range to an infinity
+  # (a BEAM float holds no NaN and no infinity of its own).
+  defp f64_from_bits(v) when (v >>> 52 &&& 0x7FF) == 0x7FF, do: throw(:non_finite_float)
 
   defp f64_from_bits(v) do
     <<f::little-float-64>> = <<v::little-64>>
@@ -552,6 +636,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
     v
   end
 
+  defp f32_from_bits(v) when (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float)
+
   defp f32_from_bits(v) do
     <<f::little-float-32>> = <<v::little-32>>
     f
@@ -559,32 +645,55 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp f32_to_bits(f) do
     <<v::little-32>> = <<f::little-float-32>>
-    v
+    if (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float), else: v
   end
 `
 
-// elixirBytes spells a byte run as an Elixir binary literal, low byte first.
-func elixirBytes(bytes []byte) string {
-	var s strings.Builder
+// elixirBytes spells a byte run as the segments of an Elixir binary literal,
+// low byte first.
+func elixirBytes(bytes []byte) []string {
+	segs := make([]string, len(bytes))
 	for i, v := range bytes {
-		if i > 0 {
-			s.WriteByte(',')
-		}
-		fmt.Fprintf(&s, "0x%02X", v)
+		segs[i] = fmt.Sprintf("0x%02X", v)
 	}
-	return s.String()
+	return segs
 }
 
-const messageRuntimeBody = `  defstruct [
-    announced: false,
-    refused: false,
-    build_version: 0,
-    entries: [],
-    count: 0,
-    ref_bits: 0,
-    max_bytes: 65536,
-    max_entries: 4096
-  ]
+// exAttrBinary writes `<prefix><<a, b, ...>>` the way `mix format` writes a
+// module attribute's binary: one line when it fits, and otherwise FILLED to
+// the line limit, every continuation aligned under the first segment.
+func exAttrBinary(prefix string, segs []string) string {
+	if one := prefix + "<<" + strings.Join(segs, ", ") + ">>"; exWidth(one) <= exLineLimit {
+		return one + "\n"
+	}
+	cont := strings.Repeat(" ", exWidth(prefix)+2)
+	var b strings.Builder
+	b.WriteString(prefix + "<<" + segs[0])
+	col := exWidth(prefix) + 2 + exWidth(segs[0])
+	for i := 1; i < len(segs); i++ {
+		after := 1 // the comma that follows it
+		if i == len(segs)-1 {
+			after = 2 // the closing >>
+		}
+		if col+2+exWidth(segs[i])+after > exLineLimit {
+			b.WriteString(",\n" + cont + segs[i])
+			col = exWidth(cont) + exWidth(segs[i])
+			continue
+		}
+		b.WriteString(", " + segs[i])
+		col += 2 + exWidth(segs[i])
+	}
+	return b.String() + ">>\n"
+}
+
+const messageRuntimeBody = `  defstruct announced: false,
+            refused: false,
+            build_version: 0,
+            entries: [],
+            count: 0,
+            ref_bits: 0,
+            max_bytes: 65536,
+            max_entries: 4096
 
   # ---------------------------------------------------------------------------
   # THE CONSTANT, and nothing but the constant
@@ -732,7 +841,15 @@ const messageRuntimeBody = `  defstruct [
                     else
                       case read_vocab(rest2, max_bytes) do
                         {:ok, words, rest3} ->
-                          walk(rest3, ids, versions, words_count + 1, build_version, words, max_bytes)
+                          walk(
+                            rest3,
+                            ids,
+                            versions,
+                            words_count + 1,
+                            build_version,
+                            words,
+                            max_bytes
+                          )
 
                         {:refuse, reason} ->
                           {:refuse, reason}
@@ -794,13 +911,27 @@ const messageRuntimeBody = `  defstruct [
   # Skip an unknown field by its declared kind (§3's closed set).
   defp skip(kind, bin) do
     cond do
-      kind in [1, 2, 6, 20, 25] -> take(1, bin)
-      kind in [3, 7, 21, 26] -> take(2, bin)
-      kind in [4, 8, 10, 22, 27] -> take(4, bin)
-      kind in [5, 9, 11, 23, 28] -> take(8, bin)
-      kind in [18, 19, 24, 29] -> take(16, bin)
-      kind in [17, 30] -> leb_rest(bin)
-      kind in [12, 13, 14, 16, 31, 32, 33] -> body(bin)
+      kind in [1, 2, 6, 20, 25] ->
+        take(1, bin)
+
+      kind in [3, 7, 21, 26] ->
+        take(2, bin)
+
+      kind in [4, 8, 10, 22, 27] ->
+        take(4, bin)
+
+      kind in [5, 9, 11, 23, 28, 36] ->
+        take(8, bin)
+
+      kind in [18, 19, 24, 29] ->
+        take(16, bin)
+
+      kind in [17, 30] ->
+        leb_rest(bin)
+
+      kind in [12, 13, 14, 16, 31, 32, 33] ->
+        body(bin)
+
       kind == 15 ->
         case leb(bin) do
           {:ok, 0, rest} -> {:ok, rest}
@@ -870,10 +1001,17 @@ const messageRuntimeBody = `  defstruct [
     case entry(bin) do
       {:ok, e, rest} ->
         cond do
-          e.id == 0xFFFFFFFFFFFFFFFE or e.id == 0xFFFFFFFFFFFFFFFD -> :error
-          e.id == 0xFFFFFFFFFFFFFFFF and node -> :error
-          duplicate?(e, acc) -> :error
-          true -> parse_entries(rest, max, [e | acc], count + 1, node or e.id == 0xFFFFFFFFFFFFFFFF)
+          e.id == 0xFFFFFFFFFFFFFFFE or e.id == 0xFFFFFFFFFFFFFFFD ->
+            :error
+
+          e.id == 0xFFFFFFFFFFFFFFFF and node ->
+            :error
+
+          duplicate?(e, acc) ->
+            :error
+
+          true ->
+            parse_entries(rest, max, [e | acc], count + 1, node or e.id == 0xFFFFFFFFFFFFFFFF)
         end
 
       :error ->
@@ -918,11 +1056,21 @@ const messageRuntimeBody = `  defstruct [
       case shape(elem, rest) do
         {:ok, es, rest2} ->
           if elem in [14, 16] do
-            # A nested array carries one more kind byte, which nothing decodes.
+            # A nested array carries one more kind byte. That kind is kept so a
+            # zero-width nested run is the same bounded read as a flat one.
+            # The shape bytes after that kind byte are still not decoded.
             case rest2 do
               <<inner, rest3::binary>> ->
                 if known_kind?(inner) and inner not in [12, 33] do
-                  {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest3}
+                  inner_elem = %{kind: inner, shape: %{kind: inner}}
+
+                  {:ok,
+                   %{
+                     id: id,
+                     kind: kind,
+                     shape: s,
+                     element: %{kind: elem, shape: es, element: inner_elem}
+                   }, rest3}
                 else
                   :error
                 end
@@ -942,7 +1090,7 @@ const messageRuntimeBody = `  defstruct [
 
   defp read_element(_kind, _id, _s, _), do: :error
 
-  defp known_kind?(kind), do: kind >= 0 and kind <= 33
+  defp known_kind?(kind), do: (kind >= 0 and kind <= 33) or kind == 36
 
   defp kind_bits(kind) do
     case kind do
@@ -969,6 +1117,7 @@ const messageRuntimeBody = `  defstruct [
       27 -> 32
       28 -> 64
       29 -> 128
+      36 -> 64
       _ -> 0
     end
   end
@@ -1030,7 +1179,6 @@ const messageRuntimeBody = `  defstruct [
                   else
                     :error
                   end
-
                 else
                   :error
                 end
@@ -1142,6 +1290,18 @@ const messageRuntimeBody = `  defstruct [
     end
   end
 
+  # docs/SPEC.md Floating-point discipline and docs/FIXED-FORM-ALGORITHM.md §5.1.
+  # The product rounds to float32 before the add. Elixir does not contract.
+  def dequantize_bits(index, qmin, delta, count)
+      when is_integer(index) and is_integer(count) and count > 0 do
+    index = if index < 0, do: 0, else: index
+    index = if index > count, do: count, else: index
+    normalized = round_f32(index / count)
+    scaled = round_f32(normalized * delta)
+    <<bits::little-unsigned-32>> = <<round_f32(scaled + qmin)::little-float-32>>
+    bits
+  end
+
   # A finite float rounded to float32, or :nonfinite where it overflows the
   # width: the page's "not finite in float32" (docs/SPEC-TABLES.md §3.3), which
   # a ranged float's delta or delta/res reaches by overflow alone.
@@ -1155,4 +1315,5 @@ const messageRuntimeBody = `  defstruct [
       f
     end
   end
+
 `

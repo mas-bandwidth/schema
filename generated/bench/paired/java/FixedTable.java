@@ -11,6 +11,4 @@ package bench;
 // home; types nest inside it (SPEC §6.1 naming).
 public final class FixedTable {
     private FixedTable() {}
-
-
 }

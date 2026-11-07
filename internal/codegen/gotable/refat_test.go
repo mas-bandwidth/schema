@@ -25,11 +25,11 @@ func TestRefAtShape(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"[tableIdCapacity]uint32",
-		"ordinalOf [tableIdCapacity]int32",
+		"[tableIDCapacity]uint32",
+		"ordinalOf [tableIDCapacity]int32",
 		"func (ids *TableIds) RefAt(ordinal int, id uint64)",
 		"func (ids *TableIds) refAtHit(ordinal int, id uint64)",
-		"func (w *TableWriter) IdAt(ordinal int, id uint64)",
+		"func (w *TableWriter) IDAt(ordinal int, id uint64)",
 		"ids.slot[o] = 0",
 		"w.headerPair(ref,",
 		"uint(ordinal) < uint(len(ids.slot))",
@@ -44,7 +44,7 @@ func TestRefAtShape(t *testing.T) {
 	runGenerated(t, refAtSchema, refAtWireTest)
 }
 
-// A field named alpha and enum variant alpha share TableWireId("alpha"). The
+// A field named alpha and enum variant alpha share TableWireID("alpha"). The
 // keyed array interns the key through Ref before measuring the element, so
 // the element's RefAt on that id is a chain hit. Recording the slot only on
 // an intern miss leaves truncate nothing to clear (schema #775).
@@ -77,11 +77,11 @@ func TestEnumWriterUsesRefAt(t *testing.T) {
 			save = save[:j+1]
 		}
 	}
-	if !strings.Contains(save, "w.IdAt(") {
-		t.Fatal("enum field writer does not intern through IdAt")
+	if !strings.Contains(save, "w.IDAt(") {
+		t.Fatal("enum field writer does not intern through IDAt")
 	}
-	if strings.Contains(save, "TableEnumId()") && strings.Contains(save, ".Id(id)") {
-		t.Fatal("enum field writer still hashes through TableEnumId then Id")
+	if strings.Contains(save, "TableEnumID()") && strings.Contains(save, ".ID(id)") {
+		t.Fatal("enum field writer still hashes through TableEnumID then Id")
 	}
 }
 
@@ -116,7 +116,7 @@ func TestRefAtFirstUseAndElision(t *testing.T) {
 	}
 
 	ids := trailerIds(wire)
-	if len(ids) < 1 || ids[0] != RootTableFields[0].Id {
+	if len(ids) < 1 || ids[0] != RootTableFields[0].ID {
 		t.Fatalf("first-use order: %x want n first", ids)
 	}
 
@@ -127,7 +127,7 @@ func TestRefAtFirstUseAndElision(t *testing.T) {
 	if RootSave(&empty, short) != m {
 		t.Fatal("empty children save")
 	}
-	if got := trailerIds(short); len(got) != 1 || got[0] != RootTableFields[0].Id {
+	if got := trailerIds(short); len(got) != 1 || got[0] != RootTableFields[0].ID {
 		t.Fatalf("elided children leaked ids: %x", got)
 	}
 }
@@ -183,7 +183,7 @@ func TestSharedIdRoundTrip(t *testing.T) {
 	}
 	for i := 0; i < int(count); i++ {
 		id := binary.LittleEndian.Uint64(wire[start+i*8:])
-		if id == LeafTableFields[0].Id {
+		if id == LeafTableFields[0].ID {
 			hasAlpha = true
 		}
 	}

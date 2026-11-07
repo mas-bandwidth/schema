@@ -1,0 +1,60 @@
+#!/bin/sh
+# THE SQUIRREL LEG's conformance negative controls (test/conformance/README.md,
+# "Seven negative controls"; make/squirrel-conformance.mk).
+#
+# One shape, four blades: overlay ONE emitted runtime file with a sabotaged
+# copy (a sed expression that must change it), rebuild the compiler under a Go
+# -overlay, regenerate the corpus into build/, and run the SAME driver against
+# it through $SCHEMA_SQUIRREL_CONFORMANCE. The named surface must go red and
+# every surface named after it must stay green. No tracked file is written to.
+#
+# usage: negative-control <name> <runtime .nut> <sed expression> <red surface> [green surface...]
+# The working directory is the repository root.
+set -eu
+name=$1 runtime=$2 expr=$3 red=$4
+shift 4
+out=build/squirrel-negative-control-$name
+rm -rf "$out"
+mkdir -p "$out"
+source=internal/codegen/squirreltable/runtime/$runtime
+sed "$expr" "$source" > "$out/$runtime"
+if cmp -s "$source" "$out/$runtime"; then
+	echo "NEGATIVE CONTROL FAILED ($name): the sabotage patched nothing" >&2
+	exit 1
+fi
+root=$(pwd)
+printf '{"Replace":{"%s/%s":"%s/%s/%s"}}\n' "$root" "$source" "$root" "$out" "$runtime" > "$out/overlay.json"
+"${GO:-go}" build -overlay "$root/$out/overlay.json" -o "$out/schema" ./cmd/schema
+mkdir -p "$out/conformance-squirrel"
+: > "$out/conformance-squirrel/REFUSED.txt"
+grep '^unit ' testdata/conformance/tables/MANIFEST.txt | while read -r _ key paths; do
+	# shellcheck disable=SC2086 # a unit's paths are words
+	if ! "$out/schema" generate --lang squirrel --out "$out/conformance-squirrel/$key" $paths > "$out/$key.log" 2>&1; then
+		printf '%s %s\n' "$key" "$(tr '\n' ' ' < "$out/$key.log")" >> "$out/conformance-squirrel/REFUSED.txt"
+	fi
+	rm -f "$out/$key.log"
+done
+printf 'squirrel test/conformance/squirrel/driver\n' > "$out/drivers.txt"
+if SCHEMA_SQUIRREL_CONFORMANCE="$root/$out/conformance-squirrel" ./build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED ($name): the sabotage left conformance green" >&2
+	cat "$out/log" >&2
+	exit 1
+fi
+if ! grep -q "squirrel / $red:" "$out/log"; then
+	echo "NEGATIVE CONTROL FAILED ($name): the $red surface did not go red" >&2
+	cat "$out/log" >&2
+	exit 1
+fi
+for green in "$@"; do
+	if grep -q "squirrel / $green:" "$out/log"; then
+		echo "NEGATIVE CONTROL FAILED ($name): the $green surface went red" >&2
+		cat "$out/log" >&2
+		exit 1
+	fi
+	if ! grep -Eq "^$green +pass " "$out/log"; then
+		echo "NEGATIVE CONTROL FAILED ($name): the $green cell does not read a pass" >&2
+		cat "$out/log" >&2
+		exit 1
+	fi
+done
+echo "Squirrel conformance negative control ($name): caught by $red, not by $*"

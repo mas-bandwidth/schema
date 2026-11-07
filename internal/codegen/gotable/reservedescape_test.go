@@ -110,8 +110,8 @@ func TestReservedRoundTrip(t *testing.T) {
  if err != nil { t.Fatalf("LoadText %v", err) }
  same(t, "base64", &v, back)
  // JSON, whose keys and variant names are the schema's
- js := make([]byte, func_ToJsonMeasure(&v))
- if func_ToJson(&v, js) != int64(len(js)) { t.Fatal("ToJson") }
+ js := make([]byte, func_ToJSONMeasure(&v))
+ if func_ToJSON(&v, js) != int64(len(js)) { t.Fatal("ToJSON") }
  var flat bytes.Buffer
  if err := json.Compact(&flat, js); err != nil { t.Fatalf("JSON %s: %v", js, err) }
  for _, key := range []string{"\"select\":-7", "\"iota\":\"fallthrough\"", "\"kind\":\"chan\"", "\"defer\":", "\"recover\":{\"range\":11}", "\"rune\":", "\"uintptr\":[4,5]", "\"fallthrough\":true", "\"caps\":[\"go\",\"select\"]", "\"shape\":{\"range\":9}"} {
@@ -120,7 +120,7 @@ func TestReservedRoundTrip(t *testing.T) {
  if bytes.Contains(js, []byte("func_")) || bytes.Contains(js, []byte("Select")) { t.Fatalf("JSON carries a Go spelling: %s", js) }
  var fromJs func_
  r = TableReport{}
- if !func_FromJson(&fromJs, js, &r) || r.Err() != nil { t.Fatalf("FromJson %+v", r) }
+ if !func_FromJSON(&fromJs, js, &r) || r.Err() != nil { t.Fatalf("FromJSON %+v", r) }
  same(t, "JSON", &v, &fromJs)
  // the descriptor and the variant publish the schema names
  if func_TableType().Name != "func" { t.Fatalf("descriptor name %q", func_TableType().Name) }

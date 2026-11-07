@@ -1,0 +1,24 @@
+#!/bin/sh
+# THE LUAU LEG's wire-fuzz driver (test/conformance/README.md, "The wire-fuzz
+# driver"; docs/PORT-LUAU.md, THE HARNESS; docs/SPEC-TABLES.md §4.2).
+#
+# The harness's one process on a pipe. The pinned interpreter has no io
+# library, so the pipe is spoken by test/conformance/luau/wirefuzz.luau under
+# the native host tools/luaufuzzhost, whose __luaufuzz.read and
+# __luaufuzz.write are its stdin and stdout: the roster and the mutants go in
+# as the harness's little-endian frames and each reply comes out flushed
+# before the next mutant is read. The units are build/conformance-luau (one
+# directory per manifest unit) and their module lists build/luau-driver/
+# units.luau; make tables-luau-wire-fuzz builds all three first.
+#
+# The working directory is the repository root.
+#
+# usage: ./build/conformance-harness wire-fuzz --driver test/conformance/luau/wirefuzz-driver [--seed S] [--n N]
+host=${LUAUFUZZHOST:-build/luaufuzzhost/luaufuzzhost}
+for need in "$host" build/conformance-luau build/luau-driver/units.luau; do
+	if [ ! -e "$need" ]; then
+		echo "wirefuzz-driver: $need is missing: run make tables-luau-wire-fuzz, which builds it" >&2
+		exit 2
+	fi
+done
+exec "$host" test/conformance/luau/wirefuzz.luau

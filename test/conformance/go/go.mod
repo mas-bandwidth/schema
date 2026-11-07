@@ -15,7 +15,7 @@ require (
 	tblv2 v0.0.0
 )
 
-require github.com/mas-bandwidth/serialize.go v0.0.0
+require github.com/mas-bandwidth/serialize.go/v2 v2.0.0
 
 replace tabledemo => ../../../build/tables-generated-go/examples
 
@@ -31,7 +31,7 @@ replace blockdemo => ../../../build/tables-generated-go/block
 
 replace graphdemo => ../../../build/tables-generated-go/pointers
 
-replace github.com/mas-bandwidth/serialize.go => ../../../../serialize.go
+replace github.com/mas-bandwidth/serialize.go/v2 => ../../../../serialize.go
 
 // the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)
 replace github.com/mas-bandwidth/schema/v2 => ../../..
@@ -134,3 +134,11 @@ replace tblg1 => ../../../build/tables-generated-go/g1
 require cards v0.0.0
 
 replace cards => ../../../build/tables-generated-go/cards
+
+require widelistdemo v0.0.0
+
+replace widelistdemo => ../../../build/tables-generated-go/widelist
+
+require featurewitnesses v0.0.0
+
+replace featurewitnesses => ../../../build/tables-generated-go/featurewitnesses

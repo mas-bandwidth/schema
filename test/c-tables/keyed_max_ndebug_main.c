@@ -34,11 +34,11 @@ int main( void )
     if ( child == 0 )
     {
         FILE * quiet = freopen( "/dev/null", "w", stderr );
-        KeyedConfig cfg;
-        Team key = (Team) ( (int32_t) TEAM_MAX + 1 );
+        tabledemo_keyed_config_t cfg;
+        tabledemo_team_t key = (tabledemo_team_t) ( (int32_t) TABLEDEMO_TEAM_MAX + 1 );
         (void) quiet;
-        keyed_config_reset( &cfg );
-        SCHEMA_TABLE_KEYED_AT( cfg.teams, key, TEAM_MAX ).spawn_count = 1; /* never reached */
+        tabledemo_keyed_config_reset( &cfg );
+        SCHEMA_TABLEDEMO_TABLE_KEYED_AT( cfg.teams, key, TABLEDEMO_TEAM_MAX ).spawn_count = 1; /* never reached */
         _exit( 0 );
     }
     if ( child < 0 )

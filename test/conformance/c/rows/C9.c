@@ -47,7 +47,7 @@ int main(void)
     TableReport report;
     memset(&report, 0, sizeof(report));
 
-    int64_t n = cfg_fixed_load(&loaded, 1, buf, written, NULL, 0, NULL, &report);
+    int64_t n = cfg_fixed_load_tolerant(&loaded, 1, buf, written, NULL, 0, NULL, &report);
     if (n != 1) { fprintf(stderr, "FAIL: cfg_fixed_load returned %ld\n", (long)n); free(buf); return 1; }
 
     /* Assert: tag past max -> None */

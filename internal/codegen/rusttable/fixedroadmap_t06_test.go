@@ -38,9 +38,12 @@ func t06Fixed(t *testing.T, src string) string {
 	return ""
 }
 
-// t06Fn is the emitted body of one `pub fn NAME(...)`, up to its column-zero
-// closing brace.
+// t06Fn extracts one public function, following a fixed loader
+// through its checked delegation to the private record implementation.
 func t06Fn(text, name string) string {
+	if strings.HasSuffix(name, "_fixed_load") {
+		return rustFixedLoadRecords(text, name)
+	}
 	at := strings.Index(text, "pub fn "+name+"(")
 	if at < 0 {
 		return ""

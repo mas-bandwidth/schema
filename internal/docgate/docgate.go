@@ -59,9 +59,11 @@ var crossDocNumbers = map[string][]string{
 	"docs/SPEC-TABLES.md":                 {"4.3", "4.12", "5.3"},
 }
 
-// skipDir names directories that are not part of the tracked tree.
+// skipDir names directories that are not part of the tracked tree. dist is
+// where the pinned toolchains unpack (`make dist-goose`; /dist in .gitignore),
+// and their own pages link files the release does not ship.
 var skipDir = map[string]bool{
-	".git": true, "build": true, "bin": true, "node_modules": true,
+	".git": true, "build": true, "bin": true, "dist": true, "node_modules": true,
 	"obj": true, "__pycache__": true,
 }
 

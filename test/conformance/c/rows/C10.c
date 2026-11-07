@@ -34,7 +34,7 @@
      grade = Gold (3), raw = 7 both times — and LOCATES the ordinal byte by
      diffing the two files, which must differ in exactly that one byte. The
      law's forge is then exactly one byte: the ordinal, set one past the
-     WRITER's own variant count — 4, with GRADE_COUNT 3. Writing the base
+     WRITER's own variant count — 4, with GRADE_MAX 3. Writing the base
      through the build's own writer is what §5.9 #10's fixture is, and the
      diff-locator is the versioning probes' needle discipline (asserted to
      locate exactly one byte), carried in the test itself.
@@ -114,7 +114,7 @@ int main( void )
 
     memset( &report, 0, sizeof( report ) );
     root_reset( &values[0] );
-    n = root_fixed_load( values, 1, gold, gold_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
+    n = root_fixed_load_tolerant( values, 1, gold, gold_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
     check( n == 1, "the clean file reads one record", n );
     check( values[0].grade == GRADE_GOLD, "the clean read lands Gold", values[0].grade );
     check( values[0].raw == 7, "the clean read lands raw = 7", values[0].raw );
@@ -124,11 +124,11 @@ int main( void )
 
     /* --- THE FORGE: the ordinal one past the WRITER's own variant count --- */
 
-    if ( ordinal_at >= 0 ) { gold[ordinal_at] = (uint8_t) ( GRADE_COUNT + 1 ); } /* 4: one past the top variant */
+    if ( ordinal_at >= 0 ) { gold[ordinal_at] = (uint8_t) ( GRADE_MAX + 1 ); } /* 4: one past the top variant */
 
     memset( &report, 0, sizeof( report ) );
     root_reset( &values[0] );
-    n = root_fixed_load( values, 1, gold, gold_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
+    n = root_fixed_load_tolerant( values, 1, gold, gold_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
     check( n == 1, "the forged file reads one record", n );
     check( report.refused == 0 && report.reason == 0 && report.layout_hash == 0,
            "a forged ordinal is not a refusal (same-hash read)", report.reason );
@@ -146,7 +146,7 @@ int main( void )
     memset( &report, 0, sizeof( report ) );
     root_reset( &values[0] );
     top_len = gold_len;
-    n = root_fixed_load( values, 1, gold, top_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
+    n = root_fixed_load_tolerant( values, 1, gold, top_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
     (void) top;
     check( n == 1, "the top-variant file reads one record", n );
     check( values[0].grade == GRADE_GOLD, "the top variant reads back Gold", values[0].grade );

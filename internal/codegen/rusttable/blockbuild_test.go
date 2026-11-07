@@ -112,6 +112,16 @@ fn main() {
     if let Ok(path) = std::env::var("SCHEMA_RUST_BLOCK_OUT") {
         std::fs::write(path, bytes).expect("the built block spills");
     }
+
+    // THE OTHER ORDER'S WORD UNDER AN INTACT MAGIC (docs/PORTING.md I7): the
+    // block's magic and build version stay as written, and only the order word
+    // at offset 16 names the other byte order. Open must refuse it.
+    let order_at = unsafe { base.add(16) }.cast::<u64>();
+    let kept = unsafe { core::ptr::read_unaligned(order_at) };
+    unsafe { core::ptr::write_unaligned(order_at, 3 - TABLE_BLOCK_BYTE_ORDER) };
+    let foreign_block = unsafe { RootBlock::open(base, used) }.is_none();
+    unsafe { core::ptr::write_unaligned(order_at, kept) };
+    println!("FOREIGNBLOCK {foreign_block}");
     unsafe { dealloc(base, layout) };
 
     // ---- THE COOK WRITE (docs/SPEC-TABLES.md §7.6) ----
@@ -150,6 +160,16 @@ fn main() {
         Some(cook) => println!("ROUND {}", unsafe { *cook.root() }.scale),
         None => println!("ROUND refused"),
     }
+
+    // THE OTHER ORDER'S WORD UNDER AN INTACT MAGIC (docs/PORTING.md I7): the
+    // cook the writer just wrote, its magic intact, with only the order word
+    // at offset 16 naming the other byte order. Open must refuse it.
+    let mut foreign = le.clone();
+    foreign[16..24].copy_from_slice(&(3 - TABLE_COOK_BYTE_ORDER).to_ne_bytes());
+    println!(
+        "FOREIGNCOOK {}",
+        unsafe { ConfigCook::open(foreign.as_ptr(), foreign.len() as u64) }.is_none()
+    );
 }
 `
 }
@@ -468,5 +488,24 @@ func TestBlockBuildAndCookWriteRust(t *testing.T) {
 	// WHAT IT WROTE READS BACK through the cook's own reader (§7.1).
 	if got["ROUND"] != "2.5" {
 		t.Errorf("the cook the writer wrote did not read back the value it was given: %q (§7.1)", got["ROUND"])
+	}
+}
+
+// TestRustOtherOrderWordIsRefused is docs/PORTING.md I7 for Rust: the half of
+// the cross-endian refusal no harness surface forges. A cook and a block whose
+// magic and build version are intact and whose order word (offset 16) names
+// the other byte order are each refused by their own Open (docs/SPEC-TABLES.md
+// §7.1, §19.2). The cook-foreign and block-foreign surfaces reverse the magic;
+// this holds the order word alone. A FUNCTIONAL test: it compiles and runs
+// Rust, and fails by name when SCHEMA_REQUIRE_CORPUS is set and rustc is
+// missing.
+func TestRustOtherOrderWordIsRefused(t *testing.T) {
+	t.Parallel()
+	got := blockProbeRun(t, "")
+	if got["FOREIGNCOOK"] != "true" {
+		t.Errorf("a cook with an intact magic whose order word names the other byte order was not refused: FOREIGNCOOK %q (docs/SPEC-TABLES.md §7.1)", got["FOREIGNCOOK"])
+	}
+	if got["FOREIGNBLOCK"] != "true" {
+		t.Errorf("a block with an intact magic whose order word names the other byte order was not refused: FOREIGNBLOCK %q (docs/SPEC-TABLES.md §19.2)", got["FOREIGNBLOCK"])
 	}
 }

@@ -432,9 +432,9 @@ func unionUnitProbe(name string, u *ir.Unit, files map[string][]byte) (string, m
 		armList := "[" + strings.Join(arms, ", ") + "]"
 
 		// construction: the storage class's constructor builds every arm
-		fmt.Fprintf(&p, "report.run(%q, \"construct\", () => {\n  const u = new %s();\n  if (u.Type !== %s.None) { throw new Error(\"fresh union is not None\"); }\n", key, cls, tag)
+		fmt.Fprintf(&p, "report.run(%q, \"construct\", () => {\n  const u = new %s();\n  if (u.type !== %s.None) { throw new Error(\"fresh union is not None\"); }\n", key, cls, tag)
 		for _, v := range payloadArms {
-			fmt.Fprintf(&p, "  if (u.%s === undefined) { throw new Error(\"arm %s has no storage\"); }\n", ir.GoExportName(v.Name), v.Name)
+			fmt.Fprintf(&p, "  if (u.%s === undefined) { throw new Error(\"arm %s has no storage\"); }\n", js.MemberName(v.Name), v.Name)
 		}
 		p.WriteString("});\n")
 
@@ -464,7 +464,7 @@ func unionUnitProbe(name string, u *ir.Unit, files map[string][]byte) (string, m
 			fmt.Fprintf(&p, "    const steps = locateUnion(new home[root](), %s, __unions);\n", cls)
 			p.WriteString("    if (steps === null) { continue; }\n")
 			fmt.Fprintf(&p, "    for (const arm of %s) {\n", armList)
-			fmt.Fprintf(&p, "      roundTripFixed(() => new home[root](), (v) => { applySteps(v, steps).Type = %s[arm]; }, r[root + \"FixedMeasure\"], r[root + \"FixedSave\"], r[root + \"FixedLoad\"], r[root + \"FixedNewPlan\"], () => new home.TableFixedReport());\n", tag)
+			fmt.Fprintf(&p, "      roundTripFixed(() => new home[root](), (v) => { applySteps(v, steps).type = %s[arm]; }, r[root + \"FixedMeasure\"], r[root + \"FixedSave\"], r[root + \"FixedLoad\"], r[root + \"FixedNewPlan\"], () => new home.TableFixedReport());\n", tag)
 			p.WriteString("    }\n    return;\n  }\n  throw new Error(\"no fixed root's storage holds it\");\n});\n")
 		}
 		var root *ir.Struct
@@ -649,7 +649,7 @@ func (b *unionVarBuilder) armPayload(un *ir.Union, v ir.UnionVariant, cls string
 	switch {
 	case v.Body():
 		if !b.fixed[un.Name] && cls != "" {
-			return fmt.Sprintf("new %s().%s", cls, ir.GoExportName(v.Name))
+			return fmt.Sprintf("new %s().%s", cls, js.MemberName(v.Name))
 		}
 		return "new __V." + v.Ref.Name + "()"
 	case v.F.Array == ir.ArrayNone && v.F.Type.Pointer && tableOf(v.F) != nil:
@@ -736,7 +736,7 @@ export function roundTripPacket(Cls, Tag, write, read, arms) {
   assert.equal(typeof read, "function", "no Read function");
   for (const arm of arms) {
     const src = new Cls();
-    src.Type = Tag[arm];
+    src.type = Tag[arm];
     const w = new Tape();
     assert.ok(write(tape(w), src), "write " + arm);
     const dst = new Cls();
@@ -787,8 +787,10 @@ export function locateUnion(obj, Target, unions, path = []) {
     if (val === null || typeof val !== "object" || ArrayBuffer.isView(val) || val instanceof Map) { continue; }
     const pre = [];
     if (ownerTag !== undefined) {
-      if (ownerTag[key] === undefined) { continue; }
-      pre.push([path, (h) => { h.Type = ownerTag[key]; }]);
+      // a tag key is the arm's PascalCase name, its storage member the camelCase one
+      const tagKey = key[0].toUpperCase() + key.slice(1);
+      if (ownerTag[tagKey] === undefined) { continue; }
+      pre.push([path, (h) => { h.type = ownerTag[tagKey]; }]);
     }
     if ((key + "Present") in obj) { pre.push([path, (h) => { h[key + "Present"] = true; }]); }
     if (Array.isArray(val)) {

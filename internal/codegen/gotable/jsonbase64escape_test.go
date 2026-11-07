@@ -105,8 +105,8 @@ func TestBase64Escapes(t *testing.T) {
 			t.Fatal("Init")
 		}
 		var rep TableReport
-		if !RootFromJsonTolerant(&b, []byte(tc.text), &rep) || rep.Malformed {
-			t.Fatalf("%s: RootFromJsonTolerant refused (%+v)", tc.name, rep)
+		if !RootFromJSONTolerant(&b, []byte(tc.text), &rep) || rep.Malformed {
+			t.Fatalf("%s: RootFromJSONTolerant refused (%+v)", tc.name, rep)
 		}
 		if rep.KindMismatch != tc.wantMismatch {
 			t.Fatalf("%s: KindMismatch = %d, want %d (%+v)", tc.name, rep.KindMismatch, tc.wantMismatch, rep)

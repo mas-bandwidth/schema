@@ -69,10 +69,8 @@ func TestGoMessageFormGoldens(t *testing.T) {
 			case row.file == "":
 				source = connectionProbe(u.Package, announcement)
 			case ir.VariableTables(u)[row.root]:
-				// §3.3: "a plain `table T` may not" ride the message form, so
-				// the Go leg answers this message row ABSENT and asserts
-				// nothing (the manifest row and the C++ reference stay as they
-				// are).
+				// a variable table has no message form (§3.3), so the Go leg
+				// answers this message row ABSENT and asserts nothing
 				return
 			default:
 				source = messageProbe(u.Package, u, row.root, announcement, filepath.Join(root, row.file), filepath.Join(root, row.batch))
@@ -120,7 +118,7 @@ func parseManifest(t *testing.T, path string) (map[string][]string, map[string]m
 				rows = append(rows, messageManifestRow{name: "connection_" + fields[1], connection: fields[1]})
 			}
 		case "message":
-			if len(fields) >= 6 {
+			if len(fields) >= 6 && fields[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 				rows = append(rows, messageManifestRow{name: fields[1], connection: fields[2], root: fields[3], file: fields[4], batch: fields[5]})
 			}
 		}
@@ -189,6 +187,16 @@ func loadUnitPaths(t *testing.T, root string, paths []string) *ir.Unit {
 // needs fails the compile by name rather than silently.
 func runGoGoldens(t *testing.T, u *ir.Unit, testSource string) {
 	t.Helper()
+	if out, err := runGoGoldensEdited(t, u, testSource, nil); err != nil {
+		t.Fatalf("generated Go goldens: %v\n%s", err, out)
+	}
+}
+
+// runGoGoldensEdited is runGoGoldens with an edit applied to the generated
+// files before they are built, and the run's output and error returned rather
+// than judged: a negative control plants a fault through it and requires red.
+func runGoGoldensEdited(t *testing.T, u *ir.Unit, testSource string, edit func(map[string][]byte)) ([]byte, error) {
+	t.Helper()
 	files, err := golang.Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -204,9 +212,12 @@ func runGoGoldens(t *testing.T, u *ir.Unit, testSource string) {
 		// with it, because a closure's view names every packet type including
 		// the cpp_native ones the sibling runtime carries — while the wire the
 		// message surface owes names none of them.
-		if bytes.Contains(data, []byte("github.com/mas-bandwidth/serialize.go")) || strings.HasSuffix(name, "View.go") {
+		if bytes.Contains(data, []byte("github.com/mas-bandwidth/serialize.go/v2")) || strings.HasSuffix(name, "View.go") {
 			delete(files, name)
 		}
+	}
+	if edit != nil {
+		edit(files)
 	}
 	files["go.mod"] = []byte("module probe\n\ngo 1.26\n")
 	files["goldens_test.go"] = []byte(testSource)
@@ -218,9 +229,7 @@ func runGoGoldens(t *testing.T, u *ir.Unit, testSource string) {
 	}
 	cmd := exec.Command("go", "test", "-count=1", "-timeout", "120s", ".")
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("generated Go goldens: %v\n%s", err, out)
-	}
+	return cmd.CombinedOutput()
 }
 
 func goGoldensHeader(pkg string) string {

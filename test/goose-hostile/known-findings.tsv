@@ -1,0 +1,6 @@
+# THE GOOSE PORT'S CARRIED HOSTILE-CORPUS FINDINGS (make/goose-hostile.sh).
+# One row per case the port disagrees with the engine on today: the name, the
+# disagreement exactly as the gate prints it, and the card that owes the fix.
+# A row whose case goes green fails the gate, so a fix removes its row.
+#
+# name	disagreement	owed by

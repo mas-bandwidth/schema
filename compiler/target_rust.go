@@ -57,6 +57,8 @@ func (rustTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 	if len(tables) == 0 {
 		return files, nil
 	}
+	// read before the merge below: the packet modules alone, against the tables
+	shadowed := rust.ShadowedTypes(files, tables)
 	for name, data := range tables {
 		if _, dup := files[name]; dup {
 			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file whose lowered basename collides with a generated table module; rename one file (docs/SPEC-TABLES.md §11)", name)
@@ -64,7 +66,7 @@ func (rustTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 		files[name] = data
 	}
 	// the crate root is a generated index, so it has to declare them
-	lib, err := rust.Lib(u, rusttable.Modules(tables))
+	lib, err := rust.Lib(u, rusttable.Modules(tables), shadowed)
 	if err != nil {
 		return nil, err
 	}

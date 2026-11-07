@@ -134,12 +134,13 @@ fn report_lines(r: &crate::TableReport) -> String {
 
 #[test]
 fn upgrade_matches_go() {
-    for (name, expect_wire, expect_report) in [
-        ("initial-populated", true, true),
-        ("consumers-populated", true, true),
-        ("empty-consumers", true, true),
-        ("future-note", true, true),
-        ("truncated", false, false),
+    // every case that upgrades is held to its expected report as well
+    for (name, expect_wire) in [
+        ("initial-populated", true),
+        ("consumers-populated", true),
+        ("empty-consumers", true),
+        ("future-note", true),
+        ("truncated", false),
     ] {
         let wire = fs::read(conformance(&format!("cases/{name}.wire"))).unwrap();
         match crate::upgrade(&wire) {

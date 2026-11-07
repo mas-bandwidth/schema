@@ -104,7 +104,7 @@ int main(void) {
 	})
 
 	t.Run("c", func(t *testing.T) {
-		files, err := c.Generate(u, "c", Options{})
+		files, err := generateCUnqualified(u)
 		if err != nil {
 			t.Fatalf("generate c: %v", err)
 		}
@@ -124,7 +124,7 @@ int main(void) {
         const char * text = "{\"tag\":\"not_valid_base64!!!\",\"past\":42}";
         Ship s;
         TableReport r = {0};
-        int ok = ship_from_json( &s, text, (int64_t) strlen(text), &r );
+        int ok = ship_from_json_tolerant( &s, text, (int64_t) strlen(text), &r );
         if ( !ok ) { fprintf(stderr, "C case 1: from_json failed\n"); return 1; }
         if ( r.kind_mismatch != 1 ) { fprintf(stderr, "C case 1: kind_mismatch=%d, want 1\n", r.kind_mismatch); return 2; }
         if ( r.malformed ) { fprintf(stderr, "C case 1: malformed is true\n"); return 3; }
@@ -138,7 +138,7 @@ int main(void) {
         const char * text = "{\"tag\":\"YQ=B\",\"past\":42}";
         Ship s;
         TableReport r = {0};
-        int ok = ship_from_json( &s, text, (int64_t) strlen(text), &r );
+        int ok = ship_from_json_tolerant( &s, text, (int64_t) strlen(text), &r );
         if ( !ok ) { fprintf(stderr, "C case 2: from_json failed\n"); return 7; }
         if ( r.kind_mismatch != 1 ) { fprintf(stderr, "C case 2: kind_mismatch=%d, want 1 (mid-string padding accepted!)\n", r.kind_mismatch); return 8; }
         if ( s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "C case 2: tag default not preserved\n"); return 9; }
@@ -179,7 +179,7 @@ func TestIssue715(t *testing.T) {
 		var s Ship
 		ShipReset(&s)
 		var r TableReport
-		ok := ShipFromJsonTolerant(&s, text, &r)
+		ok := ShipFromJSONTolerant(&s, text, &r)
 		if !ok { t.Fatal("Go case 1: FromJson failed") }
 		if r.KindMismatch != 1 { t.Fatalf("Go case 1: kind_mismatch=%d, want 1", r.KindMismatch) }
 		if r.Malformed { t.Fatal("Go case 1: malformed is true") }
@@ -194,7 +194,7 @@ func TestIssue715(t *testing.T) {
 		var s Ship
 		ShipReset(&s)
 		var r TableReport
-		ok := ShipFromJsonTolerant(&s, text, &r)
+		ok := ShipFromJSONTolerant(&s, text, &r)
 		if !ok { t.Fatal("Go case 2: FromJson failed") }
 		if r.KindMismatch != 1 { t.Fatalf("Go case 2: kind_mismatch=%d, want 1 (mid-string padding accepted!)", r.KindMismatch) }
 		if s.TagLength != 2 || s.Tag[0] != 'a' || s.Tag[1] != 'b' { t.Fatal("Go case 2: tag default not preserved") }

@@ -1,0 +1,70 @@
+#!/bin/sh
+# THE GOOSE FORGERY FUZZER'S NEGATIVE CONTROLS (docs/PORTING.md I3; make
+# tables-goose-fuzz-negative-control). Each mode removes BOTH halves of one
+# accelerator's extent bound from a COPY of build/conformance-goose — nothing
+# tracked is written to — aims the driver at the copy (SCHEMA_GOOSE_GENERATED)
+# and runs that half of the fuzzer at the leg's seed. The control passes only
+# when the fuzzer goes red ON THE ORACLE'S EXTENT FINDING.
+#
+# Both halves, because removing one leaves the reader correct: a block whose
+# rows bound is gone is still refused by the padding check downstream, which
+# computes `bytes - used` and refuses on the negative slack; a cook whose data
+# length bound is gone is still refused by the attribution length, which must
+# be exactly what the data part leaves. A control whose verdict depends on
+# which mutant the seed reaches first is not a control.
+#
+#   block-extent  block_check_array's rows bound and block_check_tail's
+#                 padding bound: block-fuzz red, "rows at ... leave an extent"
+#   cook-extent   cook_check's data length bound and its attribution length:
+#                 cook-fuzz red, "the region ... leaves a file"
+#
+# usage: test/conformance/goose/negative-control-fuzz <mode> <seed> <n>
+# The working directory is the repository root.
+mode=$1
+seed=${2:-1}
+n=${3:-20000}
+case "$mode" in
+block-extent)
+	file=block_form.goose
+	one='    if rows > extent - offset_of { return TableRefuseBadLayout; }'
+	two='    if padding > b.len - used { return TableRefuseTruncated; }'
+	expect="rows at [0-9]* leave an extent of"
+	;;
+cook-extent)
+	file=cook_form.goose
+	one='    if data_length > length - data_offset { return TableRefuseTruncated; }'
+	two='    if attribution_length != length - data_offset - data_length { return TableRefuseTruncated; }'
+	expect="the region of [0-9]* bytes at [0-9]* leaves a file of"
+	;;
+*)
+	echo "usage: $0 block-extent|cook-extent [seed] [n]" >&2
+	exit 2
+	;;
+esac
+kind=${mode%-extent}
+nc=build/goose-negative-control-fuzz/$mode
+rm -rf "$nc" && mkdir -p "$nc" || exit 1
+[ -d build/conformance-goose ] || { echo "NEGATIVE CONTROL FAILED: build/conformance-goose is missing (make build/conformance-goose)"; exit 1; }
+cp -R build/conformance-goose "$nc/units" || exit 1
+changed=0
+for f in "$nc"/units/*/"$file"; do
+	for clause in "$one" "$two"; do
+		CLAUSE=$clause perl -0pi -e '$c += s/\Q$ENV{CLAUSE}\E\n//g; END { exit($c == 1 ? 0 : 1) }' "$f" ||
+			{ echo "NEGATIVE CONTROL FAILED: $f does not hold the clause exactly once: $clause"; exit 1; }
+	done
+	changed=$((changed + 1))
+done
+[ "$changed" -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: no unit holds $file"; exit 1; }
+if SCHEMA_GOOSE_GENERATED=$nc/units test/conformance/goose/driver testdata/conformance/tables/MANIFEST.txt \
+	"$kind-fuzz" "$seed" "$n" build/conformance/fixtures >"$nc/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED ($mode): the fuzzer stayed green with both extent bounds removed"
+	cat "$nc/log"
+	exit 1
+fi
+grep -Eq "^FUZZ FAILED: .*: .*$expect" "$nc/log" || {
+	echo "NEGATIVE CONTROL FAILED ($mode): the fuzzer went red, but not on the oracle's extent finding"
+	cat "$nc/log"
+	exit 1
+}
+grep -m1 '^FUZZ FAILED' "$nc/log"
+echo "negative control ($mode): both extent bounds removed turns the $kind forgery fuzzer RED on the oracle"

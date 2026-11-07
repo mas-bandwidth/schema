@@ -145,7 +145,7 @@ static class Program
             Check(zero.TargetId == UInt128Value.Zero, "target_id starts zero");
             // Zero* gives the §5 zero form — the defaults are construction's,
             // not the zero form's (SPEC §4.2, the C# column)
-            ZeroLudicrousState(zero);
+            ZeroLudicrousState(ref zero);
             Check(zero.Wide.Bias == Int128Value.Zero, "the §5 zero form zeroes the defaults");
         }
 
@@ -155,13 +155,13 @@ static class Program
         {
             LudicrousState input = MakeState();
             WriteStream ws = NewWriteStream();
-            Check(WriteLudicrousState(ws, input), "write LudicrousState");
+            Check(WriteLudicrousState(ws, ref input), "write LudicrousState");
             takenWire = Data(ws);
             GoldenWire("ludicrous_state", takenWire);
 
             LudicrousState output = new LudicrousState();
             ReadStream rs = new ReadStream(takenWire);
-            Check(ReadLudicrousState(rs, output), "read LudicrousState");
+            Check(ReadLudicrousState(rs, ref output), "read LudicrousState");
             Check(output.Mode == DriveMode.Ludicrous, "mode round-trips");
             Check(output.Probe.Angle == input.Probe.Angle, "angle round-trips");
             Check(output.Probe.Position == input.Probe.Position, "position round-trips");
@@ -185,14 +185,14 @@ static class Program
             LudicrousState input = MakeState();
             input.HasTarget = false;
             WriteStream ws = NewWriteStream();
-            Check(WriteLudicrousState(ws, input), "write LudicrousState untargeted");
+            Check(WriteLudicrousState(ws, ref input), "write LudicrousState untargeted");
             byte[] wire = Data(ws);
             GoldenWire("ludicrous_state_untargeted", wire);
 
             LudicrousState output = new LudicrousState();
             output.TargetId = 0xDEAD; // dirty — the read must zero it
             ReadStream rs = new ReadStream(wire);
-            Check(ReadLudicrousState(rs, output), "read LudicrousState untargeted");
+            Check(ReadLudicrousState(rs, ref output), "read LudicrousState untargeted");
             Check(!output.HasTarget, "has_target reads false");
             Check(output.TargetId == UInt128Value.Zero, "the untaken 128-bit field reads as zero (SPEC §5)");
         }
@@ -205,7 +205,7 @@ static class Program
             SetBits(hostile, 2, 25);
             LudicrousState output = new LudicrousState();
             ReadStream rs = new ReadStream(hostile);
-            Check(!ReadLudicrousState(rs, output), "a smuggled fixed offset is REJECTED");
+            Check(!ReadLudicrousState(rs, ref output), "a smuggled fixed offset is REJECTED");
         }
         {
             // int128: energy's 34 offset bits start at bit 286 (2+156+128);
@@ -214,13 +214,13 @@ static class Program
             SetBits(hostile, 286, 34);
             LudicrousState output = new LudicrousState();
             ReadStream rs = new ReadStream(hostile);
-            Check(!ReadLudicrousState(rs, output), "a smuggled int128 offset is REJECTED");
+            Check(!ReadLudicrousState(rs, ref output), "a smuggled int128 offset is REJECTED");
         }
         {
             // truncation: running out of input mid-read is a read failure (SPEC §5)
             LudicrousState output = new LudicrousState();
             ReadStream rs = new ReadStream(new ReadOnlySpan<byte>(takenWire, 0, 4).ToArray());
-            Check(!ReadLudicrousState(rs, output), "a truncated stream is a read failure");
+            Check(!ReadLudicrousState(rs, ref output), "a truncated stream is a read failure");
         }
 
         // ---- DegenerateProbe: min == max costs ZERO bits (SPEC §4.6) ----
@@ -236,13 +236,13 @@ static class Program
             input.Tail = 0xA5;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteDegenerateProbe(ws, input), "write DegenerateProbe");
+            Check(WriteDegenerateProbe(ws, ref input), "write DegenerateProbe");
             byte[] wire = Data(ws);
             GoldenWire("degenerate_probe", wire);
 
             DegenerateProbe output = new DegenerateProbe();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadDegenerateProbe(rs, output), "read DegenerateProbe");
+            Check(ReadDegenerateProbe(rs, ref output), "read DegenerateProbe");
             Check(output.LockedFixed == -196608 && output.LockedInt == 7, "degenerate values materialize from the range alone");
             Check(output.LockedWide == (Int128Value)(-12345678901234L), "degenerate int128 materializes");
             Check(output.Tail == 0xA5, "the tail rides at bit 0");
@@ -268,13 +268,13 @@ static class Program
             input.Tail = 0xA5;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteUnsignedProbe(ws, input), "write UnsignedProbe");
+            Check(WriteUnsignedProbe(ws, ref input), "write UnsignedProbe");
             byte[] uWire = Data(ws);
             GoldenWire("unsigned_probe", uWire);
 
             UnsignedProbe output = new UnsignedProbe();
             ReadStream rs = new ReadStream(uWire);
-            Check(ReadUnsignedProbe(rs, output), "read UnsignedProbe");
+            Check(ReadUnsignedProbe(rs, ref output), "read UnsignedProbe");
             Check(output.Angle == 2981888, "angle round-trips");
             Check(output.Span == 0xFFFFFFFFFFFF0000UL, "the ulong high half round-trips bit-exact");
             Check(output.Reach == new UInt128Value(0UL, 131071999999UL), "reach round-trips");
@@ -297,7 +297,7 @@ static class Program
             SetBits(hostile, 25, 64);
             UnsignedProbe hOut = new UnsignedProbe();
             ReadStream hRs = new ReadStream(hostile);
-            Check(!ReadUnsignedProbe(hRs, hOut), "a smuggled ufixed high-half offset is REJECTED");
+            Check(!ReadUnsignedProbe(hRs, ref hOut), "a smuggled ufixed high-half offset is REJECTED");
         }
 
         if (failed)

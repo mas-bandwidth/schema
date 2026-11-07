@@ -63,6 +63,14 @@ func t04Has(t *testing.T, got, want, what string) {
 	}
 }
 
+// t04Lacks is a forbidden substring, named by rule.
+func t04Lacks(t *testing.T, got, unwanted, what string) {
+	t.Helper()
+	if strings.Contains(got, unwanted) {
+		t.Errorf("%s: the generated source still carries %q", what, unwanted)
+	}
+}
+
 func TestFixedRoadmapJsT04Versions(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -125,7 +133,7 @@ func t04C8(t *testing.T) {
 
 // t04R20: §21.2's landing rules [weak]. An added field lands its declared
 // default through the prefill that fills the plan's holes; an unnamed older
-// field is counted ONCE under unknown per peer; a narrower integer or float is
+// field is counted ONCE under unknown per endpoint; a narrower integer or float is
 // widened exactly and counts once; the writer's template zeros are what a
 // shorter array or string leaves as slack; and an older enum's ordinals are the
 // reader's, the list being a prefix (SPEC-TABLES §3.4; FIXED-FORM-ALGORITHM
@@ -138,7 +146,7 @@ func t04R20(t *testing.T) {
 	t04Has(t, n, "if (!named) { report.unknown++; }",
 		"R20 a field of theirs the reader cannot name is one unknown")
 	t04Has(t, n, "censusUnknown = lane.unknown;",
-		"R20 the unknown census is once per peer, taken from the compiled lane")
+		"R20 the unknown census is once per endpoint, taken from the compiled lane")
 	t04Has(t, n, "report.widened++;",
 		"R20 a narrow value widened exactly counts one widened")
 	t04Has(t, n, "bytes.fill(0, at + 8, at + TFixedRecordBytes); // the template's zeros",
@@ -154,21 +162,24 @@ func t04R20(t *testing.T) {
 		"R20 an older enum's ordinal is the reader's by matched id, so a prefixed list keeps it")
 }
 
-// t04R21: "widenf is the bit-exact widening — signalling NaNs kept, the quiet
-// bit carried as the writer wrote it" [weak]. The float widen re-encodes the
-// f32 through an f64 by its IEEE-754 bit pattern (FIXED-FORM-ALGORITHM §5.2:
-// "every f32 value is exactly representable in an f64, infinities and NaN
-// payloads included, so there is nothing to round and nothing to lose"), so no
-// arithmetic rounding and no NaN canonicalisation can touch it.
+// t04R21: the float rung under the finite rule of 2026-10-27
+// (docs/SPEC-TABLES.md §3.3; FIXED-FORM-ALGORITHM §5.2: "both are exact by
+// construction (a non-finite f32 never reaches widenf: the read refuses it)").
+// The widen is the ordinary conversion, which is exact for every finite f32,
+// and the read's content pass over the image refuses a NaN or an infinity as
+// non_finite_float before the projection lands one; the NaN payload surgery
+// that used to carry a signalling NaN is gone.
 func t04R21(t *testing.T) {
 	src := t04Source(t)
 	n := t04Norm(src)
 	t04Has(t, n, "case TableFixedOpWidenF: {", "R21 the float widen is a plan op")
-	t04Has(t, n, "TableFixedConv.setFloat64(8, TableFixedConv.getFloat32(0, true), true);",
-		"R21 the f32 rides into the f64 by the same bits the writer wrote")
+	t04Has(t, n, "TableFixedConv.setUint32(0, TableFixedGetU32(src, s), true); TableFixedConv.setFloat64(8, TableFixedConv.getFloat32(0, true), true);",
+		"R21 the f32 rides into the f64 by the ordinary conversion")
 	t04Has(t, n, "for (let k = 0; k < 8; k++) { dst[d + k] = TableFixedConv.getUint8(8 + k); }",
-		"R21 the widened value lands bit for bit, so a NaN payload survives")
-	t04Has(t, n, "infinities and // NaN payloads included", "R21 the page's bit-exactness sentence")
+		"R21 the widened value lands whole")
+	t04Has(t, n, "NonFiniteFloat: 18,", "R21 a non-finite float is refused by name")
+	t04Has(t, n, `case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";`, "R21 the refusal's own spelling")
+	t04Lacks(t, n, "(payload >>> 3)", "R21 the retired NaN payload surgery")
 }
 
 // t04R29: "the band case: the widening across the 65536 ceiling, and the bounds
@@ -219,8 +230,8 @@ func t04W2(t *testing.T) {
 	if body == "" {
 		t.Fatal("W2: the fixture emits no TFixedWriteBody")
 	}
-	t04Has(t, body, "view.setUint8(at + 6, value.LinkPresent ? 1 : 0);",
+	t04Has(t, body, "view.setUint8(at + 6, value.linkPresent ? 1 : 0);",
 		"W2 the present byte is written for every record")
-	t04Has(t, body, "if (value.LinkPresent) { view.setInt32(at + 7, value.Link, true); }",
+	t04Has(t, body, "if (value.linkPresent) { view.setInt32(at + 7, value.link, true); }",
 		"W2 the payload store is inside the present branch, so an absent optional skips it")
 }

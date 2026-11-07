@@ -1,0 +1,8 @@
+{"tags":null}
+{"tags":123}
+{"tags":[]}
+{"tags":{"a":1},"tags":123}
+{"tags":{"a":1},"tags":null}
+{"tags":{"a":1,"a":2}}
+{"tags":{"a":"bad"}}
+{"tags":{"a":1}

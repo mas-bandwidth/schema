@@ -14,5 +14,6 @@
 #
 #   cd bench/elixir && PATH="<dist otp>:<dist elixir>:$PATH" \
 #       elixir main.exs [--csv] [--round K] [--quick]
+Code.require_file("PacketRuntime.ex", Path.join(__DIR__, "../../generated/bench/elixir"))
 Code.require_file("Bench.ex", Path.join(__DIR__, "../../generated/bench/elixir"))
 Code.require_file("runner.exs", __DIR__)

@@ -379,16 +379,16 @@ func TestSchemaEngineIsTheOracleDifferentialHarnesses(t *testing.T) {
 	// Planted bad-pattern control: a harness that imports and uses no engine
 	// package fails.
 	tmp := t.TempDir()
-	badHarness := filepath.Join(tmp, "peer_only_diff_test.go")
-	if err := os.WriteFile(badHarness, []byte("package diff\nimport \"testing\"\nfunc TestPeerOnly(t *testing.T) {}\n"), 0o644); err != nil {
+	badHarness := filepath.Join(tmp, "remote_only_diff_test.go")
+	if err := os.WriteFile(badHarness, []byte("package diff\nimport \"testing\"\nfunc TestRemoteOnly(t *testing.T) {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	plantedMissing, err := checkHarnessUsesEngine(tmp, []string{"peer_only_diff_test.go"})
+	plantedMissing, err := checkHarnessUsesEngine(tmp, []string{"remote_only_diff_test.go"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plantedMissing) != 1 || plantedMissing[0] != "peer_only_diff_test.go" {
-		t.Fatalf("planted peer-only harness must be flagged, got: %v", plantedMissing)
+	if len(plantedMissing) != 1 || plantedMissing[0] != "remote_only_diff_test.go" {
+		t.Fatalf("planted endpoint-only harness must be flagged, got: %v", plantedMissing)
 	}
 
 	// A harness that imports the engine but never calls into it is also not an

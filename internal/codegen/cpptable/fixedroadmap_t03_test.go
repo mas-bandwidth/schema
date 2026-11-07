@@ -75,7 +75,7 @@ func t03Header(t *testing.T, u *ir.Unit) string {
 // t03Has is a required substring of emitted source, named by the rule it proves.
 func t03Has(t *testing.T, src, want, what string) {
 	t.Helper()
-	if !strings.Contains(src, want) {
+	if !strings.Contains(cppSourceSpelling(src), cppSourceSpelling(want)) {
 		t.Errorf("%s: the emitted source does not carry %q", what, want)
 	}
 }
@@ -215,9 +215,9 @@ fixed table T
 `)
 	hdr := t03Header(t, u)
 	t03Has(t, hdr, "constexpr uint32_t kTableFixedRecordMaxBytes = 65536u;", "R14 the 65536 ceiling constant")
-	t03Has(t, hdr, "if ( e.size > kTableFixedRecordMaxBytes ) { TableFixedFail( c, layout_record_too_large ); return 0; }", "R14 a single entry past the 65536 bound")
-	t03Has(t, hdr, "if ( sum > kTableFixedRecordMaxBytes ) { TableFixedFail( c, layout_record_too_large ); return 0; }", "R14 a subtree's sum past the 65536 bound")
-	t03Has(t, hdr, "if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes ) { why = layout_record_too_large; return false; }", "R14 the zero root and the 65536 bound")
+	t03Has(t, hdr, "if ( e.size > kTableFixedRecordMaxBytes )\n    {\n        TableFixedFail( c, layout_record_too_large );\n        return 0;\n    }", "R14 a single entry past the 65536 bound")
+	t03Has(t, hdr, "if ( sum > kTableFixedRecordMaxBytes )\n        {\n            TableFixedFail( c, layout_record_too_large );\n            return 0;\n        }", "R14 a subtree's sum past the 65536 bound")
+	t03Has(t, hdr, "if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes )\n    {\n        why = layout_record_too_large;\n        return false;\n    }", "R14 the zero root and the 65536 bound")
 	t03Has(t, hdr, "c.record = TableFixedEntryAt( theirs, 0 ).size;", "R14 the writer's own declared record is the compiler's bound")
 	t03Has(t, hdr, "if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }", "R14 an entry reaching past the writer's record is named layout_record_too_large")
 	t03Has(t, hdr, "report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;", "R14 the plan is refused WHOLE")
@@ -239,7 +239,7 @@ fixed table T { inner Inner }
 		t.Errorf("R22: a fixed table nested by value is a closure break: %v", breaks)
 	}
 	for _, tc := range []struct{ name, src, want string }{
-		{"plain table", "package probe\ntable Node { x int32 }\nfixed table T { node Node }\n", "holds the plain table Node by value"},
+		{"variable table", "package probe\ntable Node { x int32 }\nfixed table T { node Node }\n", "holds the variable table Node by value"},
 		{"pointer", "package probe\ntable Node { x int32 }\nfixed table Scene { head *Node }\n", "is a pointer"},
 		{"map", "package probe\nfixed table Fleet { ships map[uint32]int32 }\n", "is a map"},
 		{"unbounded array", "package probe\nfixed table Log { entries []int32 }\n", "is an unbounded array"},
@@ -587,10 +587,10 @@ fixed table T
 	t03Has(t, hdr, "Reset( defaults );", "R20 the prefill source is the reader's declared defaults")
 	t03Has(t, hdr, "TableFixedFillRun( fill, fill_count,", "R20 the prefill lands the declared defaults under the plan")
 	// A DEPRECATED FIELD IS DROPPED AND COUNTED ONCE UNDER UNKNOWN PER PLAN:
-	// each peer field the reader cannot name adds one unknown, and only the
+	// each writer's field the reader cannot name adds one unknown, and only the
 	// FIRST time it is seen (the census flag is false for later elements).
 	t03Has(t, runtime, "if ( !named && census && c.report != NULL ) { c.report->unknown++; }", "R20 a field the reader cannot name is counted once")
-	t03Has(t, runtime, "// ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses.", "R20 the census is once per field per plan")
+	t03Has(t, runtime, "// ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses.", "R20 the census is once per field per plan")
 	t03Has(t, runtime, "census && i == 0", "R20 only an array's element 0 censuses")
 	t03Has(t, runtime, "census && k == 0", "R20 only a keyed array's element 0 censuses")
 	// A NARROWER INTEGER OR FLOAT IS WIDENED EXACTLY and widened counts: the
@@ -616,9 +616,11 @@ fixed table T
 
 // ---- cpp/R21 ---------------------------------------------------------------
 //
-// cpp/R21: ALGORITHM §4 — `TableWidenF32` is the bit-exact widening:
-// signalling NaNs kept, the quiet bit carried as the writer wrote it, never set
-// by the hardware conversion.
+// cpp/R21: ALGORITHM §4's widenf, under the finite rule (docs/SPEC-TABLES.md
+// §3.3, 2026-10-27): every finite float32 widens exactly through the ordinary
+// conversion, so the rung is plain, and a NaN never reaches it — the fixed
+// read's finite pass refuses one as non_finite_float before the bounds pass,
+// the writer refuses one before its first byte, and no NaN surgery is left.
 func t03R21(t *testing.T) {
 	u := t03Unit(t, `package probe
 
@@ -629,9 +631,16 @@ fixed table T
 }
 `)
 	hdr := t03Header(t, u)
-	t03Has(t, hdr, "inline double TableWidenF32( uint32_t bits )", "R21 the float rung is the emitted helper")
-	t03Has(t, hdr, "const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;", "R21 the NaN payload rides on the bits")
-	t03Has(t, hdr, "const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;", "R21 the quiet bit is carried as the writer wrote it")
+	t03Has(t, hdr, "TABLE_FIXED_INLINE bool TFixedFiniteBody( const T & value )", "R21 the record's finite pass is emitted")
+	t03Has(t, hdr, "if ( !TableFloatFinite( value.v ) ) { return false; }", "R21 a float32 is tested")
+	t03Has(t, hdr, "if ( !TableFloatFinite( value.w ) ) { return false; }", "R21 a float64 is tested")
+	t03Has(t, hdr, "if ( !TFixedFiniteBody( values[k] ) )", "R21 the read runs the finite pass")
+	t03Has(t, hdr, "TableNonFiniteFloat( report );", "R21 a NaN or an infinity refuses as non_finite_float")
+	t03Has(t, hdr, "for ( int64_t k = 0; k < count; ++k ) { if ( !TFixedFiniteBody( values[k] ) ) { return -1; } }", "R21 the writer refuses one")
+	t03Has(t, hdr, "const double d = (double) f;", "R21 widenf is the ordinary conversion")
+	if strings.Contains(hdr, "TableWidenF32") {
+		t.Error("R21: TableWidenF32 is gone with the NaN it carried")
+	}
 }
 
 // ---- cpp/R29 ---------------------------------------------------------------

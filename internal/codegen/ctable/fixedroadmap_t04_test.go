@@ -155,7 +155,7 @@ func cT04Lineage(t *testing.T, oldSrc, newSrc string) (text string, own *ir.Unit
 func cT04R3(t *testing.T) {
 	text := cT04Retire(t, 2)
 	cT04Has(t, text, "lineage_fixed_floor = 2;", "R3 1 + the highest retired index")
-	load := cT04Fn(text, "lineage_fixed_load")
+	load := cT04Fn(text, "lineage_fixed_load_tolerant")
 	if load == "" {
 		t.Fatal("R3: lineage_fixed_load is not emitted")
 	}
@@ -188,7 +188,7 @@ func cT04R3(t *testing.T) {
 func cT04R32(t *testing.T) {
 	text := cT04Retire(t, 1)
 	cT04Has(t, text, "RETIRED:", "R32 the retired entry's mark is laid down")
-	load := cT04Fn(text, "lineage_fixed_load")
+	load := cT04Fn(text, "lineage_fixed_load_tolerant")
 	if load == "" {
 		t.Fatal("R32: lineage_fixed_load is not emitted")
 	}
@@ -227,7 +227,7 @@ func cT04R32(t *testing.T) {
 // header's hash: the header's eight bytes are taken as given and matched on.
 func cT04R10(t *testing.T) {
 	text := cT04Retire(t, 0)
-	load := cT04Fn(text, "lineage_fixed_load")
+	load := cT04Fn(text, "lineage_fixed_load_tolerant")
 	if load == "" {
 		t.Fatal("R10: lineage_fixed_load is not emitted")
 	}
@@ -258,7 +258,7 @@ func cT04R10(t *testing.T) {
 // after a returning read, never per record.
 func cT04R15(t *testing.T) {
 	text := cT04Retire(t, 0)
-	load := cT04Fn(text, "lineage_fixed_load")
+	load := cT04Fn(text, "lineage_fixed_load_tolerant")
 	if load == "" {
 		t.Fatal("R15: lineage_fixed_load is not emitted")
 	}
@@ -376,8 +376,8 @@ func cT04R20(t *testing.T) {
 	cT04Has(t, text, "memset( (void *) &defaults, 0, sizeof( defaults ) );", "R20 the reader's slack is the template's zeros")
 	// A DEPRECATED FIELD, counted ONCE per plan: an array's element 0 is the only
 	// one that censuses.
-	cT04Has(t, runtime, "if ( !named && census && c->report != NULL ) { c->report->unknown++; }", "R20 an unknown field is counted once per FIELD per peer")
-	cT04Has(t, runtime, "census && i == 0", "R20 once per FIELD per peer, not per element")
+	cT04Has(t, runtime, "if ( !named && census && c->report != NULL ) { c->report->unknown++; }", "R20 an unknown field is counted once per FIELD per endpoint")
+	cT04Has(t, runtime, "census && i == 0", "R20 once per FIELD per endpoint, not per element")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
 	cT04Has(t, runtime, "(*widened)++;", "R20 a widen counts")
 	// AN OLDER ENUM: the ordinal is remapped through the plan's own table, whose
@@ -389,10 +389,10 @@ func cT04R20(t *testing.T) {
 
 // cT04R21 holds c/R21 to §4's float rung: "widenf is the f32 at src as an f64
 // at dst". The C leg widens through the hardware conversion, matching the C++
-// twin's widenf (an f32 stays an f32 and the value rides the cast). The exact
-// NaN-payload assembly R21 names is owed by the C++ reference first (a
-// schema-cpp leg); until it lands there, the C leg spells the same widenf the
-// reference does, so the twin gate holds.
+// twin's widenf (an f32 stays an f32 and the value rides the cast). A NaN or
+// an infinity never lands: the finite pass refuses it over storage before the
+// bounds pass (docs/SPEC-TABLES.md §3.3), so every value the rung carries is
+// finite and the ordinary conversion is exact.
 func cT04R21(t *testing.T) {
 	runtime := string(tableFixedRuntime)
 	cT04Has(t, runtime, "const double d = (double) f;", "R21 the float rung widens through the hardware conversion")
@@ -443,7 +443,7 @@ func cT04R29(t *testing.T) {
 		t.Errorf("R29: the warning does not name the table: %s", joined)
 	}
 	runtime := string(tableFixedRuntime)
-	cT04Has(t, runtime, "kTableFixedRecordMaxBytes = 65536", "R29 the reader holds the peer's layout to the same ceiling")
+	cT04Has(t, runtime, "kTableFixedRecordMaxBytes = 65536", "R29 the reader holds the endpoint's layout to the same ceiling")
 	cT04Has(t, runtime, "if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes )", "R29 a layout root past the ceiling")
 	cT04Has(t, runtime, "if ( e.size > kTableFixedRecordMaxBytes )", "R29 an entry past the writer's declared record")
 	cT04Has(t, runtime, "else if ( v > (int32_t) p->size )", "R29 the count clamps to the writer's bound")

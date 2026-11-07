@@ -39,8 +39,9 @@ package rusttable
 //
 // rust/R20 [verify]: §21.2's landing rules.
 //
-// rust/R21 [owed]: widenf is the bit-exact widening — signalling NaNs kept, the
-// quiet bit carried as the writer wrote it.
+// rust/R21 [owed]: widenf is the ordinary f32-to-f64 conversion, exact for
+// every finite value; a NaN or an infinity is refused by the finite pass
+// (docs/SPEC-TABLES.md §3.3, 2026-10-27).
 //
 // rust/R29 [owed]: the band case: the widening across the 65536 ceiling, and
 // the bounds pass clamping to the writer's bounds.
@@ -71,9 +72,12 @@ func t04Fixed(t *testing.T, tables map[string][]byte) string {
 	return ""
 }
 
-// t04Fn is the emitted body of one `pub fn NAME(...)`, up to its column-zero
-// closing brace.
+// t04Fn extracts one public function, following a fixed loader
+// through its checked delegation to the private record implementation.
 func t04Fn(text, name string) string {
+	if strings.HasSuffix(name, "_fixed_load") {
+		return rustFixedLoadRecords(text, name)
+	}
 	at := strings.Index(text, "pub fn "+name+"(")
 	if at < 0 {
 		return ""
@@ -385,10 +389,10 @@ func t04R20(t *testing.T) {
 	t04Has(t, text, "image[o..o + z].copy_from_slice(&", "R20 an added field lands the declared default")
 	t04Has(t, text, "_FIXED_DEFAULTS: [u8;", "R20 the prefill image is emitted")
 	// A DEPRECATED FIELD, counted ONCE per plan: the census flag is the first
-	// time the peer's field is seen, and an array's element 0 is the only one
+	// time the writer's field is seen, and an array's element 0 is the only one
 	// that censuses.
 	t04Has(t, runtime, "if !named && census {", "R20 an unknown field is counted")
-	t04Has(t, runtime, "census && i == 0,", "R20 once per FIELD per peer, not per element")
+	t04Has(t, runtime, "census && i == 0,", "R20 once per FIELD per endpoint, not per element")
 	t04Has(t, text, "report.unknown += census.0;", "R20 the census lands once, after the loop")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
 	t04Has(t, runtime, "report.widened += 1;", "R20 a widen counts")
@@ -404,20 +408,20 @@ func t04R20(t *testing.T) {
 
 // ---- rust/R21 -----------------------------------------------------------------
 
-// t04R21 holds rust/R21 to §4's float rung and §5.2's table: "widenf is the f32
-// at src as an f64 at dst ... both are exact by construction, NaN payloads
-// included". The hardware f64::from(f32) QUIETS a signalling NaN and can drop a
-// payload bit, so the emitted runtime assembles every all-ones exponent by hand
-// — the sign carried, f64's all-ones exponent, and the 23-bit mantissa shifted
-// left by 29, which carries the quiet bit as the writer wrote it.
+// t04R21 holds rust/R21 to §4's float rung under the finite rule of 2026-10-27
+// (docs/SPEC-TABLES.md §3.3): "every finite float32 widens to float64
+// exactly", so widenF is the ordinary conversion and the NaN bit surgery is
+// retired with the NaN. What keeps a non-finite source from landing is the
+// read's FINITE PASS, which refuses it as non_finite_float after the run and
+// before the bounds pass.
 func t04R21(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
-	t04Has(t, runtime, "bits & 0x7f80_0000 == 0x7f80_0000 && bits & 0x007f_ffff != 0", "R21 the all-ones exponent is handled on the bits")
-	t04Has(t, runtime, "| 0x7ff0_0000_0000_0000", "R21 f64's all-ones exponent")
-	t04Has(t, runtime, "<< 29", "R21 the 23-bit mantissa becomes the 52-bit one")
-	t04Has(t, runtime, "f64::from(f32::from_bits(bits)).to_bits()", "R21 every other exponent converts exactly")
-	if strings.Contains(runtime, "f64::from(f).to_le_bytes()") {
-		t.Error("R21: the float rung still widens through the hardware conversion")
+	t04Has(t, runtime, "let wide = f64::from(f32::from_bits(bits)).to_bits();", "R21 the float rung is the ordinary conversion")
+	t04Has(t, runtime, "NonFiniteFloat => \"non_finite_float\"", "R21 the refusal is named non_finite_float")
+	for _, surgery := range []string{"bits & 0x007f_ffff != 0", "| (u64::from(bits & 0x007f_ffff) << 29)"} {
+		if strings.Contains(runtime, surgery) {
+			t.Errorf("R21: the retired NaN bit surgery is still emitted: %q", surgery)
+		}
 	}
 }
 
@@ -463,7 +467,7 @@ func t04R29(t *testing.T) {
 		t.Errorf("R29: the warning does not name the table: %s", joined)
 	}
 	runtime := string(fixedRuntimeBody)
-	t04Has(t, runtime, "if root.size == 0 || root.size > 65536 {", "R29 the reader holds the peer's layout to the same ceiling")
+	t04Has(t, runtime, "if root.size == 0 || root.size > 65536 {", "R29 the reader holds the endpoint's layout to the same ceiling")
 	t04Has(t, runtime, "if self.record != 0 && end > self.record as u64 {", "R29 an entry past the writer's declared record")
 	t04Has(t, runtime, "let held = raw.clamp(0, p.size as i32);", "R29 the count clamps to the writer's bound")
 	t04Has(t, runtime, "let held = raw.clamp(0, p.aux as i32);", "R29 the text clamps to the writer's span")

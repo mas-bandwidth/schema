@@ -190,10 +190,10 @@ var versionRows = []versionRow{
 	// NONZERO, so only the prefill can put it there. With no `check` at all this
 	// row stayed GREEN with the prefill destroyed.
 	{row: "union_arm_payload_widen", check: `
-  check(v.pick.type == 1, "pick.type is the writer's alpha arm (1), not #{inspect(v.pick.type)}")
-  check(v.pick.alpha.x == 21, "the old writer's arm payload did not land: #{inspect(v.pick.alpha.x)}")
+  check(elem(v.pick, 0) == :alpha, "pick is the writer's alpha arm, not #{inspect(v.pick)}")
+  check(elem(v.pick, 1).x == 21, "the old writer's arm payload did not land: #{inspect(elem(v.pick, 1).x)}")
   check(v.seq == 18, "the scalar after the union moved: #{inspect(v.seq)}")
-  check(v.pick.alpha.y == 55, "the field appended to the SELECTED arm's payload is not its declared default: #{inspect(v.pick.alpha.y)}")`},
+  check(elem(v.pick, 1).y == 55, "the field appended to the SELECTED arm's payload is not its declared default: #{inspect(elem(v.pick, 1).y)}")`},
 	{row: "wstring_grow"},
 }
 
@@ -202,9 +202,30 @@ var versionRows = []versionRow{
 func TestFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
+	nonFinite := manifestNonFinite(t, corpus)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
+			if nonFinite["old_"+r.row+".bin"] {
+				// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung),
+				// and under the finite rule of 2026-10-27 the newer reader
+				// refuses it by name (docs/SPEC-TABLES.md §3.3): a must-refuse
+				// vector until the finite-tables plan's C++ card
+				// (tables-finite/cpp) regenerates the corpus, and an ordinary row
+				// after, because the manifest decides.
+				body := `  data = File.read!(file())
+  {tag, why, report} = load(data)
+  check(
+    tag == :error and why == :non_finite_float,
+    "the non-finite float the older writer wrote was not refused by name: #{inspect({tag, why})} #{why(report)}"
+  )`
+				out, err := runVersionProbe(t, elixirBin, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
+					filepath.Join(corpus, "old_"+r.row+".bin"), body)
+				if err != nil {
+					t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
+				}
+				return
+			}
 			counters := `check(report.widened == 0, "widened #{report.widened}, and an append is not an event")`
 			if r.widens {
 				counters = `check(report.widened != 0, "a widening row moved no widened counter")`
@@ -259,6 +280,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 func TestFixedVersioningOldRefusesNew(t *testing.T) {
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
+	nonFinite := manifestNonFinite(t, corpus)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
@@ -318,6 +340,22 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
     is_list(ok_values) and ok_values != [],
     "the control built no value, so the refusal above withholds nothing: #{inspect(ok_values)}"
   )`, elixirString(filepath.Join(corpus, "old_"+r.row+".bin")))
+				if nonFinite["old_"+r.row+".bin"] {
+					// THE CONTROL'S OWN GENERATION HOLDS A NaN the reference
+					// still writes (tables-finite/cpp owes the finite corpus):
+					// under the finite rule the same reader refuses it by name
+					// (docs/SPEC-TABLES.md §3.3), which still shows it decodes
+					// that file; the identity control comes back by itself
+					// when the corpus turns finite.
+					body = strings.Replace(body, `  check(ok_tag == :ok, "the control read of this reader's OWN generation refuses: #{inspect(ok_tag)} #{why(ok_report)}")
+  check(
+    is_list(ok_values) and ok_values != [],
+    "the control built no value, so the refusal above withholds nothing: #{inspect(ok_values)}"
+  )`, `  check(
+    ok_tag == :error and ok_values == :non_finite_float,
+    "the control read of a NaN the older writer wrote was not refused by name: #{inspect({ok_tag, ok_values})} #{why(ok_report)}"
+  )`, 1)
+				}
 			}
 			out, err := runVersionProbe(t, elixirBin, "VOLD_"+r.row, nil, 0,
 				filepath.Join(corpus, "new_"+r.row+".bin"), body)
@@ -516,7 +554,7 @@ func TestFixedVersioningUnionArmText(t *testing.T) {
     T.ut_root_fixed_save([
       %%Tblut1.UtRoot{
         head: 81,
-        pick: %%Tblut1.Pick{type: 2, b: %%Tblut1.ArmB{label: "back", m: -12}},
+        pick: {:b, %%Tblut1.ArmB{label: "back", m: -12}},
         tail: 88
       }
     ])
@@ -525,7 +563,7 @@ func TestFixedVersioningUnionArmText(t *testing.T) {
   {tag, values, report} = load(data)
   check(tag == :ok, "UT1 reads its own arm-b record: #{inspect(tag)} #{why(report)}")
   v = hd(values)
-  check(v.pick.type == 2 and v.pick.b.label == "back" and v.pick.b.m == -12,
+  check(elem(v.pick, 0) == :b and elem(v.pick, 1).label == "back" and elem(v.pick, 1).m == -12,
     "UT1's identity read of the arm: #{inspect(v.pick)}")`, elixirString(file))
 	if out, err := runVersionProbe(t, elixirBin, "UT1", nil, 0, file, write); err != nil {
 		t.Fatalf("union_arm_text, UT1's own save: %v\n%s", err, out)
@@ -540,12 +578,12 @@ func TestFixedVersioningUnionArmText(t *testing.T) {
   v = hd(values)
   # THE TAG LANDS MY ORDINAL: arm b is arm 3 here and arm 2 there, and the entry
   # ran under THEIR guard.
-  check(v.pick.type == 3, "the arm's tag did not slide to MY ordinal: #{inspect(v.pick.type)}")
-  check(v.pick.b.label == "back",
-    "the text under the slid arm: #{inspect(v.pick.b.label)} — a shared guard/flavour lane " <>
+  check(elem(v.pick, 0) == :b, "the arm's tag did not slide to MY ordinal: #{inspect(v.pick)}")
+  check(elem(v.pick, 1).label == "back",
+    "the text under the slid arm: #{inspect(elem(v.pick, 1).label)} — a shared guard/flavour lane " <>
       "reads a byte string as a WIDE one and lands \"\"")
-  check(byte_size(v.pick.b.label) == 4, "the text's length: #{byte_size(v.pick.b.label)}")
-  check(v.pick.b.m == -12, "the int32 beside the text: #{inspect(v.pick.b.m)}")
+  check(byte_size(elem(v.pick, 1).label) == 4, "the text's length: #{byte_size(elem(v.pick, 1).label)}")
+  check(elem(v.pick, 1).m == -12, "the int32 beside the text: #{inspect(elem(v.pick, 1).m)}")
   check(v.head == 81 and v.tail == 88, "the fields either side of the union: #{inspect({v.head, v.tail})}")
   check(report.clamped == 0 and report.unknown == 0,
     "an arm that MOVED is not an event: #{why(report)}")`
@@ -713,6 +751,52 @@ func manifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 
 	}
 	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
 	return 0
+}
+
+// manifestNonFinite is, per corpus file, whether the reference wrote a NaN or
+// an infinity among its values (a `|0x<bits>` half whose exponent is all
+// ones). Under the finite rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3) such a
+// file is a MUST-REFUSE vector for this leg until the finite-tables plan's C++
+// card (tables-finite/cpp) regenerates the corpus with finite values; the
+// manifest decides, so the identity rows come back by themselves then. No
+// manifest is no oracle: the caller's own reads decide.
+func manifestNonFinite(t *testing.T, corpus string) map[string]bool {
+	t.Helper()
+	out := map[string]bool{}
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if os.IsNotExist(err) {
+		return out
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		file, values := "", ""
+		for field := range strings.FieldsSeq(line) {
+			if k, v, ok := strings.Cut(field, "="); ok {
+				switch k {
+				case "file":
+					file = v
+				case "values":
+					values = v
+				}
+			}
+		}
+		for pair := range strings.SplitSeq(values, ",") {
+			_, hexPart, ok := strings.Cut(pair, "|0x")
+			if !ok {
+				continue
+			}
+			bits, err := strconv.ParseUint(hexPart, 16, 64)
+			if err != nil {
+				continue
+			}
+			if len(hexPart) == 8 && bits&0x7F800000 == 0x7F800000 || len(hexPart) == 16 && bits&0x7FF0000000000000 == 0x7FF0000000000000 {
+				out[file] = true
+			}
+		}
+	}
+	return out
 }
 
 func manifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
@@ -970,7 +1054,7 @@ func sortedRuntimeFirst(names []string) []string {
 	var first, packet, fixed []string
 	for _, n := range names {
 		switch {
-		case n == "FixedRuntime.ex" || n == "BuildVersion.ex":
+		case n == "FixedRuntime.ex" || n == "BuildVersion.ex" || n == "PacketRuntime.ex":
 			first = append(first, n)
 		case strings.HasSuffix(n, FixedModuleSuffix+".ex"):
 			fixed = append(fixed, n)
@@ -1018,6 +1102,9 @@ func indentBody(body string) string {
 func TestFixedVersioningReadsTheManifest(t *testing.T) {
 	corpus := fixedCorpus(t)
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s/manifest.txt is missing: %v", corpus, err)
+		}
 		t.Skip("the tree carries no corpus manifest")
 	}
 	fired := 0

@@ -124,7 +124,7 @@ table LiveRoot
 	if body == "" {
 		t.Fatal("LiveRootFixedDecode was not a closed function")
 	}
-	if !strings.Contains(body, "i < value.GradesCount") {
+	if !strings.Contains(body, "i < value.gradesCount") {
 		t.Fatalf("counted-array decode must walk the live count, not the bound:\n%s", body)
 	}
 	if strings.Contains(body, "i < 4") {
@@ -173,16 +173,16 @@ fixed table Root
 	if body == "" {
 		t.Fatal("RootFixedDecode was not a closed function")
 	}
-	if !strings.Contains(body, "if (value.N < 0)") || !strings.Contains(body, "value.N = 1000; report.clamped++") {
+	if !strings.Contains(body, "if (value.n < 0)") || !strings.Contains(body, "value.n = 1000; report.clamped++") {
 		t.Fatalf("ranged integer decode must clamp to the reader's min/max:\n%s", body)
 	}
-	if !strings.Contains(body, "if (value.Grade > 3)") || !strings.Contains(body, "value.Grade = 0; report.clamped++") {
+	if !strings.Contains(body, "if (value.grade > 3)") || !strings.Contains(body, "value.grade = 0; report.clamped++") {
 		t.Fatalf("enum ordinal decode must land None past the top value:\n%s", body)
 	}
-	if !strings.Contains(body, "i < value.MarksCount") {
+	if !strings.Contains(body, "i < value.marksCount") {
 		t.Fatalf("counted ranged array must still walk the live count:\n%s", body)
 	}
-	if !strings.Contains(body, "if (value.NotePresent)") {
+	if !strings.Contains(body, "if (value.notePresent)") {
 		t.Fatalf("an absent optional's payload must not be held to a bound:\n%s", body)
 	}
 	if strings.Contains(src, "TableFixedOpClamp") {

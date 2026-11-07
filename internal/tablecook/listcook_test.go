@@ -16,20 +16,10 @@ import (
 // THE TOOL'S COOK AND UNCOOK HALVES FOR AN UNBOUNDED ARRAY (schema#380,
 // docs/SPEC-TABLES.md §2.9, §7.6).
 //
-// Before this PR both surfaces refused a list-bearing unit BY NAME rather than
-// laying out a region short of the element arrays:
-//
-//	unit declares an unbounded array in a table closure (Save.placements): the
-//	tool's WIRE and TEXT halves carry the construct and `cook-check` reads one,
-//	and its COOK half does not [...] The C++ reference carries the cook
-//
-// They carry it now: the elements ride in the HOLDER'S node extent, laid after
-// the record's storage in the PRE-ORDER the reference lays them, and the round
-// trip through a cook and back is byte for byte on the wire.
-//
-// `tables/lists` cannot be the corpus here — it declares a map, which the
-// tool's cook still refuses by name — so test/tables/L1.schema is the same
-// shapes with no map in them.
+// The elements ride in the HOLDER'S node extent, laid after the record's
+// storage in the PRE-ORDER the reference lays them, and the round trip through
+// a cook and back is byte for byte on the wire. test/tables/L1.schema holds the
+// list shapes alone.
 
 func listUnit(t *testing.T) (*ir.Unit, *tabletext.Model) {
 	t.Helper()

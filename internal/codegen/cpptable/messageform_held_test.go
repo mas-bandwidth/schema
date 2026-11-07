@@ -9,7 +9,7 @@ package cpptable
 //
 // The clauses are the page's own: TableMessageReason::no_vocabulary, TableMessageReason::second_announcement and its
 // terminality, TableMessageReason::vocabulary_too_large on both bounds, the two strict announcement
-// checks, TableMessageReason::batch_too_large on both sides, damage inside body k delivering k-1,
+// checks, TableMessageReason::batch_too_large on both sides, damage anywhere delivering no body,
 // bytes after the pad, and TableMessageReason::newer_form with TableMessageReason::message_form_as_file.
 //
 // The rows are the manifest's own, read here rather than copied: every
@@ -149,7 +149,7 @@ func cppHeldProbe(t *testing.T, unitPath, body string) ([]byte, error) {
 	return cppHeldRun(t, loadUnit(t, unitPath), body)
 }
 
-// "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+// "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
 // decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3).
 const cppHeldNoVocabulary = `
     LoginRequest v; LoginRequestReset( v );
@@ -163,7 +163,7 @@ const cppHeldNoVocabulary = `
     int64_t count = 1;
     TableReport r; memset( &r, 0, sizeof( r ) );
     if ( LoginRequestLoadMessages( out, &count, vocabulary, buf, n, &r ) )
-        { printf( "TableMessageReason::no_vocabulary: a body from a peer that never announced was not refused\n" ); return 1; }
+        { printf( "TableMessageReason::no_vocabulary: a body from an endpoint that never announced was not refused\n" ); return 1; }
     if ( !r.refused || r.reason != TableMessageReason::no_vocabulary || r.malformed )
         { printf( "TableMessageReason::no_vocabulary: refused=%d reason=%d malformed=%d\n", (int) r.refused, (int) r.reason, (int) r.malformed ); return 1; }
     if ( count != 0 ) { printf( "TableMessageReason::no_vocabulary moved the returned count: %lld\n", (long long) count ); return 1; }
@@ -340,9 +340,9 @@ const cppHeldBatchTooLarge = `
         { printf( "TableMessageReason::batch_too_large read: refused=%d count=%lld reason=%d malformed=%d\n", (int) r.refused, (long long) count, (int) r.reason, (int) r.malformed ); return 1; }
 `
 
-// "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
-// states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
-// read." (docs/SPEC-TABLES.md §3.3).
+// "DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH" (docs/SPEC-TABLES.md
+// §3.3, §4): no body is delivered, the returned count is 0, and the report
+// says malformed.
 const cppHeldDamageInsideBody = `
     TableMessageEntry entries[kTableMessageEntriesHere];
     TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
@@ -355,11 +355,14 @@ const cppHeldDamageInsideBody = `
     // bits, low bit first, so the terminator then 63 is 0xC0 0x0F.
     const uint8_t wire[5] = { 2, 2, 0xC0, 0x0F, 0x00 };
     LoginRequest storage[3];
+    for ( int i = 0; i < 3; i++ ) { LoginRequestReset( storage[i] ); storage[i].client_build = 7; }
     int64_t count = 3;
     TableReport r; memset( &r, 0, sizeof( r ) );
-    if ( LoginRequestLoadMessages( storage, &count, vocabulary, wire, 5, &r ) || count != 1 )
-        { printf( "damage: body 2's damage did not deliver one body: count=%lld refused=%d\n", (long long) count, (int) r.refused ); return 1; }
+    if ( LoginRequestLoadMessages( storage, &count, vocabulary, wire, 5, &r ) || count != 0 )
+        { printf( "damage: body 2's damage delivered a body: count=%lld refused=%d\n", (long long) count, (int) r.refused ); return 1; }
     if ( !r.malformed || r.refused ) { printf( "damage: one malformed did not count or it was refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
+    // the storage the walk touched is reset: no body of a damaged batch stands (§4)
+    if ( storage[0].client_build != 0 || storage[1].client_build != 0 ) { printf( "damage: the storage was not reset: %u %u\n", (unsigned) storage[0].client_build, (unsigned) storage[1].client_build ); return 1; }
 `
 
 // "BYTES AFTER THE PAD ARE MALFORMED ... the batch ends at the pad to the byte
@@ -372,7 +375,7 @@ const cppHeldBytesAfterPad = `
     Announce( ann, (int64_t) sizeof( ann ) );
     TableReport announced; memset( &announced, 0, sizeof( announced ) );
     if ( !AnnounceRead( vocabulary, ann, AnnounceMeasure(), &announced ) ) { printf( "pad: the announcement failed\n" ); return 1; }
-    LoginRequest v; LoginRequestReset( v );
+    LoginRequest v; LoginRequestReset( v ); v.client_build = 7;
     uint8_t buf[512];
     TableReport wrote; memset( &wrote, 0, sizeof( wrote ) );
     int64_t n = LoginRequestSaveMessages( &v, 1, buf, (int64_t) sizeof( buf ), &wrote );
@@ -381,8 +384,9 @@ const cppHeldBytesAfterPad = `
     LoginRequest storage[1];
     int64_t count = 1;
     TableReport r; memset( &r, 0, sizeof( r ) );
-    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n + 1, &r ) || count != 1 || !r.malformed || r.refused )
+    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n + 1, &r ) || count != 0 || !r.malformed || r.refused )
         { printf( "pad: bytes after the pad were not malformed: count=%lld malformed=%d refused=%d\n", (long long) count, (int) r.malformed, (int) r.refused ); return 1; }
+    if ( storage[0].client_build != 0 ) { printf( "pad: the body before the bad pad was handed back\n" ); return 1; }
 `
 
 // "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does not
@@ -577,66 +581,6 @@ func cppMessageBody(root, announcement, fileWire, batchWire string) string {
 	).Replace(tmpl)
 }
 
-// cppVariableMessageBody asserts a `message` row whose root is a VARIABLE
-// table (a pointered root, read through a region): loading either form and
-// saving the other reproduces the other's pinned bytes, the §3.3 round trip
-// the manifest's `message` line pins. A variable root is held by reference,
-// so each form is read into its own region and re-saved as the other.
-func cppVariableMessageBody(root, announcement, fileWire, batchWire string) string {
-	const tmpl = `
-    std::vector<uint8_t> announcement, fileWire, batchWire;
-    if ( !slurp( @ANNOUNCE@, announcement ) || !slurp( @FILE@, fileWire ) || !slurp( @BATCH@, batchWire ) )
-        { printf( "a golden is missing\n" ); return 1; }
-    TableMessageEntry entries[kTableMessageEntriesHere];
-    TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
-    TableReport announced; memset( &announced, 0, sizeof( announced ) );
-    if ( !AnnounceRead( vocabulary, announcement.data(), (int64_t) announcement.size(), &announced ) )
-        { printf( "AnnounceRead refused the reference announcement\n" ); return 1; }
-    // the FILE form, read into its own region (§3.3): a pointered root is held
-    // by reference, and the caller owns the region.
-    TableReport fileReport; memset( &fileReport, 0, sizeof( fileReport ) );
-    const int64_t fileNeed = @ROOT@LoadMeasure( fileWire.data(), (int64_t) fileWire.size() );
-    if ( fileNeed < 0 ) { printf( "@ROOT@LoadMeasure refused the file-form golden\n" ); return 1; }
-    std::vector<uint8_t> fileRegion( (size_t) fileNeed );
-    const @ROOT@ * fileRoot = @ROOT@Load( fileRegion.data(), fileNeed, fileWire.data(), (int64_t) fileWire.size(), &fileReport );
-    if ( fileRoot == NULL ) { printf( "@ROOT@Load refused the file-form golden\n" ); return 1; }
-    // loading the FILE form and saving the MESSAGE form reproduces the message
-    // bytes (§3.3).
-    const @ROOT@ * fileRoots[1] = { fileRoot };
-    TableReport fileSaveReport; memset( &fileSaveReport, 0, sizeof( fileSaveReport ) );
-    const int64_t fileMsgSize = @ROOT@MeasureMessages( fileRoots, 1, &fileSaveReport );
-    if ( fileMsgSize < 0 ) { printf( "MeasureMessages failed on the file-form value\n" ); return 1; }
-    std::vector<uint8_t> fileMsg( (size_t) fileMsgSize );
-    if ( @ROOT@SaveMessages( fileRoots, 1, fileMsg.data(), fileMsgSize, &fileSaveReport ) != fileMsgSize )
-        { printf( "SaveMessages failed on the file-form value\n" ); return 1; }
-    if ( memcmp( fileMsg.data(), batchWire.data(), batchWire.size() ) != 0 )
-        { printf( "the file form saved as a message differs from the message reference\n" ); return 1; }
-    // loading the MESSAGE form and saving the FILE form reproduces the file
-    // bytes (§3.3).
-    TableReport msgReport; memset( &msgReport, 0, sizeof( msgReport ) );
-    const int64_t msgNeed = @ROOT@LoadMeasure( vocabulary, batchWire.data(), (int64_t) batchWire.size() );
-    if ( msgNeed < 0 ) { printf( "@ROOT@LoadMeasure refused the message-form golden\n" ); return 1; }
-    std::vector<uint8_t> msgRegion( (size_t) msgNeed );
-    const @ROOT@ * msgRoots[1] = { NULL };
-    int64_t count = 1;
-    if ( !@ROOT@LoadMessages( msgRoots, &count, msgRegion.data(), msgNeed, vocabulary, batchWire.data(), (int64_t) batchWire.size(), &msgReport ) || count != 1 )
-        { printf( "@ROOT@LoadMessages: count=%lld\n", (long long) count ); return 1; }
-    const int64_t msgFileSize = @ROOT@Measure( msgRoots[0] );
-    if ( msgFileSize < 0 ) { printf( "@ROOT@Measure failed on the message-form value\n" ); return 1; }
-    std::vector<uint8_t> msgFile( (size_t) msgFileSize );
-    if ( @ROOT@Save( msgRoots[0], msgFile.data(), msgFileSize ) != msgFileSize )
-        { printf( "@ROOT@Save failed on the message-form value\n" ); return 1; }
-    if ( memcmp( msgFile.data(), fileWire.data(), fileWire.size() ) != 0 )
-        { printf( "the message form saved as a file differs from the file reference\n" ); return 1; }
-`
-	return strings.NewReplacer(
-		"@ROOT@", root,
-		"@ANNOUNCE@", fmt.Sprintf("%q", announcement),
-		"@FILE@", fmt.Sprintf("%q", fileWire),
-		"@BATCH@", fmt.Sprintf("%q", batchWire),
-	).Replace(tmpl)
-}
-
 // TestMessageFormHeldCPP is table-driven: one subtest per §3.3 refusal clause
 // and one per manifest `connection` and `message` row, and every subtest opens
 // with t.Parallel().
@@ -704,8 +648,16 @@ func TestMessageFormHeldCPP(t *testing.T) {
 			switch {
 			case row.connectionRow:
 				body = cppConnectionBody(filepath.Join(root, conn.path))
+			case row.batch == "-":
+				// a NAMED REFUSAL row: its root must be a variable table, which
+				// carries no message form (docs/SPEC-TABLES.md §3.3); that no
+				// backend emits one is compiler/messageformlock_test.go's
+				if !ir.VariableTables(u)[row.root] {
+					t.Fatalf("manifest row %q is a refusal row over %s, a fixed table", row.name, row.root)
+				}
+				return
 			case ir.VariableTables(u)[row.root]:
-				body = cppVariableMessageBody(row.root, filepath.Join(root, conn.path), filepath.Join(root, row.file), filepath.Join(root, row.batch))
+				t.Fatalf("manifest row %q names %s, a variable table, and pins message bytes: the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)", row.name, row.root)
 			default:
 				body = cppMessageBody(row.root, filepath.Join(root, conn.path), filepath.Join(root, row.file), filepath.Join(root, row.batch))
 			}
@@ -716,3 +668,201 @@ func TestMessageFormHeldCPP(t *testing.T) {
 		})
 	}
 }
+
+// TestMessageFormSkipDepthCPP is the message_skip_depth boundary on the
+// generated C++ reader (docs/SPEC-TABLES.md, limit value 128). Nested bodies,
+// union arms and walked array elements succeed at 127 and at 128. The named
+// above-limit rows are complete zero-padded batches whose only fault is depth
+// past 128. Verdicts are the spec's. TableMessageEntry keeps its default
+// value_bits of -1; zeroing the entry would take the arithmetic element path.
+func TestMessageFormSkipDepthCPP(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+
+fixed table Root {
+ a int32
+ b bool
+ c uint8
+}
+`
+	out, err := runCppGeneratedEdited(t, schema, cppSkipDepthMain, nil)
+	if err != nil {
+		t.Fatalf("skip_depth_above_128: %v\n%s", err, out)
+	}
+	_, err = runCppGeneratedEdited(t, schema, cppSkipDepthMain, func(files map[string][]byte) {
+		files["ProbeTable.h"] = []byte(strings.ReplaceAll(string(files["ProbeTable.h"]), "if ( depth > 128 )", "if ( depth > 256 )"))
+	})
+	if err == nil {
+		t.Fatalf("skip_depth_above_128: raising the depth bound from 128 to 256 did not fail the above-limit rows")
+	}
+	u := cppUnitFrom(t, schema)
+	files, err := cpp.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.cpp"), []byte(cppSkipDepthMain), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "probe_asan")
+	args := []string{"-std=c++17", "-O2", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-I", dir,
+		filepath.Join(dir, "main.cpp"), filepath.Join(dir, "ProbeBlock.cpp"), filepath.Join(dir, "ProbeTable.cpp"), "-o", bin}
+	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+		t.Fatalf("compile asan: %v\n%s", err, out)
+	}
+	if out, err := exec.Command(bin).CombinedOutput(); err != nil {
+		t.Fatalf("run asan: %v\n%s", err, out)
+	}
+}
+
+const cppSkipDepthMain = `#include "ProbeTable.h"
+#include <cstdio>
+#include <cstdint>
+#include <cstring>
+using namespace probe;
+
+static void fill_entry(TableMessageEntry & e, uint8_t kind)
+{
+    e.id = 1;
+    e.kind = kind;
+}
+static int64_t pack_refs(uint8_t * buf, int cap, int width, int nlead, uint64_t lead, int nmid, uint64_t mid, int ntail)
+{
+    int at = 16, i, b, n;
+    if (cap < 2) return -1;
+    memset(buf, 0, (size_t)cap);
+    buf[0] = 2;
+    buf[1] = 0;
+    n = nlead + nmid + ntail;
+    for (i = 0; i < n; i++) {
+        uint64_t ref = i < nlead ? lead : (i < nlead + nmid ? mid : 0);
+        for (b = 0; b < width; b++) {
+            if ((at >> 3) >= cap) return -1;
+            if ((ref >> b) & 1) buf[at >> 3] |= (uint8_t)(1u << (at & 7));
+            at++;
+        }
+    }
+    return (int64_t)(at + 7) / 8;
+}
+static int load_one(const TableVocabulary & vocabulary, const uint8_t * buf, int64_t n, Root & storage, int64_t & count, TableReport & report)
+{
+    RootReset(storage);
+    count = 1;
+    memset(&report, 0, sizeof(report));
+    return RootLoadMessages(&storage, &count, vocabulary, buf, n, &report) ? 1 : 0;
+}
+static int expect_ok(const char * row, const TableVocabulary & vocabulary, const uint8_t * buf, int64_t n)
+{
+    Root storage; int64_t count = 0; TableReport report; int ok;
+    ok = load_one(vocabulary, buf, n, storage, count, report);
+    if (!(ok && !report.malformed && report.unknown == 1 && storage.a == 0 && count == 1)) {
+        printf("%s: ok=%d malformed=%d unknown=%d a=%d count=%lld\n",
+            row, ok, (int)report.malformed, (int)report.unknown, (int)storage.a, (long long)count);
+        return 1;
+    }
+    return 0;
+}
+static int expect_bad(const char * row, const TableVocabulary & vocabulary, const uint8_t * buf, int64_t n)
+{
+    Root storage; int64_t count = 0; TableReport report; int ok;
+    ok = load_one(vocabulary, buf, n, storage, count, report);
+    if (!(!ok && report.malformed && count == 0)) {
+        printf("%s: ok=%d malformed=%d count=%lld\n", row, ok, (int)report.malformed, (long long)count);
+        return 1;
+    }
+    return 0;
+}
+int main()
+{
+    uint8_t buf[128];
+    int64_t n;
+    TableMessageEntry body, arm, arr[2], keyed6[2], keyed32[2], keyed13[2];
+    fill_entry(body, 13);
+    fill_entry(arm, 15);
+    fill_entry(arr[0], 13);
+    fill_entry(arr[1], 14);
+    arr[1].id = 2;
+    arr[1].min = 1;
+    arr[1].max = 1;
+    arr[1].elem_kind = 13;
+    fill_entry(keyed6[0], 13);
+    fill_entry(keyed6[1], 16);
+    keyed6[1].id = 2;
+    keyed6[1].max = 3;
+    keyed6[1].elem_kind = 6;
+    keyed6[1].elem_value_bits = 8;
+    fill_entry(keyed32[0], 13);
+    fill_entry(keyed32[1], 16);
+    keyed32[1].id = 2;
+    keyed32[1].max = 3;
+    keyed32[1].elem_kind = 32;
+    fill_entry(keyed13[0], 13);
+    fill_entry(keyed13[1], 16);
+    keyed13[1].id = 2;
+    keyed13[1].max = 3;
+    keyed13[1].elem_kind = 13;
+    TableVocabulary body_v(&body, 1);
+    body_v.count = 1;
+    body_v.ref_bits = 1;
+    body_v.announced = true;
+    TableVocabulary arm_v(&arm, 1);
+    arm_v.count = 1;
+    arm_v.ref_bits = 1;
+    arm_v.announced = true;
+    TableVocabulary arr_v(arr, 2);
+    arr_v.count = 2;
+    arr_v.ref_bits = 2;
+    arr_v.announced = true;
+    TableVocabulary keyed6_v(keyed6, 2);
+    keyed6_v.count = 2;
+    keyed6_v.ref_bits = 2;
+    keyed6_v.announced = true;
+    TableVocabulary keyed32_v(keyed32, 2);
+    keyed32_v.count = 2;
+    keyed32_v.ref_bits = 2;
+    keyed32_v.announced = true;
+    TableVocabulary keyed13_v(keyed13, 2);
+    keyed13_v.count = 2;
+    keyed13_v.ref_bits = 2;
+    keyed13_v.announced = true;
+    n = pack_refs(buf, 128, 1, 127, 1, 0, 0, 128);
+    if (n < 0 || expect_ok("skip_depth_body_below_128", body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 129);
+    if (n < 0 || expect_ok("skip_depth_body_at_128", body_v, buf, n)) return 1;
+    if (expect_ok("skip_depth_continuation", body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 128);
+    if (n < 0 || n * 8 != 16 + 256) { printf("skip_depth_truncation alignment\n"); return 1; }
+    if (expect_bad("skip_depth_truncation", body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 129, 1, 0, 0, 130);
+    if (n < 0 || expect_bad("skip_depth_above_128 body", body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 2);
+    if (n < 0 || expect_ok("skip_depth_union_below_128", arm_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 129, 1, 0, 0, 2);
+    if (n < 0 || expect_ok("skip_depth_union_at_128", arm_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 130, 1, 0, 0, 2);
+    if (n < 0 || expect_bad("skip_depth_above_128 union", arm_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 125, 1, 1, 2, 127);
+    if (n < 0 || expect_ok("skip_depth_array_below_128", arr_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 126, 1, 1, 2, 128);
+    if (n < 0 || expect_ok("skip_depth_array_at_128", arr_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 127, 1, 1, 2, 129);
+    if (n < 0 || expect_bad("skip_depth_above_128 array", arr_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 139);
+    if (n < 0 || expect_ok("skip_depth_keyed_fixed_at_128", keyed6_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 131);
+    if (n < 0 || expect_ok("skip_depth_keyed_nopayload_at_128", keyed32_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 127, 1, 2, 2, 132);
+    if (n < 0 || expect_bad("skip_depth_above_128 keyed", keyed13_v, buf, n)) return 1;
+    return 0;
+}
+`

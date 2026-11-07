@@ -194,7 +194,7 @@ func init() {
 	tableCookLayoutOffset("PatrolRow.Active", unsafe.Offsetof(PatrolRow{}.Active), 0)
 	tableCookLayoutOffset("PatrolRow.Speed", unsafe.Offsetof(PatrolRow{}.Speed), 4)
 	tableCookLayoutOffset("PatrolRow.HasTarget", unsafe.Offsetof(PatrolRow{}.HasTarget), 8)
-	tableCookLayoutOffset("PatrolRow.TargetId", unsafe.Offsetof(PatrolRow{}.TargetId), 12)
+	tableCookLayoutOffset("PatrolRow.TargetID", unsafe.Offsetof(PatrolRow{}.TargetID), 12)
 	tableCookLayoutOffset("PatrolRow.Wander", unsafe.Offsetof(PatrolRow{}.Wander), 16)
 	tableCookLayoutOffset("PatrolRow.Note", unsafe.Offsetof(PatrolRow{}.Note), 20)
 	tableCookLayoutSize("ProfileConfigRow", unsafe.Sizeof(ProfileConfigRow{}), 304)
@@ -683,7 +683,7 @@ func PatrolAt(slot *int64, arena ...*TableArena) *PatrolRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c PatrolCook) Type() *TableCookInfo { return &tableCookRecords[11] }
 
-const tableCookBuildVersion uint64 = 0x81b9d8ee7522a549
+const tableCookBuildVersion uint64 = 0x93ff58e3111cb4d4
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8
@@ -723,7 +723,7 @@ func (w *tableCookWriter) header(data, nodes, align int64) {
 func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, live bool) bool {
 	for i := range t.Fields {
 		f := &t.Fields[i]
-		rides := live && tableJsonGuardHolds(p, t, f.Guard)
+		rides := live && tableJSONGuardHolds(p, t, f.Guard)
 		if f.Optional {
 			rides = rides && *(*bool)(unsafe.Add(p, f.PresentOffset))
 		}
@@ -758,7 +758,7 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
 		width := f.CookElemSize
 		for i := range used {
-			v := tableJsonGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
+			v := tableJSONGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
 			w.put(dest+int64(i)*int64(width), v, width)
 		}
 		return true
@@ -782,7 +782,7 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 	}
 	if f.Arms != nil {
 		u := f.Arms()
-		tag := tableJsonGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
+		tag := tableJSONGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
 		if tag >= uint64(len(u.Arms)) {
 			return false
 		}
@@ -806,7 +806,8 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		w.put(at+8, hi, 8)
 		return true
 	}
-	value := tableJsonGetRaw(p, f.ElemSize)
+	// A cooked float is finite (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): NaN and infinity refuse.
+	value := tableJSONGetRaw(p, f.ElemSize)
 	if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
 		return false
 	}
@@ -815,6 +816,9 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		if *(*bool)(p) {
 			value = 1
 		}
+	}
+	if f.Kind == 10 && value&0x7f800000 == 0x7f800000 || f.Kind == 11 && value&0x7ff0000000000000 == 0x7ff0000000000000 {
+		return false
 	}
 	w.put(at, value, width)
 	return true
@@ -840,7 +844,7 @@ func tableCookFixed(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order Tab
 		return false
 	}
 	w.put(64+data, 0, 8)
-	w.put(64+data+8, t.Id, 8)
+	w.put(64+data+8, t.ID, 8)
 	return true
 }
 
@@ -882,14 +886,14 @@ func tableCookRegionReason(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, or
 		} else {
 			length := uint64(*(*uint32)(e.node))
 			size = 8 + int64(length)
-			if e.id == tableStringTypeId {
+			if e.id == tableStringTypeID {
 				size++
 			}
 		}
 		align = max(align, alignment)
 		data = (data + alignment - 1) & -alignment
 		e.offset = data
-		w.at = 64 + data + size
+		w.at = 64 + data + ((size + alignment - 1) & -alignment)
 		if e.info != nil && !w.record(e.node, e.info, 64+data, true) {
 			return -1, TableRefuseInvalidValue
 		}
@@ -910,7 +914,8 @@ func tableCookRegionReason(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, or
 		e := &n.entries[i]
 		at := 64 + e.offset
 		if e.info != nil {
-			w.at = at + int64(e.info.CookSize)
+			nodeAlign := int64(e.info.CookAlign)
+			w.at = at + ((int64(e.info.CookSize) + nodeAlign - 1) & -nodeAlign)
 			if !w.record(e.node, e.info, at, true) {
 				return -1, TableRefuseInvalidValue
 			}

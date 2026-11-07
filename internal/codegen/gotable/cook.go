@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -147,7 +148,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	aligns := make([]int64, 0, len(c.members))
 	for name := range c.members {
 		c.order = append(c.order, name)
-		aligns = append(aligns, c.members[name].Align)
+		aligns = append(aligns, ir.CookNodeAlign(u, cookMember(u, name)))
 	}
 	sort.Strings(c.order)
 	c.slot = make(map[string]int, len(c.order))
@@ -303,7 +304,7 @@ func (g *cookGen) assemble() ([]byte, error) {
 		imports = append(imports, `"unsafe"`)
 	}
 	if strings.Contains(g.structs.String(), "serialize.") {
-		imports = append(imports, `"github.com/mas-bandwidth/serialize.go"`)
+		imports = append(imports, `"github.com/mas-bandwidth/serialize.go/v2"`)
 	}
 	h.WriteString(goImports(imports))
 	h.WriteString(g.runtime.String())
@@ -376,7 +377,7 @@ func (w *cookWriter) next() {
 }
 
 func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
-	name := ir.GoExportName(f.Name)
+	name := goname.Member(f.Name)
 	next := w.next
 	switch {
 	case f.IsMap():
@@ -498,7 +499,7 @@ func (g *cookGen) emitRecordCheck(name string) {
 	g.hf("\ttableCookLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
 	for _, fl := range ml.Fields {
 		g.hf("\ttableCookLayoutOffset(%q, unsafe.Offsetof(%s{}.%s), %d)\n",
-			spelled+"."+ir.GoExportName(fl.Field.Name), spelled, ir.GoExportName(fl.Field.Name), fl.Offset)
+			spelled+"."+goname.Member(fl.Field.Name), spelled, goname.Member(fl.Field.Name), fl.Offset)
 	}
 }
 
@@ -571,7 +572,7 @@ func(cook *%sCook)Open(base unsafe.Pointer,length int64)error{
  cook.Region=unsafe.Add(base,uintptr(dataOffset));cook.RegionLength=int64(dataLength)
  return nil
 }
-`, name, name, name, name, name, bits.ReverseBytes64(cookMagic), ml.Align, ml.Size)
+`, name, name, name, name, name, bits.ReverseBytes64(cookMagic), ir.CookNodeAlign(g.unit, st), ml.Size)
 }
 
 func (g *cookGen) emitAt(st *ir.Struct) {

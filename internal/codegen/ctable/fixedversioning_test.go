@@ -877,7 +877,7 @@ int main( void )
 %s
     return 0;
 }
-`, header, file, root, root, damage, snake+"_reset", snake+"_reset", poison, snake+"_fixed_load", body)
+`, header, file, root, root, damage, snake+"_reset", snake+"_reset", poison, snake+"_fixed_load_tolerant", body)
 	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -905,7 +905,7 @@ var _ = binary.LittleEndian
 // This one asserts an ORDER IN THE EMITTED C and needs no corpus, no compiler
 // and no thread, because the bug it guards is not a timing bug in a test's eye:
 // the flag used to be raised BEFORE the walk that fills the plans, so a second
-// thread racing the first older-peer load returned from the build with
+// thread racing the first older-endpoint load returned from the build with
 // <name>_fixed_lineage still zeros — entries NULL, count 0, reason 0 — and step
 // 8 of §5.3 ACCEPTS that shape. The read would land a prefill-only record where
 // it owed a refusal. A race is a hard thing to catch twice; the order that makes

@@ -11,6 +11,7 @@ package c
 import (
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -69,7 +70,31 @@ func (g *gen) symbolic(e ast.Expr) bool {
 // renderExpr renders an expression in C form: every constant reference is
 // spelled SCREAMING_SNAKE, the way this target #defines it.
 func renderExpr(e ast.Expr) string {
-	return ir.RenderExprIdent(e, screaming)
+	return spaceParens(ir.RenderExprIdent(e, screaming))
+}
+
+// spaceParens spells a rendered expression's parentheses the way the rest of
+// the generated C spells them — ( x ), -( -X ) — so the text is clang-format
+// canonical against the repo's .clang-format (SpacesInParens).
+func spaceParens(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			b.WriteString("( ")
+			for i+1 < len(s) && s[i+1] == ' ' {
+				i++
+			}
+		case ')':
+			out := strings.TrimRight(b.String(), " ")
+			b.Reset()
+			b.WriteString(out)
+			b.WriteString(" )")
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
 }
 
 // foldComment returns a trailing comment carrying the schema expression when

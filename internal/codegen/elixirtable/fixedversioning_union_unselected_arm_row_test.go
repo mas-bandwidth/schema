@@ -34,8 +34,8 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
   check(tag == :ok, "the reader refused the writer's file: #{inspect(tag)} #{why(report)}")
   check(length(values) == 1, "the file carries one record, not #{length(values)}")
   v = hd(values)
-  check(v.pick.type == 1, "pick.type is the writer's alpha arm (1), not #{inspect(v.pick.type)}")
-  check(v.pick.alpha.m == 7, "pick.alpha.m is the writer's 7, not #{inspect(v.pick.alpha.m)}")
+  check(elem(v.pick, 0) == :alpha, "pick is the writer's alpha arm, not #{inspect(v.pick)}")
+  check(elem(v.pick, 1).m == 7, "the alpha arm's m is the writer's 7, not #{inspect(v.pick)}")
   check(v.seq == 15, "seq is the writer's 15, not #{inspect(v.seq)}")
   check(
     report.clamped == 0 and report.unknown == 0 and report.kind_mismatch == 0 and

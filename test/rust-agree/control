@@ -1,0 +1,72 @@
+#!/bin/sh
+# THE NEGATIVE CONTROLS OF THE RUST ACCESSOR/DESCRIPTOR AGREEMENT GATE
+# (docs/PORTING.md J1). usage, from the repository root:
+#
+#   test/rust-agree/control accessor    a generated accessor's offset moved
+#   test/rust-agree/control slot        a pointer slot's described offset moved
+#
+# Each builds the compiler from a COPY of internal/codegen/rusttable/cook.go
+# (tools/sabotage, through go build -overlay, so no tracked file is written),
+# generates the two units the gate reads from it, builds the gate against THOSE
+# crates, and requires the gate to turn red ON THE NAMED FIELDS AND ON NOTHING
+# ELSE. A gate that went red on both halves, or on something else, would be red
+# for some other reason, and one that stayed green could be reading the
+# descriptors twice.
+#
+# RUSTUP_BIN and SERIALIZE_RS come from make/rust.mk.
+set -e
+mode=$1
+case "$mode" in
+accessor)
+	sabotage=rust-accessor-moved
+	field='RenderCamera .*\.(camera_id|camera_type): accessor'
+	what='an accessor four bytes off (RenderCamera.camera_id and camera_type swapped)'
+	;;
+slot)
+	sabotage=rust-slot-moved
+	field='TreeNode .*\.left: accessor'
+	what='a pointer slot eight bytes off (TreeNode.left described at the slot after its own)'
+	;;
+*)
+	echo "usage: $0 accessor|slot" >&2
+	exit 2
+	;;
+esac
+
+root=$(pwd)
+work=build/rust-agree-$mode-nc
+rm -rf "$work"
+mkdir -p "$work/gen" "$work/prog/src"
+
+go run ./tools/sabotage -name "$sabotage" -out "$work/cook.go.txt" internal/codegen/rusttable/cook.go
+printf '{"Replace":{"%s/internal/codegen/rusttable/cook.go":"%s/%s/cook.go.txt"}}\n' "$root" "$root" "$work" > "$work/overlay.json"
+go build -overlay "$work/overlay.json" -o "$work/schema" ./cmd/schema
+
+for unit in blockdemo:tables/block graphdemo:tables/pointers; do
+	name=${unit%%:*}
+	path=${unit#*:}
+	"./$work/schema" generate --lang rust --out "$work/gen/$name/src" "$path"
+	printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/%s" }\n' \
+		"$name" "$root" "${SERIALIZE_RS:-../serialize.rs}" > "$work/gen/$name/Cargo.toml"
+done
+
+cp test/rust-agree/src/main.rs "$work/prog/src/main.rs"
+sed -e "s|../../build/tables-generated-rust/|$root/$work/gen/|" test/rust-agree/Cargo.toml > "$work/prog/Cargo.toml"
+PATH="${RUSTUP_BIN:-/opt/homebrew/opt/rustup/bin}:$PATH" cargo build --quiet --manifest-path "$work/prog/Cargo.toml"
+
+if "./$work/prog/target/debug/rust-agree" > "$work/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: the gate stayed green with $what"
+	tail -5 "$work/log"
+	exit 1
+fi
+if ! grep -Eq "^DISAGREE  $field" "$work/log"; then
+	echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the field that was moved"
+	tail -20 "$work/log"
+	exit 1
+fi
+if grep '^DISAGREE' "$work/log" | grep -Ev "^DISAGREE  $field"; then
+	echo "NEGATIVE CONTROL FAILED: the gate went red on a field other than the one moved"
+	exit 1
+fi
+grep -Em1 "^DISAGREE  $field" "$work/log"
+echo "negative control: $what turns the Rust agreement gate RED on the moved field and on nothing else"

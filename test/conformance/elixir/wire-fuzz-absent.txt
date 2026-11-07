@@ -1,0 +1,5 @@
+# THE ROOTS THE ELIXIR WIRE-FUZZ LEG CANNOT OPEN.
+# The actual combined default-roster handshake opens every root.
+# Keep this list empty; a lost root is a named gate failure.
+# Entries, if ever reviewed, use: <unit>.<root> form=<f> <reason>.
+# ELIXIR_WIRE_FUZZ_ABSENT_COUNT in make/elixir.mk pins zero.

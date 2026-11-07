@@ -21,10 +21,8 @@ import (
 // out of that run. A clause that printed nothing DID NOT RUN — the assembly did
 // not build or the name moved — and that is a failure and never a pass.
 //
-// The C# table wire carries no serialize dependency (the generated home's own
-// header), so the project compiles the generated unit standing alone; the
-// sibling `serialize.cs` runtime, which the PACKET emitter's tests need, is not
-// a requirement here.
+// The pointer unit includes a packet connection, so this probe links the real
+// serialize.cs runtime and executes its manifest announcement row too.
 func TestMessageFormHeldCSharp(t *testing.T) {
 	t.Parallel()
 	out, err := csHeldRun(t)
@@ -32,14 +30,28 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		name string
 		page string
 	}{
-		{"no_vocabulary", "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME."},
+		{"no_vocabulary", "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME."},
 		{"second_announcement", "NO RE-ANNOUNCEMENT, EVER. ... REFUSAL IS TERMINAL, and a refused FIRST announcement is the one the connection gets."},
 		{"vocabulary_too_large", "`vocabulary_too_large` covers both bounds, the entry count and the vocabulary's bytes."},
 		{"announcement_strict_checks", "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS ... A FAILED STRICT CHECK IS MALFORMED, not a refusal."},
 		{"batch_too_large", "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... `M` ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME."},
-		{"damage_inside_body", "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`."},
-		{"bytes_after_pad", "BYTES AFTER THE PAD ARE MALFORMED."},
+		{"damage_inside_body", "damage anywhere in a form-`2` batch refuses the whole batch, `malformed` counts, and nothing the read produced is a value to use."},
+		{"bytes_after_pad", "BYTES AFTER THE PAD ARE MALFORMED ... damage anywhere in a form-`2` batch refuses the whole batch."},
 		{"form_byte", "a form a reader does not know is a REFUSAL by name and never damage ... a reader handed a form-`2` wire where a file was expected refuses by name."},
+		{"skip_depth_body_below_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_body_at_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_above_128_body", "The skip walk is bounded at depth 128: a nested body past 128 levels is refused as malformed."},
+		{"skip_depth_union_below_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_union_at_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_above_128_union", "The skip walk is bounded at depth 128: a union arm past 128 levels is refused as malformed."},
+		{"skip_depth_array_below_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_array_at_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_above_128_array", "The skip walk is bounded at depth 128: an element skip past 128 levels is refused as malformed."},
+		{"skip_depth_keyed_fixed_at_128", "The skip walk is bounded at depth 128: a fixed-width keyed array at depth 128 does not charge element depth."},
+		{"skip_depth_keyed_nopayload_at_128", "The skip walk is bounded at depth 128: a no-payload keyed array at depth 128 does not charge element depth."},
+		{"skip_depth_above_128_keyed", "The skip walk is bounded at depth 128: a keyed nested-body element past 128 levels is refused as malformed."},
+		{"skip_depth_continuation", "The skip walk is bounded at depth 128."},
+		{"skip_depth_truncation", "The skip walk is bounded at depth 128."},
 	}
 	for _, clause := range clauses {
 		t.Run(clause.name, func(t *testing.T) {
@@ -53,50 +65,12 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 			csHeldAssert(t, out, err, "row/"+conn.key)
 		})
 	}
-	for _, conn := range csHeldRuntimeConns {
-		t.Run("connection_"+conn.key, func(t *testing.T) {
-			t.Parallel()
-			rowOut, rowErr := csHeldRuntimeAttempt(t, conn)
-			if rowErr == nil {
-				t.Fatalf("connection_%s built without the sibling runtime; its announcement check must run", conn.key)
-			}
-			// The row is named as not run only when the build's own
-			// diagnostics say the sibling `../serialize.cs` runtime is what is
-			// missing; any other compiler error is a generated-code or
-			// compiler regression this leg must show, never hide (§3.3).
-			if !csHeldMissingRuntime(rowOut) {
-				t.Fatalf("connection_%s failed to build for a reason other than the sibling ../serialize.cs runtime:\n%s", conn.key, rowOut)
-			}
-			// An OWED GAP, not a toolchain absence: this attempt compiles the
-			// unit without the sibling runtime on purpose and no leg here yet
-			// links ../serialize.cs to run the announcement check, so the row
-			// stays a named skip even under SCHEMA_REQUIRE_CORPUS (staging the
-			// sibling does not change it). make tables-cs-fixed-rows lists it.
-			t.Skipf("not run: the packet emitter names the sibling ../serialize.cs runtime this checkout does not carry:\n%s", csHeldFirstErrors(rowOut))
-		})
-	}
 	for _, msg := range csHeldMsgs {
 		t.Run("message_"+msg.name, func(t *testing.T) {
 			t.Parallel()
 			csHeldAssert(t, out, err, "row/"+msg.name)
 		})
 	}
-	for _, row := range csHeldNotRun {
-		t.Run(row.name, func(t *testing.T) {
-			t.Parallel()
-			t.Skip("not run: " + row.why)
-		})
-	}
-}
-
-// csHeldNotRun names the manifest `connection`/`message` rows this leg cannot
-// answer, so every row of testdata/conformance/tables/MANIFEST.txt is spoken by
-// this test and none is silently omitted. `message_graph_tree`'s root `Scene`
-// is a plain `table`, and §3.3 is a fixed table's: the row is answered ABSENT
-// by the form's own declaration, exactly as the Go leg's goldens test answers
-// it.
-var csHeldNotRun = []struct{ name, why string }{
-	{"message_graph_tree", "§3.3 is a fixed table's; Scene is a plain table"},
 }
 
 const csHeldSchema = `package probe
@@ -156,6 +130,21 @@ func csHeldBuild(t *testing.T) ([]byte, error) {
 			sources = append(sources, path)
 		}
 	}
+	runtimeDir := os.Getenv("SERIALIZE_CS")
+	if runtimeDir == "" {
+		runtimeDir = "../../../../serialize.cs"
+	}
+	runtimeDir, err := filepath.Abs(runtimeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Serialize.cs", "Int128Pair.cs"} {
+		path := filepath.Join(runtimeDir, "src", name)
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("C# message connection runtime: %v", err)
+		}
+		sources = append(sources, path)
+	}
 	held := filepath.Join(dir, "Held.cs")
 	if err := os.WriteFile(held, []byte(csHeldCompose(t)), 0o600); err != nil {
 		t.Fatal(err)
@@ -166,7 +155,7 @@ func csHeldBuild(t *testing.T) ([]byte, error) {
 	csc, refs, runtime := csDotnetToolchain(t)
 	dotnet := csDotnet()
 	app := filepath.Join(dir, "csmsgheld.dll")
-	args := []string{"exec", csc, "-nologo", "-noconfig", "-target:exe", "-unsafe",
+	args := []string{"exec", csc, "-nologo", "-noconfig", "-target:exe", "-optimize+", "-unsafe",
 		"-nullable:annotations", "-langversion:latest", "-nostdlib+", "-out:" + app}
 	for _, ref := range refs {
 		args = append(args, "-r:"+ref)
@@ -187,115 +176,6 @@ func csHeldBuild(t *testing.T) ([]byte, error) {
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	runOut, runErr := run.CombinedOutput()
 	return append(compileOut, runOut...), runErr
-}
-
-// csHeldRuntimeAttempt generates one csHeldRuntimeUnits unit with both emitters
-// and compiles it as a library, returning the compiler's own output and error.
-// The unit is compiled whole, with its packet file kept, so the refusal the
-// missing sibling `../serialize.cs` runtime produces is the build's real one,
-// not a guess: the connection row is named as not run only when this attempt
-// says the runtime it needs is what is missing.
-func csHeldRuntimeAttempt(t *testing.T, conn csHeldConn) (string, error) {
-	t.Helper()
-	var unit csHeldUnit
-	for _, u := range csHeldRuntimeUnits {
-		if u.pkg == conn.pkg {
-			unit = u
-		}
-	}
-	if unit.pkg == "" {
-		t.Fatalf("no runtime unit for %s", conn.pkg)
-	}
-	dir := t.TempDir()
-	u := unitFrom(t, csHeldSchemaFor(t, unit))
-	files, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	packet, err := csharp.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	maps.Copy(files, packet)
-	var sources []string
-	for name, data := range files {
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		sources = append(sources, path)
-	}
-	csc, refs, _ := csDotnetToolchain(t)
-	dotnet := csDotnet()
-	lib := filepath.Join(dir, "csmsgrow.dll")
-	args := []string{"exec", csc, "-nologo", "-noconfig", "-target:library", "-unsafe",
-		"-nullable:annotations", "-langversion:latest", "-nostdlib+", "-out:" + lib}
-	for _, ref := range refs {
-		args = append(args, "-r:"+ref)
-	}
-	args = append(args, sources...)
-	compile := exec.Command(dotnet, args...)
-	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
-	out, err := compile.CombinedOutput()
-	return string(out), err
-}
-
-// csHeldRuntimeTypes are the names the sibling `../serialize.cs` runtime
-// provides and the PACKET emitter's generated unit references: the `Serialize`
-// namespace and its stream and batch ref structs. A build that fails only
-// because this checkout does not stage that sibling reports each of these as an
-// unresolved name (error CS0246, docs/SPEC-TABLES.md §3.3's wire functions call
-// the packet runtime); any other diagnostic is a generated-code or compiler
-// regression.
-var csHeldRuntimeTypes = []string{"Serialize", "ReadStream", "WriteStream", "ReadBatch", "WriteBatch"}
-
-// csHeldMissingRuntime reports whether an attempt's compiler diagnostics
-// identify the sibling `../serialize.cs` runtime as what is missing: at least
-// one error, and every error a CS0246 whose unresolved name is one of
-// csHeldRuntimeTypes. A diagnosis with any other error, or no error at all, is
-// not the missing runtime and must fail the row instead of being named not run
-// (docs/SPEC-TABLES.md §3.3).
-func csHeldMissingRuntime(out string) bool {
-	sawError := false
-	for line := range strings.SplitSeq(out, "\n") {
-		if !strings.Contains(line, "error CS") {
-			continue
-		}
-		sawError = true
-		if !strings.Contains(line, "error CS0246:") {
-			return false
-		}
-		found := false
-		for _, name := range csHeldRuntimeTypes {
-			if strings.Contains(line, "'"+name+"'") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return sawError
-}
-
-// csHeldFirstErrors keeps the first compiler error lines of an attempt's
-// output, so a not-run skip names what the build actually refused on instead
-// of an assumed reason.
-func csHeldFirstErrors(out string) string {
-	var lines []string
-	for line := range strings.SplitSeq(out, "\n") {
-		if strings.Contains(line, "error CS") {
-			lines = append(lines, strings.TrimSpace(line))
-			if len(lines) == 3 {
-				break
-			}
-		}
-	}
-	if len(lines) == 0 {
-		return out
-	}
-	return strings.Join(lines, "\n")
 }
 
 // csDotnet is the dotnet command the leg's Makefile pins, DOTNET or the name on
@@ -434,11 +314,12 @@ static class Held
         DamageInsideBody();
         BytesAfterPad();
         FormByte();
+        SkipDepth();
         Console.WriteLine(bad == 0 ? "cs message form: every clause green" : "cs message form: " + bad + " FAILED");
         return bad == 0 ? 0 : 1;
     }
 
-    // "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+    // "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
     // decoded, no counter moves and malformed does not fire."
     static void NoVocabulary()
     {
@@ -566,11 +447,11 @@ static class Held
         Ok(row);
     }
 
-    // "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1. The returned count
-    // states k - 1, ONE malformed counts, and nothing at or after body k is
-    // read." M is three: body 1 empty, body 2's first reference 0xF above the
-    // announced entry count, body 3 empty. A reference is four bits, low bit
-    // first, so byte 0 holds body 1's low nibble and body 2's high nibble.
+    // "damage anywhere in a form-2 batch refuses the whole batch, malformed
+    // counts, and nothing the read produced is a value to use." M is three:
+    // body 1 empty, body 2's first reference 0xF above the announced entry
+    // count, body 3 empty. A reference is four bits, low bit first, so byte 0
+    // holds body 1's low nibble and body 2's high nibble.
     static void DamageInsideBody()
     {
         const string row = "damage_inside_body";
@@ -580,7 +461,7 @@ static class Held
         Root[] storage = Bodies(3);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, wire, vocab, report, out int count);
-        if (count != 1 || !report.Malformed || report.Refused) { Fail(row, "count=" + count + " malformed=" + report.Malformed); return; }
+        if (count != 0 || !report.Malformed || report.Refused) { Fail(row, "count=" + count + " malformed=" + report.Malformed); return; }
         Ok(row);
     }
 
@@ -602,7 +483,7 @@ static class Held
         Root[] storage = Bodies(1);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, padded, vocab, report, out int count);
-        if (count != 1 || !report.Malformed) { Fail(row, "count=" + count + " malformed=" + report.Malformed); return; }
+        if (count != 0 || !report.Malformed) { Fail(row, "count=" + count + " malformed=" + report.Malformed); return; }
         Ok(row);
     }
 
@@ -626,6 +507,84 @@ static class Held
         if (!fileReport.Refused || fileReport.Reason != "message_form_as_file") { Fail(row, "form-2 batch as a file: reason=" + fileReport.Reason); return; }
         Ok(row);
     }
+
+    // message_skip_depth (docs/SPEC-TABLES.md, value 128). Nested bodies, union
+    // arms and walked array elements are accepted at 127 and at 128. Each
+    // above-limit row is a complete zero-padded batch whose only fault is depth
+    // past 128, so removing the guard fails that row and leaves the others ok.
+    // Truncation drops the root terminator of the at-limit body. 16 + 256 bits
+    // is a whole number of bytes, so a pad bit cannot stand in for it.
+    static byte[] Pack(int width, int nlead, int lead, int nmid, int mid, int ntail)
+    {
+        int at = 16;
+        int n = nlead + nmid + ntail;
+        int bits = 16 + n * width;
+        byte[] buf = new byte[(bits + 7) / 8];
+        buf[0] = 2;
+        buf[1] = 0;
+        for (int i = 0; i < n; i++)
+        {
+            int slot = i < nlead ? lead : (i < nlead + nmid ? mid : 0);
+            for (int b = 0; b < width; b++)
+            {
+                if (((slot >> b) & 1) != 0) buf[at >> 3] |= (byte)(1 << (at & 7));
+                at++;
+            }
+        }
+        return buf;
+    }
+    static TableVocabulary Vocab(params TableMessageEntry[] entries)
+    {
+        return new TableVocabulary { Entries = entries, Announced = true };
+    }
+    static TableMessageEntry Entry(ulong id, byte kind)
+    {
+        return new TableMessageEntry { Id = id, Kind = kind, Shape = new TableMessageShape() };
+    }
+    static void ExpectOk(string row, TableVocabulary vocab, byte[] buf)
+    {
+        Root[] storage = Bodies(1);
+        var report = new TableReport();
+        var verdict = Schema.RootLoadMessages(storage, buf, vocab, report, out int count);
+        if (verdict != Schema.TableWire.Verdict.Ok || count != 1 || report.Malformed || report.Unknown != 1 || storage[0].A != 0)
+        { Fail(row, "verdict=" + verdict + " count=" + count + " malformed=" + report.Malformed + " unknown=" + report.Unknown + " a=" + storage[0].A); return; }
+        Ok(row);
+    }
+    static void ExpectBad(string row, TableVocabulary vocab, byte[] buf)
+    {
+        Root[] storage = Bodies(1);
+        var report = new TableReport();
+        var verdict = Schema.RootLoadMessages(storage, buf, vocab, report, out int count);
+        if (verdict != Schema.TableWire.Verdict.Damaged || count != 0 || !report.Malformed)
+        { Fail(row, "verdict=" + verdict + " count=" + count + " malformed=" + report.Malformed); return; }
+        Ok(row);
+    }
+    static void SkipDepth()
+    {
+        var body = Vocab(Entry(1, 13));
+        var arm = Vocab(Entry(1, 15));
+        var array = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 14, Shape = new TableMessageShape { Min = 1, Max = 1, Elem = 13, Inner = new TableMessageShape() } });
+        var keyed6 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 6, Inner = new TableMessageShape() } });
+        var keyed32 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 32, Inner = new TableMessageShape() } });
+        var keyed13 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 13, Inner = new TableMessageShape() } });
+        ExpectOk("skip_depth_body_below_128", body, Pack(1, 127, 1, 0, 0, 128));
+        byte[] at = Pack(1, 128, 1, 0, 0, 129);
+        ExpectOk("skip_depth_body_at_128", body, at);
+        ExpectOk("skip_depth_continuation", body, at);
+        byte[] cut = Pack(1, 128, 1, 0, 0, 128);
+        if (cut.Length * 8 != 16 + 256) { Fail("skip_depth_truncation", "alignment"); }
+        else { ExpectBad("skip_depth_truncation", body, cut); }
+        ExpectBad("skip_depth_above_128_body", body, Pack(1, 129, 1, 0, 0, 130));
+        ExpectOk("skip_depth_union_below_128", arm, Pack(1, 128, 1, 0, 0, 2));
+        ExpectOk("skip_depth_union_at_128", arm, Pack(1, 129, 1, 0, 0, 2));
+        ExpectBad("skip_depth_above_128_union", arm, Pack(1, 130, 1, 0, 0, 2));
+        ExpectOk("skip_depth_array_below_128", array, Pack(2, 125, 1, 1, 2, 127));
+        ExpectOk("skip_depth_array_at_128", array, Pack(2, 126, 1, 1, 2, 128));
+        ExpectBad("skip_depth_above_128_array", array, Pack(2, 127, 1, 1, 2, 129));
+        ExpectOk("skip_depth_keyed_fixed_at_128", keyed6, Pack(2, 128, 1, 2, 2, 139));
+        ExpectOk("skip_depth_keyed_nopayload_at_128", keyed32, Pack(2, 128, 1, 2, 2, 131));
+        ExpectBad("skip_depth_above_128_keyed", keyed13, Pack(2, 127, 1, 2, 2, 132));
+    }
 }
 
 static class Program
@@ -643,17 +602,7 @@ var csHeldUnits = []csHeldUnit{
 	{"tables/backend", "backenddemo", "Backenddemo", "B"},
 	{"tables/vocab", "vocabdemo", "Vocabdemo", "V"},
 	{"tables/vocab9", "vocab9demo", "Vocab9demo", "N"},
-}
-
-// csHeldRuntimeUnits are the two manifest units whose connection rows the Go
-// leg answers and this leg's own build does not carry: their packet emitter
-// names the sibling `../serialize.cs` runtime this checkout does not stage, and
-// this card's rule that such a target is NAMED AS NOT RUN and never faked
-// holds. Each row's subtest attempts the build and reports the compiler's own
-// refusal, so the not-run status is evidenced rather than assumed.
-var csHeldRuntimeUnits = []csHeldUnit{
 	{"tables/pointers", "graphdemo", "Graphdemo", "G"},
-	{"test/tables/R2.schema", "tblr2", "Tblr2", "T"},
 }
 
 // csHeldConn is one MANIFEST `connection` row: the unit whose whole vocabulary
@@ -661,17 +610,10 @@ var csHeldRuntimeUnits = []csHeldUnit{
 type csHeldConn struct{ key, pkg, wire, version string }
 
 var csHeldConns = []csHeldConn{
-	{"backend_conn", "backenddemo", "backend_conn.bin", "0xb26d9d6c050117f0"},
-	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0xd9664a7639d9a134"},
-	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x49d0eb14999f0285"},
-}
-
-// csHeldRuntimeConns are the two `connection` rows of MANIFEST.txt the main
-// build cannot carry (csHeldRuntimeUnits), each with its announcement wire and
-// the build version the row pins.
-var csHeldRuntimeConns = []csHeldConn{
-	{"graph_conn", "graphdemo", "graph_conn.bin", "0xa6069b3ec0d99c3c"},
-	{"retain_conn", "tblr2", "retain_conn.bin", "0x59185ac86252d03a"},
+	{"backend_conn", "backenddemo", "backend_conn.bin", "0x16d0630a084485ae"},
+	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0x40062c876abfc027"},
+	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x3a923c7d0da66dd8"},
+	{"graph_conn", "graphdemo", "graph_conn.bin", "0xfdaabe4726d81d5c"},
 }
 
 // csHeldMsg is one MANIFEST `message` row: one value in BOTH forms, the file

@@ -64,7 +64,7 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 					floatSeen[width+":largest-finite"] = true
 				}
 			}
-			fmt.Fprintf(&generatedTest, "{ var value Root; var report TableReport; RootReset(&value); if !RootFromJson(&value, []byte(%q), &report) || report != (TableReport{}) { t.Fatalf(\"seed %%d instance %%d: generated Go reader did not read its own JSON cleanly (refused or clamped/mismatched/skipped): %%q report=%%+v\", %d, %d, %q, report) } }\n", value, seed, instance, value)
+			fmt.Fprintf(&generatedTest, "{ var value Root; var report TableReport; RootReset(&value); if !RootFromJSON(&value, []byte(%q), &report) || report != (TableReport{}) { t.Fatalf(\"seed %%d instance %%d: generated Go reader did not read its own JSON cleanly (refused or clamped/mismatched/skipped): %%q report=%%+v\", %d, %d, %q, report) } }\n", value, seed, instance, value)
 		}
 		for key := range model.fixedFraction {
 			fractionSeen[key] = true
@@ -129,7 +129,7 @@ func TestRandomTableGenFixedPointPlantClamp(t *testing.T) {
 		planted := withFieldReplaced(base, fixedField.Name, "2")
 		var probe strings.Builder
 		probe.WriteString("package probe\nimport \"testing\"\nfunc TestClampDetected(t *testing.T) {\n")
-		fmt.Fprintf(&probe, "{ var value Root; var report TableReport; RootReset(&value); ok := RootFromJson(&value, []byte(%q), &report); if !ok { return }; if report != (TableReport{}) { return }; t.Errorf(\"seed %%d: out-of-range %s value read clean with an empty report: %%q\", %d, %q) }\n", planted, fixedKey(fixedField), seed, planted)
+		fmt.Fprintf(&probe, "{ var value Root; var report TableReport; RootReset(&value); ok := RootFromJSON(&value, []byte(%q), &report); if !ok { return }; if report != (TableReport{}) { return }; t.Errorf(\"seed %%d: out-of-range %s value read clean with an empty report: %%q\", %d, %q) }\n", planted, fixedKey(fixedField), seed, planted)
 		probe.WriteString("}\n")
 		output, err := runGeneratedTableUnit(t, unit, probe.String(), map[string]string{"NOVA_TEST_NO_HOST": "1"}, "-timeout=600s")
 		if err != nil {

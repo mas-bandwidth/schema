@@ -13,66 +13,97 @@ package bench;
 public final class BenchMixedFixed {
     private BenchMixedFixed() {}
 
-    /** BenchMixed's storage: public fields, every buffer allocated at construction,
-     *  which is the packet codec's own shape. Declared defaults are here and
-     *  nowhere else. */
+    /**
+     * BenchMixed's storage: public fields, every buffer allocated at construction, which is the
+     * packet codec's own shape. Declared defaults are here and nowhere else.
+     */
     public static final class Value {
         /** bits(16) */
         public int sequence;
+
         /** int32 */
         public int ackSequence;
+
         /** bits(32) */
         public int ackBits;
+
         /** uint64 */
         public long sessionId;
+
         /** uint32 */
         public int clientId;
+
         /** uint64 */
         public long nonce;
+
         /** int64 */
         public long worldTime;
+
         /** bits(48) */
         public long frameTick;
+
         /** fixed(24, 8) */
         public int serverTime;
+
         /** [1..8]MixedEntity */
         public final MixedEntityFixed.Value[] entities = new MixedEntityFixed.Value[8];
+
         public int entitiesCount = 1;
+
         /** [..80]MixedStat */
         public final MixedStatFixed.Value[] stats = new MixedStatFixed.Value[80];
+
         public int statsCount;
+
         /** MixedEvent */
         public final MixedEventFixed.Value gameEvent = new MixedEventFixed.Value();
+
         /** [4]uint8 */
         public final byte[] loadout = new byte[4];
+
         /** string(15): a fixed buffer, used length beside it. */
         public final byte[] playerName = new byte[15];
+
         public int playerNameLength;
+
         /** bytes(16): a fixed buffer, used length beside it. */
         public final byte[] payload = new byte[16];
+
         public int payloadLength;
+
         /** float32 */
         public float aimX;
+
         /** float32 */
         public float aimY;
+
         /** float32 */
         public float aimZ;
+
         /** float32 */
         public float recoil;
+
         /** float64 */
         public double drift;
+
         /** uint128 */
         public UInt128 wideKey = UInt128.zero;
+
         /** int128 */
         public Int128 flux = Int128.zero;
+
         /** ufixed(8, 8) */
         public short ping;
+
         /** bits(24) */
         public int crcHint;
+
         /** bool */
         public boolean hasExtra = true;
+
         /** int32 */
         public int extra;
+
         /** int32 */
         public int idleTicks;
 
@@ -87,14 +118,17 @@ public final class BenchMixedFixed {
         }
     }
 
-    /** THE BODY IS A CONSTANT SIZE, for every value this type can hold: the
-     *  measure is a constant and not a function that reads the value (§3.4). */
+    /**
+     * THE BODY IS A CONSTANT SIZE, for every value this type can hold: the measure is a constant
+     * and not a function that reads the value (§3.4).
+     */
     public static final int bodyBytes = 1236;
 
-    /** BenchMixed's stores. The caller lays the template down first — the hash, then
-     *  zeros — which is also what zero-fills every byte of declared slack, so
-     *  this is a straight line of byte-width stores at constant offsets and
-     *  nothing else. */
+    /**
+     * BenchMixed's stores. The caller lays the template down first — the hash, then zeros — which
+     * is also what zero-fills every byte of declared slack, so this is a straight line of
+     * byte-width stores at constant offsets and nothing else.
+     */
     public static void writeBody(byte[] b, int at, Value v) {
         assert checkWrite(v);
         TableFixed.put32(b, at + 0, v.sequence);
@@ -153,35 +187,77 @@ public final class BenchMixedFixed {
         return true;
     }
 
-    /** land one record image into a value. The image is this reader's own
-     *  body layout, so every offset here is a constant. */
+    /**
+     * land one record image into a value. The image is this reader's own body layout, so every
+     * offset here is a constant.
+     */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
         v.sequence = TableFixed.get32(b, at + 0);
-        if (v.sequence > 65535L) { v.sequence = (int) (65535L); r.clamped++; } // bits(16) clamps to 2^N - 1
+        if (v.sequence > 65535L) {
+            v.sequence = (int) (65535L);
+            r.clamped++;
+        } // bits(16) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
-            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 65535L) { q = 65535L; r.clamped++; }
+            if (q < 0L) {
+                q = 0L;
+                r.clamped++;
+            } else if (q > 65535L) {
+                q = 65535L;
+                r.clamped++;
+            }
             v.ackSequence = (int) (q);
         }
         v.ackBits = TableFixed.get32(b, at + 8);
         v.sessionId = TableFixed.get64(b, at + 12);
         v.clientId = TableFixed.get32(b, at + 20);
-        v.nonce = TableFixed.get64(b, at + 24);
+        {
+            long q = TableFixed.get64(b, at + 24);
+            if (Long.compareUnsigned(q, 0x0L) < 0) {
+                q = 0x0L;
+                r.clamped++;
+            } else if (Long.compareUnsigned(q, 0xffffffffffffffffL) > 0) {
+                q = 0xffffffffffffffffL;
+                r.clamped++;
+            }
+            v.nonce = q;
+        }
         {
             long q = TableFixed.get64(b, at + 32);
-            if (q < -1000000000000L) { q = -1000000000000L; r.clamped++; } else if (q > 1000000000000L) { q = 1000000000000L; r.clamped++; }
+            if (q < -1000000000000L) {
+                q = -1000000000000L;
+                r.clamped++;
+            } else if (q > 1000000000000L) {
+                q = 1000000000000L;
+                r.clamped++;
+            }
             v.worldTime = q;
         }
         v.frameTick = TableFixed.get64(b, at + 40);
-        if (v.frameTick > 281474976710655L) { v.frameTick = 281474976710655L; r.clamped++; } // bits(48) clamps to 2^N - 1
+        if (v.frameTick > 281474976710655L) {
+            v.frameTick = 281474976710655L;
+            r.clamped++;
+        } // bits(48) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 48);
-            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 16776960L) { q = 16776960L; r.clamped++; }
+            if (q < 0L) {
+                q = 0L;
+                r.clamped++;
+            } else if (q > 16776960L) {
+                q = 16776960L;
+                r.clamped++;
+            }
             v.serverTime = (int) (q);
         }
         {
             int n = TableFixed.get32(b, at + 52);
-            if (n < 0) { n = 0; r.clamped++; } else if (n > 8) { n = 8; r.clamped++; }
+            if (n < 0) {
+                n = 0;
+                r.clamped++;
+            } else if (n > 8) {
+                n = 8;
+                r.clamped++;
+            }
             v.entitiesCount = n;
         }
         for (int i = 0; i < v.entitiesCount; i++) {
@@ -189,7 +265,13 @@ public final class BenchMixedFixed {
         }
         {
             int n = TableFixed.get32(b, at + 464);
-            if (n < 0) { n = 0; r.clamped++; } else if (n > 80) { n = 80; r.clamped++; }
+            if (n < 0) {
+                n = 0;
+                r.clamped++;
+            } else if (n > 80) {
+                n = 80;
+                r.clamped++;
+            }
             v.statsCount = n;
         }
         for (int i = 0; i < v.statsCount; i++) {
@@ -201,56 +283,162 @@ public final class BenchMixedFixed {
         }
         {
             int n = TableFixed.get32(b, at + 1126);
-            if (n < 0) { n = 0; r.clamped++; } else if (n > 15) { n = 15; r.clamped++; }
+            if (n < 0) {
+                n = 0;
+                r.clamped++;
+            } else if (n > 15) {
+                n = 15;
+                r.clamped++;
+            }
             v.playerNameLength = n;
         }
-        if (!TableFixed.textOk(TableFixed.textUtf8, b, at + 1130, v.playerNameLength)) { r.refuse(TableFixed.Reason.textIllFormed); return; }
+        if (!TableFixed.textOk(TableFixed.textUtf8, b, at + 1130, v.playerNameLength)) {
+            r.refuse(TableFixed.Reason.textIllFormed);
+            return;
+        }
         System.arraycopy(b, at + 1130, v.playerName, 0, v.playerNameLength);
-        if (v.playerNameLength < v.playerName.length) { java.util.Arrays.fill(v.playerName, v.playerNameLength, v.playerName.length, (byte) 0); }
+        if (v.playerNameLength < v.playerName.length) {
+            java.util.Arrays.fill(v.playerName, v.playerNameLength, v.playerName.length, (byte) 0);
+        }
         {
             int n = TableFixed.get32(b, at + 1145);
-            if (n < 0) { n = 0; r.clamped++; } else if (n > 16) { n = 16; r.clamped++; }
+            if (n < 0) {
+                n = 0;
+                r.clamped++;
+            } else if (n > 16) {
+                n = 16;
+                r.clamped++;
+            }
             v.payloadLength = n;
         }
         System.arraycopy(b, at + 1149, v.payload, 0, v.payloadLength);
-        if (v.payloadLength < v.payload.length) { java.util.Arrays.fill(v.payload, v.payloadLength, v.payload.length, (byte) 0); }
+        if (v.payloadLength < v.payload.length) {
+            java.util.Arrays.fill(v.payload, v.payloadLength, v.payload.length, (byte) 0);
+        }
         {
-            float q = Float.intBitsToFloat(TableFixed.get32(b, at + 1165));
-            if (q < Float.intBitsToFloat(0xbf800000)) { q = Float.intBitsToFloat(0xbf800000); r.clamped++; } else if (q > Float.intBitsToFloat(0x3f800000)) { q = Float.intBitsToFloat(0x3f800000); r.clamped++; }
+            final int fbits = TableFixed.get32(b, at + 1165);
+            if ((fbits & 0x7f800000) == 0x7f800000) {
+                r.refuseNonFinite("BenchMixed.aim_x");
+                return;
+            }
+            float q = Float.intBitsToFloat(fbits);
+            if (q < Float.intBitsToFloat(0xbf800000)) {
+                q = Float.intBitsToFloat(0xbf800000);
+                r.clamped++;
+            } else if (q > Float.intBitsToFloat(0x3f800000)) {
+                q = Float.intBitsToFloat(0x3f800000);
+                r.clamped++;
+            }
             v.aimX = q;
         }
         {
-            float q = Float.intBitsToFloat(TableFixed.get32(b, at + 1169));
-            if (q < Float.intBitsToFloat(0xbf800000)) { q = Float.intBitsToFloat(0xbf800000); r.clamped++; } else if (q > Float.intBitsToFloat(0x3f800000)) { q = Float.intBitsToFloat(0x3f800000); r.clamped++; }
+            final int fbits = TableFixed.get32(b, at + 1169);
+            if ((fbits & 0x7f800000) == 0x7f800000) {
+                r.refuseNonFinite("BenchMixed.aim_y");
+                return;
+            }
+            float q = Float.intBitsToFloat(fbits);
+            if (q < Float.intBitsToFloat(0xbf800000)) {
+                q = Float.intBitsToFloat(0xbf800000);
+                r.clamped++;
+            } else if (q > Float.intBitsToFloat(0x3f800000)) {
+                q = Float.intBitsToFloat(0x3f800000);
+                r.clamped++;
+            }
             v.aimY = q;
         }
         {
-            float q = Float.intBitsToFloat(TableFixed.get32(b, at + 1173));
-            if (q < Float.intBitsToFloat(0xbf800000)) { q = Float.intBitsToFloat(0xbf800000); r.clamped++; } else if (q > Float.intBitsToFloat(0x3f800000)) { q = Float.intBitsToFloat(0x3f800000); r.clamped++; }
+            final int fbits = TableFixed.get32(b, at + 1173);
+            if ((fbits & 0x7f800000) == 0x7f800000) {
+                r.refuseNonFinite("BenchMixed.aim_z");
+                return;
+            }
+            float q = Float.intBitsToFloat(fbits);
+            if (q < Float.intBitsToFloat(0xbf800000)) {
+                q = Float.intBitsToFloat(0xbf800000);
+                r.clamped++;
+            } else if (q > Float.intBitsToFloat(0x3f800000)) {
+                q = Float.intBitsToFloat(0x3f800000);
+                r.clamped++;
+            }
             v.aimZ = q;
         }
-        v.recoil = Float.intBitsToFloat(TableFixed.get32(b, at + 1177));
-        v.drift = Double.longBitsToDouble(TableFixed.get64(b, at + 1181));
+        {
+            final int fbits = TableFixed.get32(b, at + 1177);
+            if ((fbits & 0x7f800000) == 0x7f800000) {
+                r.refuseNonFinite("BenchMixed.recoil");
+                return;
+            }
+            v.recoil = Float.intBitsToFloat(fbits);
+        }
+        {
+            final long fbits = TableFixed.get64(b, at + 1181);
+            if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+                r.refuseNonFinite("BenchMixed.drift");
+                return;
+            }
+            v.drift = Double.longBitsToDouble(fbits);
+        }
         v.wideKey = new UInt128(TableFixed.get64(b, at + 1197), TableFixed.get64(b, at + 1189));
         v.flux = new Int128(TableFixed.get64(b, at + 1213), TableFixed.get64(b, at + 1205));
         {
             long q = TableFixed.get16(b, at + 1221);
-            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 64000L) { q = 64000L; r.clamped++; }
+            if (q < 0L) {
+                q = 0L;
+                r.clamped++;
+            } else if (q > 64000L) {
+                q = 64000L;
+                r.clamped++;
+            }
             v.ping = (short) (q);
         }
         v.crcHint = TableFixed.get32(b, at + 1223);
-        if (v.crcHint > 16777215L) { v.crcHint = (int) (16777215L); r.clamped++; } // bits(24) clamps to 2^N - 1
+        if (v.crcHint > 16777215L) {
+            v.crcHint = (int) (16777215L);
+            r.clamped++;
+        } // bits(24) clamps to 2^N - 1
         v.hasExtra = b[at + 1227] != 0;
         {
             long q = TableFixed.get32(b, at + 1228);
-            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 255L) { q = 255L; r.clamped++; }
+            if (q < 0L) {
+                q = 0L;
+                r.clamped++;
+            } else if (q > 255L) {
+                q = 255L;
+                r.clamped++;
+            }
             v.extra = (int) (q);
         }
         {
             long q = TableFixed.get32(b, at + 1232);
-            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 15L) { q = 15L; r.clamped++; }
+            if (q < 0L) {
+                q = 0L;
+                r.clamped++;
+            } else if (q > 15L) {
+                q = 15L;
+                r.clamped++;
+            }
             v.idleTicks = (int) (q);
         }
     }
 
+    /** every float this value stores is finite (docs/SPEC-TABLES.md §3.3). */
+    static boolean finite(Value v) {
+        if (!Float.isFinite(v.aimX)) {
+            return false;
+        }
+        if (!Float.isFinite(v.aimY)) {
+            return false;
+        }
+        if (!Float.isFinite(v.aimZ)) {
+            return false;
+        }
+        if (!Float.isFinite(v.recoil)) {
+            return false;
+        }
+        if (!Double.isFinite(v.drift)) {
+            return false;
+        }
+        return true;
+    }
 }

@@ -1,0 +1,135 @@
+{
+  "host": "b2",
+  "os": "linux",
+  "arch": "amd64",
+  "cpu": "AMD Ryzen 7 255 w/ Radeon 780M Graphics",
+  "cpp_compiler": "Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on \"linux_x64\"",
+  "cpp_table_flags": "dart compile exe (AOT, product mode: asserts off; paired unit generated beside bench/tables/dart/lineage/schema.lock)",
+  "revision": "96ef7606a7d27454e0095adde34fef88cf1837af",
+  "serialize_revision": "none (generated AOT)",
+  "dirty_paths": [
+    "generated/bench/dart/Bench.dart",
+    "generated/bench/paired/cpp/BenchTable.h",
+    "generated/bench/paired/dart/BenchFixed.dart",
+    "generated/bench/paired/dart/FixedTableFixed.dart",
+    "generated/bench/paired/dart/BenchView.dart",
+    "generated/bench/paired/dart/BenchWire.dart"
+  ],
+  "rounds": 7,
+  "iterations_per_sample": 4000000,
+  "anchor_repetitions": 100000,
+  "corpus_id_identity": "0930f96c8320a75d",
+  "plan_lane_refusal": "",
+  "window": "OK",
+  "control_delta_pct": 0.15147040756604557,
+  "load1_range": "0.40–1.14",
+  "receipt": "READY/START operator receipt: Glenn Fiedler, live ruling to Rowan 2026-10-16: 'you can simply hold a fleet machine and work there. go.' Window: fleet member amd-2 (host b2) held (op hold-dm6lc6q26oio-24125-80d9f0f5aee3bfa9~21-1) and quieted until 2026-10-16T23:46:33Z (op fleet-quiet-dm6lc6r3zqz4-24125-48e507d968a6c611~21-1) by rowan (coordinator) at 2026-10-16T21:46:33Z; CI runners stopped after drain at 2026-10-16T21:49:17Z (systemctl --user stop nova-runner-1 nova-runner-nova-sprint-1 nova-runner-rocketnet-1 nova-runner-schema-1; no Runner.Listener left); pinned core 7; dart read-arm sitting 1 of 2 at 96ef7606a7d27454e0095adde34fef88cf1837af (pushed); START 2026-10-16T22:08:39Z",
+  "fixed_bytes_per_record": 1264.296875,
+  "packet_bytes_per_record": 438,
+  "identity_read": {
+    "best_ns_per_record": 546.1198186882202,
+    "median_ns_per_record": 547.9800359913288,
+    "worst_ns_per_record": 567.5236841821501,
+    "spread_pct": 3.7842953305525056,
+    "samples_ns_per_record": [
+      546.1198186882202,
+      567.5236841821501,
+      546.7600095354945,
+      547.9800359913288,
+      562.2488153417461,
+      548.1876095347367,
+      546.2680876192162
+    ]
+  },
+  "packet_read": {
+    "best_ns_per_record": 246.9995116819654,
+    "median_ns_per_record": 247.4817494583862,
+    "worst_ns_per_record": 250.10873477244232,
+    "spread_pct": 1.2455756450240445,
+    "samples_ns_per_record": [
+      249.70497357372264,
+      246.9995116819654,
+      247.09527153546483,
+      249.70547239530973,
+      247.11224628985673,
+      247.4817494583862,
+      250.10873477244232
+    ]
+  },
+  "gate_identity": "FAIL",
+  "gate_plan": "FAIL",
+  "anchor": {
+    "refusal": "none for this leg",
+    "identity": {
+      "best_ns_per_record": 0,
+      "median_ns_per_record": 0,
+      "worst_ns_per_record": 0,
+      "spread_pct": 0,
+      "samples_ns_per_record": null
+    },
+    "straight_line": {
+      "best_ns_per_record": 0,
+      "median_ns_per_record": 0,
+      "worst_ns_per_record": 0,
+      "spread_pct": 0,
+      "samples_ns_per_record": null
+    },
+    "ratio_best_over_best": 0,
+    "round_ratios": null,
+    "verdict": "— (refused)",
+    "samples": null
+  },
+  "other_legs": [
+    {
+      "language": "cpp",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "c",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "go",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "rust",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "cs",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "js",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "java",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "elixir",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    }
+  ],
+  "leg": "dart",
+  "lane": "7",
+  "plan_read": {
+    "best_ns_per_record": 1665.5979080090276,
+    "median_ns_per_record": 1674.8511057367,
+    "worst_ns_per_record": 1682.0801275689569,
+    "spread_pct": 0.985314905504889,
+    "samples_ns_per_record": [
+      1665.5979080090276,
+      1682.0801275689569,
+      1676.516199337776,
+      1674.8511057367,
+      1673.6653773864375,
+      1676.3166629228929,
+      1670.9526602401827
+    ]
+  },
+  "plan_bytes_per_record": 995.4375,
+  "plan_widened": "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+}

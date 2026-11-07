@@ -1,0 +1,46 @@
+# THE LUAU LEG's PINNED FUZZ VECTORS (docs/SPEC-TABLES.md §4.2), in the
+# harness's vector-index format (testdata/wire/tables/fuzz-vectors/INDEX.txt):
+#
+#   <name> <unit> <root> <file>
+#
+# Each was a red of the Luau leg against the oracle, and each stays as the
+# regression gate for the fix that closed it (make/luau-fuzz.mk,
+# tables-luau-wire-fuzz-vectors); its negative control is that fix reverted in
+# a scratch copy of the emitted units, and this vector's replay must
+# diverge (test/conformance/luau/wire-fuzz-vectors-negative-control).
+# They live beside the leg rather than in the shared index until every leg
+# answers them: the shared index seeds every leg's run.
+
+# A MAP HEADER IS READ AGAINST THE PARENT (§2.8, §3): `0e 02 | 0e 82 06`, a map
+# whose count LEB128 runs past its L = 2. The count reads, the element kind 14
+# is judged against the map's 13, and one kind_mismatch counts; a reader that
+# bounds the header by L calls the count truncated and reports framing damage.
+map_header_count_past_length mapdemo Slots test/conformance/luau/vectors/map_header_count_past_length.bin
+
+# A KEYED ARRAY's HEADER IS READ AGAINST THE PARENT (§3, §3.2): `10 02 | 0e 82
+# 06`, the same shape on a kind 16 body, judged against the declared element
+# kind before any triple.
+keyed_header_count_past_length tabledemo KeyedConfig test/conformance/luau/vectors/keyed_header_count_past_length.bin
+
+# ILL-FORMED TEXT READS THE DECLARED DEFAULT (§3, §4): StorePurchase.sku arrives
+# well-formed, then again with a payload that is not UTF-8. The second
+# occurrence is damage, so the field reads its declared default ("") and the
+# first value does not survive it; the re-save carries no sku. Found by the
+# random pass at mutant 1527 of seed 1 (make tables-luau-wire-fuzz).
+text_ill_formed_repeat_reads_default backenddemo StorePurchase test/conformance/luau/vectors/text_ill_formed_repeat_reads_default.bin
+
+# A LIST COUNT PAST THE STORAGE CAP WHOSE SPELLING CROSSES ITS L (§2.9, §3):
+# LoadMeasure, bounded by L, sees no count and sizes the region, so the load
+# that follows meets the cap with a region to hold it, and that is damage, not
+# the count_over_extent_cap refusal a count inside L earns.
+list_count_cross_length listdemo Album testdata/wire/tables/fuzz-vectors/list_count_cross_length.bin
+
+# A MAP KEY MET UNDER A FOREIGN KIND AND THEN UNDER ONE THAT WIDENS (§2.8): the
+# later occurrence is the key, widened, so the map keeps its entries rather
+# than resetting on the earlier kind mismatch.
+map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
+
+# THE REGION'S ALIGNMENT IS ITS EXTENTS' TOO (§2.8, §6.5; ir.TableRegionAlign):
+# a []uint128 in a record aligned eight rounds the region to sixteen, so the
+# driver's LoadMeasure answers the framing's 80 bytes and not 72.
+region_align_extent_uint128 widelist Wide testdata/wire/tables/fuzz-vectors/region_align_extent_uint128.bin

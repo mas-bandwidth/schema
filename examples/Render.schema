@@ -1,15 +1,13 @@
-// Render.schema — the parallel scatter/gather worked example. Generated
-// types are trivially copyable and standard-layout by enforced construction, so
-// N workers can build instances INDEPENDENTLY — into their own memory, or
-// scattered directly into disjoint sections of one shared blob — and the
-// gather is concatenation or offset arithmetic, never a serial builder.
-// This is the RenderX pattern flatbuffers could not express: its one-block
-// builder computes offsets serially, so parallel producers cannot exist.
+// Render.schema — parallel scatter/gather. Generated types are trivially
+// copyable and standard-layout, so N workers can build instances
+// INDEPENDENTLY — into their own memory, or directly into disjoint sections
+// of one shared blob — and the gather is concatenation or offset arithmetic,
+// never a serial builder. Use this shape when many threads produce one
+// buffer, such as per-worker render lists.
 //
 // Field order is largest-alignment-first: the natural C++ layout then has
 // zero interior padding, and packed sequential mirrors in other languages
-// match byte-for-byte. The corpus test scatters blocks across real threads
-// and proves the parallel result byte-identical to the serial one.
+// match byte-for-byte.
 
 package example
 

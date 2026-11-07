@@ -1,0 +1,28 @@
+package probe
+
+table A { value int32 }
+table B { value int32 }
+table Old {
+    left *A
+    right *B
+    payload *bytes
+    text *string
+}
+table New {
+    left *B
+    right *A
+    payload *string
+    text *bytes
+}
+table ArrayOld {
+    targets []*A
+    bounded [..2]*A
+}
+table ArrayNew {
+    targets []*B
+    bounded [..2]*B
+    known *A
+}
+table OnlyB { left *B }
+table OnlyString { payload *string }
+table OnlyBytes { text *bytes }

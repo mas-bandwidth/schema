@@ -1,0 +1,909 @@
+#!/usr/bin/env python3
+"""Execute original-nine (and Goose and MOO) acceptance gates; a report or carried finding is not a pass.
+
+This entrypoint adds no wall-clock timeout. Native test execution uses -timeout=0;
+protocol deadlines and the existing negative controls' intended oracles stay intact.
+Only this fixed, single-language plan is accepted: no seed, count, skip or phase flags.
+"""
+from collections import Counter
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import sys
+import time
+
+LANGUAGES = ("cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir", "goose", "moo")
+PACKAGES = {
+    "cpp": ("cpp", "cpptable"), "c": ("c", "ctable"),
+    "cs": ("csharp", "cstable"), "go": ("golang", "gotable"),
+    "rust": ("rust", "rusttable"), "java": ("java", "javatable"),
+    "js": ("js", "jstable"), "dart": ("dart", "darttable"),
+    "elixir": ("elixir", "elixirtable"),
+    "goose": ("goose", "goosetable"),
+    "moo": ("moo", "mootable"),
+}
+# The pinned Goose release, as internal/codegen/goose/gooserun.Dist names it.
+GOOSE_DIST = "dist/goose-v2026.2-linux-x64"
+# Mutable variable-file loads, with the full fixed/message roster still
+# exercising each root's form-specific reader. Goose's load grows its own
+# value table, so it has no caller region and no LoadMeasure.
+MIXED_BUILDER = ("dart", "js", "goose")
+# These three old algorithms were explicitly retired by the fixed-form lock.
+# This is NOT an allowance for the live Elixir §5.2/§3.4 ruling, UNPORTED rows,
+# missing corpora/toolchains, unsupported roots, or newly introduced skips.
+RETIRED = {'TestFixedFormPlanPath': ('retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the '
+                           'lineage harness',
+                           [('internal/codegen/gotable', 'TestFixedVersioningNewReadsOld'),
+                            ('internal/codegen/gotable', 'TestFixedVersioningOldRefusesNew'),
+                            ('internal/codegen/gotable', 'TestFixedVersioningWrongPlanGoesRed')]),
+ 'TestFixedFormArgLaneTextUnderSecondArm': ('retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed '
+                                            'again on the lineage harness',
+                                            [('internal/codegen/gotable',
+                                              'TestFixedFormArgLaneOldEncodingControl')]),
+ 'TestFixedFormLayoutRules': ('retired by docs/FIXED-FORM-ALGORITHM.md §5.6; the seven rules are '
+                              "the lock's validation now",
+                              [('internal/lockfile', 'TestRecordedLayoutRule1CountMismatch'),
+                               ('internal/lockfile', 'TestRecordedLayoutRule2KindUnknown'),
+                               ('internal/lockfile', 'TestRecordedLayoutRule3SizeMismatch'),
+                               ('internal/lockfile', 'TestRecordedLayoutRule4KindInvalid'),
+                               ('internal/lockfile', 'TestRecordedLayoutRule5TreeUnclosed'),
+                               ('internal/lockfile', 'TestRecordedLayoutRule6RecordTooLarge'),
+                               ('internal/lockfile', 'TestRecordedLayoutRule7TooDeep'),
+                               ('internal/lockfile', 'TestRecordedLayoutResidueMalformed'),
+                               ('internal/codegen/gotable',
+                                'TestFixedVersioningHash/hash_known_bytes_differ')])}
+# Exact native markers independently mapped against949. Provenance mapping SHA:
+# f2ab4c44bc164fd8e482cb943ad9b5520d534bd2f5bdf33252746dddf23b6978.
+# Every entry needs actual replacement pass events from THIS run. Two unresolved
+# historical controls are deliberately absent; no retirement keyword exemption.
+RETIRED_NATIVE = {}
+for _lang, _marker, _needs in json.loads(r'''[
+    ["js", "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): versioning — the forward compiled read of FX1/FX2; owed on the lineage harness", [["internal/codegen/jstable", "TestJSFixedVersioningNewReadsOld"], ["internal/codegen/jstable", "TestJSFixedVersioningOldRefusesNew"], ["internal/codegen/jstable", "TestJSFixedVersioningBytesAndDefaults"], ["internal/codegen/jstable", "TestJSFixedVersioningUnknownCensus"]]],
+    ["js", "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): bytesArrayConventionCompiled — FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness", [["internal/codegen/jstable", "TestJSFixedVersioningBytesAndDefaults"]]],
+    ["js", "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): holePrefillCompiled — the prefill through a plan compiled from a file; owed on the lineage harness, where the 0x5A poison now lies", [["internal/codegen/jstable", "TestJSFixedVersioningBytesAndDefaults"], ["internal/codegen/jstable", "TestJSFixedVersioningNewReadsOld"]]],
+    ["js", "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): negativeControls — every control reads a stranger's layout through a compiled plan; owed on the lineage harness", [["internal/codegen/jstable", "TestFixedRoadmapT01Framing"], ["internal/codegen/jstable", "TestJSFixedVersioningRefuseWritesNothing"], ["internal/codegen/jstable", "TestJSFixedVersioningOldRefusesNew"]]],
+    ["js", "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): layoutValidation — §1.1's seven rules fired at READ time; owed as the LOCK's validation of what it records", [["internal/codegen/jstable", "TestFixedRoadmapT01Framing/js/R9"], ["internal/codegen/jstable", "TestJSFixedLineageLockBugFailsTheBuild"], ["internal/lockfile", "TestRecordedLayoutRule1CountMismatch"], ["internal/lockfile", "TestRecordedLayoutRule2KindUnknown"], ["internal/lockfile", "TestRecordedLayoutRule3SizeMismatch"], ["internal/lockfile", "TestRecordedLayoutRule4KindInvalid"], ["internal/lockfile", "TestRecordedLayoutRule5TreeUnclosed"], ["internal/lockfile", "TestRecordedLayoutRule6RecordTooLarge"], ["internal/lockfile", "TestRecordedLayoutRule7TooDeep"], ["internal/lockfile", "TestRecordedLayoutResidueMalformed"]]],
+    ["js", "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): unionArmText — the guard and flavour lanes across two generations with no lineage; HELD on the lineage harness, TestJSFixedVersioningUnionArmText", [["internal/codegen/jstable", "TestJSFixedVersioningUnionArmText"], ["internal/codegen/jstable", "TestJSFixedVersioningArmTextControls"]]],
+    ["js", "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): referenceOracleCompiled — it reads the reference's FX2 file with no lineage entry; owed on the lineage harness", [["internal/codegen/jstable", "TestJSFixedVersioningReferenceForwardRefusal"], ["internal/codegen/jstable", "TestJSFixedVersioningBytesAndDefaults"]]],
+    ["js", "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): optionalVersioning — P1/P3 read each other with no lineage; owed on the lineage harness", [["internal/codegen/jstable", "TestJSFixedVersioningNewReadsOld/optional_add"], ["internal/codegen/jstable", "TestJSFixedVersioningOldRefusesNew/optional_add"], ["internal/codegen/jstable", "TestJSFixedVersioningOptionalControls"]]],
+    ["js", "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): optionalControls — every control is a COMPILED read of a stranger's layout; owed on the lineage harness", [["internal/codegen/jstable", "TestJSFixedVersioningOptionalControls"], ["internal/codegen/jstable", "TestJSFixedVersioningOptionalGuardChain"]]],
+    ["c","SKIP: fixed_fx2_read_fx1 (the PLAN PATH: FX2 compiling FX1's layout at run time) — retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness (internal/codegen/ctable/fixedversioning_test.go)",[["internal/codegen/ctable","TestFixedVersioningNewReadsOld"],["internal/codegen/ctable","TestFixedVersioningOldRefusesNew"]]],
+    ["c","SKIP: fixed_fx2_plan_cache (the caller-supplied plan cache: the plans are static now, §5.8 row 3) — retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness (internal/codegen/ctable/fixedversioning_test.go)",[["internal/codegen/ctable","TestFixedRoadmapCT02Plans"],["internal/codegen/ctable","TestFixedRoadmapT01Framing/c/R13/plan_too_large"]]],
+    ["c","SKIP: fixed_fx1_read_fx2 (a FORWARD read: under §5 this file is layout_newer) — retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness (internal/codegen/ctable/fixedversioning_test.go)",[["internal/codegen/ctable","TestFixedVersioningNewReadsOld"],["internal/codegen/ctable","TestFixedVersioningOldRefusesNew"]]],
+    ["c","SKIP: fixed_fx1_layout_validation (§1.1's seven rules at read time) — retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the LOCK's validation of what it records (internal/lockfile)",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/ctable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["c","SKIP: fixed_v2_read_v1 (the plan path over the V1/V2 pair) — retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness (internal/codegen/ctable/fixedversioning_test.go)",[["internal/codegen/ctable","TestFixedVersioningNewReadsOld"],["internal/codegen/ctable","TestFixedVersioningOldRefusesNew"]]],
+    ["c","SKIP: fixed_ut2_read_ut1 (the guard and flavour lanes compiled from a stranger's layout) — retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness (internal/codegen/ctable/fixedversioning_test.go)",[["internal/codegen/ctable","TestFixedVersioningNewReadsOld"],["internal/codegen/ctable","TestFixedVersioningOldRefusesNew"],["internal/codegen/ctable","TestFixedRoadmapCT08WritesConformance/c/W7"]]],
+    ["c","SKIP: fixed_fx2_bounds (the hostile pass reached through a compiled plan) — retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness (internal/codegen/ctable/fixedversioning_test.go)",[["internal/codegen/ctable","TestFixedVersioningNewReadsOld"],["internal/codegen/ctable","TestFixedVersioningOldRefusesNew"],["internal/codegen/ctable","TestFixedRoadmapCT06Bounds"]]],
+    ["c","SKIP: fixed_ut1_read_ut2 (TEXT UNDER THE SECOND ARM, compiled: the arg lane's own probe) — retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness (internal/codegen/ctable/fixedversioning_test.go)",[["internal/codegen/ctable","TestFixedVersioningNewReadsOld"],["internal/codegen/ctable","TestFixedVersioningOldRefusesNew"],["internal/codegen/ctable","TestFixedRoadmapCT08WritesConformance/c/W7"]]],
+    ["c","SKIP: fixed_fu2_read_fu1 (the union pair's compiled read) — retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness (internal/codegen/ctable/fixedversioning_test.go)",[["internal/codegen/ctable","TestFixedVersioningNewReadsOld"],["internal/codegen/ctable","TestFixedVersioningOldRefusesNew"],["internal/codegen/ctable","TestFixedRoadmapCT08WritesConformance/c/W7"]]],
+    ["c","SKIP: fixed_fx2_read_fx1, after the fuzz (the PLAN PATH again, on the restored bytes) — retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness (internal/codegen/ctable/fixedversioning_test.go)",[["internal/codegen/ctable","TestFixedVersioningNewReadsOld"],["internal/codegen/ctable","TestFixedVersioningOldRefusesNew"]]],
+    ["cs","SKIPPED: TestFixedFxCrossGeneration — §5.6 retires the run-time walk of a stranger's layout; the coverage moves to the lineage harness",[["internal/codegen/cstable","TestFixedVersioning"]]],
+    ["cs","SKIPPED: TestFixedVCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness",[["internal/codegen/cstable","TestFixedVersioning"]]],
+    ["cs","SKIPPED: TestFixedPCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness",[["internal/codegen/cstable","TestFixedVersioning"]]],
+    ["cs","SKIPPED: TestFixedNegativeControlForwardRead — §5.6 retires the forward read; the coverage moves to the lineage harness",[["internal/codegen/cstable","TestFixedVersioning"]]],
+    ["cs","SKIPPED: TestFixedLayoutValidation — §5.6 retires the run-time walk of a stranger's layout; §1.1's seven rules move to the LOCK's validation of what it records",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/cstable","TestFixedVersioning/hash_known_bytes_differ"]]],
+    ["dart","RETIRED by §5.6: fuCase — text under an arm on a compiled plan: the coverage is owed by internal/codegen/darttable/fixedversioning_test.go, both columns of every row of docs/FIXED-FORM-VERSIONING-TESTS.md, run by `make tables-dart-versioning`",[["internal/codegen/darttable","TestFixedVersioningSecondArmText/FU1"],["internal/codegen/darttable","TestFixedVersioningSecondArmText/FU2"]]],
+    ["dart","RETIRED by §5.6: fxCase — the plan path, FX1 <-> FX2 both ways: the coverage is owed by internal/codegen/darttable/fixedversioning_test.go, both columns of every row of docs/FIXED-FORM-VERSIONING-TESTS.md, run by `make tables-dart-versioning`",[["internal/codegen/darttable","TestFixedVersioningNewReadsOld"],["internal/codegen/darttable","TestFixedVersioningOldRefusesNew"]]],
+    ["dart","RETIRED by §5.6: vCase — a variant, an arm and a keyed slot mid-list: the coverage is owed by internal/codegen/darttable/fixedversioning_test.go, both columns of every row of docs/FIXED-FORM-VERSIONING-TESTS.md, run by `make tables-dart-versioning`",[["internal/codegen/darttable","TestFixedVersioningNewReadsOld"],["internal/codegen/darttable","TestFixedVersioningOldRefusesNew"]]],
+    ["dart","RETIRED by §5.6: pCase — a value against ?T across two schemas: the coverage is owed by internal/codegen/darttable/fixedversioning_test.go, both columns of every row of docs/FIXED-FORM-VERSIONING-TESTS.md, run by `make tables-dart-versioning`",[["internal/codegen/darttable","TestFixedVersioningNewReadsOld"],["internal/codegen/darttable","TestFixedVersioningOldRefusesNew"]]],
+    ["dart","RETIRED by §5.6: negativeControl: the loader compiles a plan from the layout — the load path compiles nothing now: internal/codegen/darttable/fixedversioning_test.go reads every row through a plan the BUILD laid down from the lock",[["internal/codegen/darttable","TestFixedVersioningNewReadsOld"],["internal/codegen/darttable","TestFixedVersioningOldRefusesNew"]]],
+    ["dart","RETIRED by §5.6: negativeControl: a header whose hash is not the layout hash — there is no third thing to check: hash_known_bytes_differ in internal/codegen/darttable/fixedversioning_test.go holds a known hash with changed layout bytes to layout_malformed, and hash_unknown holds an unknown hash to layout_newer",[["internal/codegen/darttable","TestFixedVersioningHash/hash_known_bytes_differ"],["internal/codegen/darttable","TestFixedVersioningHash/hash_unknown"]]],
+    ["dart","RETIRED by §5.6: negativeControl: plan_too_large over a stranger file — the refusal is wired in the generated load against the selected lineage entry's own entry count; a fixture wants a LOCKED lineage for test/tables, which this leg does not have yet",[["internal/codegen/darttable","TestFixedRoadmapT02Plans/dart/R25"]]],
+    ["dart","RETIRED by §5.6: layoutValidation — the run-time walk of a stranger layout: the seven rules move to the LOCK validation of what it records, and the read side is one name, layout_malformed, asserted by hash_known_bytes_differ in internal/codegen/darttable/fixedversioning_test.go",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/darttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP the_prefill_holes' compiled missing-field block: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FX2 reading FX1's file is a forward read through a stranger's layout, which this reader now answers `layout_newer` on a generated build the CLI hands no lineage — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningNewReadsOld"],["internal/codegen/rusttable","TestFixedVersioningOldRefusesNew"]]],
+    ["rust","SKIP an_older_writer: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FX2 reading FX1's file is a cross-schema read and the generated crate carries no lineage, so the file comes back `layout_newer` before a record — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningNewReadsOld"],["internal/codegen/rusttable","TestFixedVersioningOldRefusesNew"]]],
+    ["rust","SKIP a_newer_writer: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FX1 reading FX2's file is the FORWARD read §5 replaced outright — a reader never steps over an unknown entry from the wire — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningNewReadsOld"],["internal/codegen/rusttable","TestFixedVersioningOldRefusesNew"]]],
+    ["rust","SKIP an_optional: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — P3 reading P1's file is a cross-schema read, so `?T` against `T` is no longer a kind the load compiles — it is `layout_newer` — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningNewReadsOld"],["internal/codegen/rusttable","TestFixedVersioningOldRefusesNew"]]],
+    ["rust","SKIP the_ordinal_slide, both halves: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's file and FE1 reading FE2's are both cross-schema reads, and the remap of a slid ordinal is a lineage plan's work, not a load's — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningNewReadsOld"],["internal/codegen/rusttable","TestFixedVersioningOldRefusesNew"]]],
+    ["rust", "SKIP the_text_under_an_arm's compiled half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FU2 reading FU1's file is a cross-schema read; the two-lane entry it watches is now laid down at BUILD time and the harness proves it there — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.", [["internal/codegen/rusttable", "TestFixedVersioningTextUnderArm"]]],
+    ["rust", "SKIP the_text_under_an_arm's compiled stray-true-bytes half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FU2 reading FU1's forged file is a cross-schema read; the identity half above still holds the `!= 0` ruling on both bytes — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.", [["internal/codegen/rusttable", "TestFixedVersioningTextUnderArmTrueBytes"]]],
+    ["rust","SKIP the_enum_extent's compiled half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's forged file is a cross-schema read, so the `ordinal` op's clamp is the lineage plan's to prove — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningForgedOrdinalBothPlans"]]],
+    ["rust","SKIP the_negative_controls' plan_too_large case: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a one-entry plan slice is unreachable through a cross-schema load now — FX2 reading FX1's file refuses `layout_newer` before a plan is ever sized, and the name is the contract, not the argument (§5.9 #5) — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which owes the refusal where a plan that does not fit can still be reached.",[["internal/codegen/rusttable","TestFixedRoadmapT01Framing/rust/R13"]]],
+    ["rust","SKIP RULE: the entry count fits the layout length exactly: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: an entry count of zero is not a layout: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: a kind outside the closed set is REFUSED, not skipped: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: the root entry is a TABLE: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: a constant size its kind does not admit: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: a table's size is the sum of its fields': docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: the tree runs out of layout: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: the layout outlasts the tree: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: a record size past 65536: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: a size that would overflow the sum: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: a nesting depth past the walk's own bound: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP RULE: fewer bytes than a header is layout_malformed: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
+    ["rust","SKIP the_union_controls' compiled forged-tag half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's forged file is a cross-schema read; the identity half above still watches a forged tag land None and count one clamped — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningUnionTagBothPlans"]]],
+    ["elixir","SKIP the plan path: §4's evolution table, and what each edit costs — RETIRED by docs/FIXED-FORM-ALGORITHM.md §5.6; four forward reads of a layout no lineage holds; owed on the lineage harness, internal/codegen/elixirtable/fixedversioning_test.go",[["internal/codegen/elixirtable","TestFixedVersioningNewReadsOld"],["internal/codegen/elixirtable","TestFixedVersioningOldRefusesNew"]]],
+    ["elixir","SKIP the plan cache: bounded, forgettable, and held to the caller's capacity — RETIRED by docs/FIXED-FORM-ALGORITHM.md §5.6; a peer's layout is never compiled on a load path under §5; the capacity refusal moves with it to the lineage harness, TestFixedVersioningPlanTooLarge (§5.9 #39, #45)",[["internal/codegen/elixirtable","TestFixedVersioningPlanTooLarge"]]],
+    ["elixir","SKIP the ordinal slide: an enum and a union that both gained a variant in the middle — RETIRED by docs/FIXED-FORM-ALGORITHM.md §5.6; a cross-generation read with no lineage; owed on the lineage harness's enum_append, union_append and keyed_array_enum_append rows",[["internal/codegen/elixirtable","TestFixedVersioningNewReadsOld"],["internal/codegen/elixirtable","TestFixedVersioningOldRefusesNew"]]],
+    ["elixir","SKIP text under a union arm: the COMPILED read (the identity half above RUNS) — RETIRED by docs/FIXED-FORM-ALGORITHM.md §5.6; FU1's file under FU2 with no lineage; HELD on the lineage harness, TestFixedVersioningUnionArmText, which reads UT1's file under UT2 with UT1's entry handed in",[["internal/codegen/elixirtable","TestFixedVersioningUnionArmText"]]],
+    ["elixir","SKIP compiled: a tag past the last arm — RETIRED by docs/FIXED-FORM-ALGORITHM.md §5.6; FE1's file under FE2 with no lineage; owed on the lineage harness's union_append row",[["internal/codegen/elixirtable","TestFixedVersioningUnionTagBothPlans"]]],
+    ["elixir","SKIP compiled: an ordinal past the last variant — RETIRED by docs/FIXED-FORM-ALGORITHM.md §5.6; FE1's file under FE2 with no lineage; owed on the lineage harness's enum_append and enum_width rows",[["internal/codegen/elixirtable","TestFixedVersioningForgedOrdinalBothPlans"]]],
+    ["elixir","SKIP a plan past the caller's capacity is `plan_too_large` — RETIRED by docs/FIXED-FORM-ALGORITHM.md §5.6; unreachable on this gate with plans static and a stranger's file refused first; MOVED to the lineage harness, TestFixedVersioningPlanTooLarge (§5.9 #39, #45)",[["internal/codegen/elixirtable","TestFixedVersioningPlanTooLarge"]]],
+    ["java","RETIRED by §5.6: textUnderAnArm — the guard and flavour lanes under an arm: owed as a lineage pair (FU1/FU2) in the versioning harness, §5.7's seven pairs",[["internal/codegen/javatable","TestFixedFormFU1FU2"],["internal/codegen/javatable","TestFixedVersioningTextUnderArm"],["internal/codegen/javatable","TestFixedVersioningTextUnderArmTrueBytes"]]],
+    ["java","RETIRED by §5.6: anOlderWriter — NEW-READS-OLD on FX1/FX2: held by the versioning harness's field_append, nested_append and rename_without_was rows",[["internal/codegen/javatable","TestFixedVersioningRows/field_append"],["internal/codegen/javatable","TestFixedVersioningRows/nested_append"],["internal/codegen/javatable","TestFixedVersioningRows/rename_without_was"]]],
+    ["java","RETIRED by §5.6: aNewerWriter — a FORWARD read, which is now layout_newer by name: held by the harness's OLD-REFUSES-NEW column on every row",[["internal/codegen/javatable","TestFixedVersioningRows/field_append"],["internal/codegen/javatable","TestFixedVersioningRows/nested_append"],["internal/codegen/javatable","TestFixedVersioningRows/uint_widen"]]],
+    ["java","RETIRED by §5.6: anOptional — T into ?T across a pair: held by the harness's optional_add row, both columns",[["internal/codegen/javatable","TestFixedVersioningRows/optional_add"],["internal/codegen/javatable","TestFixedRoadmapT03Versions/java/E5"]]],
+    ["java","RETIRED by §5.6: theSlide — the keyed slide and the mid-list remaps: held by the harness's keyed_array_enum_append, enum_append and union_append rows",[["internal/codegen/javatable","TestFixedVersioningRows/keyed_array_enum_append"],["internal/codegen/javatable","TestFixedVersioningRows/enum_append"],["internal/codegen/javatable","TestFixedVersioningRows/union_append"]]],
+    ["java","RETIRED by §5.6: layoutValidation — §1.1's seven rules: they are the LOCK's validation of what it records and the oracle's of the corpus (§5.6); under a KNOWN hash a malformation is one name, layout_malformed, which the harness's hash_known_bytes_differ row asserts",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/javatable","TestFixedVersioningHash/hash_known_bytes_differ"],["internal/codegen/javatable","TestFixedRoadmapT01Framing/java/R7"]]],
+    ["java","RETIRED by §5.6: negativeControls: the plan_too_large control — a one-entry plan slice against a LINEAGE plan's entry count, owed in the versioning harness (§5.9 #5, §7's control)",[["internal/codegen/javatable","TestFixedVersioningPlanTooLarge"],["internal/codegen/javatable","TestFixedRoadmapT02Plans/java/R25"]]]
+]'''):
+    RETIRED_NATIVE.setdefault(_lang, {})[_marker] = {tuple(need) for need in _needs}
+
+SEEDS = (1, 2, 3)
+RANDOM_MUTANTS = 100000  # Existing release-tier count, not an execution deadline.
+DRIVER_BUILD = {
+    "cpp": "build/wire-fuzz-cpp", "c": "build/wire-fuzz-c",
+    "cs": "build-conformance-cs", "go": "build/conformance-go",
+    "rust": "build/conformance-rust-all", "java": "build-conformance-java",
+    "js": "build/tables-generated-js/.stamp cards-js-generate",
+    "dart": "build/conformance-dart", "elixir": "build/elixir-tables-ebin/.stamp",
+    "goose": "build/conformance-goose-wirefuzz",
+    # the units, and the native host its one process runs under (make/moo-readiness.mk)
+    "moo": "moo-wire-fuzz-ready",
+}
+WIRE_CONTROLS = {
+    "cpp": "tables-wire-fuzz-negative-control tables-wire-fuzz-retain-negative-control",
+    "c": "tables-c-wire-fuzz-negative-control",
+    "cs": "tables-cs-pack-negative-control tables-cs-retain-negative-control",
+    "go": "tables-go-wire-fuzz-negative-control",
+    "rust": "tables-rust-wire-fuzz-negative-control",
+    "java": "tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control tables-java-retain-node-negative-control",
+    "js": "tables-js-wire-fuzz-negative-control cards-js-conformance-upgrade-negative-control",
+    "dart": "tables-dart-wire-fuzz-negative-control tables-dart-retain-negative-control",
+    "elixir": "tables-elixir-wire-fuzz-refusal-negative-control tables-elixir-retain-negative-control",
+    "goose": "tables-goose-wire-fuzz-negative-control",
+    "moo": "tables-moo-wire-fuzz-negative-control",
+}
+# The external fixed-form/packet executables complement the full native Go
+# packages. The workflow supplies the once-written C++ corpora before this step.
+FIXED_GATES = {
+    "cpp": "tables-maps tables-lists tables-arms tables-retain tables-view tables-doctags tables-flat-wire tables-fixed-matched tables-fixed-twin",
+    "c": "tables-c-fixedform tables-c-variable tables-c-usage",
+    "cs": "tables-cs-leg",
+    "go": "tables-go-fixed-form",
+    "rust": "tables-rust-fixedform tables-rust-fixed-matched",
+    "java": "tables-java-fixedform tables-java-fixedform-bench",
+    "js": "tables-js-fixed-form tables-js-fixed-matched",
+    "dart": "tables-dart-fixed-form",
+    "elixir": "tables-elixir-fixed-form tables-elixir-fixed-bench",
+    "goose": "tables-goose-versioning tables-goose-versioning-negative-control tables-goose-fixedform-negative-control "
+             "tables-goose-message-form tables-goose-message-form-negative-control "
+             "tables-goose-message-peer-negative-control",
+    "moo": "tables-moo-fixed tables-moo-message-form tables-moo-compiler-claims",
+}
+
+
+def tool(name, fallback):
+    return shlex.split(os.environ.get(name, fallback))
+
+
+# Shared semantic oracles and CI controls run once, independently of writer count.
+SHARED_PACKAGES = ("compiler", "harness", "tabletext", "tablewire", "tablepack", "fixedtwin")
+
+
+def required_phases(lang):
+    """Independent completion contract: omitting a runner call cannot turn green."""
+    required = {"prerequisites", "implementation", "external-table-gates",
+                "wire-driver-build", "wire-retain-controls", "packet-build", "packet-features"}
+    for package in ("lockfile", *PACKAGES[lang], *(SHARED_PACKAGES if lang == "cpp" else ())):
+        required |= {"native-list-" + package, "native-" + package}
+    if lang == "moo":
+        # MOO's packet programs are its package's probes (run_moo_packets):
+        # one interpreter, one mode per shape.
+        required |= {"packet-normal-0", "packet-ludicrous-0"}
+        required |= {"retain-moo-" + name for name in MOO_RETENTION_CONTROLS}
+    elif lang == "cpp":
+        required.add("readiness-contracts")
+        required |= {"packet-" + name for name in
+                     ("schema_test", "schema_test_guard", "schema_test_wide",
+                      "schema_test_random", "schema_test_ludicrous")}
+    elif lang == "c":
+        required |= {"packet-" + name for name in
+                     ("schema_test_c", "schema_test_c_asan", "schema_test_c_ludicrous",
+                      "schema_test_bench_c")}
+    else:
+        modes = {"cs": 2, "go": 1, "rust": 2, "java": 2, "js": 2, "dart": 3, "elixir": 1, "goose": 2}[lang]
+        required |= {"packet-" + shape + "-" + str(mode)
+                     for shape in ("normal", "ludicrous") for mode in range(modes)}
+    required |= {"wire-" + arm + "-" + str(seed)
+                 for arm in ("plain", "retain") for seed in (1, 2, 3)}
+    if lang == "cs":
+        required |= {"wire-builder-" + str(seed) for seed in (1, 2, 3)}
+    if lang == "c":
+        required |= {"retain-c-plant", "retain-c"}
+    elif lang == "go":
+        required |= {"retain-go-" + mode + tail
+                     for mode in ("file-count-floor", "unknown-node") for tail in ("-plant", "")}
+    elif lang == "rust":
+        required.add("retain-rust")
+    elif lang == "goose":
+        required |= {"retain-goose-" + name for name in GOOSE_RETENTION_CONTROLS}
+    return required
+
+
+def package_path(package):
+    return {"compiler": "compiler", "lockfile": "internal/lockfile",
+            "harness": "test/conformance/harness", "tabletext": "internal/tabletext",
+            "tablewire": "internal/tablewire", "tablepack": "internal/tablepack", "fixedtwin": "tools/fixedtwin"}.get(
+        package, "internal/codegen/" + package)
+
+
+def pass_events(text):
+    passed = set()
+    for line in text.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if event.get("Action") == "pass" and event.get("Test"):
+            package = event.get("Package", "").removeprefix("github.com/mas-bandwidth/schema/v2/")
+            passed.add((package, event["Test"]))
+    return passed
+
+
+def native_retirement_errors(text, lang, passed):
+    errors = []
+    for line in text.splitlines():
+        # Native stdout may be nested in a Go test log's file:line prefix.
+        line = re.sub(r"^\s*(?:[^:\s]+:\d+:\s*)?", "", line).rstrip()
+        if not re.match(r"(?:SKIP(?:PED)?|RETIRED)(?:[: ]|$)", line):
+            continue
+        needs = RETIRED_NATIVE.get(lang, {}).get(line)
+        if not needs:
+            errors.append("unclassified native-program skip: " + line)
+        elif missing := sorted(set(needs) - passed):
+            errors.append("retirement replacement did not pass: " + line + ": " + repr(missing))
+        else:
+            print("EXPLICIT RETIRED NATIVE TEST: " + line, flush=True)
+    return errors
+
+
+def native_result(text, listed, package, prior_passes=frozenset()):
+    """Require actual terminal events for every discovered test and no live skip."""
+    errors, terminal, passes, reasons = [], {}, 0, {}
+    package_pass = 0
+    expected_package = "github.com/mas-bandwidth/schema/v2/" + package_path(package)
+    passed = set(prior_passes) | pass_events(text)
+    native_output = []
+    for line in text.splitlines():
+        try:
+            event = json.loads(line)
+        except (ValueError, TypeError):
+            errors.append("non-JSON native output: " + line[:160])
+            continue
+        name, action = event.get("Test", ""), event.get("Action")
+        native_output.append(event.get("Output", ""))
+        if action in ("build-output", "build-fail"):
+            if action == "build-fail":
+                errors.append("native build failure")
+            continue
+        if event.get("Package") != expected_package:
+            errors.append("native event names the wrong/missing package: " + str(event.get("Package")))
+            continue
+        if name:
+            reasons[name] = reasons.get(name, "") + event.get("Output", "")
+            if action in ("pass", "fail", "skip"):
+                if name in terminal:
+                    errors.append("duplicate native terminal event: " + name)
+                terminal[name] = action
+                if action == "pass":
+                    passes += 1
+                elif action == "fail":
+                    errors.append("failed native test: " + name)
+        elif action == "pass":
+            package_pass += 1
+        elif action in ("skip", "fail"):
+            errors.append("native package " + action)
+    for name, action in terminal.items():
+        if action != "skip":
+            continue
+        retired = RETIRED.get(name) if package == "gotable" else None
+        reason_lines = [re.sub(r"^\s*(?:[^:\s]+:\d+:\s*)?", "", line).rstrip()
+                        for line in reasons.get(name, "").splitlines()]
+        if retired and retired[0] in reason_lines:
+            missing = sorted(set(retired[1]) - passed)
+            if missing:
+                errors.append("retirement replacement did not pass: " + name + ": " + repr(missing))
+            else:
+                print("EXPLICIT RETIRED TEST: " + name + ": " + retired[0], flush=True)
+        else:
+            errors.append("live/unclassified native skip: " + name + ": " +
+                          reasons.get(name, "").strip()[-600:])
+    for name in listed:
+        if name not in terminal:
+            errors.append("listed native test did not finish: " + name)
+    if not listed or not passes or package_pass != 1:
+        errors.append("empty or incomplete native test package")
+    lang = next((lang for lang, packages in PACKAGES.items() if package in packages), "")
+    errors.extend(native_retirement_errors("".join(native_output), lang, passed))
+    return errors
+
+
+def implementation_result(text, lang):
+    rows = re.findall(r"^IMPLEMENTATION_PREREQUISITES_PASS language=([^ ]+) "
+                      r"constructs=(\d+) witnesses=(\d+)$", text, re.MULTILINE)
+    if len(rows) != 1 or rows[0][0] != lang:
+        return ["missing, duplicate or wrong-language implementation prerequisite result"]
+    if min(int(rows[0][1]), int(rows[0][2])) <= 0:
+        return ["empty implementation construct/witness coverage"]
+    return []
+
+
+def fuzz_result(text, arm, seed, lang="", builder=False):
+    """The harness's old exit-0 permits absent roots; readiness does not."""
+    errors = []
+    if re.search(r"seeds absent|non-finite mutants not compared|finite-owed", text):
+        errors.append("wire roster or finite-value exemption was reported")
+    if arm != "retain" and not builder and "seeds outside the arm" in text:
+        errors.append("plain wire-fuzz unexpectedly excluded seeds")
+    prefix = "wire-fuzz" + ("-builder" if builder else "-mixed-builder" if lang in MIXED_BUILDER else "") + (" retain" if arm == "retain" else "")
+    pattern = (r"^" + re.escape(prefix) + r": seed (\d+), (\d+) seeds over (\d+) roots"
+               r"(?:, \d+ seeds outside the arm)?, (\d+) enumerated \+ (\d+) random = "
+               r"(\d+) mutants, 0 divergences, [0-9.]+ s, [0-9.]+ mutants/s$")
+    rows = [re.fullmatch(pattern, line) for line in text.splitlines()]
+    rows = [row for row in rows if row is not None]
+    if len(rows) != 1:
+        errors.append("missing, duplicate or incomplete strict wire-fuzz summary")
+    else:
+        got_seed, seeds, roots, enumerated, random, total = map(int, rows[0].groups())
+        if (got_seed != seed or min(seeds, roots, enumerated) <= 0 or
+                random != RANDOM_MUTANTS or total != enumerated + random):
+            errors.append("wire-fuzz seed/count/roster accounting is incomplete")
+    return errors
+
+
+class Runner:
+    def __init__(self, root, lang):
+        self.root = root
+        self.out = root / "build" / "nightly-readiness" / lang
+        self.out.mkdir(parents=True, exist_ok=True)
+        self.results = []
+        self.native_passes = set()
+        self.lang = lang
+        self.env = dict(os.environ, SCHEMA_SLOW="1", SCHEMA_REQUIRE_CORPUS="1")
+        # Never update a reference pin or accept cache/no-test overrides here.
+        for key in tuple(self.env):
+            if key in ("MAKEFLAGS", "MFLAGS", "GNUMAKEFLAGS", "MAKEOVERRIDES", "MAKEFILES", "SCHEMA_SKIP_LEGS") or key.startswith("SCHEMA_UPDATE_"):
+                self.env.pop(key)
+        self.env["GOFLAGS"] = "-p=2"
+        self.env["GOMAXPROCS"] = "2"
+        self.env["CARGO_BUILD_JOBS"] = "2"
+        self.env["ELIXIR_TABLES_EBIN"] = str(root / "build/elixir-tables-ebin")
+        self.env["SCHEMA_C_COLLECTIONS_DRIVER"] = str(root / "build/c-collections-fuzz")
+        self.env["SCHEMA_CPP_COLLECTIONS_DRIVER"] = str(root / "build/cpp-collections-fuzz")
+        if lang == "cpp":
+            # The shared harness includes the native Dart roster probes, and
+            # the compiler package includes the explicit 2 GiB certification.
+            self.env["SCHEMA_DART_ROSTER_DRIVER"] = str(root / "build/conformance-dart")
+            self.env["SCHEMA_CERTIFY_INT32_MAX"] = "1"
+
+    def run(self, name, argv, cwd=None, validate=None, expected=0):
+        cwd = Path(cwd or self.root).resolve()
+        # Go accepts an inherited logical PWD when it names the same inode,
+        # but make CURDIR uses the physical path. Keep source overlay keys
+        # and Go package paths identical, including packet subdirectories.
+        env = dict(self.env, PWD=str(cwd))
+        print("\n=== " + name + " ===\n" + shlex.join(argv), flush=True)
+        stem = self.out / name
+        (stem.with_suffix(".command.json")).write_text(
+            json.dumps({"argv": argv, "cwd": str(cwd), "PWD": env["PWD"],
+                        "SCHEMA_SLOW": "1", "SCHEMA_REQUIRE_CORPUS": "1",
+                        "GOFLAGS": "-p=2", "GOMAXPROCS": "2"}, indent=2) + "\n")
+        start = time.monotonic()
+        try:
+            with stem.with_suffix(".log").open("w") as log:
+                proc = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True, errors="replace")
+                for line in proc.stdout:
+                    print(line, end="", flush=True)
+                    log.write(line)
+                proc.stdout.close()
+                status = proc.wait()  # Deliberately no elapsed-time cutoff.
+            text = stem.with_suffix(".log").read_text()
+        except OSError as error:
+            text, status = str(error), 127
+            stem.with_suffix(".log").write_text(text + "\n")
+            print(text, flush=True)
+        errors = []
+        if status != expected:
+            errors.append("exit " + str(status) + ", expected " + str(expected))
+        if validate:
+            errors.extend(validate(text))
+        self.results.append({"phase": name, "exit": status, "seconds": time.monotonic() - start,
+                             "errors": errors})
+        for error in errors:
+            print("INCOMPLETE: " + name + ": " + error, flush=True)
+        return text, status
+
+    def missing(self, name, reason):
+        print("INCOMPLETE: " + name + ": " + reason, flush=True)
+        self.results.append({"phase": name, "errors": [reason]})
+
+    def make(self, name, targets, makefile=None):
+        # No caller-supplied target list or release-count overrides.
+        argv = ["make", "--no-print-directory", "-j2"]
+        if makefile:
+            argv += ["-f", str(makefile)]
+        return self.run(name, argv + targets.split(),
+                        validate=lambda text: native_retirement_errors(text, self.lang, self.native_passes))
+
+    def finish(self, lang):
+        phases = [row["phase"] for row in self.results]
+        missing = sorted(required_phases(lang) - set(phases))
+        duplicates = sorted(phase for phase, count in Counter(phases).items() if count > 1)
+        if missing:
+            self.missing("phase-contract", "missing required phases: " + ", ".join(missing))
+        if duplicates:
+            self.missing("phase-contract-duplicates", "duplicate phases: " + ", ".join(duplicates))
+        self.out.joinpath("results.json").write_text(json.dumps(self.results, indent=2) + "\n")
+        failed = [row["phase"] for row in self.results if row["errors"]]
+        print("\nOriginal-nine readiness " + lang + ": " +
+              ("INCOMPLETE: " + ", ".join(failed) if failed else "PASS"), flush=True)
+        if not failed:
+            print("NIGHTLY_READINESS_PASS language=" + lang + " phases=" + str(len(self.results)), flush=True)
+        return 1 if failed else 0
+
+
+def run_native(runner, lang):
+    packages = ["lockfile", *PACKAGES[lang]]
+    if lang == "cpp":
+        packages.extend(SHARED_PACKAGES)
+    for package in packages:
+        path = "./" + package_path(package)
+        listed_text, status = runner.run("native-list-" + package,
+                                        ["go", "test", "-timeout=0", "-list", "^(Test|Example|Fuzz)", path])
+        listed = [line for line in listed_text.splitlines() if re.fullmatch(r"(?:Test|Example|Fuzz)\w+", line)]
+        if status or not listed or len(listed) != len(set(listed)):
+            runner.missing("native-list-" + package, "missing, empty or duplicate native test inventory")
+        text, status = runner.run("native-" + package,
+                   ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2", path],
+                   validate=lambda text, names=listed, pkg=package:
+                       native_result(text, names, pkg, runner.native_passes))
+        if status == 0 and not runner.results[-1]["errors"]:
+            runner.native_passes.update(pass_events(text))
+
+
+def go_packet_makefile(runner):
+    # Preserve the existing packet-wide-go recipe/dependencies, changing its
+    # one outer suite cap only. This override is private to this make process.
+    original = (runner.root / "make/go.mk").read_text()
+    match = re.search(r"^packet-wide-go:[^\n]*\n((?:\t[^\n]*\n)+)", original, re.MULTILINE)
+    before = "go test -count=1 ."
+    after = "go test -timeout=0 -count=1 -v ."
+    if not match or match[1].count(before) != 1:
+        runner.missing("packet-features", "the reviewed packet-wide-go outer test invocation changed")
+        return None
+    recipe = match[1].replace(before, after)
+    text = "include Makefile\npacket-wide-go:\n" + recipe
+    makefile = runner.out / "Makefile.go-packet-uncapped"
+    makefile.write_text(text)
+    runner.out.joinpath("Makefile.go-packet-uncapped.json").write_text(json.dumps({
+        "source_sha256": hashlib.sha256(original.encode()).hexdigest(),
+        "execution_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        "replacement": {before: after},
+    }, indent=2) + "\n")
+    return makefile
+
+
+def packet_result(text, random=False, compilation=False):
+    if compilation:
+        return [] if re.search(r"^Generated: .+", text, re.MULTILINE) else [
+            "packet compiler emitted no executable completion marker"]
+    pattern = r"^OK \([1-9][0-9]* iterations, seed [0-9]+\)$" if random else r"^OK$"
+    return [] if len(re.findall(pattern, text, re.MULTILINE)) == 1 else [
+        "packet program emitted no unique successful execution marker"]
+
+
+def run_packets(runner, lang):
+    if lang == "moo":
+        run_moo_packets(runner)
+        return
+    if lang == "cpp":
+        binaries = ("schema_test", "schema_test_guard", "schema_test_wide",
+                    "schema_test_random", "schema_test_ludicrous")
+        runner.make("packet-build", " ".join("build/" + name for name in binaries))
+        for name in binaries:
+            runner.run("packet-" + name, ["./build/" + name],
+                       validate=lambda text, n=name: packet_result(text, random=n == "schema_test_random"))
+        runner.make("packet-features", "packet-defaults-cpp wide-no-align-negative-control "
+                    "wide-surrogate-negative-control wide-terminator-negative-control "
+                    "wide-utf8-read-negative-control")
+        return
+    if lang == "c":
+        runner.make("packet-build", "build/schema_test_c build/schema_test_c_asan "
+                    "build/schema_test_c_ludicrous build/schema_test_bench_c")
+        for name, cwd in (("schema_test_c", "test/c"), ("schema_test_c_asan", "test/c"),
+                          ("schema_test_c_ludicrous", "test/c-ludicrous"),
+                          ("schema_test_bench_c", ".")):
+            runner.run("packet-" + name, [str(runner.root / "build" / name)],
+                       cwd=runner.root / cwd, validate=packet_result)
+    elif lang == "goose":
+        # Both packet programs, generated with the tagged compiler beside the
+        # wire goldens (make/goose-packet.mk), each under the release run and
+        # under --debug, whose overflow and range checks abort.
+        runner.make("packet-build", "build/goose-packet/.stamp")
+        goose = tool("GOOSE", str(runner.root / GOOSE_DIST / "goose"))
+        for label in ("normal", "ludicrous"):
+            for index, command in enumerate((goose + ["run", "main.goose"],
+                                             goose + ["run", "--debug", "main.goose"])):
+                runner.run("packet-" + label + "-" + str(index), command,
+                           cwd=runner.root / "build/goose-packet" / label, validate=packet_result)
+    else:
+        targets = "generated/{0}/.stamp generated/{0}-ludicrous/.stamp generated/bench/{0}/.stamp".format(lang)
+        if lang == "java":
+            targets += " build/java-test/.stamp build/java-test-ludicrous/.stamp"
+        runner.make("packet-build", targets)
+        for suffix in ("", "-ludicrous"):
+            label = "normal" if not suffix else "ludicrous"
+            cwd = runner.root / ("test/" + lang + suffix)
+            commands = {
+                "cs": [tool("DOTNET", "dotnet") + ["run"],
+                       tool("DOTNET", "dotnet") + ["run", "-c", "Release"]],
+                "go": [["go", "run", "."]],
+                "rust": [["cargo", "run", "--quiet"], ["cargo", "run", "--quiet", "--release"]],
+                "java": [tool("JAVA", "java") + ["-ea", "-cp", "../../build/java-test" + suffix, "Main"],
+                         tool("JAVA", "java") + ["-cp", "../../build/java-test" + suffix, "Main"]],
+                "js": [tool("NODE", "node") + ["main.mjs"],
+                       ["env", "NODE_ENV=production"] + tool("NODE", "node") + ["main.mjs"]],
+                "dart": [tool("DART", "dart") + ["--enable-asserts", "main.dart"],
+                         tool("DART", "dart") + ["compile", "exe", "-o",
+                         str(runner.out / ("packet-" + label)), "main.dart"],
+                         [str(runner.out / ("packet-" + label))]],
+                "elixir": [tool("ELIXIR", "elixir") + ["main.exs"]],
+            }[lang]
+            for index, command in enumerate(commands):
+                runner.run("packet-" + label + "-" + str(index), command, cwd=cwd,
+                           validate=lambda text, i=index:
+                               packet_result(text, compilation=lang == "dart" and i == 1))
+    targets = " ".join("packet-" + feature + "-" + lang + tail
+                       for feature in ("defaults", "utf8", "wide")
+                       for tail in ("", "-negative-control"))
+    if lang in ("go", "java", "dart", "elixir", "goose"):
+        targets += " packet-finite-" + lang + " packet-finite-" + lang + "-negative-control"
+    makefile = go_packet_makefile(runner) if lang == "go" else None
+    if lang != "go" or makefile is not None:
+        runner.make("packet-features", targets, makefile=makefile)
+
+
+# MOO's packet programs: the CLI has no io, so internal/codegen/moo's probes
+# generate each corpus, stage the goldens as moo source and run the pinned
+# interpreter on it. Each shape's probes run as their own phase and every one
+# must report a pass event.
+MOO_PACKET_PROBES = {
+    "normal": ("TestMooTypeWireWritesTheGoldens", "TestMooTypeWireReadsTheGoldens",
+               "TestMooTypeWireRefusesTruncation", "TestMooTypeWireRefusesHostileValues",
+               "TestMooTypeWireWriteRefusesOutOfContract"),
+    "ludicrous": ("TestMooLudicrousWire",),
+}
+
+
+def run_moo_packets(runner):
+    runner.make("packet-build", "moo-toolchain-ready build/schema-moo moo-packet-driver")
+    for label, tests in MOO_PACKET_PROBES.items():
+        runner.run("packet-" + label + "-0",
+                   ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
+                    "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/moo"],
+                   validate=lambda text, t=tests: native_result(text, list(t), "moo"))
+    runner.make("packet-features", " ".join("packet-" + feature + "-moo" + tail
+                                            for feature in ("defaults", "utf8", "wide", "finite")
+                                            for tail in ("", "-negative-control")))
+
+
+def moo_uncapped_makefile(runner, targets):
+    """The MOO gates' make recipes, with only Go's default suite cap removed.
+
+    Each recipe that runs go test is copied from make/moo*.mk with -timeout=0
+    added, and the copy overrides the recipe in a private makefile that
+    includes the real one. A recipe that already names a cap fails closed.
+    """
+    sources = {path: path.read_text() for path in sorted((runner.root / "make").glob("moo*.mk"))}
+    text, replaced = "include Makefile\n", {}
+    for target in targets.split():
+        found = [(path, match) for path, source in sources.items()
+                 for match in re.finditer(r"^" + re.escape(target) + r":[^\n]*\n((?:\t[^\n]*\n)+)",
+                                          source, re.MULTILINE)]
+        if len(found) != 1:
+            runner.missing("external-table-gates", "the reviewed MOO recipe is not unique: " + target)
+            return None
+        recipe = found[0][1][1]
+        if "go test " not in recipe:
+            continue
+        if re.search(r"-timeout[= ]", recipe):
+            runner.missing("external-table-gates", "the reviewed MOO recipe carries a suite cap: " + target)
+            return None
+        amended = recipe.replace("go test ", "go test -timeout=0 ")
+        text += target + ":\n" + amended
+        replaced[target] = {"source": str(found[0][0].relative_to(runner.root)),
+                            "source_sha256": hashlib.sha256(recipe.encode()).hexdigest(),
+                            "execution_sha256": hashlib.sha256(amended.encode()).hexdigest()}
+    makefile = runner.out / "Makefile.moo-uncapped"
+    makefile.write_text(text)
+    runner.out.joinpath("Makefile.moo-uncapped.json").write_text(json.dumps(replaced, indent=2) + "\n")
+    return makefile
+
+
+def goose_uncapped_makefile(runner, targets):
+    """The Goose gates' make recipes, with only their outer go test suite cap removed.
+
+    Each recipe that runs go test is copied from make/goose*.mk with its
+    `-timeout 600s` (or Go's default cap) replaced by -timeout=0, and the copy
+    overrides the recipe in a private makefile that includes the real one.
+    Prerequisites, sabotages and assertions stay the reviewed source's.
+    """
+    sources = {path: path.read_text() for path in sorted((runner.root / "make").glob("goose*.mk"))}
+    text, replaced = "include Makefile\n", {}
+    for target in targets.split():
+        found = [(path, match) for path, source in sources.items()
+                 for match in re.finditer(r"^" + re.escape(target) + r":[^\n]*\n((?:\t[^\n]*\n)+)",
+                                          source, re.MULTILINE)]
+        if len(found) != 1:
+            if any(re.search(r"^" + re.escape(target) + r":", source, re.MULTILINE) for source in sources.values()) \
+                    and not found:
+                continue  # a rule without its own recipe here, e.g. a static pattern rule
+            runner.missing("external-table-gates", "the reviewed Goose recipe is not unique: " + target)
+            return None
+        recipe = found[0][1][1]
+        if "go test " not in recipe:
+            continue
+        amended = recipe.replace(" -timeout 600s", "").replace("go test ", "go test -timeout=0 ")
+        if re.search(r"-timeout[= ](?!0 )", amended):
+            runner.missing("external-table-gates", "the reviewed Goose recipe carries another suite cap: " + target)
+            return None
+        text += target + ":\n" + amended
+        replaced[target] = {"source": str(found[0][0].relative_to(runner.root)),
+                            "source_sha256": hashlib.sha256(recipe.encode()).hexdigest(),
+                            "execution_sha256": hashlib.sha256(amended.encode()).hexdigest()}
+    makefile = runner.out / "Makefile.goose-uncapped"
+    makefile.write_text(text)
+    runner.out.joinpath("Makefile.goose-uncapped.json").write_text(json.dumps(replaced, indent=2) + "\n")
+    return makefile
+
+
+def run_external(runner, lang):
+    if lang == "moo":
+        makefile = moo_uncapped_makefile(runner, FIXED_GATES[lang])
+        if makefile is not None:
+            runner.make("external-table-gates", FIXED_GATES[lang], makefile=makefile)
+        return
+    if lang == "goose":
+        makefile = goose_uncapped_makefile(runner, FIXED_GATES[lang])
+        if makefile is not None:
+            runner.make("external-table-gates", FIXED_GATES[lang], makefile=makefile)
+        return
+    if lang != "cpp":
+        runner.make("external-table-gates", FIXED_GATES[lang])
+        return
+    # Exactly two outer Go test invocations in the already mapped C++ make
+    # recipes. Keep all native generation, compiler flags, controls and shell
+    # ordering unchanged; no blanket go wrapper or timeout substitution.
+    original = (runner.root / "Makefile").read_text()
+    replacements = {
+        "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR":
+        "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test -timeout=0 -count=1 ./internal/viewlisting -run TestUnitViewListingMatchesTheIR",
+        "go test ./tools/fixedtwin -count=1":
+        "go test -timeout=0 ./tools/fixedtwin -count=1",
+    }
+    amended = original
+    for before, after in replacements.items():
+        if amended.count(before) != 1:
+            runner.missing("external-table-gates", "the reviewed outer Go invocation changed: " + before)
+            return
+        amended = amended.replace(before, after)
+    makefile = runner.out / "Makefile.uncapped"
+    makefile.write_text(amended)
+    runner.out.joinpath("Makefile.uncapped.json").write_text(json.dumps({
+        "source_sha256": hashlib.sha256(original.encode()).hexdigest(),
+        "execution_sha256": hashlib.sha256(amended.encode()).hexdigest(),
+        "replacements": replacements,
+    }, indent=2) + "\n")
+    runner.make("external-table-gates", FIXED_GATES[lang], makefile=makefile)
+
+
+def driver_command(root, lang, builder=False):
+    if lang in ("cpp", "c"):
+        return "./build/wire-fuzz-" + lang
+    if lang == "cs":
+        return shlex.join(tool("DOTNET", "dotnet") +
+                          ["test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll",
+                           "wire-fuzz-builder" if builder else "wire-fuzz-region"])
+    if lang == "java":
+        return shlex.join(tool("JAVA", "java") + ["-cp", str(root / "build/conformance-java"), "TablesWireFuzz"])
+    if lang == "rust":
+        return "build/conformance-rust-all"
+    if lang in ("go", "dart"):
+        return "build/conformance-" + lang + " wire-fuzz"
+    if lang == "goose":
+        # test/conformance/goose/wirefuzzdispatch: one driver over every
+        # unit's leg (make/goose-fuzz.mk, build/conformance-goose-wirefuzz)
+        return "build/goose-wirefuzz-dispatch build/goose-wirefuzz-legs/legs"
+    if lang == "moo":
+        # one process over every unit (test/conformance/moo/wirefuzz.moo
+        # requires each unit from its own directory), so no dispatcher
+        return "test/conformance/moo/wirefuzz-driver"
+    return "test/conformance/" + lang + "/driver wire-fuzz"
+
+
+def run_fuzz(runner, lang):
+    runner.make("wire-driver-build", DRIVER_BUILD[lang])
+    for arm in ("plain", "retain"):
+        for seed in SEEDS:
+            name = "wire-" + arm + "-" + str(seed)
+            args = ["./build/conformance-harness", "wire-fuzz",
+                    "--driver", driver_command(runner.root, lang),
+                    "--seed", str(seed), "--n", str(RANDOM_MUTANTS),
+                    "--failed", str(runner.out / (name + ".bin"))]
+            # Dart and JavaScript use mutable variable-file loads, with the full fixed/message
+            # roster still exercising its existing form-specific readers.
+            if lang in MIXED_BUILDER:
+                args.append("--mixed-builder")
+            if arm == "retain":
+                args.append("--retain")
+            # No --finite-owed, absent-root exclusion, replay-only pass or custom
+            # roster. Today this deliberately exposes real uncarried roots and
+            # also the known default-roster variable-root/message mismatch;
+            # this script does not silently delete either kind of input.
+            runner.run(name, args, validate=lambda text, a=arm, s=seed: fuzz_result(text, a, s, lang))
+
+
+    if lang == "cs":
+        # C# also exposes a mutable builder. Its plain reader follows Decode's
+        # count-cap contract; retention above uses the actual region API.
+        for seed in SEEDS:
+            name = "wire-builder-" + str(seed)
+            args = ["./build/conformance-harness", "wire-fuzz", "--builder",
+                    "--driver", driver_command(runner.root, lang, builder=True),
+                    "--seed", str(seed), "--n", str(RANDOM_MUTANTS),
+                    "--failed", str(runner.out / (name + ".bin"))]
+            runner.run(name, args,
+                       validate=lambda text, s=seed: fuzz_result(text, "plain", s, lang, builder=True))
+
+
+def overlay_control(runner, name, source, test, package, expected, sabotage=None,
+                    replacement=None, toolchain=None):
+    """The existing C/Go/Rust control recipes, with only their suite cap removed."""
+    out = runner.out / name
+    out.mkdir(exist_ok=True)
+    changed = out / "source.gotext"
+    if sabotage:
+        _, status = runner.run(name + "-plant", ["go", "run", "./tools/sabotage",
+                               "-name", sabotage, "-out", str(changed), source])
+        if status:
+            return
+    else:
+        original = (runner.root / source).read_text()
+        before, after = replacement
+        if before not in original:
+            runner.missing(name, "existing retention sabotage no longer matches")
+            return
+        changed.write_text(original.replace(before, after))
+    if not changed.exists() or changed.read_bytes() == (runner.root / source).read_bytes():
+        runner.missing(name, "retention sabotage changed no source")
+        return
+    overlay = out / "overlay.json"
+    overlay.write_text(json.dumps({"Replace": {str(runner.root / source): str(changed)}}) + "\n")
+    args = ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
+            "-overlay=" + str(overlay), "-run", "^" + test + "$", package]
+    if toolchain:
+        args = ["env", "GOTOOLCHAIN=" + toolchain] + args
+
+    def validate(text):
+        events = []
+        for line in text.splitlines():
+            try:
+                events.append(json.loads(line))
+            except ValueError:
+                return ["control did not emit native test events"]
+        if not any(e.get("Test") == test and e.get("Action") == "fail" for e in events):
+            return ["the exact retention test did not fail"]
+        if any(e.get("Action") == "skip" for e in events) or "[build failed]" in text:
+            return ["control skipped or failed to compile"]
+        if expected not in text:
+            return ["control failed without the intended retention assertion"]
+        return []
+
+    runner.run(name, args, validate=validate, expected=1)
+
+
+# The Goose runtime is go:embed, which go build -overlay does not reach, so
+# its retention controls plant their sabotage in-test and must pass.
+GOOSE_RETENTION_CONTROLS = {
+    "tablewire": ("TestGooseTableWireNegativeControl",),
+    "fuzz": ("TestGooseRetainingFuzzNegativeControl", "TestGooseRetainingMapReplacementNegativeControl"),
+}
+
+
+# MOO's retention controls plant their sabotage in the emitted runtime
+# in-test (internal/codegen/mootable/retain_test.go) and must pass.
+MOO_RETENTION_CONTROLS = {
+    "save": ("TestMooRetainNegativeControl",),
+    "refusal": ("TestMooRetainRefusesWhatThePageRefuses",),
+}
+
+
+def run_controls(runner, lang):
+    runner.make("wire-retain-controls", WIRE_CONTROLS[lang] + " N=0 SEED=1 JAVA_WIRE_FUZZ_N=0")
+    if lang == "c":
+        overlay_control(runner, "retain-c", "internal/codegen/ctable/retain.go",
+                        "TestCTableRetainFile", "./compiler", "report.retained==13",
+                        sabotage="retain-c-drop-field")
+    elif lang == "go":
+        for mode, test, expected in (
+                ("file-count-floor", "TestRetainFileCapacityBeforeExpansion",
+                 "count expanded past available resolved capacity"),
+                ("unknown-node", "TestRetainUnknownNodeRecord", "unplaceable node retention")):
+            overlay_control(runner, "retain-go-" + mode, "internal/codegen/gotable/retain.go",
+                            test, "./internal/codegen/gotable", expected,
+                            sabotage="go-retain-" + mode, toolchain="go1.26.0")
+    elif lang == "rust":
+        overlay_control(runner, "retain-rust", "internal/codegen/rusttable/variablecodec.go",
+                        "TestRetainsAndWidensOnEveryRootRust", "./internal/codegen/rusttable",
+                        "retain=true): the leg reports",
+                        replacement=("if ret.bytes.len() + need <= ret.bytes.capacity() {", "if false {"))
+    elif lang == "goose":
+        for name, tests in GOOSE_RETENTION_CONTROLS.items():
+            runner.run("retain-goose-" + name,
+                       ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
+                        "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/goosetable"],
+                       validate=lambda text, t=tests: native_result(text, list(t), "goosetable"))
+    elif lang == "moo":
+        for name, tests in MOO_RETENTION_CONTROLS.items():
+            runner.run("retain-moo-" + name,
+                       ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
+                        "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/mootable"],
+                       validate=lambda text, t=tests: native_result(text, list(t), "mootable"))
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if len(argv) != 1 or argv[0] not in LANGUAGES:
+        print("usage: test/conformance/nightly-readiness <cpp|c|cs|go|rust|java|js|dart|elixir|goose|moo>",
+              file=sys.stderr)
+        return 2
+    lang = argv[0]
+    root = Path(__file__).resolve().parents[2]
+    runner = Runner(root, lang)
+    if lang == "cpp":
+        runner.run("readiness-contracts", [sys.executable, "test/conformance/nightly_readiness_test.py"],
+                   validate=lambda text: [] if re.search(r"^Ran [1-9][0-9]* tests? in ", text, re.MULTILINE)
+                   and re.search(r"^OK$", text, re.MULTILINE) else ["readiness contract tests did not execute"])
+    # SCHEMA_REQUIRE_CORPUS makes every port's native tests read the C++
+    # reference's byte oracle, so a clean bench builds it here.
+    prerequisites = "bin/schema build/conformance-harness build/fixedform-corpus/.stamp"
+    if lang == "cpp":
+        prerequisites += " build/c-collections-fuzz build/cpp-collections-fuzz build/conformance-dart"
+    if lang == "dart":
+        # Native cook-write tests import this corpus directly, before the
+        # later AOT driver phase. A clean bench must not depend on that race.
+        prerequisites += " build/tables-generated-dart/.stamp cards-dart-generate"
+    if lang == "elixir":
+        # Native message conformance invokes the compiled driver, before the
+        # later fuzz phase. Prepare it on a clean checkout as well.
+        prerequisites += " " + DRIVER_BUILD[lang]
+    harness = "./build/conformance-harness"
+    if lang == "goose":
+        # The pinned compiler, and a harness built with the target's tag,
+        # where compiler.Carried("goose") has its registrations.
+        prerequisites += " goose-toolchain-ready build/conformance-harness-goose"
+        harness = "./build/conformance-harness-goose"
+    if lang == "moo":
+        # The pinned interpreter and analyzer, and a harness built with the
+        # target's tag, where compiler.Carried("moo") has its registrations.
+        prerequisites += " moo-toolchain-ready build/conformance-harness-moo"
+        harness = "./build/conformance-harness-moo"
+    runner.make("prerequisites", prerequisites)
+    runner.run("implementation", [harness, "implementation", "--lang", lang],
+               validate=lambda text: implementation_result(text, lang))
+    run_native(runner, lang)
+    run_packets(runner, lang)
+    run_external(runner, lang)
+    run_fuzz(runner, lang)
+    run_controls(runner, lang)
+    return runner.finish(lang)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

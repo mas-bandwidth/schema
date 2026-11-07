@@ -22,6 +22,56 @@ static partial class Program
     }
     static unsafe void RegisterRetains(RetainScratch scratch)
     {
+        Find("featurewitnesses","Root").Retain=wire=>
+        {
+            long need=Featurewitnesses.Schema.RootLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Featurewitnesses.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Featurewitnesses.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Featurewitnesses.TableReport();
+                var root=Featurewitnesses.Schema.RootLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Featurewitnesses.Schema.RootMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Featurewitnesses.Schema.RootSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("featurewitnesses","ArrayRoot").Retain=wire=>
+        {
+            long need=Featurewitnesses.Schema.ArrayRootLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Featurewitnesses.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Featurewitnesses.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Featurewitnesses.TableReport();
+                var root=Featurewitnesses.Schema.ArrayRootLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Featurewitnesses.Schema.ArrayRootMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Featurewitnesses.Schema.ArrayRootSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
         Find("blobdemo","Catalog").Retain=wire=>
         {
             long need=Blobdemo.Schema.CatalogLoadMeasure(wire);
@@ -115,6 +165,31 @@ static partial class Program
                     {
                         answer.Saved=new byte[checked((int)size)];
                         answer.Written=Graphdemo.Schema.SceneSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("widelist","Wide").Retain=wire=>
+        {
+            long need=Widelistdemo.Schema.WideLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Widelistdemo.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Widelistdemo.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Widelistdemo.TableReport();
+                var root=Widelistdemo.Schema.WideLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Widelistdemo.Schema.WideMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Widelistdemo.Schema.WideSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
                     }
                 }
                 for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
@@ -884,33 +959,22 @@ static partial class Program
     {
         foreach(string[] f in lines)
         {
-            if(f[0]!="retain" && f[0]!="retain-message") { continue; }
-            bool message=f[0]=="retain-message"; int offset=message?1:0;
-            if(f[2+offset]!="tblrt1" || f[3+offset]!="Node") { SpillAbsent(outDir,f[1]); continue; }
-            byte[] wire=File.ReadAllBytes(f[4+offset]);
-            var report=new RT.TableReport(); var vocabulary=new RT.TableVocabulary();
-            if(message)
-            {
-                string[] connection=lines.Find(row=>row[0]=="connection" && row[1]==f[2]);
-                RT.Schema.AnnounceRead(vocabulary,File.ReadAllBytes(connection[4]),report);
-            }
-            long need=message?RT.Schema.NodeLoadMeasure(vocabulary,wire):RT.Schema.NodeLoadMeasure(wire);
-            if(need<0 || report.Malformed || report.Refused) { return 1; }
-            int bodies=message?wire[1]+1:1;
+            if(f[0]!="retain") { continue; }
+            if(f[2]!="tblrt1" || f[3]!="Node") { SpillAbsent(outDir,f[1]); continue; }
+            byte[] wire=File.ReadAllBytes(f[4]);
+            var report=new RT.TableReport();
+            long need=RT.Schema.NodeLoadMeasure(wire);
+            if(need<0) { return 1; }
+            int bodies=1;
             byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)need,64);
             RT.TableRetain[] stores=new RT.TableRetain[bodies]; IntPtr[] roots=new IntPtr[bodies];
             for(int i=0;i<bodies;i++)
-            { stores[i]=new RT.TableRetain { Bytes=(byte*)NativeMemory.Alloc(1<<20),Capacity=1<<20,Ids=(RT.TableRetain.Id*)NativeMemory.Alloc(1<<21),IdCapacity=f[6+offset]=="full"?1<<17:int.Parse(f[6+offset]) }; }
+            { stores[i]=new RT.TableRetain { Bytes=(byte*)NativeMemory.Alloc(1<<20),Capacity=1<<20,Ids=(RT.TableRetain.Id*)NativeMemory.Alloc(1<<21),IdCapacity=f[6]=="full"?1<<17:int.Parse(f[6]) }; }
             try
             {
-                if(message)
-                { RT.Schema.NodeLoadRetainMessages((IntPtr)region,need,roots,wire,vocabulary,stores,report,out _); }
-                else
-                {
-                    if(f[5]=="short")
-                    { RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],new RT.TableReport()); stores[0].Capacity=stores[0].Used-1; }
-                    roots[0]=(IntPtr)RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],report);
-                }
+                if(f[5]=="short")
+                { RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],new RT.TableReport()); stores[0].Capacity=stores[0].Used-1; }
+                roots[0]=(IntPtr)RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],report);
                 if(report.Malformed || report.Refused) { return 1; }
                 using var bytes=new MemoryStream(); var save=new RT.TableReport();
                 for(int i=0;i<bodies;i++)

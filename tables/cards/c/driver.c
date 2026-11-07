@@ -123,7 +123,7 @@ static void refusal_class(const char *err, char *out, size_t cap) {
     snprintf(out, cap, "malformed");
 }
 
-static int write_report(const char *outdir, const char *name, const TableReport *r) {
+static int write_report(const char *outdir, const char *name, const cards_table_report_t *r) {
     char buf[512];
     int n = snprintf(buf, sizeof(buf),
                      "Retained=%d\nRetainLost=%d\nWidened=%d\nUnknown=%d\n"
@@ -196,31 +196,31 @@ static int fail(char *err, size_t err_cap, const char *msg) {
 }
 
 static int enum_tier_value(const char *s) {
-    if (strcmp(s, "flash") == 0) return TIER_FLASH;
-    if (strcmp(s, "pro") == 0) return TIER_PRO;
-    if (strcmp(s, "heavy") == 0) return TIER_HEAVY;
-    if (strcmp(s, "frontier") == 0) return TIER_FRONTIER;
-    return TIER_NONE;
+    if (strcmp(s, "flash") == 0) return CARDS_TIER_FLASH;
+    if (strcmp(s, "pro") == 0) return CARDS_TIER_PRO;
+    if (strcmp(s, "heavy") == 0) return CARDS_TIER_HEAVY;
+    if (strcmp(s, "frontier") == 0) return CARDS_TIER_FRONTIER;
+    return CARDS_TIER_NONE;
 }
 
 static int enum_priority_value(const char *s) {
-    if (strcmp(s, "normal") == 0) return PRIORITY_NORMAL;
-    if (strcmp(s, "high") == 0) return PRIORITY_HIGH;
-    if (strcmp(s, "critical") == 0) return PRIORITY_CRITICAL;
-    if (strcmp(s, "blocker") == 0) return PRIORITY_BLOCKER;
-    return PRIORITY_NONE;
+    if (strcmp(s, "normal") == 0) return CARDS_PRIORITY_NORMAL;
+    if (strcmp(s, "high") == 0) return CARDS_PRIORITY_HIGH;
+    if (strcmp(s, "critical") == 0) return CARDS_PRIORITY_CRITICAL;
+    if (strcmp(s, "blocker") == 0) return CARDS_PRIORITY_BLOCKER;
+    return CARDS_PRIORITY_NONE;
 }
 
 static int enum_column_value(const char *s) {
-    if (strcmp(s, "waiting") == 0) return COLUMN_WAITING;
-    if (strcmp(s, "ready") == 0) return COLUMN_READY;
-    if (strcmp(s, "working") == 0) return COLUMN_WORKING;
-    if (strcmp(s, "review") == 0) return COLUMN_REVIEW;
-    if (strcmp(s, "merging") == 0) return COLUMN_MERGING;
-    if (strcmp(s, "landed") == 0) return COLUMN_LANDED;
-    if (strcmp(s, "plan") == 0) return COLUMN_PLAN;
-    if (strcmp(s, "check") == 0) return COLUMN_CHECK;
-    return COLUMN_NONE;
+    if (strcmp(s, "waiting") == 0) return CARDS_COLUMN_WAITING;
+    if (strcmp(s, "ready") == 0) return CARDS_COLUMN_READY;
+    if (strcmp(s, "working") == 0) return CARDS_COLUMN_WORKING;
+    if (strcmp(s, "review") == 0) return CARDS_COLUMN_REVIEW;
+    if (strcmp(s, "merging") == 0) return CARDS_COLUMN_MERGING;
+    if (strcmp(s, "landed") == 0) return CARDS_COLUMN_LANDED;
+    if (strcmp(s, "plan") == 0) return CARDS_COLUMN_PLAN;
+    if (strcmp(s, "check") == 0) return CARDS_COLUMN_CHECK;
+    return CARDS_COLUMN_NONE;
 }
 
 static int parse_name_value(const char *edit, char *name, size_t ncap,
@@ -260,12 +260,12 @@ static int apply_edit(CardsRecord *rec, const char *edit, char *err,
         return cards_set_paths(rec, vals, count, err, err_cap);
     }
     if (strcmp(name, "tier") == 0)
-        return cards_set_tier(rec, (Tier)enum_tier_value(value), err, err_cap);
+        return cards_set_tier(rec, (cards_tier_t)enum_tier_value(value), err, err_cap);
     if (strcmp(name, "priority") == 0)
-        return cards_set_priority(rec, (Priority)enum_priority_value(value), err,
+        return cards_set_priority(rec, (cards_priority_t)enum_priority_value(value), err,
                                   err_cap);
     if (strcmp(name, "column") == 0)
-        return cards_set_column(rec, (Column)enum_column_value(value), err,
+        return cards_set_column(rec, (cards_column_t)enum_column_value(value), err,
                                 err_cap);
     if (strcmp(name, "holder") == 0)
         return cards_set_holder(rec, value, err, err_cap);
@@ -279,7 +279,7 @@ static int one(const char *surface, const Case *c, const char *outdir) {
         int64_t len = 0;
         uint8_t *wire = read_file(c->input, &len);
         CardsRecord rec;
-        TableReport report;
+        cards_table_report_t report;
         uint8_t *json = NULL;
         int64_t json_len = 0;
         int ok;
@@ -325,7 +325,7 @@ static int one(const char *surface, const Case *c, const char *outdir) {
         int64_t len = 0;
         uint8_t *wire = read_file(c->input, &len);
         CardsRecord rec;
-        TableReport report;
+        cards_table_report_t report;
         uint8_t *text = NULL;
         int64_t text_len = 0;
         int ok;
@@ -377,7 +377,7 @@ static int one(const char *surface, const Case *c, const char *outdir) {
         uint8_t *wire = read_file(c->input, &len);
         uint8_t *out = NULL;
         int64_t out_len = 0;
-        TableReport report;
+        cards_table_report_t report;
         char cls[128];
         int ok;
         const char *sab;
@@ -400,7 +400,7 @@ static int one(const char *surface, const Case *c, const char *outdir) {
         int64_t len = 0;
         uint8_t *wire = read_file(c->input, &len);
         CardsRecord rec;
-        TableReport report;
+        cards_table_report_t report;
         uint8_t *out = NULL;
         int64_t out_len = 0;
         char cls[128];
@@ -428,7 +428,7 @@ static int one(const char *surface, const Case *c, const char *outdir) {
         int64_t len = 0;
         uint8_t *wire = read_file(c->input, &len);
         CardsRecord rec;
-        TableReport report;
+        cards_table_report_t report;
         uint8_t hex[65];
         const char *sab;
         int ok;

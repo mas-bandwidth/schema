@@ -126,18 +126,18 @@ fixed table T { body Body }
 const { BodyType } = await import("./Probe.js");
 
 const none = new T(); InitT(none);
-if (!(none.Body.Type === BodyType.None)) { fail("payload-free-arms: a default union is not None"); }
+if (!(none.body.type === BodyType.None)) { fail("payload-free-arms: a default union is not None"); }
 const noneBuf = new Uint8Array(TMeasure(1));
 if (TSave([none], 1, noneBuf) !== noneBuf.length) { fail("payload-free-arms: save none"); }
 const noneBack = [new T()]; InitT(noneBack[0]);
 const noneReport = new TableFixedReport();
 const noneN = TLoad(noneBack, 1, noneBuf, noneBuf.length, TNewPlan(4096, 4096), noneReport);
 if (!(noneN === 1 && !noneReport.malformed)) { fail("payload-free-arms: load none " + reason(noneReport)); }
-if (!(noneBack[0].Body.Type === BodyType.None)) { fail("payload-free-arms: None did not round trip"); }
+if (!(noneBack[0].body.type === BodyType.None)) { fail("payload-free-arms: None did not round trip"); }
 
 function roundtrip(arm, setup) {
   const v = new T(); InitT(v);
-  v.Body.Type = arm;
+  v.body.type = arm;
   if (setup) { setup(v); }
   const buf = new Uint8Array(TMeasure(1));
   if (TSave([v], 1, buf) !== buf.length) { fail("payload-free-arms: save " + arm); }
@@ -149,15 +149,15 @@ function roundtrip(arm, setup) {
 }
 
 const pingBack = roundtrip(BodyType.Ping, null);
-if (!(pingBack.Body.Type === BodyType.Ping)) { fail("payload-free-arms: the arm before the payload arm did not round trip"); }
+if (!(pingBack.body.type === BodyType.Ping)) { fail("payload-free-arms: the arm before the payload arm did not round trip"); }
 
-const circleBack = roundtrip(BodyType.Circle, (v) => { v.Body.Circle.Radius = -3.4028234663852886e38; });
-if (!(circleBack.Body.Type === BodyType.Circle && circleBack.Body.Circle.Radius === -3.4028234663852886e38)) {
+const circleBack = roundtrip(BodyType.Circle, (v) => { v.body.circle.radius = -3.4028234663852886e38; });
+if (!(circleBack.body.type === BodyType.Circle && circleBack.body.circle.radius === -3.4028234663852886e38)) {
   fail("payload-free-arms: the payload arm did not round trip");
 }
 
 const pongBack = roundtrip(BodyType.Pong, null);
-if (!(pongBack.Body.Type === BodyType.Pong)) { fail("payload-free-arms: the arm after the payload arm did not round trip"); }
+if (!(pongBack.body.type === BodyType.Pong)) { fail("payload-free-arms: the arm after the payload arm did not round trip"); }
 if (BodyType.Ping === BodyType.Pong || BodyType.Ping === BodyType.None || BodyType.Pong === BodyType.None) {
   fail("payload-free-arms: a named payload-free arm collides with None or its sibling");
 }
@@ -191,16 +191,16 @@ fixed table T
 	const probe = `
 const { ShapeType } = await import("./Probe.js");
 const v = new T(); InitT(v);
-v.Pending[0].Type = ShapeType.Circle;
-v.Pending[0].Circle.Radius = 1.25;
-v.Pending[1].Type = ShapeType.Square;
-v.Pending[1].Square.Side = 3.4028234663852886e38;
-v.HistoryCount = 3;
-v.History[0].Type = ShapeType.Square;
-v.History[0].Square.Side = -3.4028234663852886e38;
-v.History[1].Type = ShapeType.Circle;
-v.History[1].Circle.Radius = 0.5;
-v.History[2].Type = ShapeType.None;
+v.pending[0].type = ShapeType.Circle;
+v.pending[0].circle.radius = 1.25;
+v.pending[1].type = ShapeType.Square;
+v.pending[1].square.side = 3.4028234663852886e38;
+v.historyCount = 3;
+v.history[0].type = ShapeType.Square;
+v.history[0].square.side = -3.4028234663852886e38;
+v.history[1].type = ShapeType.Circle;
+v.history[1].circle.radius = 0.5;
+v.history[2].type = ShapeType.None;
 const buf = new Uint8Array(TMeasure(1));
 if (TSave([v], 1, buf) !== buf.length) { fail("union-arrays: save"); }
 const back = [new T()]; InitT(back[0]);
@@ -208,20 +208,20 @@ const report = new TableFixedReport();
 const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, 1, buf, buf.length, plan, report);
 if (!(n === 1 && !report.malformed)) { fail("union-arrays: load " + reason(report)); }
-if (!(back[0].Pending[0].Type === ShapeType.Circle && back[0].Pending[0].Circle.Radius === 1.25)) {
+if (!(back[0].pending[0].type === ShapeType.Circle && back[0].pending[0].circle.radius === 1.25)) {
   fail("union-arrays: the first fixed-array arm did not round trip");
 }
-if (!(back[0].Pending[1].Type === ShapeType.Square && back[0].Pending[1].Square.Side === 3.4028234663852886e38)) {
+if (!(back[0].pending[1].type === ShapeType.Square && back[0].pending[1].square.side === 3.4028234663852886e38)) {
   fail("union-arrays: the second fixed-array arm did not round trip");
 }
-if (!(back[0].HistoryCount === 3)) { fail("union-arrays: the counted array's count did not round trip"); }
-if (!(back[0].History[0].Type === ShapeType.Square && back[0].History[0].Square.Side === -3.4028234663852886e38)) {
+if (!(back[0].historyCount === 3)) { fail("union-arrays: the counted array's count did not round trip"); }
+if (!(back[0].history[0].type === ShapeType.Square && back[0].history[0].square.side === -3.4028234663852886e38)) {
   fail("union-arrays: the counted array's first arm did not round trip");
 }
-if (!(back[0].History[1].Type === ShapeType.Circle && back[0].History[1].Circle.Radius === 0.5)) {
+if (!(back[0].history[1].type === ShapeType.Circle && back[0].history[1].circle.radius === 0.5)) {
   fail("union-arrays: the counted array's second arm did not round trip");
 }
-if (!(back[0].History[2].Type === ShapeType.None)) { fail("union-arrays: the counted array's last arm is not None"); }
+if (!(back[0].history[2].type === ShapeType.None)) { fail("union-arrays: the counted array's last arm is not None"); }
 `
 	t09Probe(t, src, "T", probe)
 }
@@ -246,12 +246,12 @@ fixed table T
 	const probe = `
 const { Grade } = await import("./Probe.js");
 const v = new T(); InitT(v);
-if (!(v.A === 7)) { fail("scalar-defaults: the declared int32 default is not in the class"); }
-if (!(v.R === 1.5)) { fail("scalar-defaults: the declared float32 default is not in the class"); }
-if (!(v.G === Grade.Second)) { fail("scalar-defaults: the declared enum default is not in the class"); }
-v.A = -2147483648;
-v.R = 3.4028234663852886e38;
-v.G = Grade.First;
+if (!(v.a === 7)) { fail("scalar-defaults: the declared int32 default is not in the class"); }
+if (!(v.r === 1.5)) { fail("scalar-defaults: the declared float32 default is not in the class"); }
+if (!(v.g === Grade.Second)) { fail("scalar-defaults: the declared enum default is not in the class"); }
+v.a = -2147483648;
+v.r = 3.4028234663852886e38;
+v.g = Grade.First;
 const buf = new Uint8Array(TMeasure(1));
 if (TSave([v], 1, buf) !== buf.length) { fail("scalar-defaults: save"); }
 const back = [new T()]; InitT(back[0]);
@@ -259,9 +259,9 @@ const report = new TableFixedReport();
 const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, 1, buf, buf.length, plan, report);
 if (!(n === 1 && !report.malformed)) { fail("scalar-defaults: load " + reason(report)); }
-if (!(back[0].A === -2147483648)) { fail("scalar-defaults: int32 boundary did not round trip, got " + back[0].A); }
-if (!(back[0].R === 3.4028234663852886e38)) { fail("scalar-defaults: float32 boundary did not round trip, got " + back[0].R); }
-if (!(back[0].G === Grade.First)) { fail("scalar-defaults: enum value did not round trip, got " + back[0].G); }
+if (!(back[0].a === -2147483648)) { fail("scalar-defaults: int32 boundary did not round trip, got " + back[0].a); }
+if (!(back[0].r === 3.4028234663852886e38)) { fail("scalar-defaults: float32 boundary did not round trip, got " + back[0].r); }
+if (!(back[0].g === Grade.First)) { fail("scalar-defaults: enum value did not round trip, got " + back[0].g); }
 `
 	t09Probe(t, src, "T", probe)
 }
@@ -286,16 +286,16 @@ fixed table T
 	const probe = `
 const { MarksOne, MarksTwo, MarksThree } = await import("./Probe.js");
 const v = new T(); InitT(v);
-if (!(v.SLength === 2 && v.S[0] === 104 && v.S[1] === 105)) { fail("text-defaults: the declared string default is not in the class"); }
-if (!(v.BLength === 2 && v.B[0] === 97 && v.B[1] === 98)) { fail("bytes-defaults: the declared bytes default is not in the class"); }
-if (!(v.M === 5n)) { fail("flags-defaults: the declared flags set { One, Three } is not in the class, got " + v.M); }
+if (!(v.sLength === 2 && v.s[0] === 104 && v.s[1] === 105)) { fail("text-defaults: the declared string default is not in the class"); }
+if (!(v.bLength === 2 && v.b[0] === 97 && v.b[1] === 98)) { fail("bytes-defaults: the declared bytes default is not in the class"); }
+if (!(v.m === 5n)) { fail("flags-defaults: the declared flags set { One, Three } is not in the class, got " + v.m); }
 const text = "abcdefgh";
-for (let i = 0; i < text.length; i++) { v.S[i] = text.charCodeAt(i); }
-v.SLength = text.length;
+for (let i = 0; i < text.length; i++) { v.s[i] = text.charCodeAt(i); }
+v.sLength = text.length;
 const bytes = [0x00, 0xff, 0x7f, 0x80];
-for (let i = 0; i < bytes.length; i++) { v.B[i] = bytes[i]; }
-v.BLength = bytes.length;
-v.M = MarksOne | MarksTwo | MarksThree;
+for (let i = 0; i < bytes.length; i++) { v.b[i] = bytes[i]; }
+v.bLength = bytes.length;
+v.m = MarksOne | MarksTwo | MarksThree;
 const buf = new Uint8Array(TMeasure(1));
 if (TSave([v], 1, buf) !== buf.length) { fail("text-bytes-flags-defaults: save"); }
 const back = [new T()]; InitT(back[0]);
@@ -304,12 +304,12 @@ const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, 1, buf, buf.length, plan, report);
 if (!(n === 1 && !report.malformed)) { fail("text-bytes-flags-defaults: load " + reason(report)); }
 let got = "";
-for (let i = 0; i < back[0].SLength; i++) { got += String.fromCharCode(back[0].S[i]); }
+for (let i = 0; i < back[0].sLength; i++) { got += String.fromCharCode(back[0].s[i]); }
 if (!(got === "abcdefgh")) { fail("text-defaults: the full declared width did not round trip, got " + JSON.stringify(got)); }
-if (!(back[0].BLength === 4 && back[0].B[0] === 0x00 && back[0].B[1] === 0xff && back[0].B[2] === 0x7f && back[0].B[3] === 0x80)) {
+if (!(back[0].bLength === 4 && back[0].b[0] === 0x00 && back[0].b[1] === 0xff && back[0].b[2] === 0x7f && back[0].b[3] === 0x80)) {
   fail("bytes-defaults: every byte of the buffer did not round trip");
 }
-if (!(back[0].M === (MarksOne | MarksTwo | MarksThree))) { fail("flags-defaults: the full mask did not round trip, got " + back[0].M); }
+if (!(back[0].m === (MarksOne | MarksTwo | MarksThree))) { fail("flags-defaults: the full mask did not round trip, got " + back[0].m); }
 `
 	t09Probe(t, src, "T", probe)
 }
@@ -331,7 +331,7 @@ fixed table T
 }
 `
 	const probe = `
-const absent = new T(); InitT(absent); absent.Tail = 1;
+const absent = new T(); InitT(absent); absent.tail = 1;
 const absentBuf = new Uint8Array(TMeasure(1));
 if (TSave([absent], 1, absentBuf) !== absentBuf.length) { fail("optional-arrays: save absent"); }
 const absentBack = [new T()]; InitT(absentBack[0]);
@@ -339,15 +339,15 @@ let report = new TableFixedReport();
 let plan = TNewPlan(4096, 4096);
 let n = TLoad(absentBack, 1, absentBuf, absentBuf.length, plan, report);
 if (!(n === 1 && !report.malformed)) { fail("optional-arrays: load absent " + reason(report)); }
-if (!(absentBack[0].OptPresent === false && absentBack[0].OptCount === 0)) { fail("optional-arrays: an absent optional came back present"); }
-if (!(absentBack[0].Tail === 1)) { fail("optional-arrays: the field behind the absent optional did not land"); }
+if (!(absentBack[0].optPresent === false && absentBack[0].optCount === 0)) { fail("optional-arrays: an absent optional came back present"); }
+if (!(absentBack[0].tail === 1)) { fail("optional-arrays: the field behind the absent optional did not land"); }
 
 const present = new T(); InitT(present);
-present.OptPresent = true;
-present.OptCount = 2;
-present.Opt[0].X = -2147483648;
-present.Opt[1].X = 2147483647;
-present.Tail = 2;
+present.optPresent = true;
+present.optCount = 2;
+present.opt[0].x = -2147483648;
+present.opt[1].x = 2147483647;
+present.tail = 2;
 const presentBuf = new Uint8Array(TMeasure(1));
 if (TSave([present], 1, presentBuf) !== presentBuf.length) { fail("optional-arrays: save present"); }
 const presentBack = [new T()]; InitT(presentBack[0]);
@@ -355,11 +355,11 @@ report = new TableFixedReport();
 plan = TNewPlan(4096, 4096);
 n = TLoad(presentBack, 1, presentBuf, presentBuf.length, plan, report);
 if (!(n === 1 && !report.malformed)) { fail("optional-arrays: load present " + reason(report)); }
-if (!(presentBack[0].OptPresent === true && presentBack[0].OptCount === 2)) { fail("optional-arrays: the boundary-length array came back wrong"); }
-if (!(presentBack[0].Opt[0].X === -2147483648 && presentBack[0].Opt[1].X === 2147483647)) {
+if (!(presentBack[0].optPresent === true && presentBack[0].optCount === 2)) { fail("optional-arrays: the boundary-length array came back wrong"); }
+if (!(presentBack[0].opt[0].x === -2147483648 && presentBack[0].opt[1].x === 2147483647)) {
   fail("optional-arrays: the array elements did not round trip");
 }
-if (!(presentBack[0].Tail === 2)) { fail("optional-arrays: the field behind the present optional did not land"); }
+if (!(presentBack[0].tail === 2)) { fail("optional-arrays: the field behind the present optional did not land"); }
 `
 	t09Probe(t, src, "T", probe)
 }

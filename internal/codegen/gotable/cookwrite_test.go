@@ -16,6 +16,22 @@ func TestCookWriterMatchesIndependentLayout(t *testing.T) {
 		texts        []string
 		variable     bool
 	}{
+		{"wide-node-chain", `package probe
+table Tail { wides []uint128 }
+table Root { tail *Tail
+ wides []uint128
+ tags []uint64 }
+`, []string{`{"tail":{"wides":[3]},"wides":[1],"tags":[2]}`}, true},
+		{"wide-list", `package probe
+table Root { items []uint128
+ tail int32 }
+`, []string{`{}`, `{"items":[1],"tail":7}`, `{"items":[1,340282366920938463463374607431768211455],"tail":9}`}, true},
+		{"nested-wide-list", `package probe
+table Child { tag uint8
+ items []uint128 }
+table Root { children []Child
+ tail int32 }
+`, []string{`{"children":[{"tag":3,"items":[1]},{"tag":5,"items":[2,3]}],"tail":7}`}, true},
 		{"fixed", `package probe
 enum Mode { First, Second }
 fixed table Child { n int32 = 7 }
@@ -115,15 +131,57 @@ table Root { entries map[int32]Child }
 import("testing";"encoding/binary";"bytes";"unsafe")
 func TestMapCook(t *testing.T){
  var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var report TableReport
- if !RootFromJson(&b,[]byte("{\"entries\":{\"4\":{\"n\":9},\"-3\":{\"n\":7,\"samples\":[258,772]}}}"),&report){t.Fatal(report)}
+ if !RootFromJSON(&b,[]byte("{\"entries\":{\"4\":{\"n\":9},\"-3\":{\"n\":7,\"samples\":[258,772]}}}"),&report){t.Fatal(report)}
  if RootCookMeasure(b.GetRoot(),&b.Arena)!=168{t.Fatal("measure")}
  for _,big:=range []bool{false,true}{
   var order binary.ByteOrder=binary.LittleEndian;target:=TableByteOrderLittle;if big{order=binary.BigEndian;target=TableByteOrderBig};want:=make([]byte,168)
-  for at,v:=range map[int]uint64{0:0x4b4f4f434d484353,8:BuildVersion,16:uint64(target),24:88,32:16,40:8,64:16,96:48,160:RootTableType().Id}{order.PutUint64(want[at:],v)}
+  for at,v:=range map[int]uint64{0:0x4b4f4f434d484353,8:BuildVersion,16:uint64(target),24:88,32:16,40:8,64:16,96:48,160:RootTableType().ID}{order.PutUint64(want[at:],v)}
   for at,v:=range map[int]uint32{72:2,80:0xfffffffd,88:7,104:2,112:4,120:9}{order.PutUint32(want[at:],v)};order.PutUint16(want[144:],258);order.PutUint16(want[146:],772)
   got:=make([]byte,168);if !RootCookFrom(b.GetRoot(),got,target,&b.Arena)||!bytes.Equal(got,want){for i:=range want{if got[i]!=want[i]{t.Fatalf("big=%v byte %d got %x want %x",big,i,got[i],want[i])}};t.Fatal("cook refused")}
   if !big{raw:=make([]byte,231);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;copy(raw[off:],got);var c RootCook;if !RootOpen(&c,unsafe.Pointer(&raw[off]),168){t.Fatal("open")};root:=c.Root();if root.Entries.Count!=2||root.Entries.At(0).Value.Samples.At(1)==nil||*root.Entries.At(0).Value.Samples.At(1)!=772{t.Fatal("native map deref")}}
  }
+}
+`)
+}
+
+func TestGoCookOpenUsesExtentAlignment(t *testing.T) {
+	for _, field := range []string{"items []uint128", "items map[uint32]uint128"} {
+		t.Run(field, func(t *testing.T) {
+			runGenerated(t, "package probe\n table Root { "+field+"\n tail int32 }\n", `package probe
+import("testing";"unsafe";"encoding/binary")
+func TestAlignment(t *testing.T){
+ var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown()
+ size:=RootCookMeasure(b.GetRoot(),&b.Arena);if size<0{t.Fatal("measure")}
+ raw:=make([]byte,size+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;wire:=raw[off:off+uintptr(size)]
+ if !RootCookFrom(b.GetRoot(),wire,TableByteOrderLittle,&b.Arena){t.Fatal("cook")}
+ if alignment:=binary.NativeEndian.Uint64(wire[40:]);alignment!=16{t.Fatalf("cook alignment %d, want16",alignment)}
+ var c RootCook;if err:=c.Open(unsafe.Pointer(&wire[0]),size);err!=nil{t.Fatal(err)}
+ binary.NativeEndian.PutUint64(wire[40:],8)
+ if err:=c.Open(unsafe.Pointer(&wire[0]),size);err!=TableRefuseBadAlignment||c.Region!=nil{t.Fatalf("under-aligned extent: %v",err)}
+}
+`)
+		})
+	}
+}
+
+func TestWideRegionExtentOrigin(t *testing.T) {
+	runGenerated(t, `package probe
+table Tail { wides []uint128 }
+table Root { tail *Tail
+ wides []uint128
+ tags []uint64 }
+`, `package probe
+import("testing";"unsafe";"bytes")
+func TestWideRegion(t *testing.T){
+ var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var r TableReport
+ if !RootFromJSON(&b,[]byte("{\"tail\":{\"wides\":[3]},\"wides\":[1],\"tags\":[2]}"),&r){t.Fatal(r)}
+ wire:=make([]byte,RootMeasure(b.GetRoot(),&b.Arena));if RootSave(b.GetRoot(),wire,&b.Arena)!=int64(len(wire)){t.Fatal("save")}
+ size:=RootLoadMeasure(wire);if size<0{t.Fatal("measure")}
+ raw:=make([]byte,size+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63
+ v:=RootLoad(raw[off:off+uintptr(size)],wire,&r);if v==nil{t.Fatalf("load: %+v",r)}
+ if !b.Lock(){t.Fatal("lock")}
+ out:=make([]byte,len(wire));if RootSave(b.AsConst(),out)!=int64(len(wire))||!bytes.Equal(out,wire){t.Fatal("locked wire")}
+ if RootSave(v,out)!=int64(len(wire))||!bytes.Equal(out,wire){t.Fatal("loaded wire")}
 }
 `)
 }

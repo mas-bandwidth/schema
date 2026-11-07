@@ -217,7 +217,7 @@ public final class Main {
         check(!r.refused && !r.malformed && r.clamped == 0, "pack.bin: a clean read moves no counter");
         check(v[0].version == 7 && v[0].global.tickRate == 120, "pack: the scalars");
         // AN ENUM RIDES ITS ORDINAL, FROM 1: Hard is the third variant.
-        check(v[0].global.difficulty == tabledemo.Pack.Difficulty.hard, "pack: an enum rides its ORDINAL, from 1");
+        check(v[0].global.difficulty == tabledemo.Pack.Difficulty.HARD, "pack: an enum rides its ORDINAL, from 1");
         check(textOf(v[0].global.buildNote, v[0].global.buildNoteLength).equals("first build"), "pack: text at its length");
         check(v[0].global.spawnDelays[2] == 1.5f, "pack: a fixed array of floats");
         check(v[0].ships[1].hardpointsCount == 2, "pack: a COUNTED array's used count");
@@ -355,7 +355,7 @@ public final class Main {
     }
 
     static void armTextUnderASecondArm() {
-        final byte[] wire = utRecord("hello", tblut.UT.UtGrade.gold, 42, 11);
+        final byte[] wire = utRecord("hello", tblut.UT.UtGrade.GOLD, 42, 11);
 
         // THE IDENTITY PATH
         final tblut.UtRootFixed.Value[] id = { new tblut.UtRootFixed.Value() };
@@ -373,7 +373,7 @@ public final class Main {
         final tblut.UtRootFixed.Value viaPlan = utCompiled(wire, rc);
         check(textOf(viaPlan.pick.b.label, viaPlan.pick.b.labelLength).equals("hello"),
                 "arm text: a COMPILED plan lands a text field under the SECOND arm");
-        check(viaPlan.pick.b.grade == tblut.UT.UtGrade.gold && viaPlan.pick.b.m == 42 && viaPlan.tail == 11,
+        check(viaPlan.pick.b.grade == tblut.UT.UtGrade.GOLD && viaPlan.pick.b.m == 42 && viaPlan.tail == 11,
                 "arm text: and the rest of that arm with it");
         check(rc.clamped == 0 && !rc.malformed && !rc.refused,
                 "arm text: the compiled read moves no counter either");
@@ -412,19 +412,19 @@ public final class Main {
             final byte[] bad = wire.clone();
             final int body = utBodyAt(bad);
             final int at = body + 13; // the tag, then the arm's text, then the ordinal
-            check(bad[at] == tblut.UT.UtGrade.gold, "ordinal past the last variant: the ordinal is where the layout says");
+            check(bad[at] == tblut.UT.UtGrade.GOLD, "ordinal past the last variant: the ordinal is where the layout says");
             bad[at] = 9;
 
             final tblut.UtRootFixed.Value[] v = { new tblut.UtRootFixed.Value() };
             final tblut.TableFixed.Report r1 = new tblut.TableFixed.Report();
             check(tblut.UtRootFixed.load(v, 1, bad, tblut.TableFixed.plan(512), new short[512],
                     tblut.UtRootFixed.image(), r1) == 1, "ordinal past the last variant: the record still reads");
-            check(v[0].pick.b.grade == tblut.UT.UtGrade.none, "ordinal past the last variant: it lands None");
+            check(v[0].pick.b.grade == tblut.UT.UtGrade.NONE, "ordinal past the last variant: it lands None");
             check(r1.clamped == 1, "ordinal past the last variant: the identity path counts ONE clamped");
 
             final tblut.TableFixed.Report r2 = new tblut.TableFixed.Report();
             final tblut.UtRootFixed.Value bent = utCompiled(bad, r2);
-            check(bent.pick.b.grade == tblut.UT.UtGrade.none,
+            check(bent.pick.b.grade == tblut.UT.UtGrade.NONE,
                     "ordinal past the last variant: the compiled plan lands None too");
             check(r2.clamped == 1, "ordinal past the last variant: and the plan's ordinal op counts it");
             check(utSame(bent, v[0]), "ordinal past the last variant: the two paths land ONE record");
@@ -599,11 +599,11 @@ public final class Main {
         one.a = 42;
         setText(one.name, "hello");
         one.nameLength = 5;
-        one.grade = tblv1.V1.Grade.gold;              // V2 inserts Silver BEFORE Gold
+        one.grade = tblv1.V1.Grade.GOLD;              // V2 inserts Silver BEFORE Gold
         one.effect.type = tblv1.EffectFixed.ward;
         one.effect.ward.charge = 0.75f;         // V2 inserts hex BEFORE ward
-        one.tokens[tblv1.V1.Slot.alpha - 1] = 21;
-        one.tokens[tblv1.V1.Slot.delta - 1] = 24;     // V2 slides Beta and keeps Delta
+        one.tokens[tblv1.V1.Slot.ALPHA - 1] = 21;
+        one.tokens[tblv1.V1.Slot.DELTA - 1] = 24;     // V2 slides Beta and keeps Delta
         one.tierPresent = true;
         one.tier = 77;
 
@@ -615,13 +615,13 @@ public final class Main {
         final int n = tblv2.CfgFixed.load(back, 1, w,
                 tblv2.TableFixed.plan(8192), new short[8192], tblv2.CfgFixed.image(), r);
         check(n == 1, "V2 reads V1: one record");
-        check(back[0].grade == tblv2.V2.Grade.gold, "ENUM: a variant inserted in the middle is remapped by NAME");
+        check(back[0].grade == tblv2.V2.Grade.GOLD, "ENUM: a variant inserted in the middle is remapped by NAME");
         check(back[0].effect.type == tblv2.EffectFixed.ward, "UNION: an arm inserted in the middle is remapped by NAME");
         check(back[0].effect.ward.charge == 0.75f, "UNION: the arm's payload lands");
         check(textOf(back[0].title, back[0].titleLength).equals("hello"), "RENAMED: title reads name's bytes");
-        check(back[0].tokens[tblv2.V2.Slot.alpha - 1] == 21, "KEYED: a slot whose key did not move");
-        check(back[0].tokens[tblv2.V2.Slot.delta - 1] == 24, "KEYED: a slot whose key SLID keeps its value");
-        check(back[0].tokens[tblv2.V2.Slot.sigma - 1] == 0, "KEYED: a key the writer has no name for takes its default");
+        check(back[0].tokens[tblv2.V2.Slot.ALPHA - 1] == 21, "KEYED: a slot whose key did not move");
+        check(back[0].tokens[tblv2.V2.Slot.DELTA - 1] == 24, "KEYED: a slot whose key SLID keeps its value");
+        check(back[0].tokens[tblv2.V2.Slot.SIGMA - 1] == 0, "KEYED: a key the writer has no name for takes its default");
         check(back[0].tierPresent && back[0].tier == 77, "OPTIONAL: the present flag and the payload");
         check(back[0].c, "MISSING: V2's own `c` takes its declared default");
         check(back[0].a == 5.0f, "KIND MOVED: int32 -> float32 leaves the declared default");

@@ -74,7 +74,16 @@ func t06C7(t *testing.T) {
 	if !strings.Contains(body, "value.v = 0;") || !strings.Contains(body, "value.v = 200;") {
 		t.Errorf("C7 the clamp assigns the DECLARED ends, not a storage bound")
 	}
-	if got := strings.Count(body, "report.clamped++"); got != 2 {
+	// v's own clamp: from its read to the next field's (the pair also carries
+	// vals and u for the writer's-range vectors, each with its own clamps)
+	v := body
+	if i := strings.Index(v, "value.v = view."); i >= 0 {
+		v = v[i:]
+	}
+	if i := strings.Index(v, "value.vals"); i >= 0 {
+		v = v[:i]
+	}
+	if got := strings.Count(v, "report.clamped++"); got != 2 {
 		t.Errorf("C7 a range with two live ends counts exactly two clamps, got %d", got)
 	}
 }
@@ -90,9 +99,13 @@ func t06C7(t *testing.T) {
 func t06R30(t *testing.T) {
 	src := t06Generated(t, "VNEW_cfloat_range_widen")
 	body := t02Block(t, src, "void cfloatRangeWidenFixedDecode(", "\n}\n")
-	// (1) IT RIDES AS THE FLOAT: an f32 load, never a quantized index.
-	t02Has(t, body, "value.aim = view.getFloat32(at + 4, Endian.little);",
+	// (1) IT RIDES AS THE FLOAT: the f32 cell's own four bytes, tested finite
+	// on the raw bits (docs/SPEC-TABLES.md §3.3) and widened exactly, never a
+	// quantized index.
+	t02Has(t, body, "final bits = view.getUint32(at + 4, Endian.little);",
 		"R30 the compressed float rides as the float itself")
+	t02Has(t, body, "value.aim = TableFixedLayout.float32Value(bits);",
+		"R30 the compressed float lands as the float itself")
 	// (2) THE BOUNDS ARE THE READER'S OWN (schema#1164 statement B), stated on
 	// the widened reader's -2..2.
 	t02Has(t, body, "if (value.aim < -2.0) {", "R30 clamps to the reader's own min")
@@ -135,7 +148,7 @@ func t06C9(t *testing.T) {
 	src := t06Generated(t, "VNEW_union_append")
 	body := t02Block(t, src, "void lineageFixedDecode(", "\n}\n")
 	t02Has(t, body, "default:", "C9 a tag past the last arm takes the switch default")
-	t02Has(t, body, "value.pick.type = 0;", "C9 a tag past the arms lands None (0)")
+	t02Has(t, body, "value.pick.type = PickType.none;", "C9 a tag past the arms lands None (0)")
 	if !strings.Contains(body, "report.clamped++;") {
 		t.Errorf("C9 a forged tag counts its clamp")
 	}
@@ -151,9 +164,9 @@ func t06C9(t *testing.T) {
 func t06C10(t *testing.T) {
 	src := t06Generated(t, "VNEW_enum_append")
 	body := t02Block(t, src, "void lineageFixedDecode(", "\n}\n")
-	t02Has(t, body, "value.tier = view.getUint8(at);", "C10 the ordinal loads at its declared width")
+	t02Has(t, body, "value.tier = Tier(view.getUint8(at));", "C10 the ordinal loads at its declared width")
 	t02Has(t, body, "if (value.tier > 4) {", "C10 an ordinal past the last variant is refused")
-	t02Has(t, body, "value.tier = 0;", "C10 an ordinal past the top lands None (0)")
+	t02Has(t, body, "value.tier = Tier.none;", "C10 an ordinal past the top lands None (0)")
 	// THE COMPILED PLAN'S ordinal op makes the same landing and count.
 	t02Has(t, src, "if (raw < 0 || raw > remap[remapAt]) {",
 		"C10 the compiled ordinal op refuses past the writer's variant count")
@@ -188,12 +201,12 @@ func t06R31(t *testing.T) {
 	// (5) THE WIDTH ITSELF: VNEW_enum_width crosses 255 -> 256, so the ordinal
 	// rides in TWO bytes.
 	body := t02Block(t, src, "void lineageFixedDecode(", "\n}\n")
-	t02Has(t, body, "value.tier = view.getUint16(at, Endian.little);",
+	t02Has(t, body, "value.tier = Wide(view.getUint16(at, Endian.little));",
 		"R31 a 256-variant enum's ordinal rides at two bytes")
 }
 
 // t06C12: C12 "bool byte != 0". docs/FIXED-FORM-ALGORITHM.md §4.5: a bool is
-// ONE byte and lands as `byte != 0` — a peer's 2 is true, not malformed. The
+// ONE byte and lands as `byte != 0` — an endpoint's 2 is true, not malformed. The
 // scalar bool and the bool-run array both take the comparator.
 func t06C12(t *testing.T) {
 	src := t06Generated(t, "VNEW_hostile_bool")

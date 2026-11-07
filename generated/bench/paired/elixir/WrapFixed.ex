@@ -343,7 +343,7 @@ defmodule Bench.WrapFixed do
           end)
 
         # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that
-        # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a
+        # RETURNS (§5.9 #6): §5.4 says once per endpoint and never per record, and a
         # refusal that came after would have moved a counter.
         {:ok, values, R.census(report, census_u, census_k)}
       else

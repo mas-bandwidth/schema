@@ -21,7 +21,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // same declaration with a table element in place of the text (a *T element
 // for the optional spellings), so the two units differ by the construct alone.
 var stringArraysProbes = func() []unchangedProbe {
-	usesTextForm := func(u *ir.Unit) bool { return u != nil && refuseTextForms(u, "cpp") != nil }
+	usesTextForm := func(u *ir.Unit) bool { return u != nil && refuseTextForms(u, "unregistered") != nil }
 	usesArrayRoot := func(u *ir.Unit) bool { return u != nil && len(ir.TableArrayRoots(u)) > 0 }
 	base := map[string]string{"go": neitherSchema, "cpp": neitherSchema}
 	keep := []string{"Word", "Holder"}
@@ -39,12 +39,13 @@ func TestStringArraysRefusedOffGo(t *testing.T) {
 	c := New()
 	cases := []struct {
 		name, src, want, carryKey string
+		unboundedList             bool // the list length is unbounded: another card
 	}{
-		{"bounded text list", "package probe\ntable Lists\n{\n    rules [..4]string(8)\n}\n", "text list on field Lists.rules", carryTextList},
-		{"optional text list", "package probe\ntable Lists\n{\n    first [..4]?string(8)\n}\n", "text list on field Lists.first", carryTextList},
-		{"unbounded text list", "package probe\ntable Lists\n{\n    repos []string(8)\n}\n", "text list on field Lists.repos", carryTextList},
-		{"unbounded optional text list", "package probe\ntable Lists\n{\n    bases []?string(8)\n}\n", "text list on field Lists.bases", carryTextList},
-		{"array root", "package probe\ntable Goal\n{\n    x int32\n}\ntable GoalList | json = \"array\"\n{\n    goals []Goal\n}\n", "json = \"array\" on table GoalList", carryArrayRoot},
+		{"bounded text list", "package probe\ntable Lists\n{\n    rules [..4]string(8)\n}\n", "text list on field Lists.rules", carryTextList, false},
+		{"optional text list", "package probe\ntable Lists\n{\n    first [..4]?string(8)\n}\n", "text list on field Lists.first", carryTextList, false},
+		{"unbounded text list", "package probe\ntable Lists\n{\n    repos []string(8)\n}\n", "text list on field Lists.repos", carryTextList, true},
+		{"unbounded optional text list", "package probe\ntable Lists\n{\n    bases []?string(8)\n}\n", "text list on field Lists.bases", carryTextList, true},
+		{"array root", "package probe\ntable Goal\n{\n    x int32\n}\ntable GoalList | json = \"array\"\n{\n    goals [..4]Goal\n}\n", "json = \"array\" on table GoalList", carryArrayRoot, false},
 	}
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)

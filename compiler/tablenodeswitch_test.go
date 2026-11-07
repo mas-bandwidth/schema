@@ -1,7 +1,7 @@
 // A VARIABLE ROOT WHOSE NUMBERING CAN NAME NOTHING (docs/SPEC-TABLES.md §2.2).
 //
 // The `fixed table` keyword creates a state that did not exist while the class
-// was derived: a plain `table` is the VARIABLE wire whatever its fields are, so
+// was derived: a variable table is the VARIABLE wire whatever its fields are, so
 // a unit can hold a variable root with no pointer, no map and no unbounded
 // array under it. Its node dispatch then has no case. The emitter used to
 // write `switch ( type_id ) { default: break; }`, which MSVC /W4 /WX refuses
@@ -11,6 +11,7 @@
 package compiler
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -38,8 +39,12 @@ table Root
 
 func TestCppTableOmitsEmptyTypeIdSwitch(t *testing.T) {
 	empty, files := deadCppHeader(t, emptyNodeSrc)
+	// The cycle check also dispatches the root itself, so a root-only switch
+	// with a case is valid. C4065 is specifically a switch with no case.
+	if regexp.MustCompile(`switch\s*\(\s*type_id\s*\)\s*\{\s*default\s*:`).MatchString(empty) {
+		t.Error("a variable root that can name no node emitted a case-less type-id switch")
+	}
 	for _, needle := range []string{
-		"switch ( type_id )",
 		"switch ( numbering.entries[k].type_id )",
 	} {
 		if strings.Contains(empty, needle) {

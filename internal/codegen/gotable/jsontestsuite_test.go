@@ -13,12 +13,12 @@ import (
 // package: the emitted walk's JSON LAYER over one whole text
 // (docs/SPEC-TABLES.md §16.12) — the leading byte-order mark, one value, then
 // whitespace, then the end of the input — reached in-package, as the per-table
-// FromJson reaches it.
+// FromJSON reaches it.
 const jsonTestSuiteProbe = `package probe
 
 func jsonTestSuiteAccepts(text []byte) bool {
 	var report TableReport
-	in := tableJsonIn{text: text, report: &report}
+	in := tableJSONIn{text: text, report: &report}
 	in.byteOrderMark()
 	ok := in.skipValue(0)
 	in.space()
@@ -27,10 +27,14 @@ func jsonTestSuiteAccepts(text []byte) bool {
 `
 
 // jsonTestSuiteRun walks every corpus file and prints one verdict line each.
-// Inside this generated process, and only here, it also holds the two bounds:
-// each file's walk allocates nothing (§16.1), and its best of three runs is
-// under 10 ms, the corpus under 2 s. The entry itself is pinned beside them:
-// RootFromJson skips a leading byte-order mark and lands the same value.
+// Inside this generated process, and only here, it also holds the memory
+// bound: each file's walk allocates nothing (§16.1). It reads no clock (the
+// unit tier takes no real time, and `make shape-gate` refuses a timer outside
+// the sanctioned bench); the walk's cost is bounded structurally instead — one
+// forward cursor and tableJSONMaxDepth — and the corpus's 100000-deep files
+// are where a super-linear walk would hang the run. The entry itself is pinned
+// beside it: RootFromJSON skips a leading byte-order mark and lands the same
+// value.
 const jsonTestSuiteRun = `package probe
 
 import (
@@ -38,7 +42,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 const corpus = %q
@@ -48,7 +51,6 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var total time.Duration
 	for _, e := range entries {
 		data, err := os.ReadFile(filepath.Join(corpus, e.Name()))
 		if err != nil {
@@ -61,34 +63,18 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 		if n := testing.AllocsPerRun(3, func() { jsonTestSuiteAccepts(data) }); n != 0 {
 			t.Errorf("%%s: the walk allocated %%v times, want 0", e.Name(), n)
 		}
-		best := time.Duration(1 << 62)
-		for i := 0; i < 3; i++ {
-			start := time.Now()
-			jsonTestSuiteAccepts(data)
-			if d := time.Since(start); d < best {
-				best = d
-			}
-		}
-		if best > 10*time.Millisecond {
-			t.Errorf("%%s: the walk took %%v at best of 3, want under 10ms", e.Name(), best)
-		}
-		total += best
 		fmt.Printf("JTS\t%%s\t%%s\n", e.Name(), verdict)
 	}
-	if total > 2*time.Second {
-		t.Errorf("the corpus took %%v, want under 2s", total)
-	}
-
 	var plain, marked Root
 	var plainReport, markedReport TableReport
-	if !RootFromJson(&plain, []byte("{\"n\":7}"), &plainReport) || !RootFromJson(&marked, []byte("\xEF\xBB\xBF{\"n\":7}"), &markedReport) ||
+	if !RootFromJSON(&plain, []byte("{\"n\":7}"), &plainReport) || !RootFromJSON(&marked, []byte("\xEF\xBB\xBF{\"n\":7}"), &markedReport) ||
 		marked != plain || markedReport != plainReport || marked.N != 7 {
 		t.Errorf("a leading byte-order mark: %%+v %%+v, want %%+v %%+v", marked, markedReport, plain, plainReport)
 	}
 	for _, text := range []string{" \xEF\xBB\xBF{}", "{}\xEF\xBB\xBF", "\xEF\xBB{}", "\xEF\xBB\xBF\xEF\xBB\xBF{}", "\xFF\xFE{}"} {
 		var v Root
 		var r TableReport
-		if RootFromJson(&v, []byte(text), &r) || !r.Malformed {
+		if RootFromJSON(&v, []byte(text), &r) || !r.Malformed {
 			t.Errorf("%%q: read clean, want Malformed", text)
 		}
 	}
@@ -101,7 +87,7 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 		var b DocBuilder
 		b.Init()
 		var r TableReport
-		ok := DocFromJson(&b, []byte(c.text), &r)
+		ok := DocFromJSON(&b, []byte(c.text), &r)
 		if ok != c.ok || (ok && (b.GetRoot().N != 7 || r != (TableReport{}))) || (!ok && !r.Malformed) {
 			t.Errorf("variable %%q: ok %%v %%+v, want ok %%v", c.text, ok, r, c.ok)
 		}
@@ -113,8 +99,8 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 // TestJSONTestSuiteGenerated holds the emitted Go walk to JSONTestSuite
 // (docs/SPEC-TABLES.md §16.12), in a generated unit (SCHEMA_SLOW=1): every
 // vendored file against the standard's table, PENDING's files allowed to
-// disagree and logged, with the walk's memory and time bounds held inside the
-// generated process.
+// disagree and logged, with the walk's memory bound held inside the generated
+// process.
 func TestJSONTestSuiteGenerated(t *testing.T) {
 	t.Parallel()
 	s, err := jsontestsuite.Load("../../..")

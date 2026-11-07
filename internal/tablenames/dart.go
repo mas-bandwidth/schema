@@ -2,11 +2,14 @@ package tablenames
 
 // Dart is the Dart table backend (internal/codegen/darttable).
 //
-// The Dart backend emits the BLOCK and COOK read halves only (the table wire
-// in its previous form was removed; schema#514 brings the id-table wire), so
-// this registry holds the two accelerator runtimes' library-scope names. Where a runtime name is a free
-// function Dart spells it lowerCamelCase and the registry holds the
-// PascalCase form: the two are a bijection (the packet emitter's
+// The Dart backend emits the BLOCK read half and its fill path's begin, the
+// COOK read half and its WRITE half (§7.6: Cook and CookMeasure for a fixed
+// root and for a variable graph of pointers and blobs), the VARIABLE wire
+// (form byte 1) for the unit it owns, the FIXED wire (form byte 3) and the
+// MESSAGE form's announcement (form byte 2), so this registry holds the
+// accelerators' and the wire runtimes' library-scope names. Where a runtime
+// name is a free function Dart spells it lowerCamelCase and the registry holds
+// the PascalCase form: the two are a bijection (the packet emitter's
 // dartName), so one registration covers both.
 const Dart Backend = 1 << 8
 
@@ -16,11 +19,16 @@ func init() {
 		Name{Name: "TableBlockInfo", What: "a block's reflection descriptor"},
 		Name{Name: "TableBlockMagic", What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
 		Name{Name: "TableBlockRead64", What: "the prologue read BYTEWISE. C# spells it a Schema member, which claims nothing; DART puts it at library scope, so the claim is the union"},
+		Name{Name: "TableBlockRefusal", What: "the block fill path's refusal, by name: the array, the count and the declared maximum it violates (§19.1)"},
 		Name{Name: "TableBlockByteOrder", What: "this build's byte order, as the prologue carries it", RustConst: true},
+		Name{Name: "TableCookWriteReport", What: "the cook writer refusal using the reference leg's named reasons (§7.6)"},
+		Name{Name: "TableCookGraph", What: "the variable cook writer's walk state: where each numbered node landed, and the output (§7.6)"},
 		Name{Name: "TableCookMagic", What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
 		Name{Name: "TableCookByteOrder", What: "this build's byte order, as a cooked header records it", RustConst: true},
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name", RustConst: true},
 		Name{Name: "TableCookRead64", What: "the cooked header read BYTEWISE. C# spells it a Schema member, which claims nothing; DART puts it at library scope, so the claim is the union"},
+		Name{Name: "TableCookTextStart", What: "the cook reader checked start of an unbounded text node (§7.2)"},
+		Name{Name: "TableCookGetWide", What: "the cook's 128-bit read: a kind 18-29 slot's raw value as a BigInt"},
 		Name{Name: "TableCookInfo", What: "a cooked record's reflection descriptor"},
 		Name{Name: "TableCookFieldInfo", What: "a cooked field's reflection descriptor"},
 		Name{Name: "TableCookStorage", What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
@@ -37,19 +45,20 @@ func init() {
 		Name{Name: "TableFixedNoGuard", What: "the guard offset a plan entry that belongs to no union arm carries"},
 		Name{Name: "TableFixedOp", What: "the fixed form's plan ops — the whole set — and a text entry's flavours"},
 		Name{Name: "TableFixedLane", What: "the plan's eight int32 lanes, and the five of MY side of a layout"},
-		Name{Name: "TableFixedLimits", What: "the layout's framing and the two bounds a reader holds an untrusted peer's layout to"},
+		Name{Name: "TableFixedLimits", What: "the layout's framing and the two bounds a reader holds an untrusted endpoint's layout to"},
 		Name{Name: "TableFixedRefusal", What: "the fixed form's refusals, each one BY NAME"},
 		Name{Name: "TableFixedReport", What: "the fixed form's read report — §4's ledger and this form's refusals"},
 		Name{Name: "TableFixedLayout", What: "a parsed layout: the bytes, the entry count, the seven named rules and the fnv1a64 hash"},
 		Name{Name: "TableFixedPlan", What: "the caller's plan storage: the entries, the canonical body image and the remap pool"},
-		Name{Name: "TableFixedPlanCache", What: "the plan cache BY HASH, so a compile is paid once per peer and never once per record"},
+		Name{Name: "TableFixedPlanCache", What: "the plan cache BY HASH, so a compile is paid once per endpoint and never once per record"},
 		Name{Name: "TableFixedRun", What: "THE ONE READ LOOP: one plan over one record body"},
 		Name{Name: "TableFixedFillRun", What: "the fixed form: copy the prefill's ranges from the default image"},
-		Name{Name: "TableFixedCompiler", What: "the plan compiler, run once per peer and never once per record"},
+		Name{Name: "TableFixedCompiler", What: "the plan compiler, run once per endpoint and never once per record"},
 		Name{Name: "TableFixedKnownLayout", What: "ONE LOCKED LAYOUT of a fixed table's lineage: the wire hash, the layout bytes, their length, the record size"},
 		Name{Name: "TableFixedLineagePlan", What: "one lineage entry's plan, laid down from the lock's bytes, with its compile census and its refusal name"},
 		Name{Name: "TableFixedLineagePlans", What: "the fixed form: one plan per lineage entry, built once from the lock's bytes and off every load path"},
 		Name{Name: "TableFixedSelect", What: "the fixed form: the first lineage index whose hash is the file's, or -1 — a file is matched on this and nothing else"},
+		Name{Name: "TableFixedView", What: "the fixed form: one cached ByteData view of the caller's buffer, so a Load or Save over the same buffer allocates nothing"},
 		Name{Name: "TableFixedTextIllFormed", What: "the fixed form: whether a text payload's USED units are well-formed (docs/SPEC-TABLES.md §4.12)"},
 		Name{Name: "TableBuildVersion", What: "Dart's spelling of the unit's build version, at library scope in the block runtime home (the cook's, in a unit with no block form)"},
 		// THE MESSAGE FORM's announcement runtime (docs/SPEC-TABLES.md §3.3),
@@ -95,6 +104,9 @@ func init() {
 		// three below are claimed as one registration apiece.
 		Name{Name: "TableMessageBatchOpen", What: "the batch reader's open: one announcement pass over the bytes"},
 		Name{Name: "TableMessageBatchClose", What: "the batch reader's close: one byte-level check over the just-read batch"},
+		Name{Name: "TableMessageReservedId", What: "the message form: whether an announced id is one of the reserved ids an entry may not name (§3.1, §3.3)"},
+		Name{Name: "TableMessageShape", What: "the message form: one announced entry's decoded shape, and the skip that steps over an unknown entry by it (§3.3)"},
+		Name{Name: "TableTextValid", What: "the message form: whether a string(N) payload is well-formed UTF-8 with no zero byte (§3.3, §3)"},
 		Name{Name: "TableMessageRefBits", What: "the announced message bit codec: the reference width of an n-entry vocabulary"},
 	)
 }

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -173,7 +174,7 @@ func fieldDefaultExpr(f *ir.Field) string {
 
 // member is a field's Go storage member name — the exported mapping the packet
 // emitter uses, so one field is spelled one way across a unit.
-func member(f *ir.Field) string { return ir.GoExportName(f.Name) }
+func member(f *ir.Field) string { return goname.Member(f.Name) }
 
 // enumRef returns the enum a field's values come from, or nil.
 func enumRef(f *ir.Field) *ir.Enum {
@@ -339,11 +340,11 @@ func arrayBase(access string, f *ir.Field) string { return access + member(f) }
 // members). TableEnumValue takes a POINTER receiver and assigns, which is C#'s
 // `out` parameter in Go's spelling.
 func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
-	g.pf("// TableEnumId: %s on the TABLE wire rides as the 64-bit hash of its VARIANT\n", e.Name)
+	g.pf("// TableEnumID: %s on the TABLE wire rides as the 64-bit hash of its VARIANT\n", e.Name)
 	g.pf("// NAME, so a variant may be added anywhere, removed, or reordered and old\n")
 	g.pf("// data still reads (docs/SPEC-TABLES.md §5). None uses reference zero; hash zero remains a valid named id.\n")
 	g.pf("// The bool is false when no variant names this value: no wire identity.\n")
-	g.pf("func (value %s) TableEnumId() (uint64, bool) {\n", e.Name)
+	g.pf("func (value %s) TableEnumID() (uint64, bool) {\n", e.Name)
 	g.pf("\tswitch value {\n")
 	g.pf("\tcase %sNone:\n\t\treturn 0, true\n", e.Name)
 	for i, v := range e.Variants {
@@ -392,7 +393,7 @@ func tableGuardStrings(st *ir.Struct) map[string]string {
 func guardWalk(st *ir.Struct, gostyle bool) map[string]string {
 	name := func(cond string) string {
 		if gostyle {
-			return "value." + ir.GoExportName(cond)
+			return "value." + goname.Member(cond)
 		}
 		return cond
 	}
@@ -772,7 +773,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
 			enumName = fmt.Sprintf("func(v uint64) string { return EnumName%s(%s(v)) }", f.Type.Name, f.Type.Name)
-			variantId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumId(); return id }", f.Type.Name)
+			variantId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumID(); return id }", f.Type.Name)
 			if enumHasDeprecated(ref) {
 				// docs/SPEC-TABLES.md §2.15: a deprecated variant reads as the
 				// field's default (the element default for an element).
@@ -805,7 +806,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.KeyEnum != "" {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
 		keyName = fmt.Sprintf("func(v uint64) string { return EnumName%s(%s(v)) }", f.KeyEnum, f.KeyEnum)
-		keyId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumId(); return id }", f.KeyEnum)
+		keyId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumID(); return id }", f.KeyEnum)
 	}
 
 	json := ir.TableFieldJsonKey(f)
@@ -879,9 +880,9 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		}
 	}
 
-	g.pf("\t\tEnumName: %s,\n\t\tVariantId: %s,\n", enumName, variantId)
+	g.pf("\t\tEnumName: %s,\n\t\tVariantID: %s,\n", enumName, variantId)
 	g.pf("\t\tEnumDefault: %s, EnumDeprecated: %s,\n", enumDefault, enumDeprecated)
-	g.pf("\t\tKeyTypeName: %s, KeyName: %s, KeyId: %s,\n", keyTypeName, keyName, keyId)
+	g.pf("\t\tKeyTypeName: %s, KeyName: %s, KeyID: %s,\n", keyTypeName, keyName, keyId)
 	g.pf("\t\tArms: %s,\n", arms)
 	g.pf("\t\tGuard: %q, Table: %s,\n", guard, table)
 	if g.viewPacket != nil {
@@ -894,7 +895,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 // unionArmsFunc renders a union field's Arms column: a closure over ONE SLOT of
 // the unit's single arms table, so a walk that asks a union for its shape pays
 // a load rather than an allocation. Rebuilding the table per call is what a
-// naive spelling does, and the soak sees it immediately: ten objects per ToJson
+// naive spelling does, and the soak sees it immediately: ten objects per ToJSON
 // of an instance carrying five unions.
 //
 // The table is ONE package-level slice for the whole unit rather than one
@@ -1034,10 +1035,14 @@ func scalarWidthBound(f *ir.Field, expr string) (scalarBound, bool) {
 }
 
 // writeBoundViolation is the Go expression that is true when a scalar's value
-// is outside its declared min/max or its bits(N) width, and "" when nothing
-// bounds it. A writer refuses a value for which it is true; it never clamps.
+// is outside its declared min/max or its bits(N) width, or is a plain float
+// that is not finite, and "" when nothing bounds it. A writer refuses a value
+// for which it is true; it never clamps.
 func writeBoundViolation(f *ir.Field, expr string) string {
 	var parts []string
+	if b, ok := plainFloatFinite(f, expr); ok {
+		parts = append(parts, b)
+	}
 	for _, b := range scalarRangeBounds(f, expr) {
 		parts = append(parts, b.cond)
 	}
@@ -1045,4 +1050,17 @@ func writeBoundViolation(f *ir.Field, expr string) string {
 		parts = append(parts, b.cond)
 	}
 	return strings.Join(parts, " || ")
+}
+
+// plainFloatFinite is the WRITE-SIDE finite rule for a float with no declared
+// range (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule as packets"):
+// the condition that is true for a NaN or an infinity, which no form carries.
+// x-x is NaN for both and zero for every finite x, so one subtraction and one
+// compare answer it. A compressed float needs no clause of its own: its range
+// test already refuses both (scalarRangeBounds).
+func plainFloatFinite(f *ir.Field, expr string) (string, bool) {
+	if f.HasFloatRange || f.Type.Kind != ir.TFloat32 && f.Type.Kind != ir.TFloat64 {
+		return "", false
+	}
+	return expr + "-" + expr + " != 0", true
 }

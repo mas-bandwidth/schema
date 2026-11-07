@@ -133,6 +133,8 @@ func TestPromoteAndReleaseDriveOnlyTheirOneTag(t *testing.T) {
 			"tag --list v*":                                "v2.4.0\nv2.5.0\n",
 			"rev-list origin/main":                         mergeSHA + "\n" + otherSHA + "\n",
 			"rev-parse --verify " + otherSHA + "^{commit}": otherSHA + "\n",
+			"show v2.5.0:" + FormSource:                    formSrc(4),
+			"show " + mergeSHA + ":" + FormSource:          formSrc(4),
 		}}
 	}
 
@@ -202,6 +204,88 @@ func TestPromoteAndReleaseDriveOnlyTheirOneTag(t *testing.T) {
 		}
 		if w := g.writes(); len(w) != 0 {
 			t.Errorf("refused release %s wrote %q", c.version, w)
+		}
+	}
+}
+
+// formSrc is a FormSource declaring form n, among the lines around it.
+func formSrc(n int) string {
+	return fmt.Sprintf("package ir\n\n// BuildVersionForm is the form.\nconst BuildVersionForm = %d\n\nfunc f() {}\n", n)
+}
+
+// TestFormGatePatchMinorMajor pins the build version's release policy
+// (docs/VERSIONING.md, "The release policy") as a pure function: a patch
+// release may not move the form; a minor and a major may; a patch that keeps
+// the form passes.
+func TestFormGatePatchMinorMajor(t *testing.T) {
+	t.Parallel()
+	v := func(s string) Version {
+		t.Helper()
+		x, err := ParseVersion(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return x
+	}
+	for _, c := range []struct {
+		next       string
+		from, to   int
+		wantRefuse bool
+	}{
+		{"v2.5.1", 3, 4, true},  // patch, form moved
+		{"v2.5.1", 4, 3, true},  // patch, form moved back
+		{"v2.5.1", 3, 3, false}, // patch, form kept
+		{"v2.6.0", 3, 4, false}, // minor may, with the wire, announced
+		{"v2.6.0", 3, 3, false},
+		{"v3.0.0", 3, 4, false}, // major may
+	} {
+		err := FormGate(v("v2.5.0"), v(c.next), c.from, c.to)
+		if got := errors.Is(err, ErrFormMoved); got != c.wantRefuse {
+			t.Errorf("FormGate(v2.5.0 -> %s, form %d -> %d) = %v; want refusal %v", c.next, c.from, c.to, err, c.wantRefuse)
+		}
+	}
+
+	if n, err := ParseBuildVersionForm(formSrc(4)); err != nil || n != 4 {
+		t.Errorf("ParseBuildVersionForm = %d, %v; want 4", n, err)
+	}
+	for _, bad := range []string{"package ir\n", formSrc(3) + formSrc(4), "const BuildVersionForm = x\n"} {
+		if _, err := ParseBuildVersionForm(bad); !errors.Is(err, ErrNoForm) {
+			t.Errorf("ParseBuildVersionForm(%q) err = %v; want ErrNoForm", bad, err)
+		}
+	}
+}
+
+// TestReleaseFormGate drives the gate through Release and a fake git: the form
+// is read out of FormSource at the newest v tag and at the commit, and a patch
+// release that moves it refuses and writes nothing, while a minor and a major
+// over the same move tag. release-form-gate-negative-control hands the gate
+// the tag's form twice and requires this test red.
+func TestReleaseFormGate(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		version    string
+		wantRefuse bool
+	}{
+		{"v2.5.1", true},
+		{"v2.6.0", false},
+		{"v3.0.0", false},
+	} {
+		g := &fakeGit{answers: map[string]string{
+			"rev-parse --verify HEAD^{commit}":    mergeSHA + "\n",
+			"tag --list v*":                       "v2.4.0\nv2.5.0\n",
+			"rev-list origin/main":                mergeSHA + "\n",
+			"show v2.5.0:" + FormSource:           formSrc(3),
+			"show " + mergeSHA + ":" + FormSource: formSrc(4),
+		}}
+		err := Release(g, c.version, "HEAD", "origin/main", true, io.Discard)
+		if got := errors.Is(err, ErrFormMoved); got != c.wantRefuse {
+			t.Errorf("Release(%s) with the form moved 3 -> 4: err = %v; want refusal %v", c.version, err, c.wantRefuse)
+		}
+		if c.wantRefuse && len(g.writes()) != 0 {
+			t.Errorf("refused release %s wrote %q", c.version, g.writes())
+		}
+		if !c.wantRefuse && len(g.writes()) != 2 {
+			t.Errorf("release %s wrote %q; want its tag and its push", c.version, g.writes())
 		}
 	}
 }

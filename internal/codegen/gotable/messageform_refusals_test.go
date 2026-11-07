@@ -37,7 +37,7 @@ fixed table Root {
 	}
 }
 
-// "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+// "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
 // decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3).
 const msgNoVocabularyProbe = `
 import "testing"
@@ -56,7 +56,7 @@ func TestNoVocabulary(t *testing.T) {
 	var report TableReport
 	count, ok := RootLoadMessages(storage, &vocab, buf, &report)
 	if ok || count != 0 {
-		t.Fatalf("a body from a peer that never announced was not refused: count=%d ok=%v %+v", count, ok, report)
+		t.Fatalf("a body from an endpoint that never announced was not refused: count=%d ok=%v %+v", count, ok, report)
 	}
 	if report != (TableReport{Verdict: TableOpenRefused, Reason: "no_vocabulary"}) {
 		t.Fatalf("no_vocabulary: %+v", report)
@@ -331,9 +331,9 @@ func TestBatchTooLarge(t *testing.T) {
 }
 `
 
-// "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
-// states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
-// read." (docs/SPEC-TABLES.md §3.3).
+// A three-body batch damaged inside the second "must report `malformed` and
+// return a count of 0 with no body delivered" (docs/SPEC-TABLES.md §4,
+// DAMAGE DISCARDS THE WHOLE LOAD).
 const msgDamageInsideBodyProbe = `
 import "testing"
 
@@ -354,7 +354,7 @@ func TestDamageInsideBody(t *testing.T) {
 	storage := make([]Root, 3)
 	var report TableReport
 	count, ok := RootLoadMessages(storage, vocab, wire, &report)
-	if ok || count != 1 {
+	if ok || count != 0 {
 		t.Fatalf("damage in body 2: count=%d ok=%v %+v", count, ok, report)
 	}
 	if report != (TableReport{Malformed: true}) {
@@ -389,7 +389,7 @@ func TestBytesAfterPad(t *testing.T) {
 	storage := make([]Root, 1)
 	var report TableReport
 	count, ok := RootLoadMessages(storage, vocab, padded, &report)
-	if ok || count != 1 || report != (TableReport{Malformed: true}) {
+	if ok || count != 0 || report != (TableReport{Malformed: true}) { // damage discards the whole batch (docs/SPEC-TABLES.md §4)
 		t.Fatalf("bytes after the pad: count=%d ok=%v %+v", count, ok, report)
 	}
 }

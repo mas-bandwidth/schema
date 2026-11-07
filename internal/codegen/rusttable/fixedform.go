@@ -53,6 +53,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -347,11 +348,13 @@ use crate::*;
 		g.emitFixedWriteUnion(un)
 		g.emitFixedScatterUnion(un)
 		g.emitFixedClampUnion(un)
+		g.emitFixedFiniteUnion(un)
 	}
 	for _, st := range members {
 		g.emitFixedWriteBody(st)
 		g.emitFixedScatter(st)
 		g.emitFixedClampBody(st)
+		g.emitFixedFiniteBody(st)
 	}
 	for _, st := range roots {
 		g.emitFixedRoot(st)
@@ -686,19 +689,39 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 		return
 	}
 	width := ir.TableFixedElementBytes(f)
-	g.pf("%s{\n%s    let at = %s;\n", ind, ind, at)
+	// dst is either a place assigned inside the block, or a `let` the block
+	// initializes as its value (one assignment, no placeholder default)
+	binding := strings.HasPrefix(dst, "let ")
+	set := func(in, v string) string {
+		if binding {
+			return in + v + "\n"
+		}
+		return fmt.Sprintf("%s%s = %s;\n", in, dst, v)
+	}
+	if binding {
+		g.pf("%s%s = {\n%s    let at = %s;\n", ind, dst, ind, at)
+	} else {
+		g.pf("%s{\n%s    let at = %s;\n", ind, ind, at)
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		g.pf("%s    %s = b[at] != 0;\n", ind, dst)
+		g.pf("%s", set(ind+"    ", "b[at] != 0"))
 	case ir.TFloat32:
-		g.pf("%s    %s = f32::from_le_bytes(b[at..at + 4].try_into().expect(\"four bytes\"));\n", ind, dst)
+		g.pf("%s", set(ind+"    ", "f32::from_le_bytes(b[at..at + 4].try_into().expect(\"four bytes\"))"))
 	case ir.TFloat64:
-		g.pf("%s    %s = f64::from_le_bytes(b[at..at + 8].try_into().expect(\"eight bytes\"));\n", ind, dst)
+		g.pf("%s", set(ind+"    ", "f64::from_le_bytes(b[at..at + 8].try_into().expect(\"eight bytes\"))"))
 	default:
 		raw := fixedRawUint(width)
-		g.pf("%s    let raw = %s::from_le_bytes(b[at..at + %d].try_into().expect(\"the declared width\"));\n",
-			ind, raw, width)
+		read := fmt.Sprintf("%s::from_le_bytes(b[at..at + %d].try_into().expect(\"the declared width\"))", raw, width)
 		slot := g.fixedSlotType(f)
+		_, wide := fixedWide128(f)
+		if _, ranged := fixedEnumExtent(f, width); binding && !wide && !ranged && slot == raw {
+			// the raw image IS the value: the block's value is the read itself
+			g.pf("%s", set(ind+"    ", read))
+			g.pf("%s};\n", ind)
+			return
+		}
+		g.pf("%s    let raw = %s;\n", ind, read)
 		held := "raw"
 		if wrap, wide := fixedWide128(f); wide {
 			// the aligned wrapper takes the integer, and a signed one takes it
@@ -719,15 +742,19 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 			// where the range is closed — the same place a count's bound is.
 			g.pf("%s    if raw > %d {\n", ind, extent)
 			g.pf("%s        report.clamped += 1;\n", ind)
-			g.pf("%s        %s = 0;\n", ind, dst)
+			g.pf("%s", set(ind+"        ", "0"))
 			g.pf("%s    } else {\n", ind)
-			g.pf("%s        %s = %s;\n", ind, dst, held)
+			g.pf("%s", set(ind+"        ", held))
 			g.pf("%s    }\n", ind)
 		} else {
-			g.pf("%s    %s = %s;\n", ind, dst, held)
+			g.pf("%s", set(ind+"    ", held))
 		}
 	}
-	g.pf("%s}\n", ind)
+	if binding {
+		g.pf("%s};\n", ind)
+	} else {
+		g.pf("%s}\n", ind)
+	}
 }
 
 // fixedEnumExtent answers an ENUM leaf's top wire value and whether a range
@@ -972,8 +999,12 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value.copy_from_slice(&b[%d..%d]);\n", ind, base+4, base+4+f.Type.Size)
 	default:
-		g.pf("%slet mut arm = %s::default();\n", ind, cookElemType(f))
-		g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "arm", indent)
+		if _, _, nested := fixedNestedBody(f); nested {
+			g.pf("%slet mut arm = %s::default();\n", ind, cookElemType(f))
+			g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "arm", indent)
+		} else {
+			g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "let arm", indent)
+		}
 	}
 }
 
@@ -1085,6 +1116,26 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// THE INDEX OF THIS BUILD'S OWN LAYOUT, which takes the IDENTITY plan.\n")
 	g.pf("pub const %s_FIXED_OWN: usize = %d;\n\n", up, ownIndex)
 
+	// THE WRITER'S RANGES, per lineage entry (docs/FIXED-FORM-ALGORITHM.md
+	// §4.5): a record read under an older entry is held to what THAT writer
+	// declared, then to this reader's own ranges. One straight-line pass per
+	// entry that bounds anything, spelled by the reader's own clamp emitter
+	// over the reader's storage with the writer's numbers.
+	var writerClamps []int
+	for i, fields := range fixedWriterFields(st, lineage, hash) {
+		if len(fields) == 0 {
+			continue
+		}
+		writerClamps = append(writerClamps, i)
+		g.pf("/// LINEAGE ENTRY %d's WRITER RANGES (§4.5): every clamp counts.\n", i)
+		g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
+		g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32) {\n", fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)), st.Name)
+		for _, f := range fields {
+			g.emitFixedClampField(f, "value."+f.Name, 4)
+		}
+		g.pf("}\n\n")
+	}
+
 	if len(lineage) > 1 {
 		planCap := max(int(body)+2*len(entries)+256, 512)
 		remapCap := 1024 + 32*len(entries)
@@ -1122,7 +1173,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    pub count: [usize; %d],\n", len(lineage))
 		g.pf("    /// THE COMPILE CENSUS, which is the PLAN'S OWN NUMBER: `unknown` once\n")
 		g.pf("    /// per writer field no reader field names, `kind_mismatch` once per\n")
-		g.pf("    /// pair whose kinds moved off every ladder — once per PEER and never\n")
+		g.pf("    /// pair whose kinds moved off every ladder — once per ENDPOINT and never\n")
 		g.pf("    /// per record (§5.4), carried onto the report after the record loop on\n")
 		g.pf("    /// a read that RETURNS (§5.9 #6).\n")
 		g.pf("    pub unknown: [u32; %d],\n", len(lineage))
@@ -1180,13 +1231,27 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// and the body at 16 — then the layout behind its u32 length, then the\n")
 	g.pf("/// records back to back to the end of it (§3.4).\n")
 	g.pf("pub const fn %s_fixed_measure(count: usize) -> usize {\n", name)
-	g.pf("    TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
+	if st.Integrity == "crc32c" {
+		g.pf("    4 + ")
+	} else {
+		g.pf("    ")
+	}
+	g.pf("TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
 
+	finite := fixedFiniteNeededStruct(st, map[string]bool{})
 	g.pf("/// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or\n")
-	g.pf("/// None when the buffer is smaller than %s_fixed_measure says.\n", name)
+	g.pf("/// None when the buffer is smaller than %s_fixed_measure says", name)
+	if finite {
+		g.pf(" or a float\n/// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3)")
+	}
+	g.pf(".\n")
 	g.pf("pub fn %s_fixed_save(values: &[%sRow], buffer: &mut [u8]) -> Option<usize> {\n", name, st.Name)
 	g.pf("    let need = %s_fixed_measure(values.len());\n", name)
 	g.pf("    if buffer.len() < need {\n        return None;\n    }\n")
+	if finite {
+		g.pf("    // THE WRITER'S FINITE RULE (§3.3): a refusal writes no byte.\n")
+		g.pf("    if values.iter().any(|value| !%s(value).is_empty()) {\n        return None;\n    }\n", fn(st.Name, "fixed_finite_body"))
+	}
 	g.pf("    buffer[..TABLE_FIXED_HEADER_BYTES].fill(0); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("    buffer[0] = TABLE_FIXED_FORM;\n")
 	g.pf("    buffer[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]\n")
@@ -1202,12 +1267,15 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        body.fill(0); // the template's zeros, and every byte of declared slack with them\n")
 	g.pf("        %s(body, value);\n", fn(st.Name, "fixed_write_body"))
 	g.pf("        at += %s_FIXED_RECORD_BYTES;\n    }\n", up)
+	if st.Integrity == "crc32c" {
+		g.pf("    let sum = table_integrity_checksum(&buffer[..at]);\n    buffer[at..at + 4].copy_from_slice(&sum.to_le_bytes());\n")
+	}
 	g.pf("    Some(need)\n}\n\n")
 
 	g.pf("/// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when\n")
 	g.pf("/// the file's layout hashes to this build's own, a plan compiled once from the\n")
 	g.pf("/// writer's layout otherwise — SAME LOOP either way, which is the owner's\n")
-	g.pf("/// ruling that this form's cost must not move when a peer ships\n")
+	g.pf("/// ruling that this form's cost must not move when an endpoint ships\n")
 	g.pf("/// (docs/SPEC-TABLES.md §3.4).\n")
 	g.pf("///\n")
 	g.pf("/// The PREFILL copies declared defaults into exactly the dest ranges the plan\n")
@@ -1217,7 +1285,31 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// The plan's storage is the CALLER's, declared by capacity: this codec never\n")
 	g.pf("/// allocates, and a layout whose plan does not fit is a refusal by name.\n")
 	g.pf("/// Returns the records read, or None on a refusal `report` names.\n")
+	g.pf("///\n")
+	g.pf("/// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that\n")
+	g.pf("/// meets damage anywhere answers None with `malformed` set, and every record\n")
+	g.pf("/// in `values` goes back to its declared defaults, so nothing the read\n")
+	g.pf("/// decoded before or after the damage is a value to use.\n")
 	g.pf("pub fn %s_fixed_load(\n", name)
+	g.pf("    values: &mut [%sRow],\n", st.Name)
+	g.pf("    data: &[u8],\n")
+	g.pf("    plan: &mut [TableFixedEntry],\n")
+	g.pf("    remap: &mut [u16],\n")
+	g.pf("    report: &mut TableFixedReport,\n")
+	g.pf(") -> Option<usize> {\n")
+	g.pf("    let malformed_before = report.malformed;\n")
+	g.pf("    report.malformed = false;\n")
+	g.pf("    let read = %s(values, data, plan, remap, report);\n", fn(st.Name, "fixed_load_records"))
+	g.pf("    let damaged = report.malformed;\n")
+	g.pf("    report.malformed |= malformed_before;\n")
+	g.pf("    if damaged {\n")
+	g.pf("        for value in values.iter_mut() {\n")
+	g.pf("            %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
+	g.pf("        }\n")
+	g.pf("        return None;\n")
+	g.pf("    }\n")
+	g.pf("    read\n}\n\n")
+	g.pf("fn %s_fixed_load_records(\n", name)
 	g.pf("    values: &mut [%sRow],\n", st.Name)
 	g.pf("    data: &[u8],\n")
 	g.pf("    plan: &mut [TableFixedEntry],\n")
@@ -1238,6 +1330,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            _ => TableFixedReason::NewerForm,         // a byte no form defines\n")
 	g.pf("        });\n")
 	g.pf("    }\n")
+	if st.Integrity == "crc32c" {
+		g.pf("    let Some(data) = table_integrity_body(data, 5) else { report.malformed = true; return report.refuse(TableFixedReason::IntegrityMismatch); };\n")
+	}
 	g.pf("    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {\n        report.malformed = true;\n        return None;\n    }\n")
 	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
 	g.pf("    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {\n        report.malformed = true;\n        return None;\n    }\n")
@@ -1338,9 +1433,15 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);\n")
 	g.pf("    let holes = &hole_buf[..hole_n];\n")
 	g.pf("    let mut image = [0u8; %s_FIXED_BODY_BYTES];\n", up)
+	g.pf("    let (clamped_before, widened_before) = (report.clamped, report.widened);\n")
 	g.pf("    for k in 0..n {\n")
 	g.pf("        let record = &rest[k * record_bytes..(k + 1) * record_bytes];\n")
 	g.pf("        if u64::from_le_bytes(record[..8].try_into().expect(\"eight bytes\")) != hash {\n")
+	g.pf("            for value in values.iter_mut().take(k) {\n")
+	g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
+	g.pf("            }\n")
+	g.pf("            report.clamped = clamped_before;\n")
+	g.pf("            report.widened = widened_before;\n")
 	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
 	g.pf("        for h in holes {\n")
 	g.pf("            let o = h.off as usize;\n")
@@ -1349,6 +1450,39 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        }\n")
 	g.pf("        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);\n")
 	g.pf("        %s(&image, &mut values[k], report);\n", fn(st.Name, "fixed_scatter"))
+	if finite {
+		g.pf("        // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs\n")
+		g.pf("        // FIRST, before the bounds pass, over the storage the run just wrote,\n")
+		g.pf("        // and a NaN or an infinity refuses the whole batch as\n")
+		g.pf("        // non_finite_float, naming the field. Nothing of the batch is kept:\n")
+		g.pf("        // every record this call wrote goes back to its declared defaults.\n")
+		g.pf("        let why = %s(&values[k]);\n", fn(st.Name, "fixed_finite_body"))
+		g.pf("        if !why.is_empty() {\n")
+		g.pf("            for value in values.iter_mut().take(k + 1) {\n")
+		g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
+		g.pf("            }\n")
+		g.pf("            report.clamped = clamped_before;\n")
+		g.pf("            report.widened = widened_before;\n")
+		g.pf("            return report.refuse_non_finite(why);\n")
+		g.pf("        }\n")
+	}
+	if len(writerClamps) > 0 {
+		g.pf("        // THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),\n")
+		g.pf("        // then this reader's own below.\n")
+		g.pf("        {\n            let mut clamped = 0i32;\n")
+		if len(writerClamps) == 1 {
+			i := writerClamps[0]
+			g.pf("            if found == %d {\n                %s(&mut values[k], &mut clamped);\n            }\n",
+				i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+		} else {
+			g.pf("            match found {\n")
+			for _, i := range writerClamps {
+				g.pf("                %d => %s(&mut values[k], &mut clamped),\n", i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+			}
+			g.pf("                _ => {}\n            }\n")
+		}
+		g.pf("            report.clamped += clamped as u32;\n        }\n")
+	}
 	if fixedRangeClampNeeded(st) {
 		g.pf("        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("        // storage the scatter just wrote: the same pass for either plan,\n")
@@ -1361,14 +1495,20 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            // fix 11; §5.8 row 8): it is the packet reader's verdict, this form\n")
 		g.pf("            // having no `L` to continue past. REFUSE is total, so the refusal\n")
 		g.pf("            // is taken before any counter is added.\n")
-		g.pf("            if damaged != 0 {\n                return report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
+		g.pf("            if damaged != 0 {\n")
+		g.pf("                for value in values.iter_mut().take(k + 1) {\n")
+		g.pf("                    %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
+		g.pf("                }\n")
+		g.pf("                report.clamped = clamped_before;\n")
+		g.pf("                report.widened = widened_before;\n")
+		g.pf("                return report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
 		g.pf("            report.clamped += clamped as u32;\n")
 		g.pf("        }\n")
 	}
 	g.pf("    }\n")
 	g.pf("    // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read\n")
 	g.pf("    // that RETURNS (§5.9 #6): `unknown` and `kind_mismatch` are the PLAN'S own\n")
-	g.pf("    // numbers, fixed when the plan was built — once per peer, never per record\n")
+	g.pf("    // numbers, fixed when the plan was built — once per endpoint, never per record\n")
 	g.pf("    // (§5.4) — and a refusal that came after would have moved a counter, where\n")
 	g.pf("    // REFUSE IS TOTAL.\n")
 	g.pf("    report.unknown += census.0;\n")
@@ -1504,6 +1644,7 @@ func (g *gen) emitFixedClampBody(st *ir.Struct) {
 	}
 	g.pf("/// %s's read-side bounds: every RANGED SCALAR held to its declared min\n", st.Name)
 	g.pf("/// and max, over the storage a read can have written.\n")
+	g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
 	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32, damaged: &mut i32) {\n", fn(st.Name, "fixed_clamp_body"), st.Name)
 	// a type with only one kind of bound in it uses only one of the two
 	g.pf("    let _ = (&clamped, &damaged);\n")
@@ -1521,6 +1662,7 @@ func (g *gen) emitFixedClampUnion(un *ir.Union) {
 	}
 	g.pf("/// %s's read-side bounds: the arm THE TAG NAMES, and no other — the\n", un.Name)
 	g.pf("/// overlay behind a narrower arm is bytes nobody wrote.\n")
+	g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
 	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32, damaged: &mut i32) {\n", fn(un.Name, "fixed_clamp_body"), un.Name)
 	g.pf("    let _ = (&clamped, &damaged);\n")
 	var bounded []int
@@ -1744,7 +1886,8 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 // vectorizing at all. `clamp`/`min`/`max` fold to a select, and the count is a
 // BITWISE OR of the two ends — non-short-circuiting on purpose, so it stays one
 // mask rather than a second branch. The ends are mutually exclusive, so the or
-// is exact.
+// is exact. A range `contains` is `&&` and short-circuits, so the functions
+// that hold a two-ended clamp allow clippy's manual_range_contains by name.
 func (g *gen) emitFixedClampSelect(lhs, lo, hi string, low, high bool, ind, note string) {
 	switch {
 	case low && high:
@@ -1778,4 +1921,183 @@ func fixedFloatLit(v float64) string {
 		s += ".0"
 	}
 	return s
+}
+
+/* ---- the read-side finite pass ---------------------------------------------
+
+A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+finite-only too, same rule as packets"): every fixed read refuses a NaN or an
+infinity as non_finite_float, naming the field, and the test runs FIRST, before
+the bounds pass, so a compressed float's clamp never sees one. Like the bounds
+pass it runs over STORAGE after the record lands, so ONE pass covers both
+plans: the identity copy and a lineage plan's widenF, whose ordinary conversion
+keeps a NaN a NaN and an infinity an infinity. It walks only what a read can
+have written (a counted array's live elements, an optional's payload when
+present, a union's set arm), and the writer runs the same pass before it writes
+a byte. It is the Go leg's <T>FixedFiniteBody (gotable/fixedform.go). */
+
+// fixedFiniteNeededStruct is whether a fixed type holds a float anywhere a
+// read lands one. A type that holds none gets no pass (§2.2's zero-cost rule).
+func fixedFiniteNeededStruct(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	return slices.ContainsFunc(st.Fields, func(f *ir.Field) bool { return fixedFiniteNeededField(f, seen) })
+}
+
+func fixedFiniteNeededField(f *ir.Field, seen map[string]bool) bool {
+	if f == nil {
+		return false
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		return true
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedFiniteNeededStruct(r, seen)
+		case *ir.Union:
+			return slices.ContainsFunc(r.Variants, func(v ir.UnionVariant) bool { return fixedFiniteNeededField(v.F, seen) })
+		}
+	}
+	return false
+}
+
+func fixedFiniteNeededUnion(un *ir.Union) bool {
+	return slices.ContainsFunc(un.Variants, func(v ir.UnionVariant) bool { return fixedFiniteNeededField(v.F, map[string]bool{}) })
+}
+
+// emitFixedFiniteBody emits <t>_fixed_finite_body: the first non-finite
+// float's <Owner>.<field>, or "" for a record whose floats are all finite.
+func (g *gen) emitFixedFiniteBody(st *ir.Struct) {
+	if !fixedFiniteNeededStruct(st, map[string]bool{}) {
+		return
+	}
+	g.pf("/// %s's finite rule (docs/SPEC-TABLES.md §3.3): the first float holding a\n", st.Name)
+	g.pf("/// NaN or an infinity, named <Owner>.<field>, or \"\" when every float is finite.\n")
+	g.pf("pub fn %s(value: &%sRow) -> &'static str {\n", fn(st.Name, "fixed_finite_body"), st.Name)
+	for _, f := range st.Fields {
+		g.emitFixedFiniteField(f, "value."+f.Name, 4)
+	}
+	g.pf("    \"\"\n}\n\n")
+}
+
+// emitFixedFiniteUnion is a union's share: the ARM THE TAG NAMES and no other.
+func (g *gen) emitFixedFiniteUnion(un *ir.Union) {
+	if !fixedFiniteNeededUnion(un) {
+		return
+	}
+	g.pf("/// %s's finite rule (docs/SPEC-TABLES.md §3.3): the arm THE TAG NAMES.\n", un.Name)
+	g.pf("pub fn %s(value: &%sRow) -> &'static str {\n", fn(un.Name, "fixed_finite_body"), un.Name)
+	var holding []int
+	for i, v := range un.Variants {
+		if fixedFiniteNeededField(v.F, map[string]bool{}) {
+			holding = append(holding, i)
+		}
+	}
+	arm := func(i, indent int) {
+		v := un.Variants[i]
+		ind := strings.Repeat(" ", indent)
+		g.pf("%s// SAFETY: the tag was just matched against `%s`.\n", ind, v.Name)
+		g.pf("%slet arm = unsafe { value.arms.%s };\n", ind, v.Name)
+		g.emitFixedFiniteArm(v.F, indent)
+	}
+	if len(holding) == 1 {
+		g.pf("    if value.tag == %d {\n", holding[0]+1)
+		arm(holding[0], 8)
+		g.pf("    }\n    \"\"\n}\n\n")
+		return
+	}
+	g.pf("    match value.tag {\n")
+	for _, i := range holding {
+		g.pf("        %d => {\n", i+1)
+		arm(i, 12)
+		g.pf("        }\n")
+	}
+	g.pf("        _ => {} // None, and any arm that holds no float\n")
+	g.pf("    }\n    \"\"\n}\n\n")
+}
+
+// emitFixedFiniteArm walks one union arm's `arm` binding, in the clamp pass's
+// shape (emitFixedClampArm).
+func (g *gen) emitFixedFiniteArm(f *ir.Field, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch f.Array {
+	case ir.ArrayFixed:
+		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+		g.emitFixedFiniteElement(f, "arm[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case ir.ArrayCounted:
+		g.pf("%sfor i in 0..arm.value_count.clamp(0, %d) as usize {\n", ind, f.ArrayBound)
+		g.emitFixedFiniteElement(f, "arm.value[i]", indent+4)
+		g.pf("%s}\n", ind)
+	default:
+		g.emitFixedFiniteElement(f, "arm", indent)
+	}
+}
+
+// emitFixedFiniteField walks ONE field's live storage.
+func (g *gen) emitFixedFiniteField(f *ir.Field, expr string, indent int) {
+	if !fixedFiniteNeededField(f, map[string]bool{}) {
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Optional {
+		// an absent optional's payload is the template's zeros, never read (§3.4)
+		g.pf("%sif value.%s_present {\n", ind, f.Name)
+		g.emitFixedFinitePayload(f, expr, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedFinitePayload(f, expr, indent)
+}
+
+func (g *gen) emitFixedFinitePayload(f *ir.Field, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	loop := func(count string) {
+		g.pf("%sfor i in 0..%s {\n", ind, count)
+		g.emitFixedFiniteElement(f, expr+"[i]", indent+4)
+		g.pf("%s}\n", ind)
+	}
+	switch {
+	case f.KeyEnum != "":
+		loop(fmt.Sprint(f.KeyEnumRef.Max))
+	case f.Array == ir.ArrayFixed:
+		loop(fmt.Sprint(f.ArrayBound))
+	case f.Array == ir.ArrayCounted:
+		// the live count and never the slack (§3.4)
+		loop(fmt.Sprintf("value.%s_count.clamp(0, %d) as usize", f.Name, f.ArrayBound))
+	default:
+		g.emitFixedFiniteElement(f, expr, indent)
+	}
+}
+
+// emitFixedFiniteElement is ONE element: a test for a float, a call for a
+// declaration that holds one.
+func (g *gen) emitFixedFiniteElement(f *ir.Field, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		g.pf("%sif !%s.is_finite() {\n%s    return %q;\n%s}\n", ind, expr, ind, g.floatOwner(f), ind)
+		return
+	case ir.TNamed:
+	default:
+		return
+	}
+	name := ""
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		if fixedFiniteNeededStruct(r, map[string]bool{}) {
+			name = r.Name
+		}
+	case *ir.Union:
+		if fixedFiniteNeededUnion(r) {
+			name = r.Name
+		}
+	}
+	if name == "" {
+		return
+	}
+	g.pf("%slet why = %s(&%s);\n%sif !why.is_empty() {\n%s    return why;\n%s}\n", ind, fn(name, "fixed_finite_body"), expr, ind, ind, ind)
 }

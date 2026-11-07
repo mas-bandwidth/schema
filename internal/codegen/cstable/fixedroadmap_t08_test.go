@@ -211,7 +211,7 @@ func t08W6(t *testing.T) {
 		t.Errorf("W6: the pair at the split was coalesced across it")
 	}
 
-	// THE COMPILED LANE'S PLAN TOO, driven: LineagePlans compiles a peer's
+	// THE COMPILED LANE'S PLAN TOO, driven: LineagePlans compiles an endpoint's
 	// layout against this build's own, and its plan must come out partitioned
 	// with the split on the lane. The reader (New) grew a scalar past the
 	// union; the writer (Old) has the union and no extra, so the compiled plan
@@ -274,9 +274,9 @@ else
 	for i := range 40 {
 		fmt.Fprintf(&tierDecl, "        v%d = %d,\n", i, i+1)
 	}
-	tierDecl.WriteString("        Count = 40,\n        Max = 40,\n    }\n\n    public static partial class Schema\n    {\n        public static string EnumNameTier(ulong value)\n        {\n            switch (value)\n            {\n                case (ulong)Tier.None:\n                    return \"None\";\n")
+	tierDecl.WriteString("    }\n\n    public static partial class Schema\n    {\n        public const Tier TierMax = (Tier)40;\n\n        public static string EnumNameTier(Tier value)\n        {\n            switch (value)\n            {\n                case Tier.None:\n                    return \"None\";\n")
 	for i := range 40 {
-		fmt.Fprintf(&tierDecl, "                case (ulong)Tier.v%d:\n                    return \"v%d\";\n", i, i)
+		fmt.Fprintf(&tierDecl, "                case Tier.v%d:\n                    return \"v%d\";\n", i, i)
 	}
 	tierDecl.WriteString("                default:\n                    return \"???\";\n            }\n        }\n    }\n}\n")
 	t08CSOK(t, poolSchema.String(), `int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<Probe.TableFixedEntry>();
@@ -301,7 +301,7 @@ else
 // no fast path, no second reader to keep honest against the first." The emitted
 // load defaults to the identity plan and swaps in the compiled lane's entries
 // only under `hash != own`; the record loop's single Run call runs both, so a
-// record this build wrote and a record a peer wrote are read by one path.
+// record this build wrote and a record an endpoint wrote are read by one path.
 func t08P1(t *testing.T) {
 	_, _, src := t08Emit(t, t08Flat)
 	n := t02Norm(src)

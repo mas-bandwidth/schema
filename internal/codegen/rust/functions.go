@@ -515,14 +515,32 @@ func (g *gen) emitWriteRangeGuard(name string, f *ir.Field, ind string) {
 	loVacuous := f.IntMin.Cmp(storageMin(f.Type)) <= 0
 	hiVacuous := f.IntMax.Cmp(storageMax(f.Type)) >= 0
 	msg := fmt.Sprintf("%s out of range [%s, %s]", assertLabel(name), f.IntMin.String(), f.IntMax.String())
+	lo, hi := g.guardBound(f.IntMinExpr, f.IntMin, f), g.guardBound(f.IntMaxExpr, f.IntMax, f)
 	switch {
+	case !loVacuous && !hiVacuous && f.IntMin.Cmp(f.IntMax) == 0:
+		// a degenerate range is one value: equality, not a double comparison
+		g.writeAssert(ind, fmt.Sprintf("%s == %s", name, lo), msg)
 	case !loVacuous && !hiVacuous:
-		g.writeAssert(ind, fmt.Sprintf("%s >= %s && %s <= %s", name, f.IntMin.String(), name, f.IntMax.String()), msg)
+		g.writeAssert(ind, fmt.Sprintf("%s >= %s && %s <= %s", name, lo, name, hi), msg)
 	case !loVacuous:
-		g.writeAssert(ind, fmt.Sprintf("%s >= %s", name, f.IntMin.String()), msg)
+		g.writeAssert(ind, fmt.Sprintf("%s >= %s", name, lo), msg)
 	case !hiVacuous:
-		g.writeAssert(ind, fmt.Sprintf("%s <= %s", name, f.IntMax.String()), msg)
+		g.writeAssert(ind, fmt.Sprintf("%s <= %s", name, hi), msg)
 	}
+}
+
+// guardBound renders one half of a range guard the way the schema spelled
+// it — `MAX_OBJECTS - 1`, cast to the field's storage — when the bound names a
+// constant, so the assertion reads as the declaration does. A purely literal
+// bound keeps its folded literal: a literal expression evaluated in a narrow
+// storage type can overflow on the way to a value that fits (`-(1 << 31) + 1`
+// in i32), and the folded text is what the expression means anyway. The
+// assert MESSAGE keeps the folded numbers either way.
+func (g *gen) guardBound(e ast.Expr, folded *big.Int, f *ir.Field) string {
+	if e == nil || !containsIdent(e) {
+		return folded.String()
+	}
+	return g.renderArg(e, folded, g.rustFieldType(f.Type))
 }
 
 // emitWriteFixedRawGuard is emitWriteRangeGuard for a fixed(I, F) field: the
@@ -548,6 +566,8 @@ func (g *gen) emitWriteFixedRawGuard(name string, f *ir.Field, ind string) {
 	hiVacuous := rawMax.Cmp(smax) >= 0
 	msg := fmt.Sprintf("%s raw value out of range [%s, %s]", assertLabel(name), rawMin.String(), rawMax.String())
 	switch {
+	case !loVacuous && !hiVacuous && rawMin.Cmp(rawMax) == 0:
+		g.writeAssert(ind, fmt.Sprintf("%s == %s", name, rawMin.String()), msg)
 	case !loVacuous && !hiVacuous:
 		g.writeAssert(ind, fmt.Sprintf("%s >= %s && %s <= %s", name, rawMin.String(), name, rawMax.String()), msg)
 	case !loVacuous:
@@ -724,7 +744,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			if ref.Max < (int64(1)<<uint(ref.StorageBits))-1 {
 				// headroom storage can exceed the wire range: caller error,
 				// asserted in debug and trusted in release
-				g.writeAssert(ind, fmt.Sprintf("%s.0 <= %d", name, ref.Max),
+				g.writeAssert(ind, enumMaxCond(name, ref.Max),
 					fmt.Sprintf("%s above the %s wire range [0, %d]", assertLabel(name), f.Type.Name, ref.Max))
 			}
 			g.emitWriteRangedFold32(name+".0", ref.StorageBits == 32, "0", true,

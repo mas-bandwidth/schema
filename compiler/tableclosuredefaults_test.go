@@ -54,6 +54,10 @@ fixed table Root {
 	for _, lang := range []string{"cpp", "c", "go", "cs"} {
 		t.Run(lang, func(t *testing.T) {
 			files, err := New().Generate(u, lang, Options{})
+			if lang == "c" {
+				// the hand-written driver below speaks the schema's spellings
+				files, err = generateCUnqualified(u)
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -82,7 +86,7 @@ fixed table Root {
 					t.Fatal(err)
 				}
 				runtime := slowtest.SerializeGo(t, "..")
-				write("go.mod", fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go => %q\n)\n", root, runtime))
+				write("go.mod", fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", root, runtime))
 				write("defaults_test.go", replace.Replace(tableClosureDefaultsGo))
 				cmd := exec.Command("go", "test", "-count=1", ".")
 				cmd.Dir = dir
@@ -128,12 +132,12 @@ using namespace probe;
 #define LEAF_LOAD(v,b,n,r) LeafLoad(v,b,n,r)
 #define REPORT_RESET(v) ((v) = TableReport())
 #else
-#define LOAD(v,b,n,r) root_load(&(v),b,n,r)
+#define LOAD(v,b,n,r) root_load_tolerant(&(v),b,n,r)
 #define SAVE(v,b,n) root_save(&(v),b,n)
 #define MEASURE(v) root_measure(&(v))
 #define RESET(v) root_reset(&(v))
-#define JSON(v,b,n,r) root_from_json(&(v),b,n,r)
-#define LEAF_LOAD(v,b,n,r) leaf_load(&(v),b,n,r)
+#define JSON(v,b,n,r) root_from_json_tolerant(&(v),b,n,r)
+#define LEAF_LOAD(v,b,n,r) leaf_load_tolerant(&(v),b,n,r)
 #define REPORT_RESET(v) memset(&(v),0,sizeof(v))
 #endif
 int main(void) {
@@ -207,7 +211,7 @@ func TestDefaults(t *testing.T) {
  }
  RootReset(&value)
  if RootMeasure(&value)!=10 {t.Fatal("reset")}
- if !RootFromJson(&value,[]byte("{}"),&report)||RootMeasure(&value)!=10 {t.Fatal("json defaults")}
+ if !RootFromJSON(&value,[]byte("{}"),&report)||RootMeasure(&value)!=10 {t.Fatal("json defaults")}
 }
 `
 

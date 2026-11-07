@@ -47,7 +47,7 @@ const (
 )
 
 const (
-	tableFixedTextUtf8 uint8 = 1
+	tableFixedTextUTF8 uint8 = 1
 	tableFixedTextWide uint8 = 2
 	tableFixedTextBytes uint8 = 3
 )
@@ -58,7 +58,7 @@ const tableFixedEntryBytes int32 = 17
 // THE LAYOUT'S OWN BOUNDS (docs/FIXED-FORM-ALGORITHM.md §1.1). The header is
 // the u32 entry count and nothing else. 65536 is the form's record body bound,
 // which a DECLARED fixed table is held to at compile time and an untrusted
-// peer's layout is held to here, so the two sides agree by construction. The
+// endpoint's layout is held to here, so the two sides agree by construction. The
 // depth is a bound on THIS READER'S WALK and not on the wire: the reference
 // states 64 and every leg states the same number.
 const tableFixedLayoutHeaderBytes int32 = 4
@@ -66,7 +66,7 @@ const tableFixedRecordMaxBytes uint32 = 65536
 const tableFixedMaxDepth int32 = 64
 
 // Arg is the guard's arm ordinal: tableFixedRun compares src[Guard] against
-// it. Meta is a text entry's flavour (tableFixedTextUtf8/Wide/Bytes). They
+// it. Meta is a text entry's flavour (tableFixedTextUTF8/Wide/Bytes). They
 // shared one lane until reference-fix 12; compiling a string under a union
 // arm overwrote the guard with the flavour and the read skipped the string.
 // tableFixedEntryBytes is the FILE layout entry (id+kind+size+children),
@@ -545,20 +545,10 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 			report.Widened++
 		case tableFixedWidenF:
-			bits := tableFixedGet32(src[p.Src:])
-			var widened uint64
-			if bits&0x7f800000 == 0x7f800000 {
-				// THE ALL-ONES EXPONENT IS ASSEMBLED BY HAND (docs/SPEC-TABLES.md
-				// §3.4, §21.2; the variable form's own float rung): the hardware
-				// f32->f64 conversion QUIETS a signalling NaN and can drop a
-				// payload bit, so the sign, the all-ones exponent and the 23-bit
-				// mantissa shifted left by 29 are carried exactly and the quiet
-				// bit stays as the writer wrote it.
-				widened = uint64(bits>>31)<<63 | 0x7ff0000000000000 | uint64(bits&0x7fffff)<<29
-			} else {
-				widened = math.Float64bits(float64(math.Float32frombits(bits)))
-			}
-			tableFixedPut64(dst[p.Dst:], widened)
+			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md §3.3,
+			// §21.2): exact for a finite float32; a NaN or an infinity stays one,
+			// and the finite pass after the run refuses it.
+			tableFixedPut64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(tableFixedGet32(src[p.Src:])))))
 			report.Widened++
 		case tableFixedConst:
 			aux := p.Aux
@@ -637,7 +627,7 @@ func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, rep
 // an invalid lead — refuses here too and not only structural truncation.
 func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	switch meta {
-	case tableFixedTextUtf8:
+	case tableFixedTextUTF8:
 		if !utf8.Valid(p[:used]) {
 			return true
 		}
@@ -667,7 +657,7 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	return false
 }
 
-// tableFixedUtf8Ok is the WRITER's string rule over the used bytes: well-formed
+// tableFixedUTF8Ok is the WRITER's string rule over the used bytes: well-formed
 // UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
 // (docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
 // holds on read). It is one pass, eight bytes a step, with no branch in the
@@ -676,7 +666,7 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 // zero refuses; text with no high bit is ASCII and passes; only text with a
 // byte at or past 0x80 goes on to utf8.Valid. The result is identical to the
 // two-pass spelling.
-func tableFixedUtf8Ok(p []byte) bool {
+func tableFixedUTF8Ok(p []byte) bool {
 	var hi, z uint64
 	i := 0
 	for ; i+8 <= len(p); i += 8 {
@@ -843,7 +833,7 @@ func tableFixedUnionArmBytes(b tableFixedLayoutView, i int32) uint32 {
 
 // ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
 //
-// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// A LAYOUT ARRIVES FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader
 // must parse before it knows anything at all, so every rule below runs BEFORE a
 // single record byte is touched and each refuses under ITS OWN NAME rather than
 // under one word for all of them (docs/FIXED-FORM-ALGORITHM.md §1.1).
@@ -1234,9 +1224,9 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 	return at
 }
 
-// census is whether THIS entry is the first time the peer's field is seen:
+// census is whether THIS entry is the first time the writer's field is seen:
 // an array's element subtree is compiled once per element and the unknown
-// count is ONCE PER FIELD PER PEER (§5.4), so only element 0 censuses.
+// count is ONCE PER FIELD PER ENDPOINT (§5.4), so only element 0 censuses.
 func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
@@ -1247,7 +1237,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		theirOff := theirAt
 		for range te.Children {
 			tc := tableFixedEntryAt(theirs, theirChild)
-			if tc.Id == mc.Id {
+			if tc.ID == mc.ID {
 				tableFixedCompileEntry(c, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg, census)
 				break
 			}
@@ -1262,7 +1252,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		named := false
 		mcAt := mi + 1
 		for range me.Children {
-			if tableFixedEntryAt(mine, mcAt).Id == tc.Id {
+			if tableFixedEntryAt(mine, mcAt).ID == tc.ID {
 				named = true
 				break
 			}
@@ -1354,9 +1344,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
 		tee := tableFixedEntryAt(theirs, tel)
 		for k := range mkey.Children {
-			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).Id
+			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).ID
 			for j := range tkey.Children {
-				if tableFixedEntryAt(theirs, ti+2+int32(j)).Id != keyId {
+				if tableFixedEntryAt(theirs, ti+2+int32(j)).ID != keyId {
 					continue
 				}
 				tableFixedCompileEntry(c, theirs, tel, theirAt+j*tee.Size, mine, mel, dst, at+k*d.Stride, guard, arg, census && k == 0)
@@ -1396,7 +1386,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			theirArm := ti + 1
 			for j := range te.Children {
 				ta := tableFixedEntryAt(theirs, theirArm)
-				if ta.Id == ma.Id {
+				if ta.ID == ma.ID {
 					// THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT
 					// (docs/FIXED-FORM-ALGORITHM.md §4.1): one link is pushed
 					// on the way into the arm, the arm's own tag const included,
@@ -1437,10 +1427,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 		m := make([]uint16, n)
 		for j := range n {
-			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).Id
+			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).ID
 			var landed uint16
 			for k := range me.Children {
-				if tableFixedEntryAt(mine, mi+1+int32(k)).Id == vid {
+				if tableFixedEntryAt(mine, mi+1+int32(k)).ID == vid {
 					landed = uint16(k + 1)
 					break
 				}
@@ -1621,7 +1611,7 @@ type TableFixedKnownLayout struct {
 
 // tableFixedLineagePlan is one older entry's plan, laid down once from the
 // LOCK'S bytes. Unknown and KindMismatch are the COMPILE census: a writer field
-// no reader field names is counted ONCE PER PEER and never per record (§5.4).
+// no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4).
 type tableFixedLineagePlan struct {
 	Entries      []TableFixedEntry
 	Count        int32

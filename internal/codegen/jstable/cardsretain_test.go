@@ -120,7 +120,7 @@ import (
 	older "probe/older"
 )
 
-func TestRetainGolden(t *testing.T) {
+func TestRetainGolden(t *testing.t) {
 	var b newer.EntryBuilder
 	if !b.Init() {
 		t.Fatal("init")

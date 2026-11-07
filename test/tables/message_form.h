@@ -566,121 +566,6 @@ static void test_message_form_wide_vocabulary()
     }
 }
 
-// ---- A POINTERED BATCH (docs/SPEC-TABLES.md §3.1, §3.3) --------------------
-//
-// The node table is the FIRST field of each root body, its count is thirty-two
-// raw bits, its table records carry NO length and end at their own zero
-// reference, and its indices are bits_required(0, node count) wide. A batch of
-// pointered roots is measured once and loaded into ONE region. Beside it a
-// root reaching no node, which carries no node-table reference at all.
-
-static void test_message_form_pointered()
-{
-    VOCABULARY( graphdemo, vocabulary );
-    static uint8_t announcement[8192];
-    const int64_t announced = graphdemo::Announce( announcement, sizeof( announcement ) );
-    CHECK( graphdemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
-    pin_table_golden( "graph_conn", announcement, announced );
-
-    graphdemo::SceneBuilder builder;
-    build_graph_tree( builder );
-    CHECK( builder.Lock() );
-    const graphdemo::Scene * roots[1] = { builder.AsConst() };
-    static uint8_t message[16384];
-    graphdemo::TableReport report;
-    const int64_t bytes = graphdemo::SceneSaveMessages( roots, 1, message, sizeof( message ), &report );
-    CHECK( bytes > 0 && bytes == graphdemo::SceneMeasureMessages( roots, 1, &report ) );
-    CHECK( message[0] == 2 && message[1] == 0 );
-    pin_table_golden( "graph_tree_message", message, bytes );
-
-    // THE NODE TABLE IS THE FIRST FIELD: the body's first reference names it
-    {
-        graphdemo::TableBitReader r( message + 1, bytes - 1 );
-        uint64_t count = 0, ref = 0;
-        CHECK( r.get( count, 8 ) && count == 0 );
-        CHECK( r.get( ref, vocabulary.ref_bits ) );
-        CHECK( graphdemo::TableVocabularyEntryAt( vocabulary, ref ).id == graphdemo::kTableNodeTableFieldId );
-        uint64_t nodes = 0;
-        CHECK( r.get( nodes, 32 ) && nodes == 6 ); // two list nodes, three tree nodes, the settings
-    }
-
-    int64_t attribution = 0;
-    const int64_t need = graphdemo::SceneLoadMeasure( vocabulary, message, bytes, &attribution );
-    CHECK( need > 0 && attribution == 7 * (int64_t) sizeof( graphdemo::TableNodeDirEntry ) );
-    static uint8_t region[65536];
-    const graphdemo::Scene * loaded[1] = { NULL };
-    int64_t count = 1;
-    CHECK( graphdemo::SceneLoadMessages( loaded, &count, region, need, vocabulary, message, bytes, &report ) );
-    CHECK( count == 1 && loaded[0] != NULL );
-    CHECK( !report.refused && !report.malformed && report.unknown == 0 );
-    if ( loaded[0] != NULL )
-    {
-        const graphdemo::Scene * root = loaded[0];
-        CHECK( strcmp( root->name, "tree" ) == 0 );
-        CHECK( root->version == 2 );
-        const graphdemo::ListNode * head = graphdemo::ListNodeAt( root->head );
-        CHECK( head != NULL && head->value == 1 );
-        const graphdemo::ListNode * second = head != NULL ? graphdemo::ListNodeAt( head->next ) : NULL;
-        CHECK( second != NULL && second->value == 2 );
-        const graphdemo::TreeNode * top = graphdemo::TreeNodeAt( root->tree );
-        CHECK( top != NULL && strcmp( top->label, "top" ) == 0 );
-        const graphdemo::Settings * settings = graphdemo::SettingsAt( root->settings );
-        CHECK( settings != NULL && settings->quality == 3 );
-        // AND THE MESSAGE RE-SAVES to the same bytes, so the numbering the
-        // load rebuilt is the numbering the save derived
-        static uint8_t again[16384];
-        const int64_t rewrote = graphdemo::SceneSaveMessages( loaded, 1, again, sizeof( again ), &report );
-        CHECK( rewrote == bytes && memcmp( again, message, (size_t) bytes ) == 0 );
-    }
-
-    // A BATCH OF THREE POINTERED ROOTS TAKES ONE REGION: measured once,
-    // allocated once, each body under its own numbering
-    {
-        const graphdemo::Scene * three[3] = { builder.AsConst(), builder.AsConst(), builder.AsConst() };
-        static uint8_t batch[65536];
-        const int64_t batch_bytes = graphdemo::SceneSaveMessages( three, 3, batch, sizeof( batch ), &report );
-        CHECK( batch_bytes > 0 && batch_bytes == graphdemo::SceneMeasureMessages( three, 3, &report ) );
-        CHECK( batch_bytes < 3 * bytes ); // three bodies share one form byte and one count
-        pin_table_golden( "graph_batch_message", batch, batch_bytes );
-        int64_t batch_attribution = 0;
-        const int64_t batch_need = graphdemo::SceneLoadMeasure( vocabulary, batch, batch_bytes, &batch_attribution );
-        CHECK( batch_need == 3 * need && batch_attribution == 3 * attribution );
-        static uint8_t batch_region[65536 * 3];
-        const graphdemo::Scene * out[3] = { NULL, NULL, NULL };
-        int64_t out_count = 3;
-        CHECK( graphdemo::SceneLoadMessages( out, &out_count, batch_region, batch_need, vocabulary, batch, batch_bytes, &report ) );
-        CHECK( out_count == 3 && out[0] != NULL && out[1] != NULL && out[2] != NULL );
-        CHECK( out[2] != NULL && strcmp( out[2]->name, "tree" ) == 0 );
-        const graphdemo::ListNode * batch_head = out[2] != NULL ? graphdemo::ListNodeAt( out[2]->head ) : NULL;
-        CHECK( batch_head != NULL && batch_head->value == 1 );
-    }
-
-    // A ROOT THAT REACHES NO NODE ELIDES THE FIELD: no reserved reference at all
-    {
-        graphdemo::SceneBuilder empty;
-        graphdemo::Scene * root = empty.GetRoot();
-        set_string( root->name, root->name_length, "empty" );
-        CHECK( empty.Lock() );
-        const graphdemo::Scene * one[1] = { empty.AsConst() };
-        static uint8_t small[256];
-        const int64_t small_bytes = graphdemo::SceneSaveMessages( one, 1, small, sizeof( small ), &report );
-        CHECK( small_bytes > 0 );
-        pin_table_golden( "graph_empty_message", small, small_bytes );
-        graphdemo::TableBitReader r( small + 1, small_bytes - 1 );
-        uint64_t small_count = 0, ref = 0;
-        CHECK( r.get( small_count, 8 ) && r.get( ref, vocabulary.ref_bits ) );
-        CHECK( graphdemo::TableVocabularyEntryAt( vocabulary, ref ).id != graphdemo::kTableNodeTableFieldId );
-        int64_t attribution_empty = 0;
-        const int64_t need_empty = graphdemo::SceneLoadMeasure( vocabulary, small, small_bytes, &attribution_empty );
-        CHECK( need_empty > 0 && attribution_empty == (int64_t) sizeof( graphdemo::TableNodeDirEntry ) );
-        static uint8_t region_empty[4096];
-        const graphdemo::Scene * loaded_empty[1] = { NULL };
-        int64_t count_empty = 1;
-        CHECK( graphdemo::SceneLoadMessages( loaded_empty, &count_empty, region_empty, need_empty, vocabulary, small, small_bytes, &report ) );
-        CHECK( loaded_empty[0] != NULL && strcmp( loaded_empty[0]->name, "empty" ) == 0 && graphdemo::ListNodeAt( loaded_empty[0]->head ) == NULL );
-    }
-}
-
 // ---- PER-DIRECTION INDEPENDENCE (docs/SPEC-TABLES.md §3.3) -----------------
 //
 // A peer holds TWO vocabularies for a connection, the one it writes with and
@@ -931,9 +816,7 @@ static void test_message_form_five_answers()
         backenddemo::TableReport damage;
         CHECK( !backenddemo::LoginRequestLoadMessages( out, &count, vocabulary, damaged, bytes, &damage ) );
         CHECK( damage.malformed && !damage.refused );
-        CHECK( count == 1 ); // k - 1
-        CHECK( out[0].client_build == 100 ); // the first body stands
-        CHECK( out[2].client_build == 999 ); // the third was never read
+        CHECK( count == 0 ); // damage delivers no body (SPEC-TABLES §4)
     }
 
     // AND A POINTERED BATCH TAKES ONE REGION: held by test_message_form_pointered
@@ -942,7 +825,7 @@ static void test_message_form_five_answers()
 // ---- DAMAGE IS TERMINAL FOR THE BATCH (docs/SPEC-TABLES.md §3.3) -----------
 //
 // Damage planted inside the SECOND body of three, and inside a NESTED body of
-// the second. Red if a leg reads the third body, or discards the first.
+// the second. Either damage refuses the entire batch and delivers no body.
 
 static void test_message_form_damage_terminal()
 {
@@ -972,7 +855,7 @@ static void test_message_form_damage_terminal()
         backenddemo::TableReport damage;
         CHECK( !backenddemo::MatchResultLoadMessages( out, &count, vocabulary, damaged, bytes, &damage ) );
         CHECK( damage.malformed && !damage.refused && damage.unknown == 0 );
-        CHECK( count == 1 && out[0].match_id == 10 && out[2].match_id == 999 );
+        CHECK( count == 0 );
     }
     // inside a NESTED body of the second: the first PlayerRow's score reference
     {
@@ -987,8 +870,7 @@ static void test_message_form_damage_terminal()
         backenddemo::TableReport damage;
         CHECK( !backenddemo::MatchResultLoadMessages( out, &count, vocabulary, damaged, bytes, &damage ) );
         CHECK( damage.malformed && !damage.refused && damage.unknown == 0 );
-        CHECK( count == 1 && out[0].match_id == 10 && out[2].match_id == 999 );
-        CHECK( out[1].match_id == 11 ); // the fields decoded before the damage stand, and the COUNT says it is not a body
+        CHECK( count == 0 );
     }
 }
 
@@ -1014,8 +896,7 @@ static void test_message_form_pad()
         backenddemo::TableReport pad;
         CHECK( !backenddemo::StorePurchaseLoadMessages( &out, &count, vocabulary, bad_pad, bytes, &pad ) );
         CHECK( pad.malformed && !pad.refused );
-        CHECK( out.quantity == 7 ); // the body decoded before the pad stands, and the count says so
-        CHECK( count == 1 );
+        CHECK( count == 0 ); // damaged padding discards the batch too
     }
     // a byte after the pad
     {
@@ -1411,7 +1292,6 @@ static void test_message_form_reference_bound()
         backenddemo::TableReport damage;
         CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, damaged, bytes, &damage ) );
         CHECK( damage.malformed && !damage.refused && damage.unknown == 0 );
-        CHECK( out.player_id == 5 ); // the field decoded BEFORE the bad reference stands
         CHECK( count == 0 );
         if ( i == 2 ) { pin_table_golden( "message_reference_past_table", damaged, bytes ); }
     }

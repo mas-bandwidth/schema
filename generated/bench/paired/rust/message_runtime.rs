@@ -35,7 +35,7 @@ pub const TABLE_MESSAGE_MAX_BYTES: usize = 64 * 1024;
 /// carries the build version at kind 9 and the vocabulary at kind 14 over
 /// element kind 6, and whose trailer is those two reserved ids.
 pub const TABLE_ANNOUNCEMENT: [u8; 932] = [
-    0x01,0x01,0x09,0x4e,0x05,0x2a,0x97,0x84,0x3a,0x75,0x23,0x02,
+    0x01,0x01,0x09,0x52,0xa8,0xbf,0x78,0x93,0x55,0xd3,0x41,0x02,
     0x0e,0xfc,0x06,0x06,0xf9,0x06,0xa8,0x28,0xf5,0x81,0xa4,0xac,
     0x38,0xaa,0x07,0x01,0x10,0x00,0x3e,0x7c,0x69,0x56,0x5c,0x00,
     0xbe,0x0d,0x04,0x01,0x10,0x00,0x03,0xee,0x29,0xb8,0xa8,0x0d,
@@ -381,7 +381,7 @@ fn announce_read_once(
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3).
     if vocabulary.strict && vocabulary.build_version != BUILD_VERSION {
-        report.build_version_peer = vocabulary.build_version;
+        report.build_version_remote = vocabulary.build_version;
         report.build_version_own = BUILD_VERSION;
         return report.refuse(TableReason::BuildVersionMismatch);
     }
@@ -421,8 +421,8 @@ fn announce_read_once(
             for other in filled.iter() {
                 let other_len = (other.shape.max - other.shape.min) as usize;
                 if other_len == at - began
-                    && &vocabulary_bytes[other.shape.min as usize..other.shape.max as usize]
-                        == &vocabulary_bytes[began..at]
+                    && vocabulary_bytes[other.shape.min as usize..other.shape.max as usize]
+                        == vocabulary_bytes[began..at]
                 {
                     report.malformed = true;
                     return false;
@@ -511,15 +511,15 @@ fn bits_required(count: usize) -> u32 {
 }
 
 fn known_kind(kind: u8) -> bool {
-    kind == 0 || (kind >= 1 && kind <= 17) || (kind >= 18 && kind <= 29) || (kind >= 30 && kind <= 33)
+    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=33).contains(&kind) || kind == 36
 }
 
 fn integer_kind(kind: u8) -> bool {
-    (kind >= 2 && kind <= 9) || kind == 18 || kind == 19
+    (2..=9).contains(&kind) || kind == 18 || kind == 19
 }
 
 fn fixed_kind(kind: u8) -> bool {
-    kind >= 20 && kind <= 29
+    (20..=29).contains(&kind)
 }
 
 /// The widest ranged value a kind can carry, its own storage width (§3.3): a
@@ -538,7 +538,7 @@ fn kind_bits(kind: u8) -> u64 {
 /// (§3.3): the step count, the delta and the width. False is a non-conforming
 /// triple, which on the announcement is a hostile width.
 fn quantization(qmin: f32, qmax: f32, qres: f32) -> (u32, f32, u64, bool) {
-    if !(qmin < qmax) || !(qres > 0.0) {
+    if qmin.is_nan() || qmax.is_nan() || qmin >= qmax || qres.is_nan() || qres <= 0.0 {
         return (0, 0.0, 0, false);
     }
     let delta = qmax - qmin;
@@ -546,7 +546,7 @@ fn quantization(qmin: f32, qmax: f32, qres: f32) -> (u32, f32, u64, bool) {
     if delta.is_nan() || values.is_nan() {
         return (0, 0.0, 0, false);
     }
-    if !(values >= 1.0) {
+    if values.is_nan() || values < 1.0 {
         values = 1.0;
     } else if values > 4294967040.0 {
         values = 4294967040.0;
@@ -628,7 +628,7 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
             if !ok {
                 return (s, false);
             }
-            if kind >= 2 && kind <= 5 {
+            if (2..=5).contains(&kind) {
                 s.base_lo = (v >> 1) ^ (0u64.wrapping_sub(v & 1));
             } else {
                 s.base_lo = v;
@@ -709,7 +709,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => skip_width(bytes, at, 1),
         3 | 7 | 21 | 26 => skip_width(bytes, at, 2),
         4 | 8 | 10 | 22 | 27 => skip_width(bytes, at, 4),
-        5 | 9 | 11 | 23 | 28 => skip_width(bytes, at, 8),
+        5 | 9 | 11 | 23 | 28 | 36 => skip_width(bytes, at, 8),
         18 | 19 | 24 | 29 => skip_width(bytes, at, 16),
         // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and
         // stop
@@ -886,7 +886,7 @@ pub fn table_message_kind_width(kind: u8) -> u32 {
         1 | 2 | 6 | 20 | 25 => 1,
         3 | 7 | 21 | 26 => 2,
         4 | 8 | 10 | 22 | 27 => 4,
-        5 | 9 | 11 | 23 | 28 => 8,
+        5 | 9 | 11 | 23 | 28 | 36 => 8,
         18 | 19 | 24 | 29 => 16,
         _ => 0,
     }
@@ -927,14 +927,6 @@ pub fn table_message_widens(from: u8, to: u8) -> bool {
         || (from == 10 && to == 11)
 }
 
-/// A float32 widened into a float64 bit-exactly, NaN payload included (§4).
-pub fn table_message_widen_f32(b: u32) -> u64 {
-    if b & 0x7f80_0000 == 0x7f80_0000 {
-        return ((b >> 31) as u64) << 63 | 0x7ff0_0000_0000_0000 | ((b & 0x7f_ffff) as u64) << 29;
-    }
-    (f32::from_bits(b) as f64).to_bits()
-}
-
 /// §3's one content rule for a string: well-formed UTF-8 with no zero byte.
 pub fn table_message_utf8(text: &[u8]) -> bool {
     core::str::from_utf8(text).is_ok() && !text.contains(&0)
@@ -949,7 +941,7 @@ pub fn table_message_utf8_clamp(text: &[u8], n: usize) -> usize {
     n
 }
 
-/// A value the peer spelled, sign-extended from its announced kind's width.
+/// A value the endpoint spelled, sign-extended from its announced kind's width.
 pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
     match table_message_kind_width(kind) {
         1 => lo as i8 as i128,
@@ -960,7 +952,7 @@ pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
     }
 }
 
-/// A value the peer spelled, zero-extended from its announced kind's width.
+/// A value the endpoint spelled, zero-extended from its announced kind's width.
 pub fn table_message_unsigned(kind: u8, lo: u64, hi: u64) -> u128 {
     match table_message_kind_width(kind) {
         1 => lo as u8 as u128,
@@ -988,7 +980,7 @@ pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMess
         hi = hi.wrapping_add(s.base_hi).wrapping_add(carry as u64);
     }
     if s.packing == 2 && kind == 10 {
-        // AN INDEX ABOVE THE PEER's ANNOUNCED count IS BATCH DAMAGE (§3.3,
+        // AN INDEX ABOVE THE ENDPOINT's ANNOUNCED count IS BATCH DAMAGE (§3.3,
         // SPEC.md §4.3), checked on the whole wire value before any narrowing
         // and never reconstructed and clamped: the width spells such an index
         // whenever count is not one less than a power of two (eight bits
@@ -1017,9 +1009,12 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     if s.packing == 2 {
         let value = f32::from_bits(lo as u32);
         let mut ratio = (value - s.qmin) / s.qdelta;
-        if !(ratio >= 0.0) {
+        // a NaN never reaches here: the writer refuses one before the
+        // quantizer runs (§3.3); the test stays so no input moves the index
+        // outside [0, count]
+        if ratio.is_nan() || ratio < 0.0 {
             ratio = 0.0;
-        } else if !(ratio <= 1.0) {
+        } else if ratio > 1.0 {
             ratio = 1.0;
         }
         let scaled = ratio * s.qcount as f32;
@@ -1031,7 +1026,7 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     }
 }
 
-/// A tolerant skip of one value by the PEER's shape (§3.3): what a reader does
+/// A tolerant skip of one value by the ENDPOINT's shape (§3.3): what a reader does
 /// with a field it cannot name, or one whose kind is not the declaration's.
 pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
     if depth > 128 {
@@ -1130,7 +1125,7 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
 }
 
 /// The batch's OPEN (§3.3): "the FORM BYTE is a whole byte and is read FIRST",
-/// a body from a peer that never announced is refused by name, then M - 1.
+/// a body from an endpoint that never announced is refused by name, then M - 1.
 pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut TableReport) -> Option<usize> {
     if data.is_empty() {
         report.malformed = true;

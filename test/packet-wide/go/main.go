@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 	p "packetwide"
 )
 

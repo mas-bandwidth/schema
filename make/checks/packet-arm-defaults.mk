@@ -82,7 +82,7 @@ packet-arm-defaults-go-negative-control:
 	@mkdir -p $(ARM_NC_ROOT)/go/schema/test/go
 	@cp test/go/main.go test/go/go.mod $(ARM_NC_ROOT)/go/schema/test/go/
 	@ln -s "$(abspath $(SERIALIZE_GO))" $(ARM_NC_ROOT)/go/serialize.go
-	@printf 'module example\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => "%s"\n' \
+	@printf 'module example\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => "%s"\n' \
 		"$(abspath $(SERIALIZE_GO))" > $(ARM_NC_ROOT)/go/schema/generated/go/go.mod
 	cd $(ARM_NC_ROOT)/go/schema/test/go && go build -o ../../bin/packet-test .
 	$(call packet_arm_expect,go,cd $(ARM_NC_ROOT)/go/schema/test/go && ../../bin/packet-test,$(ARM_NC_BACKING_FAILURE))

@@ -45,8 +45,14 @@ import (
 )
 
 // Backend is a bit per table backend, so one entry can say which of them
-// define the name. Each backend's own file declares its bit (Cpp is 1 << 0,
-// Cs is 1 << 1, and so on), and define refuses a bit two files claim.
+// define the name. The allocation:
+//
+//	Cpp 0, Cs 1, Rust 2, Go 3, Java 4, C 5, Elixir 6, Js 7,
+//	Dart 8, Lua 9, Luau 10, Squirrel 11.
+//
+// Each backend's own file declares its bit, and define refuses a bit two
+// files claim. A new port takes the next bit after the highest listed here
+// and adds its line to the allocation in the same change.
 type Backend uint16
 
 // Name is one spelling the generated table runtimes carry, and the backends
@@ -228,7 +234,8 @@ var claimed Backend
 
 // define is how a backend's file registers the names its emitted text carries.
 // A name another backend already registered gains this backend's bit. Its
-// What stays the lowest bit's, so init order decides nothing; Scoped holds
+// What stays the lowest bit's, so init order decides nothing (an empty What
+// never replaces a described one); Scoped holds
 // only if EVERY definer scopes it, because the claim is the union over the
 // backends and one unit-level spelling claims the name for all of them;
 // RustConst and View are kept whichever definer set them.
@@ -254,7 +261,7 @@ func define(b Backend, names ...Name) {
 			continue
 		}
 		have := &registry[i]
-		if b < have.By&-have.By {
+		if n.What != "" && (have.What == "" || b < have.By&-have.By) {
 			have.What = n.What
 		}
 		have.By |= b

@@ -86,6 +86,7 @@ func t08RoundTrip(t *testing.T, dartBin, src, body string) {
 import 'dart:io';
 import 'dart:typed_data';
 
+import './Probe.dart' as p;
 import './ProbeFixed.dart' as t;
 
 void check(bool ok, String what) {
@@ -275,7 +276,7 @@ fixed table Rec
   final v = t.Rec();
   t.initRec(v);
   v.lead = 7;
-  v.pick.type = 1;
+  v.pick.type = p.PickType.alpha;
   v.pick.alpha.m = 99;
   v.trail = 13;
   final b1 = Uint8List(t.recFixedMeasure(1));
@@ -551,8 +552,14 @@ fixed table Rec {
 			t.Fatal(err)
 		}
 		cmd = exec.Command("go", "run", "../../../cmd/schema", "generate", "--lang", "dart", "--out", filepath.Join(dir, "variable"), variable)
-		if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "union") {
-			t.Fatalf("non-fixed union closure lost its named refusal: %v\n%s", err, out)
+		// maps-and-arms: a payload-free arm rides form 1 too (kind 32, L = 0,
+		// docs/SPEC-TABLES.md §2.6, §3), so the variable closure that was
+		// refused by name now generates its form-1 library.
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("non-fixed union closure must generate on form 1: %v\n%s", err, out)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "variable", "ProbeWire.dart")); err != nil {
+			t.Fatalf("non-fixed union closure has no form-1 codec: %v", err)
 		}
 		t08RoundTrip(t, t08DartBinary(t), schema, `
   final v = t.Rec();
@@ -618,7 +625,7 @@ fixed table Rec
   for (final count in [0, 4]) {
     v.historyCount = count;
     for (var i = 0; i < count; i++) {
-      v.history[i].type = 1;
+      v.history[i].type = p.ReplyType.ping;
       v.history[i].ping.n = 11 * (i + 1);
     }
     final bytes = Uint8List(t.recFixedMeasure(1));

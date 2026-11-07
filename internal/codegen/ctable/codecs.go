@@ -35,10 +35,11 @@ func (g *tableGen) cFieldType(t ir.FieldType) string {
 		}
 		return "uint64_t"
 	case ir.TBool:
-		// C has no bool in C99 without <stdbool.h>, and the block form's
-		// layout contract pins a bool in a row to ONE byte (§19.3). uint8_t
-		// is that byte, spelled the way every other width in this family is.
-		return "uint8_t"
+		// C99's bool from <stdbool.h>, as the packet emitter spells it: one
+		// byte, alignment one on every ABI this family builds for, which is
+		// what the block form's layout contract pins a bool in a row to
+		// (§19.3) — and the layout asserts refuse a compiler that disagrees.
+		return "bool"
 	case ir.TFloat32:
 		return "float"
 	case ir.TFloat64:
@@ -105,7 +106,7 @@ func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
 // (-Wtautological-type-limit-compare), neither catching the other's
 // (issue #342, `make tables-clamp-limits`).
 func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
-	signed := ir.TableKindSigned(ir.TableScalarKind(f))
+	signed := ir.TableKindSigned(ir.TableScalarKind(f)) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 	lo, hi := tableStorageRange(signed, widthBytes*8)
 	rlo, rhi, ok := ir.TableRawRange(f)
 	if !ok {
@@ -145,7 +146,7 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 		return "0.0"
 	case ir.TInt, ir.TBits, ir.TFixed:
 		if f.HasDefault && f.DefInt != nil {
-			signed := ir.TableKindSigned(ir.TableScalarKind(f))
+			signed := ir.TableKindSigned(ir.TableScalarKind(f)) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 			width := 4
 			if f.Type.Width > 32 {
 				width = 8
@@ -207,10 +208,16 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	if f.IsList() {
 		g.pf("    TableList %s;\n", f.Name)
+		if f.Type.Optional {
+			g.pf("    uint8_t %s_present; /* ?%s: absent until set */\n", f.Name, tableFieldTypeName(f))
+		}
 		return
 	}
 	if f.IsMap() {
 		g.pf("    TableMap %s;\n", f.Name)
+		if f.Type.Optional {
+			g.pf("    uint8_t %s_present; /* ?%s: absent until set */\n", f.Name, tableFieldTypeName(f))
+		}
 		return
 	}
 	if f.Type.Pointer {
@@ -233,6 +240,8 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		typ = "SCHEMA_C_ALIGN16 " + typ
 	}
 	switch {
+	case f.Type.TextUnbounded():
+		g.pf("    TableRef %s;\n", f.Name)
 	case f.Type.Kind == ir.TWString:
 		g.pf("    uint16_t %s[%d + 1];\n    int32_t %s_length;\n", f.Name, f.Type.Size, f.Name)
 	case f.Type.Kind == ir.TString:
@@ -299,6 +308,9 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 func (g *tableGen) emitTableResetField(f *ir.Field) {
 	if f.IsList() || f.IsMap() {
 		g.pf("    memset(&value->%s,0,sizeof(value->%s));\n", f.Name, f.Name)
+		if f.Type.Optional {
+			g.pf("    value->%s_present = 0;\n", f.Name)
+		}
 		return
 	}
 	if f.Type.Pointer {
@@ -315,6 +327,8 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 	typ := g.cFieldType(f.Type)
 	selfInit := cSelfInit(f.Type)
 	switch {
+	case f.Type.TextUnbounded():
+		g.pf("    value->%s.value = 0;\n", f.Name)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
 		g.pf("    memset( value->%s, 0, sizeof( value->%s ) );\n", f.Name, f.Name)
 		if f.HasDefault && len(f.DefBytes) != 0 {
@@ -425,11 +439,35 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 	case tkBool:
 		g.pf("%stable_writer_put8( w, %s ? 1 : 0 );\n", ind, expr)
 	case tkF32:
+		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
+		// §3.3): the measure and the save share this body, so both refuse it
+		g.pf("%sif ( !table_float_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
+		if f.Required && f.HasFloatRange {
+			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
+		}
 		g.pf("%stable_writer_put32( w, table_float_to_bits( %s ) );\n", ind, expr)
 	case tkF64:
+		g.pf("%sif ( !table_double_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
+		if f.Required && f.HasFloatRange {
+			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMax, false))
+		}
 		g.pf("%stable_writer_put64( w, table_double_to_bits( %s ) );\n", ind, expr)
 	default:
 		width := int(g.intBytes(g.ownerName(), f.Name, int64(tableKindWidth(kind))))
+		if f.Required {
+			if lo, hi, ok := ir.TableRawRange(f); ok {
+				clampMin, clampMax := tableClampEnds(f, width)
+				if clampMin {
+					g.pf("%sif ( %s < %s ) { return 0; }\n", ind, expr, tableIntLit(lo, f.Type.Signed, width))
+				}
+				if clampMax {
+					g.pf("%sif ( %s > %s ) { return 0; }\n", ind, expr, tableIntLit(hi, f.Type.Signed, width))
+				}
+			} else if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+				mask := (uint64(1) << f.Type.Width) - 1
+				g.pf("%sif ( (uint64_t)( %s ) > 0x%xull ) { return 0; }\n", ind, expr, mask)
+			}
+		}
 		cast := fmt.Sprintf("uint%d_t", width*8)
 		g.pf("%s%s( w, (%s) ( %s ) );\n", ind, tablePut(width), cast, expr)
 	}
@@ -444,21 +482,37 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	g.pf("%sif ( !table_reader_has( &%s, %d ) ) { %s }\n", ind, rdr, width, onTrunc)
 	switch kind {
 	case tkBool:
-		g.pf("%s%s = table_reader_get8( &%s ) != 0;\n", ind, lvalue, rdr)
+		// A BOOL BYTE IS 0 OR 1 (docs/SPEC-TABLES.md §3): any other byte
+		// reads true and counts one malformed, and the body reads on
+		g.pf("%s{\n%s    uint8_t bool_byte = table_reader_get8( &%s );\n", ind, ind, rdr)
+		g.pf("%s    if ( bool_byte > 1 ) { r->report->malformed = true; }\n", ind)
+		g.pf("%s    %s = bool_byte != 0;\n%s}\n", ind, lvalue, ind)
 	case tkF32:
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+		// become a value and before the field is written (docs/SPEC-TABLES.md
+		// §3.3): the read is refused as non_finite_float and the walk goes on,
+		// so the framing verdict is the one a finite wire gets, and the load
+		// that started it answers the refusal at its end and lands nothing. A
+		// compressed float takes the test before its bounds.
+		g.pf("%s{\n%s    uint32_t decoded_bits = table_reader_get32( &%s );\n", ind, ind, rdr)
+		g.pf("%s    if ( !table_bits_finite32( decoded_bits ) ) { table_non_finite_float( r->report ); }\n", ind)
 		if f.HasFloatRange {
-			g.pf("%s{\n%s    float decoded_f = table_bits_to_float( table_reader_get32( &%s ) );\n", ind, ind, rdr)
-			g.pf("%s    if ( decoded_f < %s ) { decoded_f = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
-			g.pf("%s    else if ( decoded_f > %s ) { decoded_f = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
-			g.pf("%s    %s = decoded_f;\n%s}\n", ind, lvalue, ind)
-			return
+			g.pf("%s    else\n%s    {\n", ind, ind)
+			g.pf("%s        float decoded_f = table_bits_to_float( decoded_bits );\n", ind)
+			g.pf("%s        if ( decoded_f < %s ) { decoded_f = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
+			g.pf("%s        else if ( decoded_f > %s ) { decoded_f = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+			g.pf("%s        %s = decoded_f;\n%s    }\n", ind, lvalue, ind)
+		} else {
+			g.pf("%s    else { %s = table_bits_to_float( decoded_bits ); }\n", ind, lvalue)
 		}
-		g.pf("%s%s = table_bits_to_float( table_reader_get32( &%s ) );\n", ind, lvalue, rdr)
+		g.pf("%s}\n", ind)
 	case tkF64:
-		g.pf("%s%s = table_bits_to_double( table_reader_get64( &%s ) );\n", ind, lvalue, rdr)
+		g.pf("%s{\n%s    uint64_t decoded_bits = table_reader_get64( &%s );\n", ind, ind, rdr)
+		g.pf("%s    if ( !table_bits_finite64( decoded_bits ) ) { table_non_finite_float( r->report ); }\n", ind)
+		g.pf("%s    else { %s = table_bits_to_double( decoded_bits ); }\n%s}\n", ind, lvalue, ind)
 	default:
 		width = int(g.intBytes(g.ownerName(), f.Name, int64(width)))
-		signed := ir.TableKindSigned(ir.TableScalarKind(f))
+		signed := ir.TableKindSigned(ir.TableScalarKind(f)) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 		storage := fmt.Sprintf("uint%d_t", width*8)
 		if signed {
 			storage = fmt.Sprintf("int%d_t", width*8)
@@ -524,9 +578,9 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
 	if len(st.Fields) == 0 {
 		g.emitTagsStatic(g.sym(st.Name, "tags"), st.Tags)
-		g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s };\n\n",
+		g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s, %s };\n\n",
 			g.sym(st.Name, "info"), st.Name, st.Name, g.sym(st.Name, "reset_raw"), g.modeColumn(st),
-			annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")))
+			annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")), boolC(st.JsonArray))
 		return
 	}
 	// the vocabularies first: an enum's values, a union's arms and a flags
@@ -547,9 +601,9 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		g.emitFieldDescriptor(st, f, guards[f.Name])
 	}
 	g.pf("};\n\n")
-	g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), %d, %s, %s%s, %s };\n\n",
+	g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), %d, %s, %s%s, %s, %s };\n\n",
 		g.sym(st.Name, "info"), st.Name, st.Name, len(st.Fields), g.sym(st.Name, "fields"), g.sym(st.Name, "reset_raw"), g.modeColumn(st),
-		annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")))
+		annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")), boolC(st.JsonArray))
 }
 
 // emitTagsStatic emits one tag list as a constant array of string literals
@@ -742,7 +796,7 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 		countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", st.Name, companion)
 	}
 
-	if f.Type.Pointer && f.Array == ir.ArrayNone {
+	if (f.Type.Pointer || f.Type.TextUnbounded()) && f.Array == ir.ArrayNone {
 		// a pointer's storage IS the reference slot: offset names it,
 		// elem_size is the slot's width, and there is no companion
 		elemSize = "(uint32_t) sizeof( TableRef )"
@@ -841,17 +895,23 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if f.IsMap() {
 		place = g.sym(f.MapEntry.Name, "json_place")
 	}
+	textList := 0
+	if ir.TextListOptional(f) {
+		textList = 2
+	} else if ir.TextListPlain(f) {
+		textList = 1
+	}
 	pointerColumn := ""
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %s },\n",
+	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s },\n",
 		f.Name, g.descriptorJSON(f), tableFieldTypeName(f), g.descriptorID(id), kind, boolC(isArray), pointerColumn,
-		boolC(counted), boolC(f.Type.Optional), bound,
+		boolC(counted), boolC(f.Type.Optional), boolC(f.Required), bound,
 		st.Name, member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, fmt.Sprintf("%s, %s, %d", rangeMax, wide, frac), enumMax, variants, hasIds,
 		keyTypeName, keys, keyMax, arms, guard,
-		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, place)
+		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, textList, f.TextTotal, place)
 }
 
 func boolC(v bool) string {

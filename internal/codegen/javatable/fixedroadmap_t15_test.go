@@ -13,7 +13,7 @@ package javatable
 // generated Java is compiled with javac and run; the deepest leaf must land as
 // written and must NOT land while any one of the three tags names another arm,
 // on the IDENTITY read (one copy, then the scatter) and on a plan COMPILED from
-// the layout by TableFixed.compile — the plan the lineage reads a peer through.
+// the layout by TableFixed.compile — the plan the lineage reads an endpoint through.
 
 import (
 	"fmt"

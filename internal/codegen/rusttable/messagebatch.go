@@ -10,8 +10,8 @@
 // messageread.go), which reproduces the C++ reference's: a body is a run of
 // (reference, value) pairs closed by the zero reference, a field at its
 // declared default does not ride, every value is spelled by the shape the
-// vocabulary entry names, and a reader decodes against the table THE PEER
-// announced, skipping by the peer's shape what it cannot name.
+// vocabulary entry names, and a reader decodes against the table THE ENDPOINT
+// announced, skipping by the endpoint's shape what it cannot name.
 //
 // The Rust spelling of the Go oracle's names is snake_case (SPEC.md §6.1):
 // MeasureMessages, SaveMessages and LoadMessages land as
@@ -34,6 +34,18 @@ type msgGen struct {
 	b     strings.Builder
 	n     int
 	slots map[string]uint64
+	// orig maps a field line the walk holds as a COPY (a union arm, an array's
+	// element) back to the declaration, so a non_finite_float refusal names
+	// <Owner>.<field> by the declaration and never by a guess (§3.3).
+	orig map[*ir.Field]*ir.Field
+}
+
+// origOf is the declaration a field line was copied from, or the line itself.
+func (m *msgGen) origOf(f *ir.Field) *ir.Field {
+	if o, ok := m.orig[f]; ok {
+		return o
+	}
+	return f
 }
 
 func (m *msgGen) pf(format string, args ...any) { fmt.Fprintf(&m.b, format, args...) }
@@ -47,8 +59,8 @@ const msgBad = "{ report.malformed = true; return false; }"
 
 // messageModule is <base>_message.rs: the body walkers of every type this
 // file declares that a fixed root reaches, and the three batch verbs of every
-// fixed root it declares. "`fixed table T` may ride here, a plain `table T`
-// may not" (§3.3), so a plain table grows no verb.
+// fixed root it declares. "`fixed table T` may ride here and a variable table
+// may not" (§3.3), so a variable table grows no verb.
 func (g *gen) messageModule() []byte {
 	reach, _ := unitFixedClosure(g.unit, g.closure)
 	var members []*ir.Struct
@@ -60,7 +72,7 @@ func (g *gen) messageModule() []byte {
 	if len(members) == 0 {
 		return nil
 	}
-	m := &msgGen{u: g.unit, slots: ir.TableVocabularySlots(g.unit)}
+	m := &msgGen{u: g.unit, slots: ir.TableVocabularySlots(g.unit), orig: map[*ir.Field]*ir.Field{}}
 	m.pf("%s", header(g.file.Base, g.unit.Package, "THE MESSAGE FORM's bodies, form byte 2 (docs/SPEC-TABLES.md §3.3)"))
 	m.pf(`//
 // A body is a run of (reference, value) pairs under the announced vocabulary,
@@ -242,11 +254,12 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 		if isUnionRef(f.Type) {
 			return fmt.Sprintf("%s.iter().any(|x| x.tag() != 0)", expr)
 		}
-		return fmt.Sprintf("(0..%d).any(|i| %s[i] != %s[i])", f.ArrayBound, expr, dexpr)
+		return fmt.Sprintf("(0..%d).any(|i| %s)", f.ArrayBound, scalarDiffers(f, expr+"[i]", dexpr+"[i]"))
 	case isUnionRef(f.Type):
 		return expr + ".tag() != 0"
 	}
-	return fmt.Sprintf("%s != %s", expr, dexpr)
+	// a plain float compares bits, so a -0 under a +0 default rides (§3.3)
+	return scalarDiffers(f, expr, dexpr)
 }
 
 // keyedPairs counts the slots of a keyed array that ride (§3.3).
@@ -353,6 +366,13 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 		m.pf("%sw.put(if %s { 1 } else { 0 }, 1);\n", ind, expr)
 	default:
 		lo, hi := expr+" as u64", "0"
+		if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+			// A NaN OR AN INFINITY IS REFUSED, never quantized or clamped
+			// (docs/SPEC-TABLES.md §3.3, both special-values rules): the writer
+			// answers false before the quantizer runs, so measure and save both
+			// return -1.
+			m.pf("%sif !%s.is_finite() { return false; }\n", ind, expr)
+		}
 		switch {
 		case f.Type.Kind == ir.TFloat32:
 			lo = expr + ".to_bits() as u64"
@@ -372,7 +392,7 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 
 func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
-	m.pf("/// One %s body against the PEER's vocabulary (§3.3): a field this build\n/// cannot name is skipped by the peer's shape and counted unknown, a kind the\n/// declaration widened is decoded exactly and counted widened, and any other\n/// kind is a kind mismatch, skipped.\n", st.Name)
+	m.pf("/// One %s body against the ENDPOINT's vocabulary (§3.3): a field this build\n/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the\n/// declaration widened is decoded exactly and counted widened, and any other\n/// kind is a kind mismatch, skipped.\n", st.Name)
 	m.pf("pub fn %s_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut %sRow) -> bool {\n", snake, st.Name)
 	m.pf("    *value = %s_message_default();\n", snake)
 	m.pf("    loop {\n")
@@ -403,8 +423,8 @@ func wireWidenable(kind int) bool {
 	return kind >= 3 && kind <= 5 || kind >= 7 && kind <= 9 || kind == 11 || kind == 18 || kind == 19
 }
 
-// compat is gotable's emitMessageCompatibility: the peer's kind is the field's,
-// or one the field widens (§4), or a kind mismatch skipped by the peer's shape.
+// compat is gotable's emitMessageCompatibility: the endpoint's kind is the field's,
+// or one the field widens (§4), or a kind mismatch skipped by the endpoint's shape.
 func (m *msgGen) compat(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset, label, ind string) {
 	compat := ""
 	if f != nil && wireWidenable(int(mine.Kind)) {
@@ -441,7 +461,7 @@ func rustBig(v *big.Int, signed bool) string {
 	return v.String() + "u128"
 }
 
-// readValue is one value decoded by the PEER's entry (gotable
+// readValue is one value decoded by the ENDPOINT's entry (gotable
 // emitMessageReadValue); entry names a TableMessageEntry in scope.
 func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 	switch {
@@ -509,6 +529,7 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 					armExpr = local + ".value"
 				}
 				af := *v.F
+				m.orig[&af] = v.F
 				m.readValue(&af, armExpr, arm, in+"    ")
 				m.pf("%s    %s.set_%s(%s);\n", in, expr, v.Name, local)
 			}
@@ -535,7 +556,7 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 	}
 }
 
-// convertScalar is the file form's exact clamps applied to a value the peer
+// convertScalar is the file form's exact clamps applied to a value the endpoint
 // spelled at its announced width (gotable emitReadScalar).
 func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 	switch f.Type.Kind {
@@ -543,10 +564,17 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s%s = (lo as u8) != 0;\n", ind, expr)
 		return
 	case ir.TFloat32, ir.TFloat64:
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+		// become a value (docs/SPEC-TABLES.md §3.3), as a file read refuses it:
+		// the read names the field and the batch refuses as non_finite_float,
+		// so the 0.0 that stands in is never delivered. A QUANTIZED float rides
+		// an index, and the value an index names is finite; every finite
+		// float32 widens exactly through the ordinary conversion (§4).
+		owner := floatOwnerIn(m.u, m.origOf(f))
 		if f.Type.Kind == ir.TFloat32 {
-			m.pf("%slet mut x = f32::from_bits(lo as u32);\n", ind)
+			m.pf("%slet mut x = if %s.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite(%q); 0.0 };\n", ind, entry, owner)
 		} else {
-			m.pf("%slet mut x = if %s.kind == 10 { f64::from_bits(table_message_widen_f32(lo as u32)) } else { f64::from_bits(lo) };\n", ind, entry)
+			m.pf("%slet mut x = if %s.kind == 10 { if %s.shape.packing == 2 || table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite(%q); 0.0 };\n", ind, entry, entry, owner, owner)
 		}
 		if f.HasFloatRange {
 			var lo, hi string
@@ -598,6 +626,7 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 	}
 	m.pf("%s    let %s = TableMessageEntry { id: 0, kind: %s.shape.elem, shape: %s.element, element: TableMessageShape::default() };\n", ind, el, entry, entry)
 	e := msgElement(f)
+	m.orig[e] = m.origOf(f)
 	if f.KeyEnum != "" {
 		m.pf("%s    for _ in 0..n {\n", ind)
 		m.pf("%s        let Some(reference) = r.get(v.ref_bits) else %s;\n", ind, msgBad)
@@ -634,6 +663,13 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 func (m *msgGen) emitBatch(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
 	row := st.Name + "Row"
+	measureExtra, savePrefix, saveEnd, loadPrefix := "", "", "2 + (w.bits / 8) as i64", ""
+	if st.Integrity == "crc32c" {
+		measureExtra = "4 + "
+		savePrefix = fmt.Sprintf("    let need = %s_measure_messages(values, report);\n    if need < 0 || buffer.len() < need as usize { return -1; }\n", snake)
+		saveEnd = "let end = 2 + (w.bits / 8) as usize;\n    let sum = table_integrity_checksum(&buffer[..end]);\n    buffer[end..end + 4].copy_from_slice(&sum.to_le_bytes());\n    (end + 4) as i64"
+		loadPrefix = fmt.Sprintf("    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(body) = table_integrity_body(data, 6) else {\n            report.malformed = true; report.reason = TableReason::IntegrityMismatch;\n            for value in values.iter_mut() { *value = %s_message_default(); }\n            return (0, false);\n        };\n        body\n    } else { data };\n", snake)
+	}
 	m.pf(`/// MeasureMessages (§3.3): the byte count SaveMessages writes for this batch,
 /// or -1. "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME".
 pub fn %[1]s_measure_messages(values: &[%[2]s], report: &mut TableReport) -> i64 {
@@ -651,14 +687,14 @@ pub fn %[1]s_measure_messages(values: &[%[2]s], report: &mut TableReport) -> i64
     if w.overflow {
         return -1;
     }
-    2 + (w.bits / 8) as i64
+    %[3]s2 + (w.bits / 8) as i64
 }
 
 /// SaveMessages (§3.3): the form byte, M - 1, then every body as one continuous
 /// bit stream padded to a byte once at its end. The byte count, or -1 for a
 /// refusal or a buffer too short.
 pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut TableReport) -> i64 {
-    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
+%[4]s    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
         report.refuse(TableReason::BatchTooLarge);
         return -1;
     }
@@ -677,32 +713,55 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
     if w.overflow {
         return -1;
     }
-    2 + (w.bits / 8) as i64
+    %[5]s
 }
 
-/// LoadMessages (§3.3): one batch into the caller's storage against the PEER's
+/// LoadMessages (§3.3): one batch into the caller's storage against the ENDPOINT's
 /// announced vocabulary. The count of bodies delivered and whether the batch
-/// read whole. "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1"; "M ABOVE THE
+/// read whole. DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH (§3.3, §4):
+/// the count is zero, malformed is set, and every body of the batch goes back
+/// to its declared defaults, bytes after the pad included; "M ABOVE THE
 /// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", with the count set
-/// to the wire's M; "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY
+/// to the wire's M; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 /// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
+///
+/// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
+/// no body of it is delivered, so the count is zero, every body read so far
+/// goes back to its declared defaults, and the reason is non_finite_float.
 pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
-    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
+    report.non_finite_float = "";
+    report.non_finite_float_id = None;
+%[6]s    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };
     if count > values.len() {
         return (count, report.refuse(TableReason::BatchTooLarge));
     }
     let mut r = TableBitReader::new(&data[2..]);
-    for (i, value) in values.iter_mut().take(count).enumerate() {
-        if !%[1]s_load_message_body(&mut r, vocabulary, report, value) {
-            return (i, false);
+    for i in 0..count {
+        if !%[1]s_load_message_body(&mut r, vocabulary, report, &mut values[i]) || !report.non_finite_float.is_empty() {
+            if !report.non_finite_float.is_empty() {
+                for value in values.iter_mut().take(i + 1) {
+                    *value = %[1]s_message_default();
+                }
+                return (0, report.refuse(TableReason::NonFiniteFloat));
+            }
+            for value in values.iter_mut().take(count) {
+                *value = %[1]s_message_default();
+            }
+            return (0, false);
         }
     }
-    (count, table_message_batch_close(&mut r, report))
+    if !table_message_batch_close(&mut r, report) {
+        for value in values.iter_mut().take(count) {
+            *value = %[1]s_message_default();
+        }
+        return (0, false);
+    }
+    (count, true)
 }
 
-`, snake, row)
+`, snake, row, measureExtra, savePrefix, saveEnd, loadPrefix)
 }
 
 // messageBatchRuntime is the batch's shared Rust runtime (§3.3): the bit
@@ -831,7 +890,7 @@ pub fn table_message_kind_width(kind: u8) -> u32 {
         1 | 2 | 6 | 20 | 25 => 1,
         3 | 7 | 21 | 26 => 2,
         4 | 8 | 10 | 22 | 27 => 4,
-        5 | 9 | 11 | 23 | 28 => 8,
+        5 | 9 | 11 | 23 | 28 | 36 => 8,
         18 | 19 | 24 | 29 => 16,
         _ => 0,
     }
@@ -872,14 +931,6 @@ pub fn table_message_widens(from: u8, to: u8) -> bool {
         || (from == 10 && to == 11)
 }
 
-/// A float32 widened into a float64 bit-exactly, NaN payload included (§4).
-pub fn table_message_widen_f32(b: u32) -> u64 {
-    if b & 0x7f80_0000 == 0x7f80_0000 {
-        return ((b >> 31) as u64) << 63 | 0x7ff0_0000_0000_0000 | ((b & 0x7f_ffff) as u64) << 29;
-    }
-    (f32::from_bits(b) as f64).to_bits()
-}
-
 /// §3's one content rule for a string: well-formed UTF-8 with no zero byte.
 pub fn table_message_utf8(text: &[u8]) -> bool {
     core::str::from_utf8(text).is_ok() && !text.contains(&0)
@@ -894,7 +945,7 @@ pub fn table_message_utf8_clamp(text: &[u8], n: usize) -> usize {
     n
 }
 
-/// A value the peer spelled, sign-extended from its announced kind's width.
+/// A value the endpoint spelled, sign-extended from its announced kind's width.
 pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
     match table_message_kind_width(kind) {
         1 => lo as i8 as i128,
@@ -905,7 +956,7 @@ pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
     }
 }
 
-/// A value the peer spelled, zero-extended from its announced kind's width.
+/// A value the endpoint spelled, zero-extended from its announced kind's width.
 pub fn table_message_unsigned(kind: u8, lo: u64, hi: u64) -> u128 {
     match table_message_kind_width(kind) {
         1 => lo as u8 as u128,
@@ -933,7 +984,7 @@ pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMess
         hi = hi.wrapping_add(s.base_hi).wrapping_add(carry as u64);
     }
     if s.packing == 2 && kind == 10 {
-        // AN INDEX ABOVE THE PEER's ANNOUNCED count IS BATCH DAMAGE (§3.3,
+        // AN INDEX ABOVE THE ENDPOINT's ANNOUNCED count IS BATCH DAMAGE (§3.3,
         // SPEC.md §4.3), checked on the whole wire value before any narrowing
         // and never reconstructed and clamped: the width spells such an index
         // whenever count is not one less than a power of two (eight bits
@@ -962,9 +1013,12 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     if s.packing == 2 {
         let value = f32::from_bits(lo as u32);
         let mut ratio = (value - s.qmin) / s.qdelta;
-        if !(ratio >= 0.0) {
+        // a NaN never reaches here: the writer refuses one before the
+        // quantizer runs (§3.3); the test stays so no input moves the index
+        // outside [0, count]
+        if ratio.is_nan() || ratio < 0.0 {
             ratio = 0.0;
-        } else if !(ratio <= 1.0) {
+        } else if ratio > 1.0 {
             ratio = 1.0;
         }
         let scaled = ratio * s.qcount as f32;
@@ -976,7 +1030,7 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     }
 }
 
-/// A tolerant skip of one value by the PEER's shape (§3.3): what a reader does
+/// A tolerant skip of one value by the ENDPOINT's shape (§3.3): what a reader does
 /// with a field it cannot name, or one whose kind is not the declaration's.
 pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
     if depth > 128 {
@@ -1075,7 +1129,7 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
 }
 
 /// The batch's OPEN (§3.3): "the FORM BYTE is a whole byte and is read FIRST",
-/// a body from a peer that never announced is refused by name, then M - 1.
+/// a body from an endpoint that never announced is refused by name, then M - 1.
 pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut TableReport) -> Option<usize> {
     if data.is_empty() {
         report.malformed = true;

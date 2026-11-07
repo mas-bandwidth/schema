@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -40,7 +41,9 @@ type CheckResult struct {
 // carries a sentinel entry, names a type the unit does not have, does not
 // ascend, or overlaps a node with the next; a reference that leaves the region,
 // that the directory does not name, or that it names as another type; a
-// misaligned reference; or a count companion outside its declared bound.
+// misaligned reference; a count companion outside its declared bound; or a
+// float whose bits are a NaN or an infinity (non_finite_float, §3.3); or a
+// cycle anywhere in the graph (§3.1).
 func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 	var res CheckResult
 	h, err := ReadHeader(file, ir.BuildVersion(m.Unit), rootAlignmentOf(m, file))
@@ -56,8 +59,9 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 	}
 	byTypeId := typeIdIndex(m)
 
-	s := &scan{m: m, h: h, ord: h.Order(), buf: h.Data(file), dir: dir}
+	s := &scan{m: m, h: h, ord: h.Order(), buf: h.Data(file), dir: dir, edges: make([][]int32, len(dir))}
 	for i, e := range dir {
+		s.cur = i
 		// a node's extent runs to the next entry's offset, or to data_length
 		// for the last (§6.3): the bound a BYTE BUFFER's length is checked
 		// against
@@ -68,6 +72,11 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 		if err := s.node(e.Offset, extent, e.TypeId, byTypeId[e.TypeId]); err != nil {
 			return res, fmt.Errorf("node %d (%s at offset %d): %w", i+1, nameOf(byTypeId, e.TypeId), e.Offset, err)
 		}
+	}
+
+	if from, to, cyclic := s.cycle(); cyclic {
+		return res, fmt.Errorf("node %d (%s) names node %d (%s), whose descent is still open: a cook is never cyclic, and a cyclic one is refused (docs/SPEC-TABLES.md §3.1)",
+			from+1, nameOf(byTypeId, dir[from].TypeId), to+1, nameOf(byTypeId, dir[to].TypeId))
 	}
 
 	res = CheckResult{
@@ -86,8 +95,10 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 // directory's first entry — for the header's alignment gate (§7.1). It is a
 // guarded, best-effort read: on any shape that is not a readable, well-formed
 // cook it returns the region floor, and ReadHeader's own refusals handle the
-// file. The root sits at the region's base, so its alignof is the second term
-// of the gate.
+// file. The root sits at the region's base, so its NODE's alignment, which
+// for a type that can hold an extent counts every array that extent can hold
+// (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT RULES), is the second term of
+// the gate.
 func rootAlignmentOf(m *tabletext.Model, file []byte) int64 {
 	if int64(len(file)) < HeaderBytes {
 		return ir.RegionAlignFloor
@@ -119,7 +130,7 @@ func rootAlignmentOf(m *tabletext.Model, file []byte) int64 {
 	if st == nil {
 		return ir.RegionAlignFloor
 	}
-	return ir.RecordLayout(m.Unit, st).Align
+	return nodeAlign(m.Unit, st)
 }
 
 // checkDirectory is PASS ONE: the directory itself, linearly and with no state.
@@ -144,8 +155,11 @@ func checkDirectory(m *tabletext.Model, h Header, dir []DirectoryEntry) error {
 		name, size, align := "", int64(0), int64(0)
 		switch {
 		case st != nil:
+			// a node starts at its NODE's alignment, its record's or, for a
+			// type that can hold an extent, the greatest any array there asks
+			// for (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT RULES)
 			ml := ir.RecordLayout(m.Unit, st)
-			name, size, align = st.Name, ml.Size, ml.Align
+			name, size, align = st.Name, ml.Size, nodeAlign(m.Unit, st)
 		case e.TypeId == ir.BytesTypeId || e.TypeId == ir.StringTypeId:
 			// a BYTE BUFFER's node (§6.3): pass one bounds its HEADER, at
 			// eight; its length is a field of the region and pass two's
@@ -174,8 +188,9 @@ func checkDirectory(m *tabletext.Model, h Header, dir []DirectoryEntry) error {
 }
 
 // scan is PASS TWO's state, and there is deliberately none of it per node: an
-// entry's type id says which walk to run over that node, and the walk reads no
-// field value and decodes no payload.
+// entry's type id says which walk to run over that node, and the walk decodes
+// no payload: the field values it reads are a union's tag and a float's bits,
+// tested for finiteness (§3.3) and never interpreted.
 type scan struct {
 	m        *tabletext.Model
 	h        Header
@@ -190,6 +205,50 @@ type scan struct {
 	base   int64
 	extent int64
 	arrays []arrayRange
+	// THE GRAPH'S EDGES, for the cycle check: cur is the directory position of
+	// the node under the scan, and edges[i] the table nodes node i's slots name.
+	cur   int
+	edges [][]int32
+}
+
+// cycle is the three-mark walk over the edges the scan resolved: each node is
+// entered once, a reference to an OPEN node is a cycle and is returned, and a
+// reference to a CLOSED node is a share and is not re-entered.
+func (s *scan) cycle() (from, to int, cyclic bool) {
+	const (
+		unvisited = iota
+		open
+		closed
+	)
+	mark := make([]uint8, len(s.edges))
+	type frame struct{ node, next int }
+	var stack []frame
+	for start := range s.edges {
+		if mark[start] != unvisited {
+			continue
+		}
+		mark[start] = open
+		stack = append(stack[:0], frame{node: start})
+		for len(stack) > 0 {
+			top := &stack[len(stack)-1]
+			if top.next == len(s.edges[top.node]) {
+				mark[top.node] = closed
+				stack = stack[:len(stack)-1]
+				continue
+			}
+			t := int(s.edges[top.node][top.next])
+			top.next++
+			switch mark[t] {
+			case open:
+				return top.node, t, true
+			case closed:
+				continue
+			}
+			mark[t] = open
+			stack = append(stack, frame{node: t})
+		}
+	}
+	return 0, 0, false
 }
 
 // arrayRange is one element array a list slot placed inside the node under
@@ -243,9 +302,25 @@ func (s *scan) field(at int64, f *ir.Field) error {
 	value := pieces[0]
 	switch {
 	case f.IsMap():
+		if f.Type.Optional && s.buf[pieces[len(pieces)-1].Offset] == 0 {
+			delta := int64(s.ord.Uint64(s.buf[value.Offset:]))
+			count := int64(int32(s.ord.Uint32(s.buf[value.Offset+8:])))
+			if delta != RefNull || count != 0 {
+				return fmt.Errorf("the optional map is absent and its slot is (%d, %d), not (0, 0)", delta, count)
+			}
+			return nil
+		}
 		return s.mapSlot(value.Offset, f)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return s.ref(value.Offset, f)
+	case f.Type.TextUnbounded():
+		if f.Type.Optional && s.buf[pieces[len(pieces)-1].Offset] == 0 {
+			if delta := int64(s.ord.Uint64(s.buf[value.Offset:])); delta != RefNull {
+				return fmt.Errorf("the optional text is absent and its reference is %d, not null", delta)
+			}
+			return nil
+		}
+		return s.textSlot(value.Offset, f)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
 		// a wstring's companion is bounded against N in CODE UNITS, which is
 		// what N counts (SPEC.md §4.12) and what the storage holds
@@ -261,6 +336,45 @@ func (s *scan) field(at int64, f *ir.Field) error {
 		return s.list(value.Offset, f)
 	}
 	return s.element(value.Offset, f)
+}
+
+// textSlot is §7.4's UNBOUNDED-TEXT clause (docs/SPEC-TABLES.md §2.13.1, §7.4):
+// an unbounded text slot holds an int64 self-relative delta to a blob record
+// (`[u32 length][u32 0][bytes][0x00]`) in its holder's own node extent (or
+// RefNull for the empty string). The blob must sit inside the holder's extent,
+// at 8-byte alignment, with non-zero length, NUL terminator, and no overlap
+// with any other array or blob placed in that node.
+func (s *scan) textSlot(at int64, f *ir.Field) error {
+	delta := int64(s.ord.Uint64(s.buf[at:]))
+	if delta == RefNull {
+		return nil
+	}
+	start, _, fits := arrayExtent(at, delta, BlobHeader, 1, s.base, s.extent)
+	if !fits {
+		return fmt.Errorf("the text blob header leaves the node's extent [%d, %d): slot at %d with delta %d", s.base, s.extent, at, delta)
+	}
+	if start%BlobAlign != 0 {
+		return fmt.Errorf("the text blob starts at %d, which is not aligned to %d", start, BlobAlign)
+	}
+	length := int64(s.ord.Uint32(s.buf[start:]))
+	if length <= 0 {
+		return fmt.Errorf("the text reference is not null and the blob's length is %d: an empty string's reference is null (docs/SPEC-TABLES.md §2.13.1)", length)
+	}
+	need := BlobHeader + length + 1
+	start, end, fits := arrayExtent(at, delta, need, 1, s.base, s.extent)
+	if !fits {
+		return fmt.Errorf("the text blob leaves the node's extent [%d, %d): blob at %d of length %d", s.base, s.extent, start, length)
+	}
+	if s.buf[start+BlobHeader+length] != 0 {
+		return fmt.Errorf("the text blob at %d of length %d is not NUL-terminated", start, length)
+	}
+	for _, other := range s.arrays {
+		if start < other.end && other.start < end {
+			return fmt.Errorf("the text blob [%d, %d) overlaps another extent range [%d, %d) in the same node", start, end, other.start, other.end)
+		}
+	}
+	s.arrays = append(s.arrays, arrayRange{start, end})
+	return nil
 }
 
 // list is §7.4's ELEMENT-ARRAY clause (docs/SPEC-TABLES.md §2.9, §7.4): an
@@ -415,6 +529,24 @@ func (s *scan) keyOrder(key *ir.Field, a, b int64) int {
 // is bounded where every companion is, in `record`'s walk of the entry).
 func (s *scan) usedBytes(key *ir.Field, at int64) []byte {
 	pieces := ir.FieldPieces(s.m.Unit, key, at)
+	if key.Type.TextUnbounded() {
+		delta := int64(s.ord.Uint64(s.buf[pieces[0].Offset:]))
+		if delta == RefNull {
+			return nil
+		}
+		start, _, fits := arrayExtent(pieces[0].Offset, delta, BlobHeader, 1, s.base, s.extent)
+		if !fits {
+			return nil
+		}
+		n := int64(s.ord.Uint32(s.buf[start:]))
+		if n <= 0 {
+			return nil
+		}
+		if _, _, fits := arrayExtent(pieces[0].Offset, delta, BlobHeader+n+1, 1, s.base, s.extent); !fits {
+			return nil
+		}
+		return s.buf[start+BlobHeader : start+BlobHeader+n]
+	}
 	n := min(max(int64(int32(s.ord.Uint32(s.buf[pieces[1].Offset:]))), 0), pieces[0].Size)
 	return s.buf[pieces[0].Offset : pieces[0].Offset+n]
 }
@@ -471,8 +603,23 @@ func (s *scan) element(at int64, f *ir.Field) error {
 	if f.Type.Pointer {
 		return s.ref(at, f) // an element of an array of pointers (§2.1)
 	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the check is the cook's
+		// strict validator (§7), and it refuses a NaN or an infinity on its raw
+		// bits as non_finite_float, as every read does
+		if !tabletext.FiniteF32(s.ord.Uint32(s.buf[at:])) {
+			return &tablewire.NonFiniteRefusal{Field: tablewire.FloatOwner(s.m, f)}
+		}
+		return nil
+	case ir.TFloat64:
+		if !tabletext.FiniteF64(s.ord.Uint64(s.buf[at:])) {
+			return &tablewire.NonFiniteRefusal{Field: tablewire.FloatOwner(s.m, f)}
+		}
+		return nil
+	}
 	if f.Type.Kind != ir.TNamed {
-		return nil // a scalar has nothing a walker could be steered by
+		return nil // any other scalar has nothing a walker could be steered by
 	}
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Struct:
@@ -540,6 +687,9 @@ func (s *scan) ref(at int64, f *ir.Field) error {
 	}
 	if s.dir[slot].TypeId != want {
 		return fmt.Errorf("the reference resolves to a node the directory names as type id 0x%016x, and the declaration requires %s", s.dir[slot].TypeId, wantName)
+	}
+	if !f.Type.Blob() {
+		s.edges[s.cur] = append(s.edges[s.cur], int32(slot))
 	}
 	return nil
 }

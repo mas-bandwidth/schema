@@ -11,7 +11,7 @@ bitpacker workload — timed loops in `//go:noinline` symbols for the §4.1
 verdict.
 
 Wiring: `go.mod` (module `benchgo`) replaces `bench` →
-`../../generated/bench/go` and `github.com/mas-bandwidth/serialize.go` → the
+`../../generated/bench/go` and `github.com/mas-bandwidth/serialize.go/v2` → the
 sibling port checkout. One generated unit, the one this runner measures.
 `run.sh` runs it as `go run . --csv` from this directory (optimized by
 default — Go has no debug/release split).

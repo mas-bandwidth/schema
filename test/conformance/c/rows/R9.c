@@ -38,7 +38,7 @@ int main( void )
     memset( &report, 0, sizeof( report ) );
     check( make_buffer( buf, sizeof( buf ), cell_fixed_layout,
                         (int32_t) cell_fixed_layout_bytes ), "make correct buffer" );
-    got = cell_fixed_load( &cell, 1, buf, 20 + cell_fixed_layout_bytes,
+    got = cell_fixed_load_tolerant( &cell, 1, buf, 20 + cell_fixed_layout_bytes,
                            NULL, 0, NULL, &report );
     check( got >= 0 && !report.refused && !report.malformed,
            "correct buffer: green" );
@@ -48,7 +48,7 @@ int main( void )
     check( make_buffer( buf, sizeof( buf ), cell_fixed_layout,
                         (int32_t) cell_fixed_layout_bytes + 1 ),
            "make length-mismatch buffer" );
-    got = cell_fixed_load( &cell, 1, buf,
+    got = cell_fixed_load_tolerant( &cell, 1, buf,
                            20 + cell_fixed_layout_bytes + 1,
                            NULL, 0, NULL, &report );
     check( got < 0 && report.refused && report.reason == SCHEMA_TABLE_LAYOUT_MALFORMED,
@@ -63,7 +63,7 @@ int main( void )
         memset( &report, 0, sizeof( report ) );
         check( make_buffer( buf, sizeof( buf ), bad_layout, len ),
                "make bytes-mismatch buffer" );
-        got = cell_fixed_load( &cell, 1, buf, 20 + len,
+        got = cell_fixed_load_tolerant( &cell, 1, buf, 20 + len,
                                NULL, 0, NULL, &report );
         check( got < 0 && report.refused && report.reason == SCHEMA_TABLE_LAYOUT_MALFORMED,
                "layout bytes mismatch: layout_malformed" );
@@ -74,7 +74,7 @@ int main( void )
     memset( &report, 0, sizeof( report ) );
     check( make_buffer( buf, sizeof( buf ), cell_fixed_layout,
                         (int32_t) cell_fixed_layout_bytes ), "make re-check buffer" );
-    got = cell_fixed_load( &cell, 1, buf, 20 + cell_fixed_layout_bytes,
+    got = cell_fixed_load_tolerant( &cell, 1, buf, 20 + cell_fixed_layout_bytes,
                            NULL, 0, NULL, &report );
     check( got >= 0 && !report.refused && !report.malformed,
            "re-check correct buffer: green (negative control)" );

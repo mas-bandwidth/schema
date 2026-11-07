@@ -1,0 +1,31 @@
+# THE RUST ALLOCATION GATE (docs/PORTING.md M1 and I1): a counting
+# #[global_allocator] over the generated Rust table code's read paths, one row
+# per path, each gated at exactly zero allocator calls or reported with the
+# reason it allocates by design. The twin of Go's TestLoadAllocatesNothing and
+# C++'s tables-cpp-alloc.
+#
+# make/rust.mk copies this manifest and src/main.rs into build/rust-alloc (and
+# build/rust-alloc-sabotage for the negative control) and builds there, so the
+# Cargo.lock and target/ land under build/, which the tree ignores. The path
+# dependencies resolve the same from either place: both sit two levels below
+# the repository root.
+[package]
+name = "rust-alloc"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "rust-alloc"
+path = "src/main.rs"
+
+[features]
+# THE NEGATIVE CONTROL'S CFG FLAG: one allocation planted per ROW of the block
+# row walk, in this binary and never in generated code.
+# `make tables-rust-alloc-negative-control` builds with it on and requires that
+# row red on exactly the planted count and every other row green.
+negative-control = []
+
+[dependencies]
+tabledemo = { path = "../../build/tables-generated-rust/tabledemo" }
+blockdemo = { path = "../../build/tables-generated-rust/blockdemo" }
+graphdemo = { path = "../../build/tables-generated-rust/graphdemo" }

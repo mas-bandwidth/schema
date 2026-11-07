@@ -46,11 +46,8 @@ func csFieldType(t ir.FieldType) string {
 	case ir.TFloat64:
 		return "double"
 	case ir.TNamed:
-		if _, isFlags := t.Ref.(*ir.Flags); isFlags {
-			// flags-typed fields store a plain ulong of masks, the packet
-			// emitter's spelling exactly (SPEC §4.2)
-			return "ulong"
-		}
+		// a flags-typed field stores the packet emitter's [Flags] enum,
+		// ulong-backed (SPEC §4.2)
 		return t.Name
 	}
 	return "/* ? */"
@@ -194,8 +191,8 @@ func fieldDefaultExpr(f *ir.Field) string {
 			}
 			return f.Type.Name + ".None"
 		case *ir.Flags:
-			if f.HasDefault && f.DefInt != nil {
-				return f.DefInt.String() + "ul"
+			if f.HasDefault && f.DefInt != nil && f.DefInt.Sign() != 0 {
+				return "(" + f.Type.Name + ")" + f.DefInt.String() + "ul"
 			}
 			return "0"
 		}
@@ -245,6 +242,8 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		g.tf("    public %s %s;\n", typ, name)
 	case f.Type.Kind == ir.TWString:
 		g.tf("    public char[] %s = new char[%d];\n    public int %sLength;\n", name, f.Type.Size, name)
+	case f.Type.TextUnbounded():
+		g.tf("    public byte[] %s = Array.Empty<byte>();\n    public int %sLength;\n", name, name)
 	case f.Type.Kind == ir.TString:
 		g.tf("    public byte[] %s = new byte[%d]; // string(%s): max length, used length beside it\n",
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -614,16 +613,26 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("    info.Id = 0x%016xul;\n", identity)
 	g.pf("    info.NumFields = %d;\n", len(st.Fields))
+	for _, f := range st.Fields {
+		if f.Required {
+			g.pf("    info.HasRequired = true;\n")
+			break
+		}
+	}
 	g.pf("    info.Create = delegate { return new global::%s.%s(); };\n", capitalize(g.unit.Package), st.Name)
 	layout := ir.RecordLayout(g.unit, st)
 	align := int64(8)
 	for _, table := range g.unit.Tables {
-		if a := ir.RecordLayout(g.unit, table).Align; a > align {
+		if a := ir.CookNodeAlign(g.unit, table); a > align {
 			align = a
 		}
 	}
-	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, layout.Align, align)
+	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, ir.CookNodeAlign(g.unit, st), align)
 	g.pf("    info.Variable = %t;\n", ir.VariableTables(g.unit)[st.Name])
+	g.pf("    info.Integrity = %t;\n", st.Integrity == "crc32c")
+	if st.JsonArray {
+		g.pf("    info.JsonArray = true;\n")
+	}
 	g.pf("    info.RootElemSlots = %d;\n", rootElemSlots(st))
 	var pt strings.Builder
 	pt.WriteString("info.PointerType = delegate (ulong id) { switch (id) { ")
@@ -742,15 +751,12 @@ func csRawGet(expr string, t ir.FieldType) string {
 		return "unchecked((ulong)BitConverter.DoubleToInt64Bits(" + expr + "))"
 	case ir.TInt:
 		if t.Signed {
-			return "(ulong)(long)" + expr
+			return "unchecked((ulong)(long)(" + expr + "))"
 		}
 		return "(ulong)" + expr
 	case ir.TBits:
 		return "(ulong)" + expr
 	case ir.TNamed:
-		if _, isFlags := t.Ref.(*ir.Flags); isFlags {
-			return expr
-		}
 		return "(ulong)" + expr
 	}
 	return "0ul"
@@ -776,9 +782,6 @@ func csRawSet(expr, src string, t ir.FieldType) string {
 	case ir.TBits:
 		return expr + " = unchecked((" + csFieldType(t) + ")" + src + ");"
 	case ir.TNamed:
-		if _, isFlags := t.Ref.(*ir.Flags); isFlags {
-			return expr + " = " + src + ";"
-		}
 		return expr + " = unchecked((" + t.Name + ")" + src + ");"
 	}
 	return ""
@@ -857,6 +860,12 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 		fmt.Fprintf(&b, ", GetPresent = delegate (object o) { return %s%sPresent; }", cast, name)
 		fmt.Fprintf(&b, ", SetPresent = delegate (object o, bool p) { %s%sPresent = p; }", cast, name)
 	}
+	if f.Type.TextUnbounded() {
+		fmt.Fprintf(&b, ", Unbounded = true, EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s,n); } }", ownerType, name, name)
+	}
+	if f.IsTextList() {
+		fmt.Fprintf(&b, ", TextList = true, TextField = %q, TextTotal = %dL", g.owner.Name+"."+f.Name, f.TextTotal)
+	}
 	return b.String()
 }
 
@@ -877,10 +886,10 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	// names its size (docs/SPEC-TABLES.md §2.4, §8.1)
 	bound := "0"
 	switch {
-	case f.IsMap(), f.IsList():
+	case f.IsMap(), f.IsList(), f.Type.TextUnbounded():
 		bound = "int.MaxValue"
 	case f.KeyEnum != "":
-		bound = fmt.Sprintf("(int)global::%s.%s.Max", capitalize(g.unit.Package), f.KeyEnum)
+		bound = fmt.Sprintf("(int)global::%s.Schema.%sMax", capitalize(g.unit.Package), f.KeyEnum)
 	case f.Array != ir.ArrayNone:
 		bound = strconv.FormatInt(f.ArrayBound, 10)
 	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
@@ -904,7 +913,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	keyTypeName, keyName, keyId := "null", "null", "null"
 	if f.KeyEnum != "" {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
-		keyName = fmt.Sprintf("delegate (ulong v) { return EnumName%s(v); }", f.KeyEnum)
+		keyName = enumNameLambda(capitalize(g.unit.Package), f.KeyEnum)
 		keyId = fmt.Sprintf("delegate (ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.KeyEnum)
 	}
 
@@ -940,7 +949,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
-			enumName = fmt.Sprintf("delegate (ulong v) { return EnumName%s(v); }", f.Type.Name)
+			enumName = enumNameLambda(capitalize(g.unit.Package), f.Type.Name)
 			variantId = fmt.Sprintf("delegate (ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.Type.Name)
 		}
 	case *ir.Flags:
@@ -1007,4 +1016,12 @@ func rootElemSlots(st *ir.Struct) int {
 		}
 	}
 	return int(slots)
+}
+
+// enumNameLambda adapts EnumName<E>, which takes the enum, to the
+// descriptor's ulong vocabulary column: a value past the exported extent
+// names as "???" before the cast could truncate it through a narrower
+// backing type.
+func enumNameLambda(pkg, enum string) string {
+	return fmt.Sprintf("delegate (ulong v) { return v <= (ulong)%sMax ? EnumName%s((global::%s.%s)v) : \"???\"; }", enum, enum, pkg, enum)
 }

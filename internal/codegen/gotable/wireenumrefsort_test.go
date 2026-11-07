@@ -54,7 +54,7 @@ func refSortBuild(t *testing.T, text string) []byte {
 	t.Helper()
 	var v LoadoutConfig
 	var r TableReport
-	if !LoadoutConfigFromJson(&v, []byte(text), &r) || r != (TableReport{}) {
+	if !LoadoutConfigFromJSON(&v, []byte(text), &r) || r != (TableReport{}) {
 		t.Fatalf("sample text: %%+v", r)
 	}
 	w := make([]byte, max(LoadoutConfigMeasure(&v), 0))

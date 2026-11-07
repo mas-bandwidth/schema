@@ -3,12 +3,15 @@
 // Correctness tests are necessary and not sufficient: a read path that leaks
 // one object per call passes every byte comparison in this repo and takes a
 // server down in an afternoon. So this reads and writes the WHOLE corpus in a
-// loop for as long as it is given, and the thing it watches is not the bytes —
+// loop for as many passes as it is given, and the thing it watches is not the bytes —
 // those are the conformance harness's business — but the ALLOCATION COUNTER,
 // which must be flat.
 //
-// It runs for two seconds by default, so it rides `go test ./...` and catches a
-// regression on the way past; `make tables-go-soak` gives it the hour.
+// ITS LENGTH IS A PASS COUNT, NOT A CLOCK (-soak-iterations): the allocation
+// counter is read across passes, so the number of passes is what matters, and
+// a count runs the same loop on every machine. The default is a short one, so
+// it rides `go test ./...` and catches a regression on the way past; `make
+// tables-go-soak` gives it the hour's worth (TABLES_GO_SOAK_ITERATIONS).
 //
 // WHAT IT WATCHES, and why each one:
 //
@@ -30,7 +33,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"tabledemo"
 	"tblp1"
@@ -39,7 +41,7 @@ import (
 	"tblv2"
 )
 
-var soakFor = flag.Duration("soak", 2*time.Second, "how long the soak runs")
+var soakIterations = flag.Int64("soak-iterations", 256, "how many passes of the corpus the soak runs")
 
 // one corpus row: the wire golden, its text, and the three operations bound to
 // the generated surface. Erased the way the conformance driver erases them, so
@@ -89,7 +91,7 @@ func soakRow[T any, R any](
 			*report = *new(R)
 			reset(value)
 			if !fromJson(value, textBytes, report) {
-				t.Fatalf("%s: FromJson refused the golden text", name)
+				t.Fatalf("%s: FromJSON refused the golden text", name)
 			}
 			size := measure(value)
 			if save(value, scratch[:size]) != size {
@@ -105,7 +107,7 @@ func soakRow[T any, R any](
 			}
 			size := toJsonMeasure(value)
 			if toJson(value, scratch[:size]) != size {
-				t.Fatalf("%s: ToJson did not write ToJsonMeasure's answer", name)
+				t.Fatalf("%s: ToJSON did not write ToJSONMeasure's answer", name)
 			}
 			return scratch[:size]
 		},
@@ -116,48 +118,48 @@ func soakCorpus(t *testing.T) []soakCase {
 	g := "../../testdata/wire/tables/"
 	return []soakCase{
 		soakRow(t, "root_full", g+"root_full.bin", tabledemo.RootConfigReset, tabledemo.RootConfigLoad,
-			tabledemo.RootConfigMeasure, tabledemo.RootConfigSave, tabledemo.RootConfigFromJson,
-			tabledemo.RootConfigToJsonMeasure, tabledemo.RootConfigToJson),
+			tabledemo.RootConfigMeasure, tabledemo.RootConfigSave, tabledemo.RootConfigFromJSON,
+			tabledemo.RootConfigToJSONMeasure, tabledemo.RootConfigToJSON),
 		soakRow(t, "root_default", g+"root_default.bin", tabledemo.RootConfigReset, tabledemo.RootConfigLoad,
-			tabledemo.RootConfigMeasure, tabledemo.RootConfigSave, tabledemo.RootConfigFromJson,
-			tabledemo.RootConfigToJsonMeasure, tabledemo.RootConfigToJson),
+			tabledemo.RootConfigMeasure, tabledemo.RootConfigSave, tabledemo.RootConfigFromJSON,
+			tabledemo.RootConfigToJSONMeasure, tabledemo.RootConfigToJSON),
 		soakRow(t, "profile_elide", g+"profile_elide.bin", tabledemo.ProfileConfigReset, tabledemo.ProfileConfigLoad,
-			tabledemo.ProfileConfigMeasure, tabledemo.ProfileConfigSave, tabledemo.ProfileConfigFromJson,
-			tabledemo.ProfileConfigToJsonMeasure, tabledemo.ProfileConfigToJson),
+			tabledemo.ProfileConfigMeasure, tabledemo.ProfileConfigSave, tabledemo.ProfileConfigFromJSON,
+			tabledemo.ProfileConfigToJSONMeasure, tabledemo.ProfileConfigToJSON),
 		soakRow(t, "loadout_full", g+"loadout_full.bin", tabledemo.LoadoutConfigReset, tabledemo.LoadoutConfigLoad,
-			tabledemo.LoadoutConfigMeasure, tabledemo.LoadoutConfigSave, tabledemo.LoadoutConfigFromJson,
-			tabledemo.LoadoutConfigToJsonMeasure, tabledemo.LoadoutConfigToJson),
+			tabledemo.LoadoutConfigMeasure, tabledemo.LoadoutConfigSave, tabledemo.LoadoutConfigFromJSON,
+			tabledemo.LoadoutConfigToJSONMeasure, tabledemo.LoadoutConfigToJSON),
 		soakRow(t, "wide_blob", g+"wide_blob.bin", tabledemo.WideBlobReset, tabledemo.WideBlobLoad,
-			tabledemo.WideBlobMeasure, tabledemo.WideBlobSave, tabledemo.WideBlobFromJson,
-			tabledemo.WideBlobToJsonMeasure, tabledemo.WideBlobToJson),
+			tabledemo.WideBlobMeasure, tabledemo.WideBlobSave, tabledemo.WideBlobFromJSON,
+			tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON),
 		soakRow(t, "archive", g+"archive.bin", tabledemo.ArchiveConfigReset, tabledemo.ArchiveConfigLoad,
-			tabledemo.ArchiveConfigMeasure, tabledemo.ArchiveConfigSave, tabledemo.ArchiveConfigFromJson,
-			tabledemo.ArchiveConfigToJsonMeasure, tabledemo.ArchiveConfigToJson),
+			tabledemo.ArchiveConfigMeasure, tabledemo.ArchiveConfigSave, tabledemo.ArchiveConfigFromJSON,
+			tabledemo.ArchiveConfigToJSONMeasure, tabledemo.ArchiveConfigToJSON),
 		soakRow(t, "keyed_config", g+"keyed_config.bin", tabledemo.KeyedConfigReset, tabledemo.KeyedConfigLoad,
-			tabledemo.KeyedConfigMeasure, tabledemo.KeyedConfigSave, tabledemo.KeyedConfigFromJson,
-			tabledemo.KeyedConfigToJsonMeasure, tabledemo.KeyedConfigToJson),
+			tabledemo.KeyedConfigMeasure, tabledemo.KeyedConfigSave, tabledemo.KeyedConfigFromJSON,
+			tabledemo.KeyedConfigToJSONMeasure, tabledemo.KeyedConfigToJSON),
 		soakRow(t, "keyed_default", g+"keyed_default.bin", tabledemo.KeyedConfigReset, tabledemo.KeyedConfigLoad,
-			tabledemo.KeyedConfigMeasure, tabledemo.KeyedConfigSave, tabledemo.KeyedConfigFromJson,
-			tabledemo.KeyedConfigToJsonMeasure, tabledemo.KeyedConfigToJson),
+			tabledemo.KeyedConfigMeasure, tabledemo.KeyedConfigSave, tabledemo.KeyedConfigFromJSON,
+			tabledemo.KeyedConfigToJSONMeasure, tabledemo.KeyedConfigToJSON),
 		soakRow(t, "v1_cfg", g+"v1_cfg.bin", tblv1.CfgReset, tblv1.CfgLoad, tblv1.CfgMeasure, tblv1.CfgSave,
-			tblv1.CfgFromJson, tblv1.CfgToJsonMeasure, tblv1.CfgToJson),
+			tblv1.CfgFromJSON, tblv1.CfgToJSONMeasure, tblv1.CfgToJSON),
 		soakRow(t, "v1_seams", g+"v1_seams.bin", tblv1.CfgReset, tblv1.CfgLoad, tblv1.CfgMeasure, tblv1.CfgSave,
-			tblv1.CfgFromJson, tblv1.CfgToJsonMeasure, tblv1.CfgToJson),
+			tblv1.CfgFromJSON, tblv1.CfgToJSONMeasure, tblv1.CfgToJSON),
 		soakRow(t, "v2_cfg", g+"v2_cfg.bin", tblv2.CfgReset, tblv2.CfgLoad, tblv2.CfgMeasure, tblv2.CfgSave,
-			tblv2.CfgFromJson, tblv2.CfgToJsonMeasure, tblv2.CfgToJson),
+			tblv2.CfgFromJSON, tblv2.CfgToJSONMeasure, tblv2.CfgToJSON),
 		soakRow(t, "v2_seams", g+"v2_seams.bin", tblv2.CfgReset, tblv2.CfgLoad, tblv2.CfgMeasure, tblv2.CfgSave,
-			tblv2.CfgFromJson, tblv2.CfgToJsonMeasure, tblv2.CfgToJson),
+			tblv2.CfgFromJSON, tblv2.CfgToJSONMeasure, tblv2.CfgToJSON),
 		// the pointered spellings (chain_pointer, chain_pointer_empty) have no Go
 		// codec and no text: Go refuses the pointered unit by name (§11), and
 		// their goldens are the C++ reference's
 		soakRow(t, "chain_value", g+"chain_value.bin", tblp1.ChainReset, tblp1.ChainLoad, tblp1.ChainMeasure,
-			tblp1.ChainSave, tblp1.ChainFromJson, tblp1.ChainToJsonMeasure, tblp1.ChainToJson),
+			tblp1.ChainSave, tblp1.ChainFromJSON, tblp1.ChainToJSONMeasure, tblp1.ChainToJSON),
 		soakRow(t, "chain_value_empty", g+"chain_value_empty.bin", tblp1.ChainReset, tblp1.ChainLoad,
-			tblp1.ChainMeasure, tblp1.ChainSave, tblp1.ChainFromJson, tblp1.ChainToJsonMeasure, tblp1.ChainToJson),
+			tblp1.ChainMeasure, tblp1.ChainSave, tblp1.ChainFromJSON, tblp1.ChainToJSONMeasure, tblp1.ChainToJSON),
 		soakRow(t, "chain_optional", g+"chain_optional.bin", tblp3.ChainReset, tblp3.ChainLoad, tblp3.ChainMeasure,
-			tblp3.ChainSave, tblp3.ChainFromJson, tblp3.ChainToJsonMeasure, tblp3.ChainToJson),
+			tblp3.ChainSave, tblp3.ChainFromJSON, tblp3.ChainToJSONMeasure, tblp3.ChainToJSON),
 		soakRow(t, "chain_optional_empty", g+"chain_optional_empty.bin", tblp3.ChainReset, tblp3.ChainLoad,
-			tblp3.ChainMeasure, tblp3.ChainSave, tblp3.ChainFromJson, tblp3.ChainToJsonMeasure, tblp3.ChainToJson),
+			tblp3.ChainMeasure, tblp3.ChainSave, tblp3.ChainFromJSON, tblp3.ChainToJSONMeasure, tblp3.ChainToJSON),
 	}
 }
 
@@ -199,9 +201,8 @@ func TestSoak(t *testing.T) {
 	runtime.MemProfileRate = 1
 	defer func() { runtime.MemProfileRate = oldRate }()
 
-	deadline := time.Now().Add(*soakFor)
 	iterations := int64(0)
-	for time.Now().Before(deadline) {
+	for iterations < *soakIterations {
 		pass()
 		iterations++
 		if t.Failed() {
@@ -256,8 +257,8 @@ func TestSoak(t *testing.T) {
 			"the read and write paths own no memory, so an allocation that SCALES with the loop is a leak",
 			grew, iterations, allowed)
 	}
-	t.Logf("%d passes of %d cases in %v, %d objects allocated (bound %d) across %d site(s), %d of them the port's",
-		iterations, len(corpus), *soakFor, grew, allowed, len(sites), mine)
+	t.Logf("%d passes of %d cases, %d objects allocated (bound %d) across %d site(s), %d of them the port's",
+		iterations, len(corpus), grew, allowed, len(sites), mine)
 	if os.Getenv("VERBOSE") != "" {
 		t.Logf("heap in use: %d -> %d bytes", before.HeapAlloc, after.HeapAlloc)
 	}
@@ -405,8 +406,8 @@ func TestSoakIdentifierCanGoRed(t *testing.T) {
 			return tabledemo.RootConfigLoad(c, b, r)
 		},
 		tabledemo.RootConfigMeasure, tabledemo.RootConfigSave,
-		tabledemo.RootConfigFromJson,
-		tabledemo.RootConfigToJsonMeasure, tabledemo.RootConfigToJson,
+		tabledemo.RootConfigFromJSON,
+		tabledemo.RootConfigToJSONMeasure, tabledemo.RootConfigToJSON,
 	)
 
 	scratch := make([]byte, 65536)
@@ -456,9 +457,8 @@ func TestNoCodecWorkProfilerClean(t *testing.T) {
 	var memBefore, memAfter runtime.MemStats
 	runtime.ReadMemStats(&memBefore)
 
-	// No codec work performed. Sleep briefly to simulate time passing.
-	time.Sleep(20 * time.Millisecond)
-
+	// No codec work performed between the two reads: whatever the window
+	// shows is the harness's own bookkeeping, and none of it may be the port's.
 	runtime.ReadMemStats(&memAfter)
 	grew := memAfter.Mallocs - memBefore.Mallocs
 

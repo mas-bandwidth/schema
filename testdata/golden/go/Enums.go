@@ -3,6 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package example
 
@@ -10,20 +11,22 @@ import (
 	"strconv"
 )
 
-// Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2)
+// Team is an enum: None = 0, then the variants densely from 1; the wire carries
+// [0, 2].
 type Team uint8
 
+// The Team variants. TeamMax is the highest value a read accepts.
 const (
 	TeamNone Team = 0
 	TeamRed  Team = 1
 	TeamBlue Team = 2
-	TeamMax  Team = 2 // the exported extent (SPEC §4.2)
+	TeamMax  Team = 2
 )
 
-// EnumNameTeam: debug/log/tooling name for any Team wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameTeam(value Team) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to TeamMax).
+func (v Team) String() string {
+	switch v {
 	case TeamNone:
 		return "None"
 	case TeamRed:
@@ -34,9 +37,18 @@ func EnumNameTeam(value Team) string {
 	return "???"
 }
 
-// ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2)
+// EnumNameTeam returns the variant name of value, or "???" for a value outside
+// the declared variants. It is value.String() under the name every target gives
+// its debug-name function.
+func EnumNameTeam(value Team) string {
+	return value.String()
+}
+
+// ShipType is an enum: None = 0, then the variants densely from 1; the wire
+// carries [0, 5].
 type ShipType uint8
 
+// The ShipType variants. ShipTypeMax is the highest value a read accepts.
 const (
 	ShipTypeNone      ShipType = 0
 	ShipTypeFighter   ShipType = 1
@@ -44,13 +56,13 @@ const (
 	ShipTypeBomber    ShipType = 3
 	ShipTypeDestroyer ShipType = 4
 	ShipTypeCarrier   ShipType = 5
-	ShipTypeMax       ShipType = 5 // the exported extent (SPEC §4.2)
+	ShipTypeMax       ShipType = 5
 )
 
-// EnumNameShipType: debug/log/tooling name for any ShipType wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameShipType(value ShipType) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to ShipTypeMax).
+func (v ShipType) String() string {
+	switch v {
 	case ShipTypeNone:
 		return "None"
 	case ShipTypeFighter:
@@ -67,21 +79,30 @@ func EnumNameShipType(value ShipType) string {
 	return "???"
 }
 
-// MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
+// EnumNameShipType returns the variant name of value, or "???" for a value
+// outside the declared variants. It is value.String() under the name every
+// target gives its debug-name function.
+func EnumNameShipType(value ShipType) string {
+	return value.String()
+}
+
+// MissileType is an enum: None = 0, then the variants densely from 1; the wire
+// carries [0, 3].
 type MissileType uint8
 
+// The MissileType variants. MissileTypeMax is the highest value a read accepts.
 const (
 	MissileTypeNone       MissileType = 0
 	MissileTypeHeatseeker MissileType = 1
 	MissileTypeTorpedo    MissileType = 2
 	MissileTypeNuke       MissileType = 3
-	MissileTypeMax        MissileType = 3 // the exported extent (SPEC §4.2)
+	MissileTypeMax        MissileType = 3
 )
 
-// EnumNameMissileType: debug/log/tooling name for any MissileType wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameMissileType(value MissileType) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to MissileTypeMax).
+func (v MissileType) String() string {
+	switch v {
 	case MissileTypeNone:
 		return "None"
 	case MissileTypeHeatseeker:
@@ -94,9 +115,18 @@ func EnumNameMissileType(value MissileType) string {
 	return "???"
 }
 
-// PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2)
+// EnumNameMissileType returns the variant name of value, or "???" for a value
+// outside the declared variants. It is value.String() under the name every
+// target gives its debug-name function.
+func EnumNameMissileType(value MissileType) string {
+	return value.String()
+}
+
+// PropType is an enum: None = 0, then the variants densely from 1; the wire
+// carries [0, 6].
 type PropType uint8
 
+// The PropType variants. PropTypeMax is the highest value a read accepts.
 const (
 	PropTypeNone       PropType = 0
 	PropTypeAsteroid   PropType = 1
@@ -105,13 +135,13 @@ const (
 	PropTypeSphere     PropType = 4
 	PropTypeBlackHole  PropType = 5
 	PropTypeDysonPanel PropType = 6
-	PropTypeMax        PropType = 6 // the exported extent (SPEC §4.2)
+	PropTypeMax        PropType = 6
 )
 
-// EnumNamePropType: debug/log/tooling name for any PropType wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNamePropType(value PropType) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to PropTypeMax).
+func (v PropType) String() string {
+	switch v {
 	case PropTypeNone:
 		return "None"
 	case PropTypeAsteroid:
@@ -130,28 +160,45 @@ func EnumNamePropType(value PropType) string {
 	return "???"
 }
 
-// Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2)
+// EnumNamePropType returns the variant name of value, or "???" for a value
+// outside the declared variants. It is value.String() under the name every
+// target gives its debug-name function.
+func EnumNamePropType(value PropType) string {
+	return value.String()
+}
+
+// Pending is an enum: None = 0, then the variants densely from 1; the wire
+// carries [0, 0].
 type Pending uint8
 
+// The Pending variants. PendingMax is the highest value a read accepts.
 const (
 	PendingNone Pending = 0
-	PendingMax  Pending = 0 // the exported extent (SPEC §4.2)
+	PendingMax  Pending = 0
 )
 
-// EnumNamePending: debug/log/tooling name for any Pending wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNamePending(value Pending) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to PendingMax).
+func (v Pending) String() string {
+	switch v {
 	case PendingNone:
 		return "None"
 	}
 	return "???"
 }
 
-// ShipFlags — one bit per variant, consumed as masks; storage uint64 in every
-// target, wire 4 bits (SPEC §4.2)
+// EnumNamePending returns the variant name of value, or "???" for a value
+// outside the declared variants. It is value.String() under the name every
+// target gives its debug-name function.
+func EnumNamePending(value Pending) string {
+	return value.String()
+}
+
+// ShipFlags is a flags set: one bit per variant, consumed as masks, stored as
+// uint64 and carried in 4 wire bits.
 type ShipFlags uint64
 
+// The ShipFlags masks, one bit per variant.
 const (
 	ShipFlagsFiringLaser ShipFlags = 1 << 0
 	ShipFlagsBoosting    ShipFlags = 1 << 1
@@ -159,11 +206,11 @@ const (
 	ShipFlagsAiming      ShipFlags = 1 << 3
 )
 
-// ShipFlagsCount is the declared variant count (SPEC §4.2).
+// ShipFlagsCount is the declared variant count.
 const ShipFlagsCount = 4
 
-// FlagNameShipFlags: debug/log/tooling name for bit i of ShipFlags —
-// out-of-range bits name as "???"
+// FlagNameShipFlags returns the name of bit i of ShipFlags, or "???" for a bit
+// past the declared variants.
 func FlagNameShipFlags(bit int) string {
 	switch bit {
 	case 0:
@@ -178,9 +225,9 @@ func FlagNameShipFlags(bit int) string {
 	return "???"
 }
 
-// FlagNamesShipFlags renders the set bits of value as "A|B" — "0" for the
-// empty set, bits past the declared variants as hex
-func FlagNamesShipFlags(value uint64) string {
+// FlagNamesShipFlags renders the set bits of value as "A|B": "0" for the empty
+// set, bits past the declared variants as hex.
+func FlagNamesShipFlags(value ShipFlags) string {
 	names := ""
 	if value&(1<<0) != 0 {
 		names += "|FiringLaser"
@@ -195,10 +242,15 @@ func FlagNamesShipFlags(value uint64) string {
 		names += "|Aiming"
 	}
 	if rest := value >> 4; rest != 0 {
-		names += "|0x" + strconv.FormatUint(rest<<4, 16)
+		names += "|0x" + strconv.FormatUint(uint64(rest<<4), 16)
 	}
 	if names == "" {
 		return "0"
 	}
 	return names[1:]
+}
+
+// String renders the set bits of v as FlagNamesShipFlags does.
+func (v ShipFlags) String() string {
+	return FlagNamesShipFlags(v)
 }

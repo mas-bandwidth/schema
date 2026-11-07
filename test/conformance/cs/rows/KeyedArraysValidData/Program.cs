@@ -91,7 +91,7 @@ static class Program
     {
         bool ok = true;
 
-        ok &= Check((int)Grade.Bronze == 1 && (int)Grade.Silver == 2 && (int)Grade.Max == 2,
+        ok &= Check((int)Grade.Bronze == 1 && (int)Grade.Silver == 2 && (int)Schema.GradeMax == 2,
             "Grade's variants are dense from 1 and Max = 2");
         ok &= Check(new Parcel().Bins.Slots.Length == 2,
             "bins [Grade]Bolt holds one slot per named variant: 2");

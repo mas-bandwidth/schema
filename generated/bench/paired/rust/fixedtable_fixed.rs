@@ -55,9 +55,20 @@ pub fn fixed_table_fixed_scatter(b: &[u8], value: &mut FixedTableRow, report: &m
 
 /// FixedTable's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
+#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
 pub fn fixed_table_fixed_clamp_body(value: &mut FixedTableRow, clamped: &mut i32, damaged: &mut i32) {
     let _ = (&clamped, &damaged);
     bench_mixed_fixed_clamp_body(&mut value.value, clamped, damaged);
+}
+
+/// FixedTable's finite rule (docs/SPEC-TABLES.md §3.3): the first float holding a
+/// NaN or an infinity, named <Owner>.<field>, or "" when every float is finite.
+pub fn fixed_table_fixed_finite_body(value: &FixedTableRow) -> &'static str {
+    let why = bench_mixed_fixed_finite_body(&value.value);
+    if !why.is_empty() {
+        return why;
+    }
+    ""
 }
 
 // ---- FixedTable, the fixed form ----
@@ -292,10 +303,15 @@ pub const fn fixed_table_fixed_measure(count: usize) -> usize {
 }
 
 /// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or
-/// None when the buffer is smaller than fixed_table_fixed_measure says.
+/// None when the buffer is smaller than fixed_table_fixed_measure says or a float
+/// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3).
 pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Option<usize> {
     let need = fixed_table_fixed_measure(values.len());
     if buffer.len() < need {
+        return None;
+    }
+    // THE WRITER'S FINITE RULE (§3.3): a refusal writes no byte.
+    if values.iter().any(|value| !fixed_table_fixed_finite_body(value).is_empty()) {
         return None;
     }
     buffer[..TABLE_FIXED_HEADER_BYTES].fill(0); // the seven reserved bytes, and the rest of the header
@@ -320,7 +336,7 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
 /// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when
 /// the file's layout hashes to this build's own, a plan compiled once from the
 /// writer's layout otherwise — SAME LOOP either way, which is the owner's
-/// ruling that this form's cost must not move when a peer ships
+/// ruling that this form's cost must not move when an endpoint ships
 /// (docs/SPEC-TABLES.md §3.4).
 ///
 /// The PREFILL copies declared defaults into exactly the dest ranges the plan
@@ -330,7 +346,33 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
 /// The plan's storage is the CALLER's, declared by capacity: this codec never
 /// allocates, and a layout whose plan does not fit is a refusal by name.
 /// Returns the records read, or None on a refusal `report` names.
+///
+/// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that
+/// meets damage anywhere answers None with `malformed` set, and every record
+/// in `values` goes back to its declared defaults, so nothing the read
+/// decoded before or after the damage is a value to use.
 pub fn fixed_table_fixed_load(
+    values: &mut [FixedTableRow],
+    data: &[u8],
+    plan: &mut [TableFixedEntry],
+    remap: &mut [u16],
+    report: &mut TableFixedReport,
+) -> Option<usize> {
+    let malformed_before = report.malformed;
+    report.malformed = false;
+    let read = fixed_table_fixed_load_records(values, data, plan, remap, report);
+    let damaged = report.malformed;
+    report.malformed |= malformed_before;
+    if damaged {
+        for value in values.iter_mut() {
+            fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
+        }
+        return None;
+    }
+    read
+}
+
+fn fixed_table_fixed_load_records(
     values: &mut [FixedTableRow],
     data: &[u8],
     plan: &mut [TableFixedEntry],
@@ -436,9 +478,15 @@ pub fn fixed_table_fixed_load(
     let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);
     let holes = &hole_buf[..hole_n];
     let mut image = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
+    let (clamped_before, widened_before) = (report.clamped, report.widened);
     for k in 0..n {
         let record = &rest[k * record_bytes..(k + 1) * record_bytes];
         if u64::from_le_bytes(record[..8].try_into().expect("eight bytes")) != hash {
+            for value in values.iter_mut().take(k) {
+                fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
+            }
+            report.clamped = clamped_before;
+            report.widened = widened_before;
             return report.refuse(TableFixedReason::NoBlock);
         }
         for h in holes {
@@ -448,6 +496,20 @@ pub fn fixed_table_fixed_load(
         }
         table_fixed_run(entries, guards, table, &record[8..], &mut image, report);
         fixed_table_fixed_scatter(&image, &mut values[k], report);
+        // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
+        // FIRST, before the bounds pass, over the storage the run just wrote,
+        // and a NaN or an infinity refuses the whole batch as
+        // non_finite_float, naming the field. Nothing of the batch is kept:
+        // every record this call wrote goes back to its declared defaults.
+        let why = fixed_table_fixed_finite_body(&values[k]);
+        if !why.is_empty() {
+            for value in values.iter_mut().take(k + 1) {
+                fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
+            }
+            report.clamped = clamped_before;
+            report.widened = widened_before;
+            return report.refuse_non_finite(why);
+        }
         // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the
         // storage the scatter just wrote: the same pass for either plan,
         // and only over what a read can have written (§3.4).
@@ -460,6 +522,11 @@ pub fn fixed_table_fixed_load(
             // having no `L` to continue past. REFUSE is total, so the refusal
             // is taken before any counter is added.
             if damaged != 0 {
+                for value in values.iter_mut().take(k + 1) {
+                    fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
+                }
+                report.clamped = clamped_before;
+                report.widened = widened_before;
                 return report.refuse(TableFixedReason::TextIllFormed);
             }
             report.clamped += clamped as u32;
@@ -467,7 +534,7 @@ pub fn fixed_table_fixed_load(
     }
     // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read
     // that RETURNS (§5.9 #6): `unknown` and `kind_mismatch` are the PLAN'S own
-    // numbers, fixed when the plan was built — once per peer, never per record
+    // numbers, fixed when the plan was built — once per endpoint, never per record
     // (§5.4) — and a refusal that came after would have moved a counter, where
     // REFUSE IS TOTAL.
     report.unknown += census.0;

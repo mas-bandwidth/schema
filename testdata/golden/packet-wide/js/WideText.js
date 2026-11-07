@@ -18,6 +18,55 @@
 // realm, always consumed in the same call that fills them.
 const NUMBER_SCRATCH = { value: 0 };
 
+// validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
+// interior null (SPEC §4.7). Every string field's read calls it; nothing
+// allocates and nothing latches.
+function validText(bytes, length) {
+  for (let utf8Index = 0; utf8Index < length;) {
+    const utf8Lead = bytes[utf8Index++];
+    if (utf8Lead < 0x80) {
+      if (utf8Lead === 0) {
+        return false; // an interior null is content the read refuses
+      }
+      continue;
+    }
+    let utf8Remaining = 0;
+    let utf8Point = 0;
+    if ((utf8Lead & 0xe0) === 0xc0) {
+      utf8Remaining = 1;
+      utf8Point = utf8Lead & 0x1f;
+    } else if ((utf8Lead & 0xf0) === 0xe0) {
+      utf8Remaining = 2;
+      utf8Point = utf8Lead & 0x0f;
+    } else if ((utf8Lead & 0xf8) === 0xf0) {
+      utf8Remaining = 3;
+      utf8Point = utf8Lead & 0x07;
+    } else {
+      return false; // malformed UTF-8 lead
+    }
+    if (utf8Remaining > length - utf8Index) {
+      return false;
+    }
+    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+      const utf8Byte = bytes[utf8Index++];
+      if ((utf8Byte & 0xc0) !== 0x80) {
+        return false;
+      }
+      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3f);
+    }
+    if (utf8Remaining === 1 && utf8Point < 0x80) {
+      return false; // overlong
+    }
+    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xd800 && utf8Point <= 0xdfff))) {
+      return false; // overlong, or a surrogate
+    }
+    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10ffff)) {
+      return false; // overlong, or past U+10FFFF
+    }
+  }
+  return true;
+}
+
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
 export const ProtocolId = 0x53835dbf9f05e4d9n;
@@ -25,8 +74,8 @@ export const ProtocolId = 0x53835dbf9f05e4d9n;
 // type WideSeven
 export class WideSeven {
   constructor() {
-    this.Text = new Uint16Array(7);
-    this.TextLength = 0;
+    this.text = new Uint16Array(7);
+    this.textLength = 0;
   }
 }
 
@@ -37,26 +86,26 @@ export const WideSevenMaxBytes = 32;
 
 // InitWideSeven restores fresh construction values in place, preserving storage.
 export function InitWideSeven(value) {
-  value.Text.fill(0);
-  value.TextLength = 0;
+  value.text.fill(0);
+  value.textLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroWideSeven(value) {
-  value.Text.fill(0);
-  value.TextLength = 0;
+  value.text.fill(0);
+  value.textLength = 0;
 }
 
 export function WriteWideSeven(stream, value) {
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 7) {
+  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 7) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.TextLength;
+  NUMBER_SCRATCH.value = value.textLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
-    NUMBER_SCRATCH.value = value.Text[wideIndex];
+  for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
+    NUMBER_SCRATCH.value = value.text[wideIndex];
     if (NUMBER_SCRATCH.value === 0) return false;
     if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
       return false;
@@ -69,10 +118,10 @@ export function ReadWideSeven(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 7)) {
     return false;
   }
-  value.TextLength = NUMBER_SCRATCH.value;
+  value.textLength = NUMBER_SCRATCH.value;
   {
     let expectLow = false;
-    for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
+    for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
       if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
         return false;
       }
@@ -82,7 +131,7 @@ export function ReadWideSeven(stream, value) {
       const low = wideGroup >= 0xDC00 && wideGroup <= 0xDFFF;
       if (low !== expectLow) return false;
       expectLow = high;
-      value.Text[wideIndex] = wideGroup;
+      value.text[wideIndex] = wideGroup;
     }
     if (expectLow) return false;
   }
@@ -92,8 +141,8 @@ export function ReadWideSeven(stream, value) {
 // type WideFour
 export class WideFour {
   constructor() {
-    this.Text = new Uint16Array(4);
-    this.TextLength = 0;
+    this.text = new Uint16Array(4);
+    this.textLength = 0;
   }
 }
 
@@ -104,26 +153,26 @@ export const WideFourMaxBytes = 24;
 
 // InitWideFour restores fresh construction values in place, preserving storage.
 export function InitWideFour(value) {
-  value.Text.fill(0);
-  value.TextLength = 0;
+  value.text.fill(0);
+  value.textLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroWideFour(value) {
-  value.Text.fill(0);
-  value.TextLength = 0;
+  value.text.fill(0);
+  value.textLength = 0;
 }
 
 export function WriteWideFour(stream, value) {
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 4) {
+  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 4) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.TextLength;
+  NUMBER_SCRATCH.value = value.textLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
-    NUMBER_SCRATCH.value = value.Text[wideIndex];
+  for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
+    NUMBER_SCRATCH.value = value.text[wideIndex];
     if (NUMBER_SCRATCH.value === 0) return false;
     if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
       return false;
@@ -136,10 +185,10 @@ export function ReadWideFour(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 4)) {
     return false;
   }
-  value.TextLength = NUMBER_SCRATCH.value;
+  value.textLength = NUMBER_SCRATCH.value;
   {
     let expectLow = false;
-    for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
+    for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
       if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
         return false;
       }
@@ -149,7 +198,7 @@ export function ReadWideFour(stream, value) {
       const low = wideGroup >= 0xDC00 && wideGroup <= 0xDFFF;
       if (low !== expectLow) return false;
       expectLow = high;
-      value.Text[wideIndex] = wideGroup;
+      value.text[wideIndex] = wideGroup;
     }
     if (expectLow) return false;
   }
@@ -159,8 +208,8 @@ export function ReadWideFour(stream, value) {
 // type NarrowFifteen
 export class NarrowFifteen {
   constructor() {
-    this.Text = new Uint8Array(15); // string(15): max length, used length beside it (SPEC §4.7)
-    this.TextLength = 0;
+    this.text = new Uint8Array(15); // string(15): max length, used length beside it (SPEC §4.7)
+    this.textLength = 0;
   }
 }
 
@@ -171,25 +220,25 @@ export const NarrowFifteenMaxBytes = 24;
 
 // InitNarrowFifteen restores fresh construction values in place, preserving storage.
 export function InitNarrowFifteen(value) {
-  value.Text.fill(0);
-  value.TextLength = 0;
+  value.text.fill(0);
+  value.textLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroNarrowFifteen(value) {
-  value.Text.fill(0);
-  value.TextLength = 0;
+  value.text.fill(0);
+  value.textLength = 0;
 }
 
 export function WriteNarrowFifteen(stream, value) {
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 15) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 15) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
-  NUMBER_SCRATCH.value = value.TextLength;
+  NUMBER_SCRATCH.value = value.textLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  if (!stream.serializeBytes(value.Text.subarray(0, value.TextLength))) {
+  if (!stream.serializeBytes(value.text.subarray(0, value.textLength))) {
     return false;
   }
   return true;
@@ -199,34 +248,12 @@ export function ReadNarrowFifteen(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) { // the length guards the slice (§6.3)
     return false;
   }
-  value.TextLength = NUMBER_SCRATCH.value;
-  if (!stream.serializeBytes(value.Text.subarray(0, value.TextLength))) {
+  value.textLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.text.subarray(0, value.textLength))) {
     return false;
   }
-  for (let utf8Index = 0; utf8Index < value.TextLength;)
-  {
-    const utf8Lead = value.Text[utf8Index++];
-    if (utf8Lead < 0x80) continue;
-    let utf8Remaining, utf8Point;
-    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (utf8Remaining > value.TextLength - utf8Index) return false;
-    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-    {
-      const utf8Byte = value.Text[utf8Index++];
-      if ((utf8Byte & 0xC0) !== 0x80) return false;
-      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-    }
-    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-  }
-  for (let i = 0; i < value.TextLength; i++) {
-    if (value.Text[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)
-      return false;
-    }
+  if (!validText(value.text, value.textLength)) {
+    return false;
   }
   return true;
 }
@@ -234,8 +261,8 @@ export function ReadNarrowFifteen(stream, value) {
 // type WideInterop
 export class WideInterop {
   constructor() {
-    this.Caption = new Uint16Array(7);
-    this.CaptionLength = 0;
+    this.caption = new Uint16Array(7);
+    this.captionLength = 0;
   }
 }
 
@@ -246,26 +273,26 @@ export const WideInteropMaxBytes = 32;
 
 // InitWideInterop restores fresh construction values in place, preserving storage.
 export function InitWideInterop(value) {
-  value.Caption.fill(0);
-  value.CaptionLength = 0;
+  value.caption.fill(0);
+  value.captionLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroWideInterop(value) {
-  value.Caption.fill(0);
-  value.CaptionLength = 0;
+  value.caption.fill(0);
+  value.captionLength = 0;
 }
 
 export function WriteWideInterop(stream, value) {
-  if (!Number.isInteger(value.CaptionLength) || value.CaptionLength < 0 || value.CaptionLength > 7) {
+  if (!Number.isInteger(value.captionLength) || value.captionLength < 0 || value.captionLength > 7) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.CaptionLength;
+  NUMBER_SCRATCH.value = value.captionLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  for (let wideIndex = 0; wideIndex < value.CaptionLength; wideIndex++) {
-    NUMBER_SCRATCH.value = value.Caption[wideIndex];
+  for (let wideIndex = 0; wideIndex < value.captionLength; wideIndex++) {
+    NUMBER_SCRATCH.value = value.caption[wideIndex];
     if (NUMBER_SCRATCH.value === 0) return false;
     if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
       return false;
@@ -278,10 +305,10 @@ export function ReadWideInterop(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 7)) {
     return false;
   }
-  value.CaptionLength = NUMBER_SCRATCH.value;
+  value.captionLength = NUMBER_SCRATCH.value;
   {
     let expectLow = false;
-    for (let wideIndex = 0; wideIndex < value.CaptionLength; wideIndex++) {
+    for (let wideIndex = 0; wideIndex < value.captionLength; wideIndex++) {
       if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
         return false;
       }
@@ -291,7 +318,7 @@ export function ReadWideInterop(stream, value) {
       const low = wideGroup >= 0xDC00 && wideGroup <= 0xDFFF;
       if (low !== expectLow) return false;
       expectLow = high;
-      value.Caption[wideIndex] = wideGroup;
+      value.caption[wideIndex] = wideGroup;
     }
     if (expectLow) return false;
   }

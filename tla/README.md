@@ -222,3 +222,193 @@ the card conformance check (`the-card-corpus-is-a-language-neutral-conformance-s
 and each language stream's own upgrade and edit tests; the eight language
 streams cite this model from their upgrade and edit functions as the contract
 they implement.
+
+# tla/Framing
+
+A bounded LAYOUT model of the table wire's record scan
+(docs/LAYERS/1-framing.md; docs/SPEC-TABLES.md §3, §4, §2.9): one parent body
+of `N` bytes walked by a cursor, one length-framed field at a time, carrying
+the arithmetic the readers carry — the field's start, its end `start + L`, the
+header read AGAINST THE PARENT buffer rather than the field's own end, the
+element span clamped at zero when the header crossed `L`, and the resume point
+after a field read whole. Damage ends the scan: DAMAGE DISCARDS THE WHOLE LOAD
+(docs/SPEC-TABLES.md §4), so nothing resumes after it.
+It is a model, not a codec: the reference, the kind byte and the element
+values are folded away and only offsets remain, which is what a layout model
+is for (Glenn, 2026-10-29: the bugs live in the mapping to memory).
+
+## The finite instance
+
+`N = 6`, `MaxL = 7`, `HeaderBytes = {1, 2, 3}`. Every field chooses every `L`
+in `0..MaxL` and every header width (the element kind byte plus a count of one
+or more LEB128 bytes), so TLC walks every placement of a header against every
+`L` and every buffer end, including `L` exactly at the buffer, one past it, a
+header that crosses `L` inside the buffer, and one that crosses the buffer.
+
+## Actions
+
+| action | the rule |
+|---|---|
+| `Terminator` | the zero reference ends the body (F3, R1) |
+| `Truncated` | no byte left for a reference: damage, and the load ends |
+| `Field(L, H)` | one length-framed array field: `L` past the body is damage and ends the load (L4); fewer than two bytes is inert (H2); a count the parent cannot complete is damage inside the field and ends the load; otherwise the header is read against the parent, the elements are bounded by `L`, and the parent resumes at `end` (H3, L1) |
+| `Finished` | stutter once the scan is done |
+
+## Properties
+
+- **TypeOK** — every offset bounded by `N + MaxL + 1`.
+- **NoReadPastBuffer** — no field's read reaches past the buffer (L4, H5).
+- **ResumeAtEnd** — after every field the parent did not stop on, it resumed
+  exactly at `start + L` (L1): a count that crossed `L` moves no resume point.
+- **DamageEndsLoad** — once `malformed` is set the scan is done: no field is
+  read after damage, so nothing a later field held can stand beside it
+  (docs/SPEC-TABLES.md §4).
+- **HeaderAgainstParent** — a count is damage only when the PARENT cannot
+  complete it (H3): a header the buffer holds is read whether or not the
+  field's own `L` covers it.
+
+## Reversed witnesses
+
+Each reversed cfg turns exactly one fault switch TRUE and checks TypeOK plus
+the one invariant that names the rule; only that invariant may fail.
+
+| cfg | switch | invariant violated | the bug it is |
+|---|---|---|---|
+| `MCFramingHeaderByChildL.cfg` | `HeaderByChildL` | `HeaderAgainstParent` | the header bounded by the field's own `L`: #2400 (Dart), #2418 (Rust); Java, Luau and Squirrel today (docs/LAYERS/1-framing.md N3) |
+| `MCFramingOffByOneAtL.cfg` | `OffByOneAtL` | `NoReadPastBuffer` | a payload ending one byte past the buffer accepted, and read |
+| `MCFramingResumeAtCursor.cfg` | `ResumeAtCursor` | `ResumeAtEnd` | resuming where the header's read stopped instead of at `end`, so a crossed count desynchronizes the parent |
+| `MCFramingResumeAfterDamage.cfg` | `ResumeAfterDamage` | `DamageEndsLoad` | resuming past `L` after damage inside a field, the partial read the ruling of 2026-10-31 removed |
+
+## Running
+
+From this directory, on a Linux bench, with `/opt/tla/tla2tools.jar`:
+
+```
+nice -n 19 timeout 180s java -Xmx2g -cp /opt/tla/tla2tools.jar tlc2.TLC \
+  -workers 1 -config MCFraming.cfg -metadir "$JOB/tlc-MCFraming" Framing
+```
+
+Repeat for each of the five cfgs. The positive cfg must exit 0 with exhaustive
+completion; each reversed cfg must report its named invariant violation. The
+runs are recorded in `tla/RUNS.tsv`.
+
+## What this does not prove
+
+A model checked here does not prove any reader. The concrete proof is the
+`framing` conformance surface, which runs the hand-built vectors of
+docs/LAYERS/1-framing.md through every leg, and the engine's oracle check
+beside it.
+
+# tla/NodeExtent
+
+A LAYOUT model of the node extent (docs/SPEC-TABLES.md §2.8, §2.9, §7.2,
+§7.6): where a cooked node's maps and lists lay their arrays. It carries the
+arithmetic the writers carry — `internal/tablecook/extent.go`, the C++
+reference's `ExtentAt` and `ExtentPack`, the Rust carve in
+`internal/codegen/rusttable/cookcarve.go` — and an abstract "the entries are
+somewhere in the node" cannot see: the node's base at its node alignment, the
+record rounded to where the extent begins, the running offset, each array rounded to its
+element's alignment, `count × size`, and the PRE-ORDER rule (a container's whole
+array first, then each element's own arrays).
+
+One node holds two containers in field order, A then B, and each element of A
+may hold one child container. Every shape is chosen at Init: the record's
+alignment (eight or sixteen, because a holder holds a sixteen-byte slot at
+eight), the node's base, the record's size, each element's size and alignment
+(up to sixteen, a 128-bit kind's), every count and every child count. The node
+aligns to the greater of its record's alignment and every element alignment
+its three shapes ask for, and the extent begins at the record's size rounded
+to the greater of eight and that (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
+RULES; `ir.CookNodeAlign`, `ir.CookExtentStart`). A map's entries are a list's
+elements with the generated `{ key, value }` table as the element; the key order
+is not index arithmetic and is not modelled.
+
+## Properties
+
+- **AlignedInRegion** — every array sits at its element's alignment in the region.
+- **NoOverlap** — no two arrays share a byte (lists and maps are one population).
+- **Contained** — every array ends inside the extent the layout reserved.
+- **OutsideRecord** — no array touches the record's own storage.
+- **PreOrder** — a container's whole array comes before its elements' arrays.
+- **SlotResolves** — each child slot lives inside its parent's array.
+
+## Reversed witnesses
+
+| cfg | switch | invariant violated | the bug it is |
+|---|---|---|---|
+| `MCNodeExtentSkipAlign.cfg` | `SkipAlign` | `AlignedInRegion` | an array laid at the running offset unaligned (the Rust carve's control `test/rust-cookmap/control align`, and the tool's `tables-lists-tool-cook-negative-control`) |
+| `MCNodeExtentChildrenFirst.cfg` | `ChildrenFirst` | `NoOverlap` | an element's child array laid before the parent's whole array is reserved |
+| `MCNodeExtentExtentOverRecord.cfg` | `ExtentOverRecord` | `OutsideRecord` | the extent begun at the node's base instead of after the record |
+| `MCNodeExtentFloorOnlyStart.cfg` | `FloorOnlyStart` | `AlignedInRegion` | the extent begun at the record's size rounded to eight alone, so a sixteen-aligned array lands at eight modulo sixteen when the size is (the tool's `tables-tool-cook-node-align-negative-control`, its `start` half) |
+| `MCNodeExtentRecordAlignedNode.cfg` | `RecordAlignedNode` | `AlignedInRegion` | the node aligned to its record alone, so a sixteen-aligned array lands at eight modulo sixteen when the node does (the same control, its `node` half) |
+
+## Running
+
+From this directory, with `/opt/tla/tla2tools.jar`:
+
+```
+nice -n 19 timeout 300s java -Xmx2g -cp /opt/tla/tla2tools.jar tlc2.TLC \
+  -workers 1 -config MCNodeExtent.cfg -metadir "$JOB/tlc-MCNodeExtent" MCNodeExtent
+```
+
+Repeat for each of the six cfgs. The runs are recorded in `tla/RUNS.tsv`.
+
+## What this does not prove
+
+The key order of a map's entries, which is not index arithmetic, and nesting
+deeper than one level below the node's own containers.
+
+# tla/PGroup
+
+The supervision policy of `tools/pgroup` (`supervise.go`'s `step`), which every
+self-hosted CI job runs its steps under. A command runs as the leader of its
+own process group and may start a child that outlives it; pgroup must leave no
+member of the group alive once it is done, whichever way the command ends.
+
+## The instance
+
+One leader and one child (`orphan`), which is all the policy distinguishes: the
+leader's exit is observed, the child's is not. The OS is the environment: the
+leader may die at any time, a forwarded SIGTERM may or may not kill each member,
+and only SIGKILL is certain. The grace timer, once armed, fires once.
+
+## Actions
+
+`Spawn` and `LeaderDies` are the environment. `Exit`, `Stop`, `Wall` and
+`Grace` are the four events `step` takes (`evExit`, `evStop`, `evWall`,
+`evGrace`), each with the actions `step` returns. `Done` is pgroup having
+exited.
+
+## Properties
+
+- **TypeOK**.
+- **NoSurvivor**: once pgroup is done, the leader and its child are dead.
+- **StopEnds**: once stopping (a signal or the wall), pgroup finishes, under
+  weak fairness of its own two events and none for the environment.
+
+## Reversed witnesses
+
+| cfg | switch | property | the bug |
+| --- | --- | --- | --- |
+| `MCPGroup.cfg` | none | all hold | |
+| `MCPGroupKillOnlyLeader.cfg` | `KillOnlyLeader` | `NoSurvivor` | a plain exec: the child outlives the command and holds the step open |
+| `MCPGroupNoGraceKill.cfg` | `NoGraceKill` | `StopEnds` | grace never escalates to SIGKILL, so a member that catches SIGTERM keeps the step open |
+
+The Go side of NoSurvivor is `TestEveryWayOutKillsTheGroup`; the process-level
+proof is `TestOrphanDiesWithTheCommand` with its negative control
+`TestOrphanOutlivesABareCommand` (`tools/pgroup`, under `SCHEMA_SLOW=1`).
+
+## Running
+
+```
+nice -n 19 timeout 120s java -Xmx1g -cp /opt/tla/tla2tools.jar tlc2.TLC \
+  -workers 1 -config MCPGroup.cfg -metadir "$JOB/tlc-MCPGroup" PGroup
+```
+
+Repeat for each of the three cfgs. The runs are recorded in `tla/RUNS.tsv`.
+
+## What this does not prove
+
+A member that leaves the group on purpose (setsid, Setpgid), and the window in
+which a reaped leader's pid could be reused as a new group's id before the
+group kill lands.

@@ -112,7 +112,7 @@ check(idHoles === 0, `identity list: the unwritten-range census of the identity 
   TableFixedRun(Int32Array.from(identity), 1, rec, view, 8, idPlan.image, idPlan.view, null, report);
   const value = new TeamConfig();
   TeamConfigFixedDecode(value, idPlan.view, 0, report);
-  check(value.SpawnCount === 9 && value.BannerLength === 3 && value.Banner[0] === 0x68 &&
+  check(value.spawnCount === 9 && value.bannerLength === 3 && value.banner[0] === 0x68 &&
     report.clamped === 0 && idPlan.image[0] === 9,
     "identity pays no prefill: spawn 9 — not the default 4 — lands through the empty hole list (image[0]=" + idPlan.image[0] + ")");
 }
@@ -162,10 +162,10 @@ check(prefill[0] === 0x04 && prefill[1] === 0 && prefill[2] === 0 && prefill[3] 
   TableFixedRun(lane.entries, lane.count, rec, view, 8, plan.image, plan.view, lane.remap, report);
   const value = new TeamConfig();
   TeamConfigFixedDecode(value, plan.view, 0, report);
-  check(value.SpawnCount === 4 && plan.image[0] === 0x04 && plan.image[1] === 0,
-    `prefill lands the default: the absent field keeps ${value.SpawnCount}, the declared 4, not the stain (image[0]=${plan.image[0]})`);
-  check(value.BannerLength === 3 && value.Banner[0] === 0x68 && value.Banner[1] === 0x65 &&
-    value.Banner[2] === 0x79 && plan.image[4] === 3,
+  check(value.spawnCount === 4 && plan.image[0] === 0x04 && plan.image[1] === 0,
+    `prefill lands the default: the absent field keeps ${value.spawnCount}, the declared 4, not the stain (image[0]=${plan.image[0]})`);
+  check(value.bannerLength === 3 && value.banner[0] === 0x68 && value.banner[1] === 0x65 &&
+    value.banner[2] === 0x79 && plan.image[4] === 3,
     "only those: the ranges an entry covers keep the WRITER'S bytes — \"hey\", not the default 4 and not the stain");
   check(!report.malformed && report.refused === 0 && report.clamped === 0 &&
     report.unknown === 0 && report.kindMismatch === 0,

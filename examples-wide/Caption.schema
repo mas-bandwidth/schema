@@ -1,28 +1,22 @@
-// Caption.schema — the wstring(N) TABLE unit (docs/SPEC-TABLES.md §3, kind 33).
+// Caption.schema — wide text in TABLES (docs/SPEC-TABLES.md §3, kind 33).
 //
-// Its own file beside WideText.schema, in the same package, because the two
-// halves of the row are two wires: WideText.schema is the packet wire's
-// proving ground (SPEC.md §4.12) and this is the id-table wire's. The unit
-// stays separate because table kind 33 remains C++ only. All nine targets
-// carry the isolated packet unit; the other eight refuse this table unit.
+// WideText.schema shows wstring(N) on the packet wire (SPEC.md §4.12); this
+// file shows it on the table wire. Wide text in a table is C++ only today:
+// the other eight targets refuse this file, and accept WideText.schema.
 //
-// Every KIND 33 SITE the wire has is declared once here, and nowhere else in
-// the file, so a gate that names a site names one declaration: a TABLE's own
-// field, a `type` body's field the table reaches, a UNION ARM, and an ELEMENT,
-// which is a type inside an array. `wstring(N)` as a MAP KEY has no site: it
-// is refused by name, because a map's entries ride in `memcmp` order and
-// little-endian code units have none (§2.8).
+// Each place wide text can appear in a table is declared once: a TABLE's own
+// field, a field of a `type` the table reaches, a UNION ARM, and an array
+// ELEMENT. `wstring(N)` cannot be a MAP KEY: a map's entries are sorted by
+// `memcmp`, and little-endian code units do not sort that way (§2.8).
 
 package wide
 
-// The bounds are the packet corpus's, so the two halves of the row read
-// against the same numbers: 7 is the corpus's buffer_size 8 and 4 its
-// buffer_size 5. A bound of 4 is what makes a clamp expressible — five code
-// units on the wire, four kept — and what puts a surrogate pair astride the
-// cut when the fifth unit is a pair's low half.
+// The bounds match WideText.schema's, 7 and 4. With a bound of 4, five code
+// units on the wire are clamped to the four kept, and the cut can fall
+// between the two halves of a surrogate pair.
 
-// A `type` a table reaches, which is a closure edge kind 33 carries: its wide
-// text is the packet emitter's storage read by the table wire's codec.
+// A `type` a table reaches: its wide text is stored exactly as on the
+// packet wire, and the table wire reads and writes that storage.
 type Line
 {
     text wstring(4)

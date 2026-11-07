@@ -1,0 +1,60 @@
+#!/bin/sh
+# THE JAVASCRIPT LEG's FRAMING negative control (docs/LAYERS/1-framing.md).
+#
+# One framing rule of the GENERATED variable reader is taken out in a COPY of
+# the generated tree, and the framing surface must go red on exactly the rows
+# that rule owns, with the wire surface still green:
+#
+#   entry-bound  the 4096-entry cap on the id table (F6, kTableProbeBound in
+#                the reference) is dropped from TableVariableOpen, so
+#                frame_entries_4097 reads instead of refusing as malformed.
+#
+# The driver (test/conformance/js/main.mjs) imports from SCHEMA_JS_GENERATED,
+# so it is aimed at the copy and nothing tracked is written to.
+set -eu
+
+mode=${1:-}
+src=build/tables-generated-js
+out=build/js-conformance-negative-framing-$mode
+case "$mode" in
+entry-bound)
+    anchor='count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) \/ 8))) { report.malformed = true; return null; }'
+    sabotage='count > BigInt(Math.floor((bytes.length - 9) \/ 8))) { report.malformed = true; return null; } \/\/ SABOTAGED: no entry bound'
+    rows='frame_entries_4097'
+    ;;
+*)
+    echo "unknown control: '$mode' (entry-bound)" >&2
+    exit 1
+    ;;
+esac
+
+rm -rf "$out"
+mkdir -p "$out"
+cp -R "$src" "$out/generated"
+patched=0
+for f in $(cd "$out/generated" && find . -name '*Variable.js'); do
+    sed "s/$anchor/$sabotage/" "$src/$f" > "$out/generated/$f"
+    cmp -s "$src/$f" "$out/generated/$f" || patched=$((patched + 1))
+done
+if [ "$patched" = 0 ]; then
+    echo "negative control patched nothing: $mode" >&2
+    exit 1
+fi
+grep -q 'SABOTAGED' "$out/generated/r1/Tblr1Variable.js" || { echo "negative control did not reach r1/Tblr1Variable.js: $mode" >&2; exit 1; }
+
+root=$(pwd)
+printf '#!/bin/sh\nSCHEMA_JS_GENERATED=%s/%s/generated exec %s/test/conformance/js/driver "$@"\n' "$root" "$out" "$root" > "$out/driver"
+chmod +x "$out/driver"
+printf 'js %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
+
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+    echo "negative control failed: $mode left conformance green" >&2
+    exit 1
+fi
+cat "$out/log"
+grep -Eq '^ *framing +FAIL' "$out/log"
+grep -Eq '^ *wire +pass' "$out/log"
+for r in $rows; do
+    grep -q "js / framing: $r: damaged input owes the refusal" "$out/log" || { echo "negative control: $mode did not turn $r red" >&2; exit 1; }
+done
+echo "JavaScript framing negative control: $mode detected by js / framing ($rows)"

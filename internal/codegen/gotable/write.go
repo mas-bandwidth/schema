@@ -57,10 +57,18 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
+	trailer := 0
+	if st.Integrity != "" {
+		trailer = 4
+	}
 	if g.arithMeasureEligible(st) {
-		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n body := %sMeasureBody(value, &ids)\n if body < 0 || ids.Overflow { return -1 }\n return 1 + body + int64(ids.Count)*8 + 8\n}\n\n", n, g.storageName(n), n)
+		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n body := %sMeasureBody(value, &ids)\n if body < 0 || ids.Overflow { return -1 }\n return 1 + body + int64(ids.Count)*8 + %d\n}\n\n", n, g.storageName(n), n, 8+trailer)
 	} else {
-		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
+		tail := "w.Offset"
+		if trailer > 0 {
+			tail = "w.Offset + 4"
+		}
+		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return %s\n}\n\n", n, g.storageName(n), n, tail)
 	}
 	g.pf("func %sMeasureReason(value *%s)(int64,error){size:=%sMeasure(value);if size<0{return size,TableRefuseInvalidValue};return size,nil}\n", n, g.storageName(n), n)
 }
@@ -151,7 +159,23 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
+	if st.Integrity != "" {
+		g.pf("func %sSave(value *%s, buffer []byte) int64 {\n if len(buffer) < 4 { return -1 }\n var ids TableIds\n w := TableWriter{Buffer:buffer[:len(buffer)-4], Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return tableIntegritySeal(buffer, w.Offset)\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
+		return
+	}
 	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
+}
+
+// arrayLoopRange is what follows `for i := range` in the loops that index the
+// arrayLengths scratch. gosec G602 cannot bound `range int(n)` against a
+// fixed-size array and flags every arrayLengths[i]; ranging over the scratch
+// sliced to the count gives it the bound (the slice panics on a count above the
+// scratch exactly as value[i] would), and modernize accepts it as a range loop.
+func (g *tableGen) arrayLoopRange(cacheLengths bool, count string) string {
+	if cacheLengths {
+		return "arrayLengths[:" + count + "]"
+	}
+	return "int(" + count + ")"
 }
 
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
@@ -221,7 +245,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		g.pf("%sn := %sMeasureBody(&%s, w.Ids)\n", i, f.Type.Name, expr)
 		g.pf("%sif n < 0 || w.Ids.Overflow { return false }\n", i)
 		cond := "n > 1"
-		if f.Type.Optional {
+		if f.Type.Optional || f.Required {
 			cond = "true"
 		}
 		g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+tableLebBytes(uint64(n))+n) } else {\n%s  w.Ids.Truncate(start)\n", i, cond, i, i)
@@ -241,7 +265,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		empty = 3
 	}
 	cond := fmt.Sprintf("payload.Offset > %d", empty)
-	if f.Type.Optional {
+	if f.Type.Optional || f.Required {
 		cond = "true"
 	}
 	g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+payload.Offset) } else {\n%s  w.Ids.Truncate(start); if !w.headerPair(ref, %d) { w.headerRest(ref, %d) }\n", i, cond, i, i, kind, kind)
@@ -353,7 +377,7 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 	case f.Type.TextUnbounded():
 		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the blob's bytes under
 		// kind 12, refused when not well-formed UTF-8 or holding a zero byte
-		g.pf("%s{ text,ok:=tableTextBytes(&%s,%s.Ids.Numbering.arena);if !ok||!tableUtf8Valid(text) {return false}\n", ind, expr, writer)
+		g.pf("%s{ text,ok:=tableTextBytes(&%s,%s.Ids.Numbering.arena);if !ok||!tableUTF8Valid(text) {return false}\n", ind, expr, writer)
 		if framed {
 			g.emitPutLeb(ind+"\t", writer, "uint64(len(text))")
 		}
@@ -366,10 +390,10 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 		// already put Length inside 0..N. It is the fixed writer's word test
 		// (emitTextWords), in line because the speed gate measured the call:
 		// a zero byte refuses, ASCII passes, and only text with a byte at or
-		// past 0x80 is asked of tableUtf8Valid.
+		// past 0x80 is asked of tableUTF8Valid.
 		g.pf("%s{\n%s\tn := int(%sLength)\n%s\tvar hi, z uint64\n", ind, ind, expr, ind)
-		g.emitTextWords(expr, f.Type.Size, ind+"\t", "tableUtf8Word", false)
-		g.pf("%s\tif z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(%s[:n]) {\n%s\t\treturn false\n%s\t}\n%s}\n", ind, expr, ind, ind, ind)
+		g.emitTextWords(expr, f.Type.Size, ind+"\t", "tableUTF8Word", false)
+		g.pf("%s\tif z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(%s[:n]) {\n%s\t\treturn false\n%s\t}\n%s}\n", ind, expr, ind, ind, ind)
 		if framed {
 			g.emitPutLeb(ind, writer, "uint64("+expr+"Length)")
 		}
@@ -459,7 +483,7 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
 	g.pf("%smark := %s.Ids.Count\n%s%s := TableWriter{Measuring:true, Ids:%s.Ids}; pairs := uint64(0)\n", i, writer, i, body, writer)
-	g.pf("%sfor i := range int(%s) {\n", i, count)
+	g.pf("%sfor i := range %s {\n", i, g.arrayLoopRange(cacheLengths, count))
 	if cacheLengths {
 		g.wireSerial++ // Preserve the skipped element emitter's temporary-name slot.
 		g.pf("%s n := %sMeasureBody(&%s[i],%s.Ids); if n < 0 { return false }; arrayLengths[i] = n\n", i, f.Type.Name, expr, body)
@@ -475,7 +499,7 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	}
 	g.pf("%sif %s.Measuring { %s.Advance(n) } else {\n%s %s.Ids.Truncate(mark); %s.Put8(%d)\n", i, writer, writer, i, writer, writer, kind)
 	g.emitPutLeb(i+" ", writer, "pairs")
-	g.pf("%s for i := range int(%s) {\n", i, count)
+	g.pf("%s for i := range %s {\n", i, g.arrayLoopRange(cacheLengths, count))
 	if cacheLengths {
 		g.wireSerial++
 		// The unchanged outer truncation replays the first pass's vocabulary in
@@ -520,7 +544,7 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
 	// Keyed entries each have their own L around the bare value.
-	g.pf("%smark := %s.Ids.Count\n%sid, named := %s(i+1).TableEnumId(); if !named { return false }; ref := %s.Ids.Ref(id); start := %s.Ids.Count\n", i, writer, i, f.KeyEnum, writer, writer)
+	g.pf("%smark := %s.Ids.Count\n%sid, named := %s(i+1).TableEnumID(); if !named { return false }; ref := %s.Ids.Ref(id); start := %s.Ids.Count\n", i, writer, i, f.KeyEnum, writer, writer)
 	g.pf("%s%s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, element, writer)
 	g.emitWireValue(&elem, expr, element, i, false)
 	cond := g.elideDiffers(&elem, expr, fieldDefaultExpr(&elem))
@@ -612,7 +636,7 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 		g.emitPutLeb(ind+"\t", writer, "0")
 		for i, v := range e.Variants {
 			id := ir.TableWireId(e.VariantWireName(i))
-			g.pf("%scase %s%s: %s.IdAt(%d, 0x%016x)\n", ind, e.Name, v, writer, g.knownOrdinal(id), id)
+			g.pf("%scase %s%s: %s.IDAt(%d, 0x%016x)\n", ind, e.Name, v, writer, g.knownOrdinal(id), id)
 		}
 		g.pf("%sdefault: return false\n%s}\n", ind, ind)
 		return

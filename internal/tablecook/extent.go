@@ -12,9 +12,9 @@
 //
 // THE ORDER IS PRE-ORDER, and it is the C++ reference's own
 // (`internal/codegen/cpptable/extent.go`): the record's fields in declaration
-// order, each container at its own position, a list's WHOLE ARRAY first and
-// then, element by element in INDEX order, the arrays of any list an element
-// holds by value. Two walks take it — one measuring, one writing — and they
+// order, each container at its own position, a list's or a map's WHOLE ARRAY
+// first and then, element by element in INDEX order (entry by entry in KEY
+// order), the arrays of any list or map an element holds by value. Two walks take it — one measuring, one writing — and they
 // have to agree exactly, so they are one walk here with the writing half
 // switched off, rather than two that could drift.
 //
@@ -25,6 +25,7 @@ package tablecook
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -35,17 +36,14 @@ import (
 // is therefore rounded to the region's alignment floor before the extent
 // begins, exactly as the reference rounds it.
 //
-// A MAP counts too, because the reference sizes a map-bearing node the same
-// way. The tool's cook surface refuses a map-bearing unit by name before this
-// walk runs (compiler/tablesmaps.go), so the carve below never meets one; this
-// predicate agrees with the reference regardless, so the two never disagree
-// about a node's SIZE for a unit only one of them can write.
+// A MAP counts too: its entries ride in the same extent, one population with
+// the lists (docs/SPEC-TABLES.md §2.8).
 func recordHasExtent(u *ir.Unit, st *ir.Struct) bool {
 	if st == nil {
 		return false
 	}
 	for _, f := range st.Fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
@@ -77,7 +75,7 @@ func unionHasExtent(u *ir.Unit, un *ir.Union, seen map[*ir.Union]bool) bool {
 		if v.F == nil {
 			continue
 		}
-		if v.F.IsMap() || v.F.IsList() {
+		if v.F.IsMap() || v.F.IsList() || v.F.Type.TextUnbounded() {
 			return true
 		}
 		if v.F.Type.Pointer || v.F.Type.Blob() || v.F.Type.Kind != ir.TNamed {
@@ -98,14 +96,25 @@ func unionHasExtent(u *ir.Unit, un *ir.Union, seen map[*ir.Union]bool) bool {
 }
 
 // recordBytes is one node's RECORD half: its `sizeof` for a record with no
-// extent, and that rounded to the region's alignment floor for one with an
-// extent, which is where the extent begins (§7.2).
+// extent, and for one with an extent that rounded to the greater of the
+// region's alignment floor and the greatest alignment any array its extent
+// can hold asks for, which is where the extent begins (§2.8, §7.2).
 func recordBytes(u *ir.Unit, st *ir.Struct) int64 {
-	ml := ir.RecordLayout(u, st)
 	if !recordHasExtent(u, st) {
-		return ml.Size
+		return ir.RecordLayout(u, st).Size
 	}
-	return alignUp(ml.Size, ir.RegionAlignFloor)
+	return ir.CookExtentStart(u, st)
+}
+
+// nodeAlign is one node's alignment in the region: its record's, and for a
+// record with an extent the greatest alignment any array that extent can hold
+// asks for too, so an array aligned relative to the extent is aligned in the
+// region (§2.8, §7.2).
+func nodeAlign(u *ir.Unit, st *ir.Struct) int64 {
+	if !recordHasExtent(u, st) {
+		return ir.RecordLayout(u, st).Align
+	}
+	return ir.CookNodeAlign(u, st)
 }
 
 // carver is the one extent walk, in both its halves. With `w` nil it MEASURES
@@ -140,10 +149,28 @@ func (c *carver) record(recordAt int64, st *ir.Struct, inst *tabletext.Instance)
 		return nil
 	}
 	ml := ir.RecordLayout(c.m.Unit, st)
+	guards := tabletext.Guards(st)
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
 		fv := instField(inst, fl.Field)
 		if fv == nil {
+			continue
+		}
+		live := true
+		if terms, guarded := guards[fl.Field.Name]; guarded && !inst.GuardHolds(terms) {
+			live = false
+		}
+		if fl.Field.Type.Optional && !fv.Present {
+			live = false
+		}
+		if !live {
+			probe := &carver{m: c.m}
+			if err := probe.field(0, fl.Field, fv); err != nil {
+				return fmt.Errorf("%s.%s: %w", st.Name, fl.Field.Name, err)
+			}
+			if probe.at != 0 {
+				return fmt.Errorf("%s.%s: absent or unguarded field holds %d bytes of extent: a cook cannot carry storage the walk does not reach (docs/SPEC-TABLES.md §2.3, §7.6)", st.Name, fl.Field.Name, probe.at)
+			}
 			continue
 		}
 		if err := c.field(recordAt+fl.Offset, fl.Field, fv); err != nil {
@@ -154,17 +181,18 @@ func (c *carver) record(recordAt int64, st *ir.Struct, inst *tabletext.Instance)
 }
 
 func (c *carver) field(at int64, f *ir.Field, fv *tabletext.Field) error {
-	if f.IsMap() {
-		// the tool's cook surface refuses a map-bearing unit by name before
-		// this walk runs; reaching here would mean that refusal moved
-		return fmt.Errorf("internal: a map slot reached the extent walk, and the tool's cook refuses a map-bearing unit at its surface (docs/SPEC-TABLES.md §2.8)")
-	}
 	pieces := ir.FieldPieces(c.m.Unit, f, at)
 	if len(pieces) == 0 {
 		return nil
 	}
+	if f.IsMap() {
+		return c.mapEntries(pieces[0].Offset, f, fv)
+	}
 	if f.IsList() {
 		return c.list(pieces[0].Offset, f, fv)
+	}
+	if f.Type.TextUnbounded() {
+		return c.text(pieces[0].Offset, f, fv)
 	}
 	if f.Type.Pointer || f.Type.Blob() {
 		return nil // a pointee and a byte buffer are nodes, not this extent
@@ -250,6 +278,56 @@ func (c *carver) list(at int64, f *ir.Field, fv *tabletext.Field) error {
 	return nil
 }
 
+// mapEntries carves ONE map (docs/SPEC-TABLES.md §2.8): the entry array
+// first, `count × sizeof( Entry )` at `alignof( Entry )`, the entries in
+// ASCENDING KEY ORDER (the order the instance holds them in), then the slot's
+// sixteen bytes, then, entry by entry in key order, the arrays of any list or
+// map an entry holds by value. It is the list's carve with the generated
+// `{ key, value }` entry table as the element, which is the C++ reference's
+// ExtentAt and ExtentPack (internal/codegen/cpptable/extent.go).
+func (c *carver) mapEntries(at int64, f *ir.Field, fv *tabletext.Field) error {
+	entry := f.MapEntry
+	ml := ir.RecordLayout(c.m.Unit, entry)
+	size, align := ml.Size, max(ml.Align, 1)
+	count := int64(len(fv.Entries))
+	c.at = alignUp(c.at, align)
+	start := c.at
+	c.at += count * size
+
+	if c.w != nil {
+		array := c.extentAt + start
+		if count > 0 {
+			c.w.putI64(at, array-at)
+		} else {
+			c.w.putI64(at, RefNull)
+		}
+		c.w.putI32(at+8, int32(count))
+		for i := range count {
+			if err := c.w.record(array+i*size, entry, entryOf(c.m, f, &fv.Entries[i])); err != nil {
+				return err
+			}
+		}
+	}
+	if !recordHasExtent(c.m.Unit, entry) {
+		return nil
+	}
+	for i := range count {
+		if err := c.record(c.extentAt+start+i*size, entry, entryOf(c.m, f, &fv.Entries[i])); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// entryOf is one map entry's instance, a fresh one at its declared defaults
+// where the cell holds none.
+func entryOf(m *tabletext.Model, f *ir.Field, cell *tabletext.Cell) *tabletext.Instance {
+	if cell.Tab != nil {
+		return cell.Tab
+	}
+	return m.NewMapEntry(f)
+}
+
 // element descends ONE by-value element or nested value.
 func (c *carver) element(at int64, f *ir.Field, cell *tabletext.Cell) error {
 	if f.Type.Pointer || f.Type.Kind != ir.TNamed {
@@ -287,8 +365,47 @@ func (c *carver) element(at int64, f *ir.Field, cell *tabletext.Cell) error {
 	return nil
 }
 
+// text carves ONE unbounded text value (docs/SPEC-TABLES.md §2.13.1): a blob
+// record in the holder's own node extent at 8-byte alignment, and a
+// self-relative delta in the 8-byte TableRef slot (or RefNull when empty or
+// absent).
+func (c *carver) text(at int64, f *ir.Field, fv *tabletext.Field) error {
+	if f.Type.Optional && !fv.Present {
+		if len(fv.Cell.Str) != 0 {
+			return fmt.Errorf("absent optional text holds %d bytes of extent: a cook cannot carry storage the walk does not reach (docs/SPEC-TABLES.md §7.6)", len(fv.Cell.Str))
+		}
+		if c.w != nil {
+			c.w.putI64(at, RefNull)
+		}
+		return nil
+	}
+	n := int64(len(fv.Cell.Str))
+	if n == 0 {
+		if c.w != nil {
+			c.w.putI64(at, RefNull)
+		}
+		return nil
+	}
+	if uint64(n) > math.MaxUint32 {
+		return fmt.Errorf("text length %d exceeds the cook uint32 length limit", n)
+	}
+	c.at = alignUp(c.at, BlobAlign)
+	start := c.at
+	c.at += alignUp(BlobHeader+n+1, ir.TableRegionAlign(c.m.Unit))
+	if c.w != nil {
+		blob := c.extentAt + start
+		c.w.putI64(at, blob-at)
+		c.w.putU32(blob, uint32(n))
+		copy(c.w.buf[blob+BlobHeader:], fv.Cell.Str)
+	}
+	return nil
+}
+
 // fieldHasExtent reports a field whose by-value storage can hold a container.
 func fieldHasExtent(u *ir.Unit, f *ir.Field) bool {
+	if f.Type.TextUnbounded() {
+		return true
+	}
 	if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
 		return false
 	}

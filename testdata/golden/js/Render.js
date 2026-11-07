@@ -16,11 +16,11 @@ export const RenderBlockMaxSprites = 64;
 // type RenderSprite
 export class RenderSprite {
   constructor() {
-    this.SortKey = 0n;
-    this.MeshId = 0;
-    this.MaterialId = 0;
-    this.Layer = 0;
-    this.Team = Team.None;
+    this.sortKey = 0n;
+    this.meshId = 0;
+    this.materialId = 0;
+    this.layer = 0;
+    this.team = Team.None;
   }
 }
 
@@ -31,43 +31,43 @@ export const RenderSpriteMaxBytes = 24;
 
 // InitRenderSprite restores fresh construction values in place, preserving storage.
 export function InitRenderSprite(value) {
-  value.SortKey = 0n;
-  value.MeshId = 0;
-  value.MaterialId = 0;
-  value.Layer = 0;
-  value.Team = Team.None;
+  value.sortKey = 0n;
+  value.meshId = 0;
+  value.materialId = 0;
+  value.layer = 0;
+  value.team = Team.None;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroRenderSprite(value) {
-  value.SortKey = 0n;
-  value.MeshId = 0;
-  value.MaterialId = 0;
-  value.Layer = 0;
-  value.Team = Team.None;
+  value.sortKey = 0n;
+  value.meshId = 0;
+  value.materialId = 0;
+  value.layer = 0;
+  value.team = Team.None;
 }
 
 export function WriteRenderSprite(stream, value) {
-  BIGINT_SCRATCH.value = value.SortKey;
+  BIGINT_SCRATCH.value = value.sortKey;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.MeshId;
+  NUMBER_SCRATCH.value = value.meshId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.MaterialId;
+  NUMBER_SCRATCH.value = value.materialId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Layer;
+  NUMBER_SCRATCH.value = value.layer;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.Team) || value.Team < 0 || value.Team > 2) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
     return false;
   }
-  NUMBER_SCRATCH.value = value.Team;
+  NUMBER_SCRATCH.value = value.team;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
@@ -78,33 +78,33 @@ export function ReadRenderSprite(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.SortKey = BIGINT_SCRATCH.value;
+  value.sortKey = BIGINT_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.MeshId = NUMBER_SCRATCH.value;
+  value.meshId = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.MaterialId = NUMBER_SCRATCH.value;
+  value.materialId = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.Layer = NUMBER_SCRATCH.value;
+  value.layer = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) {
     return false;
   }
-  value.Team = NUMBER_SCRATCH.value;
+  value.team = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type RenderBlock
 export class RenderBlock {
   constructor() {
-    this.WorkerIndex = 0;
-    this.SpriteCountHint = 0;
-    this.Sprites = Array.from({ length: RenderBlockMaxSprites }, () => new RenderSprite());
-    this.SpritesCount = 0;
+    this.workerIndex = 0;
+    this.spriteCountHint = 0;
+    this.sprites = Array.from({ length: RenderBlockMaxSprites }, () => new RenderSprite());
+    this.spritesCount = 0;
   }
 }
 
@@ -115,43 +115,43 @@ export const RenderBlockMaxBytes = 1120;
 
 // InitRenderBlock restores fresh construction values in place, preserving storage.
 export function InitRenderBlock(value) {
-  value.WorkerIndex = 0;
-  value.SpriteCountHint = 0;
+  value.workerIndex = 0;
+  value.spriteCountHint = 0;
   for (let initIndex0 = 0; initIndex0 < RenderBlockMaxSprites; initIndex0++) {
-    const initValue0 = value.Sprites[initIndex0];
+    const initValue0 = value.sprites[initIndex0];
     InitRenderSprite(initValue0);
   }
-  value.SpritesCount = 0;
+  value.spritesCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroRenderBlock(value) {
-  value.WorkerIndex = 0;
-  value.SpriteCountHint = 0;
+  value.workerIndex = 0;
+  value.spriteCountHint = 0;
   for (let i = 0; i < RenderBlockMaxSprites; i++) {
-    ZeroRenderSprite(value.Sprites[i]);
+    ZeroRenderSprite(value.sprites[i]);
   }
-  value.SpritesCount = 0;
+  value.spritesCount = 0;
 }
 
 export function WriteRenderBlock(stream, value) {
-  NUMBER_SCRATCH.value = value.WorkerIndex;
+  NUMBER_SCRATCH.value = value.workerIndex;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.SpriteCountHint;
+  NUMBER_SCRATCH.value = value.spriteCountHint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (!Number.isInteger(value.SpritesCount) || value.SpritesCount < 0 || value.SpritesCount > RenderBlockMaxSprites) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.spritesCount) || value.spritesCount < 0 || value.spritesCount > RenderBlockMaxSprites) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.SpritesCount;
+  NUMBER_SCRATCH.value = value.spritesCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  for (let i = 0; i < value.SpritesCount; i++) {
-    if (!WriteRenderSprite(stream, value.Sprites[i])) {
+  for (let i = 0; i < value.spritesCount; i++) {
+    if (!WriteRenderSprite(stream, value.sprites[i])) {
       return false;
     }
   }
@@ -162,17 +162,17 @@ export function ReadRenderBlock(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.WorkerIndex = NUMBER_SCRATCH.value;
+  value.workerIndex = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.SpriteCountHint = NUMBER_SCRATCH.value;
+  value.spriteCountHint = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, RenderBlockMaxSprites)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.SpritesCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.SpritesCount; i++) {
-    if (!ReadRenderSprite(stream, value.Sprites[i])) {
+  value.spritesCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.spritesCount; i++) {
+    if (!ReadRenderSprite(stream, value.sprites[i])) {
       return false;
     }
   }

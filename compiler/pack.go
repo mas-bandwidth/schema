@@ -29,6 +29,10 @@ type TableReport struct {
 	Clamped int
 	// Duplicate counts a key placed more than once; the last occurrence wins.
 	Duplicate int
+	// MissingRequired counts whole records refused for absent required fields.
+	MissingRequired int
+	// Reason preserves a named refusal or clamp reported by the read.
+	Reason string
 	// BlobShared counts the extra slots that named a blob record another slot
 	// already named (docs/SPEC-TABLES.md §4, §2.5); the tolerant read keeps the
 	// one node, never a copy per slot.
@@ -45,19 +49,21 @@ type TableReport struct {
 
 // Silent reports whether nothing at all was counted.
 func (r TableReport) Silent() bool {
-	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.BlobShared == 0 && !r.Malformed
+	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.BlobShared == 0 && r.MissingRequired == 0 && !r.Malformed
 }
 
 func publicReport(r tabletext.Report) TableReport {
 	return TableReport{
-		Unknown:      r.Unknown,
-		KindMismatch: r.KindMismatch,
-		Widened:      r.Widened,
-		Clamped:      r.Clamped,
-		Duplicate:    r.Duplicate,
-		BlobShared:   r.BlobShared,
-		Malformed:    r.Malformed,
-		Refused:      r.Refused,
+		Unknown:         r.Unknown,
+		KindMismatch:    r.KindMismatch,
+		Widened:         r.Widened,
+		Clamped:         r.Clamped,
+		Duplicate:       r.Duplicate,
+		MissingRequired: r.MissingRequired,
+		Reason:          r.Reason,
+		BlobShared:      r.BlobShared,
+		Malformed:       r.Malformed,
+		Refused:         r.Refused,
 	}
 }
 

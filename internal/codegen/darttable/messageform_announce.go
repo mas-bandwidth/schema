@@ -130,9 +130,18 @@ class TableReport {
   bool refused = false;
   bool malformed = false;
   int unknown = 0;
-  int buildVersionPeer = 0;
+  /// §4's other events, carried here so a message read answers the same
+  /// six-counter report the Go reference does (internal/tabletext.Report).
+  int kindMismatch = 0;
+  int widened = 0;
+  int clamped = 0;
+  int duplicate = 0;
+  int buildVersionRemote = 0;
   int buildVersionOwn = 0;
   String reason = '';
+  /// The float whose raw bits a read found to be a NaN or an infinity, as
+  /// <Table>.<field>, '' when it found none (docs/SPEC-TABLES.md §3.3).
+  String nonFiniteFloat = '';
 
   void Damage() {
     malformed = true;
@@ -143,6 +152,14 @@ class TableReport {
     refused = true;
     reason = why;
     return false;
+  }
+
+  /// EVERY READ REFUSES A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3), the
+  /// tolerant batch read included: the reason names the field, and the batch
+  /// lands nothing.
+  bool RefuseNonFiniteFloat(String field) {
+    nonFiniteFloat = field;
+    return Refuse('non_finite_float: $field');
   }
 }
 
@@ -244,7 +261,7 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
       // THE FIELD IS LENGTH-PREFIXED (§3): its body is a LEB length, then the
       // element kind, then the vocabulary's own LEB length, then the entries.
       final fieldLength = tableMessageLeb(bytes, at, bodyEnd);
-      if (fieldLength.$1 < 0) {
+      if (!fieldLength.$3 || fieldLength.$1 < 0) {
         break;
       }
       at = fieldLength.$2;
@@ -258,7 +275,7 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
         break;
       }
       final length = tableMessageLeb(bytes, at, fieldEnd);
-      if (length.$1 < 0) {
+      if (!length.$3 || length.$1 < 0) {
         break;
       }
       at = length.$2;
@@ -291,7 +308,7 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
     return false;
   }
   if (vocabulary.strict && vocabulary.buildVersion != tableBuildVersion) {
-    report.buildVersionPeer = vocabulary.buildVersion;
+    report.buildVersionRemote = vocabulary.buildVersion;
     report.buildVersionOwn = tableBuildVersion;
     return report.Refuse('build_version_mismatch');
   }
@@ -399,16 +416,24 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
       return at;
     }
     if (packing == 1 && kind != 10) {
+      // A WIDTH ABOVE THE KIND'S OWN DOMAIN IS A HOSTILE WIDTH, checked once
+      // here and never again (ir.DecodeShape checks the width against TableMessageKindBits). The
+      // value is read whole, so a width near 2^63 still trips this test rather
+      // than wrapping into a small number.
       final n = tableMessageLeb(bytes, at, end);
-      if (n.$1 < 0) {
+      if (!n.$3 || n.$1 < 0 || n.$1 > tableMessageKindWidth(kind) * 8) {
         return -1;
       }
       at = n.$2;
       if (kind >= 18) {
         return at + 16 <= end ? at + 16 : -1;
       }
+      // A RANGED BASE IS A WHOLE LEB VALUE, and a signed kind's is a zigzag
+      // near 2^64 for a minimum near -2^63 (ir.DecodeShape's
+      // tableMessageUnzigzag). The bit pattern may read back negative in a
+      // Dart int; that is a value, never a failed read.
       final base = tableMessageLeb(bytes, at, end);
-      return base.$1 < 0 ? -1 : base.$2;
+      return base.$3 ? base.$2 : -1;
     }
     if (packing == 2 && kind == 10) {
       return at + 12 <= end ? at + 12 : -1;
@@ -417,24 +442,24 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
   }
   if (kind == 12 || kind == 33) {
     final n = tableMessageLeb(bytes, at, end);
-    return n.$1 < 0 ? -1 : n.$2;
+    return (!n.$3 || n.$1 < 0) ? -1 : n.$2;
   }
   if (kind == 14 || kind == 16) {
     if (kind == 14) {
       final lo = tableMessageLeb(bytes, at, end);
-      if (lo.$1 < 0) {
+      if (!lo.$3 || lo.$1 < 0) {
         return -1;
       }
       at = lo.$2;
     }
     final hi = tableMessageLeb(bytes, at, end);
-    return hi.$1 < 0 ? -1 : hi.$2;
+    return (!hi.$3 || hi.$1 < 0) ? -1 : hi.$2;
   }
   return at;
 }
 
 /// tableMessageKnownKind reports whether a kind is one of the closed set.
-bool tableMessageKnownKind(int kind) => kind <= 33;
+bool tableMessageKnownKind(int kind) => kind >= 0 && (kind <= 33 || kind == 36);
 
 /// tableMessageSameEntry reports whether ONE entry's wire bytes equal an
 /// earlier entry's signature (docs/SPEC-TABLES.md §3.3): a repeated entry is
@@ -478,6 +503,7 @@ int tableMessageKindWidth(int kind) {
     case 11:
     case 23:
     case 28:
+    case 36:
       return 8;
     case 18:
     case 19:
@@ -504,7 +530,7 @@ int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
     case 17:
     case 30:
       final v = tableMessageLeb(bytes, at, end);
-      return v.$1 < 0 ? -1 : v.$2;
+      return (!v.$3 || v.$1 < 0) ? -1 : v.$2;
     case 12:
     case 13:
     case 14:
@@ -513,13 +539,13 @@ int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
     case 32:
     case 33:
       final n = tableMessageLeb(bytes, at, end);
-      if (n.$1 < 0 || n.$2 + n.$1 > end) {
+      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) {
         return -1;
       }
       return n.$2 + n.$1;
     case 15:
       final arm = tableMessageLeb(bytes, at, end);
-      if (arm.$1 < 0) {
+      if (!arm.$3 || arm.$1 < 0) {
         return -1;
       }
       if (arm.$1 == 0) {
@@ -529,7 +555,7 @@ int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
         return -1;
       }
       final n = tableMessageLeb(bytes, arm.$2 + 1, end);
-      if (n.$1 < 0 || n.$2 + n.$1 > end) {
+      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) {
         return -1;
       }
       return n.$2 + n.$1;
@@ -549,8 +575,12 @@ int tableMessageBits(int n) {
 }
 
 /// LEB128, the canonical length every length of a file takes (§3). Answers the
-/// value and the offset past it, or -1 where the bytes run out.
-(int, int) tableMessageLeb(Uint8List bytes, int at, int end) {
+/// value, the offset past it, and whether the bytes spelled one whole (the Go
+/// reference's readLebBytes). A value above 2^63 reads back NEGATIVE in a Dart
+/// int; that is the uint64's bit pattern, not a failure, and the flag is what
+/// tells the two apart. A signed ranged base near -2^63 is exactly such a
+/// value (ir.DecodeShape, tableMessageUnzigzag), so the base read must keep it.
+(int, int, bool) tableMessageLeb(Uint8List bytes, int at, int end) {
   var value = 0;
   var shift = 0;
   while (at < end && shift < 64) {
@@ -558,10 +588,10 @@ int tableMessageBits(int n) {
     at++;
     value |= (b & 0x7f) << shift;
     if ((b & 0x80) == 0) {
-      return (value, at);
+      return (value, at, true);
     }
     shift += 7;
   }
-  return (-1, at);
+  return (0, at, false);
 }
 `

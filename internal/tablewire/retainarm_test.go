@@ -53,13 +53,11 @@ func retainArmOccurrenceModel(t *testing.T) *tabletext.Model {
 // `items` field AGAIN, which the spec makes a second occurrence that replaces
 // the first whole.
 //
-// The first occurrence's arm body ends its terminator BEFORE the last byte of
-// its L: the reader flags that body malformed and clears the cell's Tab, but it
-// has ALREADY retained the unknown field under the body instance — the only
-// state that still names that body is the arm handle. That is the exact moment
-// the cell-address keying loses: a slice append moves the earlier cell, so
-// `forgetArm` looks up a pointer the handle map never saw and the earlier
-// occurrence's record outlives its body, to be counted `retain_lost` at save.
+// The file is well framed: damage would discard the whole load (§4), so the
+// first occurrence's record has to die by the replacement alone. A slice
+// append moves the earlier cell while the list decodes, so a lookup keyed by
+// the cell's address would miss the arm and the earlier occurrence's record
+// would outlive its body, to be counted `retain_lost` at save.
 func retainArmOccurrenceWire() []byte {
 	b := &wireBuilder{}
 	const n = 16
@@ -75,7 +73,6 @@ func retainArmOccurrenceWire() []byte {
 	b.field("future", ir.TableKindI32)
 	b.body = binary.LittleEndian.AppendUint32(b.body, 7)
 	b.end()
-	b.body = append(b.body, 0xAA, 0xBB)
 	b.closeLen(armAt)
 
 	for i := 1; i < n; i++ {

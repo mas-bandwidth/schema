@@ -15,8 +15,10 @@ section is cited rather than restated.
 ```
 MANIFEST.txt          the registry: every case, by kind
 reports.txt           the read report of every evolution case  (generated)
+report-values/<case>.json  the value an evolution read leaves  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
+json-hostile/<case>.value.json  the value its read leaves      (generated)
 cook/<case>.dump      the canonical node dump of every cook    (pinned)
 cook-write/<name>     the cooked file the tool wrote, per order (generated)
 block/<name>.dump     the canonical row dump of every block    (pinned)
@@ -38,9 +40,9 @@ unit         <key> <schema path>...
 instance     <name> <unit> <root> <wire file> [no-text]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
-retain          <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
-retain-message  <case> <connection> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
+retain       <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
 report       <case> <unit> <root> <wire file>
+framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
 cook-write   <instance> <little-endian file> <big-endian file>
@@ -77,7 +79,16 @@ refusal      <forgery> <reason>
   every reference is replaced by the id it names and every length recomputed,
   and their reference bytes are expected to differ, because a file's slots are
   its own first-use order and a connection's are the unit's projection order.
-- **`retain` and `retain-message`** are RETAIN-UNKNOWN's rows
+
+  **A `<message-form wire>` of `-` is a NAMED REFUSAL row.** The message form
+  is fixed tables only (docs/SPEC-TABLES.md §3.3), so a row whose root is a
+  variable table carries no message bytes, and every leg answers it absent,
+  writing `<name>.absent` holding exactly
+  `variable table: the message form is fixed tables only (SPEC-TABLES §3.3)`.
+  The harness checks the reason; bytes, or any other reason, are a failure. A
+  row is a refusal row exactly when its root is a variable table, which the
+  harness's own tests hold.
+- **`retain`** is RETAIN-UNKNOWN's row
   (docs/SPEC-TABLES.md §6.6): a wire loaded with retention on, the counters that
   load owes, and the file the pair writes back. `<unit>` is the READER's, which
   is the build that cannot name what the wire's writer wrote, and `<root>` is
@@ -96,24 +107,39 @@ refusal      <forgery> <reason>
   `<counters>` is the LOAD's own three, `<retained>,<retain_lost>,<unknown>`,
   and `<save lost>` is the `retain_lost` the SAVE adds, read after it: the
   report accumulates across the pair and the sum is what the safety check
-  wants. `<saves>` is the pinned save, or `-` where the row's whole expectation
-  is its counters; a row that saves more than one file lists them
-  comma-separated, in body order.
-
-  **`retain-message` IS THE FORM-2 ROW** (§3.3): the wire is a BATCH, the
-  `<connection>` names the announcement its references resolve against, and the
-  SAVES are the VARIABLE form, one a body, which is the one direction retention
-  crosses the forms, because `SaveRetain` writing form 2 refuses by name. A
-  batch takes one region and one retention buffer a body, so the saves are as
-  many files as the batch has bodies.
+  wants. `<save>` is the pinned save, or `-` where the row's whole expectation
+  is its counters. Every row is a FILE: retention is the variable form's, and
+  the message form is fixed tables only (§3.3), so no table has retention on a
+  message.
 - **`report`** is bytes read by a type that did not write them — the evolution
-  class. The counters and the verdict live in `reports.txt`, keyed by `<case>`.
+  class. The counters and the verdict live in `reports.txt`, keyed by `<case>`,
+  and the §16 text of the value a read that reads leaves lives in
+  `report-values/<case>.json`; both are the oracle's.
+- **`framing`** is one hand-built wire per rule and bound of the FRAMING layer
+  (docs/LAYERS/1-framing.md): the record scan, the `L` bounds, the header read
+  against the parent, damage and where reading resumes, the node-table scan.
+  `<verdict>` is `refused`, `malformed`, or the §4 report of a clean read,
+  `<unknown>,<kind_mismatch>,<widened>,<clamped>,<duplicate>,<malformed>,<verdict>`,
+  and `<value file>` is the §16 text the read must leave, under
+  `framing/<value>.json`, or `-` for a row that owes the report alone.
+  **`malformed` is DAMAGED INPUT**: damage discards the whole load
+  (docs/SPEC-TABLES.md §4), so the row owes the refusal and no value, and the
+  harness scores only that the leg's report line says `malformed`. The same
+  holds for a `report` row whose verdict in `reports.txt` is malformed. Both
+  are HAND-AUTHORED from the rule text, never pinned from a leg or the engine,
+  which is what makes the row an expectation. The wire files under
+  `testdata/wire/tables/framing/` are the bytes of the scripts in
+  `test/conformance/harness/framing_vectors_test.go`, held equal by test.
 - **`json-hostile`** is one tree per rule the text form states (§16.2, §16.3,
   §17.5), and the verdict is `refused` or the §4 report the read produces,
   `<unknown>,<kind_mismatch>,<clamped>,<duplicate>,<malformed>`. `<tree>` is the
   directory `schema pack` reads, so the text is `<tree>/<root>.json` (§17). The
   verdict is HAND-AUTHORED, which is what makes it an expectation rather than a
-  restatement of what one engine happens to do.
+  restatement of what one engine happens to do. A row whose verdict reads also
+  owes the VALUE: `<tree>.value.json`, beside the tree, is the §16 text of
+  what the oracle's text read leaves (internal/tabletext, read then written),
+  and `make conformance-generate` refuses a row whose hand-authored verdict
+  the oracle does not give.
 - **`cook`** names a cooked file's CASE, the root it is opened at, and the dump
   its Open must produce. Case and root are two columns because one root can have
   more than one fixture — `Scene` and `SceneValued` are the same table read two
@@ -301,7 +327,9 @@ row <index> @<byte offset>
   dump's: dotted paths through by-value nesting, `[n]` through inline array
   slots, `<path>#present` for a `?T`, quoted USED bytes with ` len=<n>` for a
   string or a `bytes`.
-- **A FLOAT is its IEEE-754 BIT PATTERN**, `0x` and eight or sixteen hex digits.
+- **A FLOAT is its IEEE-754 BIT PATTERN**, `0x` and eight or sixteen hex digits,
+  and the pattern is a FINITE value's (docs/SPEC-TABLES.md §3.3): `-0` and the
+  subnormals are spelled as their bits, and no read admits a NaN or an infinity.
   A block row is a byte-identical projection, so its bits are the fact; a
   decimal spelling would be a rounding rule two languages have to agree on for
   no gain. The cook's dump refuses a float rather than inventing a spelling, and

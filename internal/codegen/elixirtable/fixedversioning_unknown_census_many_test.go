@@ -1,13 +1,13 @@
 package elixirtable
 
 // `unknown_census`, the many-record half of §5.8 row 11's clause (§5.4): the
-// compile census lands ONCE PER PEER AND NEVER PER RECORD. The landed one-record
-// row reads `old_unknown_census.bin` — ONE record — where "once per peer" and
+// compile census lands ONCE PER ENDPOINT AND NEVER PER RECORD. The landed one-record
+// row reads `old_unknown_census.bin` — ONE record — where "once per endpoint" and
 // "once per record" are the SAME number, 1, so the second half has never been
 // under a gate. This file carries THREE records; a reader that counts per record
 // lands `unknown == 3` here and `1` on the landed row, so only this file sees
 // the difference. `unknown` is asserted EXACTLY == 1: `Item.drop` is ONE field
-// of ONE peer, never one per record.
+// of ONE endpoint, never one per record.
 import (
 	"fmt"
 	"path/filepath"
@@ -31,7 +31,7 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
       "record #{k} the four a values did not land: #{inspect(Enum.map(v.items, & &1.a))}")
   end)
   check(report.unknown == 1,
-    "unknown == #{report.unknown}, want 1: Item.drop is ONE field of ONE peer, not one per record")
+    "unknown == #{report.unknown}, want 1: Item.drop is ONE field of ONE endpoint, not one per record")
   check(report.kind_mismatch == 0 and report.widened == 0 and report.clamped == 0,
     "a counter that must not move did: #{why(report)}")
   check(report.malformed == false,

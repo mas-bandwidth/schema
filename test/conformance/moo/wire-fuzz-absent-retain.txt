@@ -1,0 +1,3 @@
+# THE ROOTS THE MOO WIRE-FUZZ LEG's RETENTION ARM ANSWERS 0 FOR (make/moo-fuzz.mk,
+# tables-moo-wire-fuzz-retain), in test/conformance/moo/wire-fuzz-absent.txt's
+# form. The arm's roster is the variable-class file roots alone.

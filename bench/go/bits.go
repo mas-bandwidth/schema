@@ -13,7 +13,7 @@ package main
 import (
 	"time"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 const BitsNumWidths = 16

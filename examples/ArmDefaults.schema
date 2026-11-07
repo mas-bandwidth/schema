@@ -1,4 +1,5 @@
-// Every selection constructs a fresh payload, including its unused capacity.
+// Selecting a union arm constructs a fresh payload with its declared
+// defaults, including the unused elements of a counted array.
 package example
 
 type DefaultArm
@@ -13,13 +14,13 @@ union DefaultChoice
     second DefaultArm
 }
 
-// The flat codecs expose struct entry points, with the same union wire inside.
+// A union held as a struct field: the same union wire, inside a struct.
 type DefaultChoicePacket
 {
     choice DefaultChoice
 }
 
-// A bulk-bearing payload also exercises readers that cannot use scalar batching.
+// The same arms with a bytes field beside the defaulted payload.
 type DefaultBulkArm
 {
     payload DefaultArm

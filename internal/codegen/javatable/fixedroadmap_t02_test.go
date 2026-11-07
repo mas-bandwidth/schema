@@ -68,7 +68,7 @@ func t02CheckErrs(t *testing.T, src string) []error {
 // t02Has is a required substring of the emitted source, named by rule.
 func t02Has(t *testing.T, src, want, what string) {
 	t.Helper()
-	if !strings.Contains(src, want) {
+	if !javaCarries(src, want) {
 		t.Errorf("%s: the generated source does not carry %q", what, want)
 	}
 }

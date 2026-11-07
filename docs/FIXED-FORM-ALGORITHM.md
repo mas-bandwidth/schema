@@ -184,7 +184,7 @@ constants, so measuring never reads a value.
 | `int8`..`uint64`, and a RANGED integer | the declared storage width | the bounds do not ride |
 | `int128` / `uint128` | 16 | the low 64-bit half, then the high |
 | `bits(N)` | 4 for `N <= 32`, else 8 | — |
-| `float32` / `float64`, and a COMPRESSED float | 4 / 8, and 4 | the IEEE-754 bit pattern, no canonicalisation; a compressed float rides as the float and never as a quantized index |
+| `float32` / `float64`, and a COMPRESSED float | 4 / 8, and 4 | the IEEE-754 bit pattern of a FINITE value (a NaN or an infinity is refused on write and read as `non_finite_float`, SPEC-TABLES.md §3.3); a compressed float rides as the float and never as a quantized index |
 | `fixed(I,F)` / `ufixed(I,F)`, `flags` | the storage width, and 8 | the raw scaled integer; the raw mask |
 | an ENUM | the ordinal width `1/2/4/8`, from the enum's top wire value (note a) | the ordinal is the variant's POSITION FROM `1`; `0` is `None` |
 | a nested `table` / `type` `T` | `C(T)` | inline; no length, no terminator |
@@ -382,7 +382,7 @@ The reader validates on load in **every** build, release included; a count or le
 | `count` | `v := SLE(4, record+src)`; if `v < 0` or `v > size` then `REFUSE count_over_bound` — before any destination byte is written. Else `PUT(4, out+dst, v)`. The bound is `size`: the bound THE PLAN CARRIES, which is the WRITER's own for that lineage entry, in ELEMENTS (bill §12.5) — never the reader's, or a forged count would land slots the old writer could not have written |
 | `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)`; if `v < 0` or `v > cap` then `REFUSE length_over_bound` — before any destination byte is written. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
 | `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`; `v := (raw != 0 and raw <= n) ? table[raw] : 0`; `PUT(dstsize, out+dst, v)` |
-| `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction, NaN payloads included |
+| `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction (a non-finite f32 never reaches `widenf`: the read refuses it, SPEC-TABLES.md §3.3) |
 | `const` | `PUT(size, out+dst, aux)` — the guarded entry landing THIS reader's arm ordinal when the writer's tag says that arm rode |
 | a `bool` or a PRESENT FLAG | lands as **`byte != 0`**, normalised to the language's own true. `0x02` is not a bool a reader stores verbatim (fix 2) |
 
@@ -405,7 +405,9 @@ rest (§5.8 row 4).
 
 - **A RANGED SCALAR** clamps to the min and max the plan carries, `COUNT clamped`. **A fixed-point field's
   bounds are in VALUE UNITS and its storage is raw**, so both ends are shifted by `F` first; a `bits(N)`
-  clamps to `2^N - 1`.
+  clamps to `2^N - 1`. **Every element of a ranged FIXED ARRAY is held the same as a scalar**, each clamp
+  counted. **The comparison is in the field's own type**: signed for a signed kind, UNSIGNED for an unsigned
+  one, so a `uint64` at or above `2^63` is past the max and lands the max, never the min.
 - **A UNION TAG past the plan's arm count, or an ENUM ORDINAL past the plan's top variant, lands `None`** —
   the same nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). There is no `| max = K` headroom on
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
@@ -822,7 +824,16 @@ by the kind's signedness" has written a DIFFERENT RULE that agrees by accident, 
 a signed kind admits two widths. Take it as stated: **ladder widen, sign by the WRITER's kind; same-kind widen
 and enum widen, ZERO.** Both count `widened`, once per entry per record — **per ENTRY, so a folded element run
 counts ONCE and an unfolded one once per element — and because a fold across a widen is forbidden, the number a
-fixture asserts on a widened run is the EXACT `min(their_n, my_n)`** (§5.9 #33).
+fixture asserts on a full widened run is the EXACT `min(their_n, my_n)`** (§5.9 #33); a counted run executes only its live entries.
+
+**COMPILED ENTRIES AND LIVE EXECUTION ARE DISTINCT.** The `min(their_n, my_n)`
+above is the number of element entries emitted from the two schema bounds. For
+an array with a count, execution visits only entries inside the record's live
+count (held to the admitted bounds). Entries past that count describe slack:
+they validate nothing, refuse nothing, and move no counter, as SPEC-TABLES
+§3.4 requires. In particular, a widened counted array reports one `widened`
+per live element, not per reserved slot. The four-element case in §5.9 #33
+sends all four elements and still requires exactly four widenings.
 
 **THE GUARD'S WIDTH, and the remap table's shape.** Two small structures a port must match exactly.
 
@@ -1043,7 +1054,7 @@ when every value lands.
 |---|---|---|
 | `MATCH`, at COMPILE | `unknown` | once per writer field no reader field names, **once per peer and never per record** |
 | `EMIT`, at COMPILE | `kind_mismatch` | once per pair whose kinds moved off every ladder |
-| `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per ENTRY**: a folded element run is ONE and an unfolded one is `min(their_n, my_n)`, and a widened run is never folded, so a fixture asserts that EXACT count (§5.9 #33) |
+| `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per EXECUTED ENTRY**: a folded element run is ONE and a full unfolded run is `min(their_n, my_n)`. A counted run executes only its live elements; a widened run is never folded, so the full-count fixture asserts that EXACT count (§5.9 #33) |
 | `count`, `text` | — | a value past the plan's bound refuses `count_over_bound` / `length_over_bound` instead of clamping (§4.5), so no counter moves |
 | the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
 | `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans, and a port that counts in the op as well counts twice |
@@ -1542,7 +1553,9 @@ per-file name. A record's values are prefixed `r<i>.`, nested fields are
 dotted, array and keyed slots carry the index the bytes carry, text is quoted (`u"…"` for wide — **ONE encoding
 for wide text everywhere, both sides of a pair included, and never a column of per-code-unit hex** — and
 `\uXXXX`, never `\xNN`, for anything not printable ASCII), a float is given as digits AND bits
-(`nan|0x7F8ABCDE` — a signalling NaN's payload is the value), **a `fixed(I,F)` as `<real>|raw=<int>`** — the
+(`-0|0x80000000`, `1.40129846e-45|0x00000001` — a finite value's bits are the value, the sign of a `-0` and a
+subnormal's mantissa included; no file in the corpus carries a NaN or an infinity, which every read refuses as
+`non_finite_float`, docs/SPEC-TABLES.md §3.3), **a `fixed(I,F)` as `<real>|raw=<int>`** — the
 scaled integer the bytes hold beside the real it means, because a bare number says neither — **a `bool` and the
 `present` companion as the wire's `1`/`0` and never C++'s `true`/`false`** (§5.9 #40 speaks of `1`), and a field
 the dump did not set carries its schema default.
@@ -1597,6 +1610,14 @@ leg's fixture share** (the C# leg's fixture asserts `4`). The C++ reference's `r
 (`test/tables/versioning_numbers.cpp:345`, "a widened element counts (§5.2)") is the REFERENCE FIXTURE'S LOOSER
 assertion, written before the fold's incompatibility was named, and a leg that copies it cannot tell a run that
 widened element by element from the folded read this ruling exists to catch.
+
+For counted arrays, this assertion counts **executed live entries**. A record
+with count zero executes zero widenings; count one executes one; the example
+above has count four and executes four. Plan compilation still emits the
+bound-many entries because the per-record count is not known at compile time.
+This ruling forbids folding away a widening; it does not override §3.4's slack
+rule or require reading bytes past the live count. The native regression is
+`TestFixedCountedArrayLiveExtent` in `internal/codegen/elixirtable`.
 
 **34. THE STATIC-DATA STRUCT'S NAME IS THE CONTRACT; ITS MEMBER COUNT CAN BE THE LANGUAGE'S.** The name on this
 page is **`TableFixedKnownLayout`** with #19's members in #19's order. Two divergences are now admitted, both
@@ -1813,7 +1834,7 @@ not transliterate.** Then **prove against the oracle, in this order**:
 
 | # | the proof |
 |---|---|
-| 1 | **`make tables-fixedform-corpus`** writes nine form-`3` files into `build/fixedform-corpus` from the reference, values set by hand: `fx1`/`fx2` (the versioning pair, carrying a short string, a wholly unused string, a partly-used `[..4]int32` and a partly-used `bytes(6)`), `p1`/`p3` (a value against a `?T`, present and absent), `keyed` (keyed arrays nesting keyed arrays), `pack` (counted arrays, an enum off its declared default, optionals inside elements), `fxw` (the wide-text unit), `fu1`/`fu2` (text under a union arm, and §4's TWO WIDENING RUNGS — `mark int16` at `-1`, `INT16_MIN` and `INT16_MAX` into FU2's `int32`, and `heat float32` as two signalling NaNs and an ordinary `1.5` into FU2's `float64`; schema#876 cards 15 and 16). **Read EACH of the nine and save it back; the bytes must be identical** — the shared byte oracle is every vector, not one — a byte a port encodes differently is a byte that does not come back. `p3` sets an absent link's payload in STORAGE on purpose and the file's bytes for it are the template's zeros, which is exactly the check |
+| 1 | **`make tables-fixedform-corpus`** writes nine form-`3` files into `build/fixedform-corpus` from the reference, values set by hand: `fx1`/`fx2` (the versioning pair, carrying a short string, a wholly unused string, a partly-used `[..4]int32` and a partly-used `bytes(6)`), `p1`/`p3` (a value against a `?T`, present and absent), `keyed` (keyed arrays nesting keyed arrays), `pack` (counted arrays, an enum off its declared default, optionals inside elements), `fxw` (the wide-text unit), `fu1`/`fu2` (text under a union arm, and §4's TWO WIDENING RUNGS — `mark int16` at `-1`, `INT16_MIN` and `INT16_MAX` into FU2's `int32`, and `heat float32` as the smallest subnormal, a `-0` and an ordinary `1.5` into FU2's `float64`, each widening to exactly its own value; schema#876 cards 15 and 16, made finite by the 2026-10-27 rule, docs/SPEC-TABLES.md §3.3). **Read EACH of the nine and save it back; the bytes must be identical** — the shared byte oracle is every vector, not one — a byte a port encodes differently is a byte that does not come back. `p3` sets an absent link's payload in STORAGE on purpose and the file's bytes for it are the template's zeros, which is exactly the check |
 | 2 | **read a file written under ANOTHER schema's layout** — `fx1`/`fx2` both directions, `p1` into `p3`. That is the plan path, and the whole of what the versioning invariant is worth |
 | 3 | **the negative controls, one per named rule and one per named refusal**: each of §1.1's seven, over a file that reads clean and is broken in exactly one place; `layout_malformed` for a header shorter than a layout and for a header hash that is not the hash of the layout behind it; `plan_too_large` for a one-entry plan slice; `batch_too_large` for a batch past the caller's room; `previous_form`, `message_form_as_file` and `newer_form` for form bytes `1`, `2` and `6`; `no_layout` for a record hash naming nothing; `malformed` for a ragged tail. **Each comes back under ITS OWN NAME, nothing decoded, no counter moved, and every byte of the caller's destination as it was before the load** — never clamped, never zero-filled, never prefilled; the controls are cut from the reference's own corpus files, so they hold over the bytes the oracle holds and not only over a leg's own writer. A validation nobody watched fail is a validation nobody has |
 | 4 | **the wrong plan must go red**, and so must each fix's own bug: this build's identity plan over another schema's record, the swapped `bytes(N)` row, the shared `arg`/`meta` lane, a whole-span copy over stained slack |

@@ -166,6 +166,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedWriteBody(st)
 	}
+	/* THE FINITE PASS, in the same post-order: the save's pre-pass and the
+	   read's first pass over the storage a record landed in (§3.3). */
+	for _, st := range own {
+		g.emitFixedFiniteBodyFn(st)
+	}
 	/* THE READ-SIDE BOUNDS, in the same closure order the write bodies take —
 	   post-order, so a nested type's body stands before the call to it. */
 	for _, st := range own {
@@ -191,12 +196,12 @@ func (g *tableGen) emitFixedLayoutAsserts(order, all []*ir.Struct, here map[stri
 	for _, st := range order {
 		for _, m := range ir.TableFixedMembers(g.unit, st) {
 			if m.Member == "" {
-				g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_size, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
-					ir.RustSnake(m.Owner), m.Owner, m.Value, m.Owner)
+				g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_size, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
+					g.unit.Package, ir.RustSnake(m.Owner), m.Owner, m.Value, m.Owner)
 				continue
 			}
-			g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_%s, offsetof( %s, %s ) == %d, \"%s.%s: the fixed form's plan lands here\" );\n",
-				ir.RustSnake(m.Owner), ir.RustSnake(m.Member), m.Owner, m.Member, m.Value, m.Owner, m.Member)
+			g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_%s, offsetof( %s, %s ) == %d, \"%s.%s: the fixed form's plan lands here\" );\n",
+				g.unit.Package, ir.RustSnake(m.Owner), ir.RustSnake(m.Member), m.Owner, m.Member, m.Value, m.Owner, m.Member)
 		}
 	}
 	unions := map[string]bool{}
@@ -208,12 +213,12 @@ func (g *tableGen) emitFixedLayoutAsserts(order, all []*ir.Struct, here map[stri
 			}
 			unions[f.Type.Name] = true
 			size, _, _, arms := ir.UnionLayout(g.unit, un)
-			g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_size, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
-				ir.RustSnake(f.Type.Name), f.Type.Name, size, f.Type.Name)
-			g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_type, offsetof( %s, type ) == 0, \"%s: the tag leads the union storage\" );\n",
-				ir.RustSnake(f.Type.Name), f.Type.Name, f.Type.Name)
-			g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_as, offsetof( %s, as ) == %d, \"%s: every arm is overlaid here\" );\n",
-				ir.RustSnake(f.Type.Name), f.Type.Name, arms, f.Type.Name)
+			g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_size, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
+				g.unit.Package, ir.RustSnake(f.Type.Name), f.Type.Name, size, f.Type.Name)
+			g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_type, offsetof( %s, type ) == 0, \"%s: the tag leads the union storage\" );\n",
+				g.unit.Package, ir.RustSnake(f.Type.Name), f.Type.Name, f.Type.Name)
+			g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_as, offsetof( %s, as ) == %d, \"%s: every arm is overlaid here\" );\n",
+				g.unit.Package, ir.RustSnake(f.Type.Name), f.Type.Name, arms, f.Type.Name)
 		}
 	}
 	g.pf("\n")
@@ -552,6 +557,27 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   layout_newer (ship the reader). A retired entry stays forever (§5.2). */\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_floor = %d;\n\n", n, floor)
 
+	// THE WRITER'S RANGES, per lineage entry (docs/FIXED-FORM-ALGORITHM.md
+	// §4.5): a record read under an older entry is held to what THAT writer
+	// declared, then to this reader's own ranges. One straight-line pass per
+	// entry that bounds anything, spelled by the reader's own clamp emitter
+	// over the reader's storage with the writer's numbers.
+	writerFields := fixedWriterFields(st, lineage, hash)
+	var writerClamps []int
+	for i, fields := range writerFields {
+		if len(fields) == 0 {
+			continue
+		}
+		writerClamps = append(writerClamps, i)
+		g.pf("/* lineage entry %d's WRITER ranges (§4.5): every clamp counts. */\n", i)
+		g.pf("static SCHEMA_UNUSED %s void %s( %s * value, int32_t * clamped )\n{\n",
+			tableInlineMacro(g.unit.Package), g.sym(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)), st.Name)
+		for _, f := range fields {
+			g.emitFixedClampField(f, "value->", 4)
+		}
+		g.pf("}\n\n")
+	}
+
 	older := 0
 	for _, e := range lineage {
 		if e.Wire != hash {
@@ -628,7 +654,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        %s_fixed_lineage[i].guarded = guarded;\n", n)
 		g.pf("        %s_fixed_lineage[i].fill = ( fills > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;\n", n)
 		g.pf("        %s_fixed_lineage[i].fill_count = fills;\n", n)
-		g.pf("        /* THE COMPILE CENSUS, ONCE PER PEER and never per record (§5.4). */\n")
+		g.pf("        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */\n")
 		g.pf("        %s_fixed_lineage[i].unknown = census.unknown;\n", n)
 		g.pf("        %s_fixed_lineage[i].kind_mismatch = census.kind_mismatch;\n", n)
 		g.pf("    }\n")
@@ -641,13 +667,23 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —\n")
 	g.pf("   then the layout behind its u32 length, then the records to the end of it. */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( int64_t count )\n{\n", g.api(st.Name, "fixed_measure"))
-	g.pf("    return kTableFixedHeaderBytes + 4 + (int64_t) sizeof( %s_fixed_layout ) + count * ( 8 + %d );\n}\n\n", n, body)
+	fixedTrailer := ""
+	if st.Integrity != "" {
+		fixedTrailer = " + 4"
+	}
+	g.pf("    return kTableFixedHeaderBytes + 4 + (int64_t) sizeof( %s_fixed_layout ) + count * ( 8 + %d )%s;\n}\n\n", n, body, fixedTrailer)
 
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n",
 		g.api(st.Name, "fixed_save"), st.Name)
 	g.pf("    const int64_t need = %s( count );\n", g.api(st.Name, "fixed_measure"))
 	g.pf("    uint8_t * at;\n    int64_t k;\n")
 	g.pf("    if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }\n")
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
+		// §3.3): the whole batch is checked before one byte is written
+		g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
+		g.pf("        if ( !%s( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */\n    }\n", g.sym(st.Name, "fixed_finite_body"))
+	}
 	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); /* the seven reserved bytes, and the rest of the header */\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
 	g.pf("    table_fixed_put64( buffer + kTableFixedHashAt, %s_fixed_hash );\n", n)
@@ -658,7 +694,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        table_fixed_put64( at, %s_fixed_hash );\n", n)
 	g.pf("        memset( at + 8, 0, (size_t) %d ); /* the prefill's zeros */\n", body)
 	g.pf("        %s( at + 8, values + k );\n", g.sym(st.Name, "fixed_write_body"))
-	g.pf("        at += 8 + %d;\n    }\n    return need;\n}\n\n", body)
+	if st.Integrity != "" {
+		g.pf("        at += 8 + %d;\n    }\n    return schema_table_integrity_seal_( buffer, need - 4 );\n}\n\n", body)
+	} else {
+		g.pf("        at += 8 + %d;\n    }\n    return need;\n}\n\n", body)
+	}
 
 	// ---- LOAD(R, file): §5.3'S ELEVEN STEPS, IN ORDER ----
 	//
@@ -685,8 +725,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   built from the lock's bytes. The signature keeps both so every caller in\n")
 	g.pf("   test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,\n")
 	g.pf("   not API). */\n")
+	g.pf("/* %s is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it\n", g.api(st.Name, "fixed_load_tolerant"))
+	g.pf("   keeps every recovered record, the counters counted onto the report. */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n",
-		g.api(st.Name, "fixed_load"), st.Name)
+		g.api(st.Name, "fixed_load_tolerant"), st.Name)
 	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n")
 	g.pf("    uint32_t layout_bytes;\n    const uint8_t * layout;\n    const uint8_t * at;\n")
@@ -694,6 +736,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int32_t pick;\n")
 	g.pf("    int32_t reserved_at;\n")
 	g.pf("    int32_t census_unknown = 0;\n    int32_t census_kind = 0;\n")
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		g.pf("    int32_t read_clamped, read_widened;\n")
+	}
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
 	g.pf("    int32_t entry_count = %s_fixed_plan_count;\n", n)
 	g.pf("    int32_t entry_guarded = %s_fixed_plan_guarded;\n", n)
@@ -721,6 +766,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                       : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE\n")
 	g.pf("                       : SCHEMA_TABLE_NEWER_FORM;\n")
 	g.pf("        return -1;\n    }\n")
+	if st.Integrity != "" {
+		g.pf("    if ( !schema_table_integrity_holds_( data, bytes ) )\n    {\n")
+		g.pf("        report->malformed = 1;\n")
+		g.pf("        report->damage_reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;\n")
+		g.pf("        return -1;\n    }\n")
+		g.pf("    bytes -= 4;\n")
+	}
 	// STEP 2: the length, then the seven reserved bytes.
 	g.pf("    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are\n")
 	g.pf("       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */\n")
@@ -749,7 +801,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("         memcmp( layout, %s_fixed_known[pick].layout, (size_t) layout_bytes ) != 0 )\n", n)
 	g.pf("    { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }\n")
 	// STEP 8.
-	g.pf("    /* 8. the plan this peer resolves to, and the record size FROM THE LOCK. */\n")
+	g.pf("    /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */\n")
 	g.pf("    record_bytes = %s_fixed_known[pick].record_bytes;\n", n)
 	if older > 0 {
 		g.pf("    if ( hash != %s_fixed_hash )\n    {\n", n)
@@ -788,6 +840,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if ( fill_count > 0 )\n    {\n")
 	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */\n")
 	g.pf("        %s( &defaults );\n    }\n", g.api(st.Name, "reset"))
+	finite := fixedFiniteNeededStruct(st, map[string]bool{})
+	if finite {
+		g.pf("    read_clamped = report->clamped;\n    read_widened = report->widened;\n")
+	}
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        int32_t rec_clamped = report->clamped;\n")
@@ -796,6 +852,34 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
 	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );\n")
+	if finite {
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
+		// FIRST, before the bounds pass, over the storage the run just wrote,
+		// and a NaN or an infinity refuses the whole batch as
+		// non_finite_float, the tolerant read included. Nothing of the batch
+		// is kept: every record this call wrote goes back to its defaults, and
+		// no counter moves.
+		g.pf("        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the\n")
+		g.pf("           bounds pass: every record this call wrote is reset and no\n")
+		g.pf("           counter moves. */\n")
+		g.pf("        if ( !%s( values + k ) )\n        {\n", g.sym(st.Name, "fixed_finite_body"))
+		g.pf("            int64_t j;\n")
+		g.pf("            for ( j = 0; j <= k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
+		g.pf("            report->clamped = read_clamped;\n            report->widened = read_widened;\n")
+		g.pf("            table_non_finite_float( report );\n")
+		g.pf("            return -1;\n        }\n")
+	}
+	if len(writerClamps) > 0 {
+		g.pf("        /* THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),\n")
+		g.pf("           then this reader's own below. */\n")
+		g.pf("        {\n            int32_t known_clamped = 0;\n")
+		g.pf("            switch ( pick )\n            {\n")
+		for _, i := range writerClamps {
+			g.pf("            case %d: %s( values + k, &known_clamped ); break;\n", i, g.sym(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+		}
+		g.pf("            default: break;\n            }\n")
+		g.pf("            report->clamped += known_clamped;\n        }\n")
+	}
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("           storage it just wrote: the same pass for either plan (§3.4). A\n")
@@ -809,6 +893,32 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    report->unknown += census_unknown;\n")
 	g.pf("    report->kind_mismatch += census_kind;\n")
 	g.pf("    return count;\n}\n\n")
+	g.emitFixedLoadStrict(st)
+}
+
+// emitFixedLoadStrict emits the PLAIN <name>_fixed_load, which is the STRICT
+// read (docs/SPEC-TABLES.md §6.5), as the Go oracle's FixedLoad wraps
+// FixedLoadTolerant (internal/codegen/gotable/fixedform.go) and the C++ one
+// does (internal/codegen/cpptable/fixedform.go): -1 for every refusal of the
+// tolerant read and for a read the strict rule refuses, with every value it
+// had written reset. A supplied report receives THIS read's report.
+func (g *tableGen) emitFixedLoadStrict(st *ir.Struct) {
+	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for\n", g.api(st.Name, "fixed_load"))
+	g.pf("   every refusal of %s and for a read the strict rule\n", g.api(st.Name, "fixed_load_tolerant"))
+	g.pf("   refuses -- malformed, clamped, kind-mismatched or refused -- with every\n")
+	g.pf("   value it had written reset to its declared defaults. A supplied report\n")
+	g.pf("   receives THIS read's report, its refuse_reason set. unknown and widened\n")
+	g.pf("   alone never refuse. */\n")
+	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n",
+		g.api(st.Name, "fixed_load"), st.Name)
+	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
+	g.pf("    TableReport local;\n    int64_t n, k;\n")
+	g.pf("    if ( report == NULL ) { report = &local; }\n")
+	g.pf("    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
+	g.pf("    n = %s( values, capacity, data, bytes, plan, plan_capacity, cache, report );\n", g.api(st.Name, "fixed_load_tolerant"))
+	g.pf("    if ( !table_report_strict_refuses( report, n >= 0 ) ) { return n; }\n")
+	g.pf("    for ( k = 0; k < n; ++k ) { %s( values + k ); }\n", g.api(st.Name, "reset"))
+	g.pf("    return -1;\n}\n\n")
 }
 
 func fixedOpName(op int) string {
@@ -1138,13 +1248,13 @@ func (g *tableGen) fixedClampEnd(expr, test, bound, ind string) {
 }
 
 // tableFixedOnce is THE ONCE-FLAG AND ITS PUBLICATION, emitted beside the lazy
-// build of the older lineage plans and nowhere else — a unit with no older peer
+// build of the older lineage plans and nowhere else — a unit with no older endpoint
 // has no lazy build, so it carries not one line of this.
 //
 // THE BUG IT CLOSES: the flag used to be raised BEFORE the loop, which made a
-// second thread racing the first older-peer load return from the build with the
+// second thread racing the first older-endpoint load return from the build with the
 // plans still zeros. A zeroed TableFixedLineagePlan is entries NULL, count 0 and
-// reason 0 — and step 8 of §5.3 accepts that: reason 0 is "this peer planned
+// reason 0 — and step 8 of §5.3 accepts that: reason 0 is "this endpoint planned
 // fine", count 0 is "a plan with no entries", so the read would land a
 // PREFILL-ONLY record instead of refusing. The fix is the ordinary one: build
 // into the static storage first, publish the flag LAST, and make a load that
@@ -1164,7 +1274,7 @@ func (g *tableGen) fixedClampEnd(expr, test, bound, ind string) {
 // reads a zeroed plan — a thread reaches the plan only after its own build
 // returned — but the duplicate write is a data race in the abstract machine and
 // this leg owes the fix the spec already names: §5.9 #7's GENERATOR-SIDE
-// COMPILE, which lays every older peer's plan down as static const data at
+// COMPILE, which lays every older endpoint's plan down as static const data at
 // generate time and deletes the lazy build, the flag and this whole block with
 // it. Until then the build is this, and the ordering is published.
 const tableFixedOnce = `

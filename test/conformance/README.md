@@ -26,12 +26,17 @@ goes red everywhere localises nothing:
 | control | what it breaks | what must go red | what must stay green |
 |---|---|---|---|
 | `conformance-negative-control` | one byte of a C++ dump | `cpp / json-write` | `wire` |
+| `conformance-negative-control-cpp` | the C++ walk's field offset, in the emitter | `cpp / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-block-dump` | one byte INSIDE A ROW of the block image | `block-dump` | `block`, `forgery` |
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
 | `conformance-negative-control-go-walk` | the Go walk's field offset | `go / json-read` | `json-write` |
 | `conformance-negative-control-js-walk` | the bool arm of the generated JavaScript text reader | `js / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
+| `conformance-negative-control-java-walk` | the field-key match in the Java `fromJson` | `java / json-read` | `json-write`, `wire` |
+| `conformance-negative-control-lua` | the load report's unknown counter in the Lua runtime, in the emitter | `lua / report`, `lua / retain` | `wire`, `json-read`, `retain-save` |
+| `conformance-negative-control-lua-walk` | the field-key match in the Lua `FromJson`, in the emitter | `lua / json-read`, `lua / json-hostile` | `json-write`, `wire`, `cook-write` |
+| `conformance-negative-control-rust-walk` | the field-key match in the Rust emitter's `json_fields` reader | `rust / json-read` | `json-write`, `wire` |
 
 Two of those rows are the reason two surfaces exist at all. The row-dump one is
 why `block-dump` is separate from `block`: `Open` reads the prologue and the
@@ -42,11 +47,13 @@ which no valid image can show you.
 
 **A PER-BACKEND WALK CONTROL, one per port with a text form**, because a
 walker's break is the backend's and not the data's:
-`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic.
-It has the same second half as every control here, and it is the point:
-`json-read` goes red and `json-write` stays green, which is what says the
-break is the READER's. (Elixir emits no text form and has no walk control;
-schema#515 brings its wire.)
+`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic,
+`conformance-negative-control-c` breaks the C walk's field index, and
+`conformance-negative-control-java-walk` breaks the Java `fromJson`'s field-key
+match. Each has the same second half as every control here, and it is the
+point: `json-read` goes red and `json-write` stays green, which is what says
+the break is the READER's. (Elixir's text form covers the variable class now;
+its walk control still arrives with the full conformance battery.)
 
 ## The shape
 
@@ -154,13 +161,14 @@ One process per surface, so a runtime starts once rather than once per case.
 | surface | for each | the driver writes | the harness compares against |
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
-| `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes | the message-form golden |
-| `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n` | `reports.txt` |
-| `retain` | `retain`, `retain-message` | LoadRetain the wire at the row's two capacities, MeasureRetain, SaveRetain, the counters as `<retained>,<retain_lost>,<unknown> <save lost>\n` | the counters in the manifest |
-| `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES, one body after another | the pinned saves, back to back |
-| `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
+| `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes; for a row whose message-form wire is `-` (a variable table), `<name>.absent` holding `variable table: the message form is fixed tables only (SPEC-TABLES §3.3)` | the message-form golden, or that exact reason |
+| `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value when the read reads (not refused, not malformed) | `reports.txt`, then `report-values/<case>.json` |
+| `framing` | `framing` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value unless the row says `no-value` or the read was refused | the verdict and the value file on the row (docs/LAYERS/1-framing.md) |
+| `retain` | `retain` | LoadRetain the wire at the row's two capacities, MeasureRetain, SaveRetain, the counters as `<retained>,<retain_lost>,<unknown> <save lost>\n` | the counters in the manifest |
+| `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES | the pinned save |
+| `json-read` | `instance` | the TOLERANT text read (below) of `json/<name>.json`, Save, the bytes | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
-| `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n`, or `refused\n` | the verdict in the manifest, or the row's uncarried verdict for an exempt port |
+| `json-hostile` | `json-hostile` | the TOLERANT text read of `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n` then ToJson of the value, or `refused\n` | the verdict in the manifest, then `<tree>.value.json`; the row's uncarried verdict alone for an exempt port |
 | `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
 | `cook-write` | `cook-write` | Load the instance's wire, `Cook` it in each byte order, the bytes, as `<instance>` and `<instance>-be` | the two files `schema cook` wrote |
 | `cook-foreign` | `cook` | byte-swap the file's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
@@ -174,6 +182,32 @@ One process per surface, so a runtime starts once rather than once per case.
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
+
+**THE DECODED VALUE IS COMPARED, NOT ONLY THE COUNTERS.** A `report` row and a
+`json-hostile` row whose read reads owe the §16 text of the value the read
+left, after the report line, exactly as a `framing` row with a value does. Two
+legs can count the same events and land different values (a float32 token
+rounded twice, a uint64 past 2^63 clamped by a signed compare), and only the
+value says so. The expected text is the ORACLE's, written by
+`make conformance-generate` from internal/tablewire and internal/tabletext:
+`testdata/conformance/tables/report-values/<case>.json` for a report row, and
+`<tree>.value.json` beside the tree for a hostile row (beside it, never inside
+it, because the tree is what `schema pack` reads). A refused or damaged read
+owes no value. A port on a hostile row's `uncarried` verdict is held to that
+line alone. A leg with no text writer for a root answers the report line alone
+and `<case>.absent` beside it: the line is still compared, and the value
+counts as the missing feature it is. When the line agrees and the value does
+not, the failure names the value's first differing line.
+
+**THE TEXT READ IS THE TOLERANT ONE, ON EVERY LEG.** `json-read` and
+`json-hostile` call one entry point: `<Root>FromJsonTolerant` where the leg's
+emitter names one (Go, C, C++, Lua, Luau, Squirrel, Goose), and the plain
+`FromJson` where the emitter has not taken docs/SPEC-TABLES.md §6.5 and its
+plain name is still its tolerant read (C#, Dart, Elixir, Java, JavaScript,
+MOO, Lobster, Rust). The tolerant read is the one whose value and counters a
+row can compare; a `json-read` instance is silent, so its answer is the same
+either way, and a driver that called the strict read there would be calling a
+different function than `json-hostile` holds to the oracle.
 
 **A `json-hostile` ROW MAY EXEMPT A PORT THAT HAS NOT TAKEN ITS RULE YET**
 (docs/SPEC-TABLES.md §16.3). The manifest line
@@ -219,10 +253,8 @@ reference answers both surfaces and the eight ports print ABSENT**, which is the
 same absence the `message` and `wire` surfaces already carry one grain up: a
 port carries no retention at all, so `LoadRetain`, `MeasureRetain` and
 `SaveRetain` are a missing FEATURE and not a failing test, and §6.6's own
-backend status says so. A `retain-message` row needs the form-2 read beside
-them, which no port has either, and its capacity is `full` only: `short` is one
-buffer's rule, a batch takes one buffer a body, and the manifest loader refuses
-the pair by name rather than let each leg read it its own way (schema#681).
+backend status says so. Retention is the variable form's alone: the message
+form is fixed tables only (§3.3), so no row retains over a message.
 
 **`cook-write` IS THE ONE SURFACE WHERE A LANGUAGE WRITES AN ACCELERATOR RATHER
 THAN READING ONE, and the expectation is the TOOL's file.** Every other cook
@@ -309,6 +341,7 @@ conformance job reads it as the leg's matrix row:
 | `env` | `VAR=value` assignments the make and run steps carry — a toolchain on PATH rather than in `dist/` |
 | `runtime`, `runtime_tag` | the sibling checkout the leg needs (`serialize.cs`) and the workflow variable that pins it (`SERIALIZE_CS_TAG`) |
 | `node`, `rust`, `dart`, `java`, `otp` + `elixir` | the toolchain step to run, and the version it installs |
+| `moo` | the moo pin step to run (`./.github/actions/moo`, which builds `make/moo.mk`'s `MOO_PIN` into `dist/moo/` and caches it): the field's value is the release the pin names, held equal to a negative-control group's `moo` by `tools/negativecontrols` |
 | `dotnet` | the .NET SDK step to run, and the file holding the version — `.github/dotnet-version`, the repo's one pin, because nine `csproj` files under `test/` and `bench/` target it and `certify.yml` builds all of them (issue #470) |
 
 A leg that names a toolchain with no step yet adds one step to the workflow,
@@ -340,6 +373,104 @@ the wire ones and the block and pointered ones, are packages of a single
 classpath, so the cook's node dump and the 111-row cook forgery battery ride
 inside processes that were already starting. Both shapes satisfy the contract,
 because the contract is a COMMAND.
+
+## The nightly
+
+`.github/workflows/nightly-conformance.yml` checks cross-language compatibility
+every night at 05:41 UTC, on the fleet's runners and never on the host named
+space, and on `gh workflow run nightly-conformance.yml --ref <branch>`.
+Every registered port joins through `harness matrix --ports`.
+
+The current completion target is the original nine: C++, C, C#, Go, Rust,
+Java, JavaScript, Dart and Elixir. Required gaps in any of these remain open;
+results for other registered ports do not substitute for them.
+
+1. **C++ writes and validates one canonical corpus.** `cpp-writes` produces
+   the wire, text, message, block, cook and fixed-form corpus, checks it against
+   the committed pins, and runs `harness run --only cpp`. The reference reads
+   the corpus and its answers must match the expected bytes. The job publishes
+   the shared `cpp-corpus` and its own `reference-report` coverage artifact.
+2. **Every port reads that same corpus and matches its output.** Each
+   `port (<lang>)` job runs `harness run --only <lang> --claims` and its
+   fixed-form gate. Every writer's answer must equal the canonical bytes;
+   missing answers and mismatches fail, while named unsupported cases remain
+   visible. The job saves its writes and coverage as `port-<lang>-writes`.
+
+**Work is O(n) in languages, not O(n²).** If every writer produces the same
+bytes and every reader accepts those bytes, every writer's output is
+interoperable with every reader on the covered corpus. The reference need
+not read a separate identical copy from each writer. The `coverage` job
+records the reference and port results together. Its
+`coverage --require-original-nine` gate requires C++, C, C#, Go, Rust, Java,
+JavaScript, Dart and Elixir to cover every manifest-defined surface/class and
+case count. The reference rows are checked independently against that shape,
+so a missing reference row cannot shrink the denominator. Answered cases and
+the manifest's named required refusals count as complete; missing, failed or
+uncarried cases do not. Each of the eight ports must also record a passing
+fixed-form gate. These corpus results are necessary, but they cannot by
+themselves certify a full implementation.
+
+`coverage --require-original-nine` is the unified full-implementation gate. It
+also requires all of the following, independently of what a port chooses to
+claim:
+
+- Every required construct in `compiler.CarryConstructs()` must be supported
+  by every original-nine backend. Missing features remain failures even when
+  the current corpus contains no example of them.
+- Required features must have executable corpus witnesses and successful
+  code generation. Declaring an unrelated feature in an unused table does
+  not cover it. The `implementation --lang <lang>` command checks these
+  prerequisites; it is not a substitute for native execution.
+- Every original-nine language, including C++, must pass
+  `test/conformance/nightly-readiness`. This runs the mandatory native,
+  packet, fixed-form, strict fuzz and retention acceptance gates. Unsupported
+  valid roots/forms, omitted comparisons, live skipped obligations and failed
+  controls cannot count as completion. Named retired tests are reported
+  explicitly; their replacement obligations still have to pass.
+- Each language must supply exactly one passing `readiness-<lang>.txt` and
+  an adjacent `readiness-<lang>.revision` matching the current Git checkout.
+  Missing, failed, duplicate or stale receipts fail. Nightly writes these
+  only from the actual acceptance command and uploads the complete logs.
+- The roadmap renderer must validate the current graph and evidence overlays,
+  find all three sections and all nine columns complete, and confirm that
+  `ROADMAP.md` matches the data. A manually completed task cannot override a
+  failed implementation or runtime check. SBCL and a Git checkout are required;
+  absence of either fails closed.
+
+Full implementation is the prerequisite for success. Neither a smaller
+passing corpus nor a green roadmap can substitute for it. The six expansion
+languages remain visible but are not part of this completion obligation. The
+table and all failure diagnostics are printed and uploaded even when the gate
+fails; ordinary `coverage` remains an informational report.
+Every confirmed defect found by these gates must leave a permanent regression.
+Keep the original trigger and seed, minimize it, and commit the expected decoded
+values, canonical bytes or refusal report. Language-neutral cases belong in the
+shared corpus; language-specific API behavior also needs a native regression.
+Record that the broken implementation fails and the repair passes, and wire the
+case into nightly acceptance. An uncommitted workbench reproducer does not close
+the defect, and re-pinning incorrect bytes is not a repair.
+
+The `harness cross-read` command remains available for individual diagnostics,
+but is not repeated per language in the nightly.
+
+**A CLAIMED CASE MAY NOT BE ABSENT; AN UNCLAIMED ONE IS COVERAGE.** A port
+claims a case when the case's unit uses at least one construct of the
+compiler's carries registry (`compiler/carries_<target>.go`, read through
+`compiler.UnitConstructs`) and its target carries every one of them — the
+registration is the port naming, construct by construct, what it carries. A
+class a port lands one at a time (variable, message, wide-scalar, byte
+buffer) is not a construct there, so its cases are coverage until it is
+registered as one. Under
+`--claims` a claimed case answered `<case>.absent`, on a surface the leg
+runs, fails the night by name (the reversed witness is
+`harness/claims_test.go`); a case the port does not claim, and a whole
+surface it does not run, remain informational in `run --claims`. The final
+original-nine completion gate is stricter: those gaps fail completion even
+when no individual feature was claimed. Expansion-language gaps remain
+visible in the per-port table of answered, failed, claimed-absent and
+not-carried cases per surface and class. The harness is built with every `schema_leg_<lang>` tag there, because
+a target behind a tag registers only under it, and a leg with no
+registration is refused rather than read as claiming nothing.
 
 ## The wire-fuzz driver
 
@@ -540,8 +671,19 @@ and canonical saved bytes only after a successful read. A failed read emits a
 save failure (`-1`); the partial value must be discarded. This arm does not
 preflight or compare region extents. In particular, an int32 list count-cap
 refusal stops without inventing the region reader's malformed-data event.
-`--builder` cannot be combined with `--message` or `--retain`. The existing
-region and retention arms retain their measurement and bounds checks.
+`--builder --retain` uses the mutable retaining reader and checks both
+retention counters and canonical saved bytes. `--builder` cannot be combined
+with `--message`. The region profiles retain their measurement and bounds
+checks; native heap readers such as Dart use the builder profile and test
+region sizing separately.
+
+`wire-fuzz --mixed-builder` preserves the full default roster. It uses the
+mutable builder oracle only for variable-class file roots, and keeps the
+existing fixed-file and message oracles for those roots. This profile lets a
+heap-based variable reader qualify every file and message root in one pass.
+It cannot be combined with `--builder`. With `--retain`, the roster remains
+the existing variable-file retention domain; both retention counters are
+compared. The plain mixed profile reports no seeds outside its arm.
 
 For an instance with a Go writer refusal, the manifest may carry the
 go-refusal=<reason> marker. On that Go wire row the driver writes the

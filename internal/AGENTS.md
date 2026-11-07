@@ -10,9 +10,11 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `ci/` | workflow pin and SDK gates | `go test ./internal/ci` | `go test ./internal/ci` |
 | [codegen/](codegen/AGENTS.md) | nine language emitters | `go test ./internal/codegen/...` | `go test ./internal/codegen/...` |
 | `docgate/` | link-and-citation gate over the pages | `go test ./internal/docgate` | `make docs-check` |
+| `fixedvector/` | fixed form's shared cross-version vectors | `go test ./internal/fixedvector` | `go test ./internal/fixedvector` |
 | `format/` | schemafmt | `go test ./internal/format` | `go test ./internal/format` |
 | `fuzz/` | seeded fuzz corpus | `go test ./internal/fuzz` | `go test ./internal/fuzz` |
 | `goldens/` | source, id, and wire pins | `go test ./internal/goldens` | `make update-goldens` |
+| `goname/` | Go member spelling (initialisms) | `go test ./internal/goname` | `go test ./internal/goname` |
 | `jsontestsuite/` | JSONTestSuite oracle harness | `go test ./internal/tabletext` | `go test ./internal/tabletext -run JSONTestSuite` |
 | `listwalk/` | unbounded-array walk | `go test ./internal/listwalk` | `go test ./internal/listwalk` |
 | `lockfile/` | schema.lock lineage | `go test ./internal/lockfile` | `go test ./internal/lockfile` |

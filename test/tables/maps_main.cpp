@@ -567,12 +567,19 @@ static Verdict read_row( const RowWire & w )
     v.malformed = r.malformed;
     free( region );
 
-    // EVERY LOAD PATH PRODUCES ONE REPORT (§2.8): the region load of §6.5 and
-    // LoadBuilder never disagree about a wire, which is what lets one set of
-    // counters be the expectation whichever path read it.
+    // Both paths refuse damage. Other report counters and decoded values
+    // are defined only after a successful read (SPEC-TABLES §4).
     RowBuilder into;
     TableReport t;
-    RowLoadBuilderTolerant( into, w.bytes, w.size, &t );
+    const bool loaded = RowLoadBuilderTolerant( into, w.bytes, w.size, &t );
+    CHECK_EQ( (int) t.malformed, (int) v.malformed );
+    if ( v.malformed )
+    {
+        CHECK( !loaded );
+        CHECK_EQ( v.count, -1 ); // the region returned no usable root
+        return v;
+    }
+    CHECK( loaded );
     CHECK_EQ( t.unknown, v.unknown );
     CHECK_EQ( t.kind_mismatch, v.kind_mismatch );
     CHECK_EQ( t.clamped, v.clamped );
@@ -599,18 +606,16 @@ static void test_reader()
         spec.entries[2] = hold;
         const Verdict v = read_row( build_row( spec ) );
         CHECK( v.malformed );
-        CHECK_EQ( v.count, 1 ); // the ascending prefix it has
+        CHECK_EQ( v.count, -1 ); // damage refuses the whole load
     }
     {
-        // CONTROL: the parent STOPS at a descending key instead of reading on.
-        // The holder carries `after` past the map, and its decoded value goes
-        // red — that is §4's framing-damage rule, at the map.
+        // A descending key is whole-load damage even when the holder has a
+        // field after the map; no decoded prefix or later value is usable.
         RowSpec spec = ascending_spec();
         spec.entries[2] = spec.entries[0]; // `aa` again, behind `bb`
         const Verdict v = read_row( build_row( spec ) );
         CHECK( v.malformed );
-        CHECK_EQ( v.count, 2 );
-        CHECK_EQ( v.past, 777 ); // the PARENT read on past the field's length
+        CHECK_EQ( v.count, -1 );
     }
     {
         // CONTROL: the duplicate rule is dropped, first wins or both kept. The
@@ -1019,28 +1024,18 @@ static void test_text()
         CHECK( r.malformed );
     }
     {
-        // A KEY IS DATA AND A LENGTH, never a run to the first NUL (§2.8, §3):
-        // the wire and the text both carry an interior U+0000 in a string(N)
-        // key, so "a" and "a\0b" are TWO keys. A lookup that recomputes the
-        // length merges them and relabels the entry it found, which is a
-        // deletion the report never mentions.
         const char * t = "{\"entries\":{\"a\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( rb.GetRoot()->entries.count, 2 );
-        CHECK_EQ( r.duplicate, 0 );
-        CHECK_EQ( r.clamped, 0 );
+        CHECK( !RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
     }
     {
-        // and the SAME interior-zero key twice IS one key: one entry, counted
-        // duplicate, never a second entry wearing an identity the map holds
         const char * t = "{\"entries\":{\"a\\u0000b\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( rb.GetRoot()->entries.count, 1 );
-        CHECK_EQ( r.duplicate, 1 );
+        CHECK( !RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
     }
     {
         // A KEY THE WALKER CANNOT HOLD WHOLE MUST NOT BECOME A DIFFERENT KEY
@@ -2454,71 +2449,6 @@ static void test_unbounded_pointer_array_values()
     CHECK_EQ( d->steps.count, 1 );
 }
 
-// ---- the MESSAGE FORM over maps (docs/SPEC-TABLES.md §2.8, §3.3) ----
-//
-// A map rides on the message wire as its thirty-two bit count and its entries
-// in ascending key order, each a bitpacked body with no length, and the
-// reader carves the entries from the node's extent read off the framing. The
-// fleet's three depths, its shared node and its signed key all ride: the
-// loaded region's VARIABLE form is the builder's, byte for byte.
-
-static void test_message_form()
-{
-    // THE RESOLVED VOCABULARY'S STORAGE IS THE CALLER'S (§3.3)
-    static TableMessageEntry entries[ kTableMessageEntriesHere ];
-    TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
-    static uint8_t announcement[16384];
-    const int64_t announced = Announce( announcement, sizeof( announcement ) );
-    CHECK( announced == AnnounceMeasure() );
-    CHECK( AnnounceRead( vocabulary, announcement, announced, NULL ) );
-    pin_golden( "map_conn", announcement, announced );
-
-    FleetBuilder b;
-    build_fleet( b, false );
-    CHECK( b.Lock() );
-    const Fleet * roots[1] = { b.AsConst() };
-    static uint8_t message[1u << 16];
-    TableReport report;
-    const int64_t bytes = FleetSaveMessages( roots, 1, message, sizeof( message ), &report );
-    CHECK( bytes > 0 && bytes == FleetMeasureMessages( roots, 1, &report ) );
-    CHECK( bytes < bytes_full ); // the message form is the wire optimized for bandwidth
-    pin_golden( "map_full_message", message, bytes );
-
-    int64_t attribution = 0;
-    const int64_t need = FleetLoadMeasure( vocabulary, message, bytes, &attribution );
-    CHECK( need > 0 );
-    static uint8_t region[1u << 16];
-    const Fleet * loaded[1] = { NULL };
-    int64_t count = 1;
-    CHECK( FleetLoadMessages( loaded, &count, region, need, vocabulary, message, bytes, &report ) );
-    CHECK( count == 1 && loaded[0] != NULL );
-    CHECK( !report.malformed && !report.refused && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && report.duplicate == 0 );
-    if ( loaded[0] != NULL )
-    {
-        const Fleet * fleet = loaded[0];
-        CHECK( fleet->ships.size() == 3 );
-        const ShipConfig * bomber = fleet->ships.Find( "bomber" );
-        CHECK( bomber != NULL && bomber->health == 400 );
-        // TWO KEYS, ONE NODE, and the pointer field naming it a third time
-        const ShipConfig * seven = fleet->by_id.Find( (uint32_t) 7 );
-        const ShipConfig * twelve = fleet->by_id.Find( (uint32_t) 12 );
-        CHECK( seven != NULL && twelve != NULL && seven == twelve && seven == ShipConfigAt( fleet->flagship ) );
-        const TableMap<FleetLoadoutsEntryValueEntry> * kit = fleet->loadouts.Find( "kit" );
-        CHECK( kit != NULL && kit->size() == 2 );
-        const Item * nine = kit != NULL ? kit->Find( (uint8_t) 9 ) : NULL;
-        CHECK( nine != NULL && nine->count == 99 );
-        const Item * low = fleet->tiers.Find( (int16_t) -3 );
-        CHECK( low != NULL && low->count == -3 );
-        // THE LOADED REGION'S VARIABLE FORM IS THE BUILDER'S, byte for byte
-        static uint8_t again[1u << 16];
-        const int64_t file_bytes = FleetSave( fleet, again, sizeof( again ) );
-        CHECK( file_bytes == bytes_full && memcmp( again, wire_full, (size_t) bytes_full ) == 0 );
-        // and the message re-saves to itself
-        static uint8_t again_message[1u << 16];
-        CHECK( FleetSaveMessages( loaded, 1, again_message, sizeof( again_message ), &report ) == bytes );
-        CHECK( memcmp( again_message, message, (size_t) bytes ) == 0 );
-    }
-}
 int main( int argc, char ** argv )
 {
     if ( argc > 1 && strcmp( argv[1], "measure-refusals" ) == 0 )
@@ -2551,7 +2481,6 @@ int main( int argc, char ** argv )
     test_pointer_array_values();
     test_counted_pointer_array_values();
     test_unbounded_pointer_array_values();
-    test_message_form();
 
     if ( failures != 0 )
     {

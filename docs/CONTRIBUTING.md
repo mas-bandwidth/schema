@@ -35,8 +35,8 @@ of 2026-09-18 is AGENTS.md alone. The maintainer context behind these rules is
 
 **Who this repo is for.** Schema is the data language for games: you declare
 constants, enums, flags, types and tables once, and the compiler generates
-bit-packed serialization code in **nine languages** — C, C++, C#, Dart, Elixir,
-Go, Java, JavaScript and Rust. The compiler is Go (`cmd/` + `internal/`, public
+bit-packed serialization code in **ten languages** — C, C++, C#, Dart, Elixir,
+Go, Java, JavaScript, Lua and Rust. The compiler is Go (`cmd/` + `internal/`, public
 API `compiler/` and `ir/`). The compiler is AGPL-3.0; **the code it generates is
 yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
 
@@ -94,13 +94,26 @@ the paired before/after, and its refutations reported plainly; a wrong-magnitude
 prediction is a refutation, not a rounding error. Suspected vulnerabilities
 follow [SECURITY.md](SECURITY.md).
 
-**Streams land on `dev`; `dev` promotes to `main`** (Glenn, 2026-10-14). Sprint
-work lands as card heads, in a batch, onto a branch per work stream
-(`sprint/schema-<stream>`, one writer per stream). Each stream branch merges
-SERIALLY into `dev`, never into `main` and never into another stream. `main`
-only moves by a promotion pull request from `dev` (titled "promote dev to
-main"), which runs the full checks; a hand fix goes to `dev` first, the same
-way. A stream whose base is `main` is a defect.
+**Everything lands on `main` by pull request** (Glenn, 2026-10-30: "Start
+landing languages in main please"). A fix is one pull request into `main` per
+independent cause. A language's work is squash-merged into its branch
+`lang/<lang>` (or `lang/<lang>-300`), and that branch reaches `main` once, by
+one pull request with a merge commit. `dev` and the `sprint/*` stream branches
+are stale and take no new work. When two branches both edit the same register
+row in [docs/PORTING.md](PORTING.md), check the file out with
+`git checkout --conflict=diff3 docs/PORTING.md` and run
+`go run ./tools/cellmerge docs/PORTING.md`. It merges each conflicted row cell
+by cell by column name, three-way, and leaves any hunk it cannot merge exactly
+for a person. Pull requests into `main`,
+`dev`, or `fixed-table-form` automatically run `ci-fast.yml` (planning by diff
+against the target branch so only touched packages and legs are selected) and
+the `generated` and `cs-tables` gates in `ci-full.yml`, plus `pins` when the
+pull request is from this repository. The rest of `ci-full.yml` runs on a push
+to those three branches, nightly, on `workflow_dispatch`, and on a pull
+request into those branches that carries the `full-ci` label. A self-hosted
+fleet job on a pull request also requires
+`github.event.pull_request.head.repo.full_name == github.repository`, so fork
+code never executes on fleet runners.
 
 **When the compiler refuses.** Every refusal the language can produce is a case
 in the break-the-language suite (`internal/check/diagnostics_test.go`, and
@@ -152,7 +165,7 @@ git clone https://github.com/mas-bandwidth/schema.git
 cd schema && make test
 ```
 
-`make test` builds the compiler, generates the corpus in all nine languages,
+`make test` builds the compiler, generates the corpus in every language,
 compiles each, and compares the emitted wire against pinned goldens. That
 cross-language bit-identity check is the property this project exists to
 provide, so a change that breaks it is wrong until proven otherwise.
@@ -241,15 +254,42 @@ loop, one combined name for CI.
 
 ## The gates a change has to pass
 
-CI runs on Linux and macOS, and both must be green:
+Per-push evidence is Linux. A green pull request is not a macOS certificate.
+The same split is in [SECURITY.md](SECURITY.md).
 
-- `make test` — the cross-language corpus and the goldens.
-- `go test ./internal/fuzz/` — the seeded fuzz corpus, which re-runs every
-  crasher ever found.
+- [`.github/workflows/ci-fast.yml`](../.github/workflows/ci-fast.yml) runs on a
+  pull request into `main`, `dev`, or `fixed-table-form`, and on `workflow_dispatch`.
+  It is a path-selected Linux lane. It is not the full `make test` chain, and
+  it does not run on macOS. Its merge gate (`plan`, `lint-fast`, `block-gate`
+  and `go-test-touched`) runs on GitHub's hosted `ubuntu-latest`, so a merge
+  never waits on the fleet; the per-leg `leg-gate` matrix runs on the fleet.
+- Every self-hosted job carries `timeout-minutes` and runs its steps through
+  [`tools/pgroup`](../tools/pgroup/main.go), which kills each step's whole process
+  group when the step ends, so a child a test left running cannot hold a
+  runner.
+- [`.github/workflows/ci-full.yml`](../.github/workflows/ci-full.yml) runs on a
+  push to `main`, `dev`, or `fixed-table-form`, on its nightly schedule
+  (`10 7 * * *`), on `workflow_dispatch`, and on a pull request into those
+  branches. Most of its jobs run on a pull request only when that pull request
+  carries the `full-ci` label. Fleet jobs on a pull request also require the
+  head repository to be this one. `generated` and `cs-tables` run on a pull
+  request without that label. `pins` runs on a same-repository pull request
+  without that label. Its runners are Linux and
+  Windows. It does not include `macos-latest`.
+- macOS certification of the full chain is
+  [`.github/workflows/certify.yml`](../.github/workflows/certify.yml), nightly
+  (`17 9 * * *`) and on `workflow_dispatch`
+  (`gh workflow run certify.yml --ref <branch>`), with no push trigger. Its
+  `test` matrix is `ubuntu-latest` and `macos-latest` and runs `make test`.
+  Further macOS rows cover the go, cpp, c, rust and cs legs.
 
-Run both locally before opening a pull request.
+Run `make test` and `go test ./internal/fuzz/` locally before opening a pull
+request. The fuzz package re-runs every crasher ever found. Those local
+commands are not a macOS certificate.
 
-A third rides every pull request on Windows: **`msvc`** — cl
+**`msvc`** rides `ci-full.yml`, so a push to `main`, `dev`, or `fixed-table-form`, the
+nightly, a dispatch, and a pull request that carries `full-ci` run it. An
+unlabeled pull request does not. It is `cl` with
 `/W4 /WX /std:c++17 /permissive-` over the generated C++ corpus, one
 translation unit at a time, on a pinned `windows-2025` image, with a negative
 control that must go red on a GNU extension. Visual C++ is a hard requirement
@@ -368,15 +408,16 @@ to somebody, so it needs to be worth it.
 
 ## Adding a language
 
-`schema new-leg lua` writes the skeleton: `compiler/target_lua.go` (behind
-the `schema_leg_lua` build tag, so the default nine stay the live `--lang`
-set), `internal/codegen/lua/` with one passing `go test` fixture,
-`make/lua.mk`, the conformance driver and the tables-bench `leg`. It is
-not a Lua emitter. `make test-lua` is the fixture; drop the build tag when
-the packet surface has claims and the port joins the builtins.
+`schema new-leg zig` writes the skeleton: `compiler/target_zig.go` (behind
+the `schema_leg_zig` build tag, so the builtin targets stay the live `--lang`
+set), `internal/codegen/zig/` with one passing `go test` fixture,
+`make/zig.mk`, the conformance driver and the tables-bench `leg`. It is
+not a Zig emitter. `make test-zig` is the fixture; drop the build tag when
+the packet surface has claims and the port joins the builtins (Lua was
+scaffolded this way and joined them).
 
 A backend is a Go package under `internal/codegen/` that walks the same IR the
-existing nine consume, plus one file in `compiler/` — `target_<lang>.go` —
+existing ten consume, plus one file in `compiler/` — `target_<lang>.go` —
 that registers it as a `compiler.Generator`, the public registration interface
 and the only way any target reaches the driver. The cross-language harness is
 what makes this tractable: generate the corpus in your language, encode the

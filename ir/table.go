@@ -180,7 +180,7 @@ func TableFieldJsonKey(f *Field) string {
 // VariableTables reports the table MODE, and the mode is DECLARED
 // (docs/SPEC-TABLES.md §2.2). `fixed table T` declares the FIXED class — a
 // plain struct of known sizeof that gets none of the arena machinery — and a
-// plain `table T` is the VARIABLE wire, whatever its fields happen to be.
+// `table T` is the VARIABLE wire, whatever its fields happen to be.
 // Nothing is inferred and nothing is guessed, which is the owner's ruling:
 // "otherwise, it could be a bit of a guess whether the table is fixed or
 // variable, couldn't it? we don't want to surprise the user."
@@ -232,7 +232,7 @@ func (b FixedBreak) At() string { return b.Owner + "." + b.Field }
 //
 // A nested FIXED table stops the walk: its own closure is checked at its own
 // declaration, so a break is reported once, where it is declared. A nested
-// PLAIN table is itself a break, because the variable wire has no size a
+// VARIABLE table is itself a break, because the variable wire has no size a
 // fixed body could hold.
 //
 // `member` resolves a closure name to its struct; the checker passes its own
@@ -264,6 +264,8 @@ func FixedClosureBreaks(member func(string) *Struct, name string) []FixedBreak {
 			add("is an unbounded array"+where+", and its elements live in the arena on the authoring side and in the node's own extent in a region — the count is the data's, not the declaration's", kinds+", §2.9")
 		case f.Type.Blob():
 			add("is a byte buffer"+where+" at its used size, which is a pointer at a blob node — the bytes are the data's, not the declaration's; `string(N)` and `bytes(N)` are the bounded spellings and have a size the declaration states", kinds+", §2.5")
+		case f.Type.TextUnbounded():
+			add("is an unbounded string"+where+", whose UTF-8 bytes live in the arena on the authoring side and in the node's own extent in a region — the length is the data's, not the declaration's; `string(N)` is the bounded spelling", kinds+", §2.13.1")
 		case f.Type.Pointer:
 			add("is a pointer"+where+", and a pointer is an arena allocation and a node record — the lifecycle the fixed class exists to not pay for", kinds+", §2.1")
 		case f.Type.Kind != TNamed:
@@ -272,11 +274,11 @@ func FixedClosureBreaks(member func(string) *Struct, name string) []FixedBreak {
 			case *Struct:
 				switch {
 				case ref.IsTable && !ref.FixedDeclared:
-					held := "holds the plain table " + ref.Name + " by value"
+					held := "holds the variable table " + ref.Name + " by value"
 					if arm {
-						held = "is an arm holding the plain table " + ref.Name
+						held = "is an arm holding the variable table " + ref.Name
 					}
-					add(held+", and a plain `table` is the variable wire whatever its fields are — a fixed body has no size to hold one at", kinds)
+					add(held+", and a variable table is the variable wire whatever its fields are — a fixed body has no size to hold one at", kinds)
 				case ref.IsTable:
 					// A NESTED FIXED TABLE STOPS THE WALK: its own closure is
 					// checked at its own declaration, so a break is reported

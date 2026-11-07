@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 	w "packetwide"
 	p "packetwide/shapes"
 )

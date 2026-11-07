@@ -204,7 +204,7 @@ func tgGuardMembers(st *ir.Struct, f *ir.Field) ([]tgMember, error) {
 // tgHeader writes a field line's header: the field's effective id reference and
 // its kind (§3, §5), as every probe's field line opens (§16.11).
 func tgHeader(b *strings.Builder, w string, f *ir.Field, kind int) {
-	fmt.Fprintf(b, "%s.Id(0x%016x)\n%s.Put8(%d)\n", w, ir.TableFieldWireId(f), w, kind)
+	fmt.Fprintf(b, "%s.ID(0x%016x)\n%s.Put8(%d)\n", w, ir.TableFieldWireId(f), w, kind)
 }
 
 // tgFramed writes `L`, then what inner writes, through a writer of its own
@@ -325,7 +325,7 @@ func (g *tgBounds) keyed(f *ir.Field, where string) ([]tgVal, error) {
 		out = append(out, tgVal{
 			name: "[" + slot + "]" + v.name,
 			payload: tgFramed(size, func(b *strings.Builder, w string, d int) {
-				fmt.Fprintf(b, "%s.Put8(%d)\n%s.PutLeb(1)\n%s.Id(0x%016x)\n", w, kind, w, w, id)
+				fmt.Fprintf(b, "%s.Put8(%d)\n%s.PutLeb(1)\n%s.ID(0x%016x)\n", w, kind, w, w, id)
 				if table {
 					v.payload(b, w, d) // a table's payload is already `L`, then its body
 				} else {
@@ -461,7 +461,7 @@ func (g *tgBounds) union(un *ir.Union, where string) ([]tgVal, error) {
 			out = append(out, tgVal{
 				name: "." + name + p.name,
 				payload: func(b *strings.Builder, w string, d int) {
-					fmt.Fprintf(b, "%s.Id(0x%016x)\n%s.Put8(%d)\n", w, id, w, kind)
+					fmt.Fprintf(b, "%s.ID(0x%016x)\n%s.Put8(%d)\n", w, id, w, kind)
 					tgFramed(p.size, p.payload)(b, w, d)
 				},
 				json: func(j *tgJSON) {
@@ -615,7 +615,7 @@ func tgFiller(f *ir.Field) (tgFill, bool) {
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
 			id := ir.TableWireId(ref.VariantWireName(0))
-			return tgFill{func(b *strings.Builder, w string, d int) { fmt.Fprintf(b, "%s.Id(0x%016x)\n", w, id) }, strconv.Quote(ref.Variants[0]), 10}, true
+			return tgFill{func(b *strings.Builder, w string, d int) { fmt.Fprintf(b, "%s.ID(0x%016x)\n", w, id) }, strconv.Quote(ref.Variants[0]), 10}, true
 		case *ir.Flags:
 			return put(kind, big.NewInt(0), "[]")
 		case *ir.Struct:

@@ -9,11 +9,60 @@
 const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 
+// validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
+// interior null (SPEC §4.7). Every string field's read calls it; nothing
+// allocates and nothing latches.
+function validText(bytes, length) {
+  for (let utf8Index = 0; utf8Index < length;) {
+    const utf8Lead = bytes[utf8Index++];
+    if (utf8Lead < 0x80) {
+      if (utf8Lead === 0) {
+        return false; // an interior null is content the read refuses
+      }
+      continue;
+    }
+    let utf8Remaining = 0;
+    let utf8Point = 0;
+    if ((utf8Lead & 0xe0) === 0xc0) {
+      utf8Remaining = 1;
+      utf8Point = utf8Lead & 0x1f;
+    } else if ((utf8Lead & 0xf0) === 0xe0) {
+      utf8Remaining = 2;
+      utf8Point = utf8Lead & 0x0f;
+    } else if ((utf8Lead & 0xf8) === 0xf0) {
+      utf8Remaining = 3;
+      utf8Point = utf8Lead & 0x07;
+    } else {
+      return false; // malformed UTF-8 lead
+    }
+    if (utf8Remaining > length - utf8Index) {
+      return false;
+    }
+    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+      const utf8Byte = bytes[utf8Index++];
+      if ((utf8Byte & 0xc0) !== 0x80) {
+        return false;
+      }
+      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3f);
+    }
+    if (utf8Remaining === 1 && utf8Point < 0x80) {
+      return false; // overlong
+    }
+    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xd800 && utf8Point <= 0xdfff))) {
+      return false; // overlong, or a surrogate
+    }
+    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10ffff)) {
+      return false; // overlong, or past U+10FFFF
+    }
+  }
+  return true;
+}
+
 // type W13
 export class W13 {
   constructor() {
-    this.Items = new Array(12).fill(0); // wire [0, 8191]
-    this.ItemsCount = 0;
+    this.items = new Array(12).fill(0); // wire [0, 8191]
+    this.itemsCount = 0;
   }
 }
 
@@ -24,29 +73,29 @@ export const W13MaxBytes = 24;
 
 // InitW13 restores fresh construction values in place, preserving storage.
 export function InitW13(value) {
-  value.Items.fill(0);
-  value.ItemsCount = 0;
+  value.items.fill(0);
+  value.itemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW13(value) {
-  value.Items.fill(0);
-  value.ItemsCount = 0;
+  value.items.fill(0);
+  value.itemsCount = 0;
 }
 
 export function WriteW13(stream, value) {
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 12) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 12) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 8191) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.Items[i];
+    NUMBER_SCRATCH.value = value.items[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
       return false;
     }
@@ -58,12 +107,12 @@ export function ReadW13(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 12)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 8191)) {
       return false;
     }
-    value.Items[i] = NUMBER_SCRATCH.value;
+    value.items[i] = NUMBER_SCRATCH.value;
   }
   return true;
 }
@@ -71,8 +120,8 @@ export function ReadW13(stream, value) {
 // type W17
 export class W17 {
   constructor() {
-    this.Items = new Array(9).fill(0); // wire [0, 131071]
-    this.ItemsCount = 0;
+    this.items = new Array(9).fill(0); // wire [0, 131071]
+    this.itemsCount = 0;
   }
 }
 
@@ -83,29 +132,29 @@ export const W17MaxBytes = 24;
 
 // InitW17 restores fresh construction values in place, preserving storage.
 export function InitW17(value) {
-  value.Items.fill(0);
-  value.ItemsCount = 0;
+  value.items.fill(0);
+  value.itemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW17(value) {
-  value.Items.fill(0);
-  value.ItemsCount = 0;
+  value.items.fill(0);
+  value.itemsCount = 0;
 }
 
 export function WriteW17(stream, value) {
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 9) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 9) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 131071) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 131071) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.Items[i];
+    NUMBER_SCRATCH.value = value.items[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 17)) {
       return false;
     }
@@ -117,12 +166,12 @@ export function ReadW17(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 9)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 131071)) {
       return false;
     }
-    value.Items[i] = NUMBER_SCRATCH.value;
+    value.items[i] = NUMBER_SCRATCH.value;
   }
   return true;
 }
@@ -130,8 +179,8 @@ export function ReadW17(stream, value) {
 // type W26
 export class W26 {
   constructor() {
-    this.Items = new Array(6).fill(0); // wire [0, 67108863]
-    this.ItemsCount = 0;
+    this.items = new Array(6).fill(0); // wire [0, 67108863]
+    this.itemsCount = 0;
   }
 }
 
@@ -142,29 +191,29 @@ export const W26MaxBytes = 24;
 
 // InitW26 restores fresh construction values in place, preserving storage.
 export function InitW26(value) {
-  value.Items.fill(0);
-  value.ItemsCount = 0;
+  value.items.fill(0);
+  value.itemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW26(value) {
-  value.Items.fill(0);
-  value.ItemsCount = 0;
+  value.items.fill(0);
+  value.itemsCount = 0;
 }
 
 export function WriteW26(stream, value) {
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 6) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 6) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 67108863) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 67108863) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.Items[i];
+    NUMBER_SCRATCH.value = value.items[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 26)) {
       return false;
     }
@@ -176,12 +225,12 @@ export function ReadW26(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 6)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 67108863)) {
       return false;
     }
-    value.Items[i] = NUMBER_SCRATCH.value;
+    value.items[i] = NUMBER_SCRATCH.value;
   }
   return true;
 }
@@ -189,8 +238,8 @@ export function ReadW26(stream, value) {
 // type W1
 export class W1 {
   constructor() {
-    this.Items = new Uint8Array(20); // wire [0, 1]
-    this.ItemsCount = 0;
+    this.items = new Uint8Array(20); // wire [0, 1]
+    this.itemsCount = 0;
   }
 }
 
@@ -201,29 +250,29 @@ export const W1MaxBytes = 8;
 
 // InitW1 restores fresh construction values in place, preserving storage.
 export function InitW1(value) {
-  value.Items.fill(0);
-  value.ItemsCount = 0;
+  value.items.fill(0);
+  value.itemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW1(value) {
-  value.Items.fill(0);
-  value.ItemsCount = 0;
+  value.items.fill(0);
+  value.itemsCount = 0;
 }
 
 export function WriteW1(stream, value) {
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 20) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 20) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 1) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 1) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.Items[i];
+    NUMBER_SCRATCH.value = value.items[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 1)) {
       return false;
     }
@@ -235,12 +284,12 @@ export function ReadW1(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 20)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 1)) {
       return false;
     }
-    value.Items[i] = NUMBER_SCRATCH.value;
+    value.items[i] = NUMBER_SCRATCH.value;
   }
   return true;
 }
@@ -248,8 +297,8 @@ export function ReadW1(stream, value) {
 // type W52
 export class W52 {
   constructor() {
-    this.Items = new Array(3).fill(0n); // wire [0, 4503599627370495]
-    this.ItemsCount = 0;
+    this.items = new Array(3).fill(0n); // wire [0, 4503599627370495]
+    this.itemsCount = 0;
   }
 }
 
@@ -260,29 +309,29 @@ export const W52MaxBytes = 24;
 
 // InitW52 restores fresh construction values in place, preserving storage.
 export function InitW52(value) {
-  value.Items.fill(0n);
-  value.ItemsCount = 0;
+  value.items.fill(0n);
+  value.itemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW52(value) {
-  value.Items.fill(0n);
-  value.ItemsCount = 0;
+  value.items.fill(0n);
+  value.itemsCount = 0;
 }
 
 export function WriteW52(stream, value) {
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (value.Items[i] > 4503599627370495n) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (value.items[i] > 4503599627370495n) {
       return false;
     }
-    BIGINT_SCRATCH.value = BigInt.asUintN(64, value.Items[i]);
+    BIGINT_SCRATCH.value = BigInt.asUintN(64, value.items[i]);
     if (!stream.serializeBits64(BIGINT_SCRATCH, 52)) {
       return false;
     }
@@ -294,12 +343,12 @@ export function ReadW52(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
     if (!stream.serializeInt64(BIGINT_SCRATCH, 0n, 4503599627370495n)) {
       return false;
     }
-    value.Items[i] = BIGINT_SCRATCH.value;
+    value.items[i] = BIGINT_SCRATCH.value;
   }
   return true;
 }
@@ -307,8 +356,8 @@ export function ReadW52(stream, value) {
 // type W50
 export class W50 {
   constructor() {
-    this.Items = new Array(3).fill(0n); // wire [0, 1125899906842623]
-    this.ItemsCount = 0;
+    this.items = new Array(3).fill(0n); // wire [0, 1125899906842623]
+    this.itemsCount = 0;
   }
 }
 
@@ -319,29 +368,29 @@ export const W50MaxBytes = 24;
 
 // InitW50 restores fresh construction values in place, preserving storage.
 export function InitW50(value) {
-  value.Items.fill(0n);
-  value.ItemsCount = 0;
+  value.items.fill(0n);
+  value.itemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroW50(value) {
-  value.Items.fill(0n);
-  value.ItemsCount = 0;
+  value.items.fill(0n);
+  value.itemsCount = 0;
 }
 
 export function WriteW50(stream, value) {
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (value.Items[i] > 1125899906842623n) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (value.items[i] > 1125899906842623n) {
       return false;
     }
-    BIGINT_SCRATCH.value = BigInt.asUintN(64, value.Items[i]);
+    BIGINT_SCRATCH.value = BigInt.asUintN(64, value.items[i]);
     if (!stream.serializeBits64(BIGINT_SCRATCH, 50)) {
       return false;
     }
@@ -353,12 +402,12 @@ export function ReadW50(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
     if (!stream.serializeInt64(BIGINT_SCRATCH, 0n, 1125899906842623n)) {
       return false;
     }
-    value.Items[i] = BIGINT_SCRATCH.value;
+    value.items[i] = BIGINT_SCRATCH.value;
   }
   return true;
 }
@@ -366,7 +415,7 @@ export function ReadW50(stream, value) {
 // type F13
 export class F13 {
   constructor() {
-    this.Items = new Array(7).fill(0); // wire [0, 8191]
+    this.items = new Array(7).fill(0); // wire [0, 8191]
   }
 }
 
@@ -377,20 +426,20 @@ export const F13MaxBytes = 16;
 
 // InitF13 restores fresh construction values in place, preserving storage.
 export function InitF13(value) {
-  value.Items.fill(0);
+  value.items.fill(0);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroF13(value) {
-  value.Items.fill(0);
+  value.items.fill(0);
 }
 
 export function WriteF13(stream, value) {
   for (let i = 0; i < 7; i++) {
-    if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 8191) {
+    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.Items[i];
+    NUMBER_SCRATCH.value = value.items[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
       return false;
     }
@@ -403,7 +452,7 @@ export function ReadF13(stream, value) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 8191)) {
       return false;
     }
-    value.Items[i] = NUMBER_SCRATCH.value;
+    value.items[i] = NUMBER_SCRATCH.value;
   }
   return true;
 }
@@ -411,8 +460,8 @@ export function ReadF13(stream, value) {
 // type Tri3
 export class Tri3 {
   constructor() {
-    this.A = 0;
-    this.B = 0;
+    this.a = 0;
+    this.b = 0;
   }
 }
 
@@ -423,22 +472,22 @@ export const Tri3MaxBytes = 8;
 
 // InitTri3 restores fresh construction values in place, preserving storage.
 export function InitTri3(value) {
-  value.A = 0;
-  value.B = 0;
+  value.a = 0;
+  value.b = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTri3(value) {
-  value.A = 0;
-  value.B = 0;
+  value.a = 0;
+  value.b = 0;
 }
 
 export function WriteTri3(stream, value) {
-  NUMBER_SCRATCH.value = value.A;
+  NUMBER_SCRATCH.value = value.a;
   if (!stream.serializeBits(NUMBER_SCRATCH, 1)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.B;
+  NUMBER_SCRATCH.value = value.b;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
@@ -449,19 +498,19 @@ export function ReadTri3(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 1)) {
     return false;
   }
-  value.A = NUMBER_SCRATCH.value;
+  value.a = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  value.B = NUMBER_SCRATCH.value;
+  value.b = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ArrTri3
 export class ArrTri3 {
   constructor() {
-    this.Items = Array.from({ length: 10 }, () => new Tri3());
-    this.ItemsCount = 0;
+    this.items = Array.from({ length: 10 }, () => new Tri3());
+    this.itemsCount = 0;
   }
 }
 
@@ -473,30 +522,30 @@ export const ArrTri3MaxBytes = 8;
 // InitArrTri3 restores fresh construction values in place, preserving storage.
 export function InitArrTri3(value) {
   for (let initIndex0 = 0; initIndex0 < 10; initIndex0++) {
-    const initValue0 = value.Items[initIndex0];
+    const initValue0 = value.items[initIndex0];
     InitTri3(initValue0);
   }
-  value.ItemsCount = 0;
+  value.itemsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArrTri3(value) {
   for (let i = 0; i < 10; i++) {
-    ZeroTri3(value.Items[i]);
+    ZeroTri3(value.items[i]);
   }
-  value.ItemsCount = 0;
+  value.itemsCount = 0;
 }
 
 export function WriteArrTri3(stream, value) {
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 10) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 10) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!WriteTri3(stream, value.Items[i])) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!WriteTri3(stream, value.items[i])) {
       return false;
     }
   }
@@ -507,9 +556,9 @@ export function ReadArrTri3(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 10)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!ReadTri3(stream, value.Items[i])) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!ReadTri3(stream, value.items[i])) {
       return false;
     }
   }
@@ -519,8 +568,8 @@ export function ReadArrTri3(stream, value) {
 // type Eleven
 export class Eleven {
   constructor() {
-    this.A = 0;
-    this.B = 0;
+    this.a = 0;
+    this.b = 0;
   }
 }
 
@@ -531,22 +580,22 @@ export const ElevenMaxBytes = 8;
 
 // InitEleven restores fresh construction values in place, preserving storage.
 export function InitEleven(value) {
-  value.A = 0;
-  value.B = 0;
+  value.a = 0;
+  value.b = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroEleven(value) {
-  value.A = 0;
-  value.B = 0;
+  value.a = 0;
+  value.b = 0;
 }
 
 export function WriteEleven(stream, value) {
-  NUMBER_SCRATCH.value = value.A;
+  NUMBER_SCRATCH.value = value.a;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.B;
+  NUMBER_SCRATCH.value = value.b;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
@@ -557,18 +606,18 @@ export function ReadEleven(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  value.A = NUMBER_SCRATCH.value;
+  value.a = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.B = NUMBER_SCRATCH.value;
+  value.b = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ArrEleven
 export class ArrEleven {
   constructor() {
-    this.Items = Array.from({ length: 9 }, () => new Eleven());
+    this.items = Array.from({ length: 9 }, () => new Eleven());
   }
 }
 
@@ -580,7 +629,7 @@ export const ArrElevenMaxBytes = 16;
 // InitArrEleven restores fresh construction values in place, preserving storage.
 export function InitArrEleven(value) {
   for (let initIndex0 = 0; initIndex0 < 9; initIndex0++) {
-    const initValue0 = value.Items[initIndex0];
+    const initValue0 = value.items[initIndex0];
     InitEleven(initValue0);
   }
 }
@@ -588,13 +637,13 @@ export function InitArrEleven(value) {
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArrEleven(value) {
   for (let i = 0; i < 9; i++) {
-    ZeroEleven(value.Items[i]);
+    ZeroEleven(value.items[i]);
   }
 }
 
 export function WriteArrEleven(stream, value) {
   for (let i = 0; i < 9; i++) {
-    if (!WriteEleven(stream, value.Items[i])) {
+    if (!WriteEleven(stream, value.items[i])) {
       return false;
     }
   }
@@ -603,7 +652,7 @@ export function WriteArrEleven(stream, value) {
 
 export function ReadArrEleven(stream, value) {
   for (let i = 0; i < 9; i++) {
-    if (!ReadEleven(stream, value.Items[i])) {
+    if (!ReadEleven(stream, value.items[i])) {
       return false;
     }
   }
@@ -675,9 +724,8 @@ export const EmptyUnionType = Object.freeze({
   None: 0,
   A: 1,
   B: 2,
-  Count: 2, // the declared variant count (SPEC §4.2)
-  Max: 2, // the exported extent (SPEC §4.2)
 });
+export const EmptyUnionTypeMax = 2; // the exported extent (SPEC §4.2)
 
 // EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -700,9 +748,9 @@ export function EnumNameEmptyUnionType(value) {
 // reused-storage discipline. Consumers read the selected arm only.
 export class EmptyUnion {
   constructor() {
-    this.Type = EmptyUnionType.None;
-    this.A = new EmptyA();
-    this.B = new EmptyB();
+    this.type = EmptyUnionType.None;
+    this.a = new EmptyA();
+    this.b = new EmptyB();
   }
 }
 
@@ -715,22 +763,22 @@ export const EmptyUnionMaxBytes = 8;
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
 // is unselected at None; an arm is initialized at its next selection.
 export function ZeroEmptyUnion(value) {
-  value.Type = EmptyUnionType.None;
+  value.type = EmptyUnionType.None;
 }
 
 export function WriteEmptyUnion(stream, value) {
-  if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 2) {
+  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
-  NUMBER_SCRATCH.value = value.Type;
+  NUMBER_SCRATCH.value = value.type;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  switch (value.Type) {
+  switch (value.type) {
     case EmptyUnionType.A:
-      return WriteEmptyA(stream, value.A);
+      return WriteEmptyA(stream, value.a);
     case EmptyUnionType.B:
-      return WriteEmptyB(stream, value.B);
+      return WriteEmptyB(stream, value.b);
   }
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
@@ -739,14 +787,14 @@ export function ReadEmptyUnion(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
-  value.Type = NUMBER_SCRATCH.value;
-  switch (value.Type) {
+  value.type = NUMBER_SCRATCH.value;
+  switch (value.type) {
     case EmptyUnionType.A:
-      InitEmptyA(value.A); // fresh declared defaults on every selection
-      return ReadEmptyA(stream, value.A);
+      InitEmptyA(value.a); // fresh declared defaults on every selection
+      return ReadEmptyA(stream, value.a);
     case EmptyUnionType.B:
-      InitEmptyB(value.B); // fresh declared defaults on every selection
-      return ReadEmptyB(stream, value.B);
+      InitEmptyB(value.b); // fresh declared defaults on every selection
+      return ReadEmptyB(stream, value.b);
   }
   return true; // None
 }
@@ -754,9 +802,9 @@ export function ReadEmptyUnion(stream, value) {
 // type HoldsEmptyUnion
 export class HoldsEmptyUnion {
   constructor() {
-    this.Lead = 0;
-    this.U = new EmptyUnion();
-    this.Tail = 0;
+    this.lead = 0;
+    this.u = new EmptyUnion();
+    this.tail = 0;
   }
 }
 
@@ -767,27 +815,27 @@ export const HoldsEmptyUnionMaxBytes = 8;
 
 // InitHoldsEmptyUnion restores fresh construction values in place, preserving storage.
 export function InitHoldsEmptyUnion(value) {
-  value.Lead = 0;
-  value.U.Type = 0; // None; dormant arms keep their storage
-  value.Tail = 0;
+  value.lead = 0;
+  value.u.type = 0; // None; dormant arms keep their storage
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroHoldsEmptyUnion(value) {
-  value.Lead = 0;
-  ZeroEmptyUnion(value.U);
-  value.Tail = 0;
+  value.lead = 0;
+  ZeroEmptyUnion(value.u);
+  value.tail = 0;
 }
 
 export function WriteHoldsEmptyUnion(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!WriteEmptyUnion(stream, value.U)) {
+  if (!WriteEmptyUnion(stream, value.u)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
@@ -798,26 +846,26 @@ export function ReadHoldsEmptyUnion(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
-  if (!ReadEmptyUnion(stream, value.U)) {
+  value.lead = NUMBER_SCRATCH.value;
+  if (!ReadEmptyUnion(stream, value.u)) {
     return false;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type Strs
 export class Strs {
   constructor() {
-    this.Lead = 0;
-    this.S = new Uint8Array(8); // string(8): max length, used length beside it (SPEC §4.7)
-    this.SLength = 0;
-    this.B = new Uint8Array(8); // bytes(8): fixed buffer, used length beside it (SPEC §4.7)
-    this.BLength = 0;
-    this.Tail = 0;
+    this.lead = 0;
+    this.s = new Uint8Array(8); // string(8): max length, used length beside it (SPEC §4.7)
+    this.sLength = 0;
+    this.b = new Uint8Array(8); // bytes(8): fixed buffer, used length beside it (SPEC §4.7)
+    this.bLength = 0;
+    this.tail = 0;
   }
 }
 
@@ -828,50 +876,50 @@ export const StrsMaxBytes = 24;
 
 // InitStrs restores fresh construction values in place, preserving storage.
 export function InitStrs(value) {
-  value.Lead = 0;
-  value.S.fill(0);
-  value.SLength = 0;
-  value.B.fill(0);
-  value.BLength = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.s.fill(0);
+  value.sLength = 0;
+  value.b.fill(0);
+  value.bLength = 0;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroStrs(value) {
-  value.Lead = 0;
-  value.S.fill(0);
-  value.SLength = 0;
-  value.B.fill(0);
-  value.BLength = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.s.fill(0);
+  value.sLength = 0;
+  value.b.fill(0);
+  value.bLength = 0;
+  value.tail = 0;
 }
 
 export function WriteStrs(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.SLength) || value.SLength < 0 || value.SLength > 8) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 8) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
-  NUMBER_SCRATCH.value = value.SLength;
+  NUMBER_SCRATCH.value = value.sLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  if (!stream.serializeBytes(value.S.subarray(0, value.SLength))) {
+  if (!stream.serializeBytes(value.s.subarray(0, value.sLength))) {
     return false;
   }
-  if (!Number.isInteger(value.BLength) || value.BLength < 0 || value.BLength > 8) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.bLength) || value.bLength < 0 || value.bLength > 8) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
-  NUMBER_SCRATCH.value = value.BLength;
+  NUMBER_SCRATCH.value = value.bLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  if (!stream.serializeBytes(value.B.subarray(0, value.BLength))) {
+  if (!stream.serializeBytes(value.b.subarray(0, value.bLength))) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
@@ -882,60 +930,38 @@ export function ReadStrs(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
+  value.lead = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 8)) { // the length guards the slice (§6.3)
     return false;
   }
-  value.SLength = NUMBER_SCRATCH.value;
-  if (!stream.serializeBytes(value.S.subarray(0, value.SLength))) {
+  value.sLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.s.subarray(0, value.sLength))) {
     return false;
   }
-  for (let utf8Index = 0; utf8Index < value.SLength;)
-  {
-    const utf8Lead = value.S[utf8Index++];
-    if (utf8Lead < 0x80) continue;
-    let utf8Remaining, utf8Point;
-    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (utf8Remaining > value.SLength - utf8Index) return false;
-    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-    {
-      const utf8Byte = value.S[utf8Index++];
-      if ((utf8Byte & 0xC0) !== 0x80) return false;
-      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-    }
-    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-  }
-  for (let i = 0; i < value.SLength; i++) {
-    if (value.S[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)
-      return false;
-    }
+  if (!validText(value.s, value.sLength)) {
+    return false;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 8)) { // the length guards the slice (§6.3)
     return false;
   }
-  value.BLength = NUMBER_SCRATCH.value;
-  if (!stream.serializeBytes(value.B.subarray(0, value.BLength))) {
+  value.bLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.b.subarray(0, value.bLength))) {
     return false;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ArrNested
 export class ArrNested {
   constructor() {
-    this.Lead = 0;
-    this.Items = Array.from({ length: 4 }, () => new Eleven());
-    this.ItemsCount = 0;
-    this.Tail = 0;
+    this.lead = 0;
+    this.items = Array.from({ length: 4 }, () => new Eleven());
+    this.itemsCount = 0;
+    this.tail = 0;
   }
 }
 
@@ -946,43 +972,43 @@ export const ArrNestedMaxBytes = 8;
 
 // InitArrNested restores fresh construction values in place, preserving storage.
 export function InitArrNested(value) {
-  value.Lead = 0;
+  value.lead = 0;
   for (let initIndex0 = 0; initIndex0 < 4; initIndex0++) {
-    const initValue0 = value.Items[initIndex0];
+    const initValue0 = value.items[initIndex0];
     InitEleven(initValue0);
   }
-  value.ItemsCount = 0;
-  value.Tail = 0;
+  value.itemsCount = 0;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArrNested(value) {
-  value.Lead = 0;
+  value.lead = 0;
   for (let i = 0; i < 4; i++) {
-    ZeroEleven(value.Items[i]);
+    ZeroEleven(value.items[i]);
   }
-  value.ItemsCount = 0;
-  value.Tail = 0;
+  value.itemsCount = 0;
+  value.tail = 0;
 }
 
 export function WriteArrNested(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 4) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 4) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!WriteEleven(stream, value.Items[i])) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!WriteEleven(stream, value.items[i])) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
@@ -993,27 +1019,27 @@ export function ReadArrNested(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
+  value.lead = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 4)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!ReadEleven(stream, value.Items[i])) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!ReadEleven(stream, value.items[i])) {
       return false;
     }
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type Sole
 export class Sole {
   constructor() {
-    this.Only = 0;
+    this.only = 0;
   }
 }
 
@@ -1024,16 +1050,16 @@ export const SoleMaxBytes = 8;
 
 // InitSole restores fresh construction values in place, preserving storage.
 export function InitSole(value) {
-  value.Only = 0;
+  value.only = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSole(value) {
-  value.Only = 0;
+  value.only = 0;
 }
 
 export function WriteSole(stream, value) {
-  NUMBER_SCRATCH.value = value.Only;
+  NUMBER_SCRATCH.value = value.only;
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;
   }
@@ -1044,7 +1070,7 @@ export function ReadSole(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;
   }
-  value.Only = NUMBER_SCRATCH.value;
+  value.only = NUMBER_SCRATCH.value;
   return true;
 }
 

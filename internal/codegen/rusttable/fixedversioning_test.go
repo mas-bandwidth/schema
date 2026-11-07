@@ -53,6 +53,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -84,12 +85,6 @@ type versionRow struct {
 	poison bool
 	// check is Rust source asserting the landed values, over `values` and `n`.
 	check string
-	// unported is the REFUSAL that stops this leg's language surface from
-	// holding the row's kind at all, cited by name. §5.9 #44: such a row is ⚪
-	// UNPORTED and skipped BY NAME, never 🔴 and NEVER FOLDED INTO A GREEN — a
-	// red is a debt §5 owes, an unported row is a debt another section owes,
-	// and a reviewer may not read either as "this row passed".
-	unported string
 }
 
 var versionRows = []versionRow{
@@ -227,7 +222,13 @@ var versionRows = []versionRow{
         arm.y == 55,
         "the field appended to the arm's payload is not its declared default: y={} (a union zeroed whole, not reset arm by arm)", arm.y
     );`},
-	{row: "wstring_grow", unported: "kind 33 is not carried in a TABLE closure by this leg: compiler/widetext.go's tableWideTextTargets lists C, C++, C#, Dart and Go and NOT rust, so `refuseWideText` refuses a Rust unit that declares a wstring(N) field and there is no reader to generate. This harness reaches the backend directly and would BYPASS that refusal, which §5.9 #44 forbids folding into a green"},
+	{row: "wstring_grow", poison: true, check: `
+    // Independent producer: test/tables/versioning_numbers.cpp's eight
+    // UTF-16 code units include both halves of a surrogate pair and U+FFFF.
+    assert_eq!(values[0].text_length, 8);
+    assert_eq!(&values[0].text[..8], &[0x0068, 0x0065, 0x006c, 0x006c, 0x006f, 0xd83d, 0xde00, 0xffff]);
+    assert!(values[0].text[8..].iter().all(|&u| u == 0), "grown UTF-16 storage is not zero-prefilled");
+    `},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------
@@ -236,9 +237,6 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 	out := versionRun(t)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
-			if r.unported != "" {
-				t.Skipf("UNPORTED (§5.9 #44), not green and not red: %s", r.unported)
-			}
 			versionAssert(t, out, "v_"+r.row+"_new_reads_old")
 		})
 	}
@@ -250,9 +248,6 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 	out := versionRun(t)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
-			if r.unported != "" {
-				t.Skipf("UNPORTED (§5.9 #44), not green and not red: %s", r.unported)
-			}
 			versionAssert(t, out, "v_"+r.row+"_old_refuses_new")
 		})
 	}
@@ -308,6 +303,16 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 	versionAssert(t, out, "v_lineage_merge")
 }
 
+// The old compiled-plan fixture now needs the writer's locked lineage.
+// Exercise its second-arm text and noncanonical true bytes on that real path.
+func TestFixedVersioningTextUnderArm(t *testing.T) {
+	versionAssert(t, versionRun(t), "v_text_under_arm")
+}
+
+func TestFixedVersioningTextUnderArmTrueBytes(t *testing.T) {
+	versionAssert(t, versionRun(t), "v_text_under_arm_true_bytes")
+}
+
 // ---- the probes -------------------------------------------------------------
 
 // versionProbe is ONE generated crate: the reader's unit, the lineage the build
@@ -340,15 +345,9 @@ type versionProbe struct {
 // that drift fails as a row silently stopping its value assertion.
 func versionProbeSet(t *testing.T, corpus string) []versionProbe {
 	probes := make([]versionProbe, 0, 2*len(versionRows)+5)
+	nonFinite := versionManifestNonFinite(t, corpus)
 
 	for _, r := range versionRows {
-		if r.unported != "" {
-			// NO PROBE AT ALL for a row whose kind this leg's language surface
-			// cannot hold (§5.9 #44): generating one here would bypass the
-			// compiler's own refusal and publish a green for a row that has no
-			// reader. The mark and the reason live on the row.
-			continue
-		}
 		// NEW-READS-OLD: the newer unit is handed the OLDER unit's locked entry.
 		counters := `    assert!(
         report.widened == 0,
@@ -367,11 +366,44 @@ func versionProbeSet(t *testing.T, corpus string) []versionProbe {
         "the row moved a neighbour: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
     );`, lead, trail)
 		}
-		probes = append(probes, versionProbe{
-			name:   "probe_" + r.row + "_new_reads_old",
-			reader: "VNEW_" + r.row,
-			older:  []string{"VOLD_" + r.row},
-			src: versionProbeSource(fmt.Sprintf(`
+		if leaf := nonFinite["old_"+r.row+".bin"]; leaf != "" {
+			// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung), and
+			// under the finite rule of 2026-10-27 the newer reader refuses it by
+			// name before the bounds pass (docs/SPEC-TABLES.md §3.3): a
+			// must-refuse vector until the finite-tables plan's C++ card
+			// regenerates the corpus, and an ordinary row after. The manifest
+			// decides, as on the Go leg (gotable/fixedversioning_test.go).
+			probes = append(probes, versionProbe{
+				name:   "probe_" + r.row + "_new_reads_old",
+				reader: "VNEW_" + r.row,
+				older:  []string{"VOLD_" + r.row},
+				src: versionProbeSource(fmt.Sprintf(`
+/// %[1]s, NEW-READS-OLD over a NON-FINITE float the older writer wrote: every
+/// read refuses it by name as non_finite_float and nothing lands (§3.3).
+#[test]
+fn v_%[1]s_new_reads_old() {
+    let data = std::fs::read(%[2]q).expect("the reference's old_%[1]s.bin");
+    let mut values = vec![ROWTYPE::default(); 8];
+    let mut plan = vec![TableFixedEntry::default(); 4096];
+    let mut remap = vec![0u16; 4096];
+    let mut report = TableFixedReport::default();
+    let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
+    assert!(n.is_none(), "the non-finite float the older writer wrote was not refused: {:?} {:?}", n, report);
+    assert_eq!(report.reason, TableFixedReason::NonFiniteFloat, "a NaN or an infinity owes non_finite_float: {:?}", report);
+    assert!(report.refused && !report.malformed, "a refusal by name, never damage: {:?}", report);
+    assert!(
+        report.non_finite_float.ends_with(%[3]q),
+        "the refusal names %[3]s, not {:?}", report.non_finite_float
+    );
+}
+`, r.row, filepath.Join(corpus, "old_"+r.row+".bin"), "."+leaf)),
+			})
+		} else {
+			probes = append(probes, versionProbe{
+				name:   "probe_" + r.row + "_new_reads_old",
+				reader: "VNEW_" + r.row,
+				older:  []string{"VOLD_" + r.row},
+				src: versionProbeSource(fmt.Sprintf(`
 /// %[1]s, NEW-READS-OLD: the widened reader reads the older writer's file.
 /// Every old value lands exactly, the reader's tail is its DECLARED DEFAULT,
 /// and §5.4's counters are all at zero for an append (§5.3, §5.7).
@@ -402,7 +434,8 @@ fn v_%[1]s_new_reads_old() {
 %[5]s
 }
 `, r.row, filepath.Join(corpus, "old_"+r.row+".bin"), versionPoison(r.poison), counters, r.check, bracket)),
-		})
+			})
+		}
 
 		// OLD-REFUSES-NEW: the older reader, no lineage beyond its own layout.
 		body := `    let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
@@ -689,6 +722,72 @@ fn v_lineage_merge() {
 `, filepath.Join(corpus, "a_lineage_merge.bin"), filepath.Join(corpus, "b_lineage_merge.bin"))),
 	})
 
+	for _, tc := range []struct {
+		name      string
+		trueBytes bool
+	}{
+		{"text_under_arm", false},
+		{"text_under_arm_true_bytes", true},
+	} {
+		mutate := ""
+		if tc.trueBytes {
+			mutate = `    let layout_bytes = u32::from_le_bytes(data[16..20].try_into().unwrap()) as usize;
+    let body = 20 + layout_bytes + 8;
+    data[body] = 2;
+    data[body + 1] = 7;`
+		}
+		probes = append(probes, versionProbe{
+			name: "probe_" + tc.name, reader: "FU2", older: []string{"FU1"},
+			src: versionProbeSource(fmt.Sprintf(`
+#[test]
+fn v_%[1]s() {
+    let mut data = std::fs::read(%[2]q).expect("C++ fu1.bin");
+    %[3]s
+    let mut values = vec![ROWTYPE::default(); 3];
+    let mut plan = vec![TableFixedEntry::default(); 4096];
+    let mut remap = vec![0u16; 4096];
+    let mut report = TableFixedReport::default();
+    assert_eq!(LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report), Some(3));
+    assert!(!report.refused && !report.malformed, "{:?}", report);
+    assert_eq!(report.clamped, 0);
+    assert_eq!(report.kind_mismatch, 0);
+    assert_eq!(report.widened, 6); // signed integer and float, three records
+    assert!(values[0].flag && values[0].note_present);
+    assert_eq!(values[0].note, 44);
+    let arm = values[0].pick.labelled().expect("second arm");
+    assert_eq!(arm.lead, 101);
+    assert_eq!(arm.label_length, 5);
+    assert_eq!(&arm.label[..5], b"hello");
+    assert!(arm.label[5..].iter().all(|b| *b == 0));
+    assert_eq!(arm.trail, 202);
+    assert_eq!(values[0].tail, 11);
+    assert_eq!(values[0].extra, 11);
+    assert_eq!(values[0].mark, -1);
+    assert_eq!(values[0].heat, f32::from_bits(1) as f64);
+    assert!(!values[1].flag && !values[1].note_present);
+    assert_eq!(values[1].pick.plain().expect("first arm").n, 303);
+    assert_eq!(values[1].tail, 12);
+    assert_eq!(values[1].mark, -32768);
+    assert_eq!(values[1].heat.to_bits(), (-0.0f64).to_bits());
+    let empty = values[2].pick.labelled().expect("second arm with empty text");
+    assert_eq!(empty.label_length, 0);
+    assert_eq!(empty.lead, -5);
+    assert_eq!(empty.trail, 606);
+    assert_eq!(values[2].tail, 13);
+
+    // A real zero-byte control rules out treating every bool/presence as true.
+    let layout_bytes = u32::from_le_bytes(data[16..20].try_into().unwrap()) as usize;
+    let body = 20 + layout_bytes + 8;
+    data[body] = 0;
+    data[body + 1] = 0;
+    assert_eq!(LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report), Some(3));
+    assert!(!values[0].flag && !values[0].note_present);
+    assert_eq!(values[0].pick.labelled().unwrap().label_length, 5);
+}
+`, tc.name, filepath.Join(corpus, "fu1.bin"), mutate)),
+		})
+	}
+
 	return probes
 }
 
@@ -909,6 +1008,61 @@ func versionManifestFloatBits(t *testing.T, corpus, file, section, path string) 
 	return 0
 }
 
+// versionNonFiniteValue is one manifest value whose spelled bits may be a NaN
+// or an infinity: its path, then the float's bits (the dump writes a float as
+// its digits and its bits, "nan|0x7F8ABCDE").
+var versionNonFiniteValue = regexp.MustCompile(`^([A-Za-z0-9_.\[\]]+)=[^|]*\|0x([0-9A-Fa-f]{16}|[0-9A-Fa-f]{8})$`)
+
+// versionManifestNonFinite reads, per `file=` line of the corpus manifest, the
+// leaf name of the first value the reference wrote as a NaN or an infinity,
+// and nothing for a file that holds none. Under the finite rule of 2026-10-27
+// (docs/SPEC-TABLES.md §3.3) such a file is a MUST-REFUSE vector, exactly as
+// the Go leg reads it (gotable fixedOracleManifestNonFinite). No manifest, no
+// entries: the caller's ordinary rows decide.
+func versionManifestNonFinite(t *testing.T, corpus string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if os.IsNotExist(err) {
+		return out
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		head, values, ok := strings.Cut(line, " values=")
+		if !ok {
+			continue
+		}
+		file := ""
+		for field := range strings.FieldsSeq(head) {
+			if v, ok := strings.CutPrefix(field, "file="); ok {
+				file = v
+			}
+		}
+		for value := range strings.SplitSeq(values, ",") {
+			m := versionNonFiniteValue.FindStringSubmatch(value)
+			if m == nil {
+				continue
+			}
+			bits, err := strconv.ParseUint(m[2], 16, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(m[2]) == 8 && bits&0x7F800000 == 0x7F800000 || len(m[2]) == 16 && bits&0x7FF0000000000000 == 0x7FF0000000000000 {
+				if file != "" && out[file] == "" {
+					leaf := m[1]
+					if i := strings.LastIndexByte(leaf, '.'); i >= 0 {
+						leaf = leaf[i+1:]
+					}
+					out[file] = leaf
+				}
+			}
+		}
+	}
+	return out
+}
+
 func versionManifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
 	t.Helper()
 	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
@@ -1101,10 +1255,11 @@ func versionWriteCrate(t *testing.T, root, serialize string, p versionProbe) {
 	if err != nil {
 		t.Fatalf("%s: GenerateLineage: %v", p.name, err)
 	}
+	shadowed := rust.ShadowedTypes(files, tables)
 	maps.Copy(files, tables)
 	// The crate root is a generated index, exactly as compiler/target_rust.go
 	// builds it, plus the one module this test adds.
-	lib, err := rust.Lib(u, Modules(tables))
+	lib, err := rust.Lib(u, Modules(tables), shadowed)
 	if err != nil {
 		t.Fatalf("%s: rust.Lib: %v", p.name, err)
 	}

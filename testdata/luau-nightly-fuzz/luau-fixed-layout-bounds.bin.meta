@@ -1,0 +1,9 @@
+seed=11
+iteration=35029
+kind=strict
+unit=test_tables_RT3_schema
+root=Beam
+reason=error:build/luau-nightly-fuzz/generated/<unit>/fixed.luau:448: buffer access out of bounds
+minimised=yes
+harness=fuzz.luau
+found-at=088e3e73309cd2faa98cab3373ae6ffbcfd8f0a8

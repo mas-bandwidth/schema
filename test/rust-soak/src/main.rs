@@ -21,7 +21,7 @@
 // §3.4), and a fixed reader refuses form 1 by name (PreviousForm). So the files
 // are the fixed form's: the C++ reference's own dump where it writes the root
 // (build/fixedform-corpus: keyed.bin, pack.bin, p1.bin, p3.bin), and a file this
-// binary writes from populated rows before the clock where it does not
+// binary writes from populated rows before the loop where it does not
 // (RootConfig, ProfileConfig, LoadoutConfig, ArchiveConfig, both Cfg
 // generations). WideBlob is not here: its record is 280012 bytes, past the
 // fixed form's 65536-byte ceiling, so the compiler emits no fixed codec for it.
@@ -30,24 +30,27 @@
 // lineage, refuses a stranger's layout BY NAME — that refusal is a read path
 // too, and it must allocate nothing either.
 //
-// It is a FUNCTIONAL soak: it runs for real seconds, so it is a make target
-// (`make tables-rust-soak SOAK_SECONDS=<n>`) and never a unit test.
+// ITS LENGTH IS A PASS COUNT, NOT A CLOCK: what it watches is the allocator
+// call count per pass, so the number of passes is what matters, and a count
+// runs the same loop on every machine. It reads no clock (`make shape-gate`
+// refuses a timing primitive outside the sanctioned bench). It is still a
+// FUNCTIONAL soak, a make target (`make tables-rust-soak
+// TABLES_RUST_SOAK_ITERATIONS=<n>`) and never a unit test.
 //
-//   rust-soak <seconds> <fixedform-corpus-dir>
+//   rust-soak <iterations> <fixedform-corpus-dir>
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::fmt::Debug;
 use std::hint::black_box;
 use std::process::exit;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering::Relaxed};
-use std::time::Instant;
 
 // ---- THE ALLOCATOR CALL COUNTER ----
 //
 // Every call is forwarded to the system allocator. LIVE is the net byte count
 // and is kept always (it is the drift instrument); CALLS moves only while
 // COUNTING is set, which is the whole measured loop including the sampling code,
-// so a clock read or a sample that allocated would be caught too.
+// so a sample that allocated would be caught too.
 struct Counting;
 
 static COUNTING: AtomicBool = AtomicBool::new(false);
@@ -124,7 +127,7 @@ enum Expect<Rep> {
     Refused(Rep),
 }
 
-/// The caller-owned storage the contract names, all allocated before the clock.
+/// The caller-owned storage the contract names, all allocated before the loop.
 const RECORDS: usize = 8;
 const PLAN: usize = 4096;
 
@@ -209,7 +212,7 @@ impl<R: Copy + Default, E: Copy + Default, Rep: Copy + Default + PartialEq + Deb
                 }
                 let exact = c.out == c.wire;
                 if kind == Kind::Exact {
-                    // THE GOLDEN GATE, before the clock: an exact case must load
+                    // THE GOLDEN GATE, before the loop: an exact case must load
                     // clean and come back BYTE FOR BYTE, or there is nothing
                     // honest to soak.
                     if report != Rep::default() {
@@ -324,7 +327,7 @@ impl<R: Copy, E: Copy, Rep: Copy + Default + PartialEq + Debug> Case for Fixed<R
     }
 }
 
-// ---- THE FILES THIS BINARY WRITES: populated rows, saved before the clock ----
+// ---- THE FILES THIS BINARY WRITES: populated rows, saved before the loop ----
 
 fn text<const N: usize>(s: &str) -> ([u8; N], i32) {
     let mut b = [0u8; N];
@@ -892,7 +895,7 @@ fn planted_pair() {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let seconds: f64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(20.0);
+    let target: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(1 << 22);
     let corpus = args
         .get(2)
         .map(String::as_str)
@@ -918,7 +921,6 @@ fn main() {
     );
 
     let before = LIVE.load(Relaxed);
-    let start = Instant::now();
     let mut iterations: u64 = 0;
     let mut settled_live: i64 = 0;
     let mut settled_calls: u64 = 0;
@@ -950,18 +952,17 @@ fn main() {
             COUNTING.store(true, Relaxed);
             continue;
         }
-        // THE SAMPLE, every 1024 passes: the clock read is the cost being
-        // amortised, and the count is taken at every one of them. A zero-second
-        // run stops at two passes, the fewest that compares a sample with the
+        // THE SAMPLE, every 1024 passes and at the last one. A zero-pass run
+        // stops at two passes, the fewest that compares a sample with the
         // warmup at all.
-        if seconds <= 0.0 || iterations & 0x3ff == 0 {
+        if iterations >= target || iterations & 0x3ff == 0 {
             samples += 1;
             let now = CALLS.load(Relaxed);
             if now != settled_calls {
                 moved = Some((iterations, now));
                 break;
             }
-            if seconds <= 0.0 || start.elapsed().as_secs_f64() >= seconds {
+            if iterations >= target {
                 break;
             }
         }
@@ -973,10 +974,9 @@ fn main() {
 
     let checksum = cases.iter().fold(0u64, |s, c| s ^ c.checksum());
     println!(
-        "rust tables soak: {} iterations over {} cases in {:.0} s (read checksum {:016x})",
+        "rust tables soak: {} iterations over {} cases (read checksum {:016x})",
         iterations,
         cases.len(),
-        start.elapsed().as_secs_f64(),
         checksum
     );
     println!(

@@ -273,5 +273,5 @@ type ViewConstant struct {Name,File,TypeName string;IsFloat bool;IntValue int64;
 type ViewVariant struct {Value uint64;Name string;Id uint64;PayloadName string;Payload func()*TableTypeInfo;Field func()*TableFieldInfo;Doc string;NumTags int32;Tags []string}
 type ViewVocabulary struct {Name,File string;Max int64;StorageBits,NumVariants int32;PayloadOffset uint32;Variants []ViewVariant;Doc string;NumTags int32;Tags []string}
 type ViewType struct {Name,File string;Table bool;Type *TableTypeInfo;Doc string;NumTags int32;Tags []string}
-type UnitViewInfo struct {Package string;ProtocolId uint64;NumTypes,NumTables,NumEnums,NumFlags,NumUnions,NumConstants int32;Types,Tables []ViewType;Enums,Flags,Unions []ViewVocabulary;Constants []ViewConstant}
+type UnitViewInfo struct {Package string;ProtocolID uint64;NumTypes,NumTables,NumEnums,NumFlags,NumUnions,NumConstants int32;Types,Tables []ViewType;Enums,Flags,Unions []ViewVocabulary;Constants []ViewConstant}
 `

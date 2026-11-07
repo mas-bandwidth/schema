@@ -233,7 +233,7 @@ const back = eight();
   if (n !== 1 || r.refused !== 0 || r.malformed) {
     fail("the reader's own file takes the identity lane, which needs no plan entries: n=" + n + " " + reason(r));
   }
-  if (back[0].W !== 777) { fail("the identity read lost a value: " + show(back[0])); }
+  if (back[0].w !== 777) { fail("the identity read lost a value: " + show(back[0])); }
 }
 {
   poison(back, none);

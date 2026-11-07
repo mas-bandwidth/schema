@@ -131,15 +131,20 @@ type tableGen struct {
 	outside          bool // descriptors outside the checked table closure carry no wire ids
 	unit             *ir.Unit
 	file             *ir.File
+	// messageStructs and messageUnions are the message form's closure
+	// (messageClosure): what a fixed table holds by value.
+	messageStructs map[string]bool
+	messageUnions  map[string]bool
 	// lineage is the LOCKED LAYOUTS per fixed table, OLDEST FIRST, handed down
 	// by GenerateLineage (docs/FIXED-FORM-ALGORITHM.md §5.2). Nil is a build
 	// with no lock: a table then carries its own entry and nothing else.
-	lineage     map[string][]FixedLineageEntry
-	anyVariable bool // the unit declares at least one variable-length table
-	anySequence bool
-	anyList     bool
-	anyMap      bool
-	anyKeyed    bool // the unit declares at least one enum-keyed array
+	lineage          map[string][]FixedLineageEntry
+	anyVariable      bool // the unit declares at least one variable-length table
+	anySequence      bool
+	anyList          bool
+	anyMap           bool
+	anyUnboundedText bool
+	anyKeyed         bool // the unit declares at least one enum-keyed array
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
@@ -366,11 +371,9 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime st
    reason is the LINKER rather than the preprocessor: two units of the same
    schema family link into one program — two generations of one schema is the
    case the conformance driver itself is — so nothing this backend emits may
-   be spelled the same way by two packages. They do NOT share a translation
-   unit and cannot: C has no namespace, so two units' headers in one TU
-   redefine TableReport, TableWriter and every other runtime name, which is the
-   packet emitter's standing limit (SPEC §6.1) and not something tables
-   changed. A per-package macro is what keeps the LINK legal. */
+   be spelled the same way by two packages. The target's qualification pass
+   gives every other runtime name the package too (SPEC §6.3), so two units'
+   headers share a translation unit as well as a link. */
 #ifndef ` + forceInline + `
 #if defined( _MSC_VER )
 #define ` + forceInline + ` __forceinline
@@ -378,39 +381,6 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime st
 #define ` + forceInline + ` inline __attribute__(( always_inline ))
 #else
 #define ` + forceInline + ` inline
-#endif
-#endif
-
-/* A COMPILE-TIME assertion under -std=c99, which has none of its own. C11's
-   _Static_assert carries the message into the build log verbatim and is used
-   wherever the compiler has it; everywhere else the negative array bound is
-   the same refusal with a tag a reader can find. The tag is unique per record
-   and field, and each record is asserted by the ONE header that declares it,
-   so no two of these ever meet. */
-#ifndef SCHEMA_TABLE_STATIC_ASSERT
-#if defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 201112L
-#define SCHEMA_TABLE_STATIC_ASSERT( tag, cond, message ) _Static_assert( cond, message )
-#elif defined( __cplusplus ) && __cplusplus >= 201103L
-#define SCHEMA_TABLE_STATIC_ASSERT( tag, cond, message ) static_assert( cond, message )
-#else
-#define SCHEMA_TABLE_STATIC_ASSERT( tag, cond, message ) typedef char schema_table_assert_##tag[ ( cond ) ? 1 : -1 ]
-#endif
-#endif
-
-/* A record's ALIGNMENT, which the cook's layout contract asserts and which the
-   cook's Open compares the header's alignment word against (§7.1, §20.3).
-   C99 has no alignof either; C11's _Alignof, the two GNU spellings and MSVC's
-   cover every compiler this repo builds under, and the last form is the
-   portable definition of the same number. */
-#ifndef SCHEMA_TABLE_ALIGNOF
-#if defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 201112L
-#define SCHEMA_TABLE_ALIGNOF( T ) _Alignof( T )
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_TABLE_ALIGNOF( T ) __alignof__( T )
-#elif defined( _MSC_VER )
-#define SCHEMA_TABLE_ALIGNOF( T ) __alignof( T )
-#else
-#define SCHEMA_TABLE_ALIGNOF( T ) ( (size_t) offsetof( struct { char schema_pad_; T schema_member_; }, schema_member_ ) )
 #endif
 #endif
 
@@ -425,14 +395,30 @@ typedef struct TableReport
        (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
        id twice is legal input whose last occurrence wins, silently (§3). */
     int32_t duplicate;
+    /* required fields (docs/SPEC-TABLES.md §2.3) the body omitted. */
+    int32_t missing_required;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
     /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
        the tolerant read keeps the one node and counts each extra naming. */
     int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported form byte, not framing damage */
+    int refused;           /* a refusal by name (reason), not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
+    /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
+       TableRefuseReason, the same value a measure's -1 and a cook's open
+       answer, set by every plain read name on its refusal and OK otherwise.
+       unknown, widened and retained alone leave it OK. The tolerant reads
+       never write it. */
+    int refuse_reason;
+    int damage_reason;
+    /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+       an infinity is refused on its raw bits by every read, the tolerant one
+       included, so a read that moves this answers refused, reason
+       SCHEMA_TABLE_NON_FINITE_FLOAT, and lands nothing. It is a count only so
+       a read can tell its own refusal from a caller's report that already
+       held one. */
+    int32_t non_finite_floats;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -441,7 +427,11 @@ typedef struct TableReport
     uint64_t layout_hash;
 } TableReport;
 
-enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE };
+/* THE FORM'S OWN REFUSALS, and the one every form shares: a float whose raw
+   bits are a NaN or an infinity (docs/SPEC-TABLES.md §3.3). It takes 21, past
+   the message form's 3..6 and the fixed form's 7..20, so one report reason
+   names it whichever form a unit carries. */
+enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE, SCHEMA_TABLE_NON_FINITE_FLOAT = 21 };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -511,6 +501,7 @@ typedef struct TableFieldInfo
     int is_array;           /* fixed or counted array (bytes included) */` + pointerFieldMember + `
     int counted;            /* a _count/_length int32 companion exists (counted arrays, strings, bytes) */
     int optional;           /* a ?T field: a _present companion decides whether it rides */
+    int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
     uint32_t offset;        /* offsetof the storage member */
     uint32_t elem_size;     /* sizeof the member (element size for arrays) */
@@ -550,6 +541,8 @@ typedef struct TableFieldInfo
     int32_t num_tags;
     const char * const * tags;
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
+    uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
+    int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
 } TableFieldInfo;
 
@@ -570,6 +563,9 @@ typedef struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    /* | json = "array" (docs/SPEC-TABLES.md §16.10): the one-field table
+       whose text form is that field's array directly */
+    int json_array;
 } TableTypeInfo;
 
 ` + wireRuntime + keyed + fixed + `
@@ -578,6 +574,76 @@ static SCHEMA_UNUSED uint32_t table_float_to_bits( float f ) { uint32_t b; memcp
 static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
+/* A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the packet wire's own rule): a
+   NaN or an infinity, whatever its sign or payload, has an all-ones exponent,
+   and that is the whole test. Every read runs it on the RAW BITS, before they
+   become a float and before the field is written; every writer runs it on the
+   bits of the value it was handed. -0 and the subnormals are finite and ride
+   bit-exact. */
+static SCHEMA_UNUSED int table_bits_finite32( uint32_t bits ) { return ( bits & 0x7f800000u ) != 0x7f800000u; }
+static SCHEMA_UNUSED int table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
+static SCHEMA_UNUSED int table_float_finite( float f ) { return table_bits_finite32( table_float_to_bits( f ) ); }
+static SCHEMA_UNUSED int table_double_finite( double d ) { return table_bits_finite64( table_double_to_bits( d ) ); }
+/* table_non_finite_float is a read meeting one: the read is REFUSED by name,
+   non_finite_float, and the walk goes on so the framing verdict is the one a
+   finite wire gets; the load that started it answers the refusal at its end
+   (table_non_finite_refused) and lands nothing. */
+static SCHEMA_UNUSED void table_non_finite_float( TableReport * report )
+{
+    report->refused = 1;
+    report->reason = SCHEMA_TABLE_NON_FINITE_FLOAT;
+    report->non_finite_floats++;
+}
+/* table_non_finite_refused is that load's end: 1 when the walk met a
+   non-finite float since before, the refusal stamped again over whatever the
+   walk met after it, because it outranks any damage (§3.3). */
+static SCHEMA_UNUSED int table_non_finite_refused( TableReport * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return 0; }
+    report->refused = 1;
+    report->reason = SCHEMA_TABLE_NON_FINITE_FLOAT;
+    return 1;
+}
+static SCHEMA_UNUSED uint32_t schema_table_crc32c_( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xffffffffu;
+    int64_t i;
+    int k;
+    for ( i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82f63b78u & mask );
+        }
+    }
+    return crc ^ 0xffffffffu;
+}
+static SCHEMA_UNUSED int schema_table_integrity_holds_( const uint8_t * data, int64_t bytes )
+{
+    int64_t n;
+    uint32_t got;
+    if ( data == NULL || bytes < 5 ) { return 0; }
+    n = bytes - 4;
+    got = (uint32_t) data[n] | ( (uint32_t) data[n + 1] << 8 ) | ( (uint32_t) data[n + 2] << 16 ) | ( (uint32_t) data[n + 3] << 24 );
+    return got == schema_table_crc32c_( data, n );
+}
+static SCHEMA_UNUSED int64_t schema_table_integrity_seal_( uint8_t * buffer, int64_t n )
+{
+    uint32_t crc;
+    if ( n < 0 ) { return -1; }
+    if ( buffer != NULL )
+    {
+        crc = schema_table_crc32c_( buffer, n );
+        buffer[n] = (uint8_t) crc;
+        buffer[n + 1] = (uint8_t) ( crc >> 8 );
+        buffer[n + 2] = (uint8_t) ( crc >> 16 );
+        buffer[n + 3] = (uint8_t) ( crc >> 24 );
+    }
+    return n + 4;
+}
+
 #endif /* ` + guard + ` */
 `
 }
@@ -585,6 +651,158 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
 // Generate emits <Base>Table.h and <Base>Table.c for every unit file when the
 // unit declares tables, and nothing when it does not — a table-free unit's
 // generated tree is byte-identical with or without this package.
+// declaresForms reports whether any table in the unit carries an explicit
+// `forms` declaration (docs/SPEC-TABLES.md §2.12). Synthesized map entries
+// are never the declaring table.
+func declaresForms(u *ir.Unit) bool {
+	for _, t := range u.Tables {
+		if t != nil && !t.IsMapEntry() && t.DeclaredForms() {
+			return true
+		}
+	}
+	return false
+}
+
+// formAllowed reports whether the unit's tables let the named form be emitted
+// (docs/SPEC-TABLES.md §2.12).
+func formAllowed(u *ir.Unit, form string) bool {
+	if !declaresForms(u) {
+		return true
+	}
+	for _, t := range u.Tables {
+		if t != nil && !t.IsMapEntry() && t.CarriesForm(form) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterFormsBlocks restricts the block layout surface to the fixed tables
+// that carry the `block` form (docs/SPEC-TABLES.md §2.12).
+func filterFormsBlocks(b *ir.BlockUnit) *ir.BlockUnit {
+	if b == nil {
+		return nil
+	}
+	restricted := false
+	for _, bl := range b.Tables {
+		if bl.Table != nil && !bl.Table.CarriesForm("block") {
+			restricted = true
+			break
+		}
+	}
+	if !restricted {
+		return b
+	}
+	out := &ir.BlockUnit{
+		Members: map[string]*ir.MemberLayout{},
+		Skipped: maps.Clone(b.Skipped),
+	}
+	var add func(name string)
+	add = func(name string) {
+		if _, done := out.Members[name]; done {
+			return
+		}
+		ml := b.Members[name]
+		if ml == nil {
+			return
+		}
+		out.Members[name] = ml
+		for _, fl := range ml.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	for _, bl := range b.Tables {
+		if bl.Table == nil || !bl.Table.CarriesForm("block") {
+			if bl.Table != nil {
+				out.Skipped[bl.Table.Name] = "it omits the block form in its forms declaration"
+			}
+			continue
+		}
+		out.Tables = append(out.Tables, bl)
+		for _, arr := range bl.Arrays {
+			add(arr.ElemName)
+		}
+		for _, fl := range bl.Projection.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok && !ir.BlockOutOfLine(fl.Field) {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	out.Order = make([]string, 0, len(out.Members))
+	for name := range out.Members {
+		out.Order = append(out.Order, name)
+	}
+	sort.Strings(out.Order)
+	return out
+}
+
+// cookClosure is every record a cook-carrying table's region can reach
+// (docs/SPEC-TABLES.md §2.12, §7).
+func cookClosure(u *ir.Unit) map[string]bool {
+	seen := map[string]bool{}
+	seenUnion := map[*ir.Union]bool{}
+	var walk func(name string)
+	var walkUnion func(un *ir.Union)
+	walkUnion = func(un *ir.Union) {
+		if seenUnion[un] {
+			return
+		}
+		seenUnion[un] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	walk = func(name string) {
+		if seen[name] {
+			return
+		}
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			return
+		}
+		seen[name] = true
+		for _, f := range st.Fields {
+			if f.IsMap() {
+				walk(f.MapEntry.Name)
+				continue
+			}
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	for name, st := range u.Tables {
+		if st == nil || st.IsMapEntry() || !st.CarriesForm("cook") {
+			continue
+		}
+		walk(name)
+	}
+	return seen
+}
+
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return GenerateLineage(u, nil)
 }
@@ -597,7 +815,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
-		return generateViewFiles(u, nil, nil, nil, false, false, false), nil
+		return generateViewFiles(u, nil, nil, nil, false, false, false, false), nil
 	}
 	bases := map[string]bool{}
 	for _, f := range u.Files {
@@ -627,7 +845,15 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			anyMap = anyMap || field.IsMap()
 		}
 	}
+	anyUnboundedText := ir.UnitHasUnboundedText(u)
 	blocks := ir.Blocks(u)
+	blocks = filterFormsBlocks(blocks)
+	declares := declaresForms(u)
+	if declares && (blocks == nil || len(blocks.Tables) == 0) {
+		blocks = nil
+	}
+	cooks := cookClosure(u)
+	jsonAllowed := formAllowed(u, "json")
 
 	// The BLOCK FORM (docs/SPEC-TABLES.md §19) is emitted ON THE SIDE, into
 	// <Base>Block.h and <Base>Block.c: nothing declares it, every fixed
@@ -636,9 +862,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	out := generateBlockFiles(u, blocks, variable, targets)
 	probed := tableDefaultProbedStructs(u)
 	hasProbes := len(probed) > 0
+	messageStructs, messageUnions := messageClosure(u)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
-			includes: map[string]bool{}}
+		g := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap || anyUnboundedText, anyList: anyList, anyMap: anyMap, anyUnboundedText: anyUnboundedText, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
+			messageStructs: messageStructs, messageUnions: messageUnions, includes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {
@@ -646,8 +873,8 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				members = append(members, st)
 			}
 		}
-		cg := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
-			includes: map[string]bool{}}
+		cg := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap || anyUnboundedText, anyList: anyList, anyMap: anyMap, anyUnboundedText: anyUnboundedText, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
+			messageStructs: messageStructs, messageUnions: messageUnions, includes: map[string]bool{}}
 		g.emitTableShapes(members)
 		if len(members) > 0 {
 			g.emitTableResetDeclarations(members)
@@ -663,25 +890,24 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 					}
 				}
 			}
+			cookMembers := make([]*ir.Struct, 0, len(members))
+			bodyCookMembers := make([]*ir.Struct, 0, len(members))
+			for _, st := range members {
+				if cooks[st.Name] {
+					cookMembers = append(cookMembers, st)
+				}
+				if cooks[st.Name] || (g.anyVariable && g.fileWire()) {
+					bodyCookMembers = append(bodyCookMembers, st)
+				}
+			}
 			g.emitCodecDeclarations(members)
-			g.emitCookWriteDeclarations(members)
+			g.emitCookWriteDeclarations(bodyCookMembers)
 			if g.anyVariable && g.fileWire() {
 				g.emitGraphDeclarations(members)
 				g.emitExtentDeclarations(members)
 			}
 			unions := g.fileWireUnions()
-			g.emitMessageSaveDeclarations(members, unions)
-			g.emitMessageReadDeclarations(members, unions)
-			g.emitMessageExtentDeclarations(members, unions)
-			for _, un := range unions {
-				g.emitMessageUnionSave(un)
-			}
-			for _, un := range unions {
-				g.emitMessageUnionRead(un)
-			}
-			for _, un := range unions {
-				g.emitMessageUnionExtent(un)
-			}
+			g.emitMessageCodecs(members, unions)
 			if g.fileWire() {
 				g.emitUnionWireDeclarations(unions)
 				for _, un := range unions {
@@ -693,9 +919,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				g.emitKeyedAccessors(st)
 				g.emitWireWrite(st)
 				g.emitWireRead(st)
-				g.emitMessageSave(st)
-				g.emitMessageRead(st)
-				g.emitMessageExtent(st)
+				if g.messageStructs[st.Name] {
+					g.emitMessageSave(st)
+					g.emitMessageRead(st)
+				}
 			}
 			g.emitFixedForm(members)
 			if g.anySequence {
@@ -707,14 +934,21 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 					}
 				}
 			}
+			for _, st := range members {
+				for _, field := range st.Fields {
+					if field.IsTextList() {
+						g.emitTextListSurface(st, field)
+					}
+				}
+			}
 			g.emitRetainBodies(members, unions)
 			g.emitVariableSurface(members)
 			g.emitRetainRoots(members)
 			g.emitRetainRefusals(members)
-			g.emitCookSurface(members)
-			g.emitCookWriteSurface(members)
+			g.emitCookSurface(cookMembers)
+			g.emitCookWriteSurface(bodyCookMembers)
 			g.emitRelocatabilityPreamble()
-			g.emitCookLayoutAsserts(members)
+			g.emitCookLayoutAsserts(cookMembers)
 			g.pf("/* ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----\n\n")
 			g.pf("   The descriptors are CONSTANT data DEFINED in %sTable.c: a translation\n", f.Base)
 			g.pf("   unit that includes this header for the wire codecs pays nothing for\n")
@@ -732,31 +966,28 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			// the TEXT form's surface (docs/SPEC-TABLES.md §16), DECLARED here
 			// and defined in <Base>Table.c beside the one generic walk it
 			// calls.
-			g.pf("/* ---- the text form (docs/SPEC-TABLES.md §16) ---- */\n\n")
-			for _, st := range members {
-				g.emitJsonDeclarations(st)
+			if jsonAllowed {
+				g.pf("/* ---- the text form (docs/SPEC-TABLES.md §16) ---- */\n\n")
+				for _, st := range members {
+					if !st.IsTable || st.CarriesForm("json") {
+						g.emitJsonDeclarations(st)
+					}
+				}
 			}
 			for _, st := range members {
 				cg.owner = st
 				cg.emitTableDescriptor(st)
 			}
-			for _, st := range members {
-				cg.emitJsonDefinitions(st)
+			if jsonAllowed {
+				for _, st := range members {
+					if !st.IsTable || st.CarriesForm("json") {
+						cg.emitJsonDefinitions(st)
+					}
+				}
 			}
 		} else {
 			if unions := g.fileWireUnions(); g.fileWire() && len(unions) > 0 {
-				g.emitMessageSaveDeclarations(nil, unions)
-				g.emitMessageReadDeclarations(nil, unions)
-				g.emitMessageExtentDeclarations(nil, unions)
-				for _, un := range unions {
-					g.emitMessageUnionSave(un)
-				}
-				for _, un := range unions {
-					g.emitMessageUnionRead(un)
-				}
-				for _, un := range unions {
-					g.emitMessageUnionExtent(un)
-				}
+				g.emitMessageCodecs(nil, unions)
 				g.emitUnionWireDeclarations(unions)
 				for _, un := range unions {
 					g.emitUnionWire(un)
@@ -775,10 +1006,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 		out[f.Base+"Table.h"] = g.header(u, f, members)
 		if len(members) > 0 {
-			out[f.Base+"Table.c"] = tableSource(u, f, g, cg, members)
+			out[f.Base+"Table.c"] = tableSource(u, f, g, cg, members, jsonAllowed)
 		}
 	}
-	maps.Copy(out, generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap))
+	maps.Copy(out, generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap, anyUnboundedText))
 	for name, data := range out {
 		out[name] = []byte(formatCompactCFunctions(string(data)))
 	}
@@ -795,7 +1026,8 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	h.WriteString("   beside this header to use descriptors or JSON. 128-bit storage uses\n")
 	h.WriteString("   the lane types from serialize.h. */\n\n")
 	fmt.Fprintf(&h, "#ifndef %s\n#define %s\n\n", guard, guard)
-	h.WriteString("#include <stdint.h>\n#include <stddef.h> /* offsetof, for the reflection descriptors */\n#include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */\n")
+	h.WriteString("#include <stdbool.h>\n#include <stdint.h>\n#include <stddef.h> /* offsetof, for the reflection descriptors */\n#include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */\n")
+	h.WriteString(ccommon.RuntimeInclude())
 	if g.anyKeyed {
 		// ENUM-KEYED arrays only: indexing one by None is a program error in
 		// EVERY configuration, and the accessor is where a runtime key can
@@ -812,7 +1044,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	}
 	fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 	if unitHasWideStorage(u) {
-		h.WriteString(ccommon.Align16)
+		h.WriteString(ccommon.Align16Check)
 		h.WriteString("#include \"serialize.h\" /* 128-bit storage, shared with the packet header */\n")
 	}
 	names := make([]string, 0, len(g.includes))
@@ -823,19 +1055,13 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	for _, n := range names {
 		fmt.Fprintf(&h, "#include \"%sTable.h\"\n", n)
 	}
-	// SCHEMA_UNUSED with the packet emitter's own guard: every function in
-	// this header is `static`, so a translation unit that uses one and not
-	// another must not be warned about the rest. The definition is the packet
-	// header's, guarded identically, so whichever header a TU sees first
-	// defines it and the other agrees.
-	h.WriteString("\n#ifndef SCHEMA_UNUSED\n#if defined(__GNUC__) || defined(__clang__)\n#define SCHEMA_UNUSED __attribute__((unused))\n#else\n#define SCHEMA_UNUSED\n#endif\n#endif\n")
 	h.WriteString("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n")
 	h.WriteString(g.wirePrimitives())
 	h.WriteString(tableRefuseRuntime)
 	if g.anyVariable {
 		h.WriteString("\n")
 		h.WriteString(tableAllocatorRuntime)
-		h.WriteString(tableArenaRuntime(u.Package))
+		h.WriteString(tableArenaRuntime(u))
 		if g.fileWire() {
 			// THE BYTE BUFFER's runtime, and only where the unit DECLARES one
 			// (docs/SPEC-TABLES.md §2.5, §2.2). Every name in these two blocks
@@ -862,9 +1088,9 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 			// sits behind one guard and a translation unit may hold only one of
 			// the package's headers.
 			anyBlob := len(ir.BlobPointerFields(u)) > 0
-			h.WriteString(tableBlobRuntime(anyBlob))
+			h.WriteString(tableBlobRuntime(anyBlob, g.anyUnboundedText))
 			if g.anySequence {
-				h.WriteString(tableSequenceRuntime)
+				h.WriteString(tableSequenceRuntime(g.anyUnboundedText))
 			}
 			if g.anyList {
 				h.WriteString("#ifndef SCHEMA_TABLE_LIST_RUNTIME\n#define SCHEMA_TABLE_LIST_RUNTIME\ntypedef TableSequence TableList;\n#endif\n")
@@ -888,7 +1114,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	h.WriteString("\n")
 	h.WriteString(tableCookRuntime(u.Package))
 	h.WriteString(tableCookWriteRuntime)
-	h.WriteString(tableMessageForm(u, g.anyVariable, g.hasProbes))
+	h.WriteString(tableMessageForm(u, g.hasProbes))
 	if g.anyVariable {
 		h.WriteString(tableCookGraphRuntime)
 		h.WriteString(g.retainRuntime())
@@ -901,7 +1127,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 
 // tableSource assembles <Base>Table.c: the descriptors and the text form's
 // definitions, plus the one generic walk they call.
-func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*ir.Struct) []byte {
+func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*ir.Struct, jsonAllowed bool) []byte {
 	var c strings.Builder
 	fmt.Fprintf(&c, "/* Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n   SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n   your choice. See the LICENSE exception in the schema compiler; the compiler is\n   AGPL-3.0, its output is not.\n", f.Base)
 	fmt.Fprintf(&c, "   package %s — the TABLE wire's reflection descriptors and text form\n", u.Package)
@@ -912,7 +1138,7 @@ func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*i
 	c.WriteString("#include <stdio.h>  /* the text form: number formatting */\n")
 	c.WriteString("#include <stdlib.h> /* the text form: exact number conversion */\n")
 	c.WriteString("#include <locale.h> /* the text form: the runtime's decimal point */\n\n")
-	if len(members) > 0 {
+	if len(members) > 0 && jsonAllowed {
 		c.WriteString(tableJsonWalk(u.Package))
 		c.WriteString("\n")
 		if g.anyVariable {
@@ -928,7 +1154,7 @@ func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*i
 // build log verbatim — and the negative-array-size form stands in everywhere
 // else, which is what keeps this header compilable under -std=c99.
 func (g *tableGen) emitStaticAssert(tag, cond, message string) {
-	g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s, %s, \"%s\" );\n", tag, cond, message)
+	g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_%s, %s, \"%s\" );\n", g.unit.Package, tag, cond, message)
 }
 
 // orderTables returns a file's tables with every same-file table preceding
@@ -1020,17 +1246,16 @@ func (g *tableGen) api(name, verb string) string {
 // <name>_block_open — is emitted as `static` in the header and forwards to
 // these, so a call site reads as C while the LINKER sees one symbol per
 // (package, type).
-// Two units still cannot meet in ONE TRANSLATION UNIT, which is the packet
-// emitter's stated limit and unchanged by any of this.
+// The forwarders themselves take the package in the target's qualification
+// pass (internal/codegen/cqualify), as every declared name does (SPEC §6.3).
 func (g *tableGen) sym(name, what string) string {
 	return "schema_" + g.unit.Package + "_" + ir.RustSnake(name) + "_" + what + "_"
 }
 
 // tableInlineMacro names the unit's force-inline macro. It carries the package
 // for the reason every other emitted name does, and the reason is the LINKER:
-// two units of one schema family link into one program. Two units' headers
-// cannot share a translation unit at all — C has no namespace, so that is
-// dozens of redefinitions and the packet emitter's standing limit (SPEC §6.1).
+// two units of one schema family link into one program, and their headers
+// share a translation unit (SPEC §6.3).
 //
 // IT LEADS WITH SCHEMA_, and so does every other macro this backend defines.
 // C's preprocessor namespace is the one place a generated name and a DECLARED

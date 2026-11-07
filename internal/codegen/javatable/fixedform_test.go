@@ -386,13 +386,11 @@ fixed table LiveRoot
 // `make tables-java-fixedform-arm-negative-control`, whose case reads a record
 // through parse/compile/run directly and not through the load path.
 func TestFixedFormFU1FU2(t *testing.T) {
-	t.Skip("retired by §5.6: a compiled read of a stranger's layout; owed as the FU1/FU2 lineage pair in fixedversioning_test.go")
-
 	fu1Files, err := Generate(schemaUnit(t, "FU1.schema"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	fu2Files, err := Generate(schemaUnit(t, "FU2.schema"))
+	fu2Files, err := GenerateLineage(schemaUnit(t, "FU2.schema"), lineageOf(t, []string{"FU1.schema"}, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -873,3 +871,15 @@ public final class Hostile {
     }
 }
 `
+
+// javaCarries reports whether the emitted Java carries want, whatever its
+// layout. Every generated file is in google-java-format's shape
+// (java.Canonical, docs/JAVA-DIALECT.md), so an expectation written on one
+// line still finds the same tokens broken over several; only whitespace is
+// ignored, never a token.
+func javaCarries(src, want string) bool {
+	return strings.Contains(javaTokens(src), javaTokens(want))
+}
+
+// javaTokens is s with every run of whitespace removed.
+func javaTokens(s string) string { return strings.Join(strings.Fields(s), "") }
