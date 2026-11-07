@@ -61,9 +61,14 @@
     static bool hc_refused( const HC_NS::TableReport & report, bool landed ) \
     { \
         hc_trace( report.refused, report.damaged, (int) report.refuse_reason, landed ); \
-        if ( report.refused ) { hc_refuse( hc_reason( ( report.refuse_reason == HC_NS::ok || report.refuse_reason == HC_NS::unknown_form ) ? (HC_NS::TableRefuseReason) report.reason : report.refuse_reason ) ); return true; } \
-        if ( !landed || report.damaged ) { hc_refuse( "damaged" ); return true; } \
-        return false; \
+        if ( landed && !report.refused && !report.damaged ) { return false; } \
+        if ( report.refused ) \
+        { \
+            const HC_NS::TableRefuseReason reason = ( report.refuse_reason == HC_NS::ok || report.refuse_reason == HC_NS::unknown_form ) ? (HC_NS::TableRefuseReason) report.reason : report.refuse_reason; \
+            if ( reason == HC_NS::newer_form || reason == HC_NS::message_form_as_file || reason == HC_NS::no_vocabulary || reason == HC_NS::second_announcement || reason == HC_NS::vocabulary_too_large || reason == HC_NS::batch_too_large || reason == HC_NS::count_over_extent_cap || reason == HC_NS::non_finite_float ) { hc_refuse( hc_reason( reason ) ); return true; } \
+        } \
+        hc_refuse( "damaged" ); \
+        return true; \
     }
 
 // the text writer's answer, digested by the driver
