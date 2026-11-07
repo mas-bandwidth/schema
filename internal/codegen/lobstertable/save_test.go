@@ -208,10 +208,10 @@ func TestLobsterTableSaveRoundTripsEveryInstance(t *testing.T) {
 	t.Logf("%d instances saved byte for byte and re-loaded equal to the reference's; %d skipped by name", compared, skipped)
 }
 
-// TestLobsterTableSaveNegativeControl patches the emitted save runtime in
-// memory — the FORM BYTE line (docs/SPEC-TABLES.md §3), matched exactly once —
-// and requires the byte comparison to go red, with the unpatched control
-// green.
+// TestLobsterTableSaveNegativeControl patches the emitted fixed save runtime
+// in memory — its FORM BYTE line (docs/SPEC-TABLES.md §3), matched exactly
+// once — and requires the byte comparison to go red, with the unpatched
+// control green.
 func TestLobsterTableSaveNegativeControl(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
@@ -250,11 +250,11 @@ func TestLobsterTableSaveNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "    so_u8(out, 1) // THE FORM BYTE\n"
+	const anchor = "    w.b = write_int8_le(w.b, 0, 3)\n"
 	if n := strings.Count(string(src), anchor); n != 1 {
 		t.Fatalf("the form-byte anchor is in the emitted runtime %d times, want 1", n)
 	}
-	patched := strings.Replace(string(src), anchor, "    so_u8(out, 2) // THE FORM BYTE\n", 1)
+	patched := strings.Replace(string(src), anchor, "    w.b = write_int8_le(w.b, 0, 2)\n", 1)
 	if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}

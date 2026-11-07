@@ -76,6 +76,14 @@ class FieldDescriptor:
     def_int:Int128 = Int128 { 0, 0 }
     def_float:float = 0.0
     def_str:string = ""
+    // THE FIXED FORM's byte sizes (docs/FIXED-FORM-ALGORITHM.md §3), named for
+    // a field the form carries: the field's whole slot (fb), one element's
+    // (eb), a leaf's storage width (sw) and the element count of a fixed or
+    // enum-keyed array (fcount)
+    fb:int = 0
+    eb:int = 0
+    sw:int = 0
+    fcount:int = 0
 
 // A TableDescriptor is one table, or one packet type a table reaches by value:
 // its node type id (§3.1, the hash of its wire name), its declared class
@@ -97,12 +105,20 @@ class TableDescriptor:
     // load_measure reads
     rsize:int = 0
     ralign:int = 8
+    // a DECLARED fixed table's form-3 facts: its body size, whether the form
+    // is emitted for it, and the writer's layout bytes and hash
+    fsize:int = 0
+    femit:bool = false
+    lhash:int = 0
+    layout:string = ""
     fields:[FieldDescriptor]
 
 // A UnionDescriptor is one union: its arms in tag order, each a field line
 // under the arm's id (§2.6).
 class UnionDescriptor:
     name:string
+    // the width of the tag a fixed form stores (§3.4)
+    tagw:int = 1
     arms:[FieldDescriptor]
 
 let table_registry:[TableDescriptor] = []

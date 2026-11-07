@@ -34,7 +34,8 @@ func emitJson(g *lobster.Gen) error {
 			g.Pf("schema_rt.json_flags(%s, [%s]::string)\n", key(owner, f.Name), strings.Join(vs, ", "))
 		}
 		if f.IsTextList() {
-			g.Pf("schema_rt.json_text_list(%s)\n", key(owner, f.Name))
+			g.Pf("schema_rt.json_text_list(%s, %d, %s)\n", key(owner, f.Name), f.TextTotal,
+				lobster.StringLit([]byte(f.TextListElem().MapEntryOf)))
 		}
 	}
 	seen := map[string]bool{}
