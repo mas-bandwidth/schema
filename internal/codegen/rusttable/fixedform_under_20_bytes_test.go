@@ -53,7 +53,7 @@ fn v_fixed_form_under_20_bytes() {
         ));
         assert!(n >= 1, "the full file lands at least one record, not {n}");
         assert!(
-            !report.refused && report.reason == TableFixedReason::None && !report.malformed,
+            !report.refused && report.reason == TableFixedReason::None && !report.damaged,
             "the full file is neither a refusal nor damage: {:?}", report
         );
         assert!(values[0].w == 777, "the full file lost its value: w={}", values[0].w);
@@ -77,14 +77,14 @@ fn v_fixed_form_under_20_bytes() {
         let mut report = TableFixedReport::default();
         let n = LOADFN(&mut values, short, &mut plan, &mut remap, &mut report);
         assert!(n.is_none(), "a {k}-byte file is malformed, never read: {:?} {:?}", n, report);
-        assert!(report.malformed, "a {k}-byte file sets malformed: {:?}", report);
+        assert!(report.damaged, "a {k}-byte file sets damaged: {:?}", report);
         assert!(!report.refused, "a short file is the RESIDUE, never a refusal by name: {:?}", report);
         assert_eq!(
             report.reason, TableFixedReason::None,
-            "a short file leaves reason UNTOUCHED, never layout_malformed: {:?}", report.reason
+            "a short file leaves reason UNTOUCHED, never layout_damaged: {:?}", report.reason
         );
         assert!(
-            report.widened == 0 && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0,
+            report.widened == 0 && report.unknown == 0 && report.mismatch == 0 && report.oor == 0,
             "a short file moves no counter: {:?}", report
         );
         // VNEW_field_append.schema declares x/y/z=0 and w=77.

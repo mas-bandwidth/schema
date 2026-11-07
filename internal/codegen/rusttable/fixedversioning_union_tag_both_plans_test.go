@@ -88,7 +88,7 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 	// plan's op AND again in the decode bounds lands 2, and the looser read is
 	// exactly what this row exists to catch.
 	clampedOnce := `    assert_eq!(
-        report.clamped, 1,
+        report.oor, 1,
         "the bounds pass counts the forged tag EXACTLY once, never twice: {:?}", report
     );`
 
@@ -107,7 +107,7 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
         !report.refused && report.reason == TableFixedReason::None,
         "a forged tag is not a refusal: {:?}", report
     );
-    assert!(!report.malformed, "a forged tag is not damage: {:?}", report);
+    assert!(!report.damaged, "a forged tag is not damage: {:?}", report);
     assert!(
         values[0].pick.tag() == 0,
         "a tag past the arm set lands None (0), not {}", values[0].pick.tag()
@@ -123,7 +123,7 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
     assert!(values[0].seq == 15, "the scalar after the union is untouched: {}", values[0].seq);
 %[2]s
     assert!(
-        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
+        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
         "no other counter moved: {:?}", report
     );
 `, forged, clamped)

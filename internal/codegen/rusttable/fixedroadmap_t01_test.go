@@ -87,7 +87,7 @@ fn t01_records(k: usize) -> Vec<u8> {
 }
 
 fn t01_total(report: &TableFixedReport) -> bool {
-    report.widened == 0 && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0
+    report.widened == 0 && report.unknown == 0 && report.mismatch == 0 && report.oor == 0
 }
 
 /// F9 (§5.3 step 6): "If rest / record_bytes passes the caller's capacity,
@@ -100,14 +100,14 @@ fn v_t01_f9() {
         let data = t01_records(k);
         let (n, report, _) = t01_read(&data, k, 4096);
         assert_eq!(n, Some(k), "{k} records into capacity {k} read: {:?}", report);
-        assert!(!report.refused && !report.malformed, "a batch at capacity is clean: {:?}", report);
+        assert!(!report.refused && !report.damaged, "a batch at capacity is clean: {:?}", report);
         if k == 1 {
             continue;
         }
         let (n, report, values) = t01_read(&data, k - 1, 4096);
         assert!(n.is_none(), "{k} records past capacity {} must refuse: {:?}", k - 1, report);
         assert_eq!(report.reason.name(), "batch_too_large", "{k} records past capacity: {:?}", report.reason);
-        assert!(report.refused && !report.malformed, "a refusal by name never sets malformed: {:?}", report);
+        assert!(report.refused && !report.damaged, "a refusal by name never sets damaged: {:?}", report);
         assert!(t01_total(&report), "REFUSE is TOTAL, no counter moves: {:?}", report);
         assert!(t01_untouched(&values), "batch_too_large wrote a destination byte");
     }
@@ -134,7 +134,7 @@ fn v_t01_f10() {
         let (n, report, values) = t01_read(&data, 3, 4096);
         assert!(n.is_none(), "record {k} with a forged hash must refuse: {:?}", report);
         assert_eq!(report.reason.name(), "no_block", "record {k}: {:?}", report.reason);
-        assert!(report.refused && !report.malformed, "record {k}: refused and malformed are never both set: {:?}", report);
+        assert!(report.refused && !report.damaged, "record {k}: refused and malformed are never both set: {:?}", report);
         assert!(t01_total(&report), "record {k}: no counter moves: {:?}", report);
         assert_eq!(report.layout_hash, 0, "record {k}: no_block carries no hash: {:?}", report);
         if k == 0 {
@@ -232,7 +232,7 @@ fn v_t01_r9() {
         let (n, report, values) = t01_read(&d, 2, 4096);
         assert!(n.is_none(), "{name}: a lie about a known version is refused: {:?}", report);
         assert_eq!(report.reason.name(), "layout_malformed", "{name}: ONE name, not {:?}", report.reason);
-        assert!(report.refused && !report.malformed, "{name}: refused and malformed are never both set: {:?}", report);
+        assert!(report.refused && !report.damaged, "{name}: refused and malformed are never both set: {:?}", report);
         assert!(t01_total(&report) && report.layout_hash == 0, "{name}: nothing else is reported: {:?}", report);
         assert!(t01_untouched(&values), "{name}: a destination byte was written");
     }
@@ -264,7 +264,7 @@ fn v_t01_r13() {
         assert!(n.is_none(), "{label}: a refusal reads nothing: {:?}", report);
         assert!(report.refused, "{label}: refused is set: {:?}", report);
         assert_eq!(report.reason.name(), name, "{label}");
-        assert!(!report.malformed, "{label}: refused and malformed are never both set: {:?}", report);
+        assert!(!report.damaged, "{label}: refused and malformed are never both set: {:?}", report);
         assert!(t01_total(&report), "{label}: every counter stays zero: {:?}", report);
         assert!(t01_untouched(&values), "{label}: a destination byte was written");
     }
@@ -278,7 +278,7 @@ fn v_t01_r13() {
     for (label, d) in malformed {
         let (n, report, values) = t01_read(&d, 3, 4096);
         assert!(n.is_none(), "{label}: malformed reads nothing: {:?}", report);
-        assert!(report.malformed, "{label}: malformed is set: {:?}", report);
+        assert!(report.damaged, "{label}: malformed is set: {:?}", report);
         assert!(!report.refused && report.reason == TableFixedReason::None, "{label}: never both set: {:?}", report);
         assert!(t01_total(&report), "{label}: every counter stays zero: {:?}", report);
         // VNEW_field_append.schema declares x/y/z=0 and w=77.

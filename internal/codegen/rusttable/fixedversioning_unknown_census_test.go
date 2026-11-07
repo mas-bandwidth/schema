@@ -40,13 +40,13 @@ fn v_unknown_census_new_reads_old() {
         !report.refused && report.reason == TableFixedReason::None,
         "a clean NEW-READS-OLD is not a refusal: {:?}", report
     );
-    assert!(!report.malformed, "a clean backward read is not damage: {:?}", report);
+    assert!(!report.damaged, "a clean backward read is not damage: {:?}", report);
     assert_eq!(
         report.unknown, 1,
         "unknown == {}, want 1: Item.drop is ONE field of ONE endpoint, not one per element", report.unknown
     );
     assert!(
-        report.kind_mismatch == 0 && report.widened == 0 && report.clamped == 0,
+        report.mismatch == 0 && report.widened == 0 && report.oor == 0,
         "counters moved on a clean backward read: {:?}", report
     );
     assert_eq!(values[0].lead, 1, "the lead bracket moved: lead={}", values[0].lead);

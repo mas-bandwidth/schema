@@ -54,7 +54,7 @@ fn v_writer_bound_count_new_reads_old() {
         !report.refused && report.reason == TableFixedReason::None,
         "a forged count inside the writer's bound is not a refusal: {:?}", report
     );
-    assert!(!report.malformed, "a count inside the writer's bound is not damage: {:?}", report);
+    assert!(!report.damaged, "a count inside the writer's bound is not damage: {:?}", report);
     assert_eq!(
         values[0].vals_count, 4,
         "vals_count is the WRITER's bound carried by the plan, never the reader's 8 nor the forged 7"
@@ -70,11 +70,11 @@ fn v_writer_bound_count_new_reads_old() {
         "the row moved a neighbour: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
     );
     assert_eq!(
-        report.clamped, 1,
+        report.oor, 1,
         "the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: {:?}", report
     );
     assert!(
-        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
+        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
         "counters moved on a clean clamped read: {:?}", report
     );
 }

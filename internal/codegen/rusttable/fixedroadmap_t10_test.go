@@ -126,7 +126,7 @@ fn round(v: LineageRow) -> LineageRow {
     let n = lineage_fixed_load(&mut out, &buf, &mut plan, &mut remap, &mut report)
         .expect("the buffer this writer wrote reads");
     assert!(
-        n == 1 && !report.refused && !report.malformed && report.clamped == 0,
+        n == 1 && !report.refused && !report.damaged && report.oor == 0,
         "clean read: {report:?}"
     );
     out[0]

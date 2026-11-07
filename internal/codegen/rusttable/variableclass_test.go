@@ -480,7 +480,7 @@ macro_rules! run_case {
             None => println!("WIRE {} REFUSED", $case),
             Some(v) => {
                 let saved = table::$save(&v);
-                let ok = r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed;
+                let ok = r.unknown == 0 && r.mismatch == 0 && r.widened == 0 && r.oor == 0 && !r.damaged;
                 if saved == wire && ok {
                     println!("WIRE {} OK", $case);
                 } else {
@@ -497,7 +497,7 @@ macro_rules! run_case {
                     let mut r2 = Default::default();
                     match table::$from(&text, &mut r2) {
                         Some(v2) => {
-                            let ok2 = r2.unknown == 0 && r2.kind_mismatch == 0 && r2.clamped == 0 && !r2.malformed;
+                            let ok2 = r2.unknown == 0 && r2.mismatch == 0 && r2.oor == 0 && !r2.damaged;
                             if table::$save(&v2) == wire && ok2 { println!("JSONR {} OK", $case); }
                             else { println!("JSONR {} DIFF clean {}", $case, ok2); }
                         }
@@ -517,9 +517,9 @@ macro_rules! shared_case {
         match table::$load(&wire, &mut r) {
             None => println!("SHARED {} LOAD REFUSED", $case),
             Some(v) => match table::$save_checked(&v) {
-                Err(why) if why == "blob_shared" && r.blob_shared == $count && !r.malformed => println!("SHARED {} OK", $case),
-                Err(why) => println!("SHARED {} REFUSED {} counted {}", $case, why, r.blob_shared),
-                Ok(b) => println!("SHARED {} WROTE {} bytes counted {}", $case, b.len(), r.blob_shared),
+                Err(why) if why == "blob_shared" && r.shared_blob == $count && !r.damaged => println!("SHARED {} OK", $case),
+                Err(why) => println!("SHARED {} REFUSED {} counted {}", $case, why, r.shared_blob),
+                Ok(b) => println!("SHARED {} WROTE {} bytes counted {}", $case, b.len(), r.shared_blob),
             },
         }
     }};
@@ -550,7 +550,7 @@ macro_rules! escape_case {
             None => println!("ESCAPE REFUSED"),
             Some(v) => {
                 let again = table::probe_save(&v);
-                println!("ESCAPE {},{},{},{},{},{} SAVED {}", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate, r.malformed, if again == saved { "OK" } else { "DIFF" });
+                println!("ESCAPE {},{},{},{},{},{} SAVED {}", r.unknown, r.mismatch, r.widened, r.oor, r.repeated, r.damaged, if again == saved { "OK" } else { "DIFF" });
             }
         }
     }};

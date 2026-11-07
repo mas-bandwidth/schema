@@ -26,13 +26,13 @@ func textListStorageCheck(b *strings.Builder, f *ir.Field, x, ind, refusal strin
 }
 
 func emitPlainTextListElement(b *strings.Builder, f *ir.Field, field, ind string) {
-	fmt.Fprintf(b, "%slet Some(length) = leb_read(wire, off) else { report.malformed = true; break; };\n", ind)
-	fmt.Fprintf(b, "%sif *off > sub || length > (sub - *off) as u64 { report.malformed = true; break; }\n", ind)
+	fmt.Fprintf(b, "%slet Some(length) = leb_read(wire, off) else { report.damaged = true; break; };\n", ind)
+	fmt.Fprintf(b, "%sif *off > sub || length > (sub - *off) as u64 { report.damaged = true; break; }\n", ind)
 	fmt.Fprintf(b, "%slet bytes = &wire[*off..*off + length as usize]; *off += length as usize;\n", ind)
-	fmt.Fprintf(b, "%sif !text_valid(bytes) { report.malformed = true; break; }\n", ind)
+	fmt.Fprintf(b, "%sif !text_valid(bytes) { report.damaged = true; break; }\n", ind)
 	fmt.Fprintf(b, "%slet text = std::str::from_utf8(bytes).unwrap();\n%slet mut cut = text.len().min(%d);\n", ind, ind, rustTextBound(ir.TextListValue(f)))
 	fmt.Fprintf(b, "%swhile !text.is_char_boundary(cut) { cut -= 1; }\n", ind)
-	fmt.Fprintf(b, "%sif cut != text.len() { report.clamped += 1; }\n", ind)
+	fmt.Fprintf(b, "%sif cut != text.len() { report.oor += 1; }\n", ind)
 	fmt.Fprintf(b, "%s%s.push(%s { value: text[..cut].to_string() });\n", ind, field, f.Type.Name)
 }
 
@@ -43,7 +43,7 @@ func (g *gen) emitTextListJSONElement(b *strings.Builder, f *ir.Field, field, in
 		value.Type.Optional = false
 		fmt.Fprintf(b, "%sif jr.peek() == b'\\\"' {\n%s    let mut text = String::new();\n", ind, ind)
 		g.emitTextReadScalar(b, &value, "text", ind+"    ")
-		fmt.Fprintf(b, "%s    e.value = Some(text);\n%s} else if jr.peek() == b'n' { jr.read_null(); } else { jr.kind_mismatch += 1; jr.skip_value(); }\n", ind, ind)
+		fmt.Fprintf(b, "%s    e.value = Some(text);\n%s} else if jr.peek() == b'n' { jr.read_null(); } else { jr.mismatch += 1; jr.skip_value(); }\n", ind, ind)
 	} else {
 		g.emitTextReadScalar(b, &value, "e.value", ind)
 	}
@@ -52,7 +52,7 @@ func (g *gen) emitTextListJSONElement(b *strings.Builder, f *ir.Field, field, in
 		if ir.TextListOptional(f) {
 			length = "e.value.as_ref().map_or(0, |text| text.len())"
 		}
-		fmt.Fprintf(b, "%slet text_len = %s as u64;\n%sif text_len > %d - text_spent { jr.clamped += 1; text_total_hit = true; } else { text_spent += text_len; %s.push(e); }\n", ind, length, ind, f.TextTotal, field)
+		fmt.Fprintf(b, "%slet text_len = %s as u64;\n%sif text_len > %d - text_spent { jr.oor += 1; text_total_hit = true; } else { text_spent += text_len; %s.push(e); }\n", ind, length, ind, f.TextTotal, field)
 	} else {
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	}

@@ -60,7 +60,7 @@ func TestRustArrayRootNative(t *testing.T) {
 		fmt.Fprintf(&body, `{
 let mut report=TableReport::default();
 let result=%s(%q,&mut report);
-assert_eq!((result.is_some(),report.kind_mismatch,report.clamped,report.malformed),(%t,%d,%d,%t),"array-root case %d");
+assert_eq!((result.is_some(),report.mismatch,report.oor,report.damaged),(%t,%d,%d,%t),"array-root case %d");
 assert_eq!(report.reason.name(),%q,"array-root reason %d");
 `, fn(tc.Root, "from_json"), tc.Text, accepted, tc.Mismatch, tc.Clamped, tc.Malformed, i, reason, i)
 		fmt.Fprintf(&body, "assert_eq!(report.text_error,%q,\"array-root diagnostic %d\");\n", report.Reason, i)
