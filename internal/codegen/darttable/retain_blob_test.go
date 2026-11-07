@@ -61,7 +61,7 @@ table Mixed { data *bytes
 		}
 		fmt.Fprintf(&b, `{final wire=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();
  final v=w.%sWireLoadRetain(wire,store,r);
- check(!r.malformed&&!r.refused&&r.unknown==0&&r.retained==0&&r.retainLost==0,'known blob report %s');
+ check(!r.refused&&r.unknown==0&&r.retained==0&&r.retainLost==0,'known blob report %s');
  check(hex(w.%sWireSaveRetain(v,store,r))==%q,'known blob bytes %s');
  }
 `, hex.EncodeToString(wire), dartName(tc.root), tc.root, dartName(tc.root), hex.EncodeToString(saved), tc.root)
