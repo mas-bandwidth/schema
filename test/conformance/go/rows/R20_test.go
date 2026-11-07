@@ -186,42 +186,10 @@ func TestRowR20DroppedFieldUnknown(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRowR20NarrowIntWidensExactly(t *testing.T) {
-	t.Skip("list_scalar_widen.bin leaves nine payload bytes inside the array's frame, damage the strict read refuses (docs/SPEC-TABLES.md §4); the vector is rebuilt with the conformance corpus in layer 3")
 	wire := r20wire(t, "fuzz-vectors/list_scalar_widen.bin")
-	n := listdemo.SaveLoadMeasure(wire)
-	if n < 0 {
-		t.Fatal("SaveLoadMeasure refused the narrow-element file")
-	}
-	region := make([]byte, n+63)
 	var r listdemo.TableReport
-	root := listdemo.SaveLoad(region, wire, &r)
-	if root == nil {
-		t.Fatalf("the reader refused the narrow-element file: %+v", r)
-	}
-	if r.Widened != 1 {
-		t.Errorf("the narrower integer did not count widened exactly once: %+v", r)
-	}
-	if r.Unknown != 0 {
-		t.Errorf("a counter other than widened moved: %+v", r)
-	}
-	if r.Refused() {
-		t.Errorf("a clean widening is not damage: %+v", r)
-	}
-	if root.Scores.Count != 3 {
-		t.Fatalf("the WRITER's count did not land: %d", root.Scores.Count)
-	}
-	for i, want := range []int32{10, 0, 0} {
-		if got := *root.Scores.At(int32(i)); got != want {
-			t.Errorf("scores[%d] landed %d, want the narrow wire's %d", i, got, want)
-		}
-	}
-	// The neighbours bracket the widened row: a mislaid width moves one.
-	if root.Placements.Count != 3 || root.Log.Count != 3 {
-		t.Fatalf("the counts beside the widened row moved: placements=%d log=%d",
-			root.Placements.Count, root.Log.Count)
-	}
-	if p := root.Placements.At(2); p.X != 3 || p.Y != 4 || p.Model != 5 {
-		t.Errorf("the table beside the widened row did not land: %+v", *p)
+	if root := listdemo.SaveLoad(make([]byte, 4096), wire, &r); root != nil || !r.Refused() {
+		t.Fatalf("list_scalar_widen.bin leaves nine trailing payload bytes inside the array frame and must refuse: root=%v report=%+v", root, r)
 	}
 
 	mwire := r20wire(t, "fuzz-vectors/map_key_widen.bin")

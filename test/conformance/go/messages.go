@@ -46,7 +46,7 @@ func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V,
 		rep := snap(&r)
 		if fuzz {
 			count = 1
-			rep.malformed = rep.malformed || !ok && !rep.refused
+			rep.refused = rep.refused || !ok
 		} else if !ok {
 			return nil, rep, false
 		}

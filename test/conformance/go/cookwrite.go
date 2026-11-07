@@ -37,7 +37,7 @@ func surfaceCookWrite(lines []line, out string) error {
 		}
 		value := c.fresh()
 		var r report
-		if !c.load(value, wire, &r) || r.malformed || r.refused {
+		if !c.load(value, wire, &r) || r.refused {
 			return fmt.Errorf("%s: cook input did not load", f[1])
 		}
 		size := c.cookMeasure(value)

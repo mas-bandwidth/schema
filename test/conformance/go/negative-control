@@ -30,7 +30,7 @@ cycle)
     ;;
 walk)
     source=$(grep -l 'func (in \*tableJSONIn) scanString' build/tables-generated-go/examples/*TableJson.go)
-    sed 's/in.report.Clamped++/in.report.Clamped += 0/g' "$source" > "$out/source.gotext"
+    sed 's/if clamped {/if false \&\& clamped {/g' "$source" > "$out/source.gotext"
     ;;
 leb|leb-driver)
     source=$(grep -l 'if i > 0 && b == 0' build/tables-generated-go/examples/*Table.go)
