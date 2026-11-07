@@ -278,9 +278,9 @@ func TestLuaTableLoadNegativeControl(t *testing.T) {
         if not skip(r, kind) then`
 	const sabotaged = `      if fd == nil then
         if not skip(r, kind) then`
-	const fixedAnchor = `function F.read(T, name, buf, strict)
+	const fixedAnchor = `local function read_impl(T, name, buf, strict)
   if #buf < 1 then error("malformed") end`
-	const fixedSabotaged = `function F.read(T, name, buf, strict)
+	const fixedSabotaged = `local function read_impl(T, name, buf, strict)
   if true then return {} end
   if #buf < 1 then error("malformed") end`
 	patched := map[string]int{}

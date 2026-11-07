@@ -199,9 +199,9 @@ func TestLuaTableFixedRootReadBoundary(t *testing.T) {
 // wire answers a root again, and requires the check to go red.
 func TestLuaTableFixedRootReadBoundaryNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = `function F.load(T, name, buf, strict, cap)
+	const anchor = `local function load_impl(T, name, buf, strict, cap)
   if #buf < 1 then error("truncated", 0) end`
-	const sabotaged = `function F.load(T, name, buf, strict, cap)
+	const sabotaged = `local function load_impl(T, name, buf, strict, cap)
   if true then return {}, 0, "", 0 end
   if #buf < 1 then error("truncated", 0) end`
 	var patched int

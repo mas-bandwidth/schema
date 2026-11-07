@@ -384,6 +384,13 @@ func luaFuzzVerdict(a luaFuzzAnswer, o luaFuzzOracle) string {
 	if a.counts != o.counts {
 		return fmt.Sprintf("the report differs: Lua says %+v, the engine says %+v", a.counts, o.counts)
 	}
+	// At a fixed root the tolerant read keeps the unchecked value (BASE's
+	// answer) where the engine's decode clamps it, so a mutant the engine
+	// counted clamped has no shared re-save to compare: the report above
+	// is the agreement, and the save is compared only when nothing clamped.
+	if o.fixed && o.counts.clamped > 0 {
+		return ""
+	}
 	if a.saveFail != o.encFail {
 		if a.saveFail {
 			return fmt.Sprintf("the Lua save refused the value it loaded; the engine encoded %d bytes", len(o.encoded))

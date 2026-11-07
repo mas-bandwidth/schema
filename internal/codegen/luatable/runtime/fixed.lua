@@ -268,12 +268,14 @@ end
 
 -- The tolerant read's tallies (docs/SPEC-TABLES.md §3.4, §5.4 of the
 -- fixed-form algorithm): a value the record states past its declared bound
--- is clamped to the bound and counted, and a union tag naming no arm lands
+-- counts clamped (the tolerant value itself rides unchecked, as BASE's
+-- answer does; the strict read refuses it), and a union tag naming no arm lands
 -- None and counts unknown, as the engine's fixed decode counts them. One
 -- tally serves the read in flight; the readers return it.
 local clamp_tally = nil
+local read_strict = false
 local function count_clamp()
-  if clamp_tally ~= nil then clamp_tally.clamped = clamp_tally.clamped + 1 end
+  if clamp_tally ~= nil and not read_strict then clamp_tally.clamped = clamp_tally.clamped + 1 end
 end
 local function count_unknown()
   if clamp_tally ~= nil then clamp_tally.unknown = clamp_tally.unknown + 1 end
@@ -295,17 +297,14 @@ decode_value = function(T, d, buf, pos, size, elemSize)
         below, above = math.ult(v, d.lo), math.ult(d.hi, v)
       end
       if below then
-        v = d.lo
         count_clamp()
       elseif above then
-        v = d.hi
         count_clamp()
       end
     end
     -- a bits(N) field clamps to its mask and counts it (§3.4); a declared
     -- range on the same field already counted the same landing
     if d.lo == nil and d.bits ~= nil and d.bits > 0 and d.bits < w * 8 and type(v) == "number" and v > (1 << d.bits) - 1 then
-      v = (1 << d.bits) - 1
       count_clamp()
     end
     return v, pos + w
@@ -323,10 +322,8 @@ decode_value = function(T, d, buf, pos, size, elemSize)
         return math.ult(a.lo, b.lo)
       end
       if lt128(v, d.lo) then
-        v = { lo = d.lo.lo, hi = d.lo.hi }
         count_clamp()
       elseif lt128(d.hi, v) then
-        v = { lo = d.hi.lo, hi = d.hi.hi }
         count_clamp()
       end
     end
@@ -339,10 +336,8 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     -- lands as +0, uncounted (§3.3, the special values)
     if d.fmin ~= nil and d.fmax ~= nil then
       if v < d.fmin then
-        v = d.fmin
         count_clamp()
       elseif v > d.fmax then
-        v = d.fmax
         count_clamp()
       elseif v == 0 then
         v = 0
@@ -820,7 +815,9 @@ end
 -- the read's clamped and unknown tallies.
 function F.read(T, name, buf, strict)
   clamp_tally = { clamped = 0, unknown = 0 }
+  read_strict = strict and true or false
   local ok, v, h, l = pcall(read_impl, T, name, buf, strict)
+  read_strict = false
   local clamped, unknown = clamp_tally.clamped, clamp_tally.unknown
   clamp_tally = nil
   if not ok then error(v, 0) end
@@ -954,7 +951,9 @@ end
 -- the widened count, and the read's clamped and unknown tallies.
 function F.load(T, name, buf, strict, cap)
   clamp_tally = { clamped = 0, unknown = 0 }
+  read_strict = strict and true or false
   local ok, out, h, l, w = pcall(load_impl, T, name, buf, strict, cap)
+  read_strict = false
   local clamped, unknown = clamp_tally.clamped, clamp_tally.unknown
   clamp_tally = nil
   if not ok then error(out, 0) end
