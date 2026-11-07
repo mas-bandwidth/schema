@@ -105,8 +105,11 @@ func strictGoName(r tabletext.Report) string {
 // the strict read refuses).
 func strictGoToken(name string) string {
 	switch {
-	case name == "clamped":
-		return "clamped"
+	case name == "clamped", name == "out_of_range",
+		strings.HasPrefix(name, "out_of_range:"),
+		strings.HasPrefix(name, "length_over_bound:"),
+		strings.HasPrefix(name, "count_over_bound:"):
+		return "out_of_range"
 	case strings.Contains(name, "string_not_utf8"):
 		return "string_not_utf8"
 	case strings.Contains(name, "text_holds_zero"):

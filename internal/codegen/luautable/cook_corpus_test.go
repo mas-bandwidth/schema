@@ -68,7 +68,7 @@ local C = require("./schema_cook")
 local inputs = require("./inputs")
 local d = St.lookup(%q)
 local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = L.loadTolerant(%q, inputs.wire, r)
+local v = L.loadWalk(%q, inputs.wire, r)
 assert(v ~= nil and not r.malformed and r.refused == 0, "wire refused")
 C.BuildVersion = 0x%016xi
 for pass = 1, 2 do

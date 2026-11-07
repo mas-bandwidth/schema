@@ -208,7 +208,7 @@ local function surfaceWire(lines: { { string } })
 			say(f[2], nil)
 		else
 			-- the TOLERANT read, as the reference leg's driver reads (§6.5)
-			local v = u.load.loadTolerant(f[4], file(f[5]), report())
+			local v = u.load.loadWalk(f[4], file(f[5]), report())
 			if v == nil then
 				error("load refused " .. f[5])
 			end
@@ -247,7 +247,7 @@ local function surfaceReport(lines: { { string } })
 			say(f[2], nil)
 		else
 			local r = report()
-			local v = u.load.loadTolerant(f[4], file(f[5]), r)
+			local v = u.load.loadWalk(f[4], file(f[5]), r)
 			local refused = r.refused > 0
 			local malformed = r.malformed or (v == nil and not refused)
 			local text = string.format("%d,%d,%d,%d,%d,%s,%s\n",
@@ -273,7 +273,7 @@ local function surfaceFraming(lines: { { string } })
 			say(f[2], nil)
 		else
 			local r = report()
-			local v = u.load.loadTolerant(f[4], file(f[5]), r)
+			local v = u.load.loadWalk(f[4], file(f[5]), r)
 			local refused = r.refused > 0
 			local malformed = r.malformed or (v == nil and not refused)
 			local text = string.format("%d,%d,%d,%d,%d,%s,%s\n",
@@ -299,7 +299,7 @@ end
 -- text; json-hostile reads one tree's <root>.json and answers the report and
 -- the value's text, or `refused`. A `no-text` instance is no text case at all.
 -- json-read and json-hostile call one entry point, the TOLERANT text read
--- FromJsonTolerant (test/conformance/README.md).
+-- fromJsonWalk (test/conformance/README.md).
 
 local function surfaceJsonRead(lines: { { string } })
 	for _, f in kind(lines, "instance") do
@@ -309,9 +309,9 @@ local function surfaceJsonRead(lines: { { string } })
 				say(f[2], nil)
 			else
 				local r = report()
-				local v = u.json.FromJsonTolerant(f[4], file("testdata/conformance/tables/json/" .. f[2] .. ".json"), r)
+				local v = u.json.fromJsonWalk(f[4], file("testdata/conformance/tables/json/" .. f[2] .. ".json"), r)
 				if v == nil or r.malformed then
-					error(f[2] .. ": FromJsonTolerant refused the text (" .. tostring(r.reason) .. ")")
+					error(f[2] .. ": fromJsonWalk refused the text (" .. tostring(r.reason) .. ")")
 				end
 				local saved, why = u.save.save(u.S.lookup(f[4]), v)
 				if saved == nil then
@@ -330,7 +330,7 @@ local function surfaceJsonWrite(lines: { { string } })
 			if u == nil or rootOf(u, f[4]) == nil then
 				say(f[2] .. ".json", nil)
 			else
-				local v = u.load.loadTolerant(f[4], file(f[5]), report())
+				local v = u.load.loadWalk(f[4], file(f[5]), report())
 				if v == nil then
 					error(f[2] .. ": load refused " .. f[5])
 				end
@@ -352,7 +352,7 @@ local function surfaceJsonHostile(lines: { { string } })
 			say(f[2], nil)
 		else
 			local r = report()
-			local v = u.json.FromJsonTolerant(f[4], file(f[5] .. "/" .. f[4] .. ".json"), r)
+			local v = u.json.fromJsonWalk(f[4], file(f[5] .. "/" .. f[4] .. ".json"), r)
 			if v == nil or r.malformed or (r.refused or 0) > 0 then
 				sayText(f[2], "refused\n")
 			else
@@ -443,7 +443,7 @@ local function surfaceCookWrite(lines: { { string } })
 			say(f[2], nil)
 			say(f[2] .. "-be", nil)
 		else
-			local v = u.load.loadTolerant(inst[4], file(inst[5]), report())
+			local v = u.load.loadWalk(inst[4], file(inst[5]), report())
 			if v == nil then
 				error(f[2] .. ": cook input did not load")
 			end

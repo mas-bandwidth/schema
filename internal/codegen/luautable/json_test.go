@@ -159,7 +159,7 @@ func jsonHostileProbe(g *generatedUnit, rootName string) string {
 json.SetFlags(SCHEMA_JSON_FLAGS)
 local inputs = require("./inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = json.FromJsonTolerant(%q, inputs.text, report)
+local v = json.fromJsonWalk(%q, inputs.text, report)
 if v == nil then report.malformed = true end
 if report.malformed then
 	print("refused")
@@ -310,7 +310,7 @@ func TestLuauJsonNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "root_full.bin"))
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "wire", "root_full.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +351,7 @@ local function report()
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 end
 local r = report()
-local v = json.FromJsonTolerant("Box", inputs.text, r)
+local v = json.fromJsonWalk("Box", inputs.text, r)
 if v == nil then print("refused"); return end
 print(string.format("km=%d u=%d", r.kindMismatch, r.unknown))
 print(buffer.tostring(json.ToJson("Box", v)))
