@@ -557,24 +557,26 @@ func TestLobsterOptionals(t *testing.T) {
 }
 
 // TestLobsterOptionalsNegativeControl breaks the emitted ENUM-KEYED
-// registration (docs/SPEC-TABLES.md §3.2) in one generated module and
-// requires the byte comparison to go red. The control — the same module
-// unpatched — is green in TestLobsterOptionals.
+// registration (docs/SPEC-TABLES.md §3.2) in a variable-form unit, where the
+// key ids ride on the wire. The valid writer-produced control is byte-equal
+// before the registration is patched.
 func TestLobsterOptionalsNegativeControl(t *testing.T) {
 	t.Parallel()
-	units, _ := readManifest(t)
-	var row loadRow
-	found := false
-	for _, r := range loadRows(t) {
-		if r.kind == "instance" && r.name == "keyed_config" {
-			row, found = r, true
-			break
-		}
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "Probe.schema")
+	const schema = `package probe
+
+enum Color { Red, Blue }
+
+table Root
+{
+    scores [Color]int32 | min = 0, max = 100
+}
+`
+	if err := os.WriteFile(schemaPath, []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if !found {
-		t.Fatalf("the manifest names no instance keyed_config")
-	}
-	paths, err := compiler.GatherPaths(prefix(units[row.unit]))
+	paths, err := compiler.GatherPaths([]string{schemaPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,10 +584,17 @@ func TestLobsterOptionalsNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := os.ReadFile(filepath.Join(root, row.wire))
-	if err != nil {
-		t.Fatal(err)
+	model := tabletext.NewModel(g.u)
+	value := model.New(model.Lookup("Root"))
+	var textReport tabletext.Report
+	if !model.Read(value, []byte(`{"scores":{"Red":7}}`), &textReport) {
+		t.Fatalf("reference JSON input was refused: %+v", textReport)
 	}
+	wire, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatalf("reference writer: %v", err)
+	}
+	row := loadRow{kind: "instance", name: "keyed_control", unit: "probe", root: "Root", data: wire}
 	want, err := goSave(g, row.root, wire)
 	if err != nil {
 		t.Fatal(err)
@@ -593,16 +602,23 @@ func TestLobsterOptionalsNegativeControl(t *testing.T) {
 	if got := runSaveRows(t, g, []loadRow{row}).saved[0]; got != hex.EncodeToString(want) {
 		t.Fatalf("the control, unpatched: got %s, want %x", got, want)
 	}
-	path := filepath.Join(g.dir, "KeyedTable.lobster")
+	path := filepath.Join(g.dir, "ProbeTable.lobster")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = `name: "Red", id: 0x9ff1de19feac1b7c`
-	if n := strings.Count(string(src), anchor); n < 1 {
-		t.Fatalf("the keyed anchor is in the emitted module %d times, want at least 1:\n%s", n, src)
+	const registrationPrefix = `schema_rt.keyed_keys("Root", "scores", [schema_rt.EnumVariant { name: "Red", id: `
+	if n := strings.Count(string(src), registrationPrefix); n != 2 {
+		t.Fatalf("the Red keyed registration occurs %d times, want the two emitted registration sites", n)
 	}
-	patched := strings.ReplaceAll(string(src), anchor, `name: "Red", id: 1`)
+	at := strings.Index(string(src), registrationPrefix)
+	idStart := at + len(registrationPrefix)
+	end := strings.IndexByte(string(src[idStart:]), ',')
+	if end < 0 {
+		t.Fatalf("the Red keyed anchor has no field separator")
+	}
+	anchor := string(src[at : idStart+end])
+	patched := strings.ReplaceAll(string(src), anchor, `schema_rt.keyed_keys("Root", "scores", [schema_rt.EnumVariant { name: "Red", id: 1 }`)
 	if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}

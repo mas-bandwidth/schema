@@ -19,6 +19,7 @@
 // SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 import .schema_tables
+import .descriptors
 
 namespace schema_rt
 
@@ -2173,8 +2174,223 @@ def release(root:Record?) -> void:
         for(found) n:
             push(work, n)
 
+// THE FIXED FORM AT A FIXED ROOT (docs/SPEC-TABLES.md §3.4; Go's decodeFixed
+// in internal/tablewire/fixed.go). A root DECLARED fixed is read as form 3 and
+// nothing else: the form byte is read first, and a form-1 file there is
+// refused as previous_form with nothing decoded and no counter moved. The
+// record is the identity read of this build's own layout: every field at its
+// declared storage width, in declared order (docs/FIXED-FORM-ALGORITHM.md §3).
+// A writer's other layout is read through the lock's lineage, which a Record
+// read does not carry: its hash names layout_unknown.
+
+// fixed_refuse is a read that decoded nothing, by its §6.5 name.
+def fixed_refuse(rep:LoadReport, reason:string) -> Record?:
+    rep.refused = true
+    rep.stopped = true
+    rep.reason = reason
+    return nil
+
+// fixed_damage is a file whose framing does not hold: the whole load is
+// discarded as damage (§4).
+def fixed_damage(rep:LoadReport, reason:string) -> Record?:
+    rep.malformed = true
+    rep.damaged = true
+    rep.stopped = true
+    rep.reason = reason
+    return nil
+
+class FixedRead:
+    r:Reader
+    reason:string = ""
+
+def fixed_fail(c:FixedRead, reason:string) -> bool:
+    c.reason = reason
+    return false
+
+// fixed_body lands every field of one record body at its own offset. A
+// DEPRECATED FIELD'S SLOT is yielded as its declared default and counts
+// nothing (§3.4).
+def fixed_body(c:FixedRead, rec:Record, at:int) -> bool:
+    var off = at
+    for(rec.fields) sl:
+        if not sl.fd.deprecated:
+            if not fixed_field(c, sl, off):
+                return false
+        off += sl.fd.fb
+    return true
+
+def fixed_field(c:FixedRead, sl:Slot, off:int) -> bool:
+    if sl.fd.present != "":
+        sl.present = c.r.b[off] != 0
+        if not sl.present:
+            return true
+        return fixed_payload(c, sl, off + 1)
+    return fixed_payload(c, sl, off)
+
+def fixed_payload(c:FixedRead, sl:Slot, off:int) -> bool:
+    let f = sl.fd
+    let b = c.r.b
+    if f.s == "arr":
+        let e = elem_of(f)
+        var n = f.fcount
+        var at = off
+        if f.array == "counted":
+            let count = read_int32_le(b, off)
+            if count < 0 or count > f.bound:
+                return fixed_fail(c, "count_over_bound")
+            sl.count = count
+            n = count
+            at = off + 4
+        for(n) i:
+            if not fixed_element(c, sl.elems[i], e, f, at + i * f.eb, true):
+                return false
+        return true
+    if f.s == "str" or f.s == "bytes":
+        let used = read_int32_le(b, off)
+        if used < 0 or used > f.bound:
+            return fixed_fail(c, "length_over_bound")
+        if f.wide:
+            let units = wide_units(b, off + 4, 2 * used)
+            if not wide_valid(units):
+                return fixed_fail(c, "text_ill_formed")
+            sl.cell.units = units
+        else:
+            if f.s == "str" and not text_valid(b, off + 4, used):
+                return fixed_fail(c, "text_ill_formed")
+            sl.cell.s = substring(b, off + 4, used)
+        sl.count = used
+        return true
+    return fixed_element(c, sl.cell, f, f, off, false)
+
+// fixed_element reads one leaf, record or union at off. e is the element's
+// own descriptor (a field's, for a non-array field) and f the field whose
+// sizes it rides under.
+def fixed_element(c:FixedRead, cell:Value, e:FieldDescriptor, f:FieldDescriptor, off:int, is_elem:bool) -> bool:
+    let r = c.r
+    let rep = r.st.report
+    let s = e.s
+    if s == "tab":
+        let sub = new_record(table_of(e.t))
+        cell.tab = sub
+        return fixed_body(c, sub, off)
+    if s == "union":
+        return fixed_union(c, cell, e, f, off)
+    if s == "enum":
+        var raw = 0
+        var j = 0
+        while j < f.sw:
+            raw = raw | shl(r.b[off + j], 8 * j)
+            j++
+        if ult(length(e.vs), raw):
+            // A FORGED ORDINAL LANDS None AND COUNTS CLAMPED (§5.4)
+            cell.i = 0
+            rep.clamped++
+        elif raw != 0 and is_deprecated_variant(e.t, variant_name(e, raw)):
+            if is_elem:
+                cell.i = 0
+            else:
+                cell.i = enum_default(e)
+        else:
+            cell.i = raw
+        return true
+    if s == "bool":
+        // the wire says nonzero is true (§3): a forged 2 is true, never damage
+        cell.b = r.b[off] != 0
+        return true
+    var kind = f.k
+    if is_elem:
+        kind = f.ek
+    r.off = off
+    if e.bits > 0:
+        kind = if f.sw == 4: 8 else: 9
+    elif s == "int" and kind_width(kind) != f.sw:
+        // a flags mask rides as its raw eight bytes
+        cell.i = read_int64_le(r.b, off)
+        return true
+    return scalar_at(r, cell, e, kind, kind)
+
+def fixed_union(c:FixedRead, cell:Value, e:FieldDescriptor, f:FieldDescriptor, off:int) -> bool:
+    let un = lookup_union(e.t)
+    assert un
+    let rep = c.r.st.report
+    var tag = 0
+    var j = 0
+    while j < un.tagw:
+        tag = tag | shl(c.r.b[off + j], 8 * j)
+        j++
+    cell.i = 0
+    cell.tab = nil
+    cell.arm = nil
+    if tag == 0:
+        return true
+    if ult(length(un.arms), tag):
+        // A UNION TAG NAMING NO ARM LANDS AS None AND COUNTS UNKNOWN (§4)
+        rep.unknown++
+        return true
+    let a = un.arms[tag - 1]
+    cell.i = tag
+    if a.s == "void":
+        return true
+    if a.s == "tab":
+        let sub = new_record(table_of(a.t))
+        cell.tab = sub
+        return fixed_body(c, sub, off + un.tagw)
+    let fv = new_slot(a)
+    cell.arm = fv
+    return fixed_payload(c, fv, off + un.tagw)
+
+// load_fixed is the read of a declared fixed root (Go's decodeFixed): the
+// form byte first, then the header, the layout and the one record.
+def load_fixed(d:TableDescriptor, data:string, rep:LoadReport) -> Record?:
+    if length(data) < 1:
+        return fixed_damage(rep, "truncated")
+    let form = data[0]
+    if form == 1:
+        return fixed_refuse(rep, "previous_form")
+    if form == 2:
+        return fixed_refuse(rep, "message_form_as_file")
+    if form != 3:
+        return fixed_refuse(rep, "newer_form")
+    if not d.femit:
+        return fixed_refuse(rep, "layout_unsupported")
+    let wire, intact = wire_integrity_body(d, data, 5)
+    if not intact:
+        return fixed_damage(rep, "integrity_mismatch")
+    if length(wire) < 20:
+        return fixed_damage(rep, "truncated")
+    var i = 1
+    while i < 8:
+        if wire[i] != 0:
+            return fixed_damage(rep, "reserved_not_zero")
+        i++
+    let layout_len = read_uint32_le(wire, 16)
+    if layout_len > length(wire) - 20:
+        return fixed_refuse(rep, "layout_malformed")
+    if read_int64_le(wire, 8) != d.lhash:
+        return fixed_refuse(rep, "layout_unknown")
+    if layout_len != length(d.layout) or substring(wire, 20, layout_len) != d.layout:
+        return fixed_refuse(rep, "layout_malformed")
+    let record = 8 + d.fsize
+    let rest = length(wire) - 20 - layout_len
+    if rest % record != 0 or rest == 0:
+        return fixed_damage(rep, "truncated")
+    if rest != record:
+        return fixed_refuse(rep, "batch_too_large")
+    let at = 20 + layout_len
+    if read_int64_le(wire, at) != d.lhash:
+        return fixed_refuse(rep, "layout_malformed")
+    let rec = new_record(d)
+    let st = LoadState { data: wire, ids: [], report: rep, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false }
+    let c = FixedRead { r: reader(st, 0, length(wire)) }
+    if not fixed_body(c, rec, at + 8):
+        return fixed_refuse(rep, c.reason)
+    return rec
+
 // load_walk is the framing walk both reads share (Go's decodeWalk).
 def load_walk(root:string, data:string, report:LoadReport) -> Record?:
+    let d = table_of(root)
+    if d.fixed:
+        return load_fixed(d, data, report)
     if length(data) < 1:
         report.malformed = true
         report.damaged = true
@@ -2186,7 +2402,6 @@ def load_walk(root:string, data:string, report:LoadReport) -> Record?:
         report.stopped = true
         report.reason = if form == 2: "message_form_as_file" else: "newer_form"
         return nil
-    let d = table_of(root)
     let wire, intact = wire_integrity_body(d, data)
     if not intact:
         report.malformed = true
