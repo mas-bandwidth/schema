@@ -1734,6 +1734,16 @@ func widenedFloat32(want, got string) (string, bool) {
 	return fmt.Sprintf("0x%016X", math.Float64bits(float64(math.Float32frombits(uint32(bits))))), true
 }
 
+// booleanFieldMatches is used only for fixture fields declared as optional
+// presence booleans. Runner text may spell those as true/false or 1/0;
+// ordinary numeric and text field comparisons remain exact.
+func booleanFieldMatches(got string, want bool) bool {
+	if want {
+		return got == "true" || got == "1"
+	}
+	return got == "false" || got == "0"
+}
+
 // zeroLoad is the common load: it asserts, as moo's refusedTotal and every
 // "u0 k0 c0 w0 d0" head does, that the load moved no report counter, and hands
 // back the values the row checks.
@@ -2206,10 +2216,13 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 				t.Fatalf("R22: save Outer failed: %s", why)
 			}
 			n, r, f, resaved := zeroLoad(t, runner, u, "Outer", nil, file, -1)
-			for k, want := range map[string]string{"r0.head": "7", "r0.inner.a": "11", "r0.inner.b": `"one"`, "r0.items[1].a": "33", "r0.items[1].b": `"six"`, "r0.items[0].b": `"hi"`, "r0.maybe_present": "true", "r0.maybe.a": "44", "r0.tail": "9"} {
+			for k, want := range map[string]string{"r0.head": "7", "r0.inner.a": "11", "r0.inner.b": `"one"`, "r0.items[1].a": "33", "r0.items[1].b": `"six"`, "r0.items[0].b": `"hi"`, "r0.maybe.a": "44", "r0.tail": "9"} {
 				if f[k] != want {
 					t.Errorf("R22: %s landed %q, want %s", k, f[k], want)
 				}
+			}
+			if !booleanFieldMatches(f["r0.maybe_present"], true) {
+				t.Errorf("R22: r0.maybe_present landed %q, want true", f["r0.maybe_present"])
 			}
 			if n != 1 || !bytes.Equal(resaved, file) {
 				t.Errorf("R22: the nested closure does not round-trip: n=%d r=%q", n, r)
@@ -2343,7 +2356,7 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 			t.Errorf("W2: absent optional payload is not zeroed: %x", body)
 		}
 		nAbsent, rAbsent, fAbsent, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {eOpt}}, file, -1)
-		if nAbsent != 1 || fAbsent["r0.opt_present"] != "false" || fAbsent["r0.plain.b"] != "22" {
+		if nAbsent != 1 || !booleanFieldMatches(fAbsent["r0.opt_present"], false) || fAbsent["r0.plain.b"] != "22" {
 			t.Errorf("W2: the absent optional reads back %d %q %v", nAbsent, rAbsent, fAbsent)
 		}
 
@@ -2353,7 +2366,7 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 		binary.LittleEndian.PutUint32(pb[8:], 3)
 		binary.LittleEndian.PutUint32(pb[12:], 4)
 		n, r, f, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {ePlain}}, MakeFixedFile(ePlain.Wire, ePlain.Layout, pb), -1)
-		if n != 1 || f["r0.opt_present"] != "true" || f["r0.opt.b"] != "4" {
+		if n != 1 || !booleanFieldMatches(f["r0.opt_present"], true) || f["r0.opt.b"] != "4" {
 			t.Errorf("E5 plain into ?T: n=%d r=%q fields=%v", n, r, f)
 		}
 	})
@@ -2434,7 +2447,7 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 		file[body+8] = 99
 		eOwn, _ := LineageEntryOf(u, "T")
 		n, r, f, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {eOwn}}, file, -1)
-		if n != 1 || f["r0.arr_count"] != "1" || f["r0.arr[0]"] != "1" || f["r0.tail"] != "77" || f["r0.opt_present"] != "false" {
+		if n != 1 || f["r0.arr_count"] != "1" || f["r0.arr[0]"] != "1" || f["r0.tail"] != "77" || !booleanFieldMatches(f["r0.opt_present"], false) {
 			t.Errorf("C14/W4: n=%d r=%q fields=%v", n, r, f)
 		}
 		corpus, _ := findFixedCorpus(t, repoRoot)

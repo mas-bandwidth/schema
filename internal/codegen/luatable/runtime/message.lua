@@ -892,13 +892,15 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
       n, at = read_leb(body, at)
       -- bounded before the cursor moves: a length near 2^63 must not wrap
       if n == nil or math.ult(#body - at + 1, n) then return damage() end
-      local field = body:sub(at, at + n - 1)
-      at = at + n
-      if #field < 1 or string.byte(field, 1) ~= 6 then return damage() end
-      local length, nextAt2 = read_leb(field, 2)
-      if length == nil or nextAt2 + length - 1 ~= #field then return damage() end
-      vocabulary = field:sub(nextAt2, nextAt2 + length - 1)
+      -- the field's framing and its length are read in place and checked
+      -- against the bound before any part of it is copied out
+      local fieldEnd = at + n - 1
+      if n < 1 or string.byte(body, at) ~= 6 then return damage() end
+      local length, nextAt2 = read_leb(body, at + 1)
+      if length == nil or nextAt2 + length - 1 ~= fieldEnd then return damage() end
       if length > maxBytes then return too_large(version) end
+      vocabulary = body:sub(nextAt2, nextAt2 + length - 1)
+      at = at + n
       seenVocabulary = seenVocabulary + 1
     else
       -- THE ANNOUNCEMENT READS TOLERANTLY (docs/SPEC-TABLES.md §3.3): an

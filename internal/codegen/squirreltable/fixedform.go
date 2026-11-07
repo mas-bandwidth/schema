@@ -56,9 +56,10 @@ func fixedTable(m *Module, st *ir.Struct) {
 	if st.IsMapEntry() || fixedRefusal(st) != "" || !fixedSupported(st) {
 		return
 	}
-	if !st.IsTable {
-		// A NON-TABLE TYPE REACHED FROM A FIXED ROOT still needs its body
-		// helpers: the root's FixedWriteBody/FixedDecodeBody call them by name.
+	if !st.IsTable || !st.FixedDeclared {
+		// A NON-TABLE TYPE (OR NESTED VARIABLE TABLE) REACHED FROM A FIXED ROOT
+		// still needs its body helpers: the root's FixedWriteBody/FixedDecodeBody
+		// call them by name.
 		emitFixedWriteBody(m, st)
 		emitFixedDecodeBody(m, st)
 		return
@@ -75,6 +76,11 @@ func fixedTable(m *Module, st *ir.Struct) {
 	m.Printf("_M.%sFixedLayout <- \"%s\";\n", st.Name, byteHex(layout))
 	m.Printf("_M.%sFixedHash <- %s;\n", st.Name, squirrel.HexLit(hash))
 	m.Printf("_M.%sFixedRecord <- %d;\n", st.Name, rec)
+	trailer := int64(0)
+	if st.Integrity != "" {
+		trailer = 4
+	}
+	m.Printf("_M.%sFixedMeasure <- function(count = 1) { return count < 0 ? -1 : %d + count * %d; };\n", st.Name, int64(20+len(layout))+trailer, rec)
 
 	lineage := lineageOf(m.Unit)
 	strict := lineage != nil
@@ -102,22 +108,17 @@ func emitFixedPlans(m *Module, st *ir.Struct, entries []FixedLineageEntry, own u
 		if e.Retired {
 			continue
 		}
+		if fixedValidateLayout(e.Layout) != "" {
+			continue
+		}
 		m.Printf("_M.%sFixedPlan%d <- function(v, b, at, lim) {\n", st.Name, i)
 		if e.Wire == own {
 			m.Printf("  return _M.%sFixedDecodeBody(v, b, at, lim);\n", st.Name)
 			m.Printf("};\n\n")
 			continue
 		}
-		for _, p := range fixedPlanFor(st, e.Layout) {
-			expr := "v." + squirrel.Member(p.field)
-			if p.exact {
-				fixedEmitDecodeField(m, p.field, p.srcAt, expr, "  ")
-				continue
-			}
-			m.Printf("  if (at + %d + %d <= lim) %s = _rt_fixed.get(b, at + %d, %d);\n",
-				p.srcAt, p.srcSize, expr, p.srcAt, p.srcSize)
-		}
-		m.Printf("};\n\n")
+		emitFixedPlanBody(m, st, e.Layout)
+		m.Printf("  return null;\n};\n\n")
 	}
 }
 
@@ -128,12 +129,19 @@ func emitFixedLineage(m *Module, st *ir.Struct, entries []FixedLineageEntry, flo
 	m.Printf("_M.%sFixedFloor <- %d;\n", st.Name, floor)
 	m.Printf("_M.%sFixedLineage <- [\n", st.Name)
 	for i, e := range entries {
+		refuse := fixedValidateLayout(e.Layout)
+		if refuse == "" && e.Record > 0 && int64(len(e.Layout)) >= 4+17 {
+			rootSz := int64(uint32(e.Layout[4+9]) | uint32(e.Layout[4+10])<<8 | uint32(e.Layout[4+11])<<16 | uint32(e.Layout[4+12])<<24)
+			if 8+rootSz != e.Record {
+				refuse = "layout_record_too_large"
+			}
+		}
 		decode := "null"
-		if !e.Retired {
+		if !e.Retired && refuse == "" {
 			decode = fmt.Sprintf("_M.%sFixedPlan%d", st.Name, i)
 		}
-		m.Printf("  { hash = %s, layout = _rt_fixed.blobOfHex(\"%s\"), record = %d, decode = %s },\n",
-			squirrel.HexLit(e.Wire), byteHex(e.Layout), e.Record, decode)
+		m.Printf("  { hash = %s, layoutHex = \"%s\", layout = null, record = %d, refuse = %s, decode = %s },\n",
+			squirrel.HexLit(e.Wire), byteHex(e.Layout), e.Record, squirrel.StringLit([]byte(refuse)), decode)
 	}
 	m.Printf("];\n\n")
 }
@@ -306,6 +314,7 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("_M.%sFixedLoadTolerant <- function(b, out, cap) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	m.Printf("  _M.FixedField <- null;\n")
+	m.Printf("  _M.FixedWidened <- 0;\n")
 	// EVERY REFUSAL OF THE LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS INCLUDED
 	// (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4): the
 	// reasons answer the Go fixed reader's in its order — the form byte and the
@@ -332,16 +341,17 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("  for (local i = 1; i < 8; i++) if (b[i] != 0) { _M.FixedReason = \"reserved_not_zero\"; return -1; }\n")
 	m.Printf("  local L = _rt_fixed.u32le(b, 16);\n")
 	m.Printf("  if (L < 4 || 20 + L > len) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-	m.Printf("  local n = _rt_fixed.u32le(b, 20);\n")
-	m.Printf("  if (n != (L - 4) / 17 || 4 + n * 17 != L) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-	m.Printf("  local rb = 8 + _rt_fixed.u32le(b, 20 + 4 + 9);\n")
-	m.Printf("  if (rb < 8) { _M.FixedReason = \"truncated\"; return -1; }\n")
-	m.Printf("  if (rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
 	if !strict {
+		m.Printf("  local n = _rt_fixed.u32le(b, 20);\n")
+		m.Printf("  if (n < 1 || n != (L - 4) / 17 || 4 + n * 17 != L) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		m.Printf("  if (b[20 + 4 + 8] != 13) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		m.Printf("  local rb = 8 + _rt_fixed.u32le(b, 20 + 4 + 9);\n")
+		m.Printf("  if (rb <= 8 || rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
 		m.Printf("  local rest = len - 20 - L;\n")
-		m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 		m.Printf("  local count = rest / rb;\n")
 		m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
+		m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
 		m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
 		m.Printf("  for (local k = 0; k < count; k++) {\n")
 		m.Printf("    local at = 20 + L + k * rb;\n")
@@ -359,17 +369,20 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("  local pick = -1;\n")
 	m.Printf("  for (local i = 0; i < _M.%sFixedLineage.len(); i++)\n", st.Name)
 	m.Printf("    if (_M.%sFixedLineage[i].hash == h) { pick = i; break; }\n", st.Name)
-	m.Printf("  if (pick < 0) { _M.FixedReason = \"layout_unknown\"; return -1; }\n")
+	m.Printf("  if (pick < 0) { _M.FixedReason = (_M.%sFixedLineage.len() == 0 ? \"layout_unsupported\" : \"layout_unknown\"); return -1; }\n", st.Name)
 	m.Printf("  if (pick < _M.%sFixedFloor) { _M.FixedReason = \"layout_unsupported\"; return -1; }\n", st.Name)
 	m.Printf("  local e = _M.%sFixedLineage[pick];\n", st.Name)
-	m.Printf("  if (L != e.layout.len()) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (L * 2 != e.layoutHex.len()) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (e.layout == null) e.layout = _rt_fixed.blobOfHex(e.layoutHex);\n")
 	m.Printf("  for (local i = 0; i < L; i++) if (b[20 + i] != e.layout[i]) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-	m.Printf("  rb = e.record;\n")
-	m.Printf("  if (rb <= 8) { _M.FixedReason = \"truncated\"; return -1; }\n")
+	m.Printf("  if (e.refuse != \"\") { _M.FixedReason = e.refuse; return -1; }\n")
+	m.Printf("  local rb = e.record;\n")
+	m.Printf("  if (rb <= 8 || rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
 	m.Printf("  local rest = len - 20 - L;\n")
 	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
+	m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
 	m.Printf("  for (local k = 0; k < count; k++) {\n")
 	m.Printf("    local at = 20 + L + k * rb;\n")
 	m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
@@ -434,6 +447,7 @@ func fixedEmitWritePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 			// the Squirrel table surface stores a counted array as the array
 			// alone, born at its min length, so len() is the live extent and
 			// the slack stays the template's zeros.
+			m.Printf("%sif (%s.len() < 0 || %s.len() > %d) return \"count_over_bound\";\n", ind, expr, expr, f.ArrayBound)
 			m.Printf("%s_rt_fixed.puti32(b, at + %d, %s.len());\n", ind, at, expr)
 			count = expr + ".len()"
 		}
@@ -462,12 +476,26 @@ func fixedIsText(f *ir.Field) bool {
 // string unit is one byte; a WIDE unit is two, little-endian, and the length
 // counts CODE UNITS (docs/SPEC-TABLES.md §3.4, §7.2).
 func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
-	m.Printf("%s_rt_fixed.puti32(b, at + %s, %s.len());\n", ind, off, expr)
+	m.Printf("%sif (%s.len() < 0 || %s.len() > %d) return \"length_over_bound\";\n", ind, expr, expr, f.Type.Size)
 	if f.Type.Kind == ir.TWString {
-		m.Printf("%sfor (local i = 0; i < %s.len(); i++) { b[at + %s + %d + 2 * i] = %s[i] & 0xff; b[at + %s + %d + 2 * i + 1] = (%s[i] >> 8) & 0xff; }\n",
-			ind, expr, off, fixedCountBytes, expr, off, fixedCountBytes, expr)
+		m.Printf("%s{\n%s  local n = %s.len();\n", ind, ind, expr)
+		m.Printf("%s  for (local i = 0; i < n; i++) {\n", ind)
+		m.Printf("%s    local u = %s[i];\n", ind, expr)
+		m.Printf("%s    if (u == 0 || u < 0 || u > 0xFFFF) return \"text_ill_formed\";\n", ind)
+		m.Printf("%s    if (u >= 0xD800 && u <= 0xDBFF) {\n", ind)
+		m.Printf("%s      if (i + 1 >= n || %s[i + 1] < 0xDC00 || %s[i + 1] > 0xDFFF) return \"text_ill_formed\";\n", ind, expr, expr)
+		m.Printf("%s      b[at + %s + %d + 2 * i] = u & 0xff; b[at + %s + %d + 2 * i + 1] = (u >> 8) & 0xff;\n", ind, off, fixedCountBytes, off, fixedCountBytes)
+		m.Printf("%s      i++; u = %s[i];\n", ind, expr)
+		m.Printf("%s    } else if (u >= 0xDC00 && u <= 0xDFFF) return \"text_ill_formed\";\n", ind)
+		m.Printf("%s    b[at + %s + %d + 2 * i] = u & 0xff; b[at + %s + %d + 2 * i + 1] = (u >> 8) & 0xff;\n", ind, off, fixedCountBytes, off, fixedCountBytes)
+		m.Printf("%s  }\n%s}\n", ind, ind)
+		m.Printf("%s_rt_fixed.puti32(b, at + %s, %s.len());\n", ind, off, expr)
 		return
 	}
+	if f.Type.Kind == ir.TString {
+		m.Printf("%sif (_rt_fixed.textIllFormed(%s, 0, %s.len())) return \"text_ill_formed\";\n", ind, expr, expr)
+	}
+	m.Printf("%s_rt_fixed.puti32(b, at + %s, %s.len());\n", ind, off, expr)
 	m.Printf("%sfor (local i = 0; i < %s.len(); i++) b[at + %s + %d + i] = %s[i] & 0xff;\n", ind, expr, off, fixedCountBytes, expr)
 }
 
@@ -516,11 +544,30 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 					continue
 				}
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
-				if fixedIsText(v.F) {
-					// a text arm is a length and its buffer at the arm's start
-					fixedEmitWriteText(m, v.F, fmt.Sprintf("%s + %d", off, tag), expr+"."+ir.GoExportName(v.Name), ind+"  ")
-				} else {
-					fixedEmitWriteElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", dyn)
+				armExpr := expr + "." + ir.GoExportName(v.Name)
+				armInd := ind + "  "
+				switch {
+				case v.F.KeyEnum != "":
+					m.Printf("%sfor (local i = 0; i < %d; i++) {\n", armInd, v.F.KeyEnumRef.Max)
+					fixedEmitWriteElement(m, v.F, at+tag, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))))
+					m.Printf("%s}\n", armInd)
+				case v.F.Array == ir.ArrayFixed || v.F.Array == ir.ArrayCounted:
+					base := at + tag
+					if v.F.Array == ir.ArrayCounted {
+						m.Printf("%slocal c = %s.len();\n", armInd, armExpr)
+						m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", armInd, v.F.ArrayBound)
+						m.Printf("%s_rt_fixed.puti32(b, at + %s + %d, c);\n", armInd, off, tag)
+						base += fixedCountBytes
+						m.Printf("%sfor (local i = 0; i < c; i++) {\n", armInd)
+					} else {
+						m.Printf("%sfor (local i = 0; i < %d; i++) {\n", armInd, v.F.ArrayBound)
+					}
+					fixedEmitWriteElement(m, v.F, base, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))))
+					m.Printf("%s}\n", armInd)
+				case fixedIsText(v.F):
+					fixedEmitWriteText(m, v.F, fmt.Sprintf("%s + %d", off, tag), armExpr, armInd)
+				default:
+					fixedEmitWriteElement(m, v.F, at+tag, armExpr, armInd, dyn)
 				}
 				m.Printf("%s}\n", ind)
 			}
@@ -556,7 +603,18 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 			ind, put, off, expr, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
 		return
 	}
+	if f.Type.Kind == ir.TBool {
+		m.Printf("%sb[at + %s] = (%s ? 1 : 0);\n", ind, off, expr)
+		return
+	}
 	m.Printf("%s_rt_fixed.put(b, at + %s, %d, %s);\n", ind, off, fixedStorageBytes(f.Type), expr)
+}
+
+func dynAdd(dyn, term string) string {
+	if dyn == "0" {
+		return term
+	}
+	return dyn + " + " + term
 }
 
 // emitFixedDecodeBody emits the reader mirrored: every field is decoded only
@@ -610,7 +668,7 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 			// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5).
 			m.Printf("%s  local c = _rt_fixed.geti32(b, at + %d);\n", ind, at)
 			m.Printf("%s  if (c < 0 || c > %d) return \"count_over_bound\";\n", ind, f.ArrayBound)
-			m.Printf("%s  %s.resize(c);\n", ind, expr)
+			m.Printf("%s  if (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", ind, expr, expr, expr, expr, elemZero(f))
 			base += fixedCountBytes
 			m.Printf("%s  for (local i = 0; i < c; i++) {\n", ind)
 		} else {
@@ -642,17 +700,38 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 		}
 		if r, ok := f.Type.Ref.(*ir.Union); ok {
 			tag := fixedUnionTagBytes(r)
-			m.Printf("%s%s.Type = _rt_fixed.get(b, at + %s, %d);\n", ind, expr, off, tag)
-			m.Printf("%sif (%s.Type > %d) %s.Type = 0;\n", ind, expr, len(r.Variants), expr)
+			m.Printf("%s%s.Type = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, tag)
+			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) %s.Type = 0;\n", ind, expr, expr, len(r.Variants), expr)
 			for i, v := range r.Variants {
 				if v.F == nil {
 					continue
 				}
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
-				if fixedIsText(v.F) {
-					fixedEmitDecodeText(m, v.F, fmt.Sprintf("%s + %d", off, tag), expr+"."+ir.GoExportName(v.Name), ind+"  ")
-				} else {
-					fixedEmitDecodeElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", dyn, false)
+				armExpr := expr + "." + ir.GoExportName(v.Name)
+				armInd := ind + "  "
+				switch {
+				case v.F.KeyEnum != "":
+					m.Printf("%sfor (local i = 0; i < %d; i++) {\n", armInd, v.F.KeyEnumRef.Max)
+					fixedEmitDecodeElement(m, v.F, at+tag, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))), true)
+					m.Printf("%s}\n", armInd)
+				case v.F.Array == ir.ArrayFixed || v.F.Array == ir.ArrayCounted:
+					base := at + tag
+					if v.F.Array == ir.ArrayCounted {
+						m.Printf("%slocal c = _rt_fixed.geti32(b, at + %s + %d);\n", armInd, off, tag)
+						m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", armInd, v.F.ArrayBound)
+						m.Printf("%sif (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", armInd, armExpr, armExpr, armExpr, armExpr, elemZero(v.F))
+						base += fixedCountBytes
+						m.Printf("%sfor (local i = 0; i < c; i++) {\n", armInd)
+					} else {
+						m.Printf("%swhile (%s.len() < %d) %s.append(%s);\n", armInd, armExpr, v.F.ArrayBound, armExpr, elemZero(v.F))
+						m.Printf("%sfor (local i = 0; i < %d; i++) {\n", armInd, v.F.ArrayBound)
+					}
+					fixedEmitDecodeElement(m, v.F, base, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))), true)
+					m.Printf("%s}\n", armInd)
+				case fixedIsText(v.F):
+					fixedEmitDecodeText(m, v.F, fmt.Sprintf("%s + %d", off, tag), armExpr, armInd)
+				default:
+					fixedEmitDecodeElement(m, v.F, at+tag, armExpr, armInd, dyn, false)
 				}
 				m.Printf("%s}\n", ind)
 			}
@@ -668,7 +747,7 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 				land = squirrel.StringLit([]byte(f.DefVariant))
 			}
 			m.Printf("%s{\n", ind)
-			m.Printf("%s  local ev = _rt_fixed.get(b, at + %s, %d);\n", ind, off, fixedStorageBytes(f.Type))
+			m.Printf("%s  local ev = _rt_fixed.getu(b, at + %s, %d);\n", ind, off, fixedStorageBytes(f.Type))
 			m.Printf("%s  local val = null;\n", ind)
 			for i, v := range e.Variants {
 				kw := "if"
@@ -702,6 +781,14 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 		m.Printf("%s{\n%s  local x = _rt_fixed.%s(b, at + %s);\n", ind, ind, get, off)
 		m.Printf("%s  if (x == null) { _M.FixedField <- %s; return \"non_finite_float\"; }\n", ind, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
 		m.Printf("%s  %s = x;\n%s}\n", ind, expr, ind)
+		return
+	}
+	if f.Type.Kind == ir.TBool {
+		m.Printf("%s%s = b[at + %s] != 0;\n", ind, expr, off)
+		return
+	}
+	if (f.Type.Kind == ir.TInt && !f.Type.Signed) || (f.Type.Kind == ir.TFixed && !f.Type.Signed) || f.Type.Kind == ir.TBits || (f.Type.Kind == ir.TNamed && f.Type.Ref != nil) {
+		m.Printf("%s%s = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, fixedStorageBytes(f.Type))
 		return
 	}
 	m.Printf("%s%s = _rt_fixed.get(b, at + %s, %d);\n", ind, expr, off, fixedStorageBytes(f.Type))
@@ -903,7 +990,7 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 						fixedDst{})
 					continue
 				}
-				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name, tag)
+				fixedWalkPayload(w, v.F, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F), tag)
 			}
 			return
 		case *ir.Enum:

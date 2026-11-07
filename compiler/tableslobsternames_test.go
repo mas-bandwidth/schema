@@ -159,6 +159,10 @@ func TestLobsterRuntimeFileNamesAreClaimed(t *testing.T) {
 	t.Parallel()
 	const withTable = "package probe\n\ntable Gadget\n{\n    n int32\n}\n"
 	const tableFree = "package probe\n\ntype Gadget\n{\n    n int32\n}\n"
+	viewFiles, err := lobstertable.Generate(unitFromNamedSource(t, "Probe", tableFree))
+	if err != nil {
+		t.Fatal(err)
+	}
 	var homes []string
 	for name := range lobstertable.Runtime() {
 		if base, ok := strings.CutSuffix(name, ".lobster"); ok {
@@ -175,9 +179,25 @@ func TestLobsterRuntimeFileNamesAreClaimed(t *testing.T) {
 			if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, withTable), Options{}); err == nil {
 				t.Fatalf("a schema file named %s beside a table was accepted: the unit would emit %s.lobster twice", base, base)
 			}
-			if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, tableFree), Options{}); err != nil {
-				t.Fatalf("a schema file named %s in a table-free unit was refused (%v): a claim costs a schema nothing until it declares a table", base, err)
+			_, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, tableFree), Options{})
+			if viewFiles[base+".lobster"] != nil {
+				if err == nil {
+					t.Fatalf("a schema file named %s collides with the table-free unit registry runtime", base)
+				}
+			} else if err != nil {
+				t.Fatalf("unused table runtime %s reserved a table-free schema name: %v", base, err)
 			}
 		})
+	}
+}
+
+func TestLobsterUnitViewFileNameIsClaimed(t *testing.T) {
+	t.Parallel()
+	for _, source := range []string{"package probe\ntype Gadget { n int32 }\n", "package probe\ntable Gadget { n int32 }\n"} {
+		for _, base := range []string{"probeView", "PROBEVIEW", "Probeview"} {
+			if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, source), Options{}); err == nil || !strings.Contains(err.Error(), "unit registry") {
+				t.Fatalf("registry file collision %s: %v", base, err)
+			}
+		}
 	}
 }
