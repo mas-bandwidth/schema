@@ -123,7 +123,7 @@ func init() {
 		Name{Name: "tableMapStoreKey", What: "map storage, ordering, key validation and text"},
 		Name{Name: "tableMapStoredKey", What: "map storage, ordering, key validation and text"},
 		Name{Name: "tableBuilderLoad", What: "editable file load through the builder allocator"},
-		Name{Name: "tableRegionCount", What: "unclamped authoring storage count"},
+		Name{Name: "tableRegionCount", What: "authoring storage count"},
 		Name{Name: "tableExtentFieldEmpty", What: "unreached container refusal"},
 		Name{Name: "TableList", What: "unbounded container storage, framing and descriptor walks"},
 		Name{Name: "tableJSONTextBytes", What: "a text list's total (docs/SPEC-TABLES.md §2.13)"},

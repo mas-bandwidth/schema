@@ -1282,11 +1282,12 @@ GO_DISCARD_NC := build/go-discard-nc
 .PHONY: tables-go-discard-negative-control
 tables-go-discard-negative-control:
 	@rm -rf $(GO_DISCARD_NC) && mkdir -p $(GO_DISCARD_NC)
-	@sed -e 's|g.pf("\\tif report.Malformed {\\n")|g.pf("\\tif false {\\n") // NEGATIVE CONTROL: the fixed discard is gone|' \
-		internal/codegen/gotable/read.go > $(GO_DISCARD_NC)/read.go.txt
-	@cmp -s internal/codegen/gotable/read.go $(GO_DISCARD_NC)/read.go.txt && \
+	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 {/if false {/' \
+		-e 's/n := rest \/ recordBytes/_ = rest; n := int64(1); for len(at) < int(recordBytes) { at = append(at, 0) }/' \
+		internal/codegen/gotable/fixedform.go > $(GO_DISCARD_NC)/fixedform.go.txt
+	@cmp -s internal/codegen/gotable/fixedform.go $(GO_DISCARD_NC)/fixedform.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/gotable/read.go":"%s/$(GO_DISCARD_NC)/read.go.txt"}}\n' \
+	@printf '{"Replace":{"%s/internal/codegen/gotable/fixedform.go":"%s/$(GO_DISCARD_NC)/fixedform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/fixed.json
 	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
 			./internal/codegen/gotable > $(GO_DISCARD_NC)/fixed.log 2>&1; then \
@@ -1296,7 +1297,7 @@ tables-go-discard-negative-control:
 	@grep -q "fixed: LoadTolerant answered true on damage" $(GO_DISCARD_NC)/fixed.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(GO_DISCARD_NC)/fixed.log; exit 1; }
-	@sed -e 's/if report.Malformed{clear(region);return nil}/if false{clear(region);return nil}/' \
+	@sed -e 's/if report.Refused(){clear(region);return nil}/if false{clear(region);return nil}/' -e 's/if root==nil||read.Refused()/if root==nil/' \
 		internal/codegen/gotable/regions.go > $(GO_DISCARD_NC)/regions.go.txt
 	@cmp -s internal/codegen/gotable/regions.go $(GO_DISCARD_NC)/regions.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; } || true

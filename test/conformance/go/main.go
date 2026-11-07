@@ -65,8 +65,8 @@ func readManifest(path string) ([]line, error) {
 // shape of its own and each row copies into it.
 
 type report struct {
-	unknown, kindMismatch, widened, clamped, duplicate int32
-	malformed, refused                                 bool
+	unknown, widened int32
+	refused          bool
 }
 
 type codec struct {
@@ -248,16 +248,12 @@ func surfaceReport(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		ok := c.load(value, wire, &rep)
-		malformed := "false"
-		if rep.malformed || !ok && !rep.refused {
-			malformed = "true"
-		}
 		verdict := "read"
-		if rep.refused {
+		if rep.refused || !ok {
 			verdict = "refused"
 		}
-		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
-		if !rep.refused && malformed == "false" {
+		text := []byte(fmt.Sprintf("%d,0,%d,0,0,false,%s\n", rep.unknown, rep.widened, verdict))
+		if verdict == "read" {
 			if text, err = appendValue(c, value, text, f[1]); err != nil {
 				return err
 			}
@@ -329,22 +325,18 @@ func surfaceFraming(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		ok := c.load(value, wire, &rep)
-		malformed := "false"
-		if rep.malformed || !ok && !rep.refused {
-			malformed = "true"
-		}
 		verdict := "read"
-		if rep.refused {
+		if rep.refused || !ok {
 			verdict = "refused"
 		}
-		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
+		text := []byte(fmt.Sprintf("%d,0,%d,0,0,false,%s\n", rep.unknown, rep.widened, verdict))
 		noValue := len(f) > 5 && f[5] == "no-value"
-		if !rep.refused && malformed == "false" {
+		if verdict == "read" {
 			if err := spillSave(c, value, out, f[1]); err != nil {
 				return err
 			}
 		}
-		if !rep.refused && !noValue {
+		if verdict == "read" && !noValue {
 			if c.toJson == nil {
 				if err := spillAbsent(out, f[1]); err != nil {
 					return err
@@ -560,8 +552,8 @@ func surfaceJsonHostile(lines []line, out string) error {
 		var rep report
 		ok := c.fromJson(value, text, &rep)
 		answer := []byte("refused\n")
-		if ok && !rep.malformed {
-			answer = []byte(fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate))
+		if ok && !rep.refused {
+			answer = []byte(fmt.Sprintf("%d,0,%d,0,0,false,read\n", rep.unknown, rep.widened))
 			if answer, err = appendValue(c, value, answer, f[1]); err != nil {
 				return err
 			}

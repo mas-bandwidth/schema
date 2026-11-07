@@ -11,9 +11,6 @@ type R19Report struct {
 	Retained, RetainLost int32
 	Widened              int32
 	Unknown              int32
-	KindMismatch         int32
-	Clamped              int32
-	Duplicate            int32
 }
 
 // readM2Wire reads the M2 table wire format and returns a report.
