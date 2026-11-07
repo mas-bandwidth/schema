@@ -1150,7 +1150,12 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
 	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 	g.pf("\t}\n")
-	g.pf("\tif (r.refused) throw FormatException(r.reason);\n")
+	// A caller who supplied a report reads the verdict from it and lands the
+	// type's defaults; a caller who did not gets the refusal as a throw.
+	g.pf("\tif (r.refused) {\n")
+	g.pf("\t\tif (report == null) throw FormatException(r.reason);\n")
+	g.pf("\t\treturn %s();\n", st.Name)
+	g.pf("\t}\n")
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 }
