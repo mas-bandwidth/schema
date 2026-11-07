@@ -8,10 +8,11 @@
 # lodash-escaped glob with an unanchored test. GitHub Actions' own user id
 # 41898282 is dropped, as the action drops it.
 #
-# Red on drift: main's tip is not covered, or one of the unlinked house names
-# the open pulls use has fallen off the list. Those names are not on the tip
-# (the tip is a linked login), so a tip-only check would stay green through
-# the failure mode in #1799. Both are checked.
+# Red on drift: the allowlist is not exactly the logins gafferongames,rowan-claude
+# (a name or a wildcard came back; Glenn, 2026-10-22: "allow-list logins only"),
+# or main's tip is not covered. Only the tip is re-checked, so history from
+# before the switch (unlinked house names the old name list covered) is never
+# re-judged; every commit after it must be a linked login.
 #
 # No secrets. The caa job and its org token stay in cla.yml, on
 # pull_request_target only. This file does not define a job named caa, so a

@@ -6,9 +6,14 @@ Same rule as contributor-assistant/github-action v2.6.1
 the allowlist in .github/workflows/cla.yml. The action cannot run here.
 It queries a pull request and refuses anything else.
 
-Exits non-zero when the tip would be rejected, or when an unlinked house
-name from issue #1799 is no longer covered. A passing tip is not enough:
-the tip is a linked login, and the red pulls were not.
+Exits non-zero when the allowlist is not exactly the two logins
+(gafferongames, rowan-claude: no names, no wildcards; Glenn, 2026-10-22,
+"allow-list logins only"), or when the main tip would be rejected.
+
+Only the tip is checked, so only commits made after the switch to
+logins-only are held to it: history from before carries unlinked house
+names (nova-sprint, worker, Worker N, ...) that the old name list covered
+and that this list deliberately does not.
 """
 
 import json
@@ -22,8 +27,9 @@ TIP_URL = "https://api.github.com/repos/mas-bandwidth/schema/commits/main"
 # github-actions[bot]. The action drops this id and then passes if nobody
 # is left (src/graphql.ts).
 GITHUB_ACTIONS_ID = 41898282
-# Git author names with no GitHub user. The ledger cannot store them.
-HOUSE_GIT_NAMES = ("Glenn Fiedler", "Nova Fleet", "nova-merge")
+# The allowlist, exactly: GitHub logins only. A name or a wildcard is matched
+# against the git author name of an unlinked commit, which anyone can set.
+ALLOWED_LOGINS = ("gafferongames", "rowan-claude")
 
 
 def allowlist_from(text):
@@ -91,10 +97,11 @@ def fetch_tip():
 def main():
     with open(ALLOWLIST_PATH, encoding="utf-8") as handle:
         allow = allowlist_from(handle.read())
-    missing = [name for name in HOUSE_GIT_NAMES if not covered(name, allow)]
-    if missing:
+    entries = tuple(p.strip() for p in allow.split(",") if p.strip())
+    if sorted(entries) != sorted(ALLOWED_LOGINS):
         raise SystemExit(
-            "caa self-test: allowlist does not cover %s" % ", ".join(missing)
+            "caa self-test: allowlist is %r; it must be exactly the logins %s"
+            % (allow, ",".join(ALLOWED_LOGINS))
         )
     commit = fetch_tip()
     name, user_id = identity(commit)
@@ -108,8 +115,7 @@ def main():
             % (sha, name)
         )
     print("caa self-test: schema main tip %s identity %r is covered" % (sha, name))
-    for house_name in HOUSE_GIT_NAMES:
-        print("caa self-test: %r is covered" % house_name)
+    print("caa self-test: allowlist is exactly %s" % ",".join(ALLOWED_LOGINS))
 
 
 if __name__ == "__main__":
