@@ -104,4 +104,24 @@ fixed table FixedRoot
 		t.Fatalf("read %s: %v", namesPath, err)
 	}
 	check(namesPath, string(data))
+
+	// The hostile corpus (test/cpp-hostile) binds the generated API by
+	// hand, so it is scanned too: a retired name there is a compile
+	// failure in CI, not a gate failure, unless this scan catches it.
+	corpusDir := filepath.Join("..", "..", "..", "test", "cpp-hostile")
+	entries, err := os.ReadDir(corpusDir)
+	if err != nil {
+		t.Fatalf("read %s: %v", corpusDir, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		p := filepath.Join(corpusDir, e.Name())
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		check(p, string(b))
+	}
 }
