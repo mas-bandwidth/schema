@@ -81,9 +81,9 @@ int main(void)
     /* 1. Reference #1 mutant: framing commands exactly 224 region bytes. */
     CHECK(wide_load_measure(ref_mutant, (int64_t)sizeof(ref_mutant)) == 224);
     memset(&report, 0, sizeof(report));
-    root = wide_load_tolerant(region, (int64_t)sizeof(region), ref_mutant, (int64_t)sizeof(ref_mutant), &report);
+    root = wide_load(region, (int64_t)sizeof(region), ref_mutant, (int64_t)sizeof(ref_mutant), &report);
     CHECK(root != NULL);
-    CHECK(!report.malformed && !report.refused && report.unknown == 1);
+    CHECK(!report.refused && report.unknown == 1);
     elem = wide_wides_at(&root->wides, 0);
     CHECK(elem != NULL && (((uintptr_t)elem) & 15u) == 0u);
 
@@ -95,14 +95,14 @@ int main(void)
     retain.id_capacity = 64;
     root = wide_load_retain(region, (int64_t)sizeof(region), ref_mutant, (int64_t)sizeof(ref_mutant), &retain, &report);
     CHECK(root != NULL);
-    CHECK(!report.malformed && !report.refused && report.unknown == 1 && report.retain_lost == 1);
+    CHECK(!report.refused && report.unknown == 1 && report.retain_lost == 1);
 
     /* 2. Widen #0 mutant: uint8 -> uint128 list widening commands 224 bytes. */
     CHECK(wide_load_measure(widen_mutant, (int64_t)sizeof(widen_mutant)) == 224);
     memset(&report, 0, sizeof(report));
-    root = wide_load_tolerant(region, (int64_t)sizeof(region), widen_mutant, (int64_t)sizeof(widen_mutant), &report);
+    root = wide_load(region, (int64_t)sizeof(region), widen_mutant, (int64_t)sizeof(widen_mutant), &report);
     CHECK(root != NULL);
-    CHECK(!report.malformed && !report.refused && report.widened == 1);
+    CHECK(!report.refused && report.widened == 1);
     elem = wide_wides_at(&root->wides, 1);
     CHECK(elem != NULL && elem->lo == 255u && elem->hi == 0u);
     return 0;
@@ -154,7 +154,7 @@ int main(void)
     memset(&report, 0, sizeof(report));
     root = gate_load(region, (int64_t)sizeof(region), gate_mutant, (int64_t)sizeof(gate_mutant), &report);
     CHECK(root != NULL);
-    CHECK(!report.malformed && !report.refused && report.unknown == 1 && report.blob_shared == 0);
+    CHECK(!report.refused && report.unknown == 1 && report.blob_shared == 0);
     CHECK(root->reach.type == REACH_TYPE_TEXT);
     CHECK(root->reach.as.text.value == 0);
     CHECK(root->past == 6);

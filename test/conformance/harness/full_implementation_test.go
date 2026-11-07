@@ -119,7 +119,7 @@ func TestImplementationCannotOmitUnclaimedFeatures(t *testing.T) {
 				root = "Used"
 			}
 			inst := implementationInput(t, u, root, tc.text)
-			inst.Root, inst.GoWireRefusal = tc.root, tc.refusal
+			inst.Root, inst.WireRefused = tc.root, tc.refusal != ""
 			m := &Manifest{Instances: []Instance{inst}}
 			p, witnesses := implementationAudit(m, []string{"go"}, []string{"timestamp"}, tc.registration, implementationUnits{"unit": u}, tc.gen)
 			text := strings.Join(p, "\n")

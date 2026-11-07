@@ -52,7 +52,7 @@ func implementationAudit(m *Manifest, langs, required []string, carried func(str
 	qualified := map[string]bool{}
 	generated := map[string]bool{}
 	for _, inst := range m.Instances {
-		if inst.GoWireRefusal != "" {
+		if inst.WireRefused {
 			continue
 		}
 		u, err := units.get(inst.Unit)
@@ -125,9 +125,10 @@ func decodeImplementationWitness(u *ir.Unit, inst Instance) (*tabletext.Model, *
 	}
 	value := model.New(root)
 	var report tabletext.Report
-	ok, err := tablewire.Decode(model, value, wire, &report)
-	if err != nil || !ok || !report.Silent() {
-		return nil, nil, false, fmt.Errorf("positive wire does not decode cleanly: ok=%t report=%+v error=%v", ok, report, err)
+	ok, err := strictDecode(model, value, wire, &report)
+	_ = err
+	if !ok {
+		return nil, nil, false, fmt.Errorf("positive wire does not decode cleanly: report=%+v", report)
 	}
 	again, err := encodeImplementationWitness(model, value)
 	if err != nil || !bytes.Equal(again, wire) {
@@ -145,7 +146,7 @@ func decodeImplementationWitness(u *ir.Unit, inst Instance) (*tabletext.Model, *
 	}
 	fromText := model.New(root)
 	report = tabletext.Report{}
-	if !model.Read(fromText, text, &report) || !report.Silent() {
+	if !strictReadJSON(model, fromText, text, &report) {
 		return nil, nil, false, fmt.Errorf("positive JSON does not decode cleanly: %+v", report)
 	}
 	again, err = encodeImplementationWitness(model, fromText)

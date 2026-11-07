@@ -31,8 +31,8 @@ func TestGenerateReportsIncludesDamagedFixtures(t *testing.T) {
 			t.Errorf("%s: got %v (present %v), want %v", name, counts, ok, want)
 		}
 	}
-	if !got["parts_index_out_of_range"].Malformed {
-		t.Fatal("damaged pointer fixture lost its malformed result")
+	if got["parts_index_out_of_range"] != "refused" {
+		t.Fatal("damaged pointer fixture lost its refusal")
 	}
 }
 

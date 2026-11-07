@@ -34,12 +34,11 @@ func TestWideRegionFramingAlignment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	answer, err := root.oracle(wire)
-	if err != nil {
-		t.Fatal(err)
+	align := ir.TableRegionAlign(u)
+	rootSize := ir.RecordLayout(u, root.def).Size
+	nodeSize := (ir.RecordLayout(u, root.model.Lookup("Node")).Size + align - 1) & -align
+	measured, whole, refused := tablewire.FileRegionMeasure(u, root.def, wire)
+	if align != 16 || rootSize != 32 || nodeSize != 16 || refused || !whole || measured != 80 {
+		t.Fatalf("wide framing: align=%d root=%d node=%d measured=%d whole=%v refused=%v", align, rootSize, nodeSize, measured, whole, refused)
 	}
-	if root.align != 16 || root.rootStorage != 32 || root.maxStorage != 16 || !answer.exact || answer.bytes != 80 {
-		t.Fatalf("wide framing: align=%d root=%d node=%d answer=%+v", root.align, root.rootStorage, root.maxStorage, answer)
-	}
-
 }

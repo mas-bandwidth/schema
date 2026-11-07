@@ -47,8 +47,8 @@ int main(void)
     TableReport report;
     memset(&report, 0, sizeof(report));
 
-    int64_t n = cfg_fixed_load_tolerant(&loaded, 1, buf, written, NULL, 0, NULL, &report);
-    if (n != 1) { fprintf(stderr, "FAIL: cfg_fixed_load returned %ld\n", (long)n); free(buf); return 1; }
+    int64_t n = cfg_fixed_load(&loaded, 1, buf, written, NULL, 0, NULL, &report);
+    if (n != -1) { fprintf(stderr, "FAIL: cfg_fixed_load returned %ld, want a refusal\n", (long)n); free(buf); return 1; }
 
     /* Assert: tag past max -> None */
     if (loaded.effect.type != EFFECT_TYPE_NONE) {
@@ -59,12 +59,12 @@ int main(void)
         printf("PASS: union tag past arms -> None (tag 3 -> EFFECT_TYPE_NONE)\n");
     }
 
-    /* Assert: clamped counter incremented */
-    if (report.clamped < 1) {
-        fprintf(stderr, "FAIL: expected clamped >= 1, got %d\n", report.clamped);
+    /* Assert: the refusal is out_of_range */
+    if (!report.refused || report.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE) {
+        fprintf(stderr, "FAIL: expected an out_of_range refusal, got refused=%d reason=%d\n", report.refused, report.refuse_reason);
         failures++;
     } else {
-        printf("PASS: clamped counter = %d\n", report.clamped);
+        printf("PASS: tag past the arm set refuses out_of_range\n");
     }
 
     /* Assert: arm payload is undisturbed (None arm has no payload) */

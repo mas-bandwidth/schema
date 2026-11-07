@@ -25,23 +25,21 @@ func TestFileBlobSizingIncludesPayloads(t *testing.T) {
 		t.Fatal("pinned blob file did not frame")
 	}
 	blobBytes := int64(0)
+	align := ir.TableRegionAlign(root.model.Unit)
 	for _, record := range records {
 		if record.TypeId == ir.BytesWireTypeId || record.TypeId == ir.StringWireTypeId {
 			extra := int64(0)
 			if record.TypeId == ir.StringWireTypeId {
 				extra = 1
 			}
-			blobBytes += root.roundStorage(8 + record.Length + extra)
+			blobBytes += (8 + record.Length + extra + align - 1) & -align
 		}
 	}
 	if blobBytes != 72 {
 		t.Fatalf("blob storage = %d, want 72", blobBytes)
 	}
-	answer, err := root.oracle(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !answer.exact || answer.bytes != 400 {
-		t.Fatalf("region = %d exact=%v, want 400 exact", answer.bytes, answer.exact)
+	measured, whole, refused := tablewire.FileRegionMeasure(root.model.Unit, root.def, data)
+	if refused || !whole || measured != 400 {
+		t.Fatalf("region = %d whole=%v refused=%v, want 400 whole", measured, whole, refused)
 	}
 }

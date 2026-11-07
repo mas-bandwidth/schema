@@ -159,16 +159,16 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 	if g.retain {
 		g.pf("    table_retain_discard(retention,0,0);\n")
 	}
-	g.pf("    if ( !table_reader_leb( r, &ref ) || ref > r->id_count ) { r->report->malformed = 1; return 0; }\n    if ( ref == 0 ) { value->type = 0; return 1; }\n    if ( element ) { value->type = 0; }\n    if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }\n    kind = table_reader_get8( r );\n    if ( !table_reader_span( r, &arm ) ) { r->report->malformed = 1; return 0; }\n    value->type = 0;\n    switch ( table_reader_id_at( r, ref ) )\n    {\n")
+	g.pf("    if ( !table_reader_leb( r, &ref ) || ref > r->id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n    if ( ref == 0 ) { value->type = 0; return 1; }\n    if ( element ) { value->type = 0; }\n    if ( !table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n    kind = table_reader_get8( r );\n    if ( !table_reader_span( r, &arm ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n    value->type = 0;\n    switch ( table_reader_id_at( r, ref ) )\n    {\n")
 	for ordinal, v := range un.Variants {
 		g.pf("        case 0x%016xull:\n        {\n", ir.TableWireId(v.WireName()))
 		k := armWireKind(v)
-		g.pf("            if ( kind != %d && !table_kind_widens( kind, %d ) ) { r->report->kind_mismatch++; break; }\n", k, k)
+		g.pf("            if ( kind != %d && !table_kind_widens( kind, %d ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; }\n", k, k)
 		if !v.Void() && ir.ArmWireFixedWidth(v.F) > 0 {
 			g.pf("            switch ( kind )\n            {\n")
 			for source := 1; source <= 29; source++ {
 				if source == k || ir.TableKindWidens(source, k) {
-					g.pf("                case %d: if ( arm.size != %d ) { r->report->malformed = 1; goto next_arm_%s; } break;\n", source, tableKindWidth(source), v.Name)
+					g.pf("                case %d: if ( arm.size != %d ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; goto next_arm_%s; } break;\n", source, tableKindWidth(source), v.Name)
 				}
 			}
 			g.pf("                default: break;\n            }\n")
@@ -181,7 +181,7 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 			g.wireRefusalCheck("            ")
 		}
 		if k != tkUnion {
-			g.pf("            if ( arm.offset != arm.size ) { r->report->malformed = 1; break; }\n")
+			g.pf("            if ( arm.offset != arm.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 		}
 		g.pf("            if ( kind != %d ) { r->report->widened++; }\n", k)
 		g.pf("            value->type = %s;\n", enumConst(un.Name+"Type", v.Name))
@@ -227,7 +227,7 @@ func (g *tableGen) wireBarePayload(f *ir.Field, expr, ind string) {
 func (g *tableGen) wireReadArm(v ir.UnionVariant, dst, ind string) {
 	f := v.F
 	k := armWireKind(v)
-	bad := "r->report->malformed = 1; break;"
+	bad := "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break;"
 	switch {
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		// Validate the whole framed index before resolving it. Trailing bytes
@@ -246,11 +246,11 @@ func (g *tableGen) wireReadArm(v ir.UnionVariant, dst, ind string) {
 		g.pf("%s%s( &arm, &%s );\n", ind, g.api(v.Type, "load_body"), dst)
 	case f.Type.Kind == ir.TString && !f.Type.Blob():
 		g.pf("%suint64_t keep;\n%sif ( !table_wire_utf8( arm.buffer, (uint64_t)arm.size ) ) { %s }\n", ind, ind, bad)
-		g.pf("%skeep = table_wire_utf8_clamp( arm.buffer, (uint64_t)arm.size, %d ); if ( keep != (uint64_t)arm.size ) { r->report->clamped++; }\n", ind, f.Type.Size)
+		g.pf("%skeep = table_wire_utf8_clamp( arm.buffer, (uint64_t)arm.size, %d ); if ( keep != (uint64_t)arm.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, f.Type.Size)
 		g.pf("%smemcpy( %s, arm.buffer, (size_t)keep ); %s[keep]=0; %s_length=(int32_t)keep; arm.offset=arm.size;\n", ind, dst, dst, dst)
 	case f.Type.Kind == ir.TWString:
 		g.pf("%sint64_t keep, i;\n%sif ( arm.size%%2 || !table_wire_utf16( arm.buffer, arm.size/2 ) ) { %s }\n", ind, ind, bad)
-		g.pf("%skeep=table_wire_utf16_clamp( arm.buffer, arm.size/2, %d ); if ( keep != arm.size/2 ) { r->report->clamped++; }\n", ind, f.Type.Size)
+		g.pf("%skeep=table_wire_utf16_clamp( arm.buffer, arm.size/2, %d ); if ( keep != arm.size/2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, f.Type.Size)
 		g.pf("%sfor ( i=0; i<keep; i++ ) { %s[i]=table_wire_utf16_unit( arm.buffer,i ); } %s[keep]=0; %s_length=(int32_t)keep; arm.offset=arm.size;\n", ind, dst, dst, dst)
 	case f.IsMap() || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Blob():
 		// Reuse the field's array payload walk with the arm's already-bounded
@@ -270,7 +270,7 @@ func (g *tableGen) wireReadArm(v ir.UnionVariant, dst, ind string) {
 		g.pf("%s    %s }\n", ind, bad)
 	default:
 		// A short payload is confined to this arm and leaves it unset.
-		g.wireScalarRead(f, dst, "arm", "kind", ind, "r->report->malformed = 1; goto bad_arm_"+v.Name+";")
+		g.wireScalarRead(f, dst, "arm", "kind", ind, "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; goto bad_arm_"+v.Name+";")
 		g.pf("%sgoto read_arm_%s;\n%sbad_arm_%s: break;\n%sread_arm_%s: ;\n", ind, v.Name, ind, v.Name, ind, v.Name)
 	}
 }

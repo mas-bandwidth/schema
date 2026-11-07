@@ -1,0 +1,50 @@
+{
+  "name": "world",
+  "tier": "None",
+  "inner": {
+    "tag": "in",
+    "hits": 3
+  },
+  "items": [
+    {
+      "tag": "",
+      "hits": 1
+    },
+    {
+      "tag": "",
+      "hits": 2
+    }
+  ],
+  "banks": {
+    "Low": {
+      "tag": "",
+      "hits": 4
+    },
+    "High": {
+      "tag": "",
+      "hits": 0
+    }
+  },
+  "pick": {
+    "alpha": {
+      "tag": "",
+      "hits": 5
+    }
+  },
+  "head": {
+    "value": 77,
+    "next": null
+  },
+  "entries": {
+    "k1": {
+      "tag": "",
+      "hits": 7
+    }
+  },
+  "list": [
+    {
+      "tag": "",
+      "hits": 8
+    }
+  ]
+}

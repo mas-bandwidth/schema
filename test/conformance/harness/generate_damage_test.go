@@ -1,13 +1,9 @@
 package main
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // A report row describes the decoder's verdict even when the wire cannot
@@ -26,22 +22,23 @@ func TestGenerateReportRowsRetainDamageVerdict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, pinned) {
-		t.Fatalf("generated report rows changed: got %+v, pinned %+v", got, pinned)
+	if len(got) != len(pinned) {
+		t.Fatalf("report row count: got %d want %d", len(got), len(pinned))
 	}
-	if !got["parts_index_out_of_range"].Malformed {
-		t.Fatal("the malformed pointer row disappeared")
+	for name, want := range pinned {
+		if v, ok := got[name]; !ok || v != want {
+			t.Errorf("%s: got %s (present=%t), want %s", name, v, ok, want)
+		}
 	}
-	if !got["message_as_file"].Refused {
-		t.Fatal("the named form refusal disappeared")
-	}
-	if got["parts_elem_kind"].Malformed || got["parts_elem_kind"].KindMismatch != 1 {
-		t.Fatal("the recoverable kind mismatch became damage")
+	for _, name := range []string{"parts_index_out_of_range", "message_as_file", "parts_elem_kind"} {
+		if got[name] != "refused" {
+			t.Errorf("%s lost its refusal", name)
+		}
 	}
 }
 
-// A decoder diagnostic is not permission to swallow setup errors or the
-// storage-cap refusal. Neither produces the ordinary damage report above.
+// A missing declaration is infrastructure failure; an invalid count is a read
+// refusal and must still produce a scored report row.
 func TestGenerateReportRowsKeepFatalErrors(t *testing.T) {
 	m, _, _ := corpus(t)
 	cases := []struct {
@@ -57,13 +54,21 @@ func TestGenerateReportRowsKeepFatalErrors(t *testing.T) {
 			path := filepath.Join(dir, "reports.txt")
 			reports := &Manifest{Units: m.Units, Reports: []ReportCase{{Name: tc.name, Unit: tc.unit, Root: tc.root, Wire: tc.wire}}}
 			err := generate(reports, filepath.Join(dir, "json"), path)
-			if err == nil {
-				t.Fatal("fatal report-generation error was swallowed")
-			}
 			if tc.count {
-				if _, ok := errors.AsType[*tablewire.CountRefusal](err); !ok {
-					t.Fatalf("wanted storage-cap refusal, got %v", err)
+				if err != nil {
+					t.Fatal(err)
 				}
+				got, err := readReports(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got[tc.name] != "refused" {
+					t.Fatal("oversized count was not refused")
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("setup error was swallowed")
 			}
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
 				t.Fatalf("failed generation published a report file: %v", err)

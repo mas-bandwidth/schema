@@ -4,7 +4,6 @@ package main
 // reference. Exercise it and C with the shared hostile-wire mutators, including
 // exact LoadMeasure answers for partial and duplicated container fields.
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -105,11 +104,8 @@ func cCollectionDifferential(t *testing.T, mode string) {
 		if err != nil {
 			t.Fatalf("C++ died: %v\n%s", err, expected.stderr.String())
 		}
-		// THE ONE NAMED DIFFERENCE (docs/SPEC-TABLES.md §2.5): C refuses to
-		// save a blob two slots name, by name, and the C++ reference still
-		// writes it. Everything before the save is still held equal.
-		standardRefusal := a.blobShared && !e.saveFail
-		if a.loaded != e.loaded || a.measure != e.measure || a.report != e.report || (a.loaded && !standardRefusal && (a.saveFail != e.saveFail || !bytes.Equal(a.saved, e.saved))) {
+		answer := oracleAnswer{accepted: e.accepted(), encoded: e.saved, encFail: e.saveFail}
+		if verdict := wireVerdict(roots[index], a, answer, len(wire)); verdict != "" {
 			dir := filepath.Join("build", "c-collections-failures")
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				t.Fatal(err)

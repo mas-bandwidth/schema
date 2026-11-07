@@ -401,25 +401,25 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
 static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     uint64_t count, i; int64_t span; TableReader tail;
-    if ( bytes < 1 || buffer == NULL ) { report->malformed = 1; return 0; }
+    if ( bytes < 1 || buffer == NULL ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     if ( buffer[0] != 1 ) { report->refused = 1; report->reason = buffer[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_TABLE_NEWER_FORM; return 0; }
-    if ( bytes < 9 ) { report->malformed = 1; return 0; }
+    if ( bytes < 9 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     tail = table_reader_make( buffer + bytes - 8, 8, report ); count = table_reader_get64( &tail );
-    if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->malformed = 1; return 0; }
+    if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     /* THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
-       more than 4096 entries is malformed for the whole wire, even where the
+       more than 4096 entries is damaged for the whole wire, even where the
        buffer would hold them, so the distinctness walk below stays bounded no
        matter how large the file is. */
-    if ( count > 4096 ) { report->malformed = 1; return 0; }
+    if ( count > 4096 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     span = (int64_t) count * 8 + 8;
     *r = table_reader_make( buffer + 1, bytes - span - 1, report );
     r->ids = buffer + bytes - span; r->id_count = count; r->nested = 0;
-    /* THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
+    /* THE ENTRIES ARE DISTINCT: a table that carries one id twice is damaged
        for the whole wire (docs/SPEC-TABLES.md §3). The walk is one open-addressed
        probe over a fixed 8192-slot stack table, and there is no pairwise arm
        left to fall back to: the count cap above guarantees the probe completes,
        so a hostile file cannot steer a reader into an O(n^2) scan. A slot
-       occupied by a different id is not a duplicate: compare the stored id, not
+       occupied by a different id is not a repeated: compare the stored id, not
        the hash. The mix is table_writer_id's. */
     if ( count > 1 )
     {
@@ -436,7 +436,7 @@ static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffe
             for ( ;; )
             {
                 if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
-                if ( seen[slot] == id ) { report->malformed = 1; return 0; }
+                if ( seen[slot] == id ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 slot = (slot + 1) & 8191u;
             }
         }
@@ -448,7 +448,7 @@ static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffe
     {
         uint64_t ref; uint8_t kind;
         if ( !table_reader_leb( &tail, &ref ) ) { break; }
-        if ( ref == 0 ) { if ( tail.offset != tail.size ) { report->malformed = 1; return 0; } break; }
+        if ( ref == 0 ) { if ( tail.offset != tail.size ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; } break; }
         if ( ref > count || !table_reader_has( &tail, 1 ) ) { break; }
         kind = table_reader_get8( &tail ); if ( !table_reader_skip( &tail, kind ) ) { break; }
     }

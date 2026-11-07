@@ -438,7 +438,7 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_copy_run( uint8_t * d, const uint
 static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * clamped, int32_t * widened )
+                                                      int32_t * out_of_range, int32_t * widened )
 {
     switch ( p->op )
     {
@@ -455,14 +455,14 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
             uint8_t * d = dst + p->dst;
             const uint8_t * s = src + p->src;
             uint32_t i;
-            for ( i = 0; i < p->size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
+            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*out_of_range)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
             break;
         }
         case kTableFixedCount:
         {
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
-            if ( v < 0 ) { v = 0; (*clamped)++; }
-            else if ( v > (int32_t) p->size ) { v = (int32_t) p->size; (*clamped)++; }
+            if ( v < 0 ) { v = 0; (*out_of_range)++; }
+            else if ( v > (int32_t) p->size ) { v = (int32_t) p->size; (*out_of_range)++; }
             memcpy( dst + p->dst, &v, 4 );
             break;
         }
@@ -471,8 +471,8 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
             const uint32_t unit = ( p->meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
-            if ( v < 0 ) { v = 0; (*clamped)++; }
-            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
+            if ( v < 0 ) { v = 0; (*out_of_range)++; }
+            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*out_of_range)++; }
             memcpy( dst + p->dst, &v, 4 );
             table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
             if ( p->meta != kTableFixedTextBytes )
@@ -497,14 +497,14 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p->aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
-            /* AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS CLAMPED
+            /* AN ORDINAL PAST THE WRITER'S SET LANDS None AND IS REFUSED AS OUT OF RANGE
                (§5.4, §5.8 row 12): the compiled plan counts it exactly as the
                identity plan's bounds pass does, so the SAME forged bytes land
-               the SAME clamped == 1 on either plan. The test is the WRITER's
+               the SAME out_of_range == 1 on either plan. The test is the WRITER's
                top ordinal, table[0], and the pass that runs after this loop
                tests THIS reader's own top value — which a remapped 0 never
                trips, so the two never count the one event twice. */
-            else if ( raw != 0 ) { (*clamped)++; }
+            else if ( raw != 0 ) { (*out_of_range)++; }
             memcpy( dst + p->dst, &v, p->dstsize );
             break;
         }
@@ -546,13 +546,13 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
             /* AN UNGUARDED None CONST WITH dstsize = THE WRITER'S ARM COUNT:
                a tag past that set lands None (already written) and COUNTS, so
                the compiled plan counts it exactly as the identity plan's bounds
-               pass does and the SAME forged bytes land the SAME clamped == 1 on
+               pass does and the SAME forged bytes land the SAME out_of_range == 1 on
                either plan (schema#1254, §5.4, §5.8 row 12). */
             if ( p->aux == 0 && p->dstsize != 0 && p->guard == SCHEMA_TABLE_FIXED_NO_GUARD )
             {
                 uint64_t raw = 0;
                 memcpy( &raw, src + p->src, p->size );
-                if ( raw > (uint64_t) p->dstsize ) { (*clamped)++; }
+                if ( raw > (uint64_t) p->dstsize ) { (*out_of_range)++; }
             }
             break;
         }
@@ -581,7 +581,7 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
        through is a pointer the compiler must assume aliases the destination,
        and every store to a field would then reload it. */
-    int32_t clamped = 0;
+    int32_t out_of_range = 0;
     int32_t widened = 0;
     int32_t i;
     /* THE ORDINAL REMAP TABLES RIDE ABOVE THE ENTRIES IN THE SAME STORAGE, so
@@ -591,7 +591,7 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &clamped, &widened );
+        table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -617,9 +617,9 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
             if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
+        table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened );
     }
-    report->clamped += clamped;
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
     report->widened += widened;
 }
 
@@ -649,7 +649,7 @@ typedef struct TableFixedFill
 } TableFixedFill;
 
 /* ONE LINEAGE ENTRY'S PLAN, laid down from THE LOCK'S BYTES and off every load
-   path. unknown and kind_mismatch are THE COMPILE CENSUS — a writer field no
+   path. unknown and kind_changed are THE COMPILE CENSUS — a writer field no
    reader field names is counted ONCE PER ENDPOINT and never per record (§5.4) — and
    a load carries them onto the report once, after the record loop, only on a
    read that RETURNS. reason is the name a lineage entry that could not be
@@ -662,7 +662,7 @@ typedef struct TableFixedLineagePlan
     const TableFixedFill * fill;
     int32_t fill_count;
     int32_t unknown;
-    int32_t kind_mismatch;
+    int32_t kind_changed;
     int reason;
 } TableFixedLineagePlan;
 
@@ -1334,7 +1334,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 break;
             }
             /* A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4). */
-            if ( c->report != NULL ) { c->report->kind_mismatch++; }
+            if ( c->report != NULL ) { c->report->refused=1, c->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; }
             break;
         }
         switch ( me.kind )
@@ -1553,7 +1553,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 }
                 else if ( c->report != NULL )
                 {
-                    c->report->kind_mismatch++;
+                    c->report->refused=1, c->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
                 }
                 break;
             }

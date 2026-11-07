@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // TestValueGoldensAreTheOracles holds every committed value golden to the
@@ -21,8 +23,12 @@ func TestValueGoldensAreTheOracles(t *testing.T) {
 	m, pinned, u := corpus(t)
 	for _, rc := range m.Reports {
 		c := pinned[rc.Name]
-		inst, _ := decodeWire(t, u, rc.Unit, rc.Root, rc.Wire)
-		checkGolden(t, rc.Name, rc.Value, !c.Malformed && !c.Refused, u, rc.Unit, inst)
+		inst, report := decodeWire(t, u, rc.Unit, rc.Root, rc.Wire)
+		accepted := inst != nil && !report.Refused
+		if accepted == pinnedRowRefuses(c) {
+			t.Errorf("%s: accepted=%t, pinned=%s", rc.Name, accepted, c)
+		}
+		checkGolden(t, rc.Name, rc.Value, accepted, u, rc.Unit, inst)
 	}
 	for _, h := range m.Hostiles {
 		unit, err := u.get(h.Unit)
@@ -36,8 +42,11 @@ func TestValueGoldensAreTheOracles(t *testing.T) {
 		model := tabletext.NewModel(unit)
 		inst := model.New(model.Lookup(h.Root))
 		var report tabletext.Report
-		model.Read(inst, text, &report)
-		checkGolden(t, h.Name, h.Value, !h.Refused, u, h.Unit, inst)
+		accepted := strictReadJSON(model, inst, text, &report)
+		if accepted == h.Refused {
+			t.Errorf("%s: accepted=%t, expected refusal=%t", h.Name, accepted, h.Refused)
+		}
+		checkGolden(t, h.Name, h.Value, accepted, u, h.Unit, inst)
 	}
 }
 
@@ -45,8 +54,8 @@ func checkGolden(t *testing.T, name, path string, reads bool, u *units, unitKey 
 	t.Helper()
 	golden, err := os.ReadFile(path)
 	if !reads {
-		if err == nil {
-			t.Errorf("%s: the row owes no value and %s is a golden nobody owes — run: make conformance-generate", name, path)
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s: a refused row must have no value file %s: %v — run: make conformance-generate", name, path, err)
 		}
 		return
 	}
@@ -65,6 +74,25 @@ func checkGolden(t *testing.T, name, path string, reads bool, u *units, unitKey 
 	if !bytes.Equal(oneText(text), golden) {
 		t.Errorf("%s: %s is not the oracle's value — run: make conformance-generate", name, path)
 	}
+	model := tabletext.NewModel(unit)
+	expected := model.New(inst.Def)
+	var report tabletext.Report
+	if !strictReadJSON(model, expected, golden, &report) {
+		t.Errorf("%s: accepted value golden refuses", name)
+		return
+	}
+	actualWire, err := tablewire.Encode(model, inst)
+	if err != nil {
+		t.Fatalf("%s: accepted value write-back: %v", name, err)
+	}
+	expectedWire, err := tablewire.Encode(model, expected)
+	if err != nil {
+		t.Fatalf("%s: golden value write-back: %v", name, err)
+	}
+	if !bytes.Equal(actualWire, expectedWire) {
+		t.Errorf("%s: canonical write-back differs from the complete golden value", name)
+	}
+
 }
 
 // TestValueComparisonIsRedOnAValue is the harness's own negative control for
@@ -79,7 +107,7 @@ func TestValueComparisonIsRedOnAValue(t *testing.T) {
 	if err := os.WriteFile(value, golden, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	row := Hostile{Name: "row", Counts: Counts{}, Value: value}
+	row := Hostile{Name: "row", Value: value}
 	e := hostileExpectation(row, "go")
 	if e.value != value || e.verdictOnly {
 		t.Fatalf("a carried read owes the value: %+v", e)
@@ -94,7 +122,7 @@ func TestValueComparisonIsRedOnAValue(t *testing.T) {
 		scoreAnswer("go", "json-hostile", dir, e, Instance{}, r)
 		return r
 	}
-	verdict := []byte("0,0,0,0,0,false,read\n")
+	verdict := []byte("read\n")
 	if r := score(append(append([]byte{}, verdict...), golden...), e); r.pass != 1 {
 		t.Fatalf("the oracle's value is red: %v", r.failures)
 	}
@@ -115,23 +143,22 @@ func TestValueComparisonIsRedOnAValue(t *testing.T) {
 	if r := score(verdict, e); r.pass != 0 || r.missing != 1 || len(r.failures) != 0 {
 		t.Fatalf("a value answered absent is not counted missing: pass=%d missing=%d %v", r.pass, r.missing, r.failures)
 	}
-	if r := score([]byte("1,0,0,0,0,false,read\n"), e); r.missing != 0 || len(r.failures) != 1 {
+	if r := score([]byte("refused\n"), e); r.missing != 0 || len(r.failures) != 1 {
 		t.Fatalf("an absent value excuses a wrong verdict: missing=%d %v", r.missing, r.failures)
 	}
 	if err := os.Remove(filepath.Join(dir, "row.absent")); err != nil {
 		t.Fatal(err)
 	}
 
-	// the uncarried port: its verdict line alone, whatever value follows
-	row.CarriedBy, row.Uncarried = []string{"go"}, "refused"
+	// Legacy carried-by metadata cannot exempt a port from the same value.
 	e = hostileExpectation(row, "lua")
-	if !e.verdictOnly || e.value != "" {
-		t.Fatalf("an uncarried port is held to a value: %+v", e)
+	if e.verdictOnly || e.value != value {
+		t.Fatalf("port exemption survived: %+v", e)
 	}
-	if r := score([]byte("refused\n"), e); r.pass != 1 {
-		t.Fatalf("the uncarried verdict is red: %v", r.failures)
+	if r := score([]byte("refused\n"), e); r.pass != 0 {
+		t.Fatal("legacy uncarried refusal passed")
 	}
-	if r := score(verdict, e); r.pass != 0 {
-		t.Fatal("the uncarried port passes on the standard's verdict")
+	if r := score(append(append([]byte{}, verdict...), golden...), e); r.pass != 1 {
+		t.Fatalf("complete accepted value failed: %v", r.failures)
 	}
 }

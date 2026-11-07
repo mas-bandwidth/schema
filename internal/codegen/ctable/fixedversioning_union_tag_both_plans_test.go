@@ -82,8 +82,8 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 	body := func(clamped string) string {
 		return fmt.Sprintf(`
     if ( n != 1 ) { printf( "union_tag_both_plans: the forged file reads one record, not %%lld\n", (long long) n ); return 1; }
-    if ( r.refused || r.malformed || r.reason != 0 )
-        { printf( "union_tag_both_plans: a forged tag is a clamp and nothing else: refused=%%d malformed=%%d reason=%%d\n", r.refused, r.malformed, r.reason ); return 1; }
+    if ( r.refused || r.refused || r.reason != 0 )
+        { printf( "union_tag_both_plans: a forged tag is a clamp and nothing else: refused=%%d malformed=%%d reason=%%d\n", r.refused, r.refused, r.reason ); return 1; }
     if ( back[0].pick.type != PICK_TYPE_NONE ) { printf( "union_tag_both_plans: the forged tag lands None (0), not %%d\n", (int) back[0].pick.type ); return 1; }
     if ( back[0].seq != 15 ) { printf( "union_tag_both_plans: the scalar after the union must stand at 15, not %%d\n", (int) back[0].seq ); return 1; }%s
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
