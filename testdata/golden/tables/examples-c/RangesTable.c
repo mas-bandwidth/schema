@@ -1244,26 +1244,19 @@ static SCHEMA_UNUSED int tabledemo_table_json_scan_unit( tabledemo_table_json_in
                     int high = tabledemo_table_json_hex4( in );
                     if ( high < 0 ) { in->bad = 1; return 0; }
                     uint32_t code = (uint32_t) high;
-                    if ( high >= 0xd800 && high <= 0xdbff && in->pos + 2 <= in->size &&
-                         in->text[in->pos] == '\\' && in->text[in->pos + 1] == 'u' )
+                    if ( high >= 0xd800 && high <= 0xdbff )
                     {
-                        int64_t mark = in->pos;
-                        in->pos += 2;
-                        int low = tabledemo_table_json_hex4( in );
-                        if ( low >= 0xdc00 && low <= 0xdfff )
+                        int low = -1;
+                        if ( in->pos + 2 <= in->size &&
+                             in->text[in->pos] == '\\' && in->text[in->pos + 1] == 'u' )
                         {
-                            code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
+                            in->pos += 2;
+                            low = tabledemo_table_json_hex4( in );
                         }
-                        else
-                        {
-                            in->pos = mark; // a lone lead surrogate rides as itself
-                        }
+                        if ( low < 0xdc00 || low > 0xdfff ) { in->bad = 1; return 0; }
+                        code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
                     }
-                    // a surrogate half that never found its partner has no
-                    // UTF-8 encoding: encoding it anyway would manufacture
-                    // CESU-8 — invalid UTF-8 — out of input that was valid
-                    // JSON, so it reads as the replacement character
-                    if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; }
+                    else if ( code >= 0xdc00 && code <= 0xdfff ) { in->bad = 1; return 0; }
                     unit_length = tabledemo_table_json_encode_utf8( code, unit );
                     break;
                 }
@@ -2417,6 +2410,10 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
            a vocabulary wider than this still reads, its repeats simply stop
            being counted. */
         memset( seen, 0, sizeof( seen ) );
+        {
+        uint64_t unplaced[64];
+        int32_t unplaced_count = 0;
+        memset( unplaced, 0, sizeof( unplaced ) );
         for ( ;; )
         {
             char c = tabledemo_table_json_peek( in );
@@ -2447,6 +2444,18 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             }
             if ( slot < 0 )
             {
+                /* a key this reader cannot place is still a key: spelling
+                   it twice is a repeated key, refused like a placed one.
+                   Tracked by hash, bounded and allocation-free; past the
+                   table its repeats stop being counted. */
+                uint64_t hash = 1469598103934665603ULL;
+                int32_t ki;
+                for ( ki = 0; ki < key_length; ki++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[ki] ) * 1099511628211ULL; }
+                for ( ki = 0; ki < unplaced_count; ki++ )
+                {
+                    if ( unplaced[ki] == hash ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                }
+                if ( ki == unplaced_count && unplaced_count < 64 ) { unplaced[unplaced_count++] = hash; }
                 in->report->unknown++;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
@@ -2464,6 +2473,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             if ( c == '}' ) { in->pos++; break; }
             in->bad = 1;
             return 0;
+        }
         }
         return 1;
     }
