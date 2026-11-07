@@ -443,6 +443,7 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 	if st.Integrity != "" {
 		m.Printf("  integrity = %s,\n", squirrel.StringLit([]byte(st.Integrity)))
 	}
+	emitFixedFacts(m, st)
 	m.Printf("  make = function() { return _M.%s(); },\n", st.Name)
 	m.Printf("  fields = [\n")
 	for i, f := range st.Fields {
@@ -556,11 +557,11 @@ func fieldDesc(u *ir.Unit, f *ir.Field, ordinal int) string {
 	return render(d, fieldKeys)
 }
 
-var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "textlist", "nf", "qcount", "qmin", "qdelta", "qbits", "fmin", "fmax"}
+var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "textlist", "nf", "qcount", "qmin", "qdelta", "qbits", "fmin", "fmax", "sw"}
 
 var fieldKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
 	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
-	"optional", "required", "deprecated", "textlist", "unbounded", "nf", "qcount", "qmin", "qdelta", "qbits", "fmin", "fmax"}
+	"optional", "required", "deprecated", "textlist", "unbounded", "nf", "qcount", "qmin", "qdelta", "qbits", "fmin", "fmax", "fb", "eb", "sw", "fcount"}
 
 // baseDesc is the facts of the field's VALUE type, which an array's element
 // shares.
@@ -572,6 +573,7 @@ func baseDesc(u *ir.Unit, f *ir.Field) map[string]string {
 		"entry": "null", "textlist": "0", "unbounded": "false", "nf": "null",
 		"qcount": "0", "qmin": "0.0", "qdelta": "0.0", "qbits": "0",
 		"fmin": "null", "fmax": "null",
+		"fb": "0", "eb": "0", "sw": "0", "fcount": "0",
 	}
 	if f.Type.TextUnbounded() {
 		// UNBOUNDED TEXT (§2.13.1): the reader has no capacity to clamp at.
@@ -664,6 +666,17 @@ func baseDesc(u *ir.Unit, f *ir.Field) map[string]string {
 		}
 		d["def"] = scalarDefault(f)
 	}
+	if fixedFieldCarried(f, 0) {
+		d["fb"] = fmt.Sprint(ir.TableFixedFieldBytes(f))
+		d["eb"] = fmt.Sprint(ir.TableFixedElementBytes(f))
+		d["sw"] = fmt.Sprint(ir.TableFixedStorageBytes(f.Type))
+		switch {
+		case f.KeyEnumRef != nil:
+			d["fcount"] = fmt.Sprint(f.KeyEnumRef.Max)
+		case f.Array == ir.ArrayFixed:
+			d["fcount"] = fmt.Sprint(f.ArrayBound)
+		}
+	}
 	return d
 }
 
@@ -748,6 +761,7 @@ func emitUnion(m *Module, un *ir.Union) {
 	m.Printf("  }\n};\n\n")
 	m.Printf("_M.%sDescriptor <- {\n", un.Name)
 	m.Printf("  name = %s,\n", squirrel.StringLit([]byte(un.Name)))
+	m.Printf("  tagw = %d,\n", ir.TableFixedUnionTagBytes(un))
 	m.Printf("  make = function() { return _M.%s(); },\n", un.Name)
 	m.Printf("  arms = [\n")
 	for i, v := range un.Variants {

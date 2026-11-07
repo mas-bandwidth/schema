@@ -67,6 +67,31 @@ print("plain-strict-ok")
 `
 }
 
+// plainStrictProbeFixed is plainStrictProbe at a FIXED root whose wire is
+// form 3 (docs/SPEC-TABLES.md §3.4, §6.5): the plain name is ReadFixed, the
+// tolerant twin is ReadFixedTolerant, and ReadStrict must answer as
+// ReadFixed answers, because it routes the form byte to the same reader.
+func plainStrictProbeFixed(module, root string, instance bool) string {
+	instanceCheck := ""
+	if instance {
+		instanceCheck = `assert(okT, "ReadFixedTolerant answered no root for an instance row")
+`
+	}
+	return `local T = require("` + module + `")
+local R = require("refusal")
+local inputs = require("inputs")
+local wire = inputs.wire
+local okT, tolerant = pcall(T.ReadFixedTolerant, "` + root + `", wire)
+` + instanceCheck + `local okS, strict = pcall(T.ReadFixed, "` + root + `", wire)
+local okR, rval = pcall(function() return R.ReadStrict(T, "` + root + `", wire) end)
+assert(okS == okR, "ReadFixed and ReadStrict disagree on acceptance of a form-3 wire")
+if okS then
+  assert(strict ~= nil and rval ~= nil, "a fixed read ReadStrict accepted answered no root")
+end
+print("plain-strict-ok")
+`
+}
+
 func TestLuaPlainLoadIsStrict(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -76,6 +101,7 @@ func TestLuaPlainLoadIsStrict(t *testing.T) {
 	type generated struct {
 		dir    string
 		module string
+		fixed  map[string]bool
 	}
 	cache := map[string]generated{}
 	unsupported := map[string]bool{}
@@ -110,7 +136,12 @@ func TestLuaPlainLoadIsStrict(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		g := generated{dir: dir, module: ModuleName(u)}
+		g := generated{dir: dir, module: ModuleName(u), fixed: map[string]bool{}}
+		for name, st := range u.Tables {
+			if st.FixedDeclared {
+				g.fixed[name] = true
+			}
+		}
 		luarun.WriteFiles(t, g.dir, files)
 		cache[unitKey] = g
 		return g, true
@@ -135,6 +166,9 @@ func TestLuaPlainLoadIsStrict(t *testing.T) {
 					t.Fatalf("case %s: %v", row.caseName, err)
 				}
 				probe := plainStrictProbe(g.module, row.root, instance)
+				if g.fixed[row.root] && len(wire) > 0 && wire[0] == 3 {
+					probe = plainStrictProbeFixed(g.module, row.root, instance)
+				}
 				if err := os.WriteFile(filepath.Join(g.dir, "main.lua"), []byte(probe), 0o644); err != nil {
 					t.Fatal(err)
 				}

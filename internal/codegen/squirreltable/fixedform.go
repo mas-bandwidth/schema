@@ -1034,5 +1034,42 @@ func appendFixedU64(b []byte, v uint64) []byte {
 	return b
 }
 
+func emitFixedFacts(m *Module, st *ir.Struct) {
+	if !st.FixedDeclared || !ir.TableFixedSupported(st, 0) {
+		m.Printf("  femit = false,\n")
+		return
+	}
+	m.Printf("  fsize = %d,\n", ir.TableFixedTypeBytes(st))
+	if !ir.TableFixedEmitted(m.Unit, st) {
+		m.Printf("  femit = false,\n")
+		return
+	}
+	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+	hash := ir.TableFixedLayoutHash(layout, st)
+	m.Printf("  femit = true,\n")
+	m.Printf("  lhash = %s,\n", squirrel.HexLit(hash))
+	m.Printf("  layout = _rt_descriptor.blobOf(%s),\n", squirrel.StringLit(layout))
+}
+
+func fixedFieldCarried(f *ir.Field, depth int) bool {
+	if depth > 64 || f.Type.Pointer || f.IsMap() || f.Array == ir.ArrayList || f.Type.TextUnbounded() {
+		return false
+	}
+	if f.Type.Kind != ir.TNamed {
+		return true
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return ir.TableFixedSupported(r, 0)
+	case *ir.Union:
+		for _, v := range r.Variants {
+			if v.F != nil && !fixedFieldCarried(v.F, depth+1) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 var _ = fmt.Sprintf
 var _ = squirrel.StringLit

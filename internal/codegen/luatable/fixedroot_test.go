@@ -47,23 +47,24 @@ func fixedRootDamages(base []byte) []fixedRootDamage {
 	return out
 }
 
-// fixedRootProbe loads inputs w1..wn into root and prints, per wire, whether a
-// root came back and the report: root|nil,u,k,w,c,d,malformed,verdict.
+// fixedRootProbe loads inputs w1..wn through the generated fixed form
+// (§3.4) and prints, per wire, the engine's line shape: "malformed" for
+// damage, and root,u,k,w,c,d,malformed,verdict otherwise (a fixed read
+// moves no counter). The fixed reader answers damage and refusal with one
+// error shape, so the probe classifies by the refusal's name, exactly the
+// split internal/tablewire's decodeFixed makes.
 func fixedRootProbe(module, root string, n int) string {
 	return fmt.Sprintf(`local T = require(%q)
-local load = require("load")
 local inputs = require("inputs")
+local damage = { truncated = true, reserved_not_zero = true, integrity_mismatch = true }
 for i = 1, %d do
-  local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-  local v = load.LoadTolerant(T, %q, inputs["w" .. i], report)
-  local verdict
-  if report.refused > 0 then verdict = "refused" else verdict = "read" end
-  if report.malformed then
-    print(v == nil and "malformed" or "malformed-with-root")
+  local ok, v = pcall(T.FixedLoad, %q, inputs["w" .. i])
+  if ok then
+    print("root,0,0,0,0,0,false,read")
+  elseif damage[tostring(v)] then
+    print("malformed")
   else
-  print(string.format("%%s,%%d,%%d,%%d,%%d,%%d,%%s,%%s", v ~= nil and "root" or "nil",
-    report.unknown, report.kindMismatch, report.widened, report.clamped,
-    report.duplicate, tostring(report.malformed), verdict))
+    print("root,0,0,0,0,0,false,refused")
   end
 end
 `, module, n, root)
@@ -94,9 +95,9 @@ func fixedRootEngine(t *testing.T, m *tabletext.Model, root string, data []byte)
 }
 
 // checkFixedRoots runs the four damages of every instance row whose root is
-// FIXED through the Lua load (patch, when set, edits the emitted load.lua in
-// memory) and returns each disagreement with the engine, and the count of
-// wires compared.
+// FIXED through the Lua fixed form (patch, when set, edits the emitted
+// fixed.lua in memory) and returns each disagreement with the engine, and
+// the count of wires compared.
 func checkFixedRoots(t *testing.T, patch func([]byte) []byte) (reds []string, compared int) {
 	t.Helper()
 	repo := filepath.Join("..", "..", "..")
@@ -135,11 +136,11 @@ func checkFixedRoots(t *testing.T, patch func([]byte) []byte) (reds []string, co
 			continue
 		}
 		if patch != nil {
-			src, ok := files["load.lua"]
+			src, ok := files["fixed.lua"]
 			if !ok {
-				t.Fatal("the emitted unit has no load.lua")
+				t.Fatal("the emitted unit has no fixed.lua")
 			}
-			files["load.lua"] = patch(src)
+			files["fixed.lua"] = patch(src)
 		}
 		type wire struct {
 			caseName, damage string
@@ -193,15 +194,16 @@ func TestLuaTableFixedRootReadBoundary(t *testing.T) {
 	t.Logf("%d damaged fixed-root wires compared, %d diverge", compared, len(reds))
 }
 
-// TestLuaTableFixedRootReadBoundaryNegativeControl patches the emitted load.lua
-// in memory — one anchor, matched exactly once — so a fixed root whose wire
-// does not open answers no root again, and requires the check to go red.
+// TestLuaTableFixedRootReadBoundaryNegativeControl patches the emitted
+// fixed.lua in memory — one anchor, matched exactly once — so a damaged
+// wire answers a root again, and requires the check to go red.
 func TestLuaTableFixedRootReadBoundaryNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = `if into ~= nil then return D.reset(T, desc, into) end
-    return fresh(T, desc)`
-	const sabotaged = `if into ~= nil then return D.reset(T, desc, into) end
-    return nil`
+	const anchor = `local function load_impl(T, name, buf, strict, cap)
+  if #buf < 1 then error("truncated", 0) end`
+	const sabotaged = `local function load_impl(T, name, buf, strict, cap)
+  if true then return {}, 0, "", 0 end
+  if #buf < 1 then error("truncated", 0) end`
 	var patched int
 	patch := func(src []byte) []byte {
 		if n := strings.Count(string(src), anchor); n != 1 {
@@ -217,5 +219,5 @@ func TestLuaTableFixedRootReadBoundaryNegativeControl(t *testing.T) {
 	if len(reds) == 0 {
 		t.Fatalf("the sabotaged load still agreed with the engine on %d wires", compared)
 	}
-	t.Logf("%d of %d wires diverge with the fixed-root default removed", len(reds), compared)
+	t.Logf("%d of %d wires diverge with the fixed reader answering a root for damage", len(reds), compared)
 }

@@ -840,6 +840,11 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 		return "shape = \"bool\""
 	case ir.TFloat32, ir.TFloat64:
 		s := fmt.Sprintf("shape = \"float\", f32 = %v", t.Kind == ir.TFloat32)
+		if f.HasFloatRange && t.Kind == ir.TFloat32 {
+			// a ranged float32 clamps on the fixed read (§3.4; the variable
+			// form carries the same bound as a fixed-point raw range)
+			s += fmt.Sprintf(", fmin = %s, fmax = %s", lua.FloatLiteral(f.FMin), lua.FloatLiteral(f.FMax))
+		}
 		if withDefault {
 			v := 0.0
 			if f.HasDefault {

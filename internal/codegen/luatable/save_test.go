@@ -30,6 +30,19 @@ print(#saved .. ":" .. (saved == wire and "same" or "diff") .. ":" .. measure)
 `
 }
 
+// saveProbeFixed is saveProbe at a FIXED root (docs/SPEC-TABLES.md §3.4):
+// the fixed form reads and writes, and its measure is the batch-of-one size.
+func saveProbeFixed(module, root string) string {
+	return `local T = require("` + module + `")
+local inputs = require("inputs")
+local wire = inputs.wire
+local v = T.ReadFixedTolerant("` + root + `", wire)
+local saved = T.FixedSave("` + root + `", { v })
+local measure = T.FixedMeasure("` + root + `", 1)
+print(#saved .. ":" .. (saved == wire and "same" or "diff") .. ":" .. measure)
+`
+}
+
 // saveInstance generates one instance row's unit, loads its wire, saves it
 // back, and returns "len:verdict:measure".
 func saveInstance(t *testing.T, repo string, paths []string, row manifestRow, patch func([]byte) []byte) string {
@@ -49,6 +62,9 @@ func saveInstance(t *testing.T, repo string, paths []string, row manifestRow, pa
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
 	probe := saveProbe(ModuleName(u), row.root)
+	if st := u.Tables[row.root]; st != nil && st.FixedDeclared {
+		probe = saveProbeFixed(ModuleName(u), row.root)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +100,7 @@ func manifestWireRefusalRows(t *testing.T, path string) map[string]bool {
 
 // TestLuaTableSaveRoundTripsEveryInstance loads every instance row of the
 // tables conformance manifest whose unit the Lua target generates, saves it
-// back with the form-1 SAVE, and requires the saved bytes to equal the wire
+// back with its root's declared form (form 1 or form 3, §3.4), and requires the saved bytes to equal the wire
 // file byte for byte (docs/SPEC-TABLES.md §3, §3.1); the MEASURE must equal
 // the saved length.
 func TestLuaTableSaveRoundTripsEveryInstance(t *testing.T) {

@@ -102,7 +102,7 @@ func TestSquirrelCookSignedMapOrderAndReplacement(t *testing.T) {
 	slowtest.Gate(t, "native signed cooked map order")
 	for _, width := range []int{8, 16, 32, 64} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			u, m, _ := nfLoadNamed(t, fmt.Sprintf("package probe\ntable Root {\n active bool\n if active {\n bias int32 = 7\n entries map[int%d]int32\n }\n}\n", width))
+			u, m, _ := nfLoadNamed(t, fmt.Sprintf("package probe\ntable Root {\n active bool\n if active {\n bias int32 = 7\n }\n entries map[int%d]int32\n}\n", width))
 			v := m.New(m.Lookup("Root"))
 			// Cook preserves storage under an inactive guard, including its nonzero default.
 			f := &v.Fields[2]

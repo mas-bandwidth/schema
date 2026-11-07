@@ -32,7 +32,9 @@ func squirrelDamageProbe(t *testing.T, patchFile, anchor string) string {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	mod := emitUnit(t, dir, "messages", loadUnit(t, root, []string{"tables/messages"}))
+	msgUnit := loadUnit(t, root, []string{"tables/messages"})
+	msgUnit.Tables["ToolMessage"].FixedDeclared = false
+	mod := emitUnit(t, dir, "messages", msgUnit)
 	back := emitUnit(t, dir, "backend", loadUnit(t, root, []string{"tables/backend"}))
 	if patchFile != "" {
 		path := filepath.Join(dir, patchFile)
@@ -93,7 +95,9 @@ func TestSquirrelDelegatedDamageDiscardsValue(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	mod := emitUnit(t, dir, "messages", loadUnit(t, root, []string{"tables/messages"}))
+	msgUnit := loadUnit(t, root, []string{"tables/messages"})
+	msgUnit.Tables["ToolMessage"].FixedDeclared = false
+	mod := emitUnit(t, dir, "messages", msgUnit)
 	data, err := hex.DecodeString(unionElemResetMutant)
 	if err != nil {
 		t.Fatal(err)
