@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -431,6 +432,73 @@ func surfaceJsonWrite(lines []line, out string) error {
 			return err
 		}
 	}
+	// THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
+	// wire, then the line's damage put into storage in code, then ToJson, which
+	// must return -1 from measure and write alike
+	for _, f := range lines {
+		if f[0] != "json-write-refusal" {
+			continue
+		}
+		c := findCodec(f[2], f[3])
+		if c == nil || c.toJson == nil {
+			if err := spillAbsent(out, f[1]+".json"); err != nil {
+				return err
+			}
+			continue
+		}
+		wire, err := os.ReadFile(f[4])
+		if err != nil {
+			return err
+		}
+		value := c.fresh()
+		var rep report
+		if !c.load(value, wire, &rep) {
+			return fmt.Errorf("%s: load refused %s", f[1], f[4])
+		}
+		if err := damageText(value, f[5]); err != nil {
+			return fmt.Errorf("%s: %v", f[1], err)
+		}
+		answer := []byte("refused\n")
+		if size := c.toJsonMeasure(value); size >= 0 {
+			answer = make([]byte, size)
+			if c.toJson(value, answer) != size {
+				return fmt.Errorf("%s: ToJSON did not write ToJSONMeasure's answer", f[1])
+			}
+		} else if c.toJson(value, make([]byte, 1<<16)) != -1 {
+			return fmt.Errorf("%s: ToJSONMeasure refused and ToJSON wrote", f[1])
+		}
+		if err := spill(out, f[1]+".json", answer); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// damageText puts into a fixed root's top-level text field what no read
+// delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the
+// bytes 61 FF 62 in a narrow field, the units 0061 D800 0062 in a wide one.
+// The field is reached by reflection on its generated name and its Length.
+func damageText(value any, damage string) error {
+	if damage == "none" {
+		return nil
+	}
+	kind, name, _ := strings.Cut(damage, ":")
+	v := reflect.ValueOf(value).Elem()
+	exported := strings.ToUpper(name[:1]) + name[1:]
+	field, length := v.FieldByName(exported), v.FieldByName(exported+"Length")
+	if !field.IsValid() || !length.IsValid() {
+		return fmt.Errorf("damage %q names no text field of %s", damage, v.Type())
+	}
+	var units []uint64
+	if kind == "narrow" {
+		units = []uint64{0x61, 0xff, 0x62}
+	} else {
+		units = []uint64{0x61, 0xd800, 0x62}
+	}
+	for i, u := range units {
+		field.Index(i).SetUint(u)
+	}
+	length.SetInt(int64(len(units)))
 	return nil
 }
 

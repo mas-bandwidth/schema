@@ -69,3 +69,4 @@ Each new positive wire is encoded from the existing complete canonical JSON and 
 | r1_cfg | `testdata/wire/tables/r1_cfg.bin` | `testdata/conformance/tables/wire/r1_cfg.bin` | previous_form_r1_cfg |
 | r1_ping | `testdata/wire/tables/r1_ping.bin` | `testdata/conformance/tables/wire/r1_ping.bin` | previous_form_r1_ping |
 | r2_cfg | `testdata/wire/tables/r2_cfg.bin` | `testdata/conformance/tables/wire/r2_cfg.bin` | previous_form_r2_cfg |
+| text_float32_double_round | `testdata/wire/tables/text_float32_double_round.bin` | `testdata/conformance/tables/wire/text_float32_double_round.bin` | previous_form_text_float32_double_round |

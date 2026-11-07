@@ -1,0 +1,12 @@
+{
+  "revision": 1,
+  "at": "2000-02-29T12:00:00.12Z",
+  "lower": 5,
+  "labels": [],
+  "optional_labels": [],
+  "words": [],
+  "by_name": {
+    "a": 2,
+    "b": 1
+  }
+}

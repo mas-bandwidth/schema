@@ -616,6 +616,11 @@ local function loadFixDKeyValue(keyfd: any, vals: any): any
 		if n == nil then n = buffer.len(b) end
 		return buffer.readstring(b, 0, n)
 	end
+	-- A BODY WITH NO KEY FIELD AT ALL HAS THE KEY'S DECLARED DEFAULT
+	-- (docs/SPEC-TABLES.md §2.8): an unbounded text key's default is the
+	-- empty string, never an absent value, so the order rule compares two
+	-- keys and never an absent one.
+	if b == nil and keyfd.s == "text" then return "" end
 	return b
 end
 
@@ -804,6 +809,14 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 					else
 						if not read_field(efd, body, vals) then break end
 					end
+				end
+				-- THE KEY IS THE ENTRY'S OWN FIELD (docs/SPEC-TABLES.md §2.8):
+				-- a body with no key field has the key's declared default,
+				-- which for an unbounded text key is the empty string. The
+				-- entry carries it, so the writer's key and the order rule
+				-- both see the same key.
+				if keyfd ~= nil and vals[keyfd.slot] == nil and keyfd.s == "text" then
+					vals[keyfd.slot] = buffer.create(0)
 				end
 				if order == 0 then
 					report.duplicate = report.duplicate + 1

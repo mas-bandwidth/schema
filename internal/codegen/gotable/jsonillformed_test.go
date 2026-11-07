@@ -9,11 +9,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// TestJsonFffdPerMaximalSubpart pins docs/SPEC-TABLES.md §16.3 (Definition
-// D93b): the generated Go text writer replaces ill-formed UTF-8 in narrow
-// string storage with one U+FFFD per maximal subpart, while the reader keeps
-// refusing every ill-formed UTF-8 sequence with string_not_utf8 and Malformed.
-func TestJsonFffdPerMaximalSubpart(t *testing.T) {
+// TestJsonIllFormedUTF8RefusedBothWays pins docs/SPEC-TABLES.md §16.3 and
+// §16.14 (W0): the generated Go text writer refuses ill-formed UTF-8 in narrow
+// string storage, measure and write alike, and the reader refuses every
+// ill-formed UTF-8 sequence with string_not_utf8 and Malformed.
+func TestJsonIllFormedUTF8RefusedBothWays(t *testing.T) {
 	t.Parallel()
 
 	slowtest.Gate(t, "the generated Go runtime")
@@ -87,21 +87,19 @@ func TestReaderRefusesIllFormedUTF8(t *testing.T) {
 	}
 }
 
-func TestWriterReplacesOneFffdPerMaximalSubpart(t *testing.T) {
-	const fffd = "\xef\xbf\xbd"
+func TestWriterRefusesIllFormedUTF8(t *testing.T) {
 	cases := []struct {
 		name      string
 		raw       []byte
-		wantCount int
-		wantField string
+		illFormed bool
 	}{
-		{"E2_82_41", []byte{0xe2, 0x82, 0x41}, 1, fffd + "A"},
-		{"F0_80_80_80", []byte{0xf0, 0x80, 0x80, 0x80}, 4, fffd + fffd + fffd + fffd},
-		{"ED_A0_80", []byte{0xed, 0xa0, 0x80}, 3, fffd + fffd + fffd},
-		{"C0_AF", []byte{0xc0, 0xaf}, 2, fffd + fffd},
-		{"F4_90_80_80", []byte{0xf4, 0x90, 0x80, 0x80}, 4, fffd + fffd + fffd + fffd},
-		{"FF", []byte{0xff}, 1, fffd},
-		{"E2_82_AC", []byte{0xe2, 0x82, 0xac}, 0, "\xe2\x82\xac"},
+		{"E2_82_41", []byte{0xe2, 0x82, 0x41}, true},
+		{"F0_80_80_80", []byte{0xf0, 0x80, 0x80, 0x80}, true},
+		{"ED_A0_80", []byte{0xed, 0xa0, 0x80}, true},
+		{"C0_AF", []byte{0xc0, 0xaf}, true},
+		{"F4_90_80_80", []byte{0xf4, 0x90, 0x80, 0x80}, true},
+		{"FF", []byte{0xff}, true},
+		{"E2_82_AC", []byte{0xe2, 0x82, 0xac}, false},
 	}
 	for _, tc := range cases {
 		var src Root
@@ -109,13 +107,16 @@ func TestWriterReplacesOneFffdPerMaximalSubpart(t *testing.T) {
 		src.SLength = int32(len(tc.raw))
 		var buf [256]byte
 		n := RootToJSON(&src, buf[:])
-		out := buf[:n]
-		if got := bytes.Count(out, []byte(fffd)); got != tc.wantCount {
-			t.Fatalf("writer %s: got %d U+FFFD in %q, want %d", tc.name, got, out, tc.wantCount)
+		measure := RootToJSONMeasure(&src)
+		if tc.illFormed {
+			if n != -1 || measure != -1 {
+				t.Fatalf("writer %s: write %d, measure %d; storage that is not text refuses both", tc.name, n, measure)
+			}
+			continue
 		}
-		wantSub := "\"s\": \"" + tc.wantField + "\""
-		if !bytes.Contains(out, []byte(wantSub)) {
-			t.Fatalf("writer %s: output %q missing %q", tc.name, out, wantSub)
+		out := buf[:n]
+		if want := "\"s\": \"" + string(tc.raw) + "\""; !bytes.Contains(out, []byte(want)) {
+			t.Fatalf("writer %s: output %q missing %q", tc.name, out, want)
 		}
 	}
 }
