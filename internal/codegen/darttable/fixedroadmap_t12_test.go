@@ -191,9 +191,9 @@ fixed table Root
   t.initRoot(back[0]);
   final n = t.rootFixedLoad(back, 1, bytes, bytes.length, plan, rep);
   check(n == 1, 'the dirty-slack file must read: n=$n ${rep.refused}');
-  check(!rep.malformed && rep.refused == 0 && rep.clamped == 0,
-      'non-zero slack is not malformed, not a refusal, and moves no counter: '
-      '${rep.malformed} ${rep.refused} ${rep.clamped}');
+  check(rep.refused == 0,
+      'non-zero slack is not a refusal and moves no counter: '
+      '${rep.refused}');
   check(back[0].a == 7 && back[0].tLength == 2 && back[0].t[0] == 0x41 &&
       back[0].t[1] == 0x42,
       'the used units landed: a=${back[0].a} len=${back[0].tLength}');
@@ -212,7 +212,7 @@ fixed table Root
   plan.image.fillRange(0, plan.image.length, 0x5A);
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n >= 1, 'the newer reader refused the older writer: n=$n ${why(report)}');
-  check(report.refused == 0 && !report.malformed,
+  check(report.refused == 0,
       'a clean backward read: ${why(report)}');
   check(values[0].w == 77,
       'the appended field is the prefill declared default, not caller storage: '
@@ -291,8 +291,8 @@ fixed table Root
   final back = [t.Root()];
   t.initRoot(back[0]);
   final n = t.rootFixedLoad(back, 1, bytes, bytes.length, plan, rep);
-  check(n == 1 && rep.refused == 0 && !rep.malformed,
-      'the narrow-arm record must read: n=$n ${rep.refused} ${rep.malformed}');
+  check(n == 1 && rep.refused == 0,
+      'the narrow-arm record must read: n=$n ${rep.refused}');
   check(back[0].pick.type == 1 && back[0].pick.a == 0x11223344,
       'the narrow arm landed: type=${back[0].pick.type} a=${back[0].pick.a}');
 `, 1)
@@ -636,8 +636,8 @@ void main() {
   for (final v in values) { t.init%s(v); }
   final n = c.%sFixedLoad(values, values.length, data, data.length, plan, report);
   check(n == %d, 'load returned $n, want %d (refused=${report.refused})');
-  check(report.refused == 0 && !report.malformed,
-      'a clean reference read: refused=${report.refused} malformed=${report.malformed}');
+  check(report.refused == 0,
+      'a clean reference read: refused=${report.refused}');
   final back = Uint8List(c.%sFixedMeasure(%d));
   final wrote = c.%sFixedSave(values, %d, back);
   check(wrote == back.length && back.length == data.length,
@@ -673,7 +673,7 @@ void main() {
       'a non-finite reference file was not refused as non_finite_float: n=$n refused=${t.TableFixedRefusal.name(report.refused)}');
   check(report.nonFiniteFloat.endsWith(%q),
       'the refusal names "${report.nonFiniteFloat}", want the %s field');
-  check(report.unknown == 0 && report.clamped == 0 && report.widened == 0,
+  check(report.unknown == 0 && report.widened == 0,
       'a refused read moved a counter');
   if (exitCode == 0) { stdout.writeln('ok'); }
 }

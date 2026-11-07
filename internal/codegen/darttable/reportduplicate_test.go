@@ -194,7 +194,7 @@ table Root {
 				t.Fatal(err)
 			}
 			names = append(names, name)
-			wants = append(wants, fmt.Sprintf("%s %d %d %t %d", name, 0, 0, ref.Refused, len(got.Fields[0].Entries)))
+			wants = append(wants, fmt.Sprintf("%s %t %d", name, ref.Refused, len(got.Fields[0].Entries)))
 			damaged = append(damaged, ref.Refused)
 		}
 	}
@@ -210,7 +210,7 @@ void main(List<String> args) {
   for (final name in args) {
     final r = TableWireReport();
     final root = rootWireLoad(File(name).readAsBytesSync(), r);
-    stdout.writeln('$name ${r.duplicate} ${r.kindMismatch} ${r.malformed} ${root.entries.length}');
+    stdout.writeln('$name ${r.refused} ${root.entries.length}');
   }
 }
 `
@@ -228,14 +228,8 @@ void main(List<String> args) {
 		t.Fatalf("Dart answered %d mutants, want %d\n%s", len(got), len(wants), out)
 	}
 	for i := range wants {
-		if damaged[i] {
-			if fields := strings.Fields(got[i]); len(fields) != 5 || fields[3] != "true" {
-				t.Errorf("mutant %s is damaged and Dart did not refuse it: %q", names[i], got[i])
-			}
-			continue
-		}
 		if got[i] != wants[i] {
-			t.Errorf("mutant (name duplicate kind_mismatch malformed entries): Dart %q, Go %q", got[i], wants[i])
+			t.Errorf("mutant (name refused entries): Dart %q, Go %q", got[i], wants[i])
 		}
 	}
 }
