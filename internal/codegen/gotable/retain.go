@@ -134,7 +134,7 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			if st.Integrity != "" {
 				g.emitIntegrityRetain(st, blobs)
 			} else {
-				g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
+				g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};root:=(*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,read,retain));if root==nil||read.Refused(){tableRefused(read);return nil};return root}\n", n, typ, typ, n, n, blobs)
 				g.pf("func %sMeasureRetain(value *%s,retain *TableRetain,allocator ...TableAllocator)int64{return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil,allocator...)}\n", n, typ, n)
 				g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport,allocator ...TableAllocator)int64{if report==nil{return -1};return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer,false,retain,report,allocator...)}\n", n, typ, n)
 			}
@@ -186,7 +186,7 @@ const goRetainRuntime = `
 // TableRetain owns no storage. The caller supplies both bounded buffers; a
 // whole unknown record that does not fit is dropped and counted once.
 // Maximum nesting of a retained resolved payload (SPEC-TABLES §6.6).
-const tableRetainWalkDepthMax = 64
+const tableRetainWalkDepthMax = 128
 type TableRetainID struct { Id uint64; Slot int }
 type TableRetain struct { Bytes []byte; Ids []TableRetainID; Used int64; Count int; idUsed int; base unsafe.Pointer; directory []TableNodeDirEntry }
 type tableRetainStep struct {ordinal,index uint32}
@@ -212,7 +212,7 @@ func(r *TableRetainReader)Body()(TableRetainReader,bool){sub,ok:=r.tableRetainPl
 // or an infinity refuses the read as non_finite_float, named <owner>.0x<id>.
 func(r *TableRetainReader)capture(id uint64,kind uint8,owner string)bool{
  at:=r.Offset;if !r.Skip(kind){return false};if r.Retain==nil{return true};t:=r.Retain;p:=r.Path
- if kind==10&&binary.LittleEndian.Uint32(r.Buffer[at:])&0x7f800000==0x7f800000||kind==11&&binary.LittleEndian.Uint64(r.Buffer[at:])&0x7ff0000000000000==0x7ff0000000000000 {tableNonFiniteFloat(&r.Report.NonFiniteFloat,tableRetainedFloatName(owner,id));return true}
+ if kind==10&&binary.LittleEndian.Uint32(r.Buffer[at:])&0x7f800000==0x7f800000||kind==11&&binary.LittleEndian.Uint64(r.Buffer[at:])&0x7ff0000000000000==0x7ff0000000000000 {r.Report.Refuse(TableRefuseNonFiniteFloat,tableRetainedFloatName(owner,id));return false}
  limit:=int64(len(t.Bytes))-t.Used-int64(26+p.depth*8);if limit<0{r.Report.RetainLost++;return true};probe:=tableRetainIn{r:TableReader{Buffer:r.Buffer[at:r.Offset],Ids:r.Ids},w:TableWriter{Measuring:true},limit:limit}
  if p.depth>len(p.steps)||!probe.payload(kind,0)||probe.r.Offset!=int64(len(probe.r.Buffer)){r.Report.RetainLost++;return true}
  need:=int64(26+p.depth*8)+probe.w.Offset;if need>0xffffffff||need>int64(len(t.Bytes))-t.Used{r.Report.RetainLost++;return true}
@@ -225,6 +225,14 @@ func(r *TableRetainReader)capture(id uint64,kind uint8,owner string)bool{
 // non_finite_float refusal: the body's table and the id it cannot name.
 func tableRetainedFloatName(owner string,id uint64)string{const digits="0123456789abcdef";var hex [16]byte;for i:=15;i>=0;i-- {hex[i]=digits[id&0xf];id>>=4};return owner+".0x"+string(hex[:])}
 
+// tableRetainFrameLevels is the levels a framed payload of a kind opens: one
+// for a table, an array or a keyed or map body, none for a scalar's frame
+// (docs/SPEC-TABLES.md §4, binary_max_depth).
+func tableRetainFrameLevels(k uint8)int{if k==13||k==14||k==16{return 1};return 0}
+// tableRetainArmLevels is the levels a union arm of a kind opens: the union's
+// own when the arm is structural, and the arm's container.
+func tableRetainArmLevels(k uint8)int{if k==15{return 1};if k==13||k==14||k==16{return 2};return 0}
+
 type tableRetainIn struct {r TableReader;w TableWriter;limit int64}
 func(s *tableRetainIn)room(n int64)bool{return n>=0&&n<=s.limit-s.w.Offset}
 func tableRetainFileMinimum(kind uint8)int64{if n:=tableKindBytes(kind);n!=0{return n};switch kind{case 13:return 16;case 14,16:return 10;case 15,30:return 8;case 12,31,32,33:return 1};return 0}
@@ -235,7 +243,7 @@ func(s *tableRetainIn)content(kind uint8,n int64,depth int)bool{
  if depth>tableRetainWalkDepthMax||!s.r.Has(n){return false};end:=s.r.Offset+n
  switch kind {
  case 13:for{ref,ok:=s.ref(true);if !ok{return false};if ref==0{break};if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);if !s.payload(k,depth)||s.r.Offset>end{return false}}
- case 14,16:if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);count,ok:=s.r.Leb();if !ok||!s.room(tableLebBytes(count)){return false};s.w.PutLeb(count);minimum:=tableRetainFileMinimum(k);if kind==16{minimum=16};if minimum<=0||count>uint64(max(int64(0),s.limit-s.w.Offset)/minimum)||count>uint64(max(int64(0),end-s.r.Offset)){return false};for range count {if kind==16{if _,ok:=s.ref(false);!ok{return false};length,ok:=s.r.Leb();if !ok||length>uint64(end-s.r.Offset)||!s.framed(k,int64(length),depth+1){return false}}else if !s.payload(k,depth){return false};if s.r.Offset>end{return false}}
+ case 14,16:if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);count,ok:=s.r.Leb();if !ok||!s.room(tableLebBytes(count)){return false};s.w.PutLeb(count);minimum:=tableRetainFileMinimum(k);if kind==16{minimum=16};if minimum<=0||count>uint64(max(int64(0),s.limit-s.w.Offset)/minimum)||count>uint64(max(int64(0),end-s.r.Offset)){return false};for range count {if kind==16{if _,ok:=s.ref(false);!ok{return false};length,ok:=s.r.Leb();if !ok||length>uint64(end-s.r.Offset)||!s.framed(k,int64(length),depth+tableRetainFrameLevels(k)){return false}}else if !s.payload(k,depth){return false};if s.r.Offset>end{return false}}
  case 15,30:if !s.payload(kind,depth){return false}
  case 17:return false
  default:if !s.raw(n){return false}
@@ -246,7 +254,7 @@ func(s *tableRetainIn)payload(kind uint8,depth int)bool{
  switch kind{
  case 12,31,32,33:n,ok:=s.r.Leb();if !ok||!s.r.Room(n)||!s.room(tableLebBytes(n)){return false};s.w.PutLeb(n);return s.raw(int64(n))
  case 13,14,16:n,ok:=s.r.Leb();return ok&&s.r.Room(n)&&s.framed(kind,int64(n),depth+1)
- case 15:id,ok:=s.ref(true);if !ok{return false};if id==0{return true};if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);n,ok:=s.r.Leb();return ok&&s.r.Room(n)&&s.framed(k,int64(n),depth+1)
+ case 15:id,ok:=s.ref(true);if !ok{return false};if id==0{return true};if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);n,ok:=s.r.Leb();return ok&&s.r.Room(n)&&s.framed(k,int64(n),depth+tableRetainArmLevels(k))
  case 30:_,ok:=s.ref(true);return ok
  };return false
 }
@@ -269,7 +277,7 @@ func(s *tableRetainOut)content(kind uint8,n int64,depth int)bool{
  if depth>tableRetainWalkDepthMax||!s.r.Has(n){return false};end:=s.r.Offset+n
  switch kind{
  case 13:for{id,ok:=s.ref();if !ok{return false};if id==0{break};if !s.r.Has(1){return false};k:=s.r.Buffer[s.r.Offset];if !s.raw(1)||!s.payload(k,depth)||s.r.Offset>end{return false}}
- case 14,16:if !s.r.Has(1){return false};k:=s.r.Buffer[s.r.Offset];if !s.raw(1){return false};count,ok:=s.r.Leb();if !ok{return false};s.leb(count);for range count {if kind==16{if _,ok:=s.ref();!ok||!s.framed(k,depth+1){return false}}else if !s.payload(k,depth){return false};if s.r.Offset>end{return false}}
+ case 14,16:if !s.r.Has(1){return false};k:=s.r.Buffer[s.r.Offset];if !s.raw(1){return false};count,ok:=s.r.Leb();if !ok{return false};s.leb(count);for range count {if kind==16{if _,ok:=s.ref();!ok||!s.framed(k,depth+tableRetainFrameLevels(k)){return false}}else if !s.payload(k,depth){return false};if s.r.Offset>end{return false}}
  case 15,30:if !s.payload(kind,depth){return false}
  default:if !s.raw(n){return false}
  };return s.r.Offset==end
@@ -277,7 +285,7 @@ func(s *tableRetainOut)content(kind uint8,n int64,depth int)bool{
 func(s *tableRetainOut)payload(kind uint8,depth int)bool{if n:=tableKindBytes(kind);n!=0{return s.raw(n)};switch kind{
  case 12,31,32,33:n,ok:=s.r.Leb();if !ok||!s.r.Room(n){return false};s.leb(n);return s.raw(int64(n))
  case 13,14,16:return s.framed(kind,depth+1)
- case 15:id,ok:=s.ref();if !ok{return false};if id==0{return true};if !s.r.Has(1){return false};k:=s.r.Buffer[s.r.Offset];return s.raw(1)&&s.framed(k,depth+1)
+ case 15:id,ok:=s.ref();if !ok{return false};if id==0{return true};if !s.r.Has(1){return false};k:=s.r.Buffer[s.r.Offset];return s.raw(1)&&s.framed(k,depth+tableRetainArmLevels(k))
  case 30:_,ok:=s.ref();return ok
  };return false}
 func tableRetainTail(w *TableRetainWriter)bool{

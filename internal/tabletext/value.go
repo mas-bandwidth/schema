@@ -20,84 +20,53 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Report is the read report both forms share (docs/SPEC-TABLES.md §4, §16.2):
-// silence — every counter zero and Malformed false — means the data matched
-// this schema exactly.
+// Report is the read report every read shares (docs/SPEC-TABLES.md §4, §6.5).
+// A read that returns a value reports `unknown` and `widened`, and a
+// retaining read adds `retained` and `retain_lost`: ALL FOUR ARE DIAGNOSTIC,
+// per-language detail that conformance never compares. A read that refuses
+// reports Refused and the reason as diagnostic text, and no counter, because
+// nothing it decoded is defined. Silence (every counter zero, not refused)
+// means the data matched this reader's schema exactly.
 type Report struct {
-	Unknown      int
-	KindMismatch int
+	// Unknown counts every id this reader cannot name: a field id, an enum
+	// variant id, a union arm id, a keyed slot's key, a node record's type.
+	Unknown int
 	// Widened counts a kind that GREW since the writer (docs/SPEC-TABLES.md
 	// §4): an integer kind read into a wider one of the same signedness, or
-	// f32 into f64, decoded exactly. It is the one counter that names no
-	// loss, and the wire's own event: a text carries no kind to widen from,
-	// so the text form leaves it at zero (§16.2).
-	Widened         int
-	Clamped         int
-	Duplicate       int
-	MissingRequired int // bodies refused for absent required fields
-	Malformed       bool
-	// BlobShared counts the extra slots that named a blob record another slot
-	// already named (docs/SPEC-TABLES.md §2.5). The tolerant read keeps the one
-	// node and never a copy per slot, and the strict read refuses blob_shared.
-	BlobShared int
-	// Reason names the rule a Malformed read refused, where the rule has a
-	// name: `timestamp_not_rfc3339: <field>` is §16.2's named refusal.
-	Reason string
-	// Refused is the VERDICT, not one of §4's events (docs/SPEC-TABLES.md §3):
-	// a FORM BYTE this reader does not carry. It moves no counter and reports
-	// no damage, so without it a refusal and a clean read are the same answer.
-	Refused bool
+	// f32 into f64, decoded exactly, once per field. A text carries no kind to
+	// widen from, so the text form leaves it at zero (§16.2).
+	Widened int
 	// Retained and RetainLost are RETENTION's two counters (docs/SPEC-TABLES.md
 	// §6.6). Retained counts the fields whose bytes were kept; RetainLost
-	// counts every unknown a load or a save could not keep — a record the
-	// remaining capacity had no room for, of either store, an unknown of one
-	// of the six excluded classes, a record the resolving walk found damaged,
-	// and, at save, a retained record whose path no longer names a body. Both
-	// are monotonic, both are zero in every read that did not opt in, and they
-	// ride the same report struct for the reason Duplicate does, which is that
-	// a caller has one report type and not two (§4). A record discarded
-	// because a known ancestor was reset or replaced by a later legal
-	// occurrence moves neither: the writer superseded it, and the load could
-	// not have kept it.
+	// counts every unknown a load or a save could not keep. Both are zero in
+	// every read that did not opt in.
 	Retained   int
 	RetainLost int
-	// NonFiniteFloat is a REFUSAL, not one of §4's events (docs/SPEC-TABLES.md
-	// §3.3, a plain float's special values; Glenn, 2026-10-27): the first float
-	// field, as <Table>.<field>, whose bits a read found to be a NaN or an
-	// infinity, and empty when there was none. Every read refuses such a wire,
-	// tolerant and strict alike, as `non_finite_float`, and lands nothing.
-	NonFiniteFloat string
+	// Refused is the VERDICT: the read refused the whole load, and no value
+	// and no counter is defined.
+	Refused bool
+	// Reason is a refusal's diagnostic, `<reason>: <detail>` in §6.5's
+	// recommended vocabulary. It is per-language detail and never compared.
+	Reason string
 }
 
 // Add folds another report into this one, which is how a pack over a tree of
 // files reports once (docs/SPEC-TABLES.md §17.3).
 func (r *Report) Add(o Report) {
 	r.Unknown += o.Unknown
-	r.KindMismatch += o.KindMismatch
 	r.Widened += o.Widened
-	r.Clamped += o.Clamped
-	r.Duplicate += o.Duplicate
-	r.MissingRequired += o.MissingRequired
-	r.BlobShared += o.BlobShared
-	r.Malformed = r.Malformed || o.Malformed
+	r.Retained += o.Retained
+	r.RetainLost += o.RetainLost
+	r.Refused = r.Refused || o.Refused
 	if o.Reason != "" {
 		r.Reason = o.Reason
 	}
-	r.Retained += o.Retained
-	r.RetainLost += o.RetainLost
-	if r.NonFiniteFloat == "" {
-		r.NonFiniteFloat = o.NonFiniteFloat
-	}
 }
 
-// RefuseNonFinite records the first float field a read found holding a NaN
-// or an infinity (docs/SPEC-TABLES.md §3.3), by its <Table>.<field> name. The
-// first name a read records wins, and the read that recorded one refuses with
-// Reason `non_finite_float: <Table>.<field>` when its walk ends.
-func (r *Report) RefuseNonFinite(name string) {
-	if r.NonFiniteFloat == "" {
-		r.NonFiniteFloat = name
-	}
+// Refuse makes this report a refusal's: the verdict and the reason, and no
+// counter.
+func (r *Report) Refuse(reason string) {
+	*r = Report{Refused: true, Reason: reason}
 }
 
 // FiniteF32 and FiniteF64 are the raw-bits test every read runs before a
@@ -108,12 +77,11 @@ func FiniteF32(bits uint32) bool { return bits&0x7F800000 != 0x7F800000 }
 // FiniteF64 is FiniteF32 at sixty-four bits.
 func FiniteF64(bits uint64) bool { return bits&0x7FF0000000000000 != 0x7FF0000000000000 }
 
-// Silent reports whether nothing at all was counted. RETENTION'S TWO COUNTERS
-// ARE NOT IN IT: `retained` names no loss at all, and `retain_lost` is read
-// beside the other counters in the safety check §6.6 states rather than folded
-// into the read's own silence.
+// Silent reports whether the read returned with nothing counted. RETENTION'S
+// TWO COUNTERS ARE NOT IN IT: `retained` names no loss at all, and
+// `retain_lost` is read beside the others in the check §6.6 states.
 func (r Report) Silent() bool {
-	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.BlobShared == 0 && r.MissingRequired == 0 && !r.Malformed
+	return r.Unknown == 0 && r.Widened == 0 && !r.Refused
 }
 
 // Cell is one storage slot: a scalar in whichever representation its kind

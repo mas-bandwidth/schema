@@ -56,12 +56,12 @@ func TestCardsCustomerExample(t *testing.T) {
 		t.Fatal("mutating a Wire() copy changed the stored wire")
 	}
 
-	// Load is tolerant and preserves the input; ReadStrict accepts a clean read.
+	// Load is the strict read and preserves the input; ReadStrict accepts a clean read.
 	loaded, report, err := cards.Load(rec.Wire())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if report.Unknown != 0 || report.Malformed {
+	if report.Unknown != 0 || report.Err() != nil {
 		t.Fatalf("clean read reported loss: %+v", report)
 	}
 	strict, err := cards.ReadStrict(rec.Wire())
@@ -86,7 +86,7 @@ func TestCardsCustomerExample(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ToJSON: %v", err)
 	}
-	if jreport.Malformed {
+	if jreport.Err() != nil {
 		t.Fatalf("ToJSON report is malformed: %+v", jreport)
 	}
 	if !bytes.Contains(json, []byte("distinctive body line")) || !bytes.Contains(json, []byte("pro")) {
@@ -161,7 +161,7 @@ func TestCardsCustomerExample(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Upgrade(historical): %v (report %+v)", err, ureport)
 	}
-	if ureport.RetainLost != 0 || ureport.Malformed {
+	if ureport.RetainLost != 0 || ureport.Err() != nil {
 		t.Fatalf("Upgrade(historical) reported loss: %+v", ureport)
 	}
 	up2, _, err := cards.Upgrade(up)

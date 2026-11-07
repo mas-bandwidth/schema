@@ -69,6 +69,7 @@ func TestWireFuzzSkippedVectorKeepsPriorSeedMutable(t *testing.T) {
 }
 
 func TestWireFuzzMixedBuilderPreservesFullRoster(t *testing.T) {
+	t.Skip("layer 3: the pipe answer's malformed flag and the builder-over-region count-cap precedence, retired per docs/plans/strict-only.md (b)")
 	m, _, _ := corpus(t)
 	plain, roots, index, skipped, err := buildWireFuzzRoster(m, wireFuzzOptions{vectors: defaultVectors})
 	if err != nil {

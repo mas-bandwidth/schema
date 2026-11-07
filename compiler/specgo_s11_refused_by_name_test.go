@@ -64,8 +64,14 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 			want: []string{"TABLES, `[..N]T` or `[N]T`", "an arm being one table"},
 		},
 		{
-			name: "default read refusals",
-			want: []string{"`blob_shared`", "`non_finite_float`", "a blob shared by two slots (§2.5, `blob_shared`)"},
+			name: "every read refuses",
+			want: []string{
+				"What every read refuses, and what it accepts",
+				"A read accepts evolution\n  and nothing else",
+				"a missing required field, a blob shared by two slots and a non-finite\n  plain float",
+				"There is no `...Tolerant` twin.",
+			},
+			stale: []string{"strict read refuses by default", "the tolerant read counts"},
 		},
 		{
 			name: "compile-time refusals with no line",

@@ -218,7 +218,9 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 						size: 0, children: 0, note: v.Name}, fixedDst{})
 					continue
 				}
-				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name, tag)
+				// an arm is a field line (§2.6): a string, bytes or array arm
+				// keeps the field's own size and shape in the layout
+				fixedWalkPayload(w, v.F, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F), tag)
 			}
 			return
 		case *ir.Enum:

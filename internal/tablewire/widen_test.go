@@ -37,14 +37,8 @@ func TestUnsignedWideningClampsAtDeclaredWidth(t *testing.T) {
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableFieldWireId(value.Fields[0].Def))
 		wire = binary.LittleEndian.AppendUint64(wire, 1)
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(model, value, wire, &report); !ok || err != nil {
-			t.Fatalf("kind %d: decode %v, %v", kind, ok, err)
-		}
-		if got := value.Fields[0].Cell.U; got != 1<<40 {
-			t.Fatalf("kind %d: clamped to %d, want %d", kind, got, uint64(1)<<40)
-		}
-		if report.Widened != 1 || report.Clamped != 1 || report.Malformed {
-			t.Fatalf("kind %d: report %+v", kind, report)
+		if ok, err := tablewire.Decode(model, value, wire, &report); ok || tablewire.RefusalReason(err) != tablewire.ReasonOutOfRange {
+			t.Fatalf("kind %d: a widened value below the range read: %v, %v", kind, ok, err)
 		}
 	}
 }

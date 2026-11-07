@@ -13,8 +13,8 @@ import (
 // The bound probes of docs/SPEC-TABLES.md §16.11 ("The bound probes"): for
 // every bounded field a root table reaches, a wire one past the bound, written
 // byte by byte in the field's own wire kind by the generated
-// <Name>GenPastBound, and a subtest that requires the tolerant read to clamp
-// it to the bound counting one clamped and the strict read to refuse it.
+// <Name>GenPastBound, and a subtest that requires every read to refuse it,
+// with the value at the bound read and written back as its control.
 
 // tgEmit writes Go statements that write wire bytes into the writer named w;
 // d is the nesting depth, which names the writer a framed part opens.
@@ -690,7 +690,7 @@ func testgenBoundProbes(b *strings.Builder, st *ir.Struct, variable bool) error 
 	}
 	b.WriteString("\tdefault:\n\t\treturn nil\n\t}\n\tw0.Put8(0)\n\tw0.Trailer()\n\tif w0.Overflow || ids.Overflow {\n\t\treturn nil\n\t}\n\treturn w0.Buffer[:w0.Offset]\n}\n")
 
-	fmt.Fprintf(b, "\n// Test%sGenBoundProbes reads every past-bound image of %s: the tolerant read\n// clamps it to the bound, counting one clamped and nothing else, and keeps\n// the value at the bound; the strict read refuses it clamped (SPEC-TABLES §16.11).\n", n, n)
+	fmt.Fprintf(b, "\n// Test%sGenBoundProbes reads every past-bound image of %s: every read refuses\n// it, and the value at the bound, its control, reads and writes back its own\n// bytes (SPEC-TABLES §4, §16.11).\n", n, n)
 	fmt.Fprintf(b, "func Test%sGenBoundProbes(t *testing.T) {\n\tt.Parallel()\n\tprobes := []struct{ name, want string }{\n", n)
 	for _, p := range probes {
 		var j tgJSON
@@ -702,19 +702,21 @@ func testgenBoundProbes(b *strings.Builder, st *ir.Struct, variable bool) error 
 	testgenSave(b, n)
 	b.WriteString("\t\t\tvar tr TableReport\n")
 	if variable {
-		fmt.Fprintf(b, "\t\t\tvar lb %sBuilder\n\t\t\tif !lb.Init() {\n\t\t\t\tt.Fatal(\"builder init\")\n\t\t\t}\n\t\t\tdefer lb.Shutdown()\n\t\t\tok := %sLoadBuilderTolerant(&lb, wire, &tr) && lb.Lock()\n", n, n)
+		fmt.Fprintf(b, "\t\t\tvar lb %sBuilder\n\t\t\tif !lb.Init() {\n\t\t\t\tt.Fatal(\"builder init\")\n\t\t\t}\n\t\t\tdefer lb.Shutdown()\n\t\t\tok := %sLoadBuilder(&lb, wire, &tr)\n", n, n)
 	} else {
-		fmt.Fprintf(b, "\t\t\tread := &%s{}\n\t\t\tok := %sLoadTolerant(read, wire, &tr)\n", n, n)
+		fmt.Fprintf(b, "\t\t\tok := %sLoad(&%s{}, wire, &tr)\n", n, n)
 	}
-	b.WriteString("\t\t\tif !ok || tr.Clamped != 1 || tr.Unknown != 0 || tr.KindMismatch != 0 || tr.Widened != 0 || tr.Malformed || !errors.Is(tr.Err(), TableRefuseClamped) {\n\t\t\t\tt.Fatalf(\"%s: the tolerant read: ok=%v report %+v, want one clamped and nothing else\", p.name, ok, tr)\n\t\t\t}\n")
-	if variable {
-		b.WriteString("\t\t\tread := lb.AsConst()\n")
-	}
+	b.WriteString("\t\t\tif ok || tr.Err() == nil {\n\t\t\t\tt.Fatalf(\"%s: the read accepted a value past its bound: report %+v\", p.name, tr)\n\t\t\t}\n")
+	fmt.Fprintf(b, "\t\t\tif got, err := %sReadStrict(wire); got != nil || err == nil {\n\t\t\t\tt.Fatalf(\"%%s: ReadStrict accepted a value past its bound\", p.name)\n\t\t\t}\n", n)
 	b.WriteString("\t\t\tvar r TableReport\n")
 	testgenSampleAt(b, "\t\t\t", n, variable, "p.want")
-	b.WriteString("\t\t\twantWire, wantJson := save(\"at the bound\", v)\n\t\t\tgotWire, gotJson := save(\"clamped\", read)\n")
-	b.WriteString("\t\t\tif !bytes.Equal(gotWire, wantWire) || !bytes.Equal(gotJson, wantJson) {\n\t\t\t\tt.Fatalf(\"%s: the clamped value is not at the bound: read %s, want %s\", p.name, gotJson, wantJson)\n\t\t\t}\n")
-	fmt.Fprintf(b, "\t\t\tif got, err := %sReadStrict(wire); got != nil || !errors.Is(err, TableRefuseClamped) {\n\t\t\t\tt.Fatalf(\"%%s: the strict read: %%v, want clamped\", p.name, err)\n\t\t\t}\n", n)
+	b.WriteString("\t\t\twantWire, _ := save(\"at the bound\", v)\n\t\t\tvar cr TableReport\n")
+	if variable {
+		fmt.Fprintf(b, "\t\t\tvar cb %sBuilder\n\t\t\tif !cb.Init() {\n\t\t\t\tt.Fatal(\"builder init\")\n\t\t\t}\n\t\t\tdefer cb.Shutdown()\n\t\t\tif !%sLoadBuilder(&cb, wantWire, &cr) || !cb.Lock() {\n\t\t\t\tt.Fatalf(\"%%s: the value at the bound refused: %%v\", p.name, cr.Err())\n\t\t\t}\n\t\t\tback := cb.AsConst()\n", n, n)
+	} else {
+		fmt.Fprintf(b, "\t\t\tback := &%s{}\n\t\t\tif !%sLoad(back, wantWire, &cr) {\n\t\t\t\tt.Fatalf(\"%%s: the value at the bound refused: %%v\", p.name, cr.Err())\n\t\t\t}\n", n, n)
+	}
+	b.WriteString("\t\t\tif gotWire, _ := save(\"read back\", back); !bytes.Equal(gotWire, wantWire) {\n\t\t\t\tt.Fatalf(\"%s: the value at the bound did not write back its own bytes\", p.name)\n\t\t\t}\n")
 	b.WriteString("\t\t})\n\t}\n}\n")
 	return nil
 }

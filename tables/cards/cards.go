@@ -1,7 +1,7 @@
 // Package cards owns a typed work card and its wire/JSON round trips.
 //
-// The generated table codecs (CardLoadTolerant/CardMeasure/CardSave, CardBuilder,
-// CardFromJSONTolerant/CardToJSON) answer the wire and text forms; this facade is the
+// The generated table codecs (CardLoad/CardMeasure/CardSave, CardBuilder,
+// CardFromJSON/CardToJSON) answer the wire and text forms; this facade is the
 // thin owning layer that a customer imports: a Record that keeps its own
 // defensive copy of the wire and its measured region, checked writes that
 // refuse before publishing, and the two customer ceilings the schema
@@ -56,11 +56,11 @@ func Load(wire []byte) (*Record, Report, error) {
 		if reason != nil {
 			report.Reason = reason.Error()
 		}
-		CardLoadTolerant(make([]byte, 64), wire, &report)
+		CardLoad(make([]byte, 64), wire, &report)
 		return nil, report, fmt.Errorf("cards: wire is not a card: %v", reason)
 	}
 	region := alignedRegion(n)
-	root := CardLoadTolerant(region, wire, &report)
+	root := CardLoad(region, wire, &report)
 	if root == nil {
 		return nil, report, errors.New("cards: wire is malformed")
 	}
@@ -73,8 +73,8 @@ func Load(wire []byte) (*Record, Report, error) {
 }
 
 // FromJSON builds a Record from JSON text through the generated CardBuilder and
-// CardFromJSONTolerant (docs/SPEC-TABLES.md §16), then the generated save. Unknown,
-// mismatched, clamped and malformed inputs are refused, as are the customer
+// CardFromJSON (docs/SPEC-TABLES.md §16), then the generated save. Unknown fields
+// and every read the generated parse refuses are refused, as are the customer
 // bounds and any body or element that is not well-formed UTF-8 without NUL.
 // Bytes are published only on complete success; a refused write leaves no
 // destination and mutates nothing.
@@ -85,12 +85,11 @@ func FromJSON(text []byte) (*Record, error) {
 	}
 	defer b.Shutdown()
 	var report TableReport
-	if !CardFromJSONTolerant(&b, text, &report) || report.Malformed {
-		return nil, errors.New("cards: JSON is malformed")
+	if !CardFromJSON(&b, text, &report) {
+		return nil, fmt.Errorf("cards: JSON is refused: %v", report.Err())
 	}
-	if report.Unknown > 0 || report.KindMismatch > 0 || report.Clamped > 0 {
-		return nil, fmt.Errorf("cards: JSON has loss events (unknown=%d kindMismatch=%d clamped=%d): refused, never truncated",
-			report.Unknown, report.KindMismatch, report.Clamped)
+	if report.Unknown > 0 {
+		return nil, fmt.Errorf("cards: JSON has %d unknown field(s): refused, never truncated", report.Unknown)
 	}
 	if err := checkCard(b.GetRoot(), &b.Arena); err != nil {
 		return nil, err

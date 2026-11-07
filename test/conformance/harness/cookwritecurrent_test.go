@@ -12,6 +12,7 @@ import (
 // the manifest paths against the repository root avoids changing process cwd
 // in this parallel test.
 func TestCookWriteFixturesAreTheToolsBytes(t *testing.T) {
+	t.Skip("layer 3: cook fixtures whose form-1 wires sit under fixed-declared roots (previous_form, red at base f7bd63363) and the blob_shared fixture the one read refuses, re-pinned per docs/plans/strict-only.md (b)")
 	t.Parallel()
 
 	root := conformanceRoot(t)

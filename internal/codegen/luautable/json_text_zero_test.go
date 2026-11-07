@@ -88,13 +88,13 @@ table Root
 			if model.Read(inst, []byte(text), &rep) {
 				t.Fatalf("%s: the Go reference FromJson accepted a zero (%+v)", what, rep)
 			}
-			if !rep.Malformed || !strings.HasPrefix(rep.Reason, "text_holds_zero: ") {
+			if !rep.Refused || !strings.HasPrefix(rep.Reason, "text_holds_zero: ") {
 				t.Fatalf("%s: Go report %+v is not Malformed text_holds_zero", what, rep)
 			}
 			got := runJsonTextZeroProbe(t, g, text)
-			if got.malformed != rep.Malformed || got.reason != rep.Reason {
+			if got.malformed != rep.Refused || got.reason != rep.Reason {
 				t.Errorf("%s: Luau reports malformed=%v reason=%q, Go reports malformed=%v reason=%q",
-					what, got.malformed, got.reason, rep.Malformed, rep.Reason)
+					what, got.malformed, got.reason, rep.Refused, rep.Reason)
 			}
 		}
 		// A map[int32]int32 key's control is no integer, as the Go row
@@ -108,7 +108,7 @@ table Root
 			what := f.name + " control " + control
 			inst := model.New(st)
 			var rep tabletext.Report
-			if !model.Read(inst, []byte(control), &rep) || rep.Malformed || rep.KindMismatch != 0 || rep.Unknown != 0 {
+			if !model.Read(inst, []byte(control), &rep) || rep.Refused || rep.Unknown != 0 {
 				t.Fatalf("%s: the Go reference did not read the control clean (%+v)", what, rep)
 			}
 			wantText, err := model.Write(inst)
@@ -141,7 +141,7 @@ table Root
 	for _, text := range skipped {
 		inst := model.New(st)
 		var rep tabletext.Report
-		if !model.Read(inst, []byte(text), &rep) || rep.Malformed || rep.Unknown != 1 {
+		if !model.Read(inst, []byte(text), &rep) || rep.Refused || rep.Unknown != 1 {
 			t.Fatalf("%s: the Go reference did not skip the zero (%+v)", text, rep)
 		}
 		wantText, err := model.Write(inst)

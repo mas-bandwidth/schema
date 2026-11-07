@@ -21,7 +21,7 @@ func strictReportClean(r *tabletext.Report) bool {
 	if r == nil {
 		return true
 	}
-	return r.KindMismatch == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.MissingRequired == 0 && !r.Malformed && !r.Refused && r.NonFiniteFloat == "" && r.BlobShared == 0
+	return !r.Refused
 }
 
 func strictDecode(model *tabletext.Model, value *tabletext.Instance, wire []byte, report *tabletext.Report) (bool, error) {

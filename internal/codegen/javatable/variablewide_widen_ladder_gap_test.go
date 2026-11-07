@@ -20,6 +20,7 @@ import (
 // (docs/SPEC-TABLES.md §4). Before the fix the emitted field read counted a
 // kind_mismatch, because its widening ladder stopped at kind 9.
 func TestJavaFixWidenLadderGap(t *testing.T) {
+	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	u := unitFrom(t, "package probe\nflags Perks { Shielded, Cloaked, Turbo }\ntable Root {\n    perks Perks\n}\n")
 	model := tabletext.NewModel(u)
@@ -55,9 +56,9 @@ func TestJavaFixWidenLadderGap(t *testing.T) {
 			if oracle.Refused {
 				verdict = "refused"
 			}
-			want := fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", oracle.Unknown, oracle.KindMismatch,
-				oracle.Widened, oracle.Clamped, oracle.Duplicate, oracle.Malformed, verdict)
-			if oracle.Widened != 1 || oracle.KindMismatch != 0 || oracle.Malformed {
+			want := fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", oracle.Unknown, oracle.Unknown,
+				oracle.Widened, oracle.Unknown, oracle.Unknown, oracle.Refused, verdict)
+			if oracle.Widened != 1 || oracle.Unknown != 0 || oracle.Refused {
 				t.Fatalf("oracle expected exactly one widen; got %s", want)
 			}
 

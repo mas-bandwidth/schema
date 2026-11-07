@@ -51,14 +51,14 @@ func goOracleMapEntry(t *testing.T, u *ir.Unit, root string, wire []byte) oracle
 	value := model.New(u.Tables[root])
 	report := new(tabletext.Report)
 	ok, err := tablewire.DecodeRegion(model, value, wire, report)
-	if err != nil {
+	if err != nil && !tablewire.ReadRefusal(err) {
 		t.Fatal(err)
 	}
 	encoded, eerr := tablewire.Encode(model, value)
 	if eerr != nil {
 		t.Fatal(eerr)
 	}
-	return oracleMapEntryAnswer{encoded: encoded, malformed: report.Malformed || (!ok && report.Refused)}
+	return oracleMapEntryAnswer{encoded: encoded, malformed: !ok && report.Refused}
 }
 
 func javaMapEntryOutput(t *testing.T, u *ir.Unit, root string, wire []byte) string {

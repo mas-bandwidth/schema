@@ -37,7 +37,7 @@ func TestRequiredCommittedCorpus(t *testing.T) {
 			}
 			v := m.New(m.Lookup("Root"))
 			var rep tabletext.Report
-			if ok := m.Read(v, text, &rep); ok != (tc.reason == "") || rep.Reason != tc.reason || rep.Malformed {
+			if ok := m.Read(v, text, &rep); ok != (tc.reason == "") || rep.Reason != tc.reason || rep.Refused != !ok {
 				t.Fatalf("JSON: %v %+v", ok, rep)
 			}
 			if tc.reason == "" {
@@ -48,7 +48,7 @@ func TestRequiredCommittedCorpus(t *testing.T) {
 			}
 			v = m.New(m.Lookup("Root"))
 			rep = tabletext.Report{}
-			if ok, err := tablewire.Decode(m, v, wire, &rep); ok != (tc.reason == "") || rep.Reason != tc.reason || rep.Malformed || (err != nil) != (tc.reason != "") {
+			if ok, err := tablewire.Decode(m, v, wire, &rep); ok != (tc.reason == "") || rep.Reason != tc.reason || rep.Refused != !ok || (err != nil) != (tc.reason != "") {
 				t.Fatalf("wire: %v %v %+v", ok, err, rep)
 			}
 		})
@@ -91,7 +91,7 @@ func TestRequiredPins(t *testing.T) {
   }
   var b RootBuilder;if !b.Init(){t.Fatal("builder init")};var r TableReport
   ok:=RootLoadBuilderTolerant(&b,pin,&r);b.Shutdown()
-  if ok!=(tc.reason=="") || r.Reason!=tc.reason || r.Malformed || (r.MissingRequired!=0)!=(tc.reason!=""){t.Fatalf("independent read %%s: %%v %%+v",tc.name,ok,r)}
+  if ok!=(tc.reason=="") || r.Reason!=tc.reason || r.Refused || (r.MissingRequired!=0)!=(tc.reason!=""){t.Fatalf("independent read %%s: %%v %%+v",tc.name,ok,r)}
  }
 }
 `, corpus))

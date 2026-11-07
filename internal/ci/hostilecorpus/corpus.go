@@ -309,9 +309,6 @@ func EngineVerdict(m *tabletext.Model, c Case, payload []byte) (verdict, reason,
 			}
 			return fail(rreason)
 		}
-		if r.Malformed {
-			return fail(ReasonDamaged)
-		}
 		return Accept, NoReason, NoReason, nil
 	case "announce_second":
 		v := &tablewire.Vocabulary{}
@@ -386,8 +383,7 @@ func strictReport(r *tabletext.Report) bool {
 	if r == nil {
 		return true
 	}
-	return r.KindMismatch == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.MissingRequired == 0 &&
-		!r.Malformed && !r.Refused && r.NonFiniteFloat == "" && r.BlobShared == 0
+	return !r.Refused
 }
 
 // strictJSON verifies that JSON text contains no lone/unpaired UTF-16
@@ -556,6 +552,11 @@ func RefusalReason(err error) (string, error) {
 	}
 	if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](err); ok {
 		return ReasonNonFiniteFloat, nil
+	}
+	if tablewire.ReadRefusal(err) {
+		// every other refusal of the one read; the reason is per-language
+		// diagnostic detail (docs/SPEC-TABLES.md §6.5)
+		return ReasonDamaged, nil
 	}
 	return "", fmt.Errorf("engine returned an unnamed refusal: %w", err)
 }
