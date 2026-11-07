@@ -466,31 +466,31 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 	kind := sequenceWireKind(f)
 	g.pf("                TableReader sub;\n")
 	if bounded == "" {
-		g.pf("                if(!table_reader_span(r,&sub)) { r->report->malformed=1; return 0; }\n")
+		g.pf("                if(!table_reader_span(r,&sub)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n")
 	} else {
 		g.pf("                sub=%s; %s.offset=%s.size;\n", bounded, bounded, bounded)
 	}
 	g.pf("                if(sub.size>=2) {\n                    uint8_t elem_kind; uint64_t count,i; TableSequenceFill fill;\n")
 	if bounded == "" {
-		g.pf("                    if(!table_reader_array_header(&sub,r,&elem_kind,&count)) { r->report->malformed=1; break; }\n")
+		g.pf("                    if(!table_reader_array_header(&sub,r,&elem_kind,&count)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 	} else {
-		g.pf("                    elem_kind=table_reader_get8(&sub); if(!table_reader_leb(&sub,&count)) { r->report->malformed=1; break; }\n")
+		g.pf("                    elem_kind=table_reader_get8(&sub); if(!table_reader_leb(&sub,&count)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 	}
-	g.pf("                    if(elem_kind!=%d && !(%s)) { r->report->kind_mismatch++; break; }\n", kind, wireElementWidenTest(f, kind, "elem_kind"))
+	g.pf("                    if(elem_kind!=%d && !(%s)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; }\n", kind, wireElementWidenTest(f, kind, "elem_kind"))
 	g.retainReplace(f, "                    ")
 	// a widened element kind counts once the count is known to land: the
 	// fill's count-cap refusal moves no counter (docs/SPEC-TABLES.md §2.9)
-	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),%d);\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(elem_kind!=%d) { r->report->widened++; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, typ, g.sequenceAlign(f), kind)
+	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),%d);\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(elem_kind!=%d) { r->report->widened++; }\n                    if(!fill.ok) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", dst, typ, g.sequenceAlign(f), kind)
 	if f.IsTextList() && f.TextTotal > 0 {
 		g.pf("                    int64_t spent=0;\n")
 	}
-	g.pf("                    for(i=0;i<count;i++) {\n                        %s * element=(%s *)table_sequence_fill_next(&fill); if(element==NULL) { r->report->malformed=1; break; }\n", typ, typ)
+	g.pf("                    for(i=0;i<count;i++) {\n                        %s * element=(%s *)table_sequence_fill_next(&fill); if(element==NULL) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", typ, typ)
 	g.retainIndex(f, "i", "                        ")
 	if ref, ok := e.Type.Ref.(*ir.Struct); ok && !e.Type.Pointer {
 		g.pf("                        %s(element);\n", g.api(ref.Name, "reset"))
 	}
 	g.pf("                        do {\n")
-	bad := "r->report->malformed=1; table_sequence_fill_drop(&fill,element); goto list_end_" + f.Name + ";"
+	bad := "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; table_sequence_fill_drop(&fill,element); goto list_end_" + f.Name + ";"
 	switch kind {
 	case tkString:
 		val := ir.TextListValue(f)
@@ -504,14 +504,14 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 			g.pf("                            if(!table_reader_span(&sub,&item)) { %s }\n", bad)
 			g.pf("                            if(!table_wire_utf8(item.buffer,(uint64_t)item.size)) { %s(element); %s }\n", g.api(f.Type.Name, "reset"), bad)
 			g.pf("                            keep=(uint64_t)item.size;\n")
-			g.pf("                            if(keep>%d) { keep=table_wire_utf8_clamp(item.buffer,keep,%d); r->report->clamped++; }\n", val.Type.Size, val.Type.Size)
+			g.pf("                            if(keep>%d) { keep=table_wire_utf8_clamp(item.buffer,keep,%d); r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", val.Type.Size, val.Type.Size)
 			g.pf("                            memset(element->value,0,sizeof(element->value));\n")
 			g.pf("                            memcpy(element->value,item.buffer,(size_t)keep); element->value[keep]=0; element->value_length=(int32_t)keep;\n")
 		}
 	case tkTable:
 		g.pf("                            TableReader item; if(!table_reader_span(&sub,&item)) { %s }\n                            %s(&item,element);\n", bad, g.api(e.Type.Name, "load_body"))
 		g.wireRefusalCheck("                            ")
-		g.pf("                            if(item.offset!=item.size) { r->report->malformed=1; %s(element); }\n", g.api(e.Type.Name, "reset"))
+		g.pf("                            if(item.offset!=item.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s(element); }\n", g.api(e.Type.Name, "reset"))
 	case tkUnion:
 		g.pf("                            if(!%s(&sub,element,1)) {\n", g.unionWireName(e.Type.Ref.(*ir.Union), "load"))
 		g.wireRefusalCheck("                                ")
@@ -525,7 +525,7 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 		} else {
 			g.pf("                            if(element->value_length>0) { spent+=(int64_t)element->value_length; }\n")
 		}
-		g.pf("                            if(spent>%d) { r->report->clamped++; %s(element); table_sequence_fill_drop(&fill,element); goto list_end_%s; }\n", f.TextTotal, g.api(f.Type.Name, "reset"), f.Name)
+		g.pf("                            if(spent>%d) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; %s(element); table_sequence_fill_drop(&fill,element); goto list_end_%s; }\n", f.TextTotal, g.api(f.Type.Name, "reset"), f.Name)
 	}
 	g.pf("                        } while(0);\n                    }\n                    list_end_%s: table_sequence_fill_end(&fill);\n                }\n", f.Name)
 }
