@@ -38,6 +38,31 @@ print((saved == inputs.wire and "same" or "diff") .. ":" ..
 `
 }
 
+// textProbeFixed is textProbe at a FIXED root (docs/SPEC-TABLES.md §3.4,
+// §16.8): the value loads and re-saves through the fixed form, while the
+// base64 carrier itself still rides Save's wire, so the round trip is
+// LoadText of the file's text and of SaveText's text, both landing on the
+// same fixed bytes.
+func textProbeFixed(module, root string) string {
+	return `local T = require("` + module + `")
+local text = require("text")
+local inputs = require("inputs")
+local v = T.ReadFixedTolerant("` + root + `", inputs.wire)
+print(text.SaveText(T, "` + root + `", v))
+local saved = T.FixedSave("` + root + `", { v })
+local okRound = pcall(text.LoadText, T, "` + root + `", text.SaveText(T, "` + root + `", v))
+local same = saved == inputs.wire and okRound
+local function refuse(s)
+  local ok, err = pcall(function() return text.LoadText(T, "` + root + `", s) end)
+  if ok then return "taken" end
+  if tostring(err):find("base64_damaged", 1, true) then return "damaged" end
+  return "other:" .. tostring(err)
+end
+print((same and "same" or "diff") .. ":" ..
+  refuse(inputs.outside) .. ":" .. refuse(inputs.pad) .. ":" .. refuse(inputs.cut))
+`
+}
+
 // textSaveProbe is the negative control's Lua main: it only writes the text,
 // so a damaged encoding is compared rather than read back.
 func textSaveProbe(module, root string) string {
@@ -162,14 +187,25 @@ func TestLuaBase64TextRoundTripsEveryInstance(t *testing.T) {
 		}
 		good := base64.StdEncoding.EncodeToString(wireData)
 		t.Logf("row %s unit %s", row.caseName, row.unit)
-		out := textInstance(t, repo, paths, row, good, textProbe(ModuleName(u), row.root), nil)
+		fixed := false
+		if st := u.Tables[row.root]; st != nil && st.FixedDeclared {
+			fixed = true
+		}
+		probe := textProbe(ModuleName(u), row.root)
+		if fixed {
+			probe = textProbeFixed(ModuleName(u), row.root)
+		}
+		out := textInstance(t, repo, paths, row, good, probe, nil)
 		instances++
 		lines := strings.Split(out, "\n")
 		if len(lines) != 2 {
 			mismatches = append(mismatches, fmt.Sprintf("instance %s: bad output %q", row.caseName, out))
 			continue
 		}
-		if lines[0] != good {
+		// At a fixed root the carrier rides Save's form-1 wire (§16.8), so
+		// its text is not the form-3 file's base64; the file comparison is
+		// the verdict line's fixed re-save.
+		if !fixed && lines[0] != good {
 			mismatches = append(mismatches, fmt.Sprintf("instance %s: SaveText %q != base64(wire) %q", row.caseName, lines[0], good))
 			continue
 		}

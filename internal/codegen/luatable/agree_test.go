@@ -70,6 +70,29 @@ print(table.concat({ loaded, report.unknown, report.kindMismatch,
 `
 }
 
+// agProbeFixed is agProbe at a FIXED root (docs/SPEC-TABLES.md §3.4): the
+// generated fixed form is the only reader, a fixed read moves none of the
+// variable counters, and the re-save is the fixed writer's.
+func agProbeFixed(module, root string) string {
+	return `local T = require("` + module + `")
+local inputs = require("inputs")
+local wire = inputs.wire
+local function hex(s)
+  return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
+end
+local ok, v = pcall(T.ReadFixedTolerant, "` + root + `", wire)
+local savedHex = "none"
+local loaded = 0
+if ok then
+  loaded = 1
+  local sok, b = pcall(T.FixedSave, "` + root + `", { v })
+  if sok and b ~= nil then savedHex = hex(b) end
+end
+print(table.concat({ loaded, 0, 0, 0, 0, 0,
+  "false", ok and 0 or 1, savedHex }, "|"))
+`
+}
+
 // agParseLine parses one probe line.
 func agParseLine(line string) (agAnswer, error) {
 	var a agAnswer
@@ -150,6 +173,12 @@ func agVerdict(a agAnswer, o agOracle) string {
 			return fmt.Sprintf("the engine discards a damaged load; the Lua load says %+v (loaded=%t)", a.counts, a.loaded)
 		}
 		return ""
+	}
+	if o.refused {
+		if !a.loaded && a.refused {
+			return ""
+		}
+		return fmt.Sprintf("the verdict differs: Lua refused=%t (loaded=%t), the engine refused=%t", a.refused, a.loaded, o.refused)
 	}
 	if !a.loaded {
 		return fmt.Sprintf("the Lua load returned no root; the engine read %+v (refused=%t)", o.counts, o.refused)
@@ -239,6 +268,9 @@ func TestLuaTableDamagedReportsAndResavesAgree(t *testing.T) {
 			dir := t.TempDir()
 			luarun.WriteFiles(t, dir, files)
 			probe := agProbe(ModuleName(u), row.root)
+			if st := u.Tables[row.root]; st != nil && st.FixedDeclared {
+				probe = agProbeFixed(ModuleName(u), row.root)
+			}
 			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
 				t.Fatal(err)
 			}
