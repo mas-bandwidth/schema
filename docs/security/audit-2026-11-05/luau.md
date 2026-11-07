@@ -53,3 +53,11 @@ low. A packet `string(N)` or `bytes(N)` copies into the caller value and stores 
 ### `internal/codegen/luautable/runtime/schema_json.luau:336`
 
 low. A JSON node label is accumulated in a double. Labels above the exact integer range of a double collapse into one rounding bin, so two labels can share one graph slot and a reference can bind a different node than its digits name. Labels inside that range are exact. Reduction: accumulate the label as an integer, or refuse a label outside the exact range. not added: report-only.
+
+## Gate
+
+`go test -count=1 -timeout 600s ./internal/codegen/luau/...` passes on the base `a007c180ba4b09c7d9d5404de6e072043e034777` and on this head.
+
+`go test -count=1 -timeout 600s ./internal/codegen/luautable/...` is red on that base and on this head. The failures are agreement with the engine: an integrity trailer four bytes short, and load, save, JSON, and cook bytes that do not match. This card does not change those readers.
+
+`go test -count=1 -timeout 600s ./internal/ci/ -run 'HostileCorpus|HostileRefusal'` passed on this head.
