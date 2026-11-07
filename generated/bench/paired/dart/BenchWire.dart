@@ -2590,10 +2590,12 @@ void fixedTableWireSaveBody(TableWireWriter w, FixedTable v) {
 }
 
 void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -3004,10 +3006,12 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
 }
 
 void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -3095,10 +3099,12 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
 }
 
 void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -3232,10 +3238,12 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
 }
 
 void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -3333,10 +3341,12 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
 }
 
 void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -3452,10 +3462,12 @@ bool _benchMixedLoadoutFixed(TableWireReader p, BenchMixed v, int elemKind, int 
 }
 
 void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -3750,9 +3762,8 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
             default:
               r.report.refuse('kind_mismatch');
               return;
-              break;
           }
-          if (value != null) {
+          {
             var x = value;
             if (x < BigInt.zero) { r.report.refuse('out_of_range'); }
             if (x > BigInt.parse('16776960')) { r.report.refuse('out_of_range'); }
@@ -3991,9 +4002,8 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
             default:
               r.report.refuse('kind_mismatch');
               return;
-              break;
           }
-          if (value != null) {
+          {
             var x = value;
             v.wideKey = x;
           }
@@ -4030,9 +4040,8 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
             default:
               r.report.refuse('kind_mismatch');
               return;
-              break;
           }
-          if (value != null) {
+          {
             var x = value;
             if (x < BigInt.parse('-1267650600228229401496703205376')) { r.report.refuse('out_of_range'); }
             if (x > BigInt.parse('1267650600228229401496703205376')) { r.report.refuse('out_of_range'); }
@@ -4051,9 +4060,8 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
             default:
               r.report.refuse('kind_mismatch');
               return;
-              break;
           }
-          if (value != null) {
+          {
             var x = value;
             if (x < BigInt.zero) { r.report.refuse('out_of_range'); }
             if (x > BigInt.parse('64000')) { r.report.refuse('out_of_range'); }
@@ -4193,10 +4201,12 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
 
 void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
   var seenValue = false;
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -4474,6 +4484,7 @@ int fixedTableWireMeasure(Uint8List data) {
   var seen = false;
   var unframed = false;
   var pstart = 0, pend = 0;
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null || ref == 0) break;

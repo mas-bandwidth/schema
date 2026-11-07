@@ -2561,10 +2561,12 @@ void tableMixedWireSaveBody(TableWireWriter w, TableMixed v) {
 }
 
 void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -2975,10 +2977,12 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
 }
 
 void tableStatWireLoadBody(TableWireReader r, TableStat v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -3066,10 +3070,12 @@ void tableStatWireLoadBody(TableWireReader r, TableStat v, bool nested) {
 }
 
 void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -3203,10 +3209,12 @@ void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) 
 }
 
 void tableChatEventWireLoadBody(TableWireReader r, TableChatEvent v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -3304,10 +3312,12 @@ void tableChatEventWireLoadBody(TableWireReader r, TableChatEvent v, bool nested
 }
 
 void tablePickupEventWireLoadBody(TableWireReader r, TablePickupEvent v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -3423,10 +3433,12 @@ bool _tableMixedLoadoutFixed(TableWireReader p, TableMixed v, int elemKind, int 
 }
 
 void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
     if (id == null) { r.report.refuse('wire_damaged'); return; }
     if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
@@ -4334,6 +4346,7 @@ int tableEntityWireMeasure(Uint8List data) {
   var seen = false;
   var unframed = false;
   var pstart = 0, pend = 0;
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null || ref == 0) break;
@@ -4482,6 +4495,7 @@ int tableStatWireMeasure(Uint8List data) {
   var seen = false;
   var unframed = false;
   var pstart = 0, pend = 0;
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null || ref == 0) break;
@@ -4701,6 +4715,7 @@ int tableMixedWireMeasure(Uint8List data) {
   var seen = false;
   var unframed = false;
   var pstart = 0, pend = 0;
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null || ref == 0) break;
