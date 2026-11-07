@@ -79,11 +79,19 @@ Allocations are unchanged: 0 B/op and 0 allocs/op on every row.
 Attempt 4 measured the strict load at 3.08x the tolerant load because
 `tableOpenChecked` ran `tableWireVerify` over the whole file and then
 `LoadBody` read it again. STEP 5 folds the wire-alone checks into the body
-walk for a file with no node table: each field's id is checked for repetition
-as it is read, an unknown payload is walked by the same wire-alone rules as it
-is skipped, and a keyed slot's key is checked as it is read. The whole-file
-conditions that genuinely need every record — reachability, blob sharing and
-cycles — still run `tableWireVerify`, because only a file with a node table has
-them. The table load is now 0.91x the tolerant base and 0.33x the prepass;
-the save is at parity. Every refusal the prepass made over a node-free file is
-still made by the body read, at the same first violation.
+walk: each field's id is checked for repetition as it is read, an unknown
+payload is walked by the same wire-alone rules as it is skipped, and a keyed
+slot's key is checked as it is read. The node-table fold (`8e60ed6e`) carries
+the same one walk into a file with a node table: each named record is held to
+its declaration as `LoadBody` decodes it, a record of a type the reader cannot
+name is walked where it is skipped, and reachability, blob sharing and cycles
+are judged over the decoded nodes without re-reading the wire. `tableWireVerify`
+has no caller left in the generated code; every refusal it made is now made by
+the one walk, at the same first violation.
+
+The paired table rows above are the node-free fold's run (`82db1e045`). The
+node-table fold (`8e60ed6e`) has no fleet before/after row in this report: the
+card that carried it could reach no fleet bench (every fleet host refused the
+key), so no paired load/save sitting was made for it. This attempt made no
+hot-path change and did not fabricate a sitting; the node-table row remains
+outstanding until a fleet bench answers.
