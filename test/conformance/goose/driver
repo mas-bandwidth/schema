@@ -54,6 +54,21 @@ glue() {
 			echo "import .$b;"
 		done
 		echo "fn conformance_unit() -> schema_rt::LoadUnit { return $ns::TableUnit; }"
+		echo "fn conformance_wire(root: const u8[:], data: const u8[:], out: u8[>..<]&) -> i64 {"
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)FixedLoad(.*/\1/p' "$1"/*Table.goose); do
+			echo "    if root == \"$r\" {"
+			echo "        var values: $ns::$r[256] = [$ns::$r { .. }; 256];"
+			echo "        var rep = schema_rt::FixedReport { .. };"
+			echo "        let n = $ns::${r}FixedLoad(values[0..256], data, rep);"
+			echo "        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -3; }"
+			echo "        var saved: u8[>..] = [];"
+			echo "        if $ns::${r}FixedSave(values[0..n], saved) < 0 { return -4; }"
+			echo "        out.append(saved);"
+			echo "        return 0;"
+			echo "    }"
+		done
+		echo "    return -1;"
+		echo "}"
 		# THE MESSAGE FORM's round trip, one arm per root the unit carries it
 		# for (a fixed root's <Root>LoadMessages): AnnounceRead the peer's
 		# announcement, LoadMessages the batch against it, SaveMessages what
@@ -66,7 +81,7 @@ glue() {
 			echo "        if !schema_rt::announce_read(voc, announce, rep) { return -2; }"
 			echo "        var values: $ns::$r[256] = [$ns::$r { .. }; 256];"
 			echo "        let n = $ns::${r}LoadMessages(values[0..256], voc, wire, rep);"
-			echo "        if n < 1 || rep.malformed || rep.reason != 0 { return -3; }"
+			echo "        if n < 1 || rep.damaged || rep.reason != 0 { return -3; }"
 			echo "        return $ns::${r}SaveMessages(values[0..n], out, rep);"
 			echo "    }"
 		done
@@ -77,21 +92,21 @@ glue() {
 		# value bridge (<Root>ToLoaded, <Root>FromLoaded); every other root
 		# through the flat value table, json_value.goose's json_load_table and
 		# json_save_table over the unit's TableUnit and TextUnit. The read is
-		# the TOLERANT one, <Root>FromJsonTolerant and json_load_table: every
+		# the TOLERANT one, <Root>FromJson and json_load_table: every
 		# leg's json-read and json-hostile call that one entry point
 		# (test/conformance/README.md).
 		echo "fn conformance_json_read(root: const u8[:], text: const u8[:], data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&) -> i64 {"
 		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)ToLoaded(.*/\1/p' "$1"/*Table.goose); do
 			echo "    if root == \"$r\" {"
 			echo "        var v = $ns::$r { .. }; var report = schema_rt::json_report(); let unit = conformance_unit();"
-			echo "        if !$ns::${r}FromJsonTolerant(v, text, report) || report.malformed { return -2; }"
+			echo "        if !$ns::${r}FromJson(v, text, report) || report.damaged { return -2; }"
 			echo "        let at = $ns::${r}ToLoaded(v, unit, data, vals);"
 			echo "        return if at < 0 { -2 } else { at };"
 			echo "    }"
 		done
 		echo "    var report = schema_rt::json_report();"
 		echo "    let at = schema_rt::json_load_table($ns::TableUnit, $ns::TextUnit, root, text, data, vals, nodes, report);"
-		echo "    return if at < 0 || report.malformed { -2 } else { at };"
+		echo "    return if at < 0 || report.damaged { -2 } else { at };"
 		echo "}"
 		echo "fn conformance_json_write(root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], at: i64, out: u8[>..]&) -> i64 {"
 		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)ToLoaded(.*/\1/p' "$1"/*Table.goose); do
@@ -114,8 +129,8 @@ glue() {
 		echo "    var nodes: schema_rt::LoadNode[>..] = [];"
 		echo "    var r = schema_rt::json_report();"
 		echo "    let at = schema_rt::json_load_table($ns::TableUnit, $ns::TextUnit, root, text, data, vals, nodes, r);"
-		echo "    if at >= 0 && !r.malformed {"
-		echo "        format(out, r.unknown, \",\", r.kind_mismatch, \",\", r.widened, \",\", r.clamped, \",\", r.duplicate, \",false,read\");"
+		echo "    if at >= 0 && !r.damaged {"
+		echo "        format(out, r.unknown, \",\", r.mismatch, \",\", r.widened, \",\", r.oor, \",\", r.repeated, \",false,read\");"
 		echo "        out.push(10);"
 		echo "        if schema_rt::json_save_table($ns::TableUnit, $ns::TextUnit, root, data, vals, nodes, at, out) < 0 { out.append(\"!no value\"); }"
 		echo "    } else {"

@@ -102,16 +102,25 @@ fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
         if f.len < 5 || f[0] != "report" || f[2] != unit { continue; }
         var data: u8[>..] = [];
         load_file(f[4], data);
+        var fixed_root = false;
+        for d in conformance_unit().tables {
+            if d.name == f[3] && d.fixed { fixed_root = true; }
+        }
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
-        let at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        var at: i64 = -1;
+        if fixed_root {
+            report.refused = true;
+        } else {
+            at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        }
         let refused = report.refused || report.non_finite;
         var text: u8[>..] = [];
-        text.append(str(report.unknown, ",", report.kind_mismatch, ",", report.widened, ",", report.clamped, ",",
-                        report.duplicate, ",", bool_word(report.malformed), ",",
+        text.append(str(report.unknown, ",", report.mismatch, ",", report.widened, ",", report.oor, ",",
+                        report.repeated, ",", bool_word(report.body_damaged), ",",
                         if refused { "refused" } else { "read" }, "\n"));
-        if !refused && !report.malformed && at >= 0 {
+        if !refused && !report.body_damaged && at >= 0 {
             var json: u8[>..] = [];
             if conformance_json_write(f[3], data, vals, nodes, at, json) < 0 {
                 answer(f[1], text);
@@ -141,10 +150,10 @@ fn surface_framing(lines: const u8[:][:], unit: const u8[:]) {
         var report = schema_rt::LoadReport { .. };
         let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
         var out: u8[>..] = [];
-        out.append(str(report.unknown, ",", report.kind_mismatch, ",", report.widened, ",", report.clamped, ",",
-                       report.duplicate, ",", bool_word(report.malformed), ",",
+        out.append(str(report.unknown, ",", report.mismatch, ",", report.widened, ",", report.oor, ",",
+                       report.repeated, ",", bool_word(report.body_damaged), ",",
                        if report.refused || report.non_finite { "refused" } else { "read" }, "\n"));
-        if !no_value && root >= 0 && !report.malformed && !report.refused && !report.non_finite {
+        if !no_value && root >= 0 && !report.body_damaged && !report.refused && !report.non_finite {
             var json: u8[>..] = [];
             if conformance_json_write(f[3], data, vals, nodes, root, json) < 0 {
                 write_stderr(str("driver: ", f[1], " JSON writer refused\n"));
@@ -164,6 +173,16 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
         if f.len < 5 || f[0] != "instance" || f[2] != unit { continue; }
         var data: u8[>..] = [];
         load_file(f[4], data);
+        var out: u8[>..<] = [];
+        let fw = conformance_wire(f[3], data, out);
+        if fw == 0 {
+            answer(f[1], out);
+            continue;
+        }
+        if fw < -1 {
+            write_stderr(str("driver: ", f[1], " does not load\n"));
+            exit(1);
+        }
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
@@ -172,7 +191,6 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
             write_stderr(str("driver: ", f[1], " does not load\n"));
             exit(1);
         }
-        var out: u8[>..<] = [];
         let refusal = schema_rt::save_table(conformance_unit(), f[3], data, vals, nodes, root, out);
         if refusal != 0 {
             absent(f[1], schema_rt::save_refusal_name(refusal));
@@ -283,7 +301,7 @@ fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
 // for every json-hostile row of the unit, `u,k,w,c,d,false,read` and the §16
 // text of the value it left, or `refused`
 // (test/conformance/README.md): through the unit's text glue for a root it
-// names (its typed <Root>FromJsonTolerant), and through the flat value table
+// names (its typed <Root>FromJson), and through the flat value table
 // for every other root.
 fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
