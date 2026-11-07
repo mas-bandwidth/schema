@@ -85,7 +85,7 @@ inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void * slo
 //
 // The dialect: trailing commas are accepted on read (the authoring files
 // this exists for carry them) and never written; comments are not JSON and
-// are refused; unknown keys are skipped and counted; a duplicate key is
+// are refused; unknown keys are skipped and counted; a repeated key is
 // last-wins and counted; a key present with the wrong JSON type is skipped
 // and counted, never coerced.
 
@@ -1574,7 +1574,7 @@ struct TableJsonIn
 // as missing_required, in declaration order, exactly as the binary reader
 // refuses a record that omitted it. A required field inside an if guard is
 // demanded only while its guard holds: with the branch off it is absent and
-// no refusal is owed. The bounded seen bitmap is the duplicate tracker; a
+// no refusal is owed. The bounded seen bitmap is the repeated tracker; a
 // table with more than 4096 fields keeps its old reading past the window.
 inline bool TableJsonRequireSeen( TableJsonIn & in, const void * base, const TableTypeInfo * info, const uint64_t * seen )
 {
@@ -1843,17 +1843,17 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
 
 // Scan one JSON string into a caller buffer. Bytes are appended ONE CODE
 // POINT AT A TIME — an escape's encoding, or a UTF-8 sequence read whole —
-// so a string longer than the field is clamped AT A CODE POINT BOUNDARY and
+// so a string longer than the field is out_of_range AT A CODE POINT BOUNDARY and
 // never cut through a multi-byte character. Clamping is counted, never
 // fatal, exactly as it is on the wire (§4). A NULL destination scans past a
 // string without keeping it.
 //
-// A CALLER THAT TAKES clamped_out OWNS THE COUNTER. The value paths leave it
+// A CALLER THAT TAKES oor_out OWNS THE COUNTER. The value paths leave it
 // NULL, and the clamp is a value's clamp, counted here. A MAP KEY takes it,
 // because a key never clamps: a key this buffer could not hold whole is not a
 // shorter key, and its entry drops instead (§2.8).
 inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length,
-    bool * clamped_out = NULL, bool text = false )
+    bool * oor_out = NULL, bool text = false )
 {
     if ( TableJsonPeek( in ) != '"' )
     {
@@ -1862,7 +1862,7 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
     }
     in.pos++;
     int32_t placed = 0;
-    bool clamped = false;
+    bool oor_flag = false;
     for ( ;; )
     {
         char unit[4];
@@ -1878,7 +1878,7 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
         {
             placed += unit_length; // measured and not kept: a byte buffer's read sizes its node this way (§2.5)
         }
-        else if ( !clamped && placed + unit_length <= capacity )
+        else if ( !oor_flag && placed + unit_length <= capacity )
         {
             memcpy( out + placed, unit, (size_t) unit_length );
             placed += unit_length;
@@ -1888,12 +1888,12 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
             // A CLAMP IS A PREFIX. Once one code point does not fit, the scan
             // stops placing: a later SHORTER code point sliding into the room
             // the long one left would store a string the input never spelled,
-            // and one clamped count cannot tell the two apart.
-            clamped = true;
+            // and one out_of_range count cannot tell the two apart.
+            oor_flag = true;
         }
     }
-    if ( clamped_out != NULL ) { *clamped_out = clamped; }
-    else if ( clamped ) { in.report->clamped++; }
+    if ( oor_out != NULL ) { *oor_out = oor_flag; }
+    else if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
     if ( length != NULL ) { *length = placed; }
     return true;
 }
@@ -1998,16 +1998,16 @@ inline bool TableJsonScanBase64( TableJsonIn & in, int64_t * symbols_out, bool *
 
 // The SECOND pass over a body the first pass called base64, from mark (just
 // past its opening quote): six bits a symbol into out, at most capacity
-// bytes placed, the count answered, and *clamped set when more were
+// bytes placed, the count answered, and *oor_flag set when more were
 // spelled. The cursor is restored to where the first pass left it.
-inline int64_t TableJsonDecodeBase64( TableJsonIn & in, int64_t mark, uint8_t * out, int64_t capacity, bool * clamped )
+inline int64_t TableJsonDecodeBase64( TableJsonIn & in, int64_t mark, uint8_t * out, int64_t capacity, bool * oor_flag )
 {
     const int64_t end = in.pos;
     in.pos = mark;
     int64_t placed = 0;
     uint32_t accumulator = 0;
     int32_t held = 0;
-    *clamped = false;
+    *oor_flag = false;
     for ( ;; )
     {
         char c = 0;
@@ -2022,7 +2022,7 @@ inline int64_t TableJsonDecodeBase64( TableJsonIn & in, int64_t mark, uint8_t * 
             if ( placed < capacity ) { out[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff ); }
             else
             {
-                *clamped = true;
+                *oor_flag = true;
             }
         }
     }
@@ -2050,7 +2050,7 @@ inline uint32_t TableJsonDecodeUtf8( const char * unit, int32_t unit_length )
 // TableJsonScanUnit with the narrow scan, so the escape grammar and the
 // lone-surrogate rule are one grammar, and appends ONE CODE POINT AT A TIME —
 // one unit below U+10000 and a surrogate PAIR above it. A string longer than
-// the field is therefore clamped at N code units with a pair never split, and
+// the field is therefore out_of_range at N code units with a pair never split, and
 // a high surrogate left without its low half is dropped with it, which is the
 // same sentence the wire's clamp takes (§3). Clamping is counted, never fatal.
 inline bool TableJsonScanWString( TableJsonIn & in, char16_t * out, int32_t capacity, int32_t * length )
@@ -2062,7 +2062,7 @@ inline bool TableJsonScanWString( TableJsonIn & in, char16_t * out, int32_t capa
     }
     in.pos++;
     int32_t placed = 0;
-    bool clamped = false;
+    bool oor_flag = false;
     for ( ;; )
     {
         char unit[4];
@@ -2092,7 +2092,7 @@ inline bool TableJsonScanWString( TableJsonIn & in, char16_t * out, int32_t capa
         {
             placed += units_length;
         }
-        else if ( !clamped && placed + units_length <= capacity )
+        else if ( !oor_flag && placed + units_length <= capacity )
         {
             for ( int32_t i = 0; i < units_length; i++ ) { out[placed + i] = units[i]; }
             placed += units_length;
@@ -2103,10 +2103,10 @@ inline bool TableJsonScanWString( TableJsonIn & in, char16_t * out, int32_t capa
             // point does not fit, the scan stops placing. A pair is placed
             // whole or not at all, so no clamp can leave an unpaired
             // surrogate in storage.
-            clamped = true;
+            oor_flag = true;
         }
     }
-    if ( clamped ) { in.report->clamped++; }
+    if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
     if ( length != NULL ) { *length = placed; }
     return true;
 }
@@ -2213,7 +2213,7 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
 //
 // TWO POLICIES SIT ON TOP OF THE ONE VALUE and neither reinterprets the token:
 // an ordinary FIELD clamps to its domain and counts, and a MAP KEY rejects the
-// whole entry, because a key is an identity and a clamped one is two entries
+// whole entry, because a key is an identity and a out_of_range one is two entries
 // merged. That difference is the only difference between them.
 //
 // THE KEY READS ITS TOKEN EXACTLY AND A FIELD READS IT THROUGH THE DOUBLE, and
@@ -2554,7 +2554,7 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
     }
     else if ( point < -40 )
     {
-        in.report->kind_mismatch++; // finer than any F can spell
+        in.report->refused = true; in.report->refuse_reason = kind_mismatch;; // finer than any F can spell
         return true;
     }
     else
@@ -2587,7 +2587,7 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
         {
             if ( fd[k] != 0 )
             {
-                in.report->kind_mismatch++;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                 return true;
             }
         }
@@ -2623,7 +2623,7 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
             }
         }
     }
-    if ( saturated ) { in.report->clamped++; }
+    if ( saturated ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
     if ( f->wide != NULL )
     {
         TableJsonWide lo = { f->wide->lo[0], f->wide->lo[1] };
@@ -2631,12 +2631,12 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
         if ( TableJsonWideCompare( raw, lo, is_signed ) < 0 )
         {
             raw = lo;
-            in.report->clamped++;
+            in.report->refused = true; in.report->refuse_reason = out_of_range;;
         }
         else if ( TableJsonWideCompare( raw, hi, is_signed ) > 0 )
         {
             raw = hi;
-            in.report->clamped++;
+            in.report->refused = true; in.report->refuse_reason = out_of_range;;
         }
     }
     TableJsonWideStore( storage, f->elem_size, raw );
@@ -2688,7 +2688,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             {
                 if ( !first )
                 {
-                    in.report->malformed = true;
+                    in.report->damaged = true;
                     in.bad = true;
                     return false;
                 }
@@ -3044,7 +3044,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 }
                 else if ( got != TableJsonShape( arm ) )
                 {
-                    in.report->kind_mismatch++;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                     placed = false;
                 }
@@ -3068,7 +3068,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             {
                 if ( TableJsonValueShape( in ) != 'o' )
                 {
-                    in.report->kind_mismatch++;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                     placed = false;
                 }
@@ -3084,7 +3084,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 // selects it and there is nothing to place
                 if ( TableJsonValueShape( in ) != 'z' )
                 {
-                    in.report->kind_mismatch++;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                     placed = false;
                 }
@@ -3161,7 +3161,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             }
             if ( c != '"' )
             {
-                in.report->kind_mismatch++;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else
@@ -3252,7 +3252,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         // clean writes back.
         if ( !TableJsonFinite( value ) )
         {
-            in.report->kind_mismatch++;
+            in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
             return true;
         }
         if ( f->has_range )
@@ -3260,12 +3260,12 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             if ( value < f->range_min )
             {
                 value = f->range_min;
-                in.report->clamped++;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;;
             }
             else if ( value > f->range_max )
             {
                 value = f->range_max;
-                in.report->clamped++;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;;
             }
         }
         if ( single )
@@ -3273,7 +3273,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             float narrow = (float) value;
             if ( !TableJsonFinite( (double) narrow ) )
             {
-                in.report->kind_mismatch++;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                 return true;
             }
             memcpy( storage, &narrow, sizeof( narrow ) );
@@ -3293,10 +3293,10 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     const TableJsonInteger number = TableJsonInterpret( token, length, integral );
     if ( !number.finite || number.fractional )
     {
-        in.report->kind_mismatch++;
+        in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
         return true;
     }
-    if ( number.saturated ) { in.report->clamped++; } // past what sixty-four bits hold
+    if ( number.saturated ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
     // AN INTEGER RANGE CLAMPS AGAINST ITS EXACT COLUMNS (docs/SPEC-TABLES.md
@@ -3333,13 +3333,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             {
                 bounded.magnitude = lo_magnitude;
                 bounded.negative = f->range_int_min < 0;
-                in.report->clamped++;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;;
             }
             else if ( above )
             {
                 bounded.magnitude = hi_magnitude;
                 bounded.negative = f->range_int_max < 0;
-                in.report->clamped++;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;;
             }
         }
         else
@@ -3350,19 +3350,19 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             {
                 bounded.magnitude = f->range_uint_min;
                 bounded.negative = false;
-                in.report->clamped++;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;;
             }
             else if ( above )
             {
                 bounded.magnitude = f->range_uint_max;
                 bounded.negative = false;
-                in.report->clamped++;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;;
             }
         }
     }
     bool moved = false;
     const int64_t value = TableJsonIntegerInDomain( bounded, is_signed, (int32_t) f->elem_size, moved );
-    if ( moved ) { in.report->clamped++; }
+    if ( moved ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
     TableJsonSetRaw( storage, f->elem_size, (uint64_t) value );
     return true;
 }
@@ -3378,7 +3378,7 @@ inline bool schema_table_json_read_text_element_( TableJsonIn & in, uint8_t * el
     }
     if ( got != 's' )
     {
-        in.report->kind_mismatch++;
+        in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
         return TableJsonSkipValue( in, depth + 1 );
     }
     uint8_t * val_storage = element + value->offset;
@@ -3423,18 +3423,18 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         TableJsonSetCount( base, f, 0 );
         int32_t placed = 0;
         int64_t spent = 0;
-        bool total_clamped = false;
+        bool total_oor_flag = false;
         int32_t seen = 0; // the elements spelled once the total is reached
         for ( ;; )
         {
             char c = TableJsonPeek( in );
             if ( c == ']' ) { in.pos++; break; }
             if ( c == 0 ) { in.bad = true; return false; }
-            if ( total_clamped || placed >= f->array_bound )
+            if ( total_oor_flag || placed >= f->array_bound )
             {
                 // an element past [..N] counts, the total having dropped it
                 // or not, as the wire counts its count clamp (§2.13)
-                if ( !total_clamped || ++seen > f->array_bound ) { in.report->clamped++; }
+                if ( !total_oor_flag || ++seen > f->array_bound ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else
@@ -3444,9 +3444,9 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 if ( !schema_table_json_read_text_element_( in, element, f, depth, elem_bytes ) ) { return false; }
                 if ( f->text_total > 0 && spent + (int64_t) elem_bytes > f->text_total )
                 {
-                    in.report->clamped++;
+                    in.report->refused = true; in.report->refuse_reason = out_of_range;;
                     f->table->reset( element );
-                    total_clamped = true;
+                    total_oor_flag = true;
                     seen = placed + 1;
                 }
                 else
@@ -3504,13 +3504,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         {
             // a body that is not base64 is the wrong shape for the kind: the
             // field keeps its default and the event is counted
-            in.report->kind_mismatch++;
+            in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
             return true;
         }
         memset( storage, 0, (size_t) f->array_bound );
-        bool clamped = false;
-        const int64_t placed = TableJsonDecodeBase64( in, mark, storage, (int64_t) f->array_bound, &clamped );
-        if ( clamped ) { in.report->clamped++; }
+        bool oor_flag = false;
+        const int64_t placed = TableJsonDecodeBase64( in, mark, storage, (int64_t) f->array_bound, &oor_flag );
+        if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
         TableJsonSetCount( base, f, (int32_t) placed );
         return true;
     }
@@ -3535,7 +3535,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
         }
         char shape = TableJsonElementShape( f );
-        // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate
+        // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a repeated
         // key like any other, last-wins and counted (§16.2). Tracked the way
         // a table's own field keys are — a bounded, allocation-free bitmask;
         // a vocabulary wider than this still reads, its repeats simply stop
@@ -3579,7 +3579,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( slot >= 0 && slot < 512 )
             {
                 uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
-                if ( ( seen[slot >> 6] & bit ) != 0 ) { in.report->duplicate++; }
+                if ( ( seen[slot >> 6] & bit ) != 0 ) { in.report->refused = true; in.report->refuse_reason = malformed;; }
                 seen[slot >> 6] |= bit;
             }
             if ( slot < 0 )
@@ -3589,7 +3589,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             else if ( TableJsonValueShape( in ) != shape )
             {
-                in.report->kind_mismatch++;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else if ( !TableJsonReadScalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
@@ -3659,7 +3659,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             {
                 // more elements than the reader's bound: the bounded prefix
                 // is kept and the excess counts, the wire's rule (§4)
-                in.report->clamped++;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else if ( f->kind == 17 )
@@ -3674,7 +3674,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 }
                 else if ( got != 'o' )
                 {
-                    in.report->kind_mismatch++;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                 }
                 else if ( !TableJsonReadPointer( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return false; }
@@ -3682,7 +3682,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             else if ( TableJsonValueShape( in ) != shape )
             {
-                in.report->kind_mismatch++;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                 placed++;
             }
@@ -3754,7 +3754,7 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
 // it before scanning the rest.
 inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key )
 {
-    // duplicate tracking, bounded and allocation-free: a table with more
+    // repeated tracking, bounded and allocation-free: a table with more
     // fields than this still reads, its repeats simply stop being counted
     uint64_t seen[64] = {};
     for ( ;; )
@@ -3807,7 +3807,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             // object and nothing else, and the adapter that reads a pointer
             // has consumed it before these keys are read. MALFORMED, refused
             // and counted; never counted as unknown, never skipped.
-            in.report->malformed = true;
+            in.report->damaged = true;
             in.bad = true;
             return false;
         }
@@ -3822,7 +3822,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             if ( index < 4096 )
             {
                 uint64_t bit = uint64_t( 1 ) << ( index & 63 );
-                if ( ( seen[index >> 6] & bit ) != 0 ) { in.report->duplicate++; }
+                if ( ( seen[index >> 6] & bit ) != 0 ) { in.report->refused = true; in.report->refuse_reason = malformed;; }
                 seen[index >> 6] |= bit;
             }
             // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this line
@@ -3843,7 +3843,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 }
                 else if ( got != TableJsonShape( f ) )
                 {
-                    in.report->kind_mismatch++;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                 }
                 else if ( !TableJsonReadPointer( in, (uint8_t *) base + f->offset, f, depth ) )
@@ -3873,7 +3873,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 if ( got != TableJsonShape( f ) )
                 {
                     // the wrong JSON type for the kind: skipped, never coerced
-                    in.report->kind_mismatch++;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                 }
                 else if ( !TableJsonReadField( in, base, f, depth ) )
@@ -3917,7 +3917,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
     info->reset( value );
     if ( text == NULL || bytes < 0 )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         return false;
     }
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
@@ -3931,7 +3931,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
     if ( in.bad || !ok )
     {
         // a missing required field is its own refusal (§2.3), not damage
-        if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = true; }
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->damaged = true; }
         return false;
     }
     return true;
@@ -4085,7 +4085,7 @@ inline bool TableJsonScanLabel( TableJsonIn & in, uint64_t & label )
     TableJsonSpace( in );
     if ( in.pos >= in.size || in.text[in.pos] < '1' || in.text[in.pos] > '9' )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4095,7 +4095,7 @@ inline bool TableJsonScanLabel( TableJsonIn & in, uint64_t & label )
         uint64_t digit = (uint64_t) ( in.text[in.pos] - '0' );
         if ( value > ( UINT64_MAX - digit ) / 10 )
         {
-            in.report->malformed = true;
+            in.report->damaged = true;
             in.bad = true;
             return false;
         }
@@ -4119,7 +4119,7 @@ inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void * slo
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
     if ( graph == NULL || graph->worker == NULL || graph->worker->arena == NULL || graph->worker->arena->locked )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4136,7 +4136,7 @@ inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void * slo
     }
     if ( (int64_t) length > kTableBlobMaxLength )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4144,7 +4144,7 @@ inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void * slo
     TableBlob * blob = graph->worker->AllocBlob( (int64_t) length, true, at );
     if ( blob == NULL )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4162,7 +4162,7 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
     if ( graph == NULL )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4182,7 +4182,7 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
         char * data = TableStringEmplace( *graph->worker, *ref, NULL, (int64_t) length );
         if ( data == NULL )
         {
-            in.report->malformed = true;
+            in.report->damaged = true;
             in.bad = true;
             return false;
         } // the arena refused
@@ -4197,19 +4197,19 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
     if ( !TableJsonScanBase64( in, &symbols, &base64 ) ) { return false; }
     if ( !base64 )
     {
-        in.report->kind_mismatch++;
+        in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
         return true;
     }
     const int64_t length = ( symbols * 6 ) / 8;
     uint8_t * data = TableBytesEmplace( *graph->worker, *ref, length );
     if ( data == NULL )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     } // the arena refused
-    bool clamped = false;
-    TableJsonDecodeBase64( in, mark, data, length, &clamped );
+    bool oor_flag = false;
+    TableJsonDecodeBase64( in, mark, data, length, &oor_flag );
     return true;
 }
 
@@ -4224,7 +4224,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
     if ( graph == NULL )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4250,7 +4250,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
         void * node = f->emplace( *graph->worker, slot );
         if ( node == NULL )
         {
-            in.report->malformed = true;
+            in.report->damaged = true;
             in.bad = true;
             return false;
         } // the arena refused
@@ -4280,7 +4280,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
         void * node = f->emplace( *graph->worker, slot );
         if ( node == NULL )
         {
-            in.report->malformed = true;
+            in.report->damaged = true;
             in.bad = true;
             return false;
         }
@@ -4292,7 +4292,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
     TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph->labels, label, taken );
     if ( entry == NULL )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4311,7 +4311,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
     bool bare = c == '}';
     if ( bare == taken )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4328,7 +4328,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
         in.pos++;
         if ( entry->open != 0 )
         {
-            in.report->malformed = true;
+            in.report->damaged = true;
             in.bad = true;
             return false;
         }
@@ -4341,7 +4341,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
         if ( entry->type != f->table )
         {
             memcpy( slot, &ref, sizeof( ref ) );
-            in.report->kind_mismatch++;
+            in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
             return true;
         }
         ref.value = (int64_t) entry->node;
@@ -4355,7 +4355,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
     void * node = f->emplace( *graph->worker, slot );
     if ( node == NULL )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4364,7 +4364,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
     entry = TableJsonGraphMapFind( graph->labels, label ); // the map may have grown under the descent
     if ( entry == NULL )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4387,7 +4387,7 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
     if ( graph == NULL || strcmp( key, "&node" ) != 0 )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4396,7 +4396,7 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32
     bool taken = false;
     if ( TableJsonGraphMapReach( graph->labels, label, taken ) == NULL )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4514,7 +4514,7 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
     TableReport ignored;
     if ( worker.arena == NULL )
     {
-        if ( report != NULL ) { report->malformed = true; }
+        if ( report != NULL ) { report->damaged = true; }
         return false;
     }
     TableJsonGraphIn graph;
@@ -4530,7 +4530,7 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
     info->reset( root );
     if ( text == NULL || bytes < 0 )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         return false;
     }
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
@@ -4544,7 +4544,7 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
     TableJsonGraphMapShutdown( graph.labels );
     if ( in.bad || !ok )
     {
-        if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = true; }
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->damaged = true; }
         return false;
     }
     return true;
@@ -4733,9 +4733,9 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
     if ( !TableJsonWalkNumber( probe, &integral ) ) { return false; }
     if ( probe.pos != (int64_t) length ) { return false; } // trailing bytes: not a number
     // A MAP KEY'S POLICY over the one interpreted value: it REJECTS THE WHOLE
-    // ENTRY. A key is an identity, so a clamped one is two entries merged, and
+    // ENTRY. A key is an identity, so a out_of_range one is two entries merged, and
     // a value the key kind does not hold is kind_mismatch for that entry,
-    // dropped and counted, never clamped.
+    // dropped and counted, never out_of_range.
     const TableJsonInteger number = TableJsonInterpretExact( token, length );
     if ( number.fractional || number.saturated ) { return true; }
     bool moved = false;
@@ -4745,14 +4745,14 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
 }
 
 // FromJson READS KEYS IN WHATEVER ORDER THE TEXT GIVES THEM. A repeated key is
-// last-wins and counted duplicate, the object rule (§16.2) applied inside the
+// last-wins and counted repeated, the object rule (§16.2) applied inside the
 // map. An empty object is an empty map, and null is kind_mismatch.
 inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
     if ( graph == NULL )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4779,7 +4779,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             in.pos = mark;
             if ( (int64_t) token_length > kTableBlobMaxLength )
             {
-                in.report->malformed = true;
+                in.report->damaged = true;
                 in.bad = true;
                 return false;
             }
@@ -4793,7 +4793,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
                 key_heap = (char *) table_allocate( graph->worker->arena->allocator, (int64_t) token_length + 1 );
                 if ( key_heap == NULL )
                 {
-                    in.report->malformed = true;
+                    in.report->damaged = true;
                     in.bad = true;
                     return false;
                 }
@@ -4830,26 +4830,26 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             // kind holds, "1" padded by an exponent of zeroes for one, and this
             // read declines to find out.
             bool fits = false;
-            if ( key_over ) { in.report->kind_mismatch++; place = false; }
+            if ( key_over ) { in.report->refused = true; in.report->refuse_reason = kind_mismatch;; place = false; }
             else if ( !TableJsonMapKeyValue( token, token_length, key, key_value, fits ) )
             {
                 // A MALFORMED KEY STOPS THE READ where §16.1's rule stops it,
                 // and the whole read is discarded (§4).
-                in.report->malformed = true;
+                in.report->damaged = true;
                 in.bad = true;
                 return false;
             }
-            else if ( !fits ) { in.report->kind_mismatch++; place = false; }
+            else if ( !fits ) { in.report->refused = true; in.report->refuse_reason = kind_mismatch;; place = false; }
         }
         else if ( !key->unbounded && ( key_over || token_length > key->array_bound ) )
         {
-            // A KEY LONGER THAN N DROPS ITS ENTRY AND COUNTS clamped, the
-            // wire's rule, because a clamped key is a merged entry (§2.8). The
+            // A KEY LONGER THAN N DROPS ITS ENTRY AND COUNTS out_of_range, the
+            // wire's rule, because a out_of_range key is a merged entry (§2.8). The
             // BOUND IS THE WALKER'S, tested here against the key field's own
             // descriptor, so placement is left with one failure to report. A
             // key past this scan's own buffer is the SAME event, because a
             // truncated key is the merged entry the rule exists to prevent.
-            in.report->clamped++;
+            in.report->refused = true; in.report->refuse_reason = out_of_range;;
             place = false;
         }
         const int32_t before = TableJsonExtentCount( (const void *) slot );
@@ -4862,13 +4862,13 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             // stops where the list, blob and pointer paths stop on one rather
             // than handing back an instance short of entries the text spelled
             // and calling itself clean.
-            in.report->malformed = true;
+            in.report->damaged = true;
             in.bad = true;
             return false;
         }
         else if ( entry != NULL && TableJsonExtentCount( (const void *) slot ) == before )
         {
-            in.report->duplicate++; // last-wins, the object rule inside the map
+            in.report->refused = true; in.report->refuse_reason = malformed;; // last-wins, the object rule inside the map
         }
         const char got = TableJsonValueShape( in );
         if ( entry == NULL )
@@ -4889,7 +4889,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             }
             else if ( got != shape )
             {
-                in.report->kind_mismatch++;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else if ( !TableJsonReadPointer( in, (uint8_t *) entry + value->offset, value, depth + 1 ) )
@@ -4899,7 +4899,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         }
         else if ( got != shape )
         {
-            in.report->kind_mismatch++;
+            in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
         else if ( !TableJsonReadField( in, entry, value, depth + 1 ) )
@@ -4970,7 +4970,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
     if ( graph == NULL )
     {
-        in.report->malformed = true;
+        in.report->damaged = true;
         in.bad = true;
         return false;
     }
@@ -4989,7 +4989,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
     TableJsonSetRaw( (uint8_t *) slot + 8, 4, 0 );
     const char shape = TableJsonElementShape( f );
     int64_t spent = 0;
-    bool total_clamped = false;
+    bool total_oor_flag = false;
     for ( ;; )
     {
         char c = TableJsonPeek( in );
@@ -5003,7 +5003,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             in.bad = true;
             return false;
         }
-        if ( total_clamped )
+        if ( total_oor_flag )
         {
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             c = TableJsonPeek( in );
@@ -5018,7 +5018,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             // NOT ADDED: the arena could not carve another segment, or the
             // count met the int32 cap. The text cannot be placed whole, and
             // the read stops where §16.1's rule stops it.
-            in.report->malformed = true;
+            in.report->damaged = true;
             in.bad = true;
             return false;
         }
@@ -5028,9 +5028,9 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             if ( !schema_table_json_read_text_element_( in, (uint8_t *) element, f, depth, elem_bytes ) ) { return false; }
             if ( f->text_total > 0 && spent + (int64_t) elem_bytes > f->text_total )
             {
-                in.report->clamped++;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;;
                 f->place( *graph->worker, slot, NULL, 0, -1 );
-                total_clamped = true;
+                total_oor_flag = true;
             }
             else
             {
@@ -5049,7 +5049,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             }
             else if ( got != 'o' )
             {
-                in.report->kind_mismatch++;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else if ( !TableJsonReadPointer( in, element, f, depth + 1 ) ) { return false; }
@@ -5058,7 +5058,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
         {
             // the wrong shape for the element kind: the slot keeps its
             // defaults and the event counts, the array row's rule (§16.2)
-            in.report->kind_mismatch++;
+            in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
         else if ( !TableJsonReadScalar( in, element, f, depth + 1 ) ) { return false; }
@@ -5821,7 +5821,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == pair.items[0].text )
                 {
-                    *why = "text_duplicate_key";
+                    *why = "text_repeated_key";
                     return false;
                 }
             }
@@ -5894,7 +5894,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == slot )
                 {
-                    *why = "text_duplicate_key";
+                    *why = "text_repeated_key";
                     return false;
                 }
             }
@@ -5950,13 +5950,13 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == tag )
                 {
-                    *why = "text_duplicate_key";
+                    *why = "text_repeated_key";
                     return false;
                 }
             }
             // A UNION HOLDS ONE ARM (docs/SPEC-TABLES.md §16.9.2, Go
             // internal/codegen/gotable/textform.go union): two different arms
-            // is the wrong shape, and the same arm twice is a duplicate.
+            // is the wrong shape, and the same arm twice is a repeated.
             if ( !seen.empty() )
             {
                 *why = "text_kind_mismatch";
@@ -6070,7 +6070,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == n.items[i].text )
                 {
-                    *why = "text_duplicate_key";
+                    *why = "text_repeated_key";
                     return false;
                 }
             }
@@ -6149,7 +6149,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     }
     // A FIXED-POINT TOKEN IS EXACT (docs/SPEC-TABLES.md §16.9.2, Go
     // internal/codegen/gotable/textform.go integer): scaled by 2^F it must be
-    // an integer, so 0.1 is text_kind_mismatch and never a clamped raw unit.
+    // an integer, so 0.1 is text_kind_mismatch and never a out_of_range raw unit.
     if ( f->frac_bits != 0 )
     {
         const double scaled = d * (double) ( (uint64_t) 1 << f->frac_bits );
@@ -6352,7 +6352,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         {
             if ( seen[k] == found )
             {
-                *why = "text_duplicate_key";
+                *why = "text_repeated_key";
                 return false;
             }
         }
@@ -6557,29 +6557,6 @@ inline bool tableTextFormEditText( const std::string & document, const TableType
 
 namespace mapdemo {
 
-bool SpansFromJsonTolerant( SpansBuilder & builder, const char * text, int64_t bytes, TableReport * report )
-{
-    Spans * root = builder.GetRoot();
-    if ( root == NULL )
-    {
-        if ( report != NULL ) { report->malformed = true; }
-        return false;
-    } // locked, or the root allocation failed
-    TableReport ignored;
-    TableReport * to = report != NULL ? report : &ignored;
-    const bool malformed_before = to->malformed;
-    to->malformed = false;
-    const bool ok = TableJsonReadGraph( builder.main, root, SpansTableType(), text, bytes, to );
-    if ( !ok || to->malformed )
-    {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
-        SpansTableType()->reset( root );
-        return false;
-    } // damage discards the whole load (§4)
-    to->malformed = malformed_before;
-    return true;
-}
-
 bool SpansFromJson( SpansBuilder & builder, const char * text, int64_t bytes, TableReport * report )
 {
     Spans * root = builder.GetRoot();
@@ -6590,11 +6567,11 @@ bool SpansFromJson( SpansBuilder & builder, const char * text, int64_t bytes, Ta
     } // locked: the report stays empty
     TableReport read;
     bool ok = TableJsonReadGraph( builder.main, root, SpansTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
+    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
     {
-        if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else if ( read.kind_mismatch != 0 )
+        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
+        else if ( read.refused != 0 )
         {
             read.refuse_reason = TableRefuseReason::kind_mismatch;
         }
@@ -6622,9 +6599,9 @@ bool SpansLoadTextForm( const char * text, int64_t bytes, SpansBuilder & builder
     std::string json;
     if ( !TableTextFormToJson( text, bytes, SpansTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !SpansFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
+    if ( !SpansFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
     {
-        *refusal = report.clamped != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6654,9 +6631,9 @@ bool SpansEditTextForm( const char * document, int64_t document_bytes, const Tab
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !SpansFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
+    if ( !SpansFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
     {
-        *refusal = report.clamped != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
