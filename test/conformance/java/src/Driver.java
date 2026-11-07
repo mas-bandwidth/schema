@@ -1071,7 +1071,47 @@ public final class Driver {
                 spill(out, f[1] + ".json", text);
             } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON writer failed: " + failure); }
         }
+        // THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
+        // wire, then the line's damage put into storage in code, then toJson,
+        // which must refuse (null). Java has one writer entry, so measure and
+        // write are the same call.
+        for (String[] f : kind("json-write-refusal")) {
+            try {
+                if (fixedCodec(f[2], f[3]) != null) { spillAbsentReason(out, f[1] + ".json", FIXED_NO_TEXT); continue; }
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1] + ".json"); continue; }
+                Object report = codec.report();
+                Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
+                if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                if (!damageText(value, f[5])) return failInt(f[1] + ": damage " + f[5] + " names no text field");
+                byte[] text = codec.toJson(value);
+                spill(out, f[1] + ".json", text == null ? "refused\n".getBytes(java.nio.charset.StandardCharsets.UTF_8) : text);
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON writer failed: " + failure); }
+        }
         return 0;
+    }
+
+    // damageText puts into a root's top-level text field what no read delivers
+    // (testdata/conformance/tables/FORMAT.md, `json-write-refusal`). A wide field is
+    // a char[], so it takes the units 0061 D800 0062 exactly. A narrow field is
+    // a java.lang.String, which holds UTF-16 and cannot hold the bytes 61 FF 62:
+    // the nearest value in it that is not text is the lone surrogate "a\uD800b".
+    private static boolean damageText(Object value, String damage) throws ReflectiveOperationException {
+        if (damage.equals("none")) return true;
+        int colon = damage.indexOf(':');
+        if (colon < 0) return false;
+        java.lang.reflect.Field field;
+        try { field = value.getClass().getField(damage.substring(colon + 1)); }
+        catch (NoSuchFieldException none) { return false; }
+        if (damage.startsWith("narrow:") && field.getType() == String.class) {
+            field.set(value, "a\uD800b");
+            return true;
+        }
+        if (damage.startsWith("wide:") && field.getType() == char[].class) {
+            field.set(value, new char[] {0x61, 0xd800, 0x62});
+            return true;
+        }
+        return false;
     }
 
     private static final class CookCodec {

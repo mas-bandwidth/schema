@@ -477,6 +477,9 @@ typedef struct TableJsonOut
     int64_t capacity;
     int64_t offset;
     int overflow;
+    /* storage that is not text (ill-formed UTF-8, an unpaired surrogate)
+       refuses the whole write (docs/SPEC-TABLES.md §16.14 W0) */
+    int invalid;
     void * graph;
 } TableJsonOut;
 
@@ -590,9 +593,10 @@ static SCHEMA_UNUSED int32_t table_json_utf8( const char * s, int32_t remaining,
     return code;
 }
 
-/* A JSON text must be valid UTF-8 (RFC 8259 section 8.1). Caller-filled storage can still contain
-   invalid bytes; write each such byte as U+FFFD rather than emitting invalid
-   JSON. The text reader also replaces ill-formed sequences before clamping. */
+/* A JSON text must be valid UTF-8 (RFC 8259 section 8.1), and no read puts
+   anything else into storage, so a byte that is not part of a well-formed
+   sequence was put there by a program: the write REFUSES (invalid_value,
+   docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced. */
 static SCHEMA_UNUSED void table_json_write_string( TableJsonOut * out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
@@ -627,7 +631,7 @@ static SCHEMA_UNUSED void table_json_write_string( TableJsonOut * out, const cha
                     int32_t width = 0;
                     if ( table_json_utf8( s + i, length - i, &width ) < 0 )
                     {
-                        table_json_raw( out, "\xef\xbf\xbd", 3 ); /* U+FFFD, one per bad byte */
+                        out->invalid = 1; /* not text: the write refuses (§16.14 W0) */
                     }
                     else
                     {
@@ -659,7 +663,11 @@ static SCHEMA_UNUSED void table_json_write_w_string( TableJsonOut * out, const u
                 i++;
             }
         }
-        if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; } // an unpaired surrogate
+        if ( code >= 0xd800 && code <= 0xdfff )
+        {
+            out->invalid = 1; /* an unpaired surrogate is not text: the write refuses (§16.14 W0) */
+            continue;
+        }
         switch ( code )
         {
             case '"':  table_json_raw( out, "\\\"", 2 ); continue;
@@ -2812,6 +2820,7 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
     out.capacity = capacity;
     out.offset = 0;
     out.overflow = 0;
+    out.invalid = 0;
     out.graph = NULL;
     if ( !table_json_write_value( &out, value, info, 0 ) ) { return -1; }
     /* THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (docs/SPEC-TABLES.md
@@ -2823,7 +2832,7 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
        handed back through a pipe has to be one text in all three places, and a
        buffer whose last byte is a closing brace is the one shape that is not. */
     table_json_put( &out, '\n' );
-    if ( out.overflow ) { return -1; }
+    if ( out.overflow || out.invalid ) { return -1; }
     return out.offset;
 }
 

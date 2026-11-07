@@ -108,6 +108,29 @@
         SCHEMA_CONFORMANCE_COPY_REPORT( inner, report ); \
         return ok; \
     } \
+    /* DAMAGE THE WRITER MUST REFUSE (docs/SPEC-TABLES.md §16.14 W0), put into \
+       a top-level text field in code because no read delivers it: the bytes \
+       61 FF 62 in a narrow field, the units 0061 D800 0062 in a wide one, \
+       reached through the root's descriptor by name, offset and length */ \
+    static int schema_conformance_damage_##TYPE( void * value, const char * field, int wide ) \
+    { \
+        const SCHEMA_CONFORMANCE_Q(table_type_info_t) * info = SCHEMA_CONFORMANCE_Q(FN##_table_type)(); \
+        int32_t i; \
+        for ( i = 0; i < info->num_fields; i++ ) \
+        { \
+            const SCHEMA_CONFORMANCE_Q(table_field_info_t) * f = &info->fields[i]; \
+            const int32_t length = 3; \
+            static const uint8_t bytes[3] = { 0x61, 0xFF, 0x62 }; \
+            static const uint16_t units[3] = { 0x0061, 0xD800, 0x0062 }; \
+            if ( strcmp( f->name, field ) != 0 ) { continue; } \
+            if ( !f->counted || f->count_offset == 0xffffffffu || f->array_bound < 3 ) { return 0; } \
+            if ( wide ) { memcpy( (uint8_t *) value + f->offset, units, sizeof( units ) ); } \
+            else { memcpy( (uint8_t *) value + f->offset, bytes, sizeof( bytes ) ); } \
+            memcpy( (uint8_t *) value + f->count_offset, &length, sizeof( length ) ); \
+            return 1; \
+        } \
+        return 0; \
+    } \
     static int64_t schema_conformance_to_json_##TYPE( const void * value, char * buffer, int64_t capacity ) \
     { \
         return buffer != NULL ? SCHEMA_CONFORMANCE_Q(FN##_to_json)( (const SCHEMA_CONFORMANCE_Q(FN##_t) *) value, buffer, capacity ) \
@@ -171,11 +194,11 @@
 
 #define SCHEMA_CONFORMANCE_GRAPH_ROW( UNIT, TYPE ) \
     { #UNIT, #TYPE, NULL, NULL, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
-      schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, schema_conformance_retain_fuzz_##TYPE }
+      schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, schema_conformance_retain_fuzz_##TYPE, NULL }
 
 #define SCHEMA_CONFORMANCE_ROW( UNIT, TYPE ) \
     { #UNIT, #TYPE, schema_conformance_message_fuzz_##TYPE, schema_conformance_message_##TYPE, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
       schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, \
-      schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, NULL }
+      schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, NULL, schema_conformance_damage_##TYPE }
 
 #endif /* SCHEMA_CONFORMANCE_UNIT_H */

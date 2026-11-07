@@ -279,6 +279,19 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		return err
 	}
 
+	// THE WRITE REFUSALS (docs/SPEC-TABLES.md §16.14, W0): the oracle must
+	// refuse every one, or the row asks every leg for an answer the reference
+	// does not give.
+	for _, wr := range m.JSONWriteRefusals {
+		unit, err := u.get(wr.Unit)
+		if err != nil {
+			return err
+		}
+		if err := oracleRefusesJSONWrite(unit, wr); err != nil {
+			return fmt.Errorf("%s: %w", wr.Name, err)
+		}
+	}
+
 	// THE HOSTILE ROWS' VALUES: the oracle's text read of each tree, then its
 	// writer, so a leg that counts the same events and lands a different
 	// value is red (test/conformance/README.md, `json-hostile`). The engine's
@@ -688,6 +701,54 @@ func readReports(path string) (map[string]string, error) {
 		out[f[0]] = verdict
 	}
 	return out, nil
+}
+
+// oracleRefusesJSONWrite loads a json-write-refusal row's wire with the oracle, applies
+// its damage in code, and requires the oracle's writer to refuse the value.
+func oracleRefusesJSONWrite(unit *ir.Unit, wr JSONWriteRefusal) error {
+	root := unit.Tables[wr.Root]
+	if root == nil {
+		return fmt.Errorf("root %q names no table", wr.Root)
+	}
+	wire, err := os.ReadFile(wr.Wire)
+	if err != nil {
+		return err
+	}
+	model := tabletext.NewModel(unit)
+	value := model.New(root)
+	var report tabletext.Report
+	if ok, err := tablewire.Decode(model, value, wire, &report); !ok || err != nil {
+		return fmt.Errorf("the wire does not load: %v", err)
+	}
+	if err := applyJSONWriteDamage(value, wr.Damage); err != nil {
+		return err
+	}
+	if _, err := model.Write(value); err == nil {
+		return fmt.Errorf("the oracle writes a text; the row owes the refusal")
+	}
+	return nil
+}
+
+// applyJSONWriteDamage puts into a top-level text field what no read delivers:
+// ill-formed UTF-8 in a narrow field, an unpaired surrogate in a wide one.
+func applyJSONWriteDamage(value *tabletext.Instance, damage string) error {
+	if damage == "none" {
+		return nil
+	}
+	kind, name, _ := strings.Cut(damage, ":")
+	for i := range value.Fields {
+		fv := &value.Fields[i]
+		if fv.Def.Name != name {
+			continue
+		}
+		if kind == "narrow" {
+			fv.Cell.Str = []byte{0x61, 0xff, 0x62}
+		} else {
+			fv.Cell.Units = []uint16{0x61, 0xd800, 0x62}
+		}
+		return nil
+	}
+	return fmt.Errorf("damage %q names no field of %s", damage, value.Def.Name)
 }
 
 // outPath is where generate writes one golden. The manifest names every golden

@@ -136,10 +136,12 @@ final class _JParse {
     i++;
   }
 
+  // the depth cap counts containers (§16.14 W2): a scalar, a string or a
+  // null at depth 129 nests nothing
   dynamic value(int depth) {
-    if (depth > 128) throw const FormatException('nested past the depth cap of 128');
     if (i >= s.length) throw const FormatException('unexpected end of text');
     final c = s.codeUnitAt(i);
+    if ((c == 0x7B || c == 0x5B) && depth > 128) throw const FormatException('nested past the depth cap of 128');
     if (c == 0x7B) {
       i++;
       final m = _JObj();

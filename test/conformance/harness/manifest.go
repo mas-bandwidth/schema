@@ -261,6 +261,24 @@ type Manifest struct {
 	CookWrites  []CookWrite
 	Blocks      []Block
 	Forgeries   []Forgery
+	// JSONWriteRefusals are the json-write rows whose answer is the writer's
+	// refusal (docs/SPEC-TABLES.md §16.14, W0).
+	JSONWriteRefusals []JSONWriteRefusal
+}
+
+// JSONWriteRefusal is one value the text writer must REFUSE (docs/SPEC-TABLES.md
+// §16.14, W0): the wire at Wire, loaded at Root, then — when Damage names one —
+// a top-level text field's storage set, in code, to what no wire or text can
+// deliver: `narrow:<field>` holds the bytes 61 FF 62 (ill-formed UTF-8), and
+// `wide:<field>` the units 0061 D800 0062 (an unpaired surrogate). `none`
+// writes the value as loaded. ToJson must return -1 and the driver answers
+// `refused\n` as <case>.json; a text is a failure.
+type JSONWriteRefusal struct {
+	Name   string
+	Unit   string
+	Root   string
+	Wire   string
+	Damage string
 }
 
 // parseReadVerdict parses either a plain verdict ("read"/"ACCEPT" or
@@ -403,6 +421,15 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: refused-by requires wire-refused", where)
 			}
 			m.Instances = append(m.Instances, inst)
+		case "json-write-refusal":
+			if len(f) != 6 {
+				return nil, fmt.Errorf("%s: json-write-refusal takes case, unit, root, wire and damage", where)
+			}
+			damage := f[5]
+			if damage != "none" && !strings.HasPrefix(damage, "narrow:") && !strings.HasPrefix(damage, "wide:") {
+				return nil, fmt.Errorf("%s: %q is not a damage: none, narrow:<field> or wide:<field>", where, damage)
+			}
+			m.JSONWriteRefusals = append(m.JSONWriteRefusals, JSONWriteRefusal{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Damage: damage})
 		case "connection":
 			if len(f) != 5 {
 				return nil, fmt.Errorf("%s: connection takes key, unit, build version, wire", where)

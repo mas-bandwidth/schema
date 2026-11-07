@@ -11,7 +11,7 @@ const tableWideJsonSource = `
             int code = text[i];
             if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.Length && text[i + 1] >= 0xdc00 && text[i + 1] <= 0xdfff)
             { code = 0x10000 + ((code - 0xd800) << 10) + text[++i] - 0xdc00; }
-            else if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
+            else if (code >= 0xd800 && code <= 0xdfff) { o.Invalid = true; continue; } // an unpaired surrogate is not text: the write refuses (§16.14 W0)
             if (!WriteEscape(ref o, code)) { WriteUtf8(ref o, code); }
         }
         o.Put((byte)'"');
