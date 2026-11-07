@@ -12,7 +12,9 @@ import (
 
 // TestStrictOnlyCsNoTolerantEntry is the cs leg's strict-only grep gate
 // (docs/plans/strict-only.md layer 4): the generator's output for the leg's
-// example schema (tables/examples) and internal/tablenames/cs.go carry none
+// example schema (tables/examples), the committed bench output under
+// generated/bench (w2: the tables and paired bench codecs were still
+// carrying the retired counters), and internal/tablenames/cs.go carry none
 // of the retired tolerant names — no Tolerant entry point, no Clamped or
 // KindMismatch or Duplicate counter, and no Malformed binary verdict on the
 // read report. The one read returns the whole value or refuses the whole
@@ -44,6 +46,37 @@ func TestStrictOnlyCsNoTolerantEntry(t *testing.T) {
 				t.Errorf("generated %s retains retired tolerant name %q", name, word)
 			}
 		}
+	}
+
+	// The committed bench codecs are generated output too: scan every .cs
+	// file under generated/bench so a stale regeneration cannot reintroduce
+	// a retired name unnoticed.
+	benchRoot := filepath.Join("..", "..", "..", "generated", "bench")
+	scanned := 0
+	err = filepath.WalkDir(benchRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".cs") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		scanned++
+		for _, word := range retired {
+			if strings.Contains(string(data), word) {
+				t.Errorf("%s retains retired tolerant name %q", path, word)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("scan generated/bench: %v", err)
+	}
+	if scanned == 0 {
+		t.Fatal("generated/bench scan found no .cs files")
 	}
 
 	names, err := os.ReadFile(filepath.Join("..", "..", "tablenames", "cs.go"))
