@@ -78,7 +78,7 @@ end
 local function identity(name: string, edit: string)
 	local wire = inputs[name]
 	local report = load.newReport()
-	local v = load.loadTolerant("Root", wire, report)
+	local v = load.load("Root", wire, report)
 	if v == nil then
 		print(name .. "/" .. edit .. " refused")
 		return

@@ -39,7 +39,7 @@ func jsonProbe(g *generatedUnit, root string, names []string) string {
 			text = table.concat(parts)
 		end
 	end
-	print(string.format("%%s %%s %%d %%s %%s", if ok then "read" else "refused", tostring(r.malformed), r.missingRequired, tostring(r.reason), text))
+	print(string.format("%%s %%s %%d %%s %%s", if ok then "read" else "refused", tostring(r.damaged), r.missingRequired, tostring(r.reason), text))
 end
 `, root, n)
 	}

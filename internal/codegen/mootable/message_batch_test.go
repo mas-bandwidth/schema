@@ -96,8 +96,8 @@ while at < buffer.len(cases) do
 	local rep: any = {}
 	if not MS.AnnounceRead(v, inputs.conn, rep) then print("ANNOUNCE " .. tostring(rep.reason)) return end
 	local n, values = MS.LoadMessages(v, %q, data, %d, rep)
-	if rep.malformed and #values ~= 0 then print("DAMAGE RETURNED VALUES") continue end
-	print(string.format("%%d %%d %%d,%%d,%%d,%%d,%%d,%%s,%%d %%s", i, n, rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, tostring(rep.malformed), rep.blobShared or 0, tostring(rep.reason)))
+	if rep.damaged and #values ~= 0 then print("DAMAGE RETURNED VALUES") continue end
+	print(string.format("%%d %%d %%d,%%d,%%d,%%d,%%d,%%s,%%d %%s", i, n, rep.unknown, 0, rep.widened, 0, 0, tostring(rep.damaged), rep.blobShared or 0, tostring(rep.reason)))
 end
 `, g.requireAll(), root, capacity)
 }

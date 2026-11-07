@@ -24,7 +24,7 @@ func TestMooDamageDiscardNegativeControls(t *testing.T) {
 		if !before.malformed || before.value {
 			t.Fatalf("control needs a refused damaged load: %+v", before)
 		}
-		removeMooDiscard(t, g, "table_load.moo", "\tif report.malformed then\n\t\treturn nil\n\tend\n")
+		removeMooDiscard(t, g, "table_load.moo", "\tif report.bodyDamaged then\n\t\treturn nil\n\tend\n")
 		after := mooRetain(t, g, "Node", wire, retainFull, -1)
 		if !after.malformed || !after.value {
 			t.Fatalf("removing the runtime discard did not expose the partial load: %+v", after)
@@ -45,7 +45,7 @@ func TestMooDamageDiscardNegativeControls(t *testing.T) {
 		if mooAnswer(rest) != "malformed" {
 			t.Fatalf("control needs a refused batch: %s", before)
 		}
-		removeMooDiscard(t, g, "table_message.moo", "\tif rep.malformed then\n\t\treturn 0, {}\n\tend\n")
+		removeMooDiscard(t, g, "table_message.moo", "\tif rep.damaged then\n\t\treturn 0, {}\n\tend\n")
 		after := g.run(t, probe, inputs)
 		if !strings.Contains(after, "DAMAGE RETURNED VALUES") {
 			t.Fatalf("removing the runtime discard did not expose the partial batch: %s", after)
