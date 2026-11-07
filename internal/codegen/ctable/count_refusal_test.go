@@ -247,17 +247,17 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
                 const void * loaded;
                 memset(&report, 0, sizeof(report));
                 report.unknown = 7; report.kind_mismatch = 11; report.widened = 13; report.clamped = 17;
-                report.duplicate = 19; report.retained = 23; report.retain_lost = 29; report.malformed = old_damage;
+                report.duplicate = 19; report.retained = 23; report.retain_lost = 29; report.refused = old_damage;
                 report.refused = 1; report.reason = SCHEMA_TABLE_NON_FINITE_FLOAT; report.non_finite_floats = 3;
                 memset(&store, 0, sizeof(store));
                 store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes); store.used = 12;
                 store.ids = retain_ids; store.id_capacity = 64; store.id_used = 1; store.count = 1;
                 loaded = retaining
                     ? (const void *)%s_load_retain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                    : (const void *)%s_load_tolerant(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
+                    : (const void *)%s_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
                 CHECK(loaded == NULL, "%s/%d partial value");
                 CHECK(report.refused && report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s/%d named count refusal");
-                CHECK(report.malformed == old_damage, "%s/%d damage history");
+                CHECK(report.refused == old_damage, "%s/%d damage history");
                 CHECK(report.unknown == %d && report.kind_mismatch == 11 && report.widened == %d &&
                     report.clamped == 17 && report.duplicate == %d && report.non_finite_floats == 3 &&
                     report.retained == (retaining ? %d : 23) &&
@@ -270,17 +270,17 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
             %sBuilder builder;
             TableReport builder_report;
             CHECK(%s_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &strict_report) == NULL, "%s/%d strict load");
-            CHECK(strict_report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP && !strict_report.malformed, "%s/%d strict reason");
+            CHECK(strict_report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP && !strict_report.refused, "%s/%d strict reason");
             CHECK(%s_builder_init(&builder), "%s/%d builder init");
             memset(&builder_report, 0, sizeof(builder_report));
             builder_report.unknown = 7; builder_report.widened = 13; builder_report.duplicate = 19;
-            CHECK(!%s_load_builder_tolerant(&builder, wire, (int64_t)sizeof(wire), &builder_report), "%s/%d builder refusal");
-            CHECK(!builder_report.malformed && builder_report.refused && builder_report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP &&
+            CHECK(!%s_load_builder(&builder, wire, (int64_t)sizeof(wire), &builder_report), "%s/%d builder refusal");
+            CHECK(builder_report.refused && builder_report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP &&
                 builder_report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP &&
                 builder_report.unknown == %d && builder_report.widened == %d && builder_report.duplicate == %d, "%s/%d builder counters");
             {
                 TableReport plain_report;
-                CHECK(!%s_load_builder(&builder, wire, (int64_t)sizeof(wire), &plain_report) && !plain_report.malformed &&
+                CHECK(!%s_load_builder(&builder, wire, (int64_t)sizeof(wire), &plain_report) && !plain_report.refused &&
                     plain_report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s/%d plain builder reason");
             }
             %s_builder_shutdown(&builder);
@@ -304,15 +304,15 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
             TableRetain store;
             const void * loaded;
             memset(&report, 0, sizeof(report));
-            report.refused = 1; report.reason = SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report.malformed = 1;
+            report.refused = 1; report.reason = SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report.refused = 1;
             memset(&store, 0, sizeof(store));
             store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes);
             store.ids = retain_ids; store.id_capacity = 64;
             loaded = retaining
                 ? (const void *)%s_load_retain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)%s_load_tolerant(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
+                : (const void *)%s_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
             CHECK(loaded != NULL, "%s prior refusal is not current control state");
-            CHECK(report.refused && report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP && report.malformed, "%s history preserved after good read");
+            CHECK(report.refused && report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP && report.refused, "%s history preserved after good read");
         }
     }
 `, cBytes(wire), fn, fn, shape, shape)
@@ -336,8 +336,8 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
             store.ids = retain_ids; store.id_capacity = 64;
             loaded = retaining
                 ? (const void *)map_holder_load_retain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)map_holder_load_tolerant(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
-            CHECK(loaded == NULL && report.malformed && !report.refused && report.reason != SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "descending key precedes nested value refusal");
+                : (const void *)map_holder_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
+            CHECK(loaded == NULL && report.refused && report.reason != SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "descending key precedes nested value refusal");
             CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "descending map retained state");
         }
     }
@@ -361,8 +361,8 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
             store.ids = retain_ids; store.id_capacity = 64;
             loaded = retaining
                 ? (const void *)leaf_load_retain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)leaf_load_tolerant(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
-            CHECK(loaded == NULL && report.malformed && !report.refused && report.reason != SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "body-short remains damage");
+                : (const void *)leaf_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
+            CHECK(loaded == NULL && report.refused && report.reason != SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "body-short remains damage");
             CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "body-short retained state");
         }
     }
@@ -373,9 +373,9 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
         for (i = 0; i < 2; i++) {
             TableReport report;
             memset(&report, 0, sizeof(report));
-            report.malformed = 1; report.unknown = 7;
-            CHECK(leaf_load_tolerant(region, (int64_t)sizeof(region), &forms[i], 1, &report) == NULL && report.refused && report.reason == reasons[i], "form refusal name");
-            CHECK(report.malformed && report.unknown == 7, "form preserves history");
+            report.refused = 1; report.unknown = 7;
+            CHECK(leaf_load(region, (int64_t)sizeof(region), &forms[i], 1, &report) == NULL && report.refused && report.reason == reasons[i], "form refusal name");
+            CHECK(report.refused && report.unknown == 7, "form preserves history");
         }
     }
 `, cBytes(short))
@@ -416,9 +416,9 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
             }
             loaded = mode > 0
                 ? (const void *)holder_load_retain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)holder_load_tolerant(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
+                : (const void *)holder_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
             CHECK(loaded == NULL && report.refused && report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s reason");
-            CHECK(!report.malformed && report.unknown == %d && report.widened == %d, "%s prefix counters");
+            CHECK(report.unknown == %d && report.widened == %d, "%s prefix counters");
             CHECK(report.retained == (mode == 1 ? %d : 23) &&
                 report.retain_lost == (mode == 2 ? %d : (mode == 1 ? %d : 29)), "%s retention counters");
             CHECK(store.used == 0 && store.id_used == 0 && store.count == 0, "%s partial retained state");
@@ -494,12 +494,12 @@ func TestJsonLeadingBOMBoundaryC(t *testing.T) {
         fixed_leaf_reset(&vfs); vfs.a = 42; memset(&rfs, 0, sizeof(rfs));
         ok_fs = fixed_leaf_from_json(&vfs, (const char *)text, (int64_t)sizeof(text), &rfs);
         fixed_leaf_reset(&vft); vft.a = 42; memset(&rft, 0, sizeof(rft));
-        ok_ft = fixed_leaf_from_json_tolerant(&vft, (const char *)text, (int64_t)sizeof(text), &rft);
+        ok_ft = fixed_leaf_from_json(&vft, (const char *)text, (int64_t)sizeof(text), &rft);
         printf("BOM_CASE fixed/%s: strict=%%s tolerant=%%s\n", ok_fs ? "accept" : "refuse", ok_ft ? "accept" : "refuse");
-        CHECK(ok_fs && !rfs.malformed && !rfs.refused && rfs.refuse_reason == SCHEMA_TABLE_REFUSE_OK &&
+        CHECK(ok_fs && !rfs.refused && rfs.refuse_reason == SCHEMA_TABLE_REFUSE_OK &&
             rfs.unknown == 0 && rfs.kind_mismatch == 0 && rfs.widened == 0 && rfs.clamped == 0 &&
             rfs.duplicate == 0 && rfs.retained == 0 && rfs.retain_lost == 0 && vfs.a == 0, "fixed/%s strict accept");
-        CHECK(ok_ft && !rft.malformed && !rft.refused &&
+        CHECK(ok_ft && !rft.refused &&
             rft.unknown == 0 && rft.kind_mismatch == 0 && rft.widened == 0 && rft.clamped == 0 &&
             rft.duplicate == 0 && rft.retained == 0 && rft.retain_lost == 0 && vft.a == 0, "fixed/%s tolerant accept");
         nfs = fixed_leaf_to_json(&vfs, out_fs, (int64_t)sizeof(out_fs));
@@ -511,12 +511,12 @@ func TestJsonLeadingBOMBoundaryC(t *testing.T) {
         graph_leaf_builder_root(&bgs)->a = 42; memset(&rgs, 0, sizeof(rgs));
         ok_gs = graph_leaf_from_json(&bgs, (const char *)text, (int64_t)sizeof(text), &rgs);
         graph_leaf_builder_root(&bgt)->a = 42; memset(&rgt, 0, sizeof(rgt));
-        ok_gt = graph_leaf_from_json_tolerant(&bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
+        ok_gt = graph_leaf_from_json(&bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
         printf("BOM_CASE graph/%s: strict=%%s tolerant=%%s\n", ok_gs ? "accept" : "refuse", ok_gt ? "accept" : "refuse");
-        CHECK(ok_gs && !rgs.malformed && !rgs.refused && rgs.refuse_reason == SCHEMA_TABLE_REFUSE_OK &&
+        CHECK(ok_gs && !rgs.refused && rgs.refuse_reason == SCHEMA_TABLE_REFUSE_OK &&
             rgs.unknown == 0 && rgs.kind_mismatch == 0 && rgs.widened == 0 && rgs.clamped == 0 &&
             rgs.duplicate == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && graph_leaf_builder_root(&bgs)->a == 0, "graph/%s strict accept");
-        CHECK(ok_gt && !rgt.malformed && !rgt.refused &&
+        CHECK(ok_gt && !rgt.refused &&
             rgt.unknown == 0 && rgt.kind_mismatch == 0 && rgt.widened == 0 && rgt.clamped == 0 &&
             rgt.duplicate == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && graph_leaf_builder_root(&bgt)->a == 0, "graph/%s tolerant accept");
         ngs = graph_leaf_to_json(graph_leaf_builder_root(&bgs), out_gs, (int64_t)sizeof(out_gs));
@@ -537,13 +537,13 @@ func TestJsonLeadingBOMBoundaryC(t *testing.T) {
         ok_fs = fixed_leaf_from_json(&vf, (const char *)text, (int64_t)sizeof(text), &rfs);
         CHECK(vf.a == 0, "fixed/%s strict discard");
         fixed_leaf_reset(&vf); vf.a = 42; memset(&rft, 0, sizeof(rft));
-        ok_ft = fixed_leaf_from_json_tolerant(&vf, (const char *)text, (int64_t)sizeof(text), &rft);
+        ok_ft = fixed_leaf_from_json(&vf, (const char *)text, (int64_t)sizeof(text), &rft);
         CHECK(vf.a == 0, "fixed/%s tolerant discard");
         printf("BOM_CASE fixed/%s: strict=%%s tolerant=%%s\n", ok_fs ? "accept" : "refuse", ok_ft ? "accept" : "refuse");
-        CHECK(!ok_fs && rfs.malformed && !rfs.refused && rfs.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED &&
+        CHECK(!ok_fs && rfs.refused && rfs.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED &&
             rfs.unknown == 0 && rfs.kind_mismatch == 0 && rfs.widened == 0 && rfs.clamped == 0 &&
             rfs.duplicate == 0 && rfs.retained == 0 && rfs.retain_lost == 0, "fixed/%s strict refuse");
-        CHECK(!ok_ft && rft.malformed && !rft.refused &&
+        CHECK(!ok_ft && rft.refused &&
             rft.unknown == 0 && rft.kind_mismatch == 0 && rft.widened == 0 && rft.clamped == 0 &&
             rft.duplicate == 0 && rft.retained == 0 && rft.retain_lost == 0, "fixed/%s tolerant refuse");
 
@@ -551,12 +551,12 @@ func TestJsonLeadingBOMBoundaryC(t *testing.T) {
         graph_leaf_builder_root(&bgs)->a = 42; memset(&rgs, 0, sizeof(rgs));
         ok_gs = graph_leaf_from_json(&bgs, (const char *)text, (int64_t)sizeof(text), &rgs);
         graph_leaf_builder_root(&bgt)->a = 42; memset(&rgt, 0, sizeof(rgt));
-        ok_gt = graph_leaf_from_json_tolerant(&bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
+        ok_gt = graph_leaf_from_json(&bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
         printf("BOM_CASE graph/%s: strict=%%s tolerant=%%s\n", ok_gs ? "accept" : "refuse", ok_gt ? "accept" : "refuse");
-        CHECK(!ok_gs && rgs.malformed && !rgs.refused && rgs.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED &&
+        CHECK(!ok_gs && rgs.refused && rgs.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED &&
             rgs.unknown == 0 && rgs.kind_mismatch == 0 && rgs.widened == 0 && rgs.clamped == 0 &&
             rgs.duplicate == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && graph_leaf_builder_root(&bgs)->a == 0, "graph/%s strict refuse");
-        CHECK(!ok_gt && !rgt.refused && rgt.malformed &&
+        CHECK(!ok_gt && !rgt.refused && rgt.refused &&
             rgt.unknown == 0 && rgt.kind_mismatch == 0 && rgt.widened == 0 && rgt.clamped == 0 &&
             rgt.duplicate == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && graph_leaf_builder_root(&bgt)->a == 0, "graph/%s tolerant refuse");
         graph_leaf_builder_shutdown(&bgs);

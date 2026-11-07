@@ -154,7 +154,7 @@ int main(void)
         CHECK(region != NULL);
         memset(&report, 0, sizeof(report));
         loaded = where_load(region, rmeas, wwire, wn, &report);
-        CHECK(loaded != NULL && !report.malformed && report.clamped == 0);
+        CHECK(loaded != NULL && report.clamped == 0);
 
         s = where_rules_text_at(NULL, loaded, 0, &len);
         CHECK(s != NULL && len == 1 && strcmp(s, "a") == 0);
@@ -175,7 +175,7 @@ int main(void)
             CHECK(where_builder_init(&jb));
             memset(&report, 0, sizeof(report));
             CHECK(where_from_json(&jb, json, jn, &report));
-            CHECK(!report.malformed && report.clamped == 0);
+            CHECK(report.clamped == 0);
             memset(&jctx, 0, sizeof(jctx)); jctx.arena = &jb.arena;
             CHECK(where_save(&jctx, where_builder_root(&jb), rwire, sizeof(rwire)) == wn);
             CHECK(memcmp(rwire, wwire, (size_t)wn) == 0);
@@ -277,7 +277,7 @@ int main(void)
         CHECK(region != NULL);
         memset(&report, 0, sizeof(report));
         loaded = all_five_load(region, rmeas, wire, wn, &report);
-        CHECK(loaded != NULL && !report.malformed && report.clamped == 0 && report.duplicate == 0);
+        CHECK(loaded != NULL && report.clamped == 0 && report.duplicate == 0);
 
         s = all_five_open_list_text_at(NULL, loaded, 0, &len);
         CHECK(s != NULL && len == 0 && strcmp(s, "") == 0);
@@ -338,7 +338,7 @@ int main(void)
             CHECK(all_five_builder_init(&jb));
             memset(&report, 0, sizeof(report));
             CHECK(all_five_from_json(&jb, json, jn, &report));
-            CHECK(!report.malformed && report.clamped == 0);
+            CHECK(report.clamped == 0);
             memset(&jctx, 0, sizeof(jctx)); jctx.arena = &jb.arena;
             CHECK(all_five_save(&jctx, all_five_builder_root(&jb), jwire, wn) == wn);
             CHECK(memcmp(jwire, wire, (size_t)wn) == 0);
@@ -358,7 +358,7 @@ int main(void)
             retain.ids = rids; retain.id_capacity = 1 << 14;
             memset(&report, 0, sizeof(report));
             rroot = all_five_load_retain(rregion, rmeas, wire, wn, &retain, &report);
-            CHECK(rroot != NULL && !report.malformed);
+            CHECK(rroot != NULL && !report.refused);
             CHECK(all_five_measure_retain(rroot, &retain) == wn);
             CHECK(all_five_save_retain(rroot, &retain, rwire, wn, &report) == wn);
             CHECK(memcmp(rwire, wire, (size_t)wn) == 0);
@@ -478,11 +478,11 @@ int main(void)
         if (rmeas <= 0) { fprintf(stderr, "rmeas=%lld\n", (long long)rmeas); }
         CHECK(rmeas > 0);
         loaded = root_load(region, rmeas, root_wire, root_wire_len, &report);
-        if (loaded == NULL || report.malformed || report.refused || report.clamped != 0) {
+        if (loaded == NULL || report.refused || report.refused || report.clamped != 0) {
             fprintf(stderr, "loaded=%p malformed=%d refused=%d reason=%d clamped=%d unknown=%d mismatch=%d widened=%d\n",
-                (const void *)loaded, report.malformed, report.refused, report.reason, report.clamped, report.unknown, report.kind_mismatch, report.widened);
+                (const void *)loaded, report.refused, report.refused, report.reason, report.clamped, report.unknown, report.kind_mismatch, report.widened);
         }
-        CHECK(loaded != NULL && !report.malformed && !report.refused && report.clamped == 0);
+        CHECK(loaded != NULL && !report.refused && report.clamped == 0);
         CHECK(loaded->revision == 7);
         CHECK(loaded->lower == 9);
         CHECK(loaded->tags_present == 1 && loaded->tags.count == 2);
@@ -558,7 +558,7 @@ int main(void)
 
         CHECK(rmeas > 0);
         loaded = array_root_load(region, rmeas, arr_wire, arr_wire_len, &report);
-        CHECK(loaded != NULL && !report.malformed && loaded->values.count == 3);
+        CHECK(loaded != NULL && loaded->values.count == 3);
         CHECK(*array_root_values_at(&loaded->values, 0) == 3);
         CHECK(*array_root_values_at(&loaded->values, 1) == 17);
         CHECK(*array_root_values_at(&loaded->values, 2) == -5);

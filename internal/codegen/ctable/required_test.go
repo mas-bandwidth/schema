@@ -117,12 +117,12 @@ int main( void )
     assert( own > 0 );
     old_t_builder_shutdown( &ob );
 
-    /* Region load_tolerant returns root with missing_required == 1. */
+    /* Region load returns root with missing_required == 1. */
     memset( &rep, 0, sizeof( rep ) );
-    const T * tol = t_load_tolerant( region, sizeof( region ), old_wire, own, &rep );
+    const T * tol = t_load( region, sizeof( region ), old_wire, own, &rep );
     assert( tol != NULL );
     assert( tol->a == 7 && tol->c == 4 );
-    assert( rep.missing_required == 1 && rep.malformed == 0 );
+    assert( rep.missing_required == 1 && rep.refused == 0 );
 
     /* Strict region load refuses with SCHEMA_TABLE_REFUSE_MISSING_REQUIRED. */
     got = t_load( region, sizeof( region ), old_wire, own, &rep );
@@ -133,8 +133,8 @@ int main( void )
     TBuilder lb;
     assert( t_builder_init( &lb ) == 1 );
     memset( &rep, 0, sizeof( rep ) );
-    assert( t_load_builder_tolerant( &lb, old_wire, own, &rep ) == 0 );
-    assert( rep.missing_required == 1 && rep.malformed == 0 );
+    assert( t_load_builder( &lb, old_wire, own, &rep ) == 0 );
+    assert( rep.missing_required == 1 && rep.refused == 0 );
     t_builder_shutdown( &lb );
 
     assert( t_builder_init( &lb ) == 1 );
@@ -146,8 +146,8 @@ int main( void )
     const char * bad_json = "{\"a\":7,\"c\":4}";
     assert( t_builder_init( &lb ) == 1 );
     memset( &rep, 0, sizeof( rep ) );
-    assert( t_from_json_tolerant( &lb, bad_json, (int64_t) strlen( bad_json ), &rep ) == 0 );
-    assert( rep.missing_required == 1 && rep.malformed == 0 );
+    assert( t_from_json( &lb, bad_json, (int64_t) strlen( bad_json ), &rep ) == 0 );
+    assert( rep.missing_required == 1 && rep.refused == 0 );
     t_builder_shutdown( &lb );
 
     assert( t_builder_init( &lb ) == 1 );
@@ -216,15 +216,15 @@ static void check_missing( const uint8_t * wire, int64_t wn )
     assert( rep.missing_required == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_MISSING_REQUIRED );
 
     memset( &rep, 0, sizeof( rep ) );
-    const Root * tol = root_load_tolerant( region, sizeof( region ), wire, wn, &rep );
+    const Root * tol = root_load( region, sizeof( region ), wire, wn, &rep );
     assert( tol != NULL );
-    assert( rep.missing_required == 1 && rep.malformed == 0 );
+    assert( rep.missing_required == 1 && rep.refused == 0 );
 
     RootBuilder b;
     assert( root_builder_init( &b ) == 1 );
     memset( &rep, 0, sizeof( rep ) );
-    assert( root_load_builder_tolerant( &b, wire, wn, &rep ) == 0 );
-    assert( rep.missing_required == 1 && rep.malformed == 0 );
+    assert( root_load_builder( &b, wire, wn, &rep ) == 0 );
+    assert( rep.missing_required == 1 && rep.refused == 0 );
     root_builder_shutdown( &b );
 
     assert( root_builder_init( &b ) == 1 );
