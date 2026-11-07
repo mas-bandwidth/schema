@@ -4484,7 +4484,6 @@ int fixedTableWireMeasure(Uint8List data) {
   var seen = false;
   var unframed = false;
   var pstart = 0, pend = 0;
-  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
     if (ref == null || ref == 0) break;

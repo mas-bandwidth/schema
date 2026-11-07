@@ -3426,10 +3426,6 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\tvar seen = false;\n")
 	g.pf("\tvar unframed = false;\n")
 	g.pf("\tvar pstart = 0, pend = 0;\n")
-	// A REPEATED FIELD ID IN ONE BODY IS DAMAGE (docs/plans/strict-only.md
-	// decision 5; internal/tablewire wirecheck, the Go leg's seen bitmap in
-	// internal/codegen/gotable/read.go): the read refuses the whole load.
-	g.pf("\tfinal seenRefs = <int>{};\n")
 	g.pf("\twhile (true) {\n")
 	g.pf("\t\tfinal ref = r.readLeb();\n")
 	g.pf("\t\tif (ref == null || ref == 0) break;\n")
