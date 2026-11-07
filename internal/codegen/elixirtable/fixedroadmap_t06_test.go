@@ -128,7 +128,7 @@ func t06C7(t *testing.T) {
 // counts one `clamped`, never the forged ordinal.
 func t06C9(t *testing.T) {
 	module, _ := t06Emit(t)
-	t06Has(t, module, "  # BEYOND THE DECLARED ARMS lands None and counts one `clamped`", "C9 the union projection names the rule")
+	t06Has(t, module, "  # BEYOND THE DECLARED ARMS lands None and counts one `unknown`", "C9 the union projection names the rule")
 	t06Has(t, module, "{nil, c + 1, m}", "C9 a tag past the arms lands None and counts one clamp")
 	t06Has(t, module, "{nil, c, m}", "C9 tag 0 is None and is not a clamp")
 }
@@ -184,7 +184,7 @@ func t06C1(t *testing.T) {
 	module, runtime := t06Emit(t)
 	t06Has(t, module, "min(max(n_vals, 0), 8)", "C1 a negative count floors to zero")
 	t06Has(t, module, "c = R.clamps(c, n_vals, 0, 8)", "C1 a negative count counts one clamp")
-	t06Has(t, runtime, "raw < 0 -> {0, bump(report, :clamped)}", "C1 the negative end of the count clamp")
+	t06Has(t, runtime, "raw < 0 -> throw({:refuse, :count_over_bound})", "C1 the negative end of the count clamp")
 }
 
 // ---- elixir/C2 --------------------------------------------------------------
@@ -196,7 +196,7 @@ func t06C2(t *testing.T) {
 	module, runtime := t06Emit(t)
 	t06Has(t, module, "min(max(n_vals, 0), 8)", "C2 a count past Max lands the bound")
 	t06Has(t, module, "c = R.clamps(c, n_vals, 0, 8)", "C2 a count past Max counts one clamp")
-	t06Has(t, runtime, "raw > max -> {max, bump(report, :clamped)}", "C2 the past-Max end of the count clamp")
+	t06Has(t, runtime, "raw > max -> throw({:refuse, :count_over_bound})", "C2 the past-Max end of the count clamp")
 }
 
 // ---- the card's test --------------------------------------------------------
