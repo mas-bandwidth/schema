@@ -3,7 +3,7 @@
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
    package blockdemo — protocol id 0x802d031e1b4cdb0c (packets only: tables version by field id, not by protocol id)
-   The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md). Compile the .c
+   The TABLE wire (evolution-strict, docs/SPEC-TABLES.md). Compile the .c
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
@@ -59,23 +59,50 @@ extern "C" {
 #endif
 #endif
 
-/* The table-wire read report — the permissive contract's ledger. Silence
-   (all zero) means the data matched this reader's schema exactly. */
+
+typedef int blockdemo_table_refuse_reason_t;
+enum {
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK=0,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_NOT_A_COOK=1,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_FOREIGN_ORDER=2,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BAD_ALIGNMENT=5,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_TRUNCATED=6,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNALIGNED_BASE=7,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BAD_LAYOUT=8,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM=9,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_DATA_CYCLE=13,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_INVALID_VALUE=14,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_ALLOCATION_FAILED=15,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED=16,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_MALFORMED=17,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE=18,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH=19,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BASE64_DAMAGED=20,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT=23,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED=24,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_MISSING_REQUIRED=25
+};
+
+
+/* The table-wire read report — the strict read's ledger. Silence
+   (all zero) means the data matched this reader's schema exactly. A read
+   returns the whole value or refuses the whole load: the refusal lands
+   in refused/refuse_reason below, never as a counter over a kept value. */
 typedef struct blockdemo_table_report_t
 {
     int32_t unknown;       /* unknown field ids skipped (newer data) */
-    int32_t kind_mismatch; /* known id, changed type — skipped, never misdecoded */
-    int32_t clamped;       /* out-of-range values clamped to declared bounds */
-    /* a key the TEXT form saw twice: last wins, and the repeat is counted
-       (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-       id twice is legal input whose last occurrence wins, silently (§3). */
-    int32_t duplicate;
     /* required fields (docs/SPEC-TABLES.md §2.3) the body omitted. */
     int32_t missing_required;
-    int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
     /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
-       the tolerant read keeps the one node and counts each extra naming. */
+       the strict read keeps the one node and counts each extra naming. */
     int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* a refusal by name (reason), not framing damage */
@@ -83,12 +110,11 @@ typedef struct blockdemo_table_report_t
     /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
        TableRefuseReason, the same value a measure's -1 and a cook's open
        answer, set by every plain read name on its refusal and OK otherwise.
-       unknown, widened and retained alone leave it OK. The tolerant reads
-       never write it. */
+       unknown, widened and retained alone leave it OK. */
     int refuse_reason;
     int damage_reason;
     /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
-       an infinity is refused on its raw bits by every read, the tolerant one
+       an infinity is refused on its raw bits by every read, the strict one
        included, so a read that moves this answers refused, reason
        SCHEMA_TABLE_NON_FINITE_FLOAT, and lands nothing. It is a count only so
        a read can tell its own refusal from a caller's report that already
@@ -534,25 +560,25 @@ static SCHEMA_UNUSED int blockdemo_table_kind_widens( uint8_t kind, uint8_t decl
 static SCHEMA_UNUSED int blockdemo_table_wire_open( blockdemo_table_reader_t * r, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     uint64_t count, i; int64_t span; blockdemo_table_reader_t tail;
-    if ( bytes < 1 || buffer == NULL ) { report->malformed = 1; return 0; }
+    if ( bytes < 1 || buffer == NULL ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     if ( buffer[0] != 1 ) { report->refused = 1; report->reason = buffer[0] == 2 ? SCHEMA_BLOCKDEMO_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM; return 0; }
-    if ( bytes < 9 ) { report->malformed = 1; return 0; }
+    if ( bytes < 9 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     tail = blockdemo_table_reader_make( buffer + bytes - 8, 8, report ); count = blockdemo_table_reader_get64( &tail );
-    if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->malformed = 1; return 0; }
+    if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     /* THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
-       more than 4096 entries is malformed for the whole wire, even where the
+       more than 4096 entries is damaged for the whole wire, even where the
        buffer would hold them, so the distinctness walk below stays bounded no
        matter how large the file is. */
-    if ( count > 4096 ) { report->malformed = 1; return 0; }
+    if ( count > 4096 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     span = (int64_t) count * 8 + 8;
     *r = blockdemo_table_reader_make( buffer + 1, bytes - span - 1, report );
     r->ids = buffer + bytes - span; r->id_count = count; r->nested = 0;
-    /* THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
+    /* THE ENTRIES ARE DISTINCT: a table that carries one id twice is damaged
        for the whole wire (docs/SPEC-TABLES.md §3). The walk is one open-addressed
        probe over a fixed 8192-slot stack table, and there is no pairwise arm
        left to fall back to: the count cap above guarantees the probe completes,
        so a hostile file cannot steer a reader into an O(n^2) scan. A slot
-       occupied by a different id is not a duplicate: compare the stored id, not
+       occupied by a different id is not a repeated: compare the stored id, not
        the hash. The mix is table_writer_id's. */
     if ( count > 1 )
     {
@@ -569,7 +595,7 @@ static SCHEMA_UNUSED int blockdemo_table_wire_open( blockdemo_table_reader_t * r
             for ( ;; )
             {
                 if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
-                if ( seen[slot] == id ) { report->malformed = 1; return 0; }
+                if ( seen[slot] == id ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 slot = (slot + 1) & 8191u;
             }
         }
@@ -581,7 +607,7 @@ static SCHEMA_UNUSED int blockdemo_table_wire_open( blockdemo_table_reader_t * r
     {
         uint64_t ref; uint8_t kind;
         if ( !blockdemo_table_reader_leb( &tail, &ref ) ) { break; }
-        if ( ref == 0 ) { if ( tail.offset != tail.size ) { report->malformed = 1; return 0; } break; }
+        if ( ref == 0 ) { if ( tail.offset != tail.size ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } break; }
         if ( ref > count || !blockdemo_table_reader_has( &tail, 1 ) ) { break; }
         kind = blockdemo_table_reader_get8( &tail ); if ( !blockdemo_table_reader_skip( &tail, kind ) ) { break; }
     }
@@ -1047,7 +1073,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_co
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_apply( const blockdemo_table_fixed_entry_t * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * clamped, int32_t * widened )
+                                                      int32_t * out_of_range, int32_t * widened )
 {
     switch ( p->op )
     {
@@ -1064,14 +1090,14 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
             uint8_t * d = dst + p->dst;
             const uint8_t * s = src + p->src;
             uint32_t i;
-            for ( i = 0; i < p->size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
+            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*out_of_range)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
             break;
         }
         case BLOCKDEMO_K_TABLE_FIXED_COUNT:
         {
             int32_t v = (int32_t) blockdemo_table_fixed_get32( src + p->src );
-            if ( v < 0 ) { v = 0; (*clamped)++; }
-            else if ( v > (int32_t) p->size ) { v = (int32_t) p->size; (*clamped)++; }
+            if ( v < 0 ) { v = 0; (*out_of_range)++; }
+            else if ( v > (int32_t) p->size ) { v = (int32_t) p->size; (*out_of_range)++; }
             memcpy( dst + p->dst, &v, 4 );
             break;
         }
@@ -1080,8 +1106,8 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
             const uint32_t unit = ( p->meta == BLOCKDEMO_K_TABLE_FIXED_TEXT_WIDE ) ? 2u : 1u;
             const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) blockdemo_table_fixed_get32( src + p->src );
-            if ( v < 0 ) { v = 0; (*clamped)++; }
-            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
+            if ( v < 0 ) { v = 0; (*out_of_range)++; }
+            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*out_of_range)++; }
             memcpy( dst + p->dst, &v, 4 );
             blockdemo_table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
             if ( p->meta != BLOCKDEMO_K_TABLE_FIXED_TEXT_BYTES )
@@ -1106,14 +1132,14 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p->aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
-            /* AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS CLAMPED
+            /* AN ORDINAL PAST THE WRITER'S SET LANDS None AND IS REFUSED AS OUT OF RANGE
                (§5.4, §5.8 row 12): the compiled plan counts it exactly as the
                identity plan's bounds pass does, so the SAME forged bytes land
-               the SAME clamped == 1 on either plan. The test is the WRITER's
+               the SAME out_of_range == 1 on either plan. The test is the WRITER's
                top ordinal, table[0], and the pass that runs after this loop
                tests THIS reader's own top value — which a remapped 0 never
                trips, so the two never count the one event twice. */
-            else if ( raw != 0 ) { (*clamped)++; }
+            else if ( raw != 0 ) { (*out_of_range)++; }
             memcpy( dst + p->dst, &v, p->dstsize );
             break;
         }
@@ -1155,13 +1181,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
             /* AN UNGUARDED None CONST WITH dstsize = THE WRITER'S ARM COUNT:
                a tag past that set lands None (already written) and COUNTS, so
                the compiled plan counts it exactly as the identity plan's bounds
-               pass does and the SAME forged bytes land the SAME clamped == 1 on
+               pass does and the SAME forged bytes land the SAME out_of_range == 1 on
                either plan (schema#1254, §5.4, §5.8 row 12). */
             if ( p->aux == 0 && p->dstsize != 0 && p->guard == SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD )
             {
                 uint64_t raw = 0;
                 memcpy( &raw, src + p->src, p->size );
-                if ( raw > (uint64_t) p->dstsize ) { (*clamped)++; }
+                if ( raw > (uint64_t) p->dstsize ) { (*out_of_range)++; }
             }
             break;
         }
@@ -1190,7 +1216,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
        through is a pointer the compiler must assume aliases the destination,
        and every store to a field would then reload it. */
-    int32_t clamped = 0;
+    int32_t out_of_range = 0;
     int32_t widened = 0;
     int32_t i;
     /* THE ORDINAL REMAP TABLES RIDE ABOVE THE ENTRIES IN THE SAME STORAGE, so
@@ -1200,7 +1226,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        blockdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &clamped, &widened );
+        blockdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -1226,9 +1252,9 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
             if ( blockdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        blockdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
+        blockdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened );
     }
-    report->clamped += clamped;
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     report->widened += widened;
 }
 
@@ -1258,7 +1284,7 @@ typedef struct blockdemo_table_fixed_fill_t
 } blockdemo_table_fixed_fill_t;
 
 /* ONE LINEAGE ENTRY'S PLAN, laid down from THE LOCK'S BYTES and off every load
-   path. unknown and kind_mismatch are THE COMPILE CENSUS — a writer field no
+   path. unknown and kind_changed are THE COMPILE CENSUS — a writer field no
    reader field names is counted ONCE PER ENDPOINT and never per record (§5.4) — and
    a load carries them onto the report once, after the record loop, only on a
    read that RETURNS. reason is the name a lineage entry that could not be
@@ -1271,7 +1297,7 @@ typedef struct blockdemo_table_fixed_lineage_plan_t
     const blockdemo_table_fixed_fill_t * fill;
     int32_t fill_count;
     int32_t unknown;
-    int32_t kind_mismatch;
+    int32_t kind_changed;
     int reason;
 } blockdemo_table_fixed_lineage_plan_t;
 
@@ -1943,7 +1969,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_compile_entry( blockdemo_table_f
                 break;
             }
             /* A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4). */
-            if ( c->report != NULL ) { c->report->kind_mismatch++; }
+            if ( c->report != NULL ) { c->report->refused=1, c->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; }
             break;
         }
         switch ( me.kind )
@@ -2162,7 +2188,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_compile_entry( blockdemo_table_f
                 }
                 else if ( c->report != NULL )
                 {
-                    c->report->kind_mismatch++;
+                    c->report->refused=1, c->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 }
                 break;
             }
@@ -2411,59 +2437,28 @@ static SCHEMA_UNUSED int64_t schema_blockdemo_table_integrity_seal_( uint8_t * b
 
 #ifndef SCHEMA_BLOCKDEMO_TABLE_REFUSE_RUNTIME
 #define SCHEMA_BLOCKDEMO_TABLE_REFUSE_RUNTIME
-typedef int blockdemo_table_refuse_reason_t;
-enum {
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK=0,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_NOT_A_COOK=1,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_FOREIGN_ORDER=2,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BAD_ALIGNMENT=5,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_TRUNCATED=6,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNALIGNED_BASE=7,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BAD_LAYOUT=8,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM=9,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_DATA_CYCLE=13,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_INVALID_VALUE=14,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_ALLOCATION_FAILED=15,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED=16,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_MALFORMED=17,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_CLAMPED=18,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH=19,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BASE64_DAMAGED=20,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT=23,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED=24,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_MISSING_REQUIRED=25
-};
 static SCHEMA_UNUSED const uint8_t * blockdemo_table_cook_refuse(blockdemo_table_refuse_reason_t * out,blockdemo_table_refuse_reason_t reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
-/* THE STRICT RULE (docs/SPEC-TABLES.md §6.5): every plain read name refuses
-   what the strict read refuses -- an unknown form, wire damage, a blob named
-   from two slots, a clamp or a kind mismatch -- and unknown, widened and
-   retained alone never refuse. decoded is the tolerant read's own answer.
-   It sets the report's ONE TYPED REASON, a non-finite float first (it
-   outranks any damage, §3.3), then damage before blob_shared before
-   clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
-   them, and answers 1 when the plain name must refuse. */
-static SCHEMA_UNUSED int blockdemo_table_report_strict_refuses( blockdemo_table_report_t * report, int decoded )
+/* THE STRICT READ'S END (docs/SPEC-TABLES.md §6.5): the walk itself has
+   already refused at the first condition it met, landing the reason in
+   refuse_reason; this only names a refusal the walk answered without one
+   (a short or damaged wire, a missing required field, a shared blob) and
+   answers 1 when the read must hand back nothing. unknown, widened and
+   retained alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_table_report_finish( blockdemo_table_report_t * report, int decoded )
 {
-    blockdemo_table_refuse_reason_t reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK;
-    if ( report->refused && report->reason == SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT; }
-    else if ( report->refused && report->reason == SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
-    else if ( report->refused ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
-    else if ( report->damage_reason == SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH; }
-    else if ( report->missing_required > 0 && !report->malformed ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_MISSING_REQUIRED; }
-    else if ( !decoded || report->malformed ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-    else if ( report->blob_shared > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED; }
-    else if ( report->clamped > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_CLAMPED; }
-    else if ( report->kind_mismatch > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; }
-    report->refuse_reason = reason;
-    return reason != SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK;
+    if ( report->refuse_reason == SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK )
+    {
+        blockdemo_table_refuse_reason_t reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK;
+        if ( report->refused && report->reason == SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT; }
+        else if ( report->refused && report->reason == SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
+        else if ( report->damage_reason == SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH; }
+        else if ( report->missing_required > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_MISSING_REQUIRED; }
+        else if ( report->blob_shared > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED; }
+        else if ( !decoded || report->refused ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+        report->refuse_reason = reason;
+    }
+    return report->refuse_reason != SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK;
 }
 #endif
 
@@ -2975,13 +2970,13 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once(blockdemo_table_vocabular
  for(;;){
   uint64_t ref,id;
   uint8_t kind;
-  if(!blockdemo_table_reader_leb(&r,&ref))goto malformed;
+  if(!blockdemo_table_reader_leb(&r,&ref))goto damaged;
   if(ref==0)break;
-  if(ref>r.id_count||!blockdemo_table_reader_has(&r,1))goto malformed;
+  if(ref>r.id_count||!blockdemo_table_reader_has(&r,1))goto damaged;
   id=blockdemo_table_reader_id_at(&r,ref);
   kind=blockdemo_table_reader_get8(&r);
   if(id==UINT64_C(0xfffffffffffffffe)){
-   if(kind!=9||!blockdemo_table_reader_has(&r,8))goto malformed;
+   if(kind!=9||!blockdemo_table_reader_has(&r,8))goto damaged;
    v->build_version=blockdemo_table_reader_get64(&r);
    seen_version++;
    continue;
@@ -2989,8 +2984,8 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once(blockdemo_table_vocabular
   if(id==UINT64_C(0xfffffffffffffffd)){
    blockdemo_table_reader_t field;
    uint64_t n;
-   if(kind!=14||!blockdemo_table_reader_span(&r,&field)||!blockdemo_table_reader_has(&field,1)||blockdemo_table_reader_get8(&field)!=6)goto malformed;
-   if(!blockdemo_table_reader_leb(&field,&n)||!blockdemo_table_reader_room(&field,n)||n!=(uint64_t)(field.size-field.offset))goto malformed;
+   if(kind!=14||!blockdemo_table_reader_span(&r,&field)||!blockdemo_table_reader_has(&field,1)||blockdemo_table_reader_get8(&field)!=6)goto damaged;
+   if(!blockdemo_table_reader_leb(&field,&n)||!blockdemo_table_reader_room(&field,n)||n!=(uint64_t)(field.size-field.offset))goto damaged;
    if(v->max_bytes<0 || n>(uint64_t)v->max_bytes){report->refused=1;
    report->reason=SCHEMA_BLOCKDEMO_TABLE_VOCABULARY_TOO_LARGE;
    return 0;
@@ -3001,9 +2996,9 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once(blockdemo_table_vocabular
    continue;
   }
   report->unknown++;
-  if(!blockdemo_table_reader_skip(&r,kind))goto malformed;
+  if(!blockdemo_table_reader_skip(&r,kind))goto damaged;
  }
- if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto malformed;
+ if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto damaged;
  while(at<words_bytes){
   blockdemo_table_message_entry_t * entry;
   int64_t i,began=at;
@@ -3017,14 +3012,14 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once(blockdemo_table_vocabular
   }
   entry=&v->entries[count];
   touched=count+1;
-  if(!blockdemo_table_message_entry_read(words,words_bytes,&at,entry))goto malformed;
-  if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto malformed;
-  if(entry->id==UINT64_MAX && nodes++>0)goto malformed;
+  if(!blockdemo_table_message_entry_read(words,words_bytes,&at,entry))goto damaged;
+  if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto damaged;
+  if(entry->id==UINT64_MAX && nodes++>0)goto damaged;
   /* Declared canonical bytes identify a shape. Resolved quantization facts
      alone can collapse different triples (#722). Until validation finishes,
      min/max temporarily hold the source span; no announcement pointer escapes. */
   for(i=0;i<count;i++){int64_t start=v->entries[i].min,length=v->entries[i].max-start;
-   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto malformed;
+   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto damaged;
    }
   entry->min=began;
   entry->max=at;
@@ -3033,14 +3028,14 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once(blockdemo_table_vocabular
  /* Resolve the accepted spans into the caller's final 96-byte entries. */
  at=0;
  {int64_t i;
- for(i=0;i<count;i++)if(!blockdemo_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;
+ for(i=0;i<count;i++)if(!blockdemo_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
  }
  v->count=count;
  v->ref_bits=blockdemo_table_bits_required(0,count);
  v->announced=1;
  return 1;
-malformed:
- report->malformed=1;
+damaged:
+ report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
 refused:
  if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));
  return 0;
@@ -3065,7 +3060,7 @@ typedef struct blockdemo_table_message_reader_t {
 } blockdemo_table_message_reader_t;
 /* Framing scans skip by announced shape, including a reserved transport id
    (kind 0, no extra bits). A NAME reference still refuses reserved ids.
-   Typed body reads diagnose reserved as malformed after resolving the entry. */
+   Typed body reads diagnose reserved as damaged after resolving the entry. */
 static SCHEMA_UNUSED int blockdemo_table_message_ref(blockdemo_table_message_reader_t * r,const blockdemo_table_message_entry_t ** entry,int name)
 {
  uint64_t ref=0;
@@ -3111,7 +3106,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_re
    message_skip_depth). table_message_open zeroes it, so every external caller
    starts at 0. A nested body, a union arm and a walked element each enter the
    next call at skip_depth+1; the caller restores the saved value on every
-   path. Past 128 is malformed, and 128 itself still skips. */
+   path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int blockdemo_table_message_skip_body(blockdemo_table_message_reader_t * r)
 {
  if(r->skip_depth>128)return 0;
@@ -3211,7 +3206,7 @@ static SCHEMA_UNUSED int64_t blockdemo_table_message_open(blockdemo_table_messag
  memset(r,0,sizeof(*r));
  r->report=report;
  r->vocabulary=v;
- if(bytes<1 || buffer==NULL){report->malformed=1;
+ if(bytes<1 || buffer==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return -1;
  }
  if(buffer[0]!=2){report->refused=1;
@@ -3223,14 +3218,14 @@ static SCHEMA_UNUSED int64_t blockdemo_table_message_open(blockdemo_table_messag
  return -1;
  }
  r->bits=blockdemo_table_bit_reader(buffer+1,bytes-1);
- if(!blockdemo_table_bit_get(&r->bits,&count,8)){report->malformed=1;
+ if(!blockdemo_table_bit_get(&r->bits,&count,8)){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return -1;
  }
  return (int64_t)count+1;
 }
 static SCHEMA_UNUSED int blockdemo_table_message_close(blockdemo_table_message_reader_t * r)
 {
- if(!blockdemo_table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;
+ if(!blockdemo_table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }return 1;
 }
@@ -3766,39 +3761,39 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_vector3_load_body( &sub, &value->position );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_vector3_reset( &value->position ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_vector3_reset( &value->position ); }
                 break;
             }
             case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_quaternion_load_body( &sub, &value->rotation );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_quaternion_reset( &value->rotation ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_quaternion_reset( &value->rotation ); }
                 break;
             }
             case 0x9f61700f084ab92eull: /* camera_id */
@@ -3811,37 +3806,37 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->camera_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->camera_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->camera_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->camera_id = decoded_v;
@@ -3858,37 +3853,37 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->camera_type = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->camera_type = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->camera_type = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->camera_type = decoded_v;
@@ -3905,37 +3900,37 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->target_object_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->target_object_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->target_object_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->target_object_id = decoded_v;
@@ -3946,11 +3941,11 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
             {
                 if ( kind != 10 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_bits = blockdemo_table_reader_get32( &(*r) );
                     if ( !blockdemo_table_bits_finite32( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -3960,47 +3955,28 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_camera_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_camera_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_camera_load_tolerant( blockdemo_render_camera_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_camera_load( blockdemo_render_camera_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_camera_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_camera_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_camera_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_camera_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_camera_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_camera_load( blockdemo_render_camera_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_camera_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_camera_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_camera_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -4097,14 +4073,14 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
 {
  blockdemo_render_camera_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
@@ -4112,8 +4088,8 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  }
  case UINT64_C(0xb51afb05cd34709f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
@@ -4121,16 +4097,16 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  }
  case UINT64_C(0x9f61700f084ab92e): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->camera_id=(uint32_t)decoded;
   }
@@ -4138,16 +4114,16 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  }
  case UINT64_C(0x336d3dc7fffd0c9b): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->camera_type=(uint32_t)decoded;
   }
@@ -4155,16 +4131,16 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  }
  case UINT64_C(0x6a0c6a156952b9c2): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->target_object_id=(uint32_t)decoded;
   }
@@ -4172,19 +4148,19 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  }
  case UINT64_C(0xdcb27c18fed9e15c): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,10)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(float)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -4194,14 +4170,14 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_camera_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_camera_load_messages_tolerant(blockdemo_render_camera_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_camera_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_camera_load_messages(blockdemo_render_camera_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -4209,7 +4185,8 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_messages_tolerant(blockdem
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -4224,37 +4201,17 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_messages_tolerant(blockdem
  for(i=0;i<bodies;i++){if(!blockdemo_render_camera_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_camera_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_camera_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_camera_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_camera_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_camera_load_messages( blockdemo_render_camera_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_camera_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_camera_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int blockdemo_render_ship_save_body( blockdemo_table_writer_t * w, const blockdemo_render_ship_t * value )
 {
@@ -4411,39 +4368,39 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_vector3_load_body( &sub, &value->position );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_vector3_reset( &value->position ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_vector3_reset( &value->position ); }
                 break;
             }
             case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_quaternion_load_body( &sub, &value->rotation );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_quaternion_reset( &value->rotation ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_quaternion_reset( &value->rotation ); }
                 break;
             }
             case 0x17a3a1a985f75aecull: /* flags */
@@ -4456,44 +4413,44 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 9:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                                     value->flags = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                     value->flags = decoded_v;
@@ -4510,37 +4467,37 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->object_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->object_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->object_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->object_id = decoded_v;
@@ -4557,37 +4514,37 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->target_object_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->target_object_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->target_object_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->target_object_id = decoded_v;
@@ -4598,11 +4555,11 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
             {
                 if ( kind != 10 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_bits = blockdemo_table_reader_get32( &(*r) );
                     if ( !blockdemo_table_bits_finite32( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -4614,11 +4571,11 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
             {
                 if ( kind != 6 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint8_t decoded_v = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                     value->object_sequence = decoded_v;
@@ -4629,13 +4586,13 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->ship_type = BLOCKDEMO_SHIP_TYPE_NONE; }
                     else
                     {
@@ -4654,13 +4611,13 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->team = BLOCKDEMO_TEAM_NONE; }
                     else
                     {
@@ -4680,14 +4637,14 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
             {
                 if ( kind != 1 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint8_t bool_byte = blockdemo_table_reader_get8( &(*r) );
-                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    if ( bool_byte > 1 ) { r->report->refused = true; }
                     value->has_target_lock = bool_byte != 0;
                 }
                 break;
@@ -4696,61 +4653,42 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
             {
                 if ( kind != 1 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint8_t bool_byte = blockdemo_table_reader_get8( &(*r) );
-                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    if ( bool_byte > 1 ) { r->report->refused = true; }
                     value->predicted_explode = bool_byte != 0;
                 }
                 break;
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_ship_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_ship_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_ship_load_tolerant( blockdemo_render_ship_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_ship_load( blockdemo_render_ship_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_ship_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_ship_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_ship_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_ship_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_ship_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_ship_load( blockdemo_render_ship_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_ship_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_ship_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_ship_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -4899,14 +4837,14 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
 {
  blockdemo_render_ship_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
@@ -4914,8 +4852,8 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  }
  case UINT64_C(0xb51afb05cd34709f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
@@ -4923,12 +4861,12 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  }
  case UINT64_C(0x17a3a1a985f75aec): {
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   value->flags=(blockdemo_ship_flags_t)decoded;
@@ -4937,16 +4875,16 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  }
  case UINT64_C(0x0bdab42c07f19812): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->object_id=(uint32_t)decoded;
   }
@@ -4954,16 +4892,16 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  }
  case UINT64_C(0x6a0c6a156952b9c2): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->target_object_id=(uint32_t)decoded;
   }
@@ -4971,19 +4909,19 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  }
  case UINT64_C(0xcfd587cb3100cd73): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,10)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(float)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -4994,16 +4932,16 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  }
  case UINT64_C(0x5de0015285763c46): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->object_sequence=(uint8_t)decoded;
   }
@@ -5011,12 +4949,12 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  }
  case UINT64_C(0x1f7d2e86a2e77268): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->ship_type=BLOCKDEMO_SHIP_TYPE_NONE;
   else switch(named->id) {
   case UINT64_C(0xd011f7c3c15285c2): value->ship_type=BLOCKDEMO_SHIP_TYPE_FIGHTER;
@@ -5033,12 +4971,12 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->team=BLOCKDEMO_TEAM_NONE;
   else switch(named->id) {
   case UINT64_C(0x9ff1de19feac1b7c): value->team=BLOCKDEMO_TEAM_RED;
@@ -5057,37 +4995,37 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  }
  case UINT64_C(0x1554fa45a1220171): {
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,1)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   value->has_target_lock=lo!=0;
   }
  break;
  }
  case UINT64_C(0x4d5be97ba1b9cb81): {
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,1)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   value->predicted_explode=lo!=0;
   }
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_ship_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_ship_load_messages_tolerant(blockdemo_render_ship_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_ship_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_ship_load_messages(blockdemo_render_ship_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -5095,7 +5033,8 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_messages_tolerant(blockdemo_
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -5110,37 +5049,17 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_messages_tolerant(blockdemo_
  for(i=0;i<bodies;i++){if(!blockdemo_render_ship_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_ship_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_ship_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_ship_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_ship_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_ship_load_messages( blockdemo_render_ship_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_ship_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_ship_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int blockdemo_render_turret_save_body( blockdemo_table_writer_t * w, const blockdemo_render_turret_t * value )
 {
@@ -5260,25 +5179,25 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_quaternion_load_body( &sub, &value->rotation );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_quaternion_reset( &value->rotation ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_quaternion_reset( &value->rotation ); }
                 break;
             }
             case 0x17a3a1a985f75aecull: /* flags */
@@ -5291,44 +5210,44 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 9:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                                     value->flags = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                     value->flags = decoded_v;
@@ -5345,37 +5264,37 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->object_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->object_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->object_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->object_id = decoded_v;
@@ -5392,37 +5311,37 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->parent_object_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->parent_object_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->parent_object_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->parent_object_id = decoded_v;
@@ -5439,37 +5358,37 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->turret_index = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->turret_index = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->turret_index = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->turret_index = decoded_v;
@@ -5486,37 +5405,37 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->target_object_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->target_object_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->target_object_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->target_object_id = decoded_v;
@@ -5527,11 +5446,11 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
             {
                 if ( kind != 6 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint8_t decoded_v = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                     value->object_sequence = decoded_v;
@@ -5542,13 +5461,13 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->team = BLOCKDEMO_TEAM_NONE; }
                     else
                     {
@@ -5568,61 +5487,42 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
             {
                 if ( kind != 1 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint8_t bool_byte = blockdemo_table_reader_get8( &(*r) );
-                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    if ( bool_byte > 1 ) { r->report->refused = true; }
                     value->has_target_lock = bool_byte != 0;
                 }
                 break;
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_turret_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_turret_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_turret_load_tolerant( blockdemo_render_turret_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_turret_load( blockdemo_render_turret_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_turret_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_turret_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_turret_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_turret_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_turret_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_turret_load( blockdemo_render_turret_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_turret_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_turret_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_turret_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -5741,14 +5641,14 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
 {
  blockdemo_render_turret_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0xb51afb05cd34709f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
@@ -5756,12 +5656,12 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  }
  case UINT64_C(0x17a3a1a985f75aec): {
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   value->flags=(uint64_t)decoded;
@@ -5770,16 +5670,16 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  }
  case UINT64_C(0x0bdab42c07f19812): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->object_id=(uint32_t)decoded;
   }
@@ -5787,16 +5687,16 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  }
  case UINT64_C(0x0bee7b3cb4046c93): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->parent_object_id=(uint32_t)decoded;
   }
@@ -5804,16 +5704,16 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  }
  case UINT64_C(0x88a11a6aed541f54): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->turret_index=(uint32_t)decoded;
   }
@@ -5821,16 +5721,16 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  }
  case UINT64_C(0x6a0c6a156952b9c2): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->target_object_id=(uint32_t)decoded;
   }
@@ -5838,16 +5738,16 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  }
  case UINT64_C(0x5de0015285763c46): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->object_sequence=(uint8_t)decoded;
   }
@@ -5855,12 +5755,12 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->team=BLOCKDEMO_TEAM_NONE;
   else switch(named->id) {
   case UINT64_C(0x9ff1de19feac1b7c): value->team=BLOCKDEMO_TEAM_RED;
@@ -5879,25 +5779,25 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  }
  case UINT64_C(0x1554fa45a1220171): {
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,1)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   value->has_target_lock=lo!=0;
   }
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_turret_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_turret_load_messages_tolerant(blockdemo_render_turret_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_turret_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_turret_load_messages(blockdemo_render_turret_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -5905,7 +5805,8 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_messages_tolerant(blockdem
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -5920,37 +5821,17 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_messages_tolerant(blockdem
  for(i=0;i<bodies;i++){if(!blockdemo_render_turret_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_turret_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_turret_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_turret_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_turret_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_turret_load_messages( blockdemo_render_turret_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_turret_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_turret_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int blockdemo_render_missile_save_body( blockdemo_table_writer_t * w, const blockdemo_render_missile_t * value )
 {
@@ -6077,39 +5958,39 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_vector3_load_body( &sub, &value->position );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_vector3_reset( &value->position ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_vector3_reset( &value->position ); }
                 break;
             }
             case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_quaternion_load_body( &sub, &value->rotation );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_quaternion_reset( &value->rotation ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_quaternion_reset( &value->rotation ); }
                 break;
             }
             case 0x17a3a1a985f75aecull: /* flags */
@@ -6122,44 +6003,44 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 9:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                                     value->flags = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                     value->flags = decoded_v;
@@ -6176,37 +6057,37 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->object_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->object_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->object_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->object_id = decoded_v;
@@ -6217,11 +6098,11 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
             {
                 if ( kind != 6 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint8_t decoded_v = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                     value->object_sequence = decoded_v;
@@ -6232,13 +6113,13 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->missile_type = BLOCKDEMO_MISSILE_TYPE_NONE; }
                     else
                     {
@@ -6256,13 +6137,13 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->team = BLOCKDEMO_TEAM_NONE; }
                     else
                     {
@@ -6280,47 +6161,28 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_missile_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_missile_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_missile_load_tolerant( blockdemo_render_missile_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_missile_load( blockdemo_render_missile_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_missile_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_missile_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_missile_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_missile_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_missile_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_missile_load( blockdemo_render_missile_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_missile_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_missile_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_missile_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -6441,14 +6303,14 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
 {
  blockdemo_render_missile_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
@@ -6456,8 +6318,8 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  }
  case UINT64_C(0xb51afb05cd34709f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
@@ -6465,12 +6327,12 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  }
  case UINT64_C(0x17a3a1a985f75aec): {
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   value->flags=(uint64_t)decoded;
@@ -6479,16 +6341,16 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  }
  case UINT64_C(0x0bdab42c07f19812): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->object_id=(uint32_t)decoded;
   }
@@ -6496,16 +6358,16 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  }
  case UINT64_C(0x5de0015285763c46): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->object_sequence=(uint8_t)decoded;
   }
@@ -6513,12 +6375,12 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  }
  case UINT64_C(0x151b2a0e2c07b4bc): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->missile_type=BLOCKDEMO_MISSILE_TYPE_NONE;
   else switch(named->id) {
   case UINT64_C(0xf5d0a4d25a76afca): value->missile_type=BLOCKDEMO_MISSILE_TYPE_SEEKER;
@@ -6533,12 +6395,12 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->team=BLOCKDEMO_TEAM_NONE;
   else switch(named->id) {
   case UINT64_C(0x9ff1de19feac1b7c): value->team=BLOCKDEMO_TEAM_RED;
@@ -6556,14 +6418,14 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_missile_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_missile_load_messages_tolerant(blockdemo_render_missile_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_missile_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_missile_load_messages(blockdemo_render_missile_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -6571,7 +6433,8 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_messages_tolerant(blockde
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -6586,37 +6449,17 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_messages_tolerant(blockde
  for(i=0;i<bodies;i++){if(!blockdemo_render_missile_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_missile_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_missile_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_missile_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_missile_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_missile_load_messages( blockdemo_render_missile_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_missile_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_missile_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_save_body( blockdemo_table_writer_t * w, const blockdemo_render_dynamic_prop_t * value )
 {
@@ -6744,39 +6587,39 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_vector3_load_body( &sub, &value->position );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_vector3_reset( &value->position ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_vector3_reset( &value->position ); }
                 break;
             }
             case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_quaternion_load_body( &sub, &value->rotation );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_quaternion_reset( &value->rotation ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_quaternion_reset( &value->rotation ); }
                 break;
             }
             case 0x17a3a1a985f75aecull: /* flags */
@@ -6789,44 +6632,44 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 9:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                                     value->flags = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                     value->flags = decoded_v;
@@ -6843,37 +6686,37 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->object_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->object_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->object_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->object_id = decoded_v;
@@ -6884,11 +6727,11 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
             {
                 if ( kind != 6 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint8_t decoded_v = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                     value->object_sequence = decoded_v;
@@ -6899,13 +6742,13 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->prop_type = BLOCKDEMO_PROP_TYPE_NONE; }
                     else
                     {
@@ -6924,13 +6767,13 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->team = BLOCKDEMO_TEAM_NONE; }
                     else
                     {
@@ -6948,47 +6791,28 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_dynamic_prop_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_dynamic_prop_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_tolerant( blockdemo_render_dynamic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load( blockdemo_render_dynamic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_dynamic_prop_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_dynamic_prop_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_dynamic_prop_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_dynamic_prop_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_dynamic_prop_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load( blockdemo_render_dynamic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_dynamic_prop_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_dynamic_prop_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_dynamic_prop_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -7111,14 +6935,14 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
 {
  blockdemo_render_dynamic_prop_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
@@ -7126,8 +6950,8 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  }
  case UINT64_C(0xb51afb05cd34709f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
@@ -7135,12 +6959,12 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  }
  case UINT64_C(0x17a3a1a985f75aec): {
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   value->flags=(uint64_t)decoded;
@@ -7149,16 +6973,16 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  }
  case UINT64_C(0x0bdab42c07f19812): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->object_id=(uint32_t)decoded;
   }
@@ -7166,16 +6990,16 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  }
  case UINT64_C(0x5de0015285763c46): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->object_sequence=(uint8_t)decoded;
   }
@@ -7183,12 +7007,12 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  }
  case UINT64_C(0xe5626f155e4c5dad): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->prop_type=BLOCKDEMO_PROP_TYPE_NONE;
   else switch(named->id) {
   case UINT64_C(0xcaa6172bef74e234): value->prop_type=BLOCKDEMO_PROP_TYPE_ROCK;
@@ -7205,12 +7029,12 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->team=BLOCKDEMO_TEAM_NONE;
   else switch(named->id) {
   case UINT64_C(0x9ff1de19feac1b7c): value->team=BLOCKDEMO_TEAM_RED;
@@ -7228,14 +7052,14 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_dynamic_prop_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages_tolerant(blockdemo_render_dynamic_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_dynamic_prop_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages(blockdemo_render_dynamic_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -7243,7 +7067,8 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages_tolerant(bl
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -7258,37 +7083,17 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages_tolerant(bl
  for(i=0;i<bodies;i++){if(!blockdemo_render_dynamic_prop_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_dynamic_prop_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_dynamic_prop_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_dynamic_prop_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_dynamic_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages( blockdemo_render_dynamic_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_dynamic_prop_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_dynamic_prop_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int blockdemo_render_static_prop_save_body( blockdemo_table_writer_t * w, const blockdemo_render_static_prop_t * value )
 {
@@ -7417,39 +7222,39 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_vector3_load_body( &sub, &value->position );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_vector3_reset( &value->position ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_vector3_reset( &value->position ); }
                 break;
             }
             case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_quaternion_load_body( &sub, &value->rotation );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_quaternion_reset( &value->rotation ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_quaternion_reset( &value->rotation ); }
                 break;
             }
             case 0x6aacb9fbb71a1d91ull: /* scale */
@@ -7462,7 +7267,7 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -7471,7 +7276,7 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -7479,16 +7284,16 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -7506,44 +7311,44 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 9:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                                     value->flags = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                     value->flags = decoded_v;
@@ -7560,37 +7365,37 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->static_prop_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->static_prop_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->static_prop_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->static_prop_id = decoded_v;
@@ -7601,13 +7406,13 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->prop_type = BLOCKDEMO_PROP_TYPE_NONE; }
                     else
                     {
@@ -7626,13 +7431,13 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->team = BLOCKDEMO_TEAM_NONE; }
                     else
                     {
@@ -7650,47 +7455,28 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_static_prop_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_static_prop_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_static_prop_load_tolerant( blockdemo_render_static_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_static_prop_load( blockdemo_render_static_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_static_prop_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_static_prop_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_static_prop_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_static_prop_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_static_prop_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_static_prop_load( blockdemo_render_static_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_static_prop_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_static_prop_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_static_prop_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -7815,14 +7601,14 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
 {
  blockdemo_render_static_prop_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
@@ -7830,8 +7616,8 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  }
  case UINT64_C(0xb51afb05cd34709f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
@@ -7839,19 +7625,19 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  }
  case UINT64_C(0x6aacb9fbb71a1d91): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -7862,12 +7648,12 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  }
  case UINT64_C(0x17a3a1a985f75aec): {
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   value->flags=(uint64_t)decoded;
@@ -7876,16 +7662,16 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  }
  case UINT64_C(0xd23da7ab574b95c3): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->static_prop_id=(uint32_t)decoded;
   }
@@ -7893,12 +7679,12 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  }
  case UINT64_C(0xe5626f155e4c5dad): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->prop_type=BLOCKDEMO_PROP_TYPE_NONE;
   else switch(named->id) {
   case UINT64_C(0xcaa6172bef74e234): value->prop_type=BLOCKDEMO_PROP_TYPE_ROCK;
@@ -7915,12 +7701,12 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->team=BLOCKDEMO_TEAM_NONE;
   else switch(named->id) {
   case UINT64_C(0x9ff1de19feac1b7c): value->team=BLOCKDEMO_TEAM_RED;
@@ -7938,14 +7724,14 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_static_prop_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages_tolerant(blockdemo_render_static_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_static_prop_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages(blockdemo_render_static_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -7953,7 +7739,8 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages_tolerant(blo
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -7968,37 +7755,17 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages_tolerant(blo
  for(i=0;i<bodies;i++){if(!blockdemo_render_static_prop_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_static_prop_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_static_prop_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_static_prop_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_static_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages( blockdemo_render_static_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_static_prop_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_static_prop_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_save_body( blockdemo_table_writer_t * w, const blockdemo_render_cosmetic_prop_t * value )
 {
@@ -8134,39 +7901,39 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_vector3_load_body( &sub, &value->position );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_vector3_reset( &value->position ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_vector3_reset( &value->position ); }
                 break;
             }
             case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_quaternion_load_body( &sub, &value->rotation );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_quaternion_reset( &value->rotation ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_quaternion_reset( &value->rotation ); }
                 break;
             }
             case 0x6aacb9fbb71a1d91ull: /* scale */
@@ -8179,7 +7946,7 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -8188,7 +7955,7 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -8196,16 +7963,16 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -8223,44 +7990,44 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                 value->flags = decoded_wide;
                                 break;
                             }
                             case 9:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                                     value->flags = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                     value->flags = decoded_v;
@@ -8277,37 +8044,37 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->cosmetic_prop_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->cosmetic_prop_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->cosmetic_prop_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->cosmetic_prop_id = decoded_v;
@@ -8318,11 +8085,11 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
             {
                 if ( kind != 6 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint8_t decoded_v = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                     value->prop_sequence = decoded_v;
@@ -8333,13 +8100,13 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->prop_type = BLOCKDEMO_PROP_TYPE_NONE; }
                     else
                     {
@@ -8358,13 +8125,13 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->team = BLOCKDEMO_TEAM_NONE; }
                     else
                     {
@@ -8382,47 +8149,28 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_cosmetic_prop_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_cosmetic_prop_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_tolerant( blockdemo_render_cosmetic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load( blockdemo_render_cosmetic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_cosmetic_prop_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_cosmetic_prop_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_cosmetic_prop_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_cosmetic_prop_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_cosmetic_prop_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load( blockdemo_render_cosmetic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_cosmetic_prop_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_cosmetic_prop_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_cosmetic_prop_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -8553,14 +8301,14 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
 {
  blockdemo_render_cosmetic_prop_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
@@ -8568,8 +8316,8 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  }
  case UINT64_C(0xb51afb05cd34709f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
@@ -8577,19 +8325,19 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  }
  case UINT64_C(0x6aacb9fbb71a1d91): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -8600,12 +8348,12 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  }
  case UINT64_C(0x17a3a1a985f75aec): {
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   value->flags=(uint64_t)decoded;
@@ -8614,16 +8362,16 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  }
  case UINT64_C(0xb66e4449e56b2e26): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->cosmetic_prop_id=(uint32_t)decoded;
   }
@@ -8631,16 +8379,16 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  }
  case UINT64_C(0x4d7bf73bcbddc228): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->prop_sequence=(uint8_t)decoded;
   }
@@ -8648,12 +8396,12 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  }
  case UINT64_C(0xe5626f155e4c5dad): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->prop_type=BLOCKDEMO_PROP_TYPE_NONE;
   else switch(named->id) {
   case UINT64_C(0xcaa6172bef74e234): value->prop_type=BLOCKDEMO_PROP_TYPE_ROCK;
@@ -8670,12 +8418,12 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->team=BLOCKDEMO_TEAM_NONE;
   else switch(named->id) {
   case UINT64_C(0x9ff1de19feac1b7c): value->team=BLOCKDEMO_TEAM_RED;
@@ -8693,14 +8441,14 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_cosmetic_prop_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages_tolerant(blockdemo_render_cosmetic_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_cosmetic_prop_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages(blockdemo_render_cosmetic_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -8708,7 +8456,8 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages_tolerant(b
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -8723,37 +8472,17 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages_tolerant(b
  for(i=0;i<bodies;i++){if(!blockdemo_render_cosmetic_prop_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_cosmetic_prop_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_cosmetic_prop_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_cosmetic_prop_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_cosmetic_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages( blockdemo_render_cosmetic_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_cosmetic_prop_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_cosmetic_prop_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int blockdemo_render_laser_save_body( blockdemo_table_writer_t * w, const blockdemo_render_laser_t * value )
 {
@@ -8874,39 +8603,39 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0xee5d97ad45ad251full: /* start */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_vector3_load_body( &sub, &value->start );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_vector3_reset( &value->start ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_vector3_reset( &value->start ); }
                 break;
             }
             case 0x6917a5bab91540f2ull: /* finish */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_vector3_load_body( &sub, &value->finish );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_vector3_reset( &value->finish ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_vector3_reset( &value->finish ); }
                 break;
             }
             case 0xaf63e94c860202a3ull: /* t */
@@ -8919,7 +8648,7 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -8928,7 +8657,7 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -8936,16 +8665,16 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -8963,37 +8692,37 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->laser_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->laser_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->laser_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->laser_id = decoded_v;
@@ -9004,13 +8733,13 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->laser_type = BLOCKDEMO_LASER_TYPE_NONE; }
                     else
                     {
@@ -9028,13 +8757,13 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->team = BLOCKDEMO_TEAM_NONE; }
                     else
                     {
@@ -9052,47 +8781,28 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_laser_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_laser_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_laser_load_tolerant( blockdemo_render_laser_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_laser_load( blockdemo_render_laser_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_laser_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_laser_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_laser_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_laser_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_laser_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_laser_load( blockdemo_render_laser_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_laser_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_laser_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_laser_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -9209,14 +8919,14 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
 {
  blockdemo_render_laser_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0xee5d97ad45ad251f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->start))return 0;
@@ -9224,8 +8934,8 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  }
  case UINT64_C(0x6917a5bab91540f2): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->finish))return 0;
@@ -9233,19 +8943,19 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  }
  case UINT64_C(0xaf63e94c860202a3): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -9256,16 +8966,16 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  }
  case UINT64_C(0xcd29c05f390294ec): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->laser_id=(uint32_t)decoded;
   }
@@ -9273,12 +8983,12 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  }
  case UINT64_C(0x96b593c242133841): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->laser_type=BLOCKDEMO_LASER_TYPE_NONE;
   else switch(named->id) {
   case UINT64_C(0x94e8a172d8f4805e): value->laser_type=BLOCKDEMO_LASER_TYPE_PULSE;
@@ -9293,12 +9003,12 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->team=BLOCKDEMO_TEAM_NONE;
   else switch(named->id) {
   case UINT64_C(0x9ff1de19feac1b7c): value->team=BLOCKDEMO_TEAM_RED;
@@ -9316,14 +9026,14 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_laser_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_laser_load_messages_tolerant(blockdemo_render_laser_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_laser_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_laser_load_messages(blockdemo_render_laser_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -9331,7 +9041,8 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_messages_tolerant(blockdemo
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -9346,37 +9057,17 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_messages_tolerant(blockdemo
  for(i=0;i<bodies;i++){if(!blockdemo_render_laser_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_laser_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_laser_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_laser_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_laser_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_laser_load_messages( blockdemo_render_laser_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_laser_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_laser_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int blockdemo_render_explosion_save_body( blockdemo_table_writer_t * w, const blockdemo_render_explosion_t * value )
 {
@@ -9504,39 +9195,39 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_vector3_load_body( &sub, &value->position );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_vector3_reset( &value->position ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_vector3_reset( &value->position ); }
                 break;
             }
             case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 blockdemo_render_quaternion_load_body( &sub, &value->rotation );
-                if ( sub.offset != sub.size ) { r->report->malformed = 1; blockdemo_render_quaternion_reset( &value->rotation ); }
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_quaternion_reset( &value->rotation ); }
                 break;
             }
             case 0xaf63e94c860202a3ull: /* t */
@@ -9549,7 +9240,7 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -9558,7 +9249,7 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -9566,16 +9257,16 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -9593,37 +9284,37 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->explosion_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->explosion_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->explosion_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->explosion_id = decoded_v;
@@ -9640,37 +9331,37 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->parent_object_id = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->parent_object_id = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                     value->parent_object_id = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint32_t decoded_v = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                     value->parent_object_id = decoded_v;
@@ -9681,13 +9372,13 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->explosion_type = BLOCKDEMO_EXPLOSION_TYPE_NONE; }
                     else
                     {
@@ -9705,13 +9396,13 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
             {
                 if ( kind != 30 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 {
                     uint64_t variant_ref;
-                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( !blockdemo_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     if ( variant_ref == 0 ) { value->team = BLOCKDEMO_TEAM_NONE; }
                     else
                     {
@@ -9729,47 +9420,28 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_explosion_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_explosion_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_explosion_load_tolerant( blockdemo_render_explosion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_explosion_load( blockdemo_render_explosion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_explosion_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_explosion_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_explosion_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_explosion_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_explosion_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_explosion_load( blockdemo_render_explosion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_explosion_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_explosion_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_explosion_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -9892,14 +9564,14 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
 {
  blockdemo_render_explosion_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
@@ -9907,8 +9579,8 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  }
  case UINT64_C(0xb51afb05cd34709f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
@@ -9916,19 +9588,19 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  }
  case UINT64_C(0xaf63e94c860202a3): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -9939,16 +9611,16 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  }
  case UINT64_C(0xfd7f3fa0b16ed778): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->explosion_id=(uint32_t)decoded;
   }
@@ -9956,16 +9628,16 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  }
  case UINT64_C(0x0bee7b3cb4046c93): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   if(decoded>4294967295ull){decoded=4294967295ull;
-  r->report->clamped++;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   }
   value->parent_object_id=(uint32_t)decoded;
   }
@@ -9973,12 +9645,12 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  }
  case UINT64_C(0xdc89eb9cd3393be5): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->explosion_type=BLOCKDEMO_EXPLOSION_TYPE_NONE;
   else switch(named->id) {
   case UINT64_C(0x3d2cc8d952adebec): value->explosion_type=BLOCKDEMO_EXPLOSION_TYPE_SMALL;
@@ -9993,12 +9665,12 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { const blockdemo_table_message_entry_t * named;
- if(!blockdemo_table_message_ref(r,&named,1)) goto malformed;
+ if(!blockdemo_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->team=BLOCKDEMO_TEAM_NONE;
   else switch(named->id) {
   case UINT64_C(0x9ff1de19feac1b7c): value->team=BLOCKDEMO_TEAM_RED;
@@ -10016,14 +9688,14 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_explosion_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages_tolerant(blockdemo_render_explosion_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_explosion_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages(blockdemo_render_explosion_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -10031,7 +9703,8 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages_tolerant(block
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -10046,37 +9719,17 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages_tolerant(block
  for(i=0;i<bodies;i++){if(!blockdemo_render_explosion_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_explosion_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_explosion_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_explosion_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_explosion_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages( blockdemo_render_explosion_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_explosion_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_explosion_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cameras_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
@@ -10684,11 +10337,11 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0xbb62c62c9808ea37ull: /* version */
@@ -10701,44 +10354,44 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                         {
                             case 6:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
                                 value->version = decoded_wide;
                                 break;
                             }
                             case 7:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
                                 value->version = decoded_wide;
                                 break;
                             }
                             case 8:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint32_t) blockdemo_table_reader_get32( &(*r) );
                                 value->version = decoded_wide;
                                 break;
                             }
                             case 9:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                                     value->version = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
                     value->version = decoded_v;
@@ -10749,32 +10402,32 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
             {
                 if ( kind != 14 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
-                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
+                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
                             r->report->widened++;
                         }
-                        kept = count; if ( kept > 1 ) { kept = 1; r->report->clamped++; }
+                        kept = count; if ( kept > 1 ) { kept = 1; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                         int32_t previous_count = value->cameras_count;
                         value->cameras_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
                             blockdemo_table_reader_t elem;
-                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_cameras; }
+                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; goto end_cameras; }
                             blockdemo_render_camera_load_body( &elem, &value->cameras[i] );
-                            if(elem.offset!=elem.size) { r->report->malformed=1; blockdemo_render_camera_reset(&value->cameras[i]); }
+                            if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_camera_reset(&value->cameras[i]); }
                             value->cameras_count = (int32_t) i + 1;
                         }
                         end_cameras: ;
@@ -10789,32 +10442,32 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
             {
                 if ( kind != 14 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
-                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
+                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
                             r->report->widened++;
                         }
-                        kept = count; if ( kept > 4096 ) { kept = 4096; r->report->clamped++; }
+                        kept = count; if ( kept > 4096 ) { kept = 4096; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                         int32_t previous_count = value->ships_count;
                         value->ships_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
                             blockdemo_table_reader_t elem;
-                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_ships; }
+                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; goto end_ships; }
                             blockdemo_render_ship_load_body( &elem, &value->ships[i] );
-                            if(elem.offset!=elem.size) { r->report->malformed=1; blockdemo_render_ship_reset(&value->ships[i]); }
+                            if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_ship_reset(&value->ships[i]); }
                             value->ships_count = (int32_t) i + 1;
                         }
                         end_ships: ;
@@ -10829,32 +10482,32 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
             {
                 if ( kind != 14 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
-                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
+                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
                             r->report->widened++;
                         }
-                        kept = count; if ( kept > 1024 ) { kept = 1024; r->report->clamped++; }
+                        kept = count; if ( kept > 1024 ) { kept = 1024; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                         int32_t previous_count = value->turrets_count;
                         value->turrets_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
                             blockdemo_table_reader_t elem;
-                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_turrets; }
+                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; goto end_turrets; }
                             blockdemo_render_turret_load_body( &elem, &value->turrets[i] );
-                            if(elem.offset!=elem.size) { r->report->malformed=1; blockdemo_render_turret_reset(&value->turrets[i]); }
+                            if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_turret_reset(&value->turrets[i]); }
                             value->turrets_count = (int32_t) i + 1;
                         }
                         end_turrets: ;
@@ -10869,32 +10522,32 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
             {
                 if ( kind != 14 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
-                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
+                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
                             r->report->widened++;
                         }
-                        kept = count; if ( kept > 4096 ) { kept = 4096; r->report->clamped++; }
+                        kept = count; if ( kept > 4096 ) { kept = 4096; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                         int32_t previous_count = value->missiles_count;
                         value->missiles_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
                             blockdemo_table_reader_t elem;
-                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_missiles; }
+                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; goto end_missiles; }
                             blockdemo_render_missile_load_body( &elem, &value->missiles[i] );
-                            if(elem.offset!=elem.size) { r->report->malformed=1; blockdemo_render_missile_reset(&value->missiles[i]); }
+                            if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_missile_reset(&value->missiles[i]); }
                             value->missiles_count = (int32_t) i + 1;
                         }
                         end_missiles: ;
@@ -10909,32 +10562,32 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
             {
                 if ( kind != 14 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
-                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
+                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
                             r->report->widened++;
                         }
-                        kept = count; if ( kept > 4096 ) { kept = 4096; r->report->clamped++; }
+                        kept = count; if ( kept > 4096 ) { kept = 4096; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                         int32_t previous_count = value->dynamic_props_count;
                         value->dynamic_props_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
                             blockdemo_table_reader_t elem;
-                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_dynamic_props; }
+                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; goto end_dynamic_props; }
                             blockdemo_render_dynamic_prop_load_body( &elem, &value->dynamic_props[i] );
-                            if(elem.offset!=elem.size) { r->report->malformed=1; blockdemo_render_dynamic_prop_reset(&value->dynamic_props[i]); }
+                            if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_dynamic_prop_reset(&value->dynamic_props[i]); }
                             value->dynamic_props_count = (int32_t) i + 1;
                         }
                         end_dynamic_props: ;
@@ -10949,32 +10602,32 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
             {
                 if ( kind != 14 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
-                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
+                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
                             r->report->widened++;
                         }
-                        kept = count; if ( kept > 20000 ) { kept = 20000; r->report->clamped++; }
+                        kept = count; if ( kept > 20000 ) { kept = 20000; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                         int32_t previous_count = value->static_props_count;
                         value->static_props_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
                             blockdemo_table_reader_t elem;
-                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_static_props; }
+                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; goto end_static_props; }
                             blockdemo_render_static_prop_load_body( &elem, &value->static_props[i] );
-                            if(elem.offset!=elem.size) { r->report->malformed=1; blockdemo_render_static_prop_reset(&value->static_props[i]); }
+                            if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_static_prop_reset(&value->static_props[i]); }
                             value->static_props_count = (int32_t) i + 1;
                         }
                         end_static_props: ;
@@ -10989,32 +10642,32 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
             {
                 if ( kind != 14 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
-                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
+                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
                             r->report->widened++;
                         }
-                        kept = count; if ( kept > 8192 ) { kept = 8192; r->report->clamped++; }
+                        kept = count; if ( kept > 8192 ) { kept = 8192; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                         int32_t previous_count = value->cosmetic_props_count;
                         value->cosmetic_props_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
                             blockdemo_table_reader_t elem;
-                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_cosmetic_props; }
+                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; goto end_cosmetic_props; }
                             blockdemo_render_cosmetic_prop_load_body( &elem, &value->cosmetic_props[i] );
-                            if(elem.offset!=elem.size) { r->report->malformed=1; blockdemo_render_cosmetic_prop_reset(&value->cosmetic_props[i]); }
+                            if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_cosmetic_prop_reset(&value->cosmetic_props[i]); }
                             value->cosmetic_props_count = (int32_t) i + 1;
                         }
                         end_cosmetic_props: ;
@@ -11029,32 +10682,32 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
             {
                 if ( kind != 14 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
-                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
+                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
                             r->report->widened++;
                         }
-                        kept = count; if ( kept > 32000 ) { kept = 32000; r->report->clamped++; }
+                        kept = count; if ( kept > 32000 ) { kept = 32000; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                         int32_t previous_count = value->lasers_count;
                         value->lasers_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
                             blockdemo_table_reader_t elem;
-                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_lasers; }
+                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; goto end_lasers; }
                             blockdemo_render_laser_load_body( &elem, &value->lasers[i] );
-                            if(elem.offset!=elem.size) { r->report->malformed=1; blockdemo_render_laser_reset(&value->lasers[i]); }
+                            if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_laser_reset(&value->lasers[i]); }
                             value->lasers_count = (int32_t) i + 1;
                         }
                         end_lasers: ;
@@ -11069,32 +10722,32 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
             {
                 if ( kind != 14 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
                 blockdemo_table_reader_t sub;
-                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
-                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
+                            if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
                             r->report->widened++;
                         }
-                        kept = count; if ( kept > 32000 ) { kept = 32000; r->report->clamped++; }
+                        kept = count; if ( kept > 32000 ) { kept = 32000; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                         int32_t previous_count = value->explosions_count;
                         value->explosions_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
                             blockdemo_table_reader_t elem;
-                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_explosions; }
+                            if ( !blockdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; goto end_explosions; }
                             blockdemo_render_explosion_load_body( &elem, &value->explosions[i] );
-                            if(elem.offset!=elem.size) { r->report->malformed=1; blockdemo_render_explosion_reset(&value->explosions[i]); }
+                            if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; blockdemo_render_explosion_reset(&value->explosions[i]); }
                             value->explosions_count = (int32_t) i + 1;
                         }
                         end_explosions: ;
@@ -11107,47 +10760,28 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_frame_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_frame_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_frame_load_tolerant( blockdemo_render_frame_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_frame_load( blockdemo_render_frame_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_frame_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_frame_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_frame_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_frame_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_frame_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_frame_load( blockdemo_render_frame_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_frame_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_frame_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_frame_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -11308,18 +10942,18 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
 {
  blockdemo_render_frame_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0xbb62c62c9808ea37): {
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
- if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
+ if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
   value->version=(uint64_t)decoded;
@@ -11328,211 +10962,211 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
  }
  case UINT64_C(0x0f9222d2ba7aa2a7): {
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
  blockdemo_table_message_entry_t element_shape=blockdemo_table_message_element(entry);
  const blockdemo_table_message_entry_t * element_entry=&element_shape;
  (void)element_entry;
-  if(!blockdemo_table_message_count(r,entry,&n))goto malformed;
+  if(!blockdemo_table_message_count(r,entry,&n))goto damaged;
   kept=n>1?1:n;
-  if(kept<n)r->report->clamped++;
+  if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   walk=element_entry->value_bits>=0?kept:n;
   for(i=0;i<walk;i++){blockdemo_render_camera_t scratch;
   blockdemo_render_camera_t * item=i<kept ? &value->cameras[i] : &scratch;
   if(!blockdemo_render_camera_load_message_body(r,&(*item)))return 0;
-  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->cameras_count=(int32_t)kept;
  }
  break;
  }
  case UINT64_C(0x294a5c4913e1ad44): {
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
  blockdemo_table_message_entry_t element_shape=blockdemo_table_message_element(entry);
  const blockdemo_table_message_entry_t * element_entry=&element_shape;
  (void)element_entry;
-  if(!blockdemo_table_message_count(r,entry,&n))goto malformed;
+  if(!blockdemo_table_message_count(r,entry,&n))goto damaged;
   kept=n>4096?4096:n;
-  if(kept<n)r->report->clamped++;
+  if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   walk=element_entry->value_bits>=0?kept:n;
   for(i=0;i<walk;i++){blockdemo_render_ship_t scratch;
   blockdemo_render_ship_t * item=i<kept ? &value->ships[i] : &scratch;
   if(!blockdemo_render_ship_load_message_body(r,&(*item)))return 0;
-  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->ships_count=(int32_t)kept;
  }
  break;
  }
  case UINT64_C(0x84f8260bc283608c): {
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
  blockdemo_table_message_entry_t element_shape=blockdemo_table_message_element(entry);
  const blockdemo_table_message_entry_t * element_entry=&element_shape;
  (void)element_entry;
-  if(!blockdemo_table_message_count(r,entry,&n))goto malformed;
+  if(!blockdemo_table_message_count(r,entry,&n))goto damaged;
   kept=n>1024?1024:n;
-  if(kept<n)r->report->clamped++;
+  if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   walk=element_entry->value_bits>=0?kept:n;
   for(i=0;i<walk;i++){blockdemo_render_turret_t scratch;
   blockdemo_render_turret_t * item=i<kept ? &value->turrets[i] : &scratch;
   if(!blockdemo_render_turret_load_message_body(r,&(*item)))return 0;
-  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->turrets_count=(int32_t)kept;
  }
  break;
  }
  case UINT64_C(0x1c3027194b1ba4d0): {
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
  blockdemo_table_message_entry_t element_shape=blockdemo_table_message_element(entry);
  const blockdemo_table_message_entry_t * element_entry=&element_shape;
  (void)element_entry;
-  if(!blockdemo_table_message_count(r,entry,&n))goto malformed;
+  if(!blockdemo_table_message_count(r,entry,&n))goto damaged;
   kept=n>4096?4096:n;
-  if(kept<n)r->report->clamped++;
+  if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   walk=element_entry->value_bits>=0?kept:n;
   for(i=0;i<walk;i++){blockdemo_render_missile_t scratch;
   blockdemo_render_missile_t * item=i<kept ? &value->missiles[i] : &scratch;
   if(!blockdemo_render_missile_load_message_body(r,&(*item)))return 0;
-  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->missiles_count=(int32_t)kept;
  }
  break;
  }
  case UINT64_C(0x43125398a9903d27): {
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
  blockdemo_table_message_entry_t element_shape=blockdemo_table_message_element(entry);
  const blockdemo_table_message_entry_t * element_entry=&element_shape;
  (void)element_entry;
-  if(!blockdemo_table_message_count(r,entry,&n))goto malformed;
+  if(!blockdemo_table_message_count(r,entry,&n))goto damaged;
   kept=n>4096?4096:n;
-  if(kept<n)r->report->clamped++;
+  if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   walk=element_entry->value_bits>=0?kept:n;
   for(i=0;i<walk;i++){blockdemo_render_dynamic_prop_t scratch;
   blockdemo_render_dynamic_prop_t * item=i<kept ? &value->dynamic_props[i] : &scratch;
   if(!blockdemo_render_dynamic_prop_load_message_body(r,&(*item)))return 0;
-  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->dynamic_props_count=(int32_t)kept;
  }
  break;
  }
  case UINT64_C(0xc1f8d7edff7fcfd2): {
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
  blockdemo_table_message_entry_t element_shape=blockdemo_table_message_element(entry);
  const blockdemo_table_message_entry_t * element_entry=&element_shape;
  (void)element_entry;
-  if(!blockdemo_table_message_count(r,entry,&n))goto malformed;
+  if(!blockdemo_table_message_count(r,entry,&n))goto damaged;
   kept=n>20000?20000:n;
-  if(kept<n)r->report->clamped++;
+  if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   walk=element_entry->value_bits>=0?kept:n;
   for(i=0;i<walk;i++){blockdemo_render_static_prop_t scratch;
   blockdemo_render_static_prop_t * item=i<kept ? &value->static_props[i] : &scratch;
   if(!blockdemo_render_static_prop_load_message_body(r,&(*item)))return 0;
-  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->static_props_count=(int32_t)kept;
  }
  break;
  }
  case UINT64_C(0x33408e39f5f480ff): {
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
  blockdemo_table_message_entry_t element_shape=blockdemo_table_message_element(entry);
  const blockdemo_table_message_entry_t * element_entry=&element_shape;
  (void)element_entry;
-  if(!blockdemo_table_message_count(r,entry,&n))goto malformed;
+  if(!blockdemo_table_message_count(r,entry,&n))goto damaged;
   kept=n>8192?8192:n;
-  if(kept<n)r->report->clamped++;
+  if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   walk=element_entry->value_bits>=0?kept:n;
   for(i=0;i<walk;i++){blockdemo_render_cosmetic_prop_t scratch;
   blockdemo_render_cosmetic_prop_t * item=i<kept ? &value->cosmetic_props[i] : &scratch;
   if(!blockdemo_render_cosmetic_prop_load_message_body(r,&(*item)))return 0;
-  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->cosmetic_props_count=(int32_t)kept;
  }
  break;
  }
  case UINT64_C(0xd982b77b3e92d16d): {
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
  blockdemo_table_message_entry_t element_shape=blockdemo_table_message_element(entry);
  const blockdemo_table_message_entry_t * element_entry=&element_shape;
  (void)element_entry;
-  if(!blockdemo_table_message_count(r,entry,&n))goto malformed;
+  if(!blockdemo_table_message_count(r,entry,&n))goto damaged;
   kept=n>32000?32000:n;
-  if(kept<n)r->report->clamped++;
+  if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   walk=element_entry->value_bits>=0?kept:n;
   for(i=0;i<walk;i++){blockdemo_render_laser_t scratch;
   blockdemo_render_laser_t * item=i<kept ? &value->lasers[i] : &scratch;
   if(!blockdemo_render_laser_load_message_body(r,&(*item)))return 0;
-  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->lasers_count=(int32_t)kept;
  }
  break;
  }
  case UINT64_C(0x876a8c1a85806a69): {
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
  blockdemo_table_message_entry_t element_shape=blockdemo_table_message_element(entry);
  const blockdemo_table_message_entry_t * element_entry=&element_shape;
  (void)element_entry;
-  if(!blockdemo_table_message_count(r,entry,&n))goto malformed;
+  if(!blockdemo_table_message_count(r,entry,&n))goto damaged;
   kept=n>32000?32000:n;
-  if(kept<n)r->report->clamped++;
+  if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   walk=element_entry->value_bits>=0?kept:n;
   for(i=0;i<walk;i++){blockdemo_render_explosion_t scratch;
   blockdemo_render_explosion_t * item=i<kept ? &value->explosions[i] : &scratch;
   if(!blockdemo_render_explosion_load_message_body(r,&(*item)))return 0;
-  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->explosions_count=(int32_t)kept;
  }
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_frame_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_frame_load_messages_tolerant(blockdemo_render_frame_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_frame_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_frame_load_messages(blockdemo_render_frame_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -11540,7 +11174,8 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_messages_tolerant(blockdemo
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -11555,37 +11190,17 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_messages_tolerant(blockdemo
  for(i=0;i<bodies;i++){if(!blockdemo_render_frame_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_frame_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_frame_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_frame_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_frame_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_frame_load_messages( blockdemo_render_frame_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_frame_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_frame_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int blockdemo_render_vector3_save_body( blockdemo_table_writer_t * w, const blockdemo_render_vector3_t * value )
 {
@@ -11671,11 +11286,11 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0xaf63f54c86021707ull: /* x */
@@ -11688,7 +11303,7 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -11697,7 +11312,7 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -11705,16 +11320,16 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -11732,7 +11347,7 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -11741,7 +11356,7 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -11749,16 +11364,16 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -11776,7 +11391,7 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -11785,7 +11400,7 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -11793,16 +11408,16 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -11812,47 +11427,28 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_vector3_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_vector3_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_vector3_load_tolerant( blockdemo_render_vector3_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_vector3_load( blockdemo_render_vector3_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_vector3_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_vector3_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_vector3_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_vector3_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_vector3_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_vector3_load( blockdemo_render_vector3_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_vector3_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_vector3_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_vector3_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -11932,25 +11528,25 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
 {
  blockdemo_render_vector3_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0xaf63f54c86021707): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -11961,19 +11557,19 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
  }
  case UINT64_C(0xaf63f44c86021554): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -11984,19 +11580,19 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
  }
  case UINT64_C(0xaf63f74c86021a6d): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -12006,14 +11602,14 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_vector3_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages_tolerant(blockdemo_render_vector3_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_vector3_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages(blockdemo_render_vector3_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -12021,7 +11617,8 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages_tolerant(blockde
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -12036,37 +11633,17 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages_tolerant(blockde
  for(i=0;i<bodies;i++){if(!blockdemo_render_vector3_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_vector3_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_vector3_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_vector3_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_vector3_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages( blockdemo_render_vector3_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_vector3_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_vector3_reset( values + i );
-    *count = 0;
-    return 0;
 }
 static SCHEMA_UNUSED int blockdemo_render_quaternion_save_body( blockdemo_table_writer_t * w, const blockdemo_render_quaternion_t * value )
 {
@@ -12167,11 +11744,11 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( !blockdemo_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         switch ( id )
         {
             case 0xaf63f54c86021707ull: /* x */
@@ -12184,7 +11761,7 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -12193,7 +11770,7 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -12201,16 +11778,16 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -12228,7 +11805,7 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -12237,7 +11814,7 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -12245,16 +11822,16 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -12272,7 +11849,7 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -12281,7 +11858,7 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -12289,16 +11866,16 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -12316,7 +11893,7 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                         {
                             case 10:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
                                 if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
                                 double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
@@ -12325,7 +11902,7 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                             }
                             case 11:
                             {
-                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -12333,16 +11910,16 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
                         r->report->widened++;
                         break;
                     }
-                    r->report->kind_mismatch++;
-                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
                     if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
@@ -12352,47 +11929,28 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
 }
 
-/* render_quaternion_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
-   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
-   report) and answers 0 with the value reset for a refusal or for damage
+/* render_quaternion_load is the one read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown and widened, counted on the report) and
+   answers 0 with the value reset for a refusal or for damage
    anywhere in the wire, which discards the whole load (§4). */
-static SCHEMA_UNUSED int blockdemo_render_quaternion_load_tolerant( blockdemo_render_quaternion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_quaternion_load( blockdemo_render_quaternion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     blockdemo_render_quaternion_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_render_quaternion_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_quaternion_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    if ( !whole || report->malformed ) { blockdemo_render_quaternion_reset( value ); return 0; } /* damage discards the whole load (§4) */
-    return 1;
-}
-
-/* The PLAIN render_quaternion_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
-   whatever the strict read refuses -- an unknown form, wire damage, a clamp
-   or a kind mismatch -- answering 0 with the value reset to its declared
-   defaults and the report this read's own, its refuse_reason set. unknown
-   and widened alone never refuse. */
-static SCHEMA_UNUSED int blockdemo_render_quaternion_load( blockdemo_render_quaternion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int decoded;
-    if ( report == NULL ) { report = &ignored; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = blockdemo_render_quaternion_load_tolerant( value, buffer, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        blockdemo_render_quaternion_reset( value );
-        return 0;
-    }
+    if ( blockdemo_table_report_finish( report, whole ) ) { blockdemo_render_quaternion_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
 }
 
@@ -12483,25 +12041,25 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
 {
  blockdemo_render_quaternion_reset(value);
  for(;;){const blockdemo_table_message_entry_t * entry;
- if(!blockdemo_table_message_ref(r,&entry,0))goto malformed;
+ if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0xaf63f54c86021707): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -12512,19 +12070,19 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  }
  case UINT64_C(0xaf63f44c86021554): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -12535,19 +12093,19 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  }
  case UINT64_C(0xaf63f74c86021a6d): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -12558,19 +12116,19 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  }
  case UINT64_C(0xaf63ea4c86020456): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
  int finite=1;
  if(entry->kind==10) {float narrow=0;
  int got=blockdemo_table_message_float(r,entry,&narrow);
- if(!got)goto malformed;
+ if(!got)goto damaged;
  finite=got==1;
  decoded=(double)narrow;
  } else {uint64_t raw;
- if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
+ if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto damaged;
  finite=blockdemo_table_bits_finite64(raw);
  if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
  else blockdemo_table_non_finite_float(r->report);
@@ -12580,14 +12138,14 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  break;
  }
  default:r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto malformed;
+ if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
- malformed:r->report->malformed=1;
+ damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* render_quaternion_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages_tolerant(blockdemo_render_quaternion_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_quaternion_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages(blockdemo_render_quaternion_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -12595,7 +12153,8 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages_tolerant(bloc
  int32_t non_finite_before;
  int ok;
  if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
+ memset(report,0,sizeof(*report));
+ if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
  }capacity=*count;
  *count=0;
@@ -12610,37 +12169,17 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages_tolerant(bloc
  for(i=0;i<bodies;i++){if(!blockdemo_render_quaternion_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&blockdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
  if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_quaternion_reset(values+i);
  *count=0;
  return 0;
  }
- /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok){for(i=0;i<bodies;i++)blockdemo_render_quaternion_reset(values+i);
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok||blockdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)blockdemo_render_quaternion_reset(values+i);
  *count=0;
  return 0;
  }
  return ok;
-}
-/* The PLAIN render_quaternion_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
-static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages( blockdemo_render_quaternion_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = blockdemo_render_quaternion_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) blockdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) blockdemo_render_quaternion_reset( values + i );
-    *count = 0;
-    return 0;
 }
 /* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
 
@@ -13002,66 +12541,66 @@ static SCHEMA_UNUSED int schema_blockdemo_render_explosion_fixed_finite_body_( c
 }
 
 /* RenderShip's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_clamp_body_( blockdemo_render_ship_t * value, int32_t * clamped, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_clamp_body_( blockdemo_render_ship_t * value, int32_t * out_of_range, int32_t * damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
-    if ( (uint64_t) value->ship_type > 3u ) { value->ship_type = BLOCKDEMO_SHIP_TYPE_NONE; (*clamped)++; }
-    if ( (uint64_t) value->team > 4u ) { value->team = BLOCKDEMO_TEAM_NONE; (*clamped)++; }
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->ship_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
 /* RenderTurret's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_turret_fixed_clamp_body_( blockdemo_render_turret_t * value, int32_t * clamped, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_turret_fixed_clamp_body_( blockdemo_render_turret_t * value, int32_t * out_of_range, int32_t * damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
-    if ( (uint64_t) value->team > 4u ) { value->team = BLOCKDEMO_TEAM_NONE; (*clamped)++; }
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
 /* RenderMissile's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_missile_fixed_clamp_body_( blockdemo_render_missile_t * value, int32_t * clamped, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_missile_fixed_clamp_body_( blockdemo_render_missile_t * value, int32_t * out_of_range, int32_t * damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
-    if ( (uint64_t) value->missile_type > 2u ) { value->missile_type = BLOCKDEMO_MISSILE_TYPE_NONE; (*clamped)++; }
-    if ( (uint64_t) value->team > 4u ) { value->team = BLOCKDEMO_TEAM_NONE; (*clamped)++; }
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->missile_type > 2u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
 /* RenderDynamicProp's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( blockdemo_render_dynamic_prop_t * value, int32_t * clamped, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( blockdemo_render_dynamic_prop_t * value, int32_t * out_of_range, int32_t * damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
-    if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = BLOCKDEMO_PROP_TYPE_NONE; (*clamped)++; }
-    if ( (uint64_t) value->team > 4u ) { value->team = BLOCKDEMO_TEAM_NONE; (*clamped)++; }
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
 /* RenderStaticProp's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_static_prop_fixed_clamp_body_( blockdemo_render_static_prop_t * value, int32_t * clamped, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_static_prop_fixed_clamp_body_( blockdemo_render_static_prop_t * value, int32_t * out_of_range, int32_t * damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
-    if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = BLOCKDEMO_PROP_TYPE_NONE; (*clamped)++; }
-    if ( (uint64_t) value->team > 4u ) { value->team = BLOCKDEMO_TEAM_NONE; (*clamped)++; }
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
 /* RenderCosmeticProp's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( blockdemo_render_cosmetic_prop_t * value, int32_t * clamped, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( blockdemo_render_cosmetic_prop_t * value, int32_t * out_of_range, int32_t * damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
-    if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = BLOCKDEMO_PROP_TYPE_NONE; (*clamped)++; }
-    if ( (uint64_t) value->team > 4u ) { value->team = BLOCKDEMO_TEAM_NONE; (*clamped)++; }
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
 /* RenderLaser's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_laser_fixed_clamp_body_( blockdemo_render_laser_t * value, int32_t * clamped, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_laser_fixed_clamp_body_( blockdemo_render_laser_t * value, int32_t * out_of_range, int32_t * damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
-    if ( (uint64_t) value->laser_type > 2u ) { value->laser_type = BLOCKDEMO_LASER_TYPE_NONE; (*clamped)++; }
-    if ( (uint64_t) value->team > 4u ) { value->team = BLOCKDEMO_TEAM_NONE; (*clamped)++; }
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->laser_type > 2u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
 /* RenderExplosion's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_explosion_fixed_clamp_body_( blockdemo_render_explosion_t * value, int32_t * clamped, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_explosion_fixed_clamp_body_( blockdemo_render_explosion_t * value, int32_t * out_of_range, int32_t * damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
-    if ( (uint64_t) value->explosion_type > 2u ) { value->explosion_type = BLOCKDEMO_EXPLOSION_TYPE_NONE; (*clamped)++; }
-    if ( (uint64_t) value->team > 4u ) { value->team = BLOCKDEMO_TEAM_NONE; (*clamped)++; }
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->explosion_type > 2u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
 /* ---- RenderCamera, the fixed form ---- */
@@ -13199,7 +12738,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_save( const blockdemo
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
    layout_newer (ship the reader); below the floor is layout_unsupported
-   (upgrade the client); a known hash whose bytes differ is layout_malformed.
+   (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
 
@@ -13214,9 +12753,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_save( const blockdemo
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* render_camera_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
-   keeps every recovered record, the counters counted onto the report. */
-static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockdemo_render_camera_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_camera_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load at the first
+   condition it meets and lands nothing. */
+static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_render_camera_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -13229,7 +12769,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockd
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
-    int32_t read_clamped, read_widened;
+    int32_t read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_camera_fixed_plan;
     int32_t entry_count = blockdemo_render_camera_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_camera_fixed_plan_guarded;
@@ -13242,12 +12782,13 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockd
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
        relative to this form and never by one word for both. IT IS READ BEFORE
        THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
-       batch THREE, so measuring first would answer malformed for every real
+       batch THREE, so measuring first would answer damaged for every real
        file of the two forms this reader is supposed to name. */
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
@@ -13259,10 +12800,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockd
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
        REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
-    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->malformed = 1; return -1; }
+    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     for ( reserved_at = 1; reserved_at < BLOCKDEMO_K_TABLE_FIXED_HASH_AT; ++reserved_at )
     {
-        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
+        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = blockdemo_table_fixed_get32( data + BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES );
@@ -13286,7 +12827,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockd
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -13299,13 +12840,13 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockd
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_camera_reset( &defaults );
     }
-    read_clamped = report->clamped;
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_camera_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
@@ -13313,7 +12854,6 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockd
         {
             int64_t j;
             for ( j = 0; j <= k; ++j ) { blockdemo_render_camera_reset( values + j ); }
-            report->clamped = read_clamped;
             report->widened = read_widened;
             blockdemo_table_non_finite_float( report );
             return -1;
@@ -13322,27 +12862,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockd
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    report->kind_mismatch += census_kind;
+    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_camera_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
-}
-
-/* The PLAIN render_camera_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
-   every refusal of render_camera_fixed_load_tolerant and for a read the strict rule
-   refuses -- malformed, clamped, kind-mismatched or refused -- with every
-   value it had written reset to its declared defaults. A supplied report
-   receives THIS read's report, its refuse_reason set. unknown and widened
-   alone never refuse. */
-static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_render_camera_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t local;
-    int64_t n, k;
-    if ( report == NULL ) { report = &local; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    n = blockdemo_render_camera_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
-    for ( k = 0; k < n; ++k ) { blockdemo_render_camera_reset( values + k ); }
-    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -13353,16 +12874,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_rende
    clamp COUNTS, and a content rule refuses by name. */
 static SCHEMA_UNUSED int schema_blockdemo_render_ship_fixed_clamp_( blockdemo_render_ship_t * value, blockdemo_table_report_t * report )
 {
-    int32_t clamped = 0;
+    int32_t out_of_range = 0;
     int32_t damaged = 0;
-    schema_blockdemo_render_ship_fixed_clamp_body_( value, &clamped, &damaged );
+    schema_blockdemo_render_ship_fixed_clamp_body_( value, &out_of_range, &damaged );
     /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
        fix 11): nothing is decoded, no counter moves, and the flag that
-       carries the verdict is `refused` + the name, never `malformed`. A
+       carries the verdict is `refused` + the name, never `damaged`. A
        refusal is total (§5.8): the clamp count reaches the report only on
        a read that lands values, never beside a refusal. */
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
-    report->clamped += clamped;
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
 }
 
@@ -13526,7 +13047,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_save( const blockdemo_r
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
    layout_newer (ship the reader); below the floor is layout_unsupported
-   (upgrade the client); a known hash whose bytes differ is layout_malformed.
+   (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
 
@@ -13541,9 +13062,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_save( const blockdemo_r
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* render_ship_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
-   keeps every recovered record, the counters counted onto the report. */
-static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdemo_render_ship_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_ship_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load at the first
+   condition it meets and lands nothing. */
+static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_ship_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -13556,7 +13078,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
-    int32_t read_clamped, read_widened;
+    int32_t read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_ship_fixed_plan;
     int32_t entry_count = blockdemo_render_ship_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_ship_fixed_plan_guarded;
@@ -13569,12 +13091,13 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
        relative to this form and never by one word for both. IT IS READ BEFORE
        THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
-       batch THREE, so measuring first would answer malformed for every real
+       batch THREE, so measuring first would answer damaged for every real
        file of the two forms this reader is supposed to name. */
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
@@ -13586,10 +13109,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
        REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
-    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->malformed = 1; return -1; }
+    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     for ( reserved_at = 1; reserved_at < BLOCKDEMO_K_TABLE_FIXED_HASH_AT; ++reserved_at )
     {
-        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
+        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = blockdemo_table_fixed_get32( data + BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES );
@@ -13613,7 +13136,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -13626,15 +13149,14 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_ship_reset( &defaults );
     }
-    read_clamped = report->clamped;
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
-        int32_t rec_clamped = report->clamped;
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_ship_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
@@ -13642,7 +13164,6 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
         {
             int64_t j;
             for ( j = 0; j <= k; ++j ) { blockdemo_render_ship_reset( values + j ); }
-            report->clamped = read_clamped;
             report->widened = read_widened;
             blockdemo_table_non_finite_float( report );
             return -1;
@@ -13653,7 +13174,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_blockdemo_render_ship_fixed_clamp_( values + k, report ) != 0 )
         {
-            report->clamped = rec_clamped;
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_ship_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -13661,27 +13183,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    report->kind_mismatch += census_kind;
+    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_ship_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
-}
-
-/* The PLAIN render_ship_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
-   every refusal of render_ship_fixed_load_tolerant and for a read the strict rule
-   refuses -- malformed, clamped, kind-mismatched or refused -- with every
-   value it had written reset to its declared defaults. A supplied report
-   receives THIS read's report, its refuse_reason set. unknown and widened
-   alone never refuse. */
-static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_ship_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t local;
-    int64_t n, k;
-    if ( report == NULL ) { report = &local; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    n = blockdemo_render_ship_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
-    for ( k = 0; k < n; ++k ) { blockdemo_render_ship_reset( values + k ); }
-    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -13692,16 +13195,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_
    clamp COUNTS, and a content rule refuses by name. */
 static SCHEMA_UNUSED int schema_blockdemo_render_turret_fixed_clamp_( blockdemo_render_turret_t * value, blockdemo_table_report_t * report )
 {
-    int32_t clamped = 0;
+    int32_t out_of_range = 0;
     int32_t damaged = 0;
-    schema_blockdemo_render_turret_fixed_clamp_body_( value, &clamped, &damaged );
+    schema_blockdemo_render_turret_fixed_clamp_body_( value, &out_of_range, &damaged );
     /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
        fix 11): nothing is decoded, no counter moves, and the flag that
-       carries the verdict is `refused` + the name, never `malformed`. A
+       carries the verdict is `refused` + the name, never `damaged`. A
        refusal is total (§5.8): the clamp count reaches the report only on
        a read that lands values, never beside a refusal. */
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
-    report->clamped += clamped;
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
 }
 
@@ -13849,7 +13352,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_save( const blockdemo
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
    layout_newer (ship the reader); below the floor is layout_unsupported
-   (upgrade the client); a known hash whose bytes differ is layout_malformed.
+   (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
 
@@ -13864,9 +13367,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_save( const blockdemo
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* render_turret_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
-   keeps every recovered record, the counters counted onto the report. */
-static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockdemo_render_turret_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_turret_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load at the first
+   condition it meets and lands nothing. */
+static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_render_turret_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -13879,7 +13383,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
-    int32_t read_clamped, read_widened;
+    int32_t read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_turret_fixed_plan;
     int32_t entry_count = blockdemo_render_turret_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_turret_fixed_plan_guarded;
@@ -13892,12 +13396,13 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
        relative to this form and never by one word for both. IT IS READ BEFORE
        THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
-       batch THREE, so measuring first would answer malformed for every real
+       batch THREE, so measuring first would answer damaged for every real
        file of the two forms this reader is supposed to name. */
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
@@ -13909,10 +13414,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
        REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
-    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->malformed = 1; return -1; }
+    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     for ( reserved_at = 1; reserved_at < BLOCKDEMO_K_TABLE_FIXED_HASH_AT; ++reserved_at )
     {
-        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
+        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = blockdemo_table_fixed_get32( data + BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES );
@@ -13936,7 +13441,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -13949,15 +13454,14 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_turret_reset( &defaults );
     }
-    read_clamped = report->clamped;
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
-        int32_t rec_clamped = report->clamped;
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_turret_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
@@ -13965,7 +13469,6 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
         {
             int64_t j;
             for ( j = 0; j <= k; ++j ) { blockdemo_render_turret_reset( values + j ); }
-            report->clamped = read_clamped;
             report->widened = read_widened;
             blockdemo_table_non_finite_float( report );
             return -1;
@@ -13976,7 +13479,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_blockdemo_render_turret_fixed_clamp_( values + k, report ) != 0 )
         {
-            report->clamped = rec_clamped;
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_turret_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -13984,27 +13488,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    report->kind_mismatch += census_kind;
+    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_turret_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
-}
-
-/* The PLAIN render_turret_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
-   every refusal of render_turret_fixed_load_tolerant and for a read the strict rule
-   refuses -- malformed, clamped, kind-mismatched or refused -- with every
-   value it had written reset to its declared defaults. A supplied report
-   receives THIS read's report, its refuse_reason set. unknown and widened
-   alone never refuse. */
-static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_render_turret_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t local;
-    int64_t n, k;
-    if ( report == NULL ) { report = &local; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    n = blockdemo_render_turret_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
-    for ( k = 0; k < n; ++k ) { blockdemo_render_turret_reset( values + k ); }
-    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -14015,16 +13500,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_rende
    clamp COUNTS, and a content rule refuses by name. */
 static SCHEMA_UNUSED int schema_blockdemo_render_missile_fixed_clamp_( blockdemo_render_missile_t * value, blockdemo_table_report_t * report )
 {
-    int32_t clamped = 0;
+    int32_t out_of_range = 0;
     int32_t damaged = 0;
-    schema_blockdemo_render_missile_fixed_clamp_body_( value, &clamped, &damaged );
+    schema_blockdemo_render_missile_fixed_clamp_body_( value, &out_of_range, &damaged );
     /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
        fix 11): nothing is decoded, no counter moves, and the flag that
-       carries the verdict is `refused` + the name, never `malformed`. A
+       carries the verdict is `refused` + the name, never `damaged`. A
        refusal is total (§5.8): the clamp count reaches the report only on
        a read that lands values, never beside a refusal. */
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
-    report->clamped += clamped;
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
 }
 
@@ -14177,7 +13662,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_save( const blockdem
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
    layout_newer (ship the reader); below the floor is layout_unsupported
-   (upgrade the client); a known hash whose bytes differ is layout_malformed.
+   (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
 
@@ -14192,9 +13677,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_save( const blockdem
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* render_missile_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
-   keeps every recovered record, the counters counted onto the report. */
-static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( blockdemo_render_missile_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_missile_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load at the first
+   condition it meets and lands nothing. */
+static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_render_missile_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -14207,7 +13693,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
-    int32_t read_clamped, read_widened;
+    int32_t read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_missile_fixed_plan;
     int32_t entry_count = blockdemo_render_missile_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_missile_fixed_plan_guarded;
@@ -14220,12 +13706,13 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
        relative to this form and never by one word for both. IT IS READ BEFORE
        THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
-       batch THREE, so measuring first would answer malformed for every real
+       batch THREE, so measuring first would answer damaged for every real
        file of the two forms this reader is supposed to name. */
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
@@ -14237,10 +13724,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
        REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
-    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->malformed = 1; return -1; }
+    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     for ( reserved_at = 1; reserved_at < BLOCKDEMO_K_TABLE_FIXED_HASH_AT; ++reserved_at )
     {
-        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
+        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = blockdemo_table_fixed_get32( data + BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES );
@@ -14264,7 +13751,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -14277,15 +13764,14 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_missile_reset( &defaults );
     }
-    read_clamped = report->clamped;
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
-        int32_t rec_clamped = report->clamped;
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_missile_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
@@ -14293,7 +13779,6 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
         {
             int64_t j;
             for ( j = 0; j <= k; ++j ) { blockdemo_render_missile_reset( values + j ); }
-            report->clamped = read_clamped;
             report->widened = read_widened;
             blockdemo_table_non_finite_float( report );
             return -1;
@@ -14304,7 +13789,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_blockdemo_render_missile_fixed_clamp_( values + k, report ) != 0 )
         {
-            report->clamped = rec_clamped;
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_missile_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -14312,27 +13798,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    report->kind_mismatch += census_kind;
+    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_missile_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
-}
-
-/* The PLAIN render_missile_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
-   every refusal of render_missile_fixed_load_tolerant and for a read the strict rule
-   refuses -- malformed, clamped, kind-mismatched or refused -- with every
-   value it had written reset to its declared defaults. A supplied report
-   receives THIS read's report, its refuse_reason set. unknown and widened
-   alone never refuse. */
-static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_render_missile_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t local;
-    int64_t n, k;
-    if ( report == NULL ) { report = &local; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    n = blockdemo_render_missile_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
-    for ( k = 0; k < n; ++k ) { blockdemo_render_missile_reset( values + k ); }
-    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -14343,16 +13810,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_rend
    clamp COUNTS, and a content rule refuses by name. */
 static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_fixed_clamp_( blockdemo_render_dynamic_prop_t * value, blockdemo_table_report_t * report )
 {
-    int32_t clamped = 0;
+    int32_t out_of_range = 0;
     int32_t damaged = 0;
-    schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( value, &clamped, &damaged );
+    schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( value, &out_of_range, &damaged );
     /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
        fix 11): nothing is decoded, no counter moves, and the flag that
-       carries the verdict is `refused` + the name, never `malformed`. A
+       carries the verdict is `refused` + the name, never `damaged`. A
        refusal is total (§5.8): the clamp count reaches the report only on
        a read that lands values, never beside a refusal. */
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
-    report->clamped += clamped;
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
 }
 
@@ -14507,7 +13974,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_save( const blo
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
    layout_newer (ship the reader); below the floor is layout_unsupported
-   (upgrade the client); a known hash whose bytes differ is layout_malformed.
+   (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
 
@@ -14522,9 +13989,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_save( const blo
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* render_dynamic_prop_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
-   keeps every recovered record, the counters counted onto the report. */
-static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( blockdemo_render_dynamic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_dynamic_prop_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load at the first
+   condition it meets and lands nothing. */
+static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo_render_dynamic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -14537,7 +14005,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
-    int32_t read_clamped, read_widened;
+    int32_t read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_dynamic_prop_fixed_plan;
     int32_t entry_count = blockdemo_render_dynamic_prop_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_dynamic_prop_fixed_plan_guarded;
@@ -14550,12 +14018,13 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
        relative to this form and never by one word for both. IT IS READ BEFORE
        THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
-       batch THREE, so measuring first would answer malformed for every real
+       batch THREE, so measuring first would answer damaged for every real
        file of the two forms this reader is supposed to name. */
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
@@ -14567,10 +14036,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
        REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
-    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->malformed = 1; return -1; }
+    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     for ( reserved_at = 1; reserved_at < BLOCKDEMO_K_TABLE_FIXED_HASH_AT; ++reserved_at )
     {
-        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
+        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = blockdemo_table_fixed_get32( data + BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES );
@@ -14594,7 +14063,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -14607,15 +14076,14 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_dynamic_prop_reset( &defaults );
     }
-    read_clamped = report->clamped;
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
-        int32_t rec_clamped = report->clamped;
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_dynamic_prop_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
@@ -14623,7 +14091,6 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
         {
             int64_t j;
             for ( j = 0; j <= k; ++j ) { blockdemo_render_dynamic_prop_reset( values + j ); }
-            report->clamped = read_clamped;
             report->widened = read_widened;
             blockdemo_table_non_finite_float( report );
             return -1;
@@ -14634,7 +14101,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_blockdemo_render_dynamic_prop_fixed_clamp_( values + k, report ) != 0 )
         {
-            report->clamped = rec_clamped;
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_dynamic_prop_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -14642,27 +14110,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    report->kind_mismatch += census_kind;
+    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_dynamic_prop_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
-}
-
-/* The PLAIN render_dynamic_prop_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
-   every refusal of render_dynamic_prop_fixed_load_tolerant and for a read the strict rule
-   refuses -- malformed, clamped, kind-mismatched or refused -- with every
-   value it had written reset to its declared defaults. A supplied report
-   receives THIS read's report, its refuse_reason set. unknown and widened
-   alone never refuse. */
-static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo_render_dynamic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t local;
-    int64_t n, k;
-    if ( report == NULL ) { report = &local; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    n = blockdemo_render_dynamic_prop_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
-    for ( k = 0; k < n; ++k ) { blockdemo_render_dynamic_prop_reset( values + k ); }
-    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -14673,16 +14122,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo
    clamp COUNTS, and a content rule refuses by name. */
 static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_fixed_clamp_( blockdemo_render_static_prop_t * value, blockdemo_table_report_t * report )
 {
-    int32_t clamped = 0;
+    int32_t out_of_range = 0;
     int32_t damaged = 0;
-    schema_blockdemo_render_static_prop_fixed_clamp_body_( value, &clamped, &damaged );
+    schema_blockdemo_render_static_prop_fixed_clamp_body_( value, &out_of_range, &damaged );
     /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
        fix 11): nothing is decoded, no counter moves, and the flag that
-       carries the verdict is `refused` + the name, never `malformed`. A
+       carries the verdict is `refused` + the name, never `damaged`. A
        refusal is total (§5.8): the clamp count reaches the report only on
        a read that lands values, never beside a refusal. */
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
-    report->clamped += clamped;
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
 }
 
@@ -14837,7 +14286,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_save( const bloc
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
    layout_newer (ship the reader); below the floor is layout_unsupported
-   (upgrade the client); a known hash whose bytes differ is layout_malformed.
+   (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
 
@@ -14852,9 +14301,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_save( const bloc
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* render_static_prop_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
-   keeps every recovered record, the counters counted onto the report. */
-static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( blockdemo_render_static_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_static_prop_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load at the first
+   condition it meets and lands nothing. */
+static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_render_static_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -14867,7 +14317,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
-    int32_t read_clamped, read_widened;
+    int32_t read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_static_prop_fixed_plan;
     int32_t entry_count = blockdemo_render_static_prop_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_static_prop_fixed_plan_guarded;
@@ -14880,12 +14330,13 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
        relative to this form and never by one word for both. IT IS READ BEFORE
        THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
-       batch THREE, so measuring first would answer malformed for every real
+       batch THREE, so measuring first would answer damaged for every real
        file of the two forms this reader is supposed to name. */
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
@@ -14897,10 +14348,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
        REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
-    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->malformed = 1; return -1; }
+    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     for ( reserved_at = 1; reserved_at < BLOCKDEMO_K_TABLE_FIXED_HASH_AT; ++reserved_at )
     {
-        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
+        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = blockdemo_table_fixed_get32( data + BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES );
@@ -14924,7 +14375,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -14937,15 +14388,14 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_static_prop_reset( &defaults );
     }
-    read_clamped = report->clamped;
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
-        int32_t rec_clamped = report->clamped;
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_static_prop_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
@@ -14953,7 +14403,6 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
         {
             int64_t j;
             for ( j = 0; j <= k; ++j ) { blockdemo_render_static_prop_reset( values + j ); }
-            report->clamped = read_clamped;
             report->widened = read_widened;
             blockdemo_table_non_finite_float( report );
             return -1;
@@ -14964,7 +14413,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_blockdemo_render_static_prop_fixed_clamp_( values + k, report ) != 0 )
         {
-            report->clamped = rec_clamped;
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_static_prop_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -14972,27 +14422,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    report->kind_mismatch += census_kind;
+    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_static_prop_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
-}
-
-/* The PLAIN render_static_prop_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
-   every refusal of render_static_prop_fixed_load_tolerant and for a read the strict rule
-   refuses -- malformed, clamped, kind-mismatched or refused -- with every
-   value it had written reset to its declared defaults. A supplied report
-   receives THIS read's report, its refuse_reason set. unknown and widened
-   alone never refuse. */
-static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_render_static_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t local;
-    int64_t n, k;
-    if ( report == NULL ) { report = &local; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    n = blockdemo_render_static_prop_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
-    for ( k = 0; k < n; ++k ) { blockdemo_render_static_prop_reset( values + k ); }
-    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -15003,16 +14434,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_
    clamp COUNTS, and a content rule refuses by name. */
 static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_fixed_clamp_( blockdemo_render_cosmetic_prop_t * value, blockdemo_table_report_t * report )
 {
-    int32_t clamped = 0;
+    int32_t out_of_range = 0;
     int32_t damaged = 0;
-    schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( value, &clamped, &damaged );
+    schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( value, &out_of_range, &damaged );
     /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
        fix 11): nothing is decoded, no counter moves, and the flag that
-       carries the verdict is `refused` + the name, never `malformed`. A
+       carries the verdict is `refused` + the name, never `damaged`. A
        refusal is total (§5.8): the clamp count reaches the report only on
        a read that lands values, never beside a refusal. */
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
-    report->clamped += clamped;
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
 }
 
@@ -15169,7 +14600,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_save( const bl
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
    layout_newer (ship the reader); below the floor is layout_unsupported
-   (upgrade the client); a known hash whose bytes differ is layout_malformed.
+   (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
 
@@ -15184,9 +14615,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_save( const bl
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* render_cosmetic_prop_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
-   keeps every recovered record, the counters counted onto the report. */
-static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant( blockdemo_render_cosmetic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_cosmetic_prop_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load at the first
+   condition it meets and lands nothing. */
+static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdemo_render_cosmetic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -15199,7 +14631,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
-    int32_t read_clamped, read_widened;
+    int32_t read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_cosmetic_prop_fixed_plan;
     int32_t entry_count = blockdemo_render_cosmetic_prop_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_cosmetic_prop_fixed_plan_guarded;
@@ -15212,12 +14644,13 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
        relative to this form and never by one word for both. IT IS READ BEFORE
        THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
-       batch THREE, so measuring first would answer malformed for every real
+       batch THREE, so measuring first would answer damaged for every real
        file of the two forms this reader is supposed to name. */
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
@@ -15229,10 +14662,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
        REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
-    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->malformed = 1; return -1; }
+    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     for ( reserved_at = 1; reserved_at < BLOCKDEMO_K_TABLE_FIXED_HASH_AT; ++reserved_at )
     {
-        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
+        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = blockdemo_table_fixed_get32( data + BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES );
@@ -15256,7 +14689,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -15269,15 +14702,14 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_cosmetic_prop_reset( &defaults );
     }
-    read_clamped = report->clamped;
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
-        int32_t rec_clamped = report->clamped;
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_cosmetic_prop_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
@@ -15285,7 +14717,6 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
         {
             int64_t j;
             for ( j = 0; j <= k; ++j ) { blockdemo_render_cosmetic_prop_reset( values + j ); }
-            report->clamped = read_clamped;
             report->widened = read_widened;
             blockdemo_table_non_finite_float( report );
             return -1;
@@ -15296,7 +14727,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_blockdemo_render_cosmetic_prop_fixed_clamp_( values + k, report ) != 0 )
         {
-            report->clamped = rec_clamped;
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_cosmetic_prop_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -15304,27 +14736,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    report->kind_mismatch += census_kind;
+    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_cosmetic_prop_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
-}
-
-/* The PLAIN render_cosmetic_prop_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
-   every refusal of render_cosmetic_prop_fixed_load_tolerant and for a read the strict rule
-   refuses -- malformed, clamped, kind-mismatched or refused -- with every
-   value it had written reset to its declared defaults. A supplied report
-   receives THIS read's report, its refuse_reason set. unknown and widened
-   alone never refuse. */
-static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdemo_render_cosmetic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t local;
-    int64_t n, k;
-    if ( report == NULL ) { report = &local; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    n = blockdemo_render_cosmetic_prop_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
-    for ( k = 0; k < n; ++k ) { blockdemo_render_cosmetic_prop_reset( values + k ); }
-    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -15335,16 +14748,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdem
    clamp COUNTS, and a content rule refuses by name. */
 static SCHEMA_UNUSED int schema_blockdemo_render_laser_fixed_clamp_( blockdemo_render_laser_t * value, blockdemo_table_report_t * report )
 {
-    int32_t clamped = 0;
+    int32_t out_of_range = 0;
     int32_t damaged = 0;
-    schema_blockdemo_render_laser_fixed_clamp_body_( value, &clamped, &damaged );
+    schema_blockdemo_render_laser_fixed_clamp_body_( value, &out_of_range, &damaged );
     /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
        fix 11): nothing is decoded, no counter moves, and the flag that
-       carries the verdict is `refused` + the name, never `malformed`. A
+       carries the verdict is `refused` + the name, never `damaged`. A
        refusal is total (§5.8): the clamp count reaches the report only on
        a read that lands values, never beside a refusal. */
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
-    report->clamped += clamped;
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
 }
 
@@ -15493,7 +14906,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_save( const blockdemo_
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
    layout_newer (ship the reader); below the floor is layout_unsupported
-   (upgrade the client); a known hash whose bytes differ is layout_malformed.
+   (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
 
@@ -15508,9 +14921,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_save( const blockdemo_
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* render_laser_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
-   keeps every recovered record, the counters counted onto the report. */
-static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockdemo_render_laser_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_laser_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load at the first
+   condition it meets and lands nothing. */
+static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render_laser_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -15523,7 +14937,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
-    int32_t read_clamped, read_widened;
+    int32_t read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_laser_fixed_plan;
     int32_t entry_count = blockdemo_render_laser_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_laser_fixed_plan_guarded;
@@ -15536,12 +14950,13 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
        relative to this form and never by one word for both. IT IS READ BEFORE
        THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
-       batch THREE, so measuring first would answer malformed for every real
+       batch THREE, so measuring first would answer damaged for every real
        file of the two forms this reader is supposed to name. */
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
@@ -15553,10 +14968,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
        REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
-    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->malformed = 1; return -1; }
+    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     for ( reserved_at = 1; reserved_at < BLOCKDEMO_K_TABLE_FIXED_HASH_AT; ++reserved_at )
     {
-        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
+        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = blockdemo_table_fixed_get32( data + BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES );
@@ -15580,7 +14995,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -15593,15 +15008,14 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_laser_reset( &defaults );
     }
-    read_clamped = report->clamped;
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
-        int32_t rec_clamped = report->clamped;
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_laser_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
@@ -15609,7 +15023,6 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
         {
             int64_t j;
             for ( j = 0; j <= k; ++j ) { blockdemo_render_laser_reset( values + j ); }
-            report->clamped = read_clamped;
             report->widened = read_widened;
             blockdemo_table_non_finite_float( report );
             return -1;
@@ -15620,7 +15033,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_blockdemo_render_laser_fixed_clamp_( values + k, report ) != 0 )
         {
-            report->clamped = rec_clamped;
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_laser_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -15628,27 +15042,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    report->kind_mismatch += census_kind;
+    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_laser_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
-}
-
-/* The PLAIN render_laser_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
-   every refusal of render_laser_fixed_load_tolerant and for a read the strict rule
-   refuses -- malformed, clamped, kind-mismatched or refused -- with every
-   value it had written reset to its declared defaults. A supplied report
-   receives THIS read's report, its refuse_reason set. unknown and widened
-   alone never refuse. */
-static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render_laser_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t local;
-    int64_t n, k;
-    if ( report == NULL ) { report = &local; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    n = blockdemo_render_laser_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
-    for ( k = 0; k < n; ++k ) { blockdemo_render_laser_reset( values + k ); }
-    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -15659,16 +15054,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render
    clamp COUNTS, and a content rule refuses by name. */
 static SCHEMA_UNUSED int schema_blockdemo_render_explosion_fixed_clamp_( blockdemo_render_explosion_t * value, blockdemo_table_report_t * report )
 {
-    int32_t clamped = 0;
+    int32_t out_of_range = 0;
     int32_t damaged = 0;
-    schema_blockdemo_render_explosion_fixed_clamp_body_( value, &clamped, &damaged );
+    schema_blockdemo_render_explosion_fixed_clamp_body_( value, &out_of_range, &damaged );
     /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
        fix 11): nothing is decoded, no counter moves, and the flag that
-       carries the verdict is `refused` + the name, never `malformed`. A
+       carries the verdict is `refused` + the name, never `damaged`. A
        refusal is total (§5.8): the clamp count reaches the report only on
        a read that lands values, never beside a refusal. */
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
-    report->clamped += clamped;
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
 }
 
@@ -15821,7 +15216,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_save( const blockd
    on the wire, so the hash cannot be re-derived from a file at all — and it
    selects one entry of the lineage THE BUILD laid down. Outside the lineage is
    layout_newer (ship the reader); below the floor is layout_unsupported
-   (upgrade the client); a known hash whose bytes differ is layout_malformed.
+   (upgrade the client); a known hash whose bytes differ is layout_damaged.
    Then ONE loop over ONE plan, the identity plan for this build's own hash and
    the entry's own static plan otherwise. Same loop either way (§3.4).
 
@@ -15836,9 +15231,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_save( const blockd
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* render_explosion_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
-   keeps every recovered record, the counters counted onto the report. */
-static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blockdemo_render_explosion_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_explosion_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load at the first
+   condition it meets and lands nothing. */
+static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_render_explosion_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -15851,7 +15247,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
-    int32_t read_clamped, read_widened;
+    int32_t read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_explosion_fixed_plan;
     int32_t entry_count = blockdemo_render_explosion_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_explosion_fixed_plan_guarded;
@@ -15864,12 +15260,13 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
        relative to this form and never by one word for both. IT IS READ BEFORE
        THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
-       batch THREE, so measuring first would answer malformed for every real
+       batch THREE, so measuring first would answer damaged for every real
        file of the two forms this reader is supposed to name. */
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
@@ -15881,10 +15278,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
        REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
-    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->malformed = 1; return -1; }
+    if ( bytes < BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     for ( reserved_at = 1; reserved_at < BLOCKDEMO_K_TABLE_FIXED_HASH_AT; ++reserved_at )
     {
-        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
+        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = blockdemo_table_fixed_get32( data + BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES );
@@ -15908,7 +15305,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -15921,15 +15318,14 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_explosion_reset( &defaults );
     }
-    read_clamped = report->clamped;
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
-        int32_t rec_clamped = report->clamped;
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_explosion_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
@@ -15937,7 +15333,6 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
         {
             int64_t j;
             for ( j = 0; j <= k; ++j ) { blockdemo_render_explosion_reset( values + j ); }
-            report->clamped = read_clamped;
             report->widened = read_widened;
             blockdemo_table_non_finite_float( report );
             return -1;
@@ -15948,7 +15343,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_blockdemo_render_explosion_fixed_clamp_( values + k, report ) != 0 )
         {
-            report->clamped = rec_clamped;
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_explosion_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -15956,27 +15352,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    report->kind_mismatch += census_kind;
+    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_explosion_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
-}
-
-/* The PLAIN render_explosion_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
-   every refusal of render_explosion_fixed_load_tolerant and for a read the strict rule
-   refuses -- malformed, clamped, kind-mismatched or refused -- with every
-   value it had written reset to its declared defaults. A supplied report
-   receives THIS read's report, its refuse_reason set. unknown and widened
-   alone never refuse. */
-static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_render_explosion_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t local;
-    int64_t n, k;
-    if ( report == NULL ) { report = &local; }
-    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    n = blockdemo_render_explosion_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
-    for ( k = 0; k < n; ++k ) { blockdemo_render_explosion_reset( values + k ); }
-    return -1;
 }
 
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
@@ -16115,7 +15492,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_re
    shape (§7): one struct behind the header, at the region's base, which is
    what this returns. There is no graph below it and nothing to resolve.
 
-   There is ONE entry point and no tolerant twin: a build either wrote this
+   There is ONE entry point and no strict twin: a build either wrote this
    file or it did not, and the build version is what says which. Validating a
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
@@ -16141,7 +15518,7 @@ static SCHEMA_UNUSED const blockdemo_render_camera_t * blockdemo_render_camera_o
    shape (§7): one struct behind the header, at the region's base, which is
    what this returns. There is no graph below it and nothing to resolve.
 
-   There is ONE entry point and no tolerant twin: a build either wrote this
+   There is ONE entry point and no strict twin: a build either wrote this
    file or it did not, and the build version is what says which. Validating a
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
@@ -16167,7 +15544,7 @@ static SCHEMA_UNUSED const blockdemo_render_ship_t * blockdemo_render_ship_open(
    shape (§7): one struct behind the header, at the region's base, which is
    what this returns. There is no graph below it and nothing to resolve.
 
-   There is ONE entry point and no tolerant twin: a build either wrote this
+   There is ONE entry point and no strict twin: a build either wrote this
    file or it did not, and the build version is what says which. Validating a
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
@@ -16193,7 +15570,7 @@ static SCHEMA_UNUSED const blockdemo_render_turret_t * blockdemo_render_turret_o
    shape (§7): one struct behind the header, at the region's base, which is
    what this returns. There is no graph below it and nothing to resolve.
 
-   There is ONE entry point and no tolerant twin: a build either wrote this
+   There is ONE entry point and no strict twin: a build either wrote this
    file or it did not, and the build version is what says which. Validating a
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
@@ -16219,7 +15596,7 @@ static SCHEMA_UNUSED const blockdemo_render_missile_t * blockdemo_render_missile
    shape (§7): one struct behind the header, at the region's base, which is
    what this returns. There is no graph below it and nothing to resolve.
 
-   There is ONE entry point and no tolerant twin: a build either wrote this
+   There is ONE entry point and no strict twin: a build either wrote this
    file or it did not, and the build version is what says which. Validating a
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
@@ -16245,7 +15622,7 @@ static SCHEMA_UNUSED const blockdemo_render_dynamic_prop_t * blockdemo_render_dy
    shape (§7): one struct behind the header, at the region's base, which is
    what this returns. There is no graph below it and nothing to resolve.
 
-   There is ONE entry point and no tolerant twin: a build either wrote this
+   There is ONE entry point and no strict twin: a build either wrote this
    file or it did not, and the build version is what says which. Validating a
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
@@ -16271,7 +15648,7 @@ static SCHEMA_UNUSED const blockdemo_render_static_prop_t * blockdemo_render_sta
    shape (§7): one struct behind the header, at the region's base, which is
    what this returns. There is no graph below it and nothing to resolve.
 
-   There is ONE entry point and no tolerant twin: a build either wrote this
+   There is ONE entry point and no strict twin: a build either wrote this
    file or it did not, and the build version is what says which. Validating a
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
@@ -16297,7 +15674,7 @@ static SCHEMA_UNUSED const blockdemo_render_cosmetic_prop_t * blockdemo_render_c
    shape (§7): one struct behind the header, at the region's base, which is
    what this returns. There is no graph below it and nothing to resolve.
 
-   There is ONE entry point and no tolerant twin: a build either wrote this
+   There is ONE entry point and no strict twin: a build either wrote this
    file or it did not, and the build version is what says which. Validating a
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
@@ -16323,7 +15700,7 @@ static SCHEMA_UNUSED const blockdemo_render_laser_t * blockdemo_render_laser_ope
    shape (§7): one struct behind the header, at the region's base, which is
    what this returns. There is no graph below it and nothing to resolve.
 
-   There is ONE entry point and no tolerant twin: a build either wrote this
+   There is ONE entry point and no strict twin: a build either wrote this
    file or it did not, and the build version is what says which. Validating a
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
@@ -16349,7 +15726,7 @@ static SCHEMA_UNUSED const blockdemo_render_explosion_t * blockdemo_render_explo
    shape (§7): one struct behind the header, at the region's base, which is
    what this returns. There is no graph below it and nothing to resolve.
 
-   There is ONE entry point and no tolerant twin: a build either wrote this
+   There is ONE entry point and no strict twin: a build either wrote this
    file or it did not, and the build version is what says which. Validating a
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
@@ -16811,28 +16188,16 @@ static SCHEMA_UNUSED const blockdemo_table_type_info_t * blockdemo_render_quater
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_camera_from_json_( blockdemo_render_camera_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_camera_to_json_( const blockdemo_render_camera_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_camera_from_json_tolerant( blockdemo_render_camera_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_camera_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_camera_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_camera_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_camera_from_json( blockdemo_render_camera_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_camera_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_camera_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_camera_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_camera_to_json_measure( const blockdemo_render_camera_t * value ) { return schema_blockdemo_render_camera_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_camera_to_json( const blockdemo_render_camera_t * value, char * buffer, int64_t capacity )
@@ -16845,28 +16210,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_to_json( const blockdemo_re
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_ship_from_json_( blockdemo_render_ship_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_ship_to_json_( const blockdemo_render_ship_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_ship_from_json_tolerant( blockdemo_render_ship_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_ship_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_ship_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_ship_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_ship_from_json( blockdemo_render_ship_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_ship_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_ship_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_ship_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_to_json_measure( const blockdemo_render_ship_t * value ) { return schema_blockdemo_render_ship_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_to_json( const blockdemo_render_ship_t * value, char * buffer, int64_t capacity )
@@ -16879,28 +16232,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_to_json( const blockdemo_rend
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_turret_from_json_( blockdemo_render_turret_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_turret_to_json_( const blockdemo_render_turret_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_turret_from_json_tolerant( blockdemo_render_turret_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_turret_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_turret_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_turret_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_turret_from_json( blockdemo_render_turret_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_turret_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_turret_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_turret_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_to_json_measure( const blockdemo_render_turret_t * value ) { return schema_blockdemo_render_turret_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_to_json( const blockdemo_render_turret_t * value, char * buffer, int64_t capacity )
@@ -16913,28 +16254,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_to_json( const blockdemo_re
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_missile_from_json_( blockdemo_render_missile_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_missile_to_json_( const blockdemo_render_missile_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_missile_from_json_tolerant( blockdemo_render_missile_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_missile_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_missile_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_missile_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_missile_from_json( blockdemo_render_missile_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_missile_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_missile_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_missile_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_to_json_measure( const blockdemo_render_missile_t * value ) { return schema_blockdemo_render_missile_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_to_json( const blockdemo_render_missile_t * value, char * buffer, int64_t capacity )
@@ -16947,28 +16276,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_to_json( const blockdemo_r
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_dynamic_prop_from_json_( blockdemo_render_dynamic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_dynamic_prop_to_json_( const blockdemo_render_dynamic_prop_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_from_json_tolerant( blockdemo_render_dynamic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_dynamic_prop_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_dynamic_prop_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_dynamic_prop_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_from_json( blockdemo_render_dynamic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_dynamic_prop_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_dynamic_prop_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_dynamic_prop_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_to_json_measure( const blockdemo_render_dynamic_prop_t * value ) { return schema_blockdemo_render_dynamic_prop_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_to_json( const blockdemo_render_dynamic_prop_t * value, char * buffer, int64_t capacity )
@@ -16981,28 +16298,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_to_json( const blockd
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_static_prop_from_json_( blockdemo_render_static_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_static_prop_to_json_( const blockdemo_render_static_prop_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_static_prop_from_json_tolerant( blockdemo_render_static_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_static_prop_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_static_prop_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_static_prop_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_static_prop_from_json( blockdemo_render_static_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_static_prop_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_static_prop_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_static_prop_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_to_json_measure( const blockdemo_render_static_prop_t * value ) { return schema_blockdemo_render_static_prop_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_to_json( const blockdemo_render_static_prop_t * value, char * buffer, int64_t capacity )
@@ -17015,28 +16320,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_to_json( const blockde
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_cosmetic_prop_from_json_( blockdemo_render_cosmetic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_cosmetic_prop_to_json_( const blockdemo_render_cosmetic_prop_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_from_json_tolerant( blockdemo_render_cosmetic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_cosmetic_prop_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_cosmetic_prop_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_cosmetic_prop_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_from_json( blockdemo_render_cosmetic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_cosmetic_prop_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_cosmetic_prop_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_cosmetic_prop_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_to_json_measure( const blockdemo_render_cosmetic_prop_t * value ) { return schema_blockdemo_render_cosmetic_prop_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_to_json( const blockdemo_render_cosmetic_prop_t * value, char * buffer, int64_t capacity )
@@ -17049,28 +16342,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_to_json( const block
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_laser_from_json_( blockdemo_render_laser_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_laser_to_json_( const blockdemo_render_laser_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_laser_from_json_tolerant( blockdemo_render_laser_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_laser_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_laser_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_laser_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_laser_from_json( blockdemo_render_laser_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_laser_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_laser_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_laser_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_to_json_measure( const blockdemo_render_laser_t * value ) { return schema_blockdemo_render_laser_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_to_json( const blockdemo_render_laser_t * value, char * buffer, int64_t capacity )
@@ -17083,28 +16364,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_to_json( const blockdemo_ren
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_explosion_from_json_( blockdemo_render_explosion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_explosion_to_json_( const blockdemo_render_explosion_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_explosion_from_json_tolerant( blockdemo_render_explosion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_explosion_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_explosion_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_explosion_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_explosion_from_json( blockdemo_render_explosion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_explosion_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_explosion_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_explosion_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_to_json_measure( const blockdemo_render_explosion_t * value ) { return schema_blockdemo_render_explosion_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_to_json( const blockdemo_render_explosion_t * value, char * buffer, int64_t capacity )
@@ -17117,28 +16386,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_to_json( const blockdemo
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_frame_from_json_( blockdemo_render_frame_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_frame_to_json_( const blockdemo_render_frame_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_frame_from_json_tolerant( blockdemo_render_frame_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_frame_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_frame_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_frame_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_frame_from_json( blockdemo_render_frame_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_frame_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_frame_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_frame_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_frame_to_json_measure( const blockdemo_render_frame_t * value ) { return schema_blockdemo_render_frame_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_frame_to_json( const blockdemo_render_frame_t * value, char * buffer, int64_t capacity )
@@ -17151,28 +16408,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_to_json( const blockdemo_ren
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_vector3_from_json_( blockdemo_render_vector3_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_vector3_to_json_( const blockdemo_render_vector3_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_vector3_from_json_tolerant( blockdemo_render_vector3_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_vector3_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_vector3_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_vector3_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_vector3_from_json( blockdemo_render_vector3_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_vector3_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_vector3_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_vector3_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_vector3_to_json_measure( const blockdemo_render_vector3_t * value ) { return schema_blockdemo_render_vector3_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_vector3_to_json( const blockdemo_render_vector3_t * value, char * buffer, int64_t capacity )
@@ -17185,28 +16430,16 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_to_json( const blockdemo_r
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_quaternion_from_json_( blockdemo_render_quaternion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_quaternion_to_json_( const blockdemo_render_quaternion_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_quaternion_from_json_tolerant( blockdemo_render_quaternion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
-{
-    blockdemo_table_report_t ignored;
-    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
-    if ( schema_blockdemo_render_quaternion_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
-    if ( value != NULL ) { blockdemo_render_quaternion_reset( value ); } /* damage discards the whole load (§4) */
-    return 0;
-}
-/* The PLAIN render_quaternion_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_render_quaternion_from_json( blockdemo_render_quaternion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
     int decoded;
-    if ( report == NULL ) { report = &ignored; }
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = schema_blockdemo_render_quaternion_from_json_( value, text, bytes, report );
-    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
-    {
-        if ( value != NULL ) { blockdemo_render_quaternion_reset( value ); }
-        return 0;
-    }
-    return 1;
+    if ( !blockdemo_table_report_finish( report, decoded ) ) { return 1; }
+    if ( value != NULL ) { blockdemo_render_quaternion_reset( value ); } /* a refusal discards the whole load (§4) */
+    return 0;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_to_json_measure( const blockdemo_render_quaternion_t * value ) { return schema_blockdemo_render_quaternion_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_to_json( const blockdemo_render_quaternion_t * value, char * buffer, int64_t capacity )
