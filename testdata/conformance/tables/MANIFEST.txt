@@ -1294,7 +1294,7 @@ instance map_key_order             mapdemo           Fleet         testdata/wire
 instance map_text_order            mapdemo           Text          testdata/wire/tables/map_text_order.bin
 instance feature_key_order         featurewitnesses  Root          testdata/wire/tables/feature_key_order.bin
 instance feature_stamp_frac        featurewitnesses  Root          testdata/wire/tables/feature_stamp_frac.bin
-instance text_float32_double_round tabledemo         ProfileConfig testdata/wire/tables/text_float32_double_round.bin
+instance text_float32_double_round tabledemo         ProfileConfig testdata/conformance/tables/wire/text_float32_double_round.bin
 instance graph_chain_text          graphdemo         Scene         testdata/wire/tables/graph_chain_text.bin
 
 # THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): json-write
@@ -1307,8 +1307,8 @@ instance graph_chain_text          graphdemo         Scene         testdata/wire
 # and a wide field's unpaired surrogate — and the writer refuses rather than
 # replacing either with U+FFFD.
 json-write-refusal graph_chain_past_cap  graphdemo Scene         testdata/wire/tables/graph_chain_past_cap.bin none
-json-write-refusal text_refuse_illformed tabledemo ProfileConfig testdata/wire/tables/profile_elide.bin       narrow:name
-json-write-refusal text_refuse_unpaired  widedemo  Stamp         testdata/wire/tables/wide_stamp.bin          wide:label
+json-write-refusal text_refuse_illformed tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin       narrow:name
+json-write-refusal text_refuse_unpaired  widedemo  Stamp         testdata/conformance/tables/wire/wide_stamp.bin          wide:label
 report previous_form_root_full tabledemo RootConfig testdata/wire/tables/root_full.bin
 report previous_form_root_default tabledemo RootConfig testdata/wire/tables/root_default.bin
 report previous_form_profile_elide tabledemo ProfileConfig testdata/wire/tables/profile_elide.bin
@@ -1374,3 +1374,4 @@ report previous_form_vocab9_low vocab9demo Wide00 testdata/wire/tables/vocab9_lo
 report previous_form_r1_cfg tblr1 Cfg testdata/wire/tables/r1_cfg.bin
 report previous_form_r1_ping tblr1 Cfg testdata/wire/tables/r1_ping.bin
 report previous_form_r2_cfg tblr2 Cfg testdata/wire/tables/r2_cfg.bin
+report previous_form_text_float32_double_round tabledemo ProfileConfig testdata/wire/tables/text_float32_double_round.bin

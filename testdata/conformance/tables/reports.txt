@@ -94,6 +94,7 @@ previous_form_store_default refused
 previous_form_store_full refused
 previous_form_text_escapes refused
 previous_form_text_escapes_raw refused
+previous_form_text_float32_double_round refused
 previous_form_text_float64_big refused
 previous_form_text_float64_ties refused
 previous_form_text_float_exp refused
