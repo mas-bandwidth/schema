@@ -8,7 +8,7 @@
         "only fixed tables support message form (bitpacked)",
         "plain table is not a thing. you invented that. it's called a variable table."
       ],
-      "source": "relayed by Rowan from the live session",
+      "source": "relayed by the coordinator from the live session",
       "earlier": [
         {
           "commit": "4354b76f160bbe6fce2ee6cf2753994c73237988",
@@ -38,7 +38,7 @@
         "I thought we removed wstring from serialize, and replaced with utf8, we should do the same from schema",
         "The argument was that wstring was impossible to effectively do portably. So I agreed to remove it and standardize on utf8 instead."
       ],
-      "source": "relayed by Rowan from the live session"
+      "source": "relayed by the coordinator from the live session"
     },
     {
       "id": "perf-after-3.0.0",
@@ -48,7 +48,7 @@
         "we won't make 3.0.0 until it is correct and at parity. That's the bar.",
         "We need to prove this before v3.0.0 not just hope that it's correct and complete."
       ],
-      "source": "relayed by Rowan from the live session"
+      "source": "relayed by the coordinator from the live session"
     },
     {
       "id": "per-language-design-proof",
@@ -58,7 +58,7 @@
         "Fastest correct implementation per-language.",
         "Doesn't have to be the same. Goose is a unique language, so it's natural the approach here could be different."
       ],
-      "source": "Glenn, live in Rowan's session, answering whether Goose may prove cells that Go proves through its plan interpreter and its LoadMeasure (Goose fixed ordinals, union-guards and plan-execution; variable widening's measure half) through its own design: per-table straight-line code and no LoadMeasure. A port proves the same guarantees through its own fastest correct code paths; it is not required to reproduce another port's internal structure. The guarantees are still owed and still proved; this ruling makes nothing not-applicable."
+      "source": "the maintainer, live in session, answering whether Goose may prove cells that Go proves through its plan interpreter and its LoadMeasure (Goose fixed ordinals, union-guards and plan-execution; variable widening's measure half) through its own design: per-table straight-line code and no LoadMeasure. A port proves the same guarantees through its own fastest correct code paths; it is not required to reproduce another port's internal structure. The guarantees are still owed and still proved; this ruling makes nothing not-applicable."
     },
     {
       "id": "strict-only-read",

@@ -15,24 +15,17 @@ func textElementBytes(cell Cell) int64 {
 	return int64(len(value.Cell.Str))
 }
 
-// KeepTextTotal adds one decoded element and keeps only the prefix within
-// the total. After false, callers skip the remaining tail without decoding it.
-func (m *Model) KeepTextTotal(fv *Field, index int, spent *int64, report *Report) bool {
+// TextTotalFits adds one decoded element to a text list's running byte sum
+// and reports whether the sum is still within the list's `| total`
+// (docs/SPEC-TABLES.md §2.13). A list past its total refuses the read
+// `length_over_bound`; nothing is dropped.
+func TextTotalFits(fv *Field, index int, spent *int64) bool {
 	f := fv.Def
 	if !f.IsTextList() || f.TextTotal <= 0 {
 		return true
 	}
-	n := textElementBytes(fv.Elems[index])
-	if n <= f.TextTotal-*spent {
-		*spent += n
-		return true
-	}
-	report.Clamped++
-	if report.Reason == "" {
-		report.Reason = "clamped: " + f.TextListElem().MapEntryOf
-	}
-	fv.Elems[index] = m.elementZero(f)
-	return false
+	*spent += textElementBytes(fv.Elems[index])
+	return *spent <= f.TextTotal
 }
 
 // ValidateTextTotal checks the stored list before either writer emits bytes.

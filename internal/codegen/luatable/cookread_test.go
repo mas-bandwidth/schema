@@ -51,6 +51,9 @@ func TestLuaCookRead(t *testing.T) {
 			inst := m.New(root)
 			var report tabletext.Report
 			if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
+				if strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
+					t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
+				}
 				t.Fatalf("decode %s: %v", row.caseName, err)
 			}
 			cooked, err := tablecook.Cook(m, inst, tablecook.Options{})

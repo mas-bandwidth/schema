@@ -119,6 +119,15 @@ const TableFixedLeafCap = 4096
 // bound IS the layout's bound, and a table past it is NAMED ([TableFixedDepthBounds]).
 const TableFixedMaxDepth = 64
 
+// TableBinaryMaxDepth is THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4,
+// `binary_max_depth`): the root body is at depth 0, each framed payload inside
+// a payload (a table body, an array, keyed or map body) one level deeper, and
+// depth 128 passes and 129 refuses, on every walk of the binary forms and in
+// unknown fields' bytes too. A pointer does not nest: a node record is walked
+// from depth 0. The compiler refuses a declaration whose by-value nesting
+// passes it ([TableBinaryDepth]).
+const TableBinaryMaxDepth = 128
+
 const (
 	// TableFixedCountBytes and TableFixedPresentBytes: a count and a length are the
 	// int32 their storage already is, and a presence flag is one byte.

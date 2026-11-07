@@ -33,7 +33,7 @@ func TestCppCollectionWidening(t *testing.T) {
 			}
 			m = tabletext.NewModel(target)
 			v = m.New(target.Tables["Root"])
-			if ok, err := tablewire.Decode(m, v, wire, &report); err != nil || !ok || report.Widened != tc.widened || report.Malformed {
+			if ok, err := tablewire.Decode(m, v, wire, &report); err != nil || !ok || report.Widened != tc.widened || report.Refused {
 				t.Fatalf("oracle: %+v %v", report, err)
 			}
 			want, err := tablewire.Encode(m, v)

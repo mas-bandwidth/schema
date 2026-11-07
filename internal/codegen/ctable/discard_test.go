@@ -80,7 +80,7 @@ func discardProbeWire(t *testing.T, u *ir.Unit, root string) []byte {
 	}
 	wire[at] = 37
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("%s: the engine does not read the vector as damage: ok=%v err=%v %+v", root, ok, err, report)
 	}
 	return wire
@@ -438,7 +438,7 @@ func TestPointerNamingAnOpenNodeIsRefusedC(t *testing.T) {
 	}
 	wire[at+1] = 2
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Graph")), wire, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Graph")), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("the engine does not refuse the cycle: ok=%v err=%v %+v", ok, err, report)
 	}
 	body := fmt.Sprintf(`
@@ -538,7 +538,7 @@ func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
 		try[i] = 0
 		root := m.New(def)
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil || report.Malformed {
+		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil {
 			continue
 		}
 		left, _ := root.FieldByKey("left")

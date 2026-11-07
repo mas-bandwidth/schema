@@ -42,7 +42,7 @@ table Mixed { data *bytes
 	} {
 		v := m.New(u.Tables[tc.root])
 		var rep tabletext.Report
-		if !m.Read(v, []byte(tc.text), &rep) || rep.Malformed || rep.KindMismatch != 0 {
+		if !m.Read(v, []byte(tc.text), &rep) || rep.Refused {
 			t.Fatalf("JSON %+v", rep)
 		}
 		wire, err := tablewire.Encode(m, v)

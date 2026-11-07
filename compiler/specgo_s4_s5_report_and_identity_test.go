@@ -13,16 +13,22 @@ func TestSpecGoS4S5ReportAndIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(data)
-	section4 := specTablesSection(t, page, "## 4. Versioning is wire tolerance", "## 5. Identity")
+	section4 := specTablesSection(t, page, "## 4. Versioning, and the one read", "## 5. Identity")
 	section5 := specTablesSection(t, page, "## 5. Identity", "## 6. The two lives of a table")
 
-	mustState(t, "§4 missing_required", section4, "missing_required")
-	mustState(t, "§4 blob_shared", section4, "blob_shared")
-	mustState(t, "§4 non_finite", section4, "non_finite")
+	// the refusals that were tolerant-read counts are named as refusals, and
+	// the report is the verdict and the diagnostic counters alone
+	mustState(t, "§4 missing_required", section4, "A REQUIRED FIELD ABSENT — `missing_required`")
+	mustState(t, "§4 blob_shared", section4, "FROM TWO SLOTS — `blob_shared`")
+	mustState(t, "§4 non_finite_float", section4, "`non_finite_float`")
+	mustState(t, "§4 no other counter", section4, "**No other counter exists**")
+	mustState(t, "§4 retired counters", section4, "`duplicate`, `blob_shared` and `missing_required` were tolerant-read counts and\nare now refusal reasons")
 	mustNotState(t, "§4's complete counter list", section4, "whose counters are `unknown`")
+	mustNotState(t, "§4 the title", section4, "Versioning is wire tolerance")
 
-	mustState(t, "§4 a map's two counters", section4, "both counters move for one map")
-	mustNotState(t, "§4 the widened-only map sentence", section4, "disagreement: the map loads whole and counts one `widened`")
+	// a map whose key kind widens counts one `widened`, and no second counter
+	mustState(t, "§4 a map's one counter", section4, "a map ONE for the map")
+	mustNotState(t, "§4 the two-counter map sentence", section4, "both counters move for one map")
 
 	mustState(t, "§5 was on a reached type's field", section5, "`was` is legal on a field of a")
 	mustNotState(t, "§5 the outside-a-table-body sentence", section5, "`was` outside a table body is refused")

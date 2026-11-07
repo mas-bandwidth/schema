@@ -216,10 +216,10 @@ func goJsonVerdict(u *ir.Unit, rootName string, text []byte) string {
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup(rootName))
 	var rep tabletext.Report
-	if !m.Read(inst, text, &rep) || rep.Malformed {
+	if !m.Read(inst, text, &rep) || rep.Refused {
 		return "refused"
 	}
-	return fmt.Sprintf("%d,%d,%d,%d,%d,false,read", rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate)
+	return fmt.Sprintf("%d,%d,%d,%d,%d,false,read", rep.Unknown, 0, rep.Widened, 0, 0)
 }
 
 // jsonUnits groups the rows by unit, in manifest order, and generates each.

@@ -130,6 +130,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"json_text_list_registry", "json_write",
 	},
 	"load.lobster": {
+		"load_cyclic",
 		"ArrayShape", "EnumShape", "KeyedKeys", "KeyedShape", "LoadReport", "LoadState", "MapShape", "Node",
 		"NodeRecord", "PointerShape", "Reader", "Record", "RetainCapture", "RetainedField", "Shape", "Slot",
 		"StringShape", "TableShape", "TextListShape", "UnionShape", "Value", "WideShape", "active_retain_capture",

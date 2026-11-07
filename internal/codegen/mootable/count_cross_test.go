@@ -81,7 +81,7 @@ func TestMooCountCrossingLengthIsRegionDamage(t *testing.T) {
 	}
 	m := tabletext.NewModel(u)
 	var rep tabletext.Report
-	if _, err := tablewire.DecodeRegion(m, m.New(u.Tables["Album"]), wire, &rep); err != nil || !rep.Malformed {
+	if _, err := tablewire.DecodeRegion(m, m.New(u.Tables["Album"]), wire, &rep); !tablewire.ReadRefusal(err) || !rep.Refused {
 		t.Fatalf("the Go engine's region load does not answer damage: %v %+v", err, rep)
 	}
 	if got := countCross(t, nil); got != "false true 0 nil" {

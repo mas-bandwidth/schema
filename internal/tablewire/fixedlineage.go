@@ -29,7 +29,7 @@ import (
 const (
 	FixedReasonLayoutUnsupported = "layout_unsupported"
 	FixedReasonKindMismatch      = "kind_mismatch"
-	FixedReasonOutOfRange        = "clamped"
+	FixedReasonOutOfRange        = "out_of_range"
 )
 
 // unitLocks caches each unit's parsed lock: one Open per unit, and a nil entry
@@ -112,10 +112,10 @@ func parseFixedLayout(b []byte) *fixedNode {
 
 // decodeFixedLineage reads one record an OLDER writer of this table wrote,
 // under the lock's layout for its hash. It answers a refusal's name, or "".
-func decodeFixedLineage(m *tabletext.Model, inst *tabletext.Instance, hash uint64, layout, rest []byte, report *tabletext.Report) (string, bool) {
+func decodeFixedLineage(m *tabletext.Model, inst *tabletext.Instance, hash uint64, layout, rest []byte, report *tabletext.Report) string {
 	lock, err := unitLock(m.Unit)
 	if err != nil || lock == nil {
-		return FixedReasonLayoutUnknown, false
+		return FixedReasonLayoutUnknown
 	}
 	entries := lockfile.Lineage(lock, inst.Def.WireName())
 	at := -1
@@ -125,31 +125,31 @@ func decodeFixedLineage(m *tabletext.Model, inst *tabletext.Instance, hash uint6
 		}
 	}
 	if at < 0 {
-		return FixedReasonLayoutUnknown, false
+		return FixedReasonLayoutUnknown
 	}
 	if at < lockfile.Floor(lock, inst.Def.WireName()) {
-		return FixedReasonLayoutUnsupported, false
+		return FixedReasonLayoutUnsupported
 	}
 	known := entries[at]
 	if string(layout) != string(known.Layout) {
-		return FixedReasonLayoutMalformed, false
+		return FixedReasonLayoutMalformed
 	}
 	root := parseFixedLayout(known.Layout)
 	if root == nil || root.kind != ir.TableKindTable {
-		return FixedReasonLayoutMalformed, false
+		return FixedReasonLayoutMalformed
 	}
 	record := 8 + int(known.Record)
 	if len(rest)%record != 0 || len(rest) == 0 {
-		return FixedReasonTruncated, true
+		return FixedReasonTruncated
 	}
 	if len(rest) != record {
-		return FixedReasonBatchTooLarge, false
+		return FixedReasonBatchTooLarge
 	}
 	if binary.LittleEndian.Uint64(rest) != hash {
-		return FixedReasonLayoutMalformed, false
+		return FixedReasonLayoutMalformed
 	}
 	d := &lineageDecoder{m: m, report: report}
-	return d.table(root, rest[8:], inst), false
+	return d.table(root, rest[8:], inst)
 }
 
 type lineageDecoder struct {
@@ -186,6 +186,9 @@ func (d *lineageDecoder) table(w *fixedNode, b []byte, inst *tabletext.Instance)
 
 func (d *lineageDecoder) field(w *fixedNode, b []byte, fv *tabletext.Field) string {
 	if w.kind == ir.TableKindOptional {
+		if b[0] > 1 {
+			return ReasonWireDamaged // a present byte other than 0 or 1 (§3.4)
+		}
 		present := b[0] != 0
 		if !present {
 			return "" // absent: the reader's declared default stands
@@ -240,10 +243,9 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 			n = int64(count)
 			fv.Count = int(count)
 		} else if n > f.ArrayBound {
-			// a fixed array that SHRANK drops the writer's tail: elements the
-			// reader has no slot for
-			d.report.Unknown++
-			n = f.ArrayBound
+			// a fixed array that SHRANK: more elements than the reader has
+			// slots for refuses, as a count past the bound does (§4)
+			return FixedReasonCountOverBound
 		}
 		for i := int64(0); i < n; i++ {
 			if reason := d.element(elem, b[head+i*elem.size:], f, &fv.Elems[i]); reason != "" {
@@ -344,6 +346,9 @@ func (d *lineageDecoder) element(w *fixedNode, b []byte, f *ir.Field, cell *tabl
 		if w.kind != ir.TableKindBool {
 			return FixedReasonKindMismatch
 		}
+		if b[0] > 1 {
+			return ReasonWireDamaged // a bool byte other than 0 or 1 (§3.4)
+		}
 		cell.B = b[0] != 0
 		return ""
 	}
@@ -369,14 +374,9 @@ func (d *lineageDecoder) element(w *fixedNode, b []byte, f *ir.Field, cell *tabl
 		}
 	}
 	var scratch tabletext.Report
-	r := &wireReader{buf: tmp, report: &scratch, m: d.m}
-	r.scalarAt(cell, f, w.kind)
-	if scratch.NonFiniteFloat != "" {
-		d.report.RefuseNonFinite(scratch.NonFiniteFloat)
-		return ""
-	}
-	if scratch.Clamped > 0 || scratch.Malformed {
-		return FixedReasonOutOfRange
+	r := &wireReader{buf: tmp, report: &scratch, m: d.m, fail: &readFail{}}
+	if !r.scalarAt(cell, f, w.kind) {
+		return RefusalReason(r.err())
 	}
 	if w.kind != declared {
 		d.report.Widened++

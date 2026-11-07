@@ -23,6 +23,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,14 +36,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// cookedReportClean holds a cook's report to clean, except that the instance
-// whose wire names one blob from two slots carries that one count: Cook packs
-// the graph as it finds it (§2.5, §7.6), and the tolerant read names what it
-// found. Every other count is still a reason the fixture is not the tool's.
+// cookedReportClean holds a cook's report to clean: any count is a reason the
+// fixture is not the tool's.
 func cookedReportClean(inst Instance, r compiler.TableReport) bool {
-	if inst.GoWireRefusal == "blob_shared" {
-		r.BlobShared = 0
-	}
 	return r.Silent()
 }
 
@@ -245,22 +241,24 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		var report tabletext.Report
 		value := model.New(root)
 		ok, err := tablewire.Decode(model, value, wire, &report)
-		// Named form refusals are report verdicts. Resource refusals and
-		// other engine errors must still stop generation.
-		if err != nil && !tablewire.Refused(err) {
+		// A read's refusal is a report verdict. The storage-cap refusal is
+		// this build's resource limit rather than the corpus's answer, so it
+		// stops generation with every other engine error.
+		_, storageCap := errors.AsType[*tablewire.CountRefusal](err)
+		if err != nil && (!tablewire.ReadRefusal(err) || storageCap) {
 			return fmt.Errorf("%s: read: %w", rc.Name, err)
 		}
-		if !ok && err == nil && !report.Malformed {
+		if !ok && err == nil {
 			return fmt.Errorf("%s: decoder stopped without a verdict", rc.Name)
 		}
+		// the one read's verdict in the manifest's columns until layer 3
+		// re-pins it (docs/plans/strict-only.md): a form refusal is Refused,
+		// every other refusal Malformed
 		counts := Counts{
-			Unknown:      report.Unknown,
-			KindMismatch: report.KindMismatch,
-			Widened:      report.Widened,
-			Clamped:      report.Clamped,
-			Duplicate:    report.Duplicate,
-			Malformed:    report.Malformed,
-			Refused:      report.Refused,
+			Unknown:   report.Unknown,
+			Widened:   report.Widened,
+			Malformed: !ok && !tablewire.Refused(err),
+			Refused:   tablewire.Refused(err),
 		}
 		lines = append(lines, fmt.Sprintf("%-18s %s", rc.Name, counts))
 		values[filepath.Base(rc.Value)] = true
@@ -384,13 +382,10 @@ func hostileValue(u *units, h Hostile, jsonDir string) error {
 	var report tabletext.Report
 	ok := model.Read(value, text, &report)
 	verdict := "refused"
-	if ok && !report.Malformed {
+	if ok {
 		verdict = Counts{
-			Unknown:      report.Unknown,
-			KindMismatch: report.KindMismatch,
-			Widened:      report.Widened,
-			Clamped:      report.Clamped,
-			Duplicate:    report.Duplicate,
+			Unknown: report.Unknown,
+			Widened: report.Widened,
 		}.String()
 	}
 	if verdict != h.Verdict() {

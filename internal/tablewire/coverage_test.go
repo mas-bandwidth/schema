@@ -43,15 +43,6 @@ func TestBitBigRoundTrip(t *testing.T) {
 
 func TestTextHelpers(t *testing.T) {
 	t.Parallel()
-	if textBoundary([]byte("hello"), 5) != 5 {
-		t.Fatal("textBoundary within bound")
-	}
-	if textBoundary([]byte("héllo"), 3) != 3 {
-		t.Fatal("textBoundary should not split a multibyte rune")
-	}
-	if got := textBoundary([]byte("é"), 1); got != 0 {
-		t.Fatalf("textBoundary at a continuation byte = %d, want 0", got)
-	}
 	units := wideUnits([]byte{0x41, 0x00, 0x42, 0x00})
 	if units[0] != 0x41 || units[1] != 0x42 {
 		t.Fatalf("wideUnits = %v", units)
@@ -77,15 +68,6 @@ func TestTextHelpers(t *testing.T) {
 	}
 	if wideValid([]uint16{0xDC00, 0xD800}) {
 		t.Fatal("a leading low surrogate must be invalid")
-	}
-	if wideBoundary([]uint16{0x41, 0x42}, 2) != 2 {
-		t.Fatal("wideBoundary within bound")
-	}
-	if wideBoundary([]uint16{0xD800, 0xDC00}, 1) != 0 {
-		t.Fatal("wideBoundary must drop an unpaired high surrogate")
-	}
-	if wideBoundary([]uint16{0x41, 0x42}, 1) != 1 {
-		t.Fatal("wideBoundary should keep whole units")
 	}
 }
 
@@ -272,8 +254,9 @@ func TestFileFormScansAndRegion(t *testing.T) {
 	if seen != "abcd" {
 		t.Fatalf("text-list element = %q, want %q", seen, "abcd")
 	}
-	// an element longer than the declared bound is clamped on a code point
-	// boundary and the clamp names the field (§2.13)
+	// an element longer than the declared bound refuses length_over_bound,
+	// and nothing is cut (§2.13, §4); its negative control, a well-formed
+	// element inside the bound, lands
 	var element tabletext.Report
 	var target *tabletext.Field
 	for i := range value.Fields {
@@ -282,11 +265,12 @@ func TestFileFormScansAndRegion(t *testing.T) {
 		}
 	}
 	raw := &wireReader{buf: append([]byte{6}, []byte("abcdef")...), report: &element, m: m}
-	if !raw.textListElement(target, 0) {
-		t.Fatal("a well-formed long element was refused")
+	if raw.element(target, 0, ir.TableKindString) || RefusalReason(raw.err()) != ReasonLengthOverBound {
+		t.Fatalf("a text-list element past its bound was not refused: %v", raw.err())
 	}
-	if got := string(target.Elems[0].Tab.Fields[0].Cell.Str); got != "abcd" || element.Clamped != 1 || element.Reason != "clamped: Root.rules" {
-		t.Fatalf("text-list clamp = %q, %+v", got, element)
+	fits := &wireReader{buf: append([]byte{4}, []byte("abcd")...), report: &element, m: m}
+	if !fits.element(target, 0, ir.TableKindString) || string(target.Elems[0].Tab.Fields[0].Cell.Str) != "abcd" {
+		t.Fatalf("a text-list element at its bound was refused: %v", fits.err())
 	}
 	keep := &Retain{Capacity: 4096, IdCapacity: 64}
 	var kept tabletext.Report
@@ -402,9 +386,8 @@ func TestMessageFloatRefusalsAndClamps(t *testing.T) {
 	damaged = damaged[:len(damaged)-1]
 	value := m.New(root)
 	var report tabletext.Report
-	DecodeMessage(m, value, damaged, &vocabulary, &report)
-	if !report.Malformed {
-		t.Fatalf("a truncated batch was not malformed: %+v", report)
+	if ok, err := DecodeMessage(m, value, damaged, &vocabulary, &report); ok || err == nil || !report.Refused {
+		t.Fatalf("a truncated batch was not refused: %v %+v", err, report)
 	}
 }
 
@@ -576,7 +559,7 @@ func TestRetainFileAllKinds(t *testing.T) {
 	value := reader.New(root)
 	store := &Retain{Capacity: 8192, IdCapacity: 128}
 	var read tabletext.Report
-	if ok, err := DecodeRetain(reader, value, wire, store, &read); !ok || err != nil || read.Malformed || read.Retained == 0 {
+	if ok, err := DecodeRetain(reader, value, wire, store, &read); !ok || err != nil || read.Refused || read.Retained == 0 {
 		t.Fatalf("load: %v %v %+v", ok, err, read)
 	}
 	var save tabletext.Report
@@ -586,7 +569,7 @@ func TestRetainFileAllKinds(t *testing.T) {
 	}
 	second := &Retain{Capacity: 8192, IdCapacity: 128}
 	var reread tabletext.Report
-	if ok, err := DecodeRetain(reader, reader.New(root), out, second, &reread); !ok || err != nil || reread.Malformed || reread.Retained == 0 {
+	if ok, err := DecodeRetain(reader, reader.New(root), out, second, &reread); !ok || err != nil || reread.Refused || reread.Retained == 0 {
 		t.Fatalf("the saved retained fields were not read back: %v %v %+v", ok, err, reread)
 	}
 }
@@ -729,7 +712,7 @@ func TestMessageBatch(t *testing.T) {
 	}
 	values := []*tabletext.Instance{m.New(root), m.New(root)}
 	var report tabletext.Report
-	if n, ok, err := DecodeMessages(m, values, batch, &vocabulary, &report); n != 2 || !ok || err != nil || report.Malformed {
+	if n, ok, err := DecodeMessages(m, values, batch, &vocabulary, &report); n != 2 || !ok || err != nil || report.Refused {
 		t.Fatalf("batch read: %d %v %v %+v", n, ok, err, report)
 	}
 	if n, err := MessageCount(batch, &vocabulary); err != nil || n != 2 {
@@ -784,14 +767,14 @@ func TestAnnouncementRefusals(t *testing.T) {
 			}
 			continue
 		}
-		if err != nil || !r.Malformed || v.Announced() {
+		if err == nil || !r.Refused || v.Announced() {
 			t.Errorf("%s: %v %+v", c.name, err, r)
 		}
 	}
 	truncated := Announce(m.Unit)
 	truncated = truncated[:len(truncated)-1]
 	var damaged tabletext.Report
-	if err := (&Vocabulary{}).AnnounceRead(truncated, &damaged); err != nil || !damaged.Malformed {
+	if err := (&Vocabulary{}).AnnounceRead(truncated, &damaged); RefusalReason(err) != ReasonWireDamaged || !damaged.Refused {
 		t.Fatalf("truncated announcement: %v %+v", err, damaged)
 	}
 }
@@ -820,10 +803,11 @@ fixed table Root
 }
 `
 
-// A WIDER SENDER READ BY A NARROWER DECLARATION is clamped by the reader's
-// range, on both forms and in both directions, and the report counts each
-// clamp (§3.3, §4, §4.3).
-func TestRangeClampsBothForms(t *testing.T) {
+// A WIDER SENDER READ BY A NARROWER DECLARATION refuses out_of_range on the
+// reader's range, on both forms and in both directions; nothing clamps (§3.3,
+// §4, §4.3). The negative control is the same pair of declarations with a
+// value inside both ranges, which reads.
+func TestRangeRefusesBothForms(t *testing.T) {
 	t.Parallel()
 	sender := covModel(t, covRangeSender)
 	reader := covModel(t, covRangeReader)
@@ -847,7 +831,7 @@ func TestRangeClampsBothForms(t *testing.T) {
 		}
 		var fileReport tabletext.Report
 		fileValue := fileReader.New(fileReader.Lookup("Root"))
-		if ok, err := Decode(fileReader, fileValue, wire, &fileReport); !ok || err != nil || fileReport.Clamped == 0 {
+		if ok, err := Decode(fileReader, fileValue, wire, &fileReport); ok || !ReadRefusal(err) {
 			t.Fatalf("%s: file: %v %v %+v", text, ok, err, fileReport)
 		}
 		batch, err := EncodeMessage(sender, src)
@@ -856,9 +840,27 @@ func TestRangeClampsBothForms(t *testing.T) {
 		}
 		var report tabletext.Report
 		value := reader.New(root)
-		if ok, err := DecodeMessage(reader, value, batch, &vocabulary, &report); !ok || err != nil || report.Clamped == 0 {
+		if ok, err := DecodeMessage(reader, value, batch, &vocabulary, &report); ok || !ReadRefusal(err) {
 			t.Fatalf("%s: message: %v %v %+v", text, ok, err, report)
 		}
+	}
+	// the negative control: values inside both declarations read on both forms
+	const inside = `{"si":5,"ui":5,"sv":3,"f":0.5}`
+	wire, err := Encode(fileSender, covPlace(t, fileSender, "Root", inside))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fileReport tabletext.Report
+	if ok, err := Decode(fileReader, fileReader.New(fileReader.Lookup("Root")), wire, &fileReport); !ok || err != nil {
+		t.Fatalf("control: file: %v %+v", err, fileReport)
+	}
+	batch, err := EncodeMessage(sender, covPlace(t, sender, "Root", inside))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report tabletext.Report
+	if ok, err := DecodeMessage(reader, reader.New(root), batch, &vocabulary, &report); !ok || err != nil {
+		t.Fatalf("control: message: %v %+v", err, report)
 	}
 }
 
@@ -931,7 +933,7 @@ func TestUncoveredPaths(t *testing.T) {
 	t.Run("map and keyed", TestMapAndKeyedCoverage)
 	t.Run("batch", TestMessageBatch)
 	t.Run("announcement refusals", TestAnnouncementRefusals)
-	t.Run("range clamps", TestRangeClampsBothForms)
+	t.Run("range clamps", TestRangeRefusesBothForms)
 	t.Run("wstring damage", TestWStringDamage)
 	t.Run("damaged wires", TestDamagedWiresDoNotPanic)
 }
@@ -959,11 +961,8 @@ table Root
 		value := m.New(root)
 		var report tabletext.Report
 		r := &wireReader{buf: c.body, report: &report, m: m}
-		if !r.field(&value.Fields[0]) || !report.Malformed {
-			t.Fatalf("%s: field() = %+v", c.name, report)
-		}
-		if len(value.Fields[0].Cell.Units) != 0 {
-			t.Fatalf("%s: the field did not fall back to its default: %v", c.name, value.Fields[0].Cell.Units)
+		if r.field(&value.Fields[0]) || RefusalReason(r.err()) != ReasonWireDamaged {
+			t.Fatalf("%s: field() = %v", c.name, r.err())
 		}
 	}
 }

@@ -60,7 +60,7 @@ func TestRetainedContainerUnionArmsElixir(t *testing.T) {
 			retain := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
 			var load, save tabletext.Report
 			ok, e := tablewire.DecodeRetain(m, v, wire, &retain, &load)
-			if e != nil || !ok || load.Malformed || load.Unknown != 1 || int(load.Retained) != tc.retained || int(load.RetainLost) != tc.lost {
+			if e != nil || !ok || load.Refused || load.Unknown != 1 || int(load.Retained) != tc.retained || int(load.RetainLost) != tc.lost {
 				t.Fatalf("oracle load: %v %v %+v", ok, e, load)
 			}
 			want, e := tablewire.EncodeRetain(m, v, &retain, &save)
@@ -102,7 +102,7 @@ func TestPinnedNestedUnionRetainElixir(t *testing.T) {
 	store := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
 	var load, save tabletext.Report
 	ok, e := tablewire.DecodeRetain(m, v, wire, &store, &load)
-	if e != nil || !ok || load.Malformed || load.Unknown != 1 || load.Retained != 1 || load.RetainLost != 0 {
+	if e != nil || !ok || load.Refused || load.Unknown != 1 || load.Retained != 1 || load.RetainLost != 0 {
 		t.Fatalf("pinned nested union: %v %v %+v", ok, e, load)
 	}
 	want, e := tablewire.EncodeRetain(m, v, &store, &save)

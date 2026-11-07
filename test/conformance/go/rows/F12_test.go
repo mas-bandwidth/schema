@@ -50,8 +50,7 @@ func TestRowF12(t *testing.T) {
 		t.Fatalf("second AnnounceRead reason should be \"second_announcement\", got %q", r2.Reason)
 	}
 	// counters must remain zero on a refusal by name
-	if r2.Unknown != 0 || r2.KindMismatch != 0 || r2.Widened != 0 ||
-		r2.Clamped != 0 || r2.Duplicate != 0 || r2.Malformed {
+	if r2.Unknown != 0 || r2.Widened != 0 {
 		t.Fatalf("second AnnounceRead must leave counters zero: %+v", r2)
 	}
 }

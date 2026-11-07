@@ -249,7 +249,7 @@ func runCycleSlotKindsProbe(t *testing.T) {
 					try[i+2] = 0
 					inst := cm.New(cm.Lookup("Node"))
 					var rep tabletext.Report
-					if ok, err := tablewire.Decode(cm, inst, try, &rep); ok && err == nil && !rep.Malformed {
+					if ok, err := tablewire.Decode(cm, inst, try, &rep); ok && err == nil && !rep.Refused {
 						twin = try
 						break
 					}

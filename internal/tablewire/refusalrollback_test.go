@@ -37,21 +37,21 @@ func TestNonFiniteRefusalDiscardsDecodedState(t *testing.T) {
 				}
 			}
 			var good tabletext.Report
-			if ok, err := decode(wire, &good); !ok || err != nil || good.Malformed || oracleField(t, inst, "x").Cell.I != 7 {
+			if ok, err := decode(wire, &good); !ok || err != nil || good.Refused || oracleField(t, inst, "x").Cell.I != 7 {
 				t.Fatalf("valid control: ok=%v err=%v report=%+v", ok, err, good)
 			}
 			if (mode == "retain" || mode == "region-retain") && retained.Used() == 0 {
 				t.Fatal("valid control retained nothing")
 			}
-			// An existing report flag must neither hide this refusal nor be erased.
-			report := tabletext.Report{Malformed: true}
+			// A report a previous read filled is overwritten with this read's.
+			report := tabletext.Report{Unknown: 2}
 			ok, err := decode(bad, &report)
 			if ok {
 				t.Fatal("accepted a nonfinite float")
 			}
 			refusedAs(t, mode, err, report, "Root.f")
-			if !report.Malformed {
-				t.Fatal("erased the previous read's malformed flag")
+			if !report.Refused || report.Unknown != 0 {
+				t.Fatalf("the refusal kept a previous read's counter: %+v", report)
 			}
 			if !reflect.DeepEqual(inst, reader.New(inst.Def)) {
 				t.Error("refusal left decoded fields instead of declared defaults")

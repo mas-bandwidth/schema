@@ -100,7 +100,7 @@ func TestUpgradePreservesRemovedField(t *testing.T) {
 	region := alignedRegion(n)
 	var fr cardsfuture.TableReport
 	froot := cardsfuture.CardLoad(region, out, &fr)
-	if froot == nil || fr.Malformed {
+	if froot == nil || fr.Refused() {
 		t.Fatalf("future reread failed: %+v", fr)
 	}
 	if got := rowStr(froot.FutureNote[:], froot.FutureNoteLength); got != "future-value" {

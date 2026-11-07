@@ -87,11 +87,11 @@ func TestSquirrelPointerOrphanCycleIsDamage(t *testing.T) {
 	m := tabletext.NewModel(u)
 	var rep tabletext.Report
 	ok, err := tablewire.Decode(m, m.New(m.Lookup("Scene")), wire, &rep)
-	if err != nil {
+	if err != nil && !tablewire.ReadRefusal(err) {
 		t.Fatal(err)
 	}
-	if ok || !rep.Malformed {
-		t.Fatalf("the Go engine decoded pointer_orphan_cycle with ok=%t malformed=%t, want damage", ok, rep.Malformed)
+	if ok || !rep.Refused {
+		t.Fatalf("the Go engine decoded pointer_orphan_cycle with ok=%t refused=%t, want damage", ok, rep.Refused)
 	}
 	if got := runSquirrelOrphanCycleProbe(t, wire, false); got != "null|damage" {
 		t.Fatalf("graphdemo.Scene(pointer_orphan_cycle.bin): Squirrel SceneLoad answered %q, want \"null|damage\" (a cycle among records the root never reaches is damage)", got)
@@ -106,11 +106,11 @@ func TestSquirrelPointerOrphanCycleIsDamage(t *testing.T) {
 	}
 	var twinRep tabletext.Report
 	twinOK, err := tablewire.Decode(m, m.New(m.Lookup("Scene")), twin, &twinRep)
-	if err != nil {
+	if err != nil && !tablewire.ReadRefusal(err) {
 		t.Fatal(err)
 	}
-	if !twinOK || twinRep.Malformed {
-		t.Fatalf("the Go engine decoded the acyclic orphan twin with ok=%t malformed=%t, want loaded", twinOK, twinRep.Malformed)
+	if !twinOK || twinRep.Refused {
+		t.Fatalf("the Go engine decoded the acyclic orphan twin with ok=%t refused=%t, want loaded", twinOK, twinRep.Refused)
 	}
 	if got := runSquirrelOrphanCycleProbe(t, twin, false); got != "loaded|ok" {
 		t.Fatalf("graphdemo.Scene(acyclic orphan twin): Squirrel SceneLoad answered %q, want \"loaded|ok\"", got)

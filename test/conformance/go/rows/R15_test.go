@@ -124,21 +124,6 @@ func TestRowR15(t *testing.T) {
 	} else {
 		fmt.Printf("PASS: Unknown=0 (no drop-and-count of an unknown field)\n")
 	}
-	if rep.KindMismatch != 0 {
-		t.Errorf("KindMismatch=%d, want 0", rep.KindMismatch)
-	} else {
-		fmt.Printf("PASS: KindMismatch=0\n")
-	}
-	if rep.Clamped != 0 {
-		t.Errorf("Clamped=%d, want 0 (count and range clamps retired: a refusal moves no counter)", rep.Clamped)
-	} else {
-		fmt.Printf("PASS: Clamped=0 (no count clamp, no range clamp)\n")
-	}
-	if rep.Malformed {
-		t.Errorf("Malformed=true, want false (layout_unknown is a refusal, not damage)")
-	} else {
-		fmt.Printf("PASS: Malformed=false\n")
-	}
 	// remap of an unknown variant to None is retired: the value is a fresh
 	// default, no union tag of the destination landed at all
 	var fresh tblv1.Cfg
