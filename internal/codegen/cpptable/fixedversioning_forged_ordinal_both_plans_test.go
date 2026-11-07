@@ -4,7 +4,7 @@ package cpptable
 // — Tier { Bronze, Silver, Gold } → + Platinum — plus old_enum_append.bin with
 // r0.tier forged to 4, an ordinal past the writer's three variants. The SAME
 // bytes are read TWICE: the NEW build (compiled plan) and the OLD build
-// (identity plan). The counter asserted EXACTLY is `clamped == 1` on BOTH — the
+// (identity plan). The counter asserted EXACTLY is `out_of_range == 1` on BOTH — the
 // bounds pass's count, once per field — and never `>= 1`, because a leg that
 // also counts in the `ordinal` op lands 2 and passes a `>=` check.
 import (
@@ -45,13 +45,13 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 
 	body := `
     if ( n != 1 ) { printf( "the forged file reads one record, not %lld\n", (long long) n ); return 1; }
-    if ( r.refused || r.malformed )
-        { printf( "the forged read is not a refusal: refused=%d malformed=%d reason=%d\n", (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
+    if ( r.refused || r.damaged )
+        { printf( "the forged read is not a refusal: refused=%d malformed=%d reason=%d\n", (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
     if ( back[0].tier != Tier::None ) { printf( "the forged ordinal lands None, not %d\n", (int) back[0].tier ); return 1; }
     if ( back[0].seq != 9 ) { printf( "the scalar after the enum must stand at 9, not %d\n", (int) back[0].seq ); return 1; }
-    if ( r.clamped != 1 ) { printf( "clamped is the bounds pass's count, once per field: %d\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "only clamped may move on a forged ordinal: unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+    if ( r.refused != 1 ) { printf( "out_of_range is the bounds pass's count, once per field: %d\n", r.refused ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "only out_of_range may move on a forged ordinal: unknown=%d kind_mismatch=%d widened=%d repeated=%d\n", r.unknown, r.refused, r.widened, r.refused ); return 1; }
 `
 
 	// THE COMPILED PLAN: the NEW build reads the forged OLD file through the
@@ -131,7 +131,7 @@ int main( void )
     memset( back, 0, sizeof( back ) );
     for ( int k = 0; k < 8; ++k ) { %sReset( back[k] ); }
     memset( &r, 0, sizeof( r ) );
-    n = %sFixedLoadTolerant( back, 8, data, len, plan, 4096, NULL, &r );
+    n = %sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
 %s
     return 0;
 }

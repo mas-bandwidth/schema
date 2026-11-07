@@ -10,9 +10,9 @@ import (
 // tableOpenProbeComparisons is the ir-level reimplementation of the distinctness
 // walk the emitters share (docs/SPEC-TABLES.md §3, the bounded-work contract):
 // an open-addressing probe over 8192 slots, capped at 4096 entries, with the
-// reference's Fibonacci multiply. It returns whether a duplicate was found and
+// reference's Fibonacci multiply. It returns whether a repeated was found and
 // how many slot-id comparisons the probe made — the work the contract bounds.
-func tableOpenProbeComparisons(ids []uint64) (duplicate bool, comparisons int) {
+func tableOpenProbeComparisons(ids []uint64) (repeated bool, comparisons int) {
 	const bound = 4096
 	const slots = 8192
 	const shift = 51
@@ -64,7 +64,7 @@ func TestTableOpenIdValidationWorkIsBounded(t *testing.T) {
 	}
 
 	// The probe's id comparisons at three distinct-id sizes stay within the
-	// n(n-1)/2 ceiling the contract states, and a duplicate at each size is
+	// n(n-1)/2 ceiling the contract states, and a repeated at each size is
 	// still refused.
 	for _, n := range []int{129, 512, 4096} {
 		ids := make([]uint64, n)
@@ -73,7 +73,7 @@ func TestTableOpenIdValidationWorkIsBounded(t *testing.T) {
 		}
 		dup, cmp := tableOpenProbeComparisons(ids)
 		if dup {
-			t.Fatalf("%d distinct ids reported a duplicate", n)
+			t.Fatalf("%d distinct ids reported a repeated", n)
 		}
 		if budget := n * (n - 1) / 2; cmp > budget {
 			t.Fatalf("%d distinct ids: %d comparisons exceed the %d budget", n, cmp, budget)
@@ -81,7 +81,7 @@ func TestTableOpenIdValidationWorkIsBounded(t *testing.T) {
 		ids[n-1] = ids[0]
 		dup, _ = tableOpenProbeComparisons(ids)
 		if !dup {
-			t.Fatalf("%d ids with a duplicate went undetected", n)
+			t.Fatalf("%d ids with a repeated went undetected", n)
 		}
 	}
 }

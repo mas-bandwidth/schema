@@ -187,19 +187,19 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
         for (int old_damage = 0; old_damage <= 1; old_damage++) {
             for (int retaining = 0; retaining <= 1; retaining++) {
                 TableReport report;
-                report.unknown = 7; report.kind_mismatch = 11; report.widened = 13; report.clamped = 17;
-                report.duplicate = 19; report.retained = 23; report.retain_lost = 29; report.malformed = (old_damage != 0);
+                report.unknown = 7; report.refused = 11; report.widened = 13; report.refused = 17;
+                report.refused = 19; report.retained = 23; report.retain_lost = 29; report.damaged = (old_damage != 0);
                 report.refused = true; report.reason = non_finite_float; report.non_finite_floats = 3;
                 TableRetain store; store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes); store.ids = retain_ids; store.id_capacity = 64;
                 store.used = 12; store.id_used = 1; store.count = 1;
                 const void * loaded = retaining
                     ? (const void *)%sLoadRetain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                    : (const void *)%sLoadTolerant(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
+                    : (const void *)%sLoad(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
                 CHECK(loaded == NULL, "%s/%d partial value");
                 CHECK(report.refused && report.reason == count_over_extent_cap, "%s/%d named count refusal");
-                CHECK(report.malformed == (old_damage != 0), "%s/%d damage history");
-                CHECK(report.unknown == %d && report.kind_mismatch == 11 && report.widened == %d &&
-                    report.clamped == 17 && report.duplicate == %d && report.non_finite_floats == 3 &&
+                CHECK(report.damaged == (old_damage != 0), "%s/%d damage history");
+                CHECK(report.unknown == %d && report.refused == 11 && report.widened == %d &&
+                    report.refused == 17 && report.refused == %d && report.non_finite_floats == 3 &&
                     report.retained == (retaining ? %d : 23) &&
                     report.retain_lost == (retaining ? %d : 29), "%s/%d counters");
                 CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "%s/%d retained partial state");
@@ -208,16 +208,16 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
         {
             TableReport strict_report;
             CHECK(%sLoad(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &strict_report) == NULL, "%s/%d strict load");
-            CHECK(strict_report.refuse_reason == count_over_extent_cap && !strict_report.malformed, "%s/%d strict reason");
+            CHECK(strict_report.refuse_reason == count_over_extent_cap && !strict_report.damaged, "%s/%d strict reason");
             %sBuilder builder;
             TableReport builder_report;
-            builder_report.unknown = 7; builder_report.widened = 13; builder_report.duplicate = 19;
-            CHECK(!%sLoadBuilderTolerant(builder, wire, (int64_t)sizeof(wire), &builder_report), "%s/%d builder refusal");
-            CHECK(!builder_report.malformed && builder_report.refused && builder_report.reason == count_over_extent_cap &&
+            builder_report.unknown = 7; builder_report.widened = 13; builder_report.refused = 19;
+            CHECK(!%sLoadBuilder(builder, wire, (int64_t)sizeof(wire), &builder_report), "%s/%d builder refusal");
+            CHECK(!builder_report.damaged && builder_report.refused && builder_report.reason == count_over_extent_cap &&
                 builder_report.refuse_reason == count_over_extent_cap &&
-                builder_report.unknown == %d && builder_report.widened == %d && builder_report.duplicate == %d, "%s/%d builder counters");
+                builder_report.unknown == %d && builder_report.widened == %d && builder_report.refused == %d, "%s/%d builder counters");
             TableReport plain_report;
-            CHECK(!%sLoadBuilder(builder, wire, (int64_t)sizeof(wire), &plain_report) && !plain_report.malformed &&
+            CHECK(!%sLoadBuilder(builder, wire, (int64_t)sizeof(wire), &plain_report) && !plain_report.damaged &&
                 plain_report.refuse_reason == count_over_extent_cap, "%s/%d plain builder reason");
         }
     }
@@ -234,13 +234,13 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
         static const uint8_t wire[] = { %s };
         for (int retaining = 0; retaining <= 1; retaining++) {
             TableReport report;
-            report.refused = true; report.reason = count_over_extent_cap; report.malformed = true;
+            report.refused = true; report.reason = count_over_extent_cap; report.damaged = true;
             TableRetain store; store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes); store.ids = retain_ids; store.id_capacity = 64;
             const void * loaded = retaining
                 ? (const void *)%sLoadRetain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)%sLoadTolerant(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
+                : (const void *)%sLoad(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
             CHECK(loaded != NULL, "%s prior refusal is not current control state");
-            CHECK(report.refused && report.reason == count_over_extent_cap && report.malformed, "%s history preserved after good read");
+            CHECK(report.refused && report.reason == count_over_extent_cap && report.damaged, "%s history preserved after good read");
         }
     }
 `, cppBytes(wire), root, root, shape, shape)
@@ -258,8 +258,8 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
             TableRetain store; store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes); store.ids = retain_ids; store.id_capacity = 64;
             const void * loaded = retaining
                 ? (const void *)MapHolderLoadRetain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)MapHolderLoadTolerant(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
-            CHECK(loaded == NULL && report.malformed && !report.refused && report.reason != count_over_extent_cap, "descending key precedes nested value refusal");
+                : (const void *)MapHolderLoad(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
+            CHECK(loaded == NULL && report.damaged && !report.refused && report.reason != count_over_extent_cap, "descending key precedes nested value refusal");
             CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "descending map retained state");
         }
     }
@@ -277,8 +277,8 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
             TableRetain store; store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes); store.ids = retain_ids; store.id_capacity = 64;
             const void * loaded = retaining
                 ? (const void *)LeafLoadRetain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)LeafLoadTolerant(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
-            CHECK(loaded == NULL && report.malformed && !report.refused && report.reason != count_over_extent_cap, "body-short remains damage");
+                : (const void *)LeafLoad(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
+            CHECK(loaded == NULL && report.damaged && !report.refused && report.reason != count_over_extent_cap, "body-short remains damage");
             CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "body-short retained state");
         }
     }
@@ -287,9 +287,9 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
         const TableRefuseReason reasons[2] = { message_form_as_file, newer_form };
         for (int i = 0; i < 2; i++) {
             TableReport report;
-            report.malformed = true; report.unknown = 7;
-            CHECK(LeafLoadTolerant(region, (int64_t)sizeof(region), &forms[i], 1, &report) == NULL && report.refused && report.reason == reasons[i], "form refusal name");
-            CHECK(report.malformed && report.unknown == 7, "form preserves history");
+            report.damaged = true; report.unknown = 7;
+            CHECK(LeafLoad(region, (int64_t)sizeof(region), &forms[i], 1, &report) == NULL && report.refused && report.reason == reasons[i], "form refusal name");
+            CHECK(report.damaged && report.unknown == 7, "form preserves history");
         }
     }
 `, cppBytes(short))
@@ -325,9 +325,9 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
             }
             const void * loaded = mode > 0
                 ? (const void *)HolderLoadRetain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)HolderLoadTolerant(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
+                : (const void *)HolderLoad(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
             CHECK(loaded == NULL && report.refused && report.reason == count_over_extent_cap, "%s reason");
-            CHECK(!report.malformed && report.unknown == %d && report.widened == %d, "%s prefix counters");
+            CHECK(!report.damaged && report.unknown == %d && report.widened == %d, "%s prefix counters");
             CHECK(report.retained == (mode == 1 ? %d : 23) &&
                 report.retain_lost == (mode == 2 ? %d : (mode == 1 ? %d : 29)), "%s retention counters");
             CHECK(store.used == 0 && store.id_used == 0 && store.count == 0, "%s partial retained state");
@@ -470,14 +470,14 @@ func TestJsonLeadingBOMBoundaryCPP(t *testing.T) {
         FixedLeafReset(vfs); vfs.a = 42;
         bool ok_fs = FixedLeafFromJson(vfs, (const char *)text, (int64_t)sizeof(text), &rfs);
         FixedLeafReset(vft); vft.a = 42;
-        bool ok_ft = FixedLeafFromJsonTolerant(vft, (const char *)text, (int64_t)sizeof(text), &rft);
+        bool ok_ft = FixedLeafFromJson(vft, (const char *)text, (int64_t)sizeof(text), &rft);
         printf("BOM_CASE fixed/%s: strict=%%s tolerant=%%s\n", ok_fs ? "accept" : "refuse", ok_ft ? "accept" : "refuse");
-        CHECK(ok_fs && !rfs.malformed && !rfs.refused && rfs.refuse_reason == TableRefuseReason::ok &&
-            rfs.unknown == 0 && rfs.kind_mismatch == 0 && rfs.widened == 0 && rfs.clamped == 0 &&
-            rfs.duplicate == 0 && rfs.retained == 0 && rfs.retain_lost == 0 && vfs.a == 0, "fixed/%s strict accept");
-        CHECK(ok_ft && !rft.malformed && !rft.refused &&
-            rft.unknown == 0 && rft.kind_mismatch == 0 && rft.widened == 0 && rft.clamped == 0 &&
-            rft.duplicate == 0 && rft.retained == 0 && rft.retain_lost == 0 && vft.a == 0, "fixed/%s tolerant accept");
+        CHECK(ok_fs && !rfs.damaged && !rfs.refused && rfs.refuse_reason == TableRefuseReason::ok &&
+            rfs.unknown == 0 && rfs.refused == 0 && rfs.widened == 0 && rfs.refused == 0 &&
+            rfs.refused == 0 && rfs.retained == 0 && rfs.retain_lost == 0 && vfs.a == 0, "fixed/%s strict accept");
+        CHECK(ok_ft && !rft.damaged && !rft.refused &&
+            rft.unknown == 0 && rft.refused == 0 && rft.widened == 0 && rft.refused == 0 &&
+            rft.refused == 0 && rft.retained == 0 && rft.retain_lost == 0 && vft.a == 0, "fixed/%s tolerant accept");
         int64_t nfs = FixedLeafToJson(vfs, out_fs, (int64_t)sizeof(out_fs));
         int64_t nft = FixedLeafToJson(vft, out_ft, (int64_t)sizeof(out_ft));
         CHECK(nfs == (int64_t)sizeof(fixed_canon) && memcmp(out_fs, fixed_canon, sizeof(fixed_canon)) == 0 &&
@@ -487,14 +487,14 @@ func TestJsonLeadingBOMBoundaryCPP(t *testing.T) {
         bgs.GetRoot()->a = 42;
         bool ok_gs = GraphLeafFromJson(bgs, (const char *)text, (int64_t)sizeof(text), &rgs);
         bgt.GetRoot()->a = 42;
-        bool ok_gt = GraphLeafFromJsonTolerant(bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
+        bool ok_gt = GraphLeafFromJson(bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
         printf("BOM_CASE graph/%s: strict=%%s tolerant=%%s\n", ok_gs ? "accept" : "refuse", ok_gt ? "accept" : "refuse");
-        CHECK(ok_gs && !rgs.malformed && !rgs.refused && rgs.refuse_reason == TableRefuseReason::ok &&
-            rgs.unknown == 0 && rgs.kind_mismatch == 0 && rgs.widened == 0 && rgs.clamped == 0 &&
-            rgs.duplicate == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && bgs.GetRoot()->a == 0, "graph/%s strict accept");
-        CHECK(ok_gt && !rgt.malformed && !rgt.refused &&
-            rgt.unknown == 0 && rgt.kind_mismatch == 0 && rgt.widened == 0 && rgt.clamped == 0 &&
-            rgt.duplicate == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && bgt.GetRoot()->a == 0, "graph/%s tolerant accept");
+        CHECK(ok_gs && !rgs.damaged && !rgs.refused && rgs.refuse_reason == TableRefuseReason::ok &&
+            rgs.unknown == 0 && rgs.refused == 0 && rgs.widened == 0 && rgs.refused == 0 &&
+            rgs.refused == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && bgs.GetRoot()->a == 0, "graph/%s strict accept");
+        CHECK(ok_gt && !rgt.damaged && !rgt.refused &&
+            rgt.unknown == 0 && rgt.refused == 0 && rgt.widened == 0 && rgt.refused == 0 &&
+            rgt.refused == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && bgt.GetRoot()->a == 0, "graph/%s tolerant accept");
         int64_t ngs = GraphLeafToJson(bgs.GetRoot(), out_gs, (int64_t)sizeof(out_gs));
         int64_t ngt = GraphLeafToJson(bgt.GetRoot(), out_gt, (int64_t)sizeof(out_gt));
         CHECK(ngs == (int64_t)sizeof(graph_canon) && memcmp(out_gs, graph_canon, sizeof(graph_canon)) == 0 &&
@@ -509,27 +509,27 @@ func TestJsonLeadingBOMBoundaryCPP(t *testing.T) {
         FixedLeafReset(vfs); vfs.a = 42;
         bool ok_fs = FixedLeafFromJson(vfs, (const char *)text, (int64_t)sizeof(text), &rfs);
         FixedLeafReset(vft); vft.a = 42;
-        bool ok_ft = FixedLeafFromJsonTolerant(vft, (const char *)text, (int64_t)sizeof(text), &rft);
+        bool ok_ft = FixedLeafFromJson(vft, (const char *)text, (int64_t)sizeof(text), &rft);
         printf("BOM_CASE fixed/%s: strict=%%s tolerant=%%s\n", ok_fs ? "accept" : "refuse", ok_ft ? "accept" : "refuse");
-        CHECK(!ok_fs && rfs.malformed && !rfs.refused && rfs.refuse_reason == TableRefuseReason::malformed &&
-            rfs.unknown == 0 && rfs.kind_mismatch == 0 && rfs.widened == 0 && rfs.clamped == 0 &&
-            rfs.duplicate == 0 && rfs.retained == 0 && rfs.retain_lost == 0 && vfs.a == 0, "fixed/%s strict refuse");
-        CHECK(!ok_ft && rft.malformed && !rft.refused &&
-            rft.unknown == 0 && rft.kind_mismatch == 0 && rft.widened == 0 && rft.clamped == 0 &&
-            rft.duplicate == 0 && rft.retained == 0 && rft.retain_lost == 0 && vft.a == 0, "fixed/%s tolerant refuse");
+        CHECK(!ok_fs && rfs.damaged && !rfs.refused && rfs.refuse_reason == TableRefuseReason::malformed &&
+            rfs.unknown == 0 && rfs.refused == 0 && rfs.widened == 0 && rfs.refused == 0 &&
+            rfs.refused == 0 && rfs.retained == 0 && rfs.retain_lost == 0 && vfs.a == 0, "fixed/%s strict refuse");
+        CHECK(!ok_ft && rft.damaged && !rft.refused &&
+            rft.unknown == 0 && rft.refused == 0 && rft.widened == 0 && rft.refused == 0 &&
+            rft.refused == 0 && rft.retained == 0 && rft.retain_lost == 0 && vft.a == 0, "fixed/%s tolerant refuse");
 
         GraphLeafBuilder bgs, bgt; TableReport rgs, rgt;
         bgs.GetRoot()->a = 42;
         bool ok_gs = GraphLeafFromJson(bgs, (const char *)text, (int64_t)sizeof(text), &rgs);
         bgt.GetRoot()->a = 42;
-        bool ok_gt = GraphLeafFromJsonTolerant(bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
+        bool ok_gt = GraphLeafFromJson(bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
         printf("BOM_CASE graph/%s: strict=%%s tolerant=%%s\n", ok_gs ? "accept" : "refuse", ok_gt ? "accept" : "refuse");
-        CHECK(!ok_gs && rgs.malformed && !rgs.refused && rgs.refuse_reason == TableRefuseReason::malformed &&
-            rgs.unknown == 0 && rgs.kind_mismatch == 0 && rgs.widened == 0 && rgs.clamped == 0 &&
-            rgs.duplicate == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && bgs.GetRoot()->a == 0, "graph/%s strict refuse");
-        CHECK(!ok_gt && rgt.malformed && !rgt.refused &&
-            rgt.unknown == 0 && rgt.kind_mismatch == 0 && rgt.widened == 0 && rgt.clamped == 0 &&
-            rgt.duplicate == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && bgt.GetRoot()->a == 0, "graph/%s tolerant refuse");
+        CHECK(!ok_gs && rgs.damaged && !rgs.refused && rgs.refuse_reason == TableRefuseReason::malformed &&
+            rgs.unknown == 0 && rgs.refused == 0 && rgs.widened == 0 && rgs.refused == 0 &&
+            rgs.refused == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && bgs.GetRoot()->a == 0, "graph/%s strict refuse");
+        CHECK(!ok_gt && rgt.damaged && !rgt.refused &&
+            rgt.unknown == 0 && rgt.refused == 0 && rgt.widened == 0 && rgt.refused == 0 &&
+            rgt.refused == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && bgt.GetRoot()->a == 0, "graph/%s tolerant refuse");
     }
 `, cppBytes([]byte(tc.text)), tc.name, tc.name, tc.name, tc.name, tc.name, tc.name)
 		}

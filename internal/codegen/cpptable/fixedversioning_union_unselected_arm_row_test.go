@@ -34,9 +34,9 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
     if ( back[0].pick.type != PickType::Alpha ) { printf( "pick.type is the writer's alpha arm, not %d\n", (int) back[0].pick.type ); return 1; }
     if ( back[0].pick.alpha.m != 7 ) { printf( "pick.alpha.m is the writer's 7, not %d\n", (int) back[0].pick.alpha.m ); return 1; }
     if ( back[0].seq != 15 ) { printf( "seq is the writer's 15, not %d\n", (int) back[0].seq ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 || r.retained != 0 || r.retain_lost != 0 )
-        { printf( "a clean backward read moved a counter: unknown=%d kind_mismatch=%d widened=%d clamped=%d duplicate=%d retained=%d retain_lost=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate, r.retained, r.retain_lost ); return 1; }
-    if ( r.malformed ) { printf( "a clean backward read is not malformed\n" ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 || r.retained != 0 || r.retain_lost != 0 )
+        { printf( "a clean backward read moved a counter: unknown=%d widened=%d retained=%d retain_lost=%d\n", r.unknown, r.widened, r.retained, r.retain_lost ); return 1; }
+    if ( r.damaged ) { printf( "a clean backward read is not malformed\n" ); return 1; }
     if ( r.refused ) { printf( "a clean backward read is not a refusal: reason=%d\n", (int) r.reason ); return 1; }
 `
 

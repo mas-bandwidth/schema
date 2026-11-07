@@ -11,7 +11,7 @@ package cpptable
 // These assertions read the GENERATED C++ the emitter writes — the write body
 // and the bounds pass are where "?T vs plain nesting", "absent optional skips
 // store", and "a clamp that cannot fire is not emitted" are decided — and the
-// package-scoped runtime source, which is where "duplicate never raised" is
+// package-scoped runtime source, which is where "repeated never raised" is
 // decided. A text assertion is the direct assertion of an emitter rule: the
 // rule IS the text the emitter writes, and a planted change to the emitting
 // site turns it red naming the rule.
@@ -120,27 +120,27 @@ func TestFixedRoadmapCppT04VersionsEvolution(t *testing.T) {
 			// cpptable.go TableReport: "The wire never raises it — a body
 			// carrying an id twice is legal input whose last occurrence wins,
 			// silently (§3)." The fixed runtime and the emitted fixed code
-			// raise no duplicate, so the counter is never written.
+			// raise no repeated, so the counter is never written.
 			//
-			// The report struct DECLARES `int32_t duplicate = 0;`
+			// The report struct DECLARES `int32_t repeated = 0;`
 			// (cpptable.go TableReport), so searching the header for the bare
 			// name would match the declaration and never bite. The wire's
 			// decision is a RAISE, and the fixed load loop hands the runtime
 			// its report pointer (fixedform.go emitFixedLoad: `TableFixedRun(
-			// ..., report )`), so a fixed raise is spelled `report->duplicate`
-			// / `r.report->duplicate`. The TEXT form legitimately raises the
+			// ..., report )`), so a fixed raise is spelled `report->refused`
+			// / `r.report->refused`. The TEXT form legitimately raises the
 			// counter for a repeated keyed-object key (json.go, the object
-			// rule §16.2), always as `in.report->duplicate++`; that text-form
+			// rule §16.2), always as `in.report->refused++`; that text-form
 			// raise is removed and the fixed raise token is what remains to be
 			// searched for.
-			if strings.Contains(tableFixedRuntime, "duplicate") {
-				t.Fatal("the fixed runtime names a duplicate counter; the wire never raises it (SPEC-TABLES §3)")
+			if strings.Contains(tableFixedRuntime, "repeated") {
+				t.Fatal("the fixed runtime names a repeated counter; the wire never raises it (SPEC-TABLES §3)")
 			}
 			gen := cppT04Generated(t, "VNEW_optional_add.schema")
-			wire := strings.ReplaceAll(gen, "in.report->duplicate++", "")
-			for _, raise := range []string{"duplicate++", "duplicate +="} {
+			wire := strings.ReplaceAll(gen, "in.report->refused++", "")
+			for _, raise := range []string{"repeated++", "repeated +="} {
 				if strings.Contains(wire, raise) {
-					t.Fatalf("the generated fixed code moves the duplicate counter via %q; the wire never raises it (SPEC-TABLES §3)", raise)
+					t.Fatalf("the generated fixed code moves the repeated counter via %q; the wire never raises it (SPEC-TABLES §3)", raise)
 				}
 			}
 		}},

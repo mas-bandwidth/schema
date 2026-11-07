@@ -17,7 +17,7 @@ const twoRefusalsSchema = "package probe\n table Root { f float32\n values []int
 // TestTwoRefusalsFirstNamesTheReadCPP holds the C++ builder reads to the float
 // rows of the shared pin table: a read that meets a NaN and a count above the
 // int32 storage cap is named by the refusal it meets first (docs/SPEC-TABLES.md
-// §2.9). LoadBuilderTolerant's reason, LoadBuilder's refuse_reason and
+// §2.9). LoadBuilder's reason, LoadBuilder's refuse_reason and
 // ReadStrict's reason each answer the pin's strict column.
 func TestTwoRefusalsFirstNamesTheReadCPP(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler (c++)")
@@ -51,7 +51,7 @@ func TestTwoRefusalsFirstNamesTheReadCPP(t *testing.T) {
         static const uint8_t wire[] = { %s };
         RootBuilder tolerant;
         TableReport tolerant_report;
-        const bool kept = RootLoadBuilderTolerant( tolerant, wire, (int64_t)sizeof(wire), &tolerant_report );
+        const bool kept = RootLoadBuilder( tolerant, wire, (int64_t)sizeof(wire), &tolerant_report );
         printf( "%s tolerant %%s\n", kept ? "ok" : name( tolerant_report.reason ) );
         RootBuilder plain;
         TableReport plain_report;

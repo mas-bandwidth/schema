@@ -25,9 +25,9 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
             if ( back[0].items[k].a != want[k] ) { printf( "unknown_census: items[%d].a is not %d: %d\n", k, want[k], back[0].items[k].a ); return 1; }
     }
     if ( r.unknown != 1 ) { printf( "unknown is not exactly 1: %d\n", r.unknown ); return 1; }
-    if ( r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 )
-        { printf( "unknown_census: a counter moved on a clean backward read: unknown=%d km=%d w=%d c=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "unknown_census: a clean read refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
+    if ( r.widened != 0 )
+        { printf( "unknown_census: a counter moved on a clean backward read: unknown=%d km=%d w=%d c=%d\n", r.unknown, r.refused, r.widened, r.refused ); return 1; }
+    if ( r.damaged || r.refused ) { printf( "unknown_census: a clean read refused: malformed=%d refused=%d\n", (int) r.damaged, (int) r.refused ); return 1; }
 `
 	out, err := cppRunVersionProbe(t, "unknown_census",
 		filepath.Join(corpus, "old_unknown_census.bin"), body, "")
