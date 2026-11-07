@@ -2490,6 +2490,10 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
            a vocabulary wider than this still reads, its repeats simply stop
            being counted. */
         memset( seen, 0, sizeof( seen ) );
+        {
+        uint64_t unplaced[64];
+        int32_t unplaced_count = 0;
+        memset( unplaced, 0, sizeof( unplaced ) );
         for ( ;; )
         {
             char c = table_json_peek( in );
@@ -2520,6 +2524,18 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             }
             if ( slot < 0 )
             {
+                /* a key this reader cannot place is still a key: spelling
+                   it twice is a repeated key, refused like a placed one.
+                   Tracked by hash, bounded and allocation-free; past the
+                   table its repeats stop being counted. */
+                uint64_t hash = 1469598103934665603ULL;
+                int32_t ki;
+                for ( ki = 0; ki < key_length; ki++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[ki] ) * 1099511628211ULL; }
+                for ( ki = 0; ki < unplaced_count; ki++ )
+                {
+                    if ( unplaced[ki] == hash ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                }
+                if ( ki == unplaced_count && unplaced_count < 64 ) { unplaced[unplaced_count++] = hash; }
                 in->report->unknown++;
                 if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
@@ -2537,6 +2553,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( c == '}' ) { in->pos++; break; }
             in->bad = 1;
             return 0;
+        }
         }
         return 1;
     }
