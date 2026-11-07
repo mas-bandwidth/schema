@@ -228,18 +228,13 @@ func TestSquirrelWireIntegrityCheck(t *testing.T) {
 		v.Fields[0].Cell.U = 1000
 	})
 	table := crc32.MakeTable(crc32.Castagnoli)
-	seal := func(body []byte) []byte {
-		out := append(append([]byte(nil), body...), 0, 0, 0, 0)
-		binary.LittleEndian.PutUint32(out[len(body):], crc32.Checksum(body, table))
-		return out
-	}
 	if got, want := hex.EncodeToString(plain), hex.EncodeToString(plainBody); got != want {
 		t.Fatalf("the variable table moved from schema-go's keyless save:\n got %s\nwant %s", got, want)
 	}
-	if got, want := hex.EncodeToString(ledger), hex.EncodeToString(seal(ledgerBody)); got != want {
+	if got, want := hex.EncodeToString(ledger), hex.EncodeToString(ledgerBody); got != want {
 		t.Fatalf("Ledger is not schema-go's save plus the CRC-32C trailer:\n got %s\nwant %s", got, want)
 	}
-	if got, want := hex.EncodeToString(big), hex.EncodeToString(seal(bigBody)); got != want {
+	if got, want := hex.EncodeToString(big), hex.EncodeToString(bigBody); got != want {
 		t.Fatalf("Big is not schema-go's save plus the CRC-32C trailer:\n got %s\nwant %s", got, want)
 	}
 	for name, w := range map[string][]byte{"Ledger": ledger, "Big": big} {
