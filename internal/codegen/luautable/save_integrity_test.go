@@ -82,9 +82,10 @@ table Plain
 		if err != nil {
 			t.Fatalf("%s: tablewire.Encode: %v", tableName, err)
 		}
-		if seal {
-			sum := crc32.Checksum(wire, crc32.MakeTable(crc32.Castagnoli))
-			wire = binary.LittleEndian.AppendUint32(wire, sum)
+		// the engine writes the §2.14 trailer itself; a declaring table's
+		// reference save must end in it
+		if seal && (len(wire) < 4 || binary.LittleEndian.Uint32(wire[len(wire)-4:]) != crc32.Checksum(wire[:len(wire)-4], crc32.MakeTable(crc32.Castagnoli))) {
+			t.Fatalf("%s: the reference save carries no integrity trailer: %x", tableName, wire)
 		}
 		return wire
 	}

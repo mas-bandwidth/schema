@@ -164,7 +164,11 @@ static partial class Program
 
         // WARMUP: always unplanted so JIT compilation, tiered optimization, and
         // the cached null-report ledger settle before the count gate starts.
-        const int WarmupIterations = 4000;
+        // Tier-0 / Dynamic PGO compilation runs on the CLR background tiering
+        // thread, so after the initial warmup pass we run 256-iteration batches
+        // until 64 consecutive batches allocate zero bytes (bounded by a cap so
+        // an allocating codec still finishes warmup and fails the gate).
+        const int WarmupIterations = 16384;
         for (int i = 0; i < WarmupIterations; i++)
         {
             if (!SoakIteration(golden, value, report, buffer, need, false))
@@ -172,10 +176,42 @@ static partial class Program
                 return 1;
             }
         }
+        const int SettleBatchIterations = 256;
+        const int SettleZeroBatches = 64;
+        const int SettleMaxBatches = 2048;
+        int zeroBatches = 0;
+        long settlePrev = GC.GetAllocatedBytesForCurrentThread();
+        for (int b = 0; b < SettleMaxBatches && zeroBatches < SettleZeroBatches; b++)
+        {
+            for (int i = 0; i < SettleBatchIterations; i++)
+            {
+                if (!SoakIteration(golden, value, report, buffer, need, false))
+                {
+                    return 1;
+                }
+            }
+            long settleNow = GC.GetAllocatedBytesForCurrentThread();
+            if (settleNow == settlePrev)
+            {
+                zeroBatches++;
+            }
+            else
+            {
+                zeroBatches = 0;
+                settlePrev = settleNow;
+            }
+        }
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
+        for (int i = 0; i < SettleBatchIterations; i++)
+        {
+            if (!SoakIteration(golden, value, report, buffer, need, false))
+            {
+                return 1;
+            }
+        }
         long heapBefore = GC.GetTotalMemory(true);
         long workingSetBefore = Environment.WorkingSet;
         Console.WriteLine("cs tables soak: counting per-thread allocated bytes over Load, null-report Load, Measure, Save and round trip");

@@ -149,34 +149,35 @@ bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
 
 # bin-schema-embeds: for one embedded file of every package that embeds
-# (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
-# newer mtime on that file makes bin/schema out of date. `make -q` asks
-# without building; the last step rebuilds once.
+# (go list's EmbedFiles, so the list cannot drift from the go:embed lines),
+# `make -q -W <file> bin/schema` answers whether a newer file there makes
+# bin/schema out of date. -W ("what if") takes the file as newer than any
+# time, so the answer does not depend on how finely the filesystem or this
+# make resolves an mtime (make 3.81, macOS's, resolves whole seconds), and no
+# file is touched.
 .PHONY: bin-schema-embeds
 bin-schema-embeds: bin/schema
 	@n=0; for f in $$(go list -deps -f '{{$$d := .Dir}}{{range .EmbedFiles}}{{$$d}}/{{.}}{{"\n"}}{{break}}{{end}}' ./cmd/schema); do \
-		n=$$((n+1)); touch "$$f"; \
-		if $(MAKE) --no-print-directory -q bin/schema; then \
-			echo "bin-schema-embeds FAILED: touching $$f left bin/schema up to date"; exit 1; fi; \
-		touch -r "$$f" bin/schema; \
+		n=$$((n+1)); rel=$${f#$(CURDIR)/}; \
+		if $(MAKE) --no-print-directory -q -W "$$rel" bin/schema; then \
+			echo "bin-schema-embeds FAILED: a newer $$rel left bin/schema up to date"; exit 1; fi; \
 	done; \
 	test $$n -gt 0 || { echo "bin-schema-embeds FAILED: go list named no embedded file"; exit 1; }; \
 	echo "bin-schema-embeds: $$n embedding package(s), a newer file in each rebuilds bin/schema"
-	@$(MAKE) --no-print-directory bin/schema
 
 test: bin-schema-embeds
 
-# Its control: with EMBED_SOURCES emptied on the command line, a touched
+# Its control: with EMBED_SOURCES emptied on the command line, a newer
 # runtime leaves bin/schema up to date and bin-schema-embeds must go red.
 .PHONY: bin-schema-embeds-negative-control
 bin-schema-embeds-negative-control: bin/schema
 	@mkdir -p build
 	@if $(MAKE) --no-print-directory bin-schema-embeds EMBED_SOURCES= > build/bin-schema-embeds-control.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: with no embedded file a prerequisite, bin-schema-embeds stayed green"; cat build/bin-schema-embeds-control.log; exit 1; fi
-	@grep -q 'bin-schema-embeds FAILED: touching .* left bin/schema up to date' build/bin-schema-embeds-control.log || \
+	@grep -q 'bin-schema-embeds FAILED: a newer .* left bin/schema up to date' build/bin-schema-embeds-control.log || \
 		{ echo "NEGATIVE CONTROL FAILED: bin-schema-embeds went red for another reason"; cat build/bin-schema-embeds-control.log; exit 1; }
 	@$(MAKE) --no-print-directory bin/schema
-	@echo "negative control: without the embedded files as prerequisites, a touched runtime leaves bin/schema stale and bin-schema-embeds goes RED"
+	@echo "negative control: without the embedded files as prerequisites, a newer runtime leaves bin/schema stale and bin-schema-embeds goes RED"
 
 # one generate run emits every header; the stamp carries the dependency
 generated/cpp/.stamp: bin/schema $(SCHEMAS)
@@ -3940,7 +3941,7 @@ tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.sta
 	@grep -Fq '!report.malformed' build/map-builder-cap.log
 	go run ./tools/sabotage -name map-builder-count-oracle -out build/map-builder-oracle.gotext internal/tablewire/decode.go
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/map-builder-oracle.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-builder-oracle.json
-	@if go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
+	@if SCHEMA_SLOW=1 go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
 	@grep -Fq 'must refuse before entries without adding damage' build/map-builder-oracle.log
 
 # THE WRITER EMITS INSERTION ORDER instead of sorted. The instance built OUT OF
@@ -4685,7 +4686,7 @@ tables-tool-cook-node-align-negative-control:
 			{ echo "NEGATIVE CONTROL FAILED: the $$half sabotage did not apply once"; exit 1; }; \
 		printf '{"Replace":{"%s/ir/tablelist.go":"%s/build/node-align-control/%s.go.txt"}}\n' \
 			"$(CURDIR)" "$(CURDIR)" "$$half" > build/node-align-control/$$half.json; \
-		if go test -count=1 -overlay=build/node-align-control/$$half.json \
+		if SCHEMA_SLOW=1 go test -count=1 -overlay=build/node-align-control/$$half.json \
 				-run 'TestCookWriteFixturesAreTheToolsBytes' ./test/conformance/harness/ > build/node-align-control/$$half.log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: the $$half half taken away left the tool's cook of widelist_wide GREEN"; exit 1; \
 		fi; \
@@ -5584,7 +5585,7 @@ tables-wire-fuzz-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/test/conformance/harness/wirefuzz.go":"%s/$(DISCARD_NC)/wirefuzz.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(DISCARD_NC)/overlay.json
-	@if go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyTheRefusalOnDamage$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyTheRefusalOnDamage$$' \
 			./test/conformance/harness > $(DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: damaged loads are compared whole and the gate stayed green"; \
 		cat $(DISCARD_NC)/log; exit 1; \
@@ -5710,7 +5711,7 @@ tables-engine-cycle-negative-control:
 		{ echo "NEGATIVE CONTROL: the engine cycle sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_NC)/decodenodes.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
-	@if go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
 			./test/conformance/harness > $(ENGINE_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: cycles read clean and the framing oracle check stayed green"; \
 		cat $(ENGINE_CYCLE_NC)/log; exit 1; \
@@ -5735,7 +5736,7 @@ tables-engine-cycle-linear-negative-control:
 		{ echo "NEGATIVE CONTROL: the engine linear sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_LINEAR_NC)/overlay.json
-	@if go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
 			./internal/tablewire > $(ENGINE_CYCLE_LINEAR_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: shares are re-entered and the diamond gate stayed green"; \
 		cat $(ENGINE_CYCLE_LINEAR_NC)/log; exit 1; \
@@ -5977,7 +5978,7 @@ define message_form_control
 	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
 	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
-	@if go test -count=1 -overlay=build/message-nc/$(1)-overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/message-nc/$(1)-overlay.json \
 			./test/conformance/harness -run '^$(3)$$' > build/message-nc/$(1).log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage landed and $(3) stayed green"; \
 		cat build/message-nc/$(1).log; exit 1; \
