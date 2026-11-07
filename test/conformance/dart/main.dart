@@ -1675,10 +1675,15 @@ int surfaceCookWrite(String outDir) {
       stderr.writeln('driver: cook-write ${f[1]} names no instance');
       return 1;
     }
+    var wirePath = instance[4];
+    if (wirePath.startsWith('testdata/conformance/tables/wire/')) {
+      wirePath =
+          'testdata/wire/tables/${wirePath.substring('testdata/conformance/tables/wire/'.length)}';
+    }
     final writer = cookWriter(
       instance[2],
       instance[3],
-      File(instance[4]).readAsBytesSync(),
+      File(wirePath).readAsBytesSync(),
     );
     if (writer == null) {
       final why =

@@ -108,6 +108,9 @@ func manifestRows(t *testing.T, repo, unit string) []oracleRow {
 			continue
 		}
 		r := oracleRow{name: fields[1], root: fields[3], path: fields[4]}
+		if strings.HasPrefix(r.path, "testdata/conformance/tables/wire/") {
+			r.path = "testdata/wire/tables/" + filepath.Base(r.path)
+		}
 		for _, a := range fields[5:] {
 			if name, ok := strings.CutPrefix(a, "go-refusal="); ok {
 				r.refusal = name
