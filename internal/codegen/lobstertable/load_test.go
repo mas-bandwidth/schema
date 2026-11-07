@@ -560,32 +560,63 @@ func TestLobsterTableLoadMatchesTheReports(t *testing.T) {
 	t.Logf("%d report rows compared with reports.txt; %d instance rows loaded; %d values equal the reference's; %d rows of refused units", compared, instances, values, refusedRows)
 }
 
-// TestLobsterTableLoadNegativeControl patches the emitted load runtime in
-// memory — the one line that counts an unknown field id (docs/SPEC-TABLES.md
-// §4), matched exactly once — and requires the comparison with reports.txt
-// to go red on a row that counts one, with the unpatched control green.
-func TestLobsterTableLoadNegativeControl(t *testing.T) {
-	t.Parallel()
-	units, _ := readManifest(t)
-	expect := reportLines(t)
-	var rows []loadRow
-	for _, row := range loadRows(t) {
-		if row.name == "v2_cfg_as_v1" {
-			rows = append(rows, row)
+// variableUnknownFieldCase builds a variable-form wire with the reference
+// writer. The older reader knows Root.known and counts Root.extra as unknown.
+func variableUnknownFieldCase(t *testing.T) (*loadUnit, loadRow) {
+	t.Helper()
+	dir := t.TempDir()
+	oldPath := filepath.Join(dir, "old.schema")
+	newPath := filepath.Join(dir, "new.schema")
+	oldSchema := "package probe\ntable Root { known int32 = 1 }\n"
+	newSchema := "package probe\ntable Root { known int32 = 1\n extra string(8) }\n"
+	for path, source := range map[string]string{oldPath: oldSchema, newPath: newSchema} {
+		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+			t.Fatal(err)
 		}
 	}
-	if len(rows) != 1 {
-		t.Fatalf("the manifest names %d rows v2_cfg_as_v1", len(rows))
-	}
-	paths, err := compiler.GatherPaths(prefix(units[rows[0].unit]))
+	newPaths, err := compiler.GatherPaths([]string{newPath})
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, paths)
+	newUnit, err := compiler.New().Load(newPaths)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := expect["v2_cfg_as_v1"]
+	model := tabletext.NewModel(newUnit)
+	value := model.New(model.Lookup("Root"))
+	extra, ok := value.FieldByKey("extra")
+	if !ok {
+		t.Fatal("new Root has no extra field")
+	}
+	extra.Cell.Str = []byte("x")
+	extra.Count = 1
+	wire, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatalf("reference writer: %v", err)
+	}
+	oldPaths, err := compiler.GatherPaths([]string{oldPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := generateLoadUnit(t, oldPaths)
+	if err != nil {
+		t.Fatalf("generate older variable reader: %v", err)
+	}
+	return g, loadRow{kind: "report", name: "unknown_field", unit: "probe", root: "Root", data: wire}
+}
+
+// TestLobsterTableLoadNegativeControl patches the emitted load runtime in
+// memory — the one line that counts an unknown field id (docs/SPEC-TABLES.md
+// §4), matched exactly once — and requires the valid newer writer's wire to
+// go red, with the unpatched control green.
+func TestLobsterTableLoadNegativeControl(t *testing.T) {
+	t.Parallel()
+	g, row := variableUnknownFieldCase(t)
+	rows := []loadRow{row}
+	want := runUnit(t, g, rows).lob[0]
+	if want != "1,0,0,0,0,false,read" {
+		t.Fatalf("valid unknown-field control report = %s, want one unknown and a whole read", want)
+	}
 	if got := runUnit(t, g, rows).lob[0]; got != want {
 		t.Fatalf("the control, unpatched: got %s, want %s", got, want)
 	}
@@ -604,9 +635,9 @@ func TestLobsterTableLoadNegativeControl(t *testing.T) {
 	}
 	got := runUnit(t, g, rows).lob[0]
 	if got == want {
-		t.Fatalf("the patched runtime still matches reports.txt: %s", got)
+		t.Fatalf("the patched runtime still reports the unknown field: %s", got)
 	}
-	t.Logf("the reports comparison went red under the patch: v2_cfg_as_v1 got %s, want %s", got, want)
+	t.Logf("the unknown-field report went red under the patch: got %s, want %s", got, want)
 }
 
 // divergence names the first byte two dumps differ at, with context.
