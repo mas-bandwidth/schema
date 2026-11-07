@@ -22,9 +22,9 @@ name: schema-luau resource bounds
 
 on:
   push:
-    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
   pull_request:
-    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
   schedule:
     # nightly, after the other language lenses
     - cron: '0 4 * * *'
