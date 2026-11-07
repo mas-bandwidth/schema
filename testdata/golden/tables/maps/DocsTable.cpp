@@ -1788,11 +1788,10 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
                             in.pos = mark; // a lone lead surrogate rides as itself
                         }
                     }
-                    // a surrogate half that never found its partner has no
-                    // UTF-8 encoding: encoding it anyway would manufacture
-                    // CESU-8 — invalid UTF-8 — out of input that was valid
-                    // JSON, so it reads as the replacement character
-                    if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; }
+                    // A LONE OR OUT-OF-ORDER SURROGATE ESCAPE REFUSES
+                    // (docs/SPEC-TABLES.md §16.3): it has no UTF-8 encoding, and
+                    // a replacement character would make two texts one value
+                    if ( code >= 0xd800 && code <= 0xdfff ) { in.bad = true; return false; }
                     unit_length = TableJsonEncodeUtf8( code, unit );
                     break;
                 }
@@ -3541,6 +3540,15 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         // a vocabulary wider than this still reads, its repeats simply stop
         // being counted.
         uint64_t seen[8] = {};
+        // A repeated KEY refuses, the resolved slot or none (docs/SPEC-TABLES.md
+        // §16.2): a key that names no slot -- an unknown variant, or "None" -- is
+        // a repeat the second time it stands here, so the key SPELLINGS are
+        // tracked beside the slots, bounded and allocation-free like them.
+        char seen_key_text[8192];
+        int32_t seen_key_off[512];
+        int32_t seen_key_len[512];
+        int32_t seen_keys = 0;
+        int32_t seen_used = 0;
         for ( ;; )
         {
             char c = TableJsonPeek( in );
@@ -3558,6 +3566,22 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             int32_t key_length = 0;
             if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
             key[key_length] = 0;
+            {
+                bool repeated = false;
+                for ( int32_t i = 0; i < seen_keys; i++ )
+                {
+                    if ( seen_key_len[i] == key_length && memcmp( seen_key_text + seen_key_off[i], key, (size_t) key_length ) == 0 ) { repeated = true; break; }
+                }
+                if ( repeated ) { in.report->refused = true; in.report->refuse_reason = malformed;; }
+                else if ( seen_keys < 512 && seen_used + key_length <= (int32_t) sizeof( seen_key_text ) )
+                {
+                    memcpy( seen_key_text + seen_used, key, (size_t) key_length );
+                    seen_key_off[seen_keys] = seen_used;
+                    seen_key_len[seen_keys] = key_length;
+                    seen_keys++;
+                    seen_used += key_length;
+                }
+            }
             if ( TableJsonPeek( in ) != ':' )
             {
                 in.bad = true;

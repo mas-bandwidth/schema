@@ -512,7 +512,7 @@ inline int64_t TableEntityBlockBytes( const TableEntityBlock & block )
 // runs past the caller's bytes, and unaligned_base. The reason is written
 // on the refusal path only.
 //
-// There is ONE entry point, and no tolerant twin: the block form is same-build
+// There is ONE entry point, and no strict twin: the block form is same-build
 // by construction — both sides are generated from one declaration at one build
 // and ship together — so a consumer older than its producer is not a case. A
 // mismatch is a refusal; regenerate both sides. Data that must outlive the
@@ -706,7 +706,7 @@ inline int64_t TableStatBlockBytes( const TableStatBlock & block )
 // runs past the caller's bytes, and unaligned_base. The reason is written
 // on the refusal path only.
 //
-// There is ONE entry point, and no tolerant twin: the block form is same-build
+// There is ONE entry point, and no strict twin: the block form is same-build
 // by construction — both sides are generated from one declaration at one build
 // and ship together — so a consumer older than its producer is not a case. A
 // mismatch is a refusal; regenerate both sides. Data that must outlive the
