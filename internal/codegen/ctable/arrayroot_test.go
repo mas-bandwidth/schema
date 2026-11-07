@@ -103,7 +103,7 @@ int main( void )
 
     CHECK( goal_list_builder_init( &r ) );
     CHECK( goal_list_from_json( &r, array_text, (int64_t) strlen( array_text ), &report ) );
-    CHECK( !report.malformed && !report.refused && report.kind_mismatch == 0 );
+    CHECK( !report.refused && report.kind_mismatch == 0 );
     CHECK( goal_list_builder_root( &r )->goals.count == 2 );
     CHECK( goal_list_builder_lock( &r ) );
     CHECK( goal_list_goals_at( &( (const GoalList *)(const void *)r.region )->goals, 0 )->x == 1 );
@@ -112,7 +112,7 @@ int main( void )
 
     CHECK( goal_list_builder_init( &bad ) );
     CHECK( !goal_list_from_json( &bad, object_text, (int64_t) strlen( object_text ), &bad_report ) );
-    CHECK( bad_report.malformed );
+    CHECK( bad_report.refused );
     goal_list_builder_shutdown( &bad );
 
     CHECK( holder_builder_init( &h ) );
@@ -131,14 +131,14 @@ int main( void )
 
     CHECK( holder_builder_init( &hr ) );
     CHECK( holder_from_json( &hr, holder_text, (int64_t) strlen( holder_text ), &hr_report ) );
-    CHECK( !hr_report.malformed && hr_report.kind_mismatch == 0 );
+    CHECK( hr_report.kind_mismatch == 0 );
     CHECK( holder_builder_root( &hr )->g.goals.count == 1 );
     CHECK( holder_builder_lock( &hr ) );
     CHECK( goal_list_goals_at( &( (const Holder *)(const void *)hr.region )->g.goals, 0 )->x == 7 );
     holder_builder_shutdown( &hr );
 
     CHECK( holder_builder_init( &hm ) );
-    CHECK( holder_from_json_tolerant( &hm, nested_object, (int64_t) strlen( nested_object ), &hm_report ) );
+    CHECK( holder_from_json( &hm, nested_object, (int64_t) strlen( nested_object ), &hm_report ) );
     CHECK( hm_report.kind_mismatch == 1 );
     holder_builder_shutdown( &hm );
 

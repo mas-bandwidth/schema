@@ -151,8 +151,8 @@ fixed table Lineage
     v.seq = 2147483647;
     n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
     if ( n < 0 ) { printf( "save failed\n" ); return 1; }
-    if ( @S@_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-        { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+    if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
     if ( back[0].tier != TIER_PLATINUM ) { printf( "tier=%d\n", (int) back[0].tier ); return 1; }
     if ( back[0].seq != 2147483647 ) { printf( "seq=%d\n", (int) back[0].seq ); return 1; }
 
@@ -160,8 +160,8 @@ fixed table Lineage
     v.seq = 2147483646;
     n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
     if ( n < 0 ) { printf( "save failed\n" ); return 1; }
-    if ( @S@_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-        { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+    if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
     if ( back[0].tier != TIER_NONE ) { printf( "none tier=%d\n", (int) back[0].tier ); return 1; }
     if ( back[0].seq != 2147483646 ) { printf( "none seq=%d\n", (int) back[0].seq ); return 1; }
 `)
@@ -191,8 +191,8 @@ fixed table WstringGrow
         v.text_length = 16;
         n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
         if ( n < 0 ) { printf( "save failed\n" ); return 1; }
-        if ( @S@_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
         if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
             { printf( "the row moved a neighbour: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
         if ( back[0].text_length != 16 ) { printf( "text_length=%d\n", (int) back[0].text_length ); return 1; }
@@ -226,8 +226,8 @@ fixed table BytesGrow
         v.blob_length = 16;
         n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
         if ( n < 0 ) { printf( "save failed\n" ); return 1; }
-        if ( @S@_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
         if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
             { printf( "the row moved a neighbour: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
         if ( back[0].blob_length != 16 ) { printf( "blob_length=%d\n", (int) back[0].blob_length ); return 1; }
@@ -261,8 +261,8 @@ fixed table Lineage
         v.seq = 2147483647;
         n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
         if ( n < 0 ) { printf( "save failed\n" ); return 1; }
-        if ( @S@_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
         if ( back[0].seq != 2147483647 ) { printf( "seq=%d\n", (int) back[0].seq ); return 1; }
         for ( k = 0; k < 4; ++k )
             if ( back[0].slots[k].n != want[k] )
@@ -295,8 +295,8 @@ fixed table Lineage
         v.seq = 2147483647;
         n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
         if ( n < 0 ) { printf( "save failed\n" ); return 1; }
-        if ( @S@_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
         if ( back[0].seq != 2147483647 ) { printf( "seq=%d\n", (int) back[0].seq ); return 1; }
         for ( i = 0; i < 3; ++i )
             for ( j = 0; j < 2; ++j )
@@ -350,8 +350,8 @@ fixed table Lineage
         v.seq = 2147483647;
         n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
         if ( n < 0 ) { printf( "save failed\n" ); return 1; }
-        if ( @S@_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
         if ( back[0].pick.type != PICK_TYPE_ALPHA ) { printf( "arm=%d\n", (int) back[0].pick.type ); return 1; }
         if ( back[0].pick.as.alpha.x != -2147483647 ) { printf( "x=%d\n", (int) back[0].pick.as.alpha.x ); return 1; }
         if ( back[0].pick.as.alpha.name_length != 5 )
@@ -396,8 +396,8 @@ fixed table Lineage
         v.seq = 2147483647;
         n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
         if ( n < 0 ) { printf( "save failed\n" ); return 1; }
-        if ( @S@_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
         if ( back[0].seq != 2147483647 ) { printf( "seq=%d\n", (int) back[0].seq ); return 1; }
         for ( k = 0; k < 4; ++k )
         {

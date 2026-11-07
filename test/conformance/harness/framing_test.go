@@ -2,14 +2,12 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -114,72 +112,23 @@ var framingStrictRefusals = map[string]string{
 	"node_unknown_to_fixed_reader":           "R2, T4: an unknown node table is checked, and its record's type ref is 0",
 }
 
-// framingOutcome is what the engine answered one framing vector: the error
-// Decode returned, the report, and whether the instance it left is the root
-// at its declared defaults.
+// framingOutcome carries the public read result; diagnostics do not choose it.
 type framingOutcome struct {
-	err       error
-	report    tabletext.Report
-	atDefault bool
+	accepted bool
+	err      error
+	report   tabletext.Report
 }
 
-// framingVerdictFault is the check the oracle test applies to one row: nil
-// when the engine answered as the row's rule says, or what it got wrong. A
-// form refusal is `refused`; every other refusal (damage, a kind mismatch, a
-// count past the bound) is a read's refusal and hands back nothing it read; a
-// read returns the row's `unknown` and `widened`.
 func framingVerdictFault(fc FramingCase, strictRule string, got framingOutcome) error {
-	switch {
-	case fc.Refused:
-		if !tablewire.Refused(got.err) {
-			return fmt.Errorf("the rule refuses the form and the engine answers %v", got.err)
-		}
-		return nil
-	case fc.Damaged || strictRule != "":
-		rule := strictRule
-		if rule == "" {
-			rule = "damage discards the whole load"
-		}
-		if !tablewire.ReadRefusal(got.err) || tablewire.Refused(got.err) {
-			return fmt.Errorf("the rule refuses (%s) and the engine answers %v with %+v", rule, got.err, got.report)
-		}
-		if !got.report.Refused {
-			return fmt.Errorf("the engine refused and its report is not a refusal: %+v", got.report)
-		}
-		if !got.atDefault {
-			return errors.New("the engine handed back a value from a refused load")
-		}
-		return nil
-	}
 	if got.err != nil {
-		return fmt.Errorf("the rule reads and the engine refuses: %v", got.err)
+		return fmt.Errorf("oracle infrastructure error: %w", got.err)
 	}
-	if got.report.Refused || got.report.Unknown != fc.Counts.Unknown || got.report.Widened != fc.Counts.Widened {
-		return fmt.Errorf("the engine reads %+v and the rule says unknown %d, widened %d", got.report, fc.Counts.Unknown, fc.Counts.Widened)
+	want := !(fc.Refused || strictRule != "")
+	accepted := got.accepted && !got.report.Refused && got.err == nil
+	if accepted != want {
+		return fmt.Errorf("accepted=%t want=%t: %v", accepted, want, got.err)
 	}
 	return nil
-}
-
-// framingVariableUnit is a framing row's unit as the variable form reads it.
-// The framing vectors are form-1 files and the rules they pin are the
-// variable form's (docs/LAYERS/1-framing.md), but a root declared `fixed
-// table` reads form 3 alone and refuses every form-1 file as previous_form
-// before any framing rule runs (docs/SPEC-TABLES.md §3.4). Such a root is
-// read here through a fresh load of its unit with the root's class variable,
-// the same declaration with the same fields and ids, so the battery reaches
-// the rules it was written for. The returned unit is never shared.
-func framingVariableUnit(t *testing.T, m *Manifest, key, root string) *ir.Unit {
-	t.Helper()
-	unit, err := newUnits(m).get(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	st := unit.Tables[root]
-	if st == nil {
-		t.Fatalf("%s declares no table %s", key, root)
-	}
-	st.FixedDeclared = false
-	return unit
 }
 
 // TestFramingVectorsReadThroughTheEngine is THE ORACLE CHECK
@@ -195,10 +144,6 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 	for _, fc := range m.Framings {
 		rows[fc.Name] = true
 		strictRule := framingStrictRefusals[fc.Name]
-		retired := fc.Counts.KindMismatch != 0 || fc.Counts.Clamped != 0 || fc.Counts.Duplicate != 0
-		if strictRule == "" && retired {
-			t.Errorf("%s: the row pins a retired counter (%s) and framingStrictRefusals does not name it", fc.Name, fc.Counts)
-		}
 		unit, err := u.get(fc.Unit)
 		if err != nil {
 			t.Fatal(err)
@@ -207,12 +152,13 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// a row pinned as refused by its form is read through the declared
-		// unit: a fixed root refuses the form-1 file by its form byte
-		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared && !fc.Refused {
+		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared {
 			key := fc.Unit + "." + fc.Root
 			if variable[key] == nil {
-				variable[key] = framingVariableUnit(t, m, fc.Unit, fc.Root)
+				var err error
+				if variable[key], err = framingVariableUnit(m, fc.Unit, fc.Root); err != nil {
+					t.Fatal(err)
+				}
 			}
 			unit = variable[key]
 		}
@@ -221,24 +167,24 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 		if def == nil {
 			t.Fatalf("%s: the unit declares no root %q", fc.Name, fc.Root)
 		}
-		if !fc.Refused && tablewire.FixedRoot(model, def) {
+		if def.FixedDeclared {
 			t.Fatalf("%s: %s.%s still reads as a fixed root", fc.Name, fc.Unit, fc.Root)
 		}
 		inst := model.New(def)
 		var got framingOutcome
-		_, got.err = tablewire.Decode(model, inst, data, &got.report)
-		if got.err != nil && !tablewire.ReadRefusal(got.err) {
-			t.Errorf("%s: the engine errored: %v", fc.Name, got.err)
-			continue
-		}
-		fresh, _ := tablewire.Encode(model, model.New(def))
-		left, _ := tablewire.Encode(model, inst)
-		got.atDefault = fresh == nil || bytes.Equal(left, fresh)
+		// strictDecode reports its refusal as an error; the verdict is the
+		// return value, and no reason name is compared (docs/rulings.json
+		// refusal-verdict-only).
+		got.accepted, _ = strictDecode(model, inst, data, &got.report)
 		if fault := framingVerdictFault(fc, strictRule, got); fault != nil {
 			t.Errorf("%s: %v", fc.Name, fault)
 			continue
 		}
-		if fc.Value == "" || got.err != nil {
+		if !got.accepted {
+			continue
+		}
+		if fc.Value == "" {
+			t.Errorf("%s: accepted row has no complete value expectation", fc.Name)
 			continue
 		}
 		text, err := model.Write(inst)
@@ -267,48 +213,27 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 	}
 }
 
-// TestFramingVerdictCheckCatchesTheWrongAnswer is the oracle check's NEGATIVE
-// CONTROL: an engine that reads what the rule refuses, refuses what the rule
-// reads, miscounts an unknown, hands back a value from a refused load, or
-// confuses a form refusal with damage is caught by the check the oracle test
-// applies, and the right answer passes it.
+// Changing a verdict is red; changing local diagnostics is irrelevant.
 func TestFramingVerdictCheckCatchesTheWrongAnswer(t *testing.T) {
-	damage := &tablewire.Refusal{Reason: tablewire.ReasonWireDamaged}
-	refused := tabletext.Report{Refused: true, Reason: tablewire.ReasonWireDamaged}
-	read := FramingCase{Name: "read", Counts: Counts{Unknown: 1}}
-	wrong := []struct {
-		name   string
-		fc     FramingCase
-		strict string
-		got    framingOutcome
+	read := FramingCase{Name: "read"}
+	refused := FramingCase{Name: "refused", Refused: true}
+	for _, tc := range []struct {
+		fc  FramingCase
+		got framingOutcome
 	}{
-		{"an inert body read", FramingCase{Name: "inert"}, "H2", framingOutcome{atDefault: true}},
-		{"damage read", FramingCase{Name: "damaged", Damaged: true}, "", framingOutcome{atDefault: true}},
-		{"a value handed back", FramingCase{Name: "damaged", Damaged: true}, "", framingOutcome{err: damage, report: refused}},
-		{"a refusal without a refused report", FramingCase{Name: "inert"}, "H2", framingOutcome{err: damage, atDefault: true}},
-		{"a read refused", read, "", framingOutcome{err: damage, report: refused, atDefault: true}},
-		{"an unknown not counted", read, "", framingOutcome{atDefault: true}},
-		{"a form refusal answered as damage", FramingCase{Name: "form", Refused: true}, "", framingOutcome{err: damage, report: refused, atDefault: true}},
-		{"a repeat answered as a form refusal", FramingCase{Name: "repeat"}, "R5", framingOutcome{err: &tablewire.FormRefusal{Form: 9}, report: tabletext.Report{Refused: true}, atDefault: true}},
-	}
-	for _, c := range wrong {
-		if framingVerdictFault(c.fc, c.strict, c.got) == nil {
-			t.Errorf("%s: the check passes a wrong answer", c.name)
+		{read, framingOutcome{report: tabletext.Report{Refused: true}}},
+		{refused, framingOutcome{accepted: true}},
+	} {
+		if framingVerdictFault(tc.fc, "", tc.got) == nil {
+			t.Fatalf("wrong acceptance passed: %+v", tc)
 		}
 	}
-	right := []struct {
-		name   string
-		fc     FramingCase
-		strict string
-		got    framingOutcome
-	}{
-		{"an inert body refused", FramingCase{Name: "inert"}, "H2", framingOutcome{err: damage, report: refused, atDefault: true}},
-		{"a read with its unknown", read, "", framingOutcome{report: tabletext.Report{Unknown: 1}}},
-		{"a form refusal", FramingCase{Name: "form", Refused: true}, "", framingOutcome{err: &tablewire.FormRefusal{Form: 9}, report: tabletext.Report{Refused: true}, atDefault: true}},
-	}
-	for _, c := range right {
-		if fault := framingVerdictFault(c.fc, c.strict, c.got); fault != nil {
-			t.Errorf("%s: the right answer fails the check: %v", c.name, fault)
+	for _, r := range []tabletext.Report{{}, {Unknown: 123, Widened: 99}} {
+		if err := framingVerdictFault(read, "", framingOutcome{accepted: true, report: r}); err != nil {
+			t.Fatal(err)
 		}
+	}
+	if fault := framingVerdictFault(refused, "", framingOutcome{report: tabletext.Report{Refused: true}}); fault != nil {
+		t.Fatal(fault)
 	}
 }

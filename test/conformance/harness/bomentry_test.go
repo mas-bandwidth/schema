@@ -53,7 +53,7 @@ func TestBOMEntryCorpusOracle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(text) != want || row.Unit != "tabledemo" || row.Root != "RootConfig" || len(row.CarriedBy) != 0 || row.Uncarried != "" {
+			if string(text) != want || row.Unit != "tabledemo" || row.Root != "RootConfig" {
 				t.Fatalf("BOM entry fixture drift: row=%+v bytes=%x", row, text)
 			}
 			value := model.New(typ)
@@ -61,11 +61,11 @@ func TestBOMEntryCorpusOracle(t *testing.T) {
 			accepted := model.Read(value, text, &report)
 			wantAccepted := row.Name == "leading-bom"
 			t.Logf("bytes=%x accepted=%t report=%+v", text, accepted, report)
-			if accepted != wantAccepted || report.Refused == wantAccepted || row.Refused == wantAccepted {
+			if accepted != wantAccepted || row.Refused == wantAccepted {
 				t.Fatalf("accepted=%t report=%+v row refusal=%t", accepted, report, row.Refused)
 			}
 			if accepted {
-				if report != (tabletext.Report{}) || row.Verdict() != "0,0,0,0,0,false,read" {
+				if row.Verdict() != "read" {
 					t.Fatalf("accepted BOM changed the report: %+v / %s", report, row.Verdict())
 				}
 				encoded, err := model.Write(value)

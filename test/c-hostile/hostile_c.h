@@ -14,12 +14,30 @@
 #define HC_Q( name ) HC_CAT( HC_PACKAGE, name )
 #define HC_QU( name ) HC_CAT( HC_PACKAGE_UPPER, name )
 
-/* The verdict off a tolerant read's report, as the engine gives it: a named
-   refusal is its reason, a read that did not land (or reported damage) is
-   `damaged`, and anything else is accepted. */
+/* The verdict off the one strict read's report, as the engine gives it: a
+   named refusal is its reason, a read that did not land is `damaged`, and
+   anything else is accepted. The strict read returns the whole value or
+   refuses the whole load, so a landed read is accepted and every refusal
+   or damage lands as no value at all. Sequenced as a function, not a comma
+   expression, so the trace's void answer is never an unused operand. */
+static int hc_verdict_refused_( int refused, int reason, int refuse_reason, int landed )
+{
+    hc_trace( refused, refuse_reason, reason, landed );
+    if ( landed && !refused ) { return 0; }
+    if ( refused && ( reason == 1 || reason == 2 || reason == 3 || reason == 4 ||
+                      reason == 5 || reason == 6 || reason == 11 || reason == 21 ) )
+    {
+        hc_refuse( hc_reason_name( reason ) );
+        return 1;
+    }
+    if ( refuse_reason == 11 ) { hc_refuse( "count_refusal" ); return 1; }
+    if ( refuse_reason == 23 || reason == 21 ) { hc_refuse( "non_finite_float" ); return 1; }
+    hc_refuse( "damaged" );
+    return 1;
+}
+
 #define HC_VERDICT_REFUSED( report, landed ) \
-    ( hc_trace( ( report ).refused, ( report ).malformed, ( report ).reason, ( landed ) ), ( report ).refused ? ( hc_refuse( hc_reason_name( ( report ).reason ) ), 1 ) \
-                         : ( !( landed ) || ( report ).malformed ) ? ( hc_refuse( "damaged" ), 1 ) : 0 )
+    hc_verdict_refused_( ( report ).refused, ( report ).reason, ( report ).refuse_reason, ( landed ) )
 
 /* The text writer's answer, digested by the driver. */
 #define HC_TO_JSON( FN, root ) \
@@ -52,7 +70,14 @@
         memset( &report, 0, sizeof( report ) ); \
         if ( value == NULL ) { hc_error( "out of memory" ); return; } \
         HC_Q( FN##_reset )( value ); \
-        ok = HC_Q( FN##_load_tolerant )( value, data, size, &report ); \
+        if ( size > 0 && data[0] == HC_QU( K_TABLE_FIXED_FORM ) ) \
+        { \
+            int64_t landed = HC_Q( FN##_fixed_load )( value, 1, data, size, NULL, 0, NULL, &report ); \
+            if ( !HC_VERDICT_REFUSED( report, landed == 1 ) ) { hc_accepted_##FN( value ); } \
+            free( value ); \
+            return; \
+        } \
+        ok = HC_Q( FN##_load )( value, data, size, &report ); \
         if ( !HC_VERDICT_REFUSED( report, ok ) ) { hc_accepted_##FN( value ); } \
         free( value ); \
     } \
@@ -64,7 +89,7 @@
         memset( &report, 0, sizeof( report ) ); \
         if ( value == NULL ) { hc_error( "out of memory" ); return; } \
         HC_Q( FN##_reset )( value ); \
-        ok = HC_Q( FN##_from_json_tolerant )( value, (const char *) data, size, &report ); \
+        ok = HC_Q( FN##_from_json )( value, (const char *) data, size, &report ); \
         if ( !HC_VERDICT_REFUSED( report, ok ) ) { hc_accepted_##FN( value ); } \
         free( value ); \
     }
@@ -91,7 +116,7 @@
         const HC_Q( FN##_t ) * root; \
         memset( &report, 0, sizeof( report ) ); \
         if ( region == NULL ) { hc_error( "out of memory" ); return; } \
-        root = HC_Q( FN##_load_tolerant )( region, extent, data, size, &report ); \
+        root = HC_Q( FN##_load )( region, extent, data, size, &report ); \
         if ( !HC_VERDICT_REFUSED( report, root != NULL ) ) { hc_accepted_##FN( root ); } \
         free( region ); \
     } \
@@ -137,7 +162,7 @@
         int ok; \
         memset( &report, 0, sizeof( report ) ); \
         if ( !HC_Q( FN##_builder_init )( &builder ) ) { HC_Q( FN##_builder_shutdown )( &builder ); hc_error( "builder_init refused" ); return; } \
-        ok = HC_Q( FN##_from_json_tolerant )( &builder, (const char *) data, size, &report ); \
+        ok = HC_Q( FN##_from_json )( &builder, (const char *) data, size, &report ); \
         if ( !HC_VERDICT_REFUSED( report, ok ) ) \
         { \
             if ( !HC_Q( FN##_builder_lock )( &builder ) ) { hc_error( "builder_lock refused the decoded value" ); } \
@@ -171,7 +196,7 @@
         } \
         memset( &report, 0, sizeof( report ) ); \
         HC_Q( FN##_reset )( value ); \
-        ok = HC_Q( FN##_load_messages_tolerant )( value, &count, &vocabulary, data, size, &report ); \
+        ok = HC_Q( FN##_load_messages )( value, &count, &vocabulary, data, size, &report ); \
         if ( !HC_VERDICT_REFUSED( report, ok && count == 1 ) ) { hc_accepted_##FN( value ); } \
         free( entries ); \
         free( value ); \

@@ -65,9 +65,9 @@ int main( void )
         CHECK( rbytes == 88 );
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         CHECK( region != NULL );
-        root = pairs_load_tolerant( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, (int64_t) sizeof( wire ), &rep );
+        root = pairs_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, (int64_t) sizeof( wire ), &rep );
         CHECK( root != NULL );
-        CHECK( rep.malformed == 0 );
+        CHECK( rep.refused == 0 );
         CHECK( rep.unknown == 2 );
         CHECK( rep.kind_mismatch == 1 );
         CHECK( rep.widened == 1 );
@@ -140,9 +140,9 @@ int main( void )
         rbytes = simple_load_measure( wire, pos );
         CHECK( rbytes > 0 );
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
-        root = simple_load_tolerant( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
+        root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
         CHECK( root != NULL );
-        CHECK( rep.malformed == 0 );
+        CHECK( rep.refused == 0 );
         CHECK( rep.widened == 1 );
         CHECK( rep.kind_mismatch == 1 );
         CHECK( root->items.count == 1 );
@@ -180,9 +180,9 @@ int main( void )
         rbytes = simple_load_measure( wire, pos );
         CHECK( rbytes > 0 );
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
-        root = simple_load_tolerant( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
+        root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
         CHECK( root != NULL );
-        CHECK( rep.malformed == 0 );
+        CHECK( rep.refused == 0 );
         CHECK( rep.widened == 1 );
         CHECK( rep.kind_mismatch == 1 );
         CHECK( root->items.count == 0 );
@@ -219,9 +219,9 @@ int main( void )
         rbytes = simple_load_measure( wire, pos );
         CHECK( rbytes > 0 );
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
-        root = simple_load_tolerant( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
+        root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
         CHECK( root != NULL );
-        CHECK( rep.malformed == 0 );
+        CHECK( rep.refused == 0 );
         CHECK( rep.widened == 0 );
         CHECK( rep.kind_mismatch == 1 );
         CHECK( root->items.count == 1 );

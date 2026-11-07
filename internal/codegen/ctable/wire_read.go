@@ -84,8 +84,8 @@ func (g *tableGen) wireWidenedScalar(f *ir.Field, source int, dst, rdr, ind, onB
 		g.pf("%sif ( !table_bits_finite32( widened_bits ) ) { table_non_finite_float( r->report ); break; }\n", ind)
 		g.pf("%sdouble decoded_wide = (double) table_bits_to_float( widened_bits );\n", ind)
 		if f.HasFloatRange {
-			g.pf("%sif ( decoded_wide < %s ) { decoded_wide = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMin, false), formatFloat(f.FMin, false))
-			g.pf("%selse if ( decoded_wide > %s ) { decoded_wide = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMax, false), formatFloat(f.FMax, false))
+			g.pf("%sif ( decoded_wide < %s ) { decoded_wide = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, formatFloat(f.FMin, false), formatFloat(f.FMin, false))
+			g.pf("%selse if ( decoded_wide > %s ) { decoded_wide = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, formatFloat(f.FMax, false), formatFloat(f.FMax, false))
 		}
 	} else {
 		width = int(g.intBytes(g.ownerName(), f.Name, int64(width)))
@@ -98,22 +98,22 @@ func (g *tableGen) wireWidenedScalar(f *ir.Field, source int, dst, rdr, ind, onB
 		if f.HasIntRange {
 			low, high := tableClampEnds(f, 8)
 			if low {
-				g.pf("%sif ( decoded_wide < %s ) { decoded_wide = %s; r->report->clamped++; }\n", ind, tableIntLit(f.IntMin, signed, 8), tableIntLit(f.IntMin, signed, 8))
+				g.pf("%sif ( decoded_wide < %s ) { decoded_wide = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, tableIntLit(f.IntMin, signed, 8), tableIntLit(f.IntMin, signed, 8))
 			}
 			if high {
-				g.pf("%sif ( decoded_wide > %s ) { decoded_wide = %s; r->report->clamped++; }\n", ind, tableIntLit(f.IntMax, signed, 8), tableIntLit(f.IntMax, signed, 8))
+				g.pf("%sif ( decoded_wide > %s ) { decoded_wide = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, tableIntLit(f.IntMax, signed, 8), tableIntLit(f.IntMax, signed, 8))
 			}
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 			max := (uint64(1) << f.Type.Width) - 1
-			g.pf("%sif ( decoded_wide > %dull ) { decoded_wide = %dull; r->report->clamped++; }\n", ind, max, max)
+			g.pf("%sif ( decoded_wide > %dull ) { decoded_wide = %dull; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, max, max)
 		}
 	}
 	g.pf("%s%s = decoded_wide;\n", ind, dst)
 }
 
 // A builder storage-cap refusal must pass through every enclosing body without
-// a default reset or an extra malformed event.
+// a default reset or an extra damaged event.
 func (g *tableGen) wireRefusalCheck(ind string) {
 	if g.anySequence {
 		g.pf("%sif(r->nodes!=NULL && r->nodes->refused) { return 0; }\n", ind)
@@ -162,7 +162,7 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		g.pf("    int32_t missing_before = r->report->missing_required;\n")
 	}
 	g.pf("    for ( ;; )\n    {\n        uint64_t ref, id; uint8_t kind;\n")
-	g.pf("        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }\n")
+	g.pf("        if ( !table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n")
 	switch {
 	case len(req) > 0:
 		parts := make([]string, len(req))
@@ -179,9 +179,9 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	default:
 		g.pf("        if ( ref == 0 ) { return 1; }\n")
 	}
-	g.pf("        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }\n")
+	g.pf("        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n")
 	g.pf("        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );\n")
-	g.pf("        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }\n")
+	g.pf("        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n")
 	g.pf("        switch ( id )\n        {\n")
 	for ordinal, f := range st.Fields {
 		kind := ir.TableWireScalarKind(f)
@@ -200,7 +200,7 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		g.pf("                if ( kind != %d )\n                {\n", wireKind)
 		if plain {
 			g.pf("                    if ( table_kind_widens( kind, %d ) )\n                    {\n", wireKind)
-			g.wireScalarRead(f, "value->"+f.Name, "(*r)", "kind", "                        ", "r->report->malformed = 1; return 0;")
+			g.wireScalarRead(f, "value->"+f.Name, "(*r)", "kind", "                        ", "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0;")
 			if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
 				g.pf("                        r->report->widened++;\n")
 			} // map key widening is counted once by the key scan
@@ -213,7 +213,7 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 			}
 			g.pf("                        break;\n                    }\n")
 		}
-		g.pf("                    r->report->kind_mismatch++;\n                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }\n                    break;\n                }\n")
+		g.pf("                    r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;\n                    if ( !table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n                    break;\n                }\n")
 		g.retainReadField(f, ordinal, "                ")
 		g.wireReadFieldAt(f, kind, "value->"+f.Name)
 		if f.Type.Optional {
@@ -225,52 +225,39 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		g.pf("                break;\n            }\n")
 	}
 	if g.anyVariable {
-		g.pf("%s", "            case UINT64_MAX:\n                if(r->nodes==NULL) { "+g.unknownEvent()+" }\n                if(!table_reader_skip(r,kind)) { r->report->malformed=1; return 0; }\n                break;\n")
+		g.pf("%s", "            case UINT64_MAX:\n                if(r->nodes==NULL) { "+g.unknownEvent()+" }\n                if(!table_reader_skip(r,kind)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n                break;\n")
 	}
 	if g.retain {
-		g.pf("            default:\n                r->report->unknown += 1;\n                if(!table_retain_capture(r,id,kind,body_keep)){r->report->malformed=1;return 0;}break;\n        }\n    }\n}\n\n")
+		g.pf("            default:\n                r->report->unknown += 1;\n                if(!table_retain_capture(r,id,kind,body_keep)){r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}break;\n        }\n    }\n}\n\n")
 	} else {
-		g.pf("%s", "            default:\n                "+g.unknownEvent()+"\n                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }\n                break;\n        }\n    }\n}\n\n")
+		g.pf("%s", "            default:\n                "+g.unknownEvent()+"\n                if ( !table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n                break;\n        }\n    }\n}\n\n")
 	}
 	if g.retain || g.isVar(st.Name) || st.IsMapEntry() {
 		return
 	}
-	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
-	// OWN (docs/SPEC-TABLES.md §6.5). The decode runs under the tolerant name,
-	// unchanged; the plain name is a thin wrapper over it.
-	g.pf("/* %s is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what\n", g.api(st.Name, "load_tolerant"))
-	g.pf("   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the\n")
-	g.pf("   report) and answers 0 with the value reset for a refusal or for damage\n")
+	// THE ONE READ (docs/SPEC-TABLES.md §6.5): the walk itself refuses at
+	// the first condition it meets; there is no second, forgiving read.
+	g.pf("/* %s is the one read (docs/SPEC-TABLES.md §6.5): it keeps what\n", g.api(st.Name, "load"))
+	g.pf("   evolution leaves (unknown and widened, counted on the report) and\n")
+	g.pf("   answers 0 with the value reset for a refusal or for damage\n")
 	g.pf("   anywhere in the wire, which discards the whole load (§4). */\n")
-	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load_tolerant"), st.Name)
-	g.pf("    TableReport ignored; TableReader r; int32_t non_finite_before; int whole;\n    memset( &ignored, 0, sizeof( ignored ) );\n    if ( report == NULL ) { report = &ignored; }\n")
+	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load"), st.Name)
+	g.pf("    TableReport ignored; TableReader r; int32_t non_finite_before; int whole;\n    memset( &ignored, 0, sizeof( ignored ) );\n    if ( report == NULL ) { report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
 	g.pf("    %s( value );\n", g.api(st.Name, "reset"))
 	if st.Integrity != "" {
-		g.pf("    if ( bytes > 0 && buffer != NULL && buffer[0] == 1 && !schema_table_integrity_holds_( buffer, bytes ) ) { report->malformed = 1; report->damage_reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return 0; }\n")
+		g.pf("    if ( bytes > 0 && buffer != NULL && buffer[0] == 1 && !schema_table_integrity_holds_( buffer, bytes ) ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; report->damage_reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return 0; }\n")
 		g.pf("    if ( bytes > 0 && buffer != NULL && buffer[0] == 1 ) { bytes -= 4; }\n")
 	}
 	g.pf("    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }\n")
 	g.pf("    non_finite_before = report->non_finite_floats;\n")
 	g.pf("    whole = %s( &r, value );\n", g.api(st.Name, "load_body"))
-	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+	// A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and outranks
 	// any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing lands.
 	g.pf("    if ( table_non_finite_refused( report, non_finite_before ) ) { %s( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */\n", g.api(st.Name, "reset"))
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a walk that met
 	// damage, whether it stopped or stepped over it, hands back nothing it
 	// decoded: the value is reset to its declared defaults and the read answers 0.
-	g.pf("    if ( !whole || report->malformed ) { %s( value ); return 0; } /* damage discards the whole load (§4) */\n", g.api(st.Name, "reset"))
-	g.pf("    return 1;\n}\n\n")
-	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses\n", g.api(st.Name, "load"))
-	g.pf("   whatever the strict read refuses -- an unknown form, wire damage, a clamp\n")
-	g.pf("   or a kind mismatch -- answering 0 with the value reset to its declared\n")
-	g.pf("   defaults and the report this read's own, its refuse_reason set. unknown\n")
-	g.pf("   and widened alone never refuse. */\n")
-	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load"), st.Name)
-	g.pf("    TableReport ignored;\n    int decoded;\n")
-	g.pf("    if ( report == NULL ) { report = &ignored; }\n")
-	g.pf("    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
-	g.pf("    decoded = %s( value, buffer, bytes, report );\n", g.api(st.Name, "load_tolerant"))
-	g.pf("    if ( table_report_strict_refuses( report, decoded ) )\n    {\n        %s( value );\n        return 0;\n    }\n", g.api(st.Name, "reset"))
+	g.pf("    if ( table_report_finish( report, whole ) ) { %s( value ); return 0; } /* a refusal discards the whole load (§4) */\n", g.api(st.Name, "reset"))
 	g.pf("    return 1;\n}\n\n")
 }
 
@@ -285,27 +272,27 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 	case f.IsList():
 		g.emitListRead(f, dst, bounded)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		g.wireScalarRead(f, dst, "(*r)", "kind", ind, "r->report->malformed=1; return 0;")
+		g.wireScalarRead(f, dst, "(*r)", "kind", ind, "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0;")
 	case f.Type.Kind == ir.TWString:
 		g.pf("%sTableReader sub; int64_t keep, i;\n", ind)
-		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
-		g.pf("%sif ( sub.size %% 2 != 0 || !table_wire_utf16( sub.buffer, sub.size/2 ) ) { r->report->malformed = 1; %s[0] = 0; %s_length = 0; break; }\n", ind, dst, dst)
-		g.pf("%skeep = table_wire_utf16_clamp( sub.buffer, sub.size/2, %d ); if ( keep != sub.size/2 ) { r->report->clamped++; }\n", ind, f.Type.Size)
+		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind)
+		g.pf("%sif ( sub.size %% 2 != 0 || !table_wire_utf16( sub.buffer, sub.size/2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s[0] = 0; %s_length = 0; break; }\n", ind, dst, dst)
+		g.pf("%skeep = table_wire_utf16_clamp( sub.buffer, sub.size/2, %d ); if ( keep != sub.size/2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, f.Type.Size)
 		g.pf("%sfor ( i = 0; i < keep; i++ ) { %s[i] = table_wire_utf16_unit( sub.buffer, i ); } %s[keep] = 0; %s_length = (int32_t)keep;\n", ind, dst, dst, dst)
 	case f.Type.TextUnbounded():
 		g.pf("%sTableReader sub; int refused = 0;\n", ind)
-		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
-		g.pf("%sif ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) ) { r->report->malformed = 1; %s.value = 0; break; }\n", ind, dst)
-		g.pf("%sif ( !schema_table_text_place_( r->nodes ? r->nodes->sink : NULL, &%s, sub.buffer, (uint64_t) sub.size, &refused ) ) { if ( refused ) { r->nodes->refused = 1; return 0; } r->report->malformed = 1; %s.value = 0; break; }\n", ind, dst, dst)
+		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind)
+		g.pf("%sif ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s.value = 0; break; }\n", ind, dst)
+		g.pf("%sif ( !schema_table_text_place_( r->nodes ? r->nodes->sink : NULL, &%s, sub.buffer, (uint64_t) sub.size, &refused ) ) { if ( refused ) { r->nodes->refused = 1; return 0; } r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s.value = 0; break; }\n", ind, dst, dst)
 	case (f.Type.Kind == ir.TString && !f.Type.Blob()):
 		g.pf("%sTableReader sub; uint64_t keep;\n", ind)
-		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
+		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind)
 		g.pf("%sif ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) )\n%s{\n", ind, ind)
 		if len(f.DefBytes) != 0 {
 			g.pf("%s    static const uint8_t initial[] = { %s };\n%s    memcpy( %s, initial, sizeof( initial ) );\n", ind, byteLiterals(f.DefBytes), ind, dst)
 		}
-		g.pf("%s    r->report->malformed = 1; %s[%d] = 0; %s_length = %d; break;\n%s}\n", ind, dst, len(f.DefBytes), dst, len(f.DefBytes), ind)
-		g.pf("%skeep = (uint64_t) sub.size;\n%sif ( keep > %d ) { keep = table_wire_utf8_clamp( sub.buffer, keep, %d ); r->report->clamped++; }\n", ind, ind, f.Type.Size, f.Type.Size)
+		g.pf("%s    r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s[%d] = 0; %s_length = %d; break;\n%s}\n", ind, dst, len(f.DefBytes), dst, len(f.DefBytes), ind)
+		g.pf("%skeep = (uint64_t) sub.size;\n%sif ( keep > %d ) { keep = table_wire_utf8_clamp( sub.buffer, keep, %d ); r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, ind, f.Type.Size, f.Type.Size)
 		g.pf("%smemcpy( %s, sub.buffer, (size_t) keep ); %s[keep] = 0; %s_length = (int32_t) keep;\n", ind, dst, dst, dst)
 	case f.KeyEnum != "":
 		g.wireReadKeyed(f, kind, ind)
@@ -321,22 +308,22 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		}
 		g.pf("%sTableReader sub;\n", ind)
 		if bounded == "" {
-			g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
+			g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind)
 		} else {
 			g.pf("%ssub = %s; %s.offset = %s.size;\n", ind, bounded, bounded, bounded)
 		}
 		g.pf("%sif ( sub.size >= 2 )\n%s{\n", ind, ind)
 		g.pf("%s    uint8_t elem_kind; uint64_t count, kept, i;\n", ind)
 		if bounded == "" {
-			g.pf("%s    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }\n%s    else\n%s    {\n", ind, ind, ind)
+			g.pf("%s    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }\n%s    else\n%s    {\n", ind, ind, ind)
 		} else {
 			g.pf("%s    elem_kind = table_reader_get8( &sub );\n", ind)
-			g.pf("%s    if ( !table_reader_leb( &sub, &count ) ) { r->report->malformed = 1; break; }\n%s    {\n", ind, ind)
+			g.pf("%s    if ( !table_reader_leb( &sub, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n%s    {\n", ind, ind)
 		}
 		g.pf("%s        if ( elem_kind != %d )\n%s        {\n", ind, kind, ind)
-		g.pf("%s            if ( !(%s) ) { r->report->kind_mismatch++; break; }\n%s            r->report->widened++;\n%s        }\n", ind, wireElementWidenTest(f, kind, "elem_kind"), ind, ind)
+		g.pf("%s            if ( !(%s) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; }\n%s            r->report->widened++;\n%s        }\n", ind, wireElementWidenTest(f, kind, "elem_kind"), ind, ind)
 		g.retainReplace(f, ind+"        ")
-		g.pf("%s        kept = count; if ( kept > %d ) { kept = %d; r->report->clamped++; }\n", ind, bound, bound)
+		g.pf("%s        kept = count; if ( kept > %d ) { kept = %d; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, bound, bound)
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s        int32_t previous_count = %s_count;\n", ind, dst)
 		}
@@ -348,7 +335,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		}
 		g.pf("%s        for ( i = 0; i < kept; i++ )\n%s        {\n", ind, ind)
 		g.retainIndex(f, "i", ind+"            ")
-		bad := "r->report->malformed = 1; goto end_" + f.Name + ";"
+		bad := "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; goto end_" + f.Name + ";"
 		switch kind {
 		case tkString:
 			val := ir.TextListValue(f)
@@ -362,7 +349,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 				g.pf("%s            if ( !table_reader_span( &sub, &elem ) ) { %s }\n", ind, bad)
 				g.pf("%s            if ( !table_wire_utf8( elem.buffer, (uint64_t) elem.size ) ) { %s( &%s[i] ); %s }\n", ind, g.api(f.Type.Name, "reset"), dst, bad)
 				g.pf("%s            keep = (uint64_t) elem.size;\n", ind)
-				g.pf("%s            if ( keep > %d ) { keep = table_wire_utf8_clamp( elem.buffer, keep, %d ); r->report->clamped++; }\n", ind, val.Type.Size, val.Type.Size)
+				g.pf("%s            if ( keep > %d ) { keep = table_wire_utf8_clamp( elem.buffer, keep, %d ); r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, val.Type.Size, val.Type.Size)
 				g.pf("%s            memset( %s[i].value, 0, sizeof( %s[i].value ) );\n", ind, dst, dst)
 				g.pf("%s            memcpy( %s[i].value, elem.buffer, (size_t) keep ); %s[i].value[keep] = 0; %s[i].value_length = (int32_t) keep;\n", ind, dst, dst, dst)
 			}
@@ -370,7 +357,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 			g.pf("%s            TableReader elem;\n%s            if ( !table_reader_span( &sub, &elem ) ) { %s }\n", ind, ind, bad)
 			g.pf("%s            %s( &elem, &%s[i] );\n", ind, g.api(f.Type.Name, "load_body"), dst)
 			g.wireRefusalCheck(ind + "            ")
-			g.pf("%s            if(elem.offset!=elem.size) { r->report->malformed=1; %s(&%s[i]); }\n", ind, g.api(f.Type.Name, "reset"), dst)
+			g.pf("%s            if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s(&%s[i]); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 		case tkUnion:
 			g.pf("%s            if ( !%s( &sub, &%s[i], 1 ) ) {\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst)
 			g.wireRefusalCheck(ind + "                ")
@@ -384,7 +371,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 			} else {
 				g.pf("%s            if ( %s[i].value_length > 0 ) { spent += (int64_t) %s[i].value_length; }\n", ind, dst, dst)
 			}
-			g.pf("%s            if ( spent > %d ) { r->report->clamped++; %s( &%s[i] ); goto end_%s; }\n", ind, f.TextTotal, g.api(f.Type.Name, "reset"), dst, f.Name)
+			g.pf("%s            if ( spent > %d ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; %s( &%s[i] ); goto end_%s; }\n", ind, f.TextTotal, g.api(f.Type.Name, "reset"), dst, f.Name)
 		}
 		if count != "" {
 			g.pf("%s            %s = (int32_t) i + 1;\n", ind, count)
@@ -398,14 +385,14 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		g.pf("%sif ( !%s( r, &%s, 0 ) ) { return 0; }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst)
 
 	case kind == tkTable:
-		g.pf("%sTableReader sub;\n%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind, ind)
+		g.pf("%sTableReader sub;\n%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind, ind)
 		g.pf("%s%s( &sub, &%s );\n", ind, g.api(f.Type.Name, "load_body"), dst)
 		g.wireRefusalCheck(ind)
-		g.pf("%sif ( sub.offset != sub.size ) { r->report->malformed = 1; %s( &%s ); }\n", ind, g.api(f.Type.Name, "reset"), dst)
+		g.pf("%sif ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s( &%s ); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 	default:
 		// Kind already matched the declaration. Decode at that width;
 		// widening stays in the mismatch arm (emitWireRead).
-		onBad := "r->report->malformed = 1; return 0;"
+		onBad := "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0;"
 		if e := enumRef(f); e != nil {
 			g.wireEnumRead(e, dst, "(*r)", ind, onBad)
 		} else if tableKindWidth(kind) == 16 {
@@ -417,14 +404,14 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 }
 
 func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
-	g.pf("%sTableReader sub;\n%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind, ind)
+	g.pf("%sTableReader sub;\n%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind, ind)
 	g.pf("%sif ( sub.size >= 2 )\n%s{\n", ind, ind)
 	g.pf("%s    uint8_t elem_kind; uint64_t count, i;\n", ind)
-	g.pf("%s    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; break; }\n", ind)
-	g.pf("%s    if ( elem_kind != %d ) { if ( !(%s) ) { r->report->kind_mismatch++; break; } r->report->widened++; }\n", ind, kind, wireElementWidenTest(f, kind, "elem_kind"))
+	g.pf("%s    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
+	g.pf("%s    if ( elem_kind != %d ) { if ( !(%s) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; } r->report->widened++; }\n", ind, kind, wireElementWidenTest(f, kind, "elem_kind"))
 	g.pf("%s    for ( i = 0; i < count; i++ )\n%s    {\n", ind, ind)
 	g.pf("%s        uint64_t key_ref, key; int32_t slot = -1; TableReader elem;\n", ind)
-	g.pf("%s        if ( !table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; break; }\n", ind)
+	g.pf("%s        if ( !table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || !table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
 	g.pf("%s        key = table_reader_id_at( &sub, key_ref );\n%s        switch ( key )\n%s        {\n", ind, ind, ind)
 	for i := range f.KeyEnumRef.Variants {
 		g.pf("%s            case 0x%016xull: slot = %d; break;\n", ind, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
@@ -435,9 +422,9 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 	if kind == tkTable {
 		g.pf("%s        %s( &elem, &%s );\n", ind, g.api(f.Type.Name, "load_body"), dst)
 		g.wireRefusalCheck(ind + "        ")
-		g.pf("%s        if(elem.offset!=elem.size) { r->report->malformed=1; %s(&%s); }\n", ind, g.api(f.Type.Name, "reset"), dst)
+		g.pf("%s        if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s(&%s); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 	} else {
-		g.wireScalarRead(f, dst, "elem", "elem_kind", ind+"        ", "r->report->malformed = 1; goto next_"+f.Name+";")
+		g.wireScalarRead(f, dst, "elem", "elem_kind", ind+"        ", "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; goto next_"+f.Name+";")
 	}
 	if kind != tkTable {
 		g.pf("%s        next_%s: ;\n", ind, f.Name)

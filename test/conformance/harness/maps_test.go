@@ -73,7 +73,7 @@ func TestTheToolWritesTheReferencesMapBytes(t *testing.T) {
 		}
 		back := m.New(m.Lookup(rootName))
 		var r2 tabletext.Report
-		if !m.Read(back, text, &r2) || !r2.Silent() {
+		if !strictReadJSON(m, back, text, &r2) || !r2.Silent() {
 			t.Errorf("%s: the text did not read back clean: %+v\n%s", name, r2, text)
 			continue
 		}
@@ -115,7 +115,7 @@ func TestAMapKeyIsNeverTruncatedIntoAnother(t *testing.T) {
 	text := `{"names":{"` + first + `":{"count":1},"` + second + `":{"count":2}},"past":5}`
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
-	if !m.Read(inst, []byte(text), &r) {
+	if !strictReadJSON(m, inst, []byte(text), &r) {
 		if !r.Refused {
 			t.Fatalf("a read that returns false refuses: %+v", r)
 		}
@@ -159,7 +159,7 @@ func TestAnIntegerMapKeyTakesTheIntegerRule(t *testing.T) {
 		t.Run(tc.root, func(t *testing.T) {
 			inst := m.New(m.Lookup(tc.root))
 			var r tabletext.Report
-			if !m.Read(inst, []byte(`{"`+tc.field+`":{`+tc.entries+`}}`), &r) {
+			if !strictReadJSON(m, inst, []byte(`{"`+tc.field+`":{`+tc.entries+`}}`), &r) {
 				t.Fatalf("every key is in the kind's range: %+v", r)
 			}
 			fv, ok := inst.FieldByKey(tc.field)
@@ -178,7 +178,7 @@ func TestAnIntegerMapKeyTakesTheIntegerRule(t *testing.T) {
 				inst := m.New(m.Lookup(tc.root))
 				var r tabletext.Report
 				text := `{"` + tc.field + `":{` + tc.entries + `,"` + key + `":{"count":9}}}`
-				if m.Read(inst, []byte(text), &r) || !r.Refused {
+				if strictReadJSON(m, inst, []byte(text), &r) || !r.Refused {
 					t.Errorf("the key %s is outside the kind's range and the read returns: %+v", key, r)
 				}
 			}
@@ -201,7 +201,7 @@ func TestWhitespaceIsNeverPartOfAMapKey(t *testing.T) {
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
 	text := `{"ids":{"2402":{"count":7}," 2":{"count":1}}}`
-	if m.Read(inst, []byte(text), &r) {
+	if strictReadJSON(m, inst, []byte(text), &r) {
 		t.Errorf("a padded key is not a JSON number: the read must refuse, got %+v", r)
 	}
 	if !r.Refused {
@@ -226,7 +226,7 @@ func TestADecimalMapKeyDoesNotRoundIntoItsNeighbour(t *testing.T) {
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
 	text := `{"ids":{"9007199254740992":{"count":1},"9007199254740993.0":{"count":2}}}`
-	if !m.Read(inst, []byte(text), &r) {
+	if !strictReadJSON(m, inst, []byte(text), &r) {
 		t.Fatalf("two keys 2^53 apart are two keys: %+v", r)
 	}
 	fv, ok := inst.FieldByKey("ids")
@@ -254,7 +254,7 @@ func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
 	m := mapsModel(t)
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
-	if !m.Read(inst, []byte(`{"ids":{"18446744073709551615.0":{"count":2}}}`), &r) {
+	if !strictReadJSON(m, inst, []byte(`{"ids":{"18446744073709551615.0":{"count":2}}}`), &r) {
 		t.Fatalf("the decimal spelling of UINT64_MAX is a key the kind holds: %+v", r)
 	}
 	fv, ok := inst.FieldByKey("ids")
@@ -270,7 +270,7 @@ func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
 	inst = m.New(m.Lookup("EdgeRow"))
 	r = tabletext.Report{}
 	text := `{"ids":{"18446744073709551615":{"count":1},"18446744073709551615.0":{"count":2}}}`
-	if m.Read(inst, []byte(text), &r) || !r.Refused {
+	if strictReadJSON(m, inst, []byte(text), &r) || !r.Refused {
 		t.Errorf("the two spellings are one key repeated, which refuses: %+v", r)
 	}
 }
@@ -286,7 +286,7 @@ func TestAnIntegerMapKeyPastTheBufferDrops(t *testing.T) {
 	var r tabletext.Report
 	long := "1e" + strings.Repeat("0", 254)
 	text := `{"ids":{"1":{"count":7},"` + long + `":{"count":9}}}`
-	if m.Read(inst, []byte(text), &r) || !r.Refused {
+	if strictReadJSON(m, inst, []byte(text), &r) || !r.Refused {
 		t.Errorf("an over-long key refuses the read: %+v", r)
 	}
 	fv, ok := inst.FieldByKey("ids")
