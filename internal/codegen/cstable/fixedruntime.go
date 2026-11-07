@@ -188,7 +188,7 @@ public readonly struct TableFixedKnownLayout
 }
 
 // TableFixedLineagePlan is ONE older entry's plan, laid down once from THE
-// LOCK'S bytes. Unknown and KindMismatch are the COMPILE CENSUS: a writer field
+// LOCK'S bytes. Unknown and KindChanged are the COMPILE CENSUS: a writer field
 // no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4),
 // and LOAD carries them onto the report after the record loop, on a read that
 // returns (§5.9 #6). Why is the name a load refuses by when the entry itself
@@ -200,7 +200,7 @@ public sealed class TableFixedLineagePlan
     public int Count;
     public int Split; // THE SPLIT (§5.9 #42): the number of UNGUARDED entries, the index the guarded half starts at
     public int Unknown;
-    public int KindMismatch;
+    public int KindChanged;
     public string Why;
 }
 
@@ -733,7 +733,7 @@ public static class TableFixedWire
                 c.Push(e);
                 return;
             }
-            if (c.Report != null) { c.Report.KindMismatch++; }
+            if (c.Report != null) { c.Report.KindChanged++; }
             return;
         }
         // T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the
@@ -814,7 +814,7 @@ public static class TableFixedWire
                             break;
                         }
                         // A KIND THAT MOVED IS REPORTED, NEVER REINTERPRETED (§5.2).
-                        if (c.Report != null) { c.Report.KindMismatch++; }
+                        if (c.Report != null) { c.Report.KindChanged++; }
                         break;
                     }
                     for (uint i = 0; i < n; ++i)
@@ -963,7 +963,7 @@ public static class TableFixedWire
                     }
                     else if (c.Report != null)
                     {
-                        c.Report.KindMismatch++;
+                        c.Report.KindChanged++;
                     }
                     break;
                 }
@@ -1141,7 +1141,7 @@ public static class TableFixedWire
                 lane.Count = made;
                 lane.Split = split;
                 lane.Unknown = census.Unknown;
-                lane.KindMismatch = census.KindMismatch;
+                lane.KindChanged = census.KindChanged;
                 break;
             }
         }
@@ -1436,8 +1436,7 @@ public static class TableFixedWire
                 case Count:
                     {
                         int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                         slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
                         break;
                     }
@@ -1446,8 +1445,7 @@ public static class TableFixedWire
                         uint unit = (p.Meta == TextWide) ? 2u : 1u;
                         uint cap = p.Size / unit;
                         int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                         ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                         // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING
                         // ELSE, and a violation REFUSES BY NAME, the verdict the
@@ -1497,8 +1495,8 @@ public static class TableFixedWire
                             // remap to None is the BOUNDS PASS's to count, on BOTH
                             // plans, so the op records the forge in the caller's
                             // forgedOrdinal lane and the bounds step, not this op,
-                            // turns it into Clamped (§5.4, §5.8 row 12).
-                            if (raw > count) { forgedOrdinal++; }
+                            // turns it into an out_of_range refusal (§5.4, §5.8 row 12).
+                            if (raw > count) { return "out_of_range"; }
                         }
                         if (slots[(int)p.Dst].SetRaw != null)
                         {

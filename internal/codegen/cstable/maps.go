@@ -52,7 +52,7 @@ const tableMapWireSource = `
         Reader header = headerTail.IsEmpty ? a : new Reader(headerTail, a.Vocabulary) { Offset = 1 };
         if (!header.Var(out ulong count)) { Damage(report); return true; }
         a.Offset = Math.Min(a.Buffer.Length, header.Offset);
-        if (kind != 13) { report.KindMismatch++; return true; }
+        if (kind != 13) { return Fail(report, "kind_mismatch"); }
         if (count > int.MaxValue) { return CollectionCap(report); }
         f.ResetField(value);
         int landed = 0; bool widened = false; MapKey last = default;
@@ -62,9 +62,9 @@ const tableMapWireSource = `
             if (!a.Slice(out Reader body)) { Damage(report); break; }
             bool keyOk = ScanMapKey(body, f, out MapKey key, out bool mismatch, out bool entryWidened);
             if (entryWidened && !widened) { widened = true; report.Widened++; }
-            if (mismatch) { report.KindMismatch++; landed = 0; break; }
+            if (mismatch) { return Fail(report, "kind_mismatch"); }
             if (!keyOk) { Damage(report); break; }
-            if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { report.Clamped++; continue; }
+            if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
             int order = landed == 0 ? -1 : KeyOrder(last, key, keyField);
             if (order > 0) { Damage(report); break; }
             int slot = order == 0 ? landed - 1 : landed;
@@ -72,7 +72,7 @@ const tableMapWireSource = `
             object entry = f.Table.Create(); f.SetChild(value, slot, entry);
             ReadBody(ref body, entry, f.Table, report, true);
             if (CountRefused(report)) { return false; }
-            if (order == 0) { report.Duplicate++; }
+            if (order == 0) { return Fail(report, "duplicate"); }
             else { last = KeyOf(entry, keyField); landed++; }
         }
         f.SetCount(value, landed); return true;
@@ -114,7 +114,6 @@ const tableMapJsonSource = `
         {
             byte c = Peek(text, ref input);
             if (c == '}') { input.Pos++; return true; }
-            int beforeClamp = input.Report.Clamped;
             input.TextField = mapField;
             scoped ReadOnlySpan<byte> actual; int used;
             if(key.Unbounded)
@@ -124,18 +123,15 @@ const tableMapJsonSource = `
                 used=actual.Length;
             }
             else {if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual=spelling.Slice(0,used);}
-            bool over = input.Report.Clamped != beforeClamp;
-            input.Report.Clamped = beforeClamp;
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
             input.Pos++;
             object entry = f.Table.Create();
             bool drop = false;
             if (key.Kind == 12)
             {
-                if (over || used > key.ArrayBound) { input.Report.Clamped++; drop = true; }
+                if (used > key.ArrayBound) { return RefuseText(ref input, "length_over_bound"); }
                 else { if(key.Unbounded){key.EnsureCount(entry,used);} actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
             }
-            else if (over) { input.Report.KindMismatch++; drop = true; }
             else
             {
                 In probe = new In { Report = new TableReport() };
@@ -143,7 +139,7 @@ const tableMapJsonSource = `
                 Space(token, ref probe);
                 if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth) || probe.Pos != used || probe.Bad)
                 { input.Bad = true; return false; }
-                if (probe.Report.Clamped != 0 || probe.Report.KindMismatch != 0) { input.Report.KindMismatch++; drop = true; }
+                if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
             }
             if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
             else
@@ -162,15 +158,14 @@ const tableMapJsonSource = `
                     if (field.Optional) { field.SetPresent(entry, true); }
                     if (shape != Shape(field))
                     {
-                        input.Report.KindMismatch++;
-                        if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                        return RefuseText(ref input, "kind_mismatch");
                     }
                     else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
                 }
                 int at = 0;
                 while (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) < 0) { at++; }
                 if (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) == 0)
-                { f.SetChild(owner, at, entry); input.Report.Duplicate++; }
+                { return RefuseText(ref input, "duplicate"); }
                 else
                 {
                     f.EnsureCount(owner, count + 1);

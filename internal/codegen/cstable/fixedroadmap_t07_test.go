@@ -217,7 +217,7 @@ func t07C14(t *testing.T) {
 	}
 	t07Has(t, t07Norm(body), "if (value.MaybePresent)", "C14 an optional's payload is held under its present byte")
 	iPresent := strings.Index(t07Norm(body), "if (value.MaybePresent)")
-	iMaybe := strings.Index(t07Norm(body), "if (value.Maybe < -5)")
+	iMaybe := strings.Index(t07Norm(body), "if (value.Maybe < -5")
 	if iPresent < 0 || iMaybe < 0 || iPresent > iMaybe {
 		t.Error("C14: the optional payload is clamped outside its present-byte guard")
 	}
@@ -232,10 +232,10 @@ func t07W4(t *testing.T) {
 	src := t07Src(t, t07Clamp)
 	block := t07Block(t, src, "case Count:", "case Text:")
 	n := t07Norm(block)
-	t07Has(t, n, `if (v < 0) { v = 0; if (report != null) report.Clamped++; }`,
-		"W4 the count is clamped into range and counted, never refused")
-	t07Has(t, n, `else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }`,
-		"W4 the bound is the plan's own size, and the out-of-range count is clamped not refused")
+	t07Has(t, n, `if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }`,
+		"W4 a count outside the bound refuses the load")
+	t07Has(t, n, `if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }`,
+		"W4 the bound is the plan's own size, and an out-of-range count refuses")
 	if strings.Contains(block, "Malformed") {
 		t.Error("W4: the run marks slack malformed; a reader validates the used units only and never looks at the slack")
 	}

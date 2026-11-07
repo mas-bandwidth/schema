@@ -139,8 +139,8 @@ class Program
 
         // normalization is silent: the hostile load moves no counter (the
         // counting half of the sentence is cs/R17, another card's item).
-        return Check(r1.Unknown == 0 && r1.Clamped == 0 && !r1.Malformed && !r1.Refused &&
-                     r3.Unknown == 0 && r3.Clamped == 0 && !r3.Malformed && !r3.Refused,
+        return Check(r1.Unknown == 0 && !r1.Damaged && !r1.Refused &&
+                     r3.Unknown == 0 && !r3.Damaged && !r3.Refused,
                      "reader: hostile loads move no counter");
     }
 
@@ -157,7 +157,7 @@ class Program
         if (Load(wire, out Chain back0, out TableReport r0) != 1) { Console.Error.WriteLine("FAIL: byte 0 load"); return false; }
         return Check(back0.LinkPresent == false && back0.Link.Value == 7,
                      "reader: byte 0 lands absent and the payload behind it rides whole")
-            && Check(r0.Unknown == 0 && r0.Clamped == 0 && !r0.Malformed && !r0.Refused,
+            && Check(r0.Unknown == 0 && !r0.Damaged && !r0.Refused,
                      "reader: the absent load moves no counter");
     }
 
