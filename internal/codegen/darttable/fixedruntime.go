@@ -870,9 +870,9 @@ int tableFixedSelect(List<TableFixedKnownLayout> known, int hash) {
 }
 
 /// ONE OLDER ENTRY'S PLAN, laid down from THE LOCK'S BYTES and never from a
-/// file's. 'unknown' and 'kindMismatch' are the COMPILE CENSUS — the plan's own
-/// numbers, carried onto a report ONCE after the record loop and only on a read
-/// that returns (§5.4, §5.9 #6). 'why' is the name an entry the lock got wrong
+/// file's. 'unknown' is the COMPILE CENSUS — the plan's own number, carried
+/// onto a report ONCE after the record loop and only on a read that returns
+/// (§5.4, §5.9 #6). 'why' is the name an entry the lock got wrong
 /// refuses by, so a bad entry still answers by name rather than by a throw
 /// (§5.9 #8).
 final class TableFixedLineagePlan {

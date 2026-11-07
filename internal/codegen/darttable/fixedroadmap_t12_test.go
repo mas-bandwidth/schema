@@ -155,8 +155,8 @@ fixed table Root
 		if strings.Contains(decode, "i < 4") {
 			t.Error("C14: the bounds pass must not walk the declared bound, its slack (§4.6)")
 		}
-		if !strings.Contains(decode, "report.clamped++") {
-			t.Error("C14: a live out-of-range element must clamp and count (§4.6)")
+		if !strings.Contains(decode, "report.refused = TableFixedRefusal.outOfRange;") {
+			t.Error("C14: a live out-of-range element must refuse the whole load (§4.6)")
 		}
 	})
 

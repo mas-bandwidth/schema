@@ -62,8 +62,23 @@ func TestWideningReasonsDart(t *testing.T) {
 				}
 				runtime = name
 				got := dartRefuseWords(string(src))
-				if strings.Join(got, ",") != strings.Join(goRefuseOrder(t), ",") {
-					t.Fatalf("the Dart TableRefuseReason words are not the reference leg's, in order:\n dart %v\n   go %v", got, goRefuseOrder(t))
+				// Dart's strict spellings (docs/plans/strict-only.md): the
+				// retired names never appear in generated Dart, so damage is
+				// wire_damaged and a damaged layout is layout_damaged; the Go
+				// leg's report-only missing_required member (ordinal 255) is
+				// not an enum case here and is carried on the reason string.
+				want := goRefuseOrder(t)
+				for i, w := range want {
+					switch w {
+					case "malformed":
+						want[i] = "wire_damaged"
+					case "layout_malformed":
+						want[i] = "layout_damaged"
+					}
+				}
+				want = want[:len(want)-1] // missing_required, report-only in Go
+				if strings.Join(got, ",") != strings.Join(want, ",") {
+					t.Fatalf("the Dart TableRefuseReason words are not the reference leg's, in order:\n dart %v\n   go %v", got, want)
 				}
 			}
 		}
