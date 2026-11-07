@@ -342,6 +342,7 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 		t.Fatal("the manifest declares no tblv1 unit")
 	}
 	unit := loadUnit(t, root, paths)
+	unit.Tables["Cfg"].FixedDeclared = false
 	files, err := squirrel.Generate(unit)
 	if err != nil {
 		t.Fatalf("the type surface refused: %v", err)

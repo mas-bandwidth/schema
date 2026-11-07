@@ -94,6 +94,29 @@ print(table.concat({ loaded, report.unknown, report.kindMismatch,
 `
 }
 
+// loadFixTabledemoProbeFixed is the probe at a FIXED root
+// (docs/SPEC-TABLES.md §3.4): the fixed form is the only reader, its refusal
+// is the verdict, and a refused read saves nothing (the empty hex).
+func loadFixTabledemoProbeFixed(module, root string) string {
+	return `local T = require("` + module + `")
+local inputs = require("inputs")
+local wire = inputs.wire
+local function hex(s)
+  return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
+end
+local ok, v = pcall(T.ReadFixedTolerant, "` + root + `", wire)
+local loaded = 0
+local savedHex = ""
+if ok then
+  loaded = 1
+  local sok, b = pcall(T.FixedSave, "` + root + `", { v })
+  if sok and b ~= nil then savedHex = hex(b) end
+end
+print(table.concat({ loaded, 0, 0, 0, 0, 0,
+  "false", ok and 0 or 1, savedHex }, "|"))
+`
+}
+
 func loadFixTabledemoParse(t *testing.T, line string) loadFixTabledemoAnswer {
 	t.Helper()
 	var a loadFixTabledemoAnswer
@@ -186,7 +209,11 @@ func TestLuaLoadTabledemoMalformedAgreesWithTheEngine(t *testing.T) {
 			}
 			dir := t.TempDir()
 			luarun.WriteFiles(t, dir, files)
-			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(loadFixTabledemoProbe(ModuleName(u), c.root)), 0o644); err != nil {
+			probe := loadFixTabledemoProbe(ModuleName(u), c.root)
+			if st := u.Tables[c.root]; st != nil && st.FixedDeclared {
+				probe = loadFixTabledemoProbeFixed(ModuleName(u), c.root)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			data, err := hex.DecodeString(c.hex)

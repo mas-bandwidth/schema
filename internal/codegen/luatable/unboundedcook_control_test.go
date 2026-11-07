@@ -129,7 +129,7 @@ if c == nil then print("REFUSED") else hexline(c) end
 			unboundedPatch(t, files, c.file, c.edits)
 			dir := t.TempDir()
 			luarun.WriteFiles(t, dir, files)
-			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(cookReadProbe(module, "Root")), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(cookReadProbe(module, "Root", false)), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			stdout, _, err := luarun.Try(t, dir, "main.lua", map[string][]byte{"wire": wire, "cook": cooked})
