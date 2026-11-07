@@ -1150,7 +1150,7 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
 	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 	g.pf("\t}\n")
-	g.pf("\tif (r.refused) return %s();\n", st.Name)
+	g.pf("\tif (r.refused) throw FormatException(r.reason);\n")
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 }
