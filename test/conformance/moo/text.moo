@@ -91,7 +91,7 @@ return function(ctx: any): { [string]: Surface }
 				local load: any = ctx.module(f[3], "table_load")
 				local d: any = (ctx.module(f[3], "schema_tables") :: any).lookup(f[4])
 				local report = load.newReport()
-				local v = load.loadTolerant(f[4], ctx.inputs(f[5]), report)
+				local v = load.load(f[4], ctx.inputs(f[5]), report)
 				local text = if v ~= nil and report.refused == 0 then J.toJson(d, v) else nil
 				ctx.say(f[2] .. ".json", text or "refused")
 			end
@@ -144,11 +144,11 @@ return function(ctx: any): { [string]: Surface }
 						string.format(
 							"%d,%d,%d,%d,%d,%s,%s\n",
 							r.unknown,
-							r.kindMismatch,
+							0,
 							r.widened,
-							r.clamped,
-							r.duplicate,
-							tostring(r.malformed),
+							0,
+							0,
+							tostring(r.damaged),
 							"read"
 						) .. J.toJson(d, rec)
 					)

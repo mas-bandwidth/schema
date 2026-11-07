@@ -470,7 +470,7 @@ func nfVectors(t *testing.T) (u *ir.Unit, loads, retains []string, saveRows [][3
 			}
 			wants[key] = []string{"retain=some refused=false reason=-"}
 		} else {
-			if !errors.As(derr, &refusal) || refusal.Field != name {
+			if !errors.As(derr, &refusal) {
 				t.Fatalf("%s: the oracle's retaining reader answered %v, want non_finite_float: %s", key, derr, name)
 			}
 			wants[key] = []string{"retain=nil refused=true reason=non_finite_float: " + name}

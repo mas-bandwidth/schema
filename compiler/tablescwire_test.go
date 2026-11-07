@@ -223,20 +223,44 @@ int main(void)
 	runCTableWireProbe(t, u, source)
 }
 
-// Clamps must happen after promoting the source-width integer, and the float
-// rung widens a finite float32 exactly. The SAME wire with the rung's payload
-// a signalling NaN (0xffa5a5a5) is a must-refuse case (docs/SPEC-TABLES.md
-// §3.3, the finite rule of 2026-10-27): the Go oracle refuses it as
-// non_finite_float, and so does every C read of it, tolerant and strict,
-// landing nothing; the writer refuses the NaN, and a -0 rides by its bits.
+// The range check runs on the PROMOTED source-width integer, and the float
+// rung widens a finite float32 exactly. The wire carries an int8 -1, an int8 0,
+// a uint8 255, a float32 and a uint16 pair {0, 65535}: under ranges that hold
+// those promoted values it reads with five widenings, and under ranges they
+// cross it refuses `out_of_range` whole (docs/SPEC-TABLES.md §4, §6.5). The
+// SAME wire with the rung's payload a signalling NaN (0xffa5a5a5) is a
+// must-refuse case (§3.3, the finite rule of 2026-10-27): the Go oracle
+// refuses it as non_finite_float, and so does every C read of it, tolerant
+// and strict, landing nothing; the writer refuses the NaN, and a -0 rides by
+// its bits.
 func TestCTableWireWidening(t *testing.T) {
-	u := unitFromSource(t, `package probe
-    fixed table Root {
+	crossed := unitFromSource(t, `package probe
+    table Root {
         low int32 = 1000 | min = 1000, max = 2000
         high int32 = -1000 | min = -2000, max = -1000
         positive uint64 = 1000 | min = 1000, max = 2000
         real float64
         samples [..2]uint32 | min = 0, max = 2000
+    }
+    `)
+	u := unitFromSource(t, `package probe
+    table Root {
+        low int32 | min = -1, max = 0
+        high int32 | min = -1, max = 0
+        positive uint64 = 255 | min = 255, max = 255
+        real float64
+        samples [..2]uint32 | min = 0, max = 65535
+    }
+    `)
+	// the C probe's unit is the same declaration as a fixed table, whose C
+	// surface the probe below is written against
+	cu := unitFromSource(t, `package probe
+    fixed table Root {
+        low int32 | min = -1, max = 0
+        high int32 | min = -1, max = 0
+        positive uint64 = 255 | min = 255, max = 255
+        real float64
+        samples [..2]uint32 | min = 0, max = 65535
     }
     `)
 	build := func(rung uint32) []byte {
@@ -258,16 +282,24 @@ func TestCTableWireWidening(t *testing.T) {
 			t.Fatalf("the oracle must refuse the NaN rung as non_finite_float: %v", err)
 		}
 	}
+	{
+		cm := tabletext.NewModel(crossed)
+		var report tabletext.Report
+		ok, err := tablewire.Decode(cm, cm.New(crossed.Tables["Root"]), wire, &report)
+		if ok || tablewire.RefusalReason(err) != tablewire.ReasonOutOfRange || !report.Refused {
+			t.Fatalf("ranges the promoted values cross must refuse out_of_range: %v %v %+v", ok, err, report)
+		}
+	}
 	value := model.New(u.Tables["Root"])
 	var report tabletext.Report
 	if ok, err := tablewire.Decode(model, value, wire, &report); err != nil || !ok {
 		t.Fatalf("oracle decode: %v %v", ok, err)
 	}
-	if report.Widened != 5 || report.Clamped != 4 || report.Malformed {
-		t.Fatalf("test did not exercise five widenings and four clamps: %+v", report)
+	if report.Widened != 5 || report.Refused {
+		t.Fatalf("test did not exercise five widenings: %+v", report)
 	}
-	if value.Fields[2].Cell.U != 1000 {
-		t.Fatalf("oracle lost the widened clamp: %d", value.Fields[2].Cell.U)
+	if value.Fields[0].Cell.I != -1 || value.Fields[2].Cell.U != 255 || value.Fields[4].Elems[1].U != 65535 {
+		t.Fatalf("oracle did not promote: low %d positive %d samples[1] %d", value.Fields[0].Cell.I, value.Fields[2].Cell.U, value.Fields[4].Elems[1].U)
 	}
 	saved, err := tablewire.Encode(model, value)
 	if err != nil {
@@ -280,7 +312,7 @@ func TestCTableWireWidening(t *testing.T) {
 		}
 		return s.String()
 	}
-	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
+	runCTableWireProbe(t, cu, fmt.Sprintf(`#include "ProbeTable.h"
     #include <stdio.h>
     static const uint8_t wire[] = { %s }, expected[] = { %s }, nan_wire[] = { %s };
     /* field by field: a reset assigns members and leaves padding as it was */
@@ -292,7 +324,7 @@ func TestCTableWireWidening(t *testing.T) {
         Root value, fresh; TableReport report; uint8_t saved[sizeof(expected)]; uint64_t bits; double d;
         memset(&report, 0, sizeof(report));
         if (!root_load_tolerant(&value, wire, sizeof(wire), &report)) return 1;
-        if (report.widened != 5 || report.clamped != 4 || report.malformed || report.refused) return 2;
+        if (report.widened != 5 || report.clamped != 0 || report.kind_mismatch != 0 || report.malformed || report.refused) return 2;
         if (root_measure(&value) != (int64_t)sizeof(expected)) { fprintf(stderr, "measure %%lld expected %%zu: low %%d high %%d positive %%llu samples %%d [%%u, %%u]\n", (long long)root_measure(&value), sizeof(expected), value.low, value.high, (unsigned long long)value.positive, value.samples_count, value.samples[0], value.samples[1]); return 3; }
         if (root_save(&value, saved, sizeof(saved)) != (int64_t)sizeof(expected)) return 4;
         if (memcmp(saved, expected, sizeof(expected)) != 0) return 5;

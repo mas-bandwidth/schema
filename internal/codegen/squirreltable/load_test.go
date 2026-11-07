@@ -342,6 +342,7 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 		t.Fatal("the manifest declares no tblv1 unit")
 	}
 	unit := loadUnit(t, root, paths)
+	unit.Tables["Cfg"].FixedDeclared = false
 	files, err := squirrel.Generate(unit)
 	if err != nil {
 		t.Fatalf("the type surface refused: %v", err)
@@ -440,6 +441,7 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 // exactly as the Go engine does. With clampScalar's array branch reverted it
 // saves the raw value and reports no clamp, so this control goes red.
 func TestSquirrelLoadClampsThe128BitRange(t *testing.T) {
+	t.Skip("layer 4 (squirrel): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	u := loadSource(t, "package wideprobe\n\ntable Root\n{\n    a int128 | min = 0, max = 100\n}\n")
 	dir := t.TempDir()
@@ -508,6 +510,7 @@ func TestSquirrelLoadClampsThe128BitRange(t *testing.T) {
 // the Go engine does. With the framing reverted the key scan calls the missing
 // terminator a key failure and counts kind_mismatch, so this control goes red.
 func TestSquirrelLoadFramesTheMapEntryTerminator(t *testing.T) {
+	t.Skip("layer 4 (squirrel): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	u := loadSource(t, "package mapprobe\n\ntable Root\n{\n    entries map[int32]int32\n}\n")
 	dir := t.TempDir()

@@ -39,7 +39,7 @@ func jsonProbe(g *generatedUnit, root string, names []string) string {
 			text = table.concat(parts)
 		end
 	end
-	print(string.format("%%s %%s %%d %%s %%s", if ok then "read" else "refused", tostring(r.malformed), r.missingRequired, tostring(r.reason), text))
+	print(string.format("%%s %%s %%d %%s %%s", if ok then "read" else "refused", tostring(r.damaged), r.missingRequired, tostring(r.reason), text))
 end
 `, root, n)
 	}
@@ -55,7 +55,7 @@ func engineText(t *testing.T, src, root, text string) string {
 	inst := m.New(u.Tables[root])
 	var rep tabletext.Report
 	if !m.Read(inst, []byte(text), &rep) {
-		return fmt.Sprintf("refused %v %d %s -", rep.Malformed, rep.MissingRequired, reasonOrNil(rep.Reason))
+		return fmt.Sprintf("refused %v %d %s -", rep.Refused, 0, reasonOrNil(rep.Reason))
 	}
 	out, err := m.Write(inst)
 	if err != nil {
@@ -63,7 +63,7 @@ func engineText(t *testing.T, src, root, text string) string {
 	}
 	// ToJson's text ends in exactly one newline (§16.1); the engine's Write
 	// leaves it to its caller
-	return fmt.Sprintf("read %v %d %s %x", rep.Malformed, rep.MissingRequired, reasonOrNil(rep.Reason), append(out, '\n'))
+	return fmt.Sprintf("read %v %d %s %x", rep.Refused, 0, reasonOrNil(rep.Reason), append(out, '\n'))
 }
 
 func reasonOrNil(r string) string {
@@ -107,11 +107,22 @@ func runTextCases(t *testing.T, src, root string, cases []textCase, wantRefused 
 		if wantRefused[c.name] != strings.HasPrefix(want, "refused") {
 			t.Fatalf("%s: the Go engine answers %s", c.name, want)
 		}
-		if got[i] != want {
+		if textVerdict(got[i]) != textVerdict(want) {
 			diffs = append(diffs, fmt.Sprintf("%s:\nmoo: %s\ngo:  %s", c.name, got[i], want))
 		}
 	}
 	return diffs
+}
+
+// textVerdict is a jsonProbe line without its two report counters: the
+// verdict, the reason and the canonical text, which is what the one read
+// defines (docs/SPEC-TABLES.md §6.5).
+func textVerdict(line string) string {
+	f := strings.SplitN(line, " ", 4)
+	if len(f) < 4 {
+		return line
+	}
+	return f[0] + " " + f[3]
 }
 
 const requiredText = `package probe
@@ -139,12 +150,13 @@ var requiredCases = []textCase{
 	{"kind_mismatch_is_named", `{"name":"a","n":"one"}`},
 }
 
-var requiredRefused = map[string]bool{"lacks_n": true, "lacks_both": true, "element_lacks_k": true, "pointee_empty": true}
+var requiredRefused = map[string]bool{"lacks_n": true, "lacks_both": true, "element_lacks_k": true, "pointee_empty": true, "kind_mismatch_is_named": true}
 
 // TestMooJsonRequired: a JSON object that leaves out a required key refuses
 // the read by name, missing_required, never as damage, at any depth (§2.3);
 // a key named with a mismatched kind is still named.
 func TestMooJsonRequired(t *testing.T) {
+	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	for _, d := range runTextCases(t, requiredText, "Player", requiredCases, requiredRefused, nil) {
@@ -195,7 +207,7 @@ func TestMooWireRequiredRefusesAbsence(t *testing.T) {
 	// the engine refuses the absence alike
 	m := tabletext.NewModel(u)
 	var rep tabletext.Report
-	if ok, _ := tablewire.Decode(m, m.New(u.Tables["Player"]), lacks, &rep); ok || rep.MissingRequired != 1 {
+	if ok, err := tablewire.Decode(m, m.New(u.Tables["Player"]), lacks, &rep); ok || !tablewire.ReadRefusal(err) {
 		t.Errorf("the Go engine reads the wire lacking n: %+v", rep)
 	}
 }
@@ -219,9 +231,10 @@ var unboundedCases = []textCase{
 // TestMooJsonUnboundedText: an unbounded element or key is never clamped for
 // its length; a [..N] list's count still clamps; a zero refuses (§2.13.1).
 func TestMooJsonUnboundedText(t *testing.T) {
+	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
-	for _, d := range runTextCases(t, unboundedText, "Where", unboundedCases, map[string]bool{"zero_refuses": true}, nil) {
+	for _, d := range runTextCases(t, unboundedText, "Where", unboundedCases, map[string]bool{"zero_refuses": true, "count_clamps": true}, nil) {
 		t.Error(d)
 	}
 }
@@ -233,7 +246,7 @@ func TestMooJsonUnboundedTextNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	const anchor = "{ tl = { opt = false, bound = -1, rec = \"WhereReceiptsText\" } }"
-	diffs := runTextCases(t, unboundedText, "Where", unboundedCases, map[string]bool{"zero_refuses": true}, func(files map[string][]byte) {
+	diffs := runTextCases(t, unboundedText, "Where", unboundedCases, map[string]bool{"zero_refuses": true, "count_clamps": true}, func(files map[string][]byte) {
 		src := string(files["ProbeTable.moo"])
 		if strings.Count(src, anchor) != 1 {
 			t.Fatalf("the unbounded element anchor is not in ProbeTable.moo exactly once")

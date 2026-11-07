@@ -126,7 +126,7 @@ int main( void )
 %s
     return 0;
 }
-`, header, snake, root, root, root, snake+"_reset", snake+"_reset", setup, snake+"_fixed_save", forge, snake+"_fixed_load_tolerant", body)
+`, header, snake, root, root, root, snake+"_reset", snake+"_reset", setup, snake+"_fixed_save", forge, snake+"_fixed_load", body)
 	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -203,15 +203,13 @@ func cT06RangedScalarClamp(t *testing.T) {
     v.v = 50;
     v.trail = 0xBBBBBBBBu;`
 	check := func(label string, want int32) string {
+		_ = want
 		return fmt.Sprintf(`
-    if ( n != 1 ) { printf( "C7: n=%%lld, not 1\n", (long long) n ); return 1; }
-    if ( back[0].v != %d ) { printf( "C7: %s: %%d\n", (int) back[0].v ); return 1; }
-    if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
-        { printf( "C7: a clamp moved a neighbour: lead=%%u trail=%%u\n", back[0].lead, back[0].trail ); return 1; }
-    if ( r.clamped != 1 ) { printf( "C7: clamped == %%d, not exactly 1\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "C7: a counter moved on a clean clamp: u=%%d km=%%d w=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused || r.reason != 0 ) { printf( "C7: a clean read refused\n" ); return 1; }`, want, label)
+    if ( n != -1 ) { printf( "C7: %s: n=%%lld, not a refusal\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
+        { printf( "C7: %s: not refused out of range\n" ); return 1; }
+    if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 )
+        { printf( "C7: %s: a refusal landed a value\n" ); return 1; }`, label, label, label)
 	}
 	forgeMax := `
     FORGE_U32( offsetof( RangeWiden, v ), 300 ); /* past max */`
@@ -271,14 +269,12 @@ func cT06UnionTagPastArms(t *testing.T) {
 	forge := `
     FORGE_U8( offsetof( Lineage, pick ) + offsetof( Pick, type ), 4 ); /* past the three arms */`
 	body := `
-    if ( n != 1 ) { printf( "C9: n=%lld, not 1\n", (long long) n ); return 1; }
+    if ( n != -1 ) { printf( "C9: n=%lld, not a refusal\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
+        { printf( "C9: a forged tag is not refused out of range\n" ); return 1; }
     if ( back[0].pick.type != PICK_TYPE_NONE )
-        { printf( "C9: the forged tag 4 did not land None: %d\n", (int) back[0].pick.type ); return 1; }
-    if ( back[0].seq != 9 ) { printf( "C9: the scalar after the union moved: %d\n", (int) back[0].seq ); return 1; }
-    if ( r.clamped != 1 ) { printf( "C9: clamped == %d, not exactly 1\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "C9: a counter moved on a forged tag: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused || r.reason != 0 ) { printf( "C9: a forged tag is not a refusal\n" ); return 1; }`
+        { printf( "C9: the forged tag 4 landed an arm: %d\n", (int) back[0].pick.type ); return 1; }
+    if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 ) { printf( "C9: a refusal landed a value\n" ); return 1; }`
 	out, err := cRunSelfBuilt(t, "VNEW_union_append", nil, 0, setup, forge, body)
 	if err != nil {
 		t.Fatalf("C9: %v\n%s", err, out)
@@ -296,14 +292,12 @@ func cT06EnumOrdinalPastTop(t *testing.T) {
 	forge := `
     FORGE_U8( offsetof( Lineage, tier ), 5 ); /* past the top ordinal 4 */`
 	body := `
-    if ( n != 1 ) { printf( "C10: n=%lld, not 1\n", (long long) n ); return 1; }
+    if ( n != -1 ) { printf( "C10: n=%lld, not a refusal\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
+        { printf( "C10: a forged ordinal is not refused out of range\n" ); return 1; }
     if ( back[0].tier != TIER_NONE )
-        { printf( "C10: the forged ordinal 5 did not land None: %d\n", (int) back[0].tier ); return 1; }
-    if ( back[0].seq != 9 ) { printf( "C10: the scalar after the enum moved: %d\n", (int) back[0].seq ); return 1; }
-    if ( r.clamped != 1 ) { printf( "C10: clamped == %d, not exactly 1\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "C10: a counter moved on a forged ordinal: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused || r.reason != 0 ) { printf( "C10: a forged ordinal is not a refusal\n" ); return 1; }`
+        { printf( "C10: the forged ordinal 5 landed a variant: %d\n", (int) back[0].tier ); return 1; }
+    if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 ) { printf( "C10: a refusal landed a value\n" ); return 1; }`
 	out, err := cRunSelfBuilt(t, "VNEW_enum_append", nil, 0, setup, forge, body)
 	if err != nil {
 		t.Fatalf("C10: %v\n%s", err, out)
@@ -349,12 +343,11 @@ func cT06BoolByte(t *testing.T) {
 	forge := `
     FORGE_U8( offsetof( Hbb, flag ), 0x02 );`
 	body := `
-    if ( n != 1 ) { printf( "C12: n=%lld, not 1\n", (long long) n ); return 1; }
-    if ( back[0].flag != 1 ) { printf( "C12: a forged 0x02 did not land the normalised true: %d\n", (int) back[0].flag ); return 1; }
-    if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
-        { printf( "C12: the bool normalisation moved a neighbour: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
-    if ( r.clamped != 0 ) { printf( "C12: a bool normalises silently, clamped == %d\n", r.clamped ); return 1; }
-    if ( r.malformed || r.refused || r.reason != 0 ) { printf( "C12: a clean read refused\n" ); return 1; }`
+    if ( n != -1 ) { printf( "C12: n=%lld, not a refusal\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
+        { printf( "C12: a bool byte other than 0 or 1 is not refused\n" ); return 1; }
+    if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 )
+        { printf( "C12: a refusal landed a value\n" ); return 1; }`
 	out, err := cRunSelfBuilt(t, "VNEW_hostile_bool", nil, 0, setup, forge, body)
 	if err != nil {
 		t.Fatalf("C12: %v\n%s", err, out)
@@ -372,13 +365,11 @@ func cT06PresentByte(t *testing.T) {
 	forge := `
     FORGE_U8( 4, 0x02 ); /* the present byte rides at body offset 4, right after lead */`
 	body := `
-    if ( n != 1 ) { printf( "C13: n=%lld, not 1\n", (long long) n ); return 1; }
-    if ( back[0].link_present != 1 )
-        { printf( "C13: a forged 0x02 did not land the normalised present: %d\n", (int) back[0].link_present ); return 1; }
-    if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
-        { printf( "C13: the present normalisation moved a neighbour: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
-    if ( r.clamped != 0 ) { printf( "C13: a present flag normalises silently, clamped == %d\n", r.clamped ); return 1; }
-    if ( r.malformed || r.refused || r.reason != 0 ) { printf( "C13: a clean read refused\n" ); return 1; }`
+    if ( n != -1 ) { printf( "C13: n=%lld, not a refusal\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
+        { printf( "C13: a present byte other than 0 or 1 is not refused\n" ); return 1; }
+    if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 )
+        { printf( "C13: a refusal landed a value\n" ); return 1; }`
 	out, err := cRunSelfBuilt(t, "VNEW_optional_add", nil, 0, setup, forge, body)
 	if err != nil {
 		t.Fatalf("C13: %v\n%s", err, out)
@@ -404,17 +395,11 @@ func cT06NormaliseCountsNothing(t *testing.T) {
         for ( i = 0; i < 8; ++i ) { FORGE_U8( 10 + i, 0x02 ); } /* flags[i]: body offset 10+i */
     }`
 	body := `
-    if ( n != 1 ) { printf( "R17: n=%lld, not 1\n", (long long) n ); return 1; }
-    if ( back[0].flag != 1 || back[0].link_present != 1 )
-        { printf( "R17: a forged 0x02 did not normalise to 1: flag=%d present=%d\n", (int) back[0].flag, (int) back[0].link_present ); return 1; }
-    {
-        int i;
-        for ( i = 0; i < 8; ++i ) if ( back[0].flags[i] != 1 ) { printf( "R17: flags[%d] did not normalise: %d\n", i, (int) back[0].flags[i] ); return 1; }
-    }
-    if ( r.clamped != 0 ) { printf( "R17: normalisation counts nothing, clamped == %d\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "R17: a counter moved on normalisation: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused || r.reason != 0 ) { printf( "R17: a clean read refused\n" ); return 1; }`
+    if ( n != -1 ) { printf( "R17: n=%lld, not a refusal\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
+        { printf( "R17: a bool or present byte other than 0 or 1 is not refused\n" ); return 1; }
+    if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 )
+        { printf( "R17: a refusal landed a value\n" ); return 1; }`
 	out, err := cRunSelfBuilt(t, "VNEW_hostile_bool", nil, 0, setup, forge, body)
 	if err != nil {
 		t.Fatalf("R17: %v\n%s", err, out)
@@ -432,14 +417,11 @@ func cT06CountClampLow(t *testing.T) {
 	forge := `
     FORGE_U32( 4, 0xFFFFFFFFu ); /* -1: the count word rides at body offset 4, right after lead */`
 	body := `
-    if ( n != 1 ) { printf( "C1: n=%lld, not 1\n", (long long) n ); return 1; }
-    if ( back[0].vals_count != 0 ) { printf( "C1: the negative count did not clamp to 0: %d\n", back[0].vals_count ); return 1; }
-    if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
-        { printf( "C1: a clamp moved a neighbour: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
-    if ( r.clamped != 1 ) { printf( "C1: clamped == %d, not exactly 1\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "C1: a counter moved on a clean clamp: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused || r.reason != 0 ) { printf( "C1: a clean read refused\n" ); return 1; }`
+    if ( n != -1 ) { printf( "C1: n=%lld, not a refusal\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
+        { printf( "C1: a count below zero is not refused out of range\n" ); return 1; }
+    if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 )
+        { printf( "C1: a refusal landed a value\n" ); return 1; }`
 	out, err := cRunSelfBuilt(t, "VNEW_array_bounded_grow", nil, 0, setup, forge, body)
 	if err != nil {
 		t.Fatalf("C1: %v\n%s", err, out)
@@ -458,14 +440,11 @@ func cT06CountClampHigh(t *testing.T) {
 	forge := `
     FORGE_U32( 4, 9 ); /* past the bound 8: the count word rides at body offset 4 */`
 	body := `
-    if ( n != 1 ) { printf( "C2: n=%lld, not 1\n", (long long) n ); return 1; }
-    if ( back[0].vals_count != 8 ) { printf( "C2: the forged 9 did not clamp to the bound 8: %d\n", back[0].vals_count ); return 1; }
-    if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
-        { printf( "C2: a clamp moved a neighbour: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
-    if ( r.clamped != 1 ) { printf( "C2: clamped == %d, not exactly 1\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "C2: a counter moved on a clean clamp: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused || r.reason != 0 ) { printf( "C2: a clean read refused\n" ); return 1; }`
+    if ( n != -1 ) { printf( "C2: n=%lld, not a refusal\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
+        { printf( "C2: a count past the bound is not refused out of range\n" ); return 1; }
+    if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 )
+        { printf( "C2: a refusal landed a value\n" ); return 1; }`
 	out, err := cRunSelfBuilt(t, "VNEW_array_bounded_grow", nil, 0, setup, forge, body)
 	if err != nil {
 		t.Fatalf("C2: %v\n%s", err, out)

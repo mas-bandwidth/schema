@@ -28,7 +28,10 @@ func emitDescriptors(g *lobster.Gen) error {
 	if !have {
 		g.Runtimes = append(g.Runtimes, "descriptors")
 	}
-	base := g.File.Base
+	if len(g.Unit.Tables) != 0 {
+		g.Runtimes = append(g.Runtimes, "descriptors_load")
+	}
+	base := g.File.Base + ".schema"
 	g.Pf("schema_rt.set_unit(%s, %s)\n", lobster.StringLit([]byte(g.Unit.Package)), idLit(g.Unit.ProtocolId))
 	for _, t := range g.File.Tables {
 		if t.IsMapEntry() {
@@ -53,19 +56,13 @@ func emitDescriptors(g *lobster.Gen) error {
 			if _, ok := g.Unit.Tables[d.Name]; ok {
 				continue
 			}
-			// a packet type no table reaches still gets a view: its descriptor
-			// is emitted here, in this file's table module (§8.2).
-			reach := ir.TableClosure(g.Unit)[d.Name]
-			if !reach {
-				emitDescriptor(g, d)
-			}
 			g.Pf("schema_rt.view_type(%sDescriptor, %s, %s, %s)\n", d.Name, lobster.StringLit([]byte(base)), lobster.StringLit([]byte(d.Doc)), tagList(d.Tags))
 			for _, f := range d.Fields {
 				fieldAnnotations(g, d.Name, f)
 				emitMapEntry(g, d.Name, f)
 			}
 		case *ir.Enum:
-			emitVocabulary(g, d.Name, base, "enum", d.Doc, d.Tags, d.Variants, d.VariantDocs, d.VariantTags, d.VariantDeprecated, enumIDs(d))
+			emitVocabulary(g, d.Name, base, "enum", d.Doc, d.Tags, d.Variants, d.VariantDocs, d.VariantTags, d.VariantDeprecated, enumIDs(g.Unit, d))
 		case *ir.Flags:
 			emitVocabulary(g, d.Name, base, "flags", d.Doc, d.Tags, d.Variants, d.VariantDocs, d.VariantTags, nil, nil)
 		case *ir.Union:
@@ -82,15 +79,9 @@ func emitDescriptors(g *lobster.Gen) error {
 		}
 	}
 	for _, un := range g.File.TableUnions {
-		armDocs := make([]string, len(un.Variants))
-		armTags := make([][]string, len(un.Variants))
-		dep := make([]bool, len(un.Variants))
-		names := make([]string, len(un.Variants))
-		for i, v := range un.Variants {
-			names[i], armDocs[i], armTags[i] = v.Name, v.Doc, v.Tags
-		}
-		emitVocabulary(g, un.Name, base, "union", un.Doc, un.Tags, names, armDocs, armTags, dep, nil)
+		emitUnionView(g, un, base)
 	}
+
 	// the key enum of every enum-keyed array: the descriptor carries the key's
 	// variants so the load needs no second registration (§2.4; PORT-LOBSTER,
 	// THE LOAD).
@@ -174,6 +165,9 @@ func emitMapEntry(g *lobster.Gen, owner string, f *ir.Field) {
 
 func emitVocabulary(g *lobster.Gen, name, base, kind, doc string, tags []string, variants, docs []string, vtags [][]string, dep []bool, ids []uint64) {
 	g.Pf("schema_rt.view_vocabulary(%s, %s, %s, %s, [", lobster.StringLit([]byte(name)), lobster.StringLit([]byte(base)), lobster.StringLit([]byte(doc)), tagList(tags))
+	if kind != "flags" {
+		g.Pf("%s.ViewVariant { name: \"None\", id: 0 }", rt)
+	}
 	for i, v := range variants {
 		d, t := "", []string(nil)
 		if i < len(docs) {
@@ -187,13 +181,22 @@ func emitVocabulary(g *lobster.Gen, name, base, kind, doc string, tags []string,
 		if i < len(ids) {
 			id = ids[i]
 		}
-		if i > 0 {
+		if i > 0 || kind != "flags" {
 			g.Pf(", ")
 		}
-		g.Pf("%s.ViewVariant { name: %s, id: %s, deprecated: %v, doc: %s, tags: %s }", rt,
+		g.Pf("%s.ViewVariant { value: %d, name: %s, id: %s, deprecated: %v, doc: %s, tags: %s }", rt, variantValue(kind, i),
 			lobster.StringLit([]byte(v)), idLit(id), mark, lobster.StringLit([]byte(d)), tagList(t))
 	}
-	g.Pf("]::%s.ViewVariant, %s)\n", rt, lobster.StringLit([]byte(kind)))
+	max, bits := vocabularyShape(g.Unit, name, kind)
+	var payloadOffset int64
+	if kind == "union" {
+		un := g.Unit.Unions[name]
+		if un == nil {
+			un = g.Unit.TableUnions[name]
+		}
+		_, _, _, payloadOffset = ir.UnionLayout(g.Unit, un)
+	}
+	g.Pf("]::%s.ViewVariant, %s, %d, %d, %d)\n", rt, lobster.StringLit([]byte(kind)), max, bits, payloadOffset)
 	for i, v := range variants {
 		if i < len(dep) && dep[i] {
 			g.Pf("schema_rt.deprecated_variant(%s, %s)\n", lobster.StringLit([]byte(name)), lobster.StringLit([]byte(v)))
@@ -206,25 +209,33 @@ func emitUnionView(g *lobster.Gen, un *ir.Union, base string) {
 	tags := make([][]string, len(un.Variants))
 	names := make([]string, len(un.Variants))
 	ids := make([]uint64, len(un.Variants))
+	reached := ir.TableClosureVocabulary(g.Unit)[un.Name]
 	for i, v := range un.Variants {
 		names[i], docs[i], tags[i] = v.Name, v.Doc, v.Tags
-		ids[i] = ir.TableWireId(v.WireName())
-	}
-	g.Pf("schema_rt.view_vocabulary(%s, %s, %s, %s, [", lobster.StringLit([]byte(un.Name)), lobster.StringLit([]byte(base)), lobster.StringLit([]byte(un.Doc)), tagList(un.Tags))
-	for i, v := range un.Variants {
-		if i > 0 {
-			g.Pf(", ")
+		if reached {
+			ids[i] = ir.TableWireId(v.WireName())
 		}
-		g.Pf("%s.ViewVariant { name: %s, id: %s, doc: %s, tags: %s }", rt,
-			lobster.StringLit([]byte(v.Name)), idLit(ids[i]), lobster.StringLit([]byte(v.Doc)), tagList(v.Tags))
 	}
-	g.Pf("]::%s.ViewVariant, %s)\n", rt, lobster.StringLit([]byte("union")))
+	emitVocabulary(g, un.Name, base, "union", un.Doc, un.Tags, names, docs, tags, nil, ids)
+	for i, arm := range un.Variants {
+		if arm.Void() {
+			continue
+		}
+		record := "nil"
+		if arm.Body() {
+			record = fmt.Sprintf("schema_rt.lookup_table(%s)", lobster.StringLit([]byte(arm.Type)))
+		}
+		g.Pf("schema_rt.view_union_arm(%s, %d, %s, %s, %v)\n", lobster.StringLit([]byte(un.Name)), i+1,
+			lobster.StringLit([]byte(ir.FieldTypeSpelling(arm.F))), record, !arm.Body())
+	}
 }
 
-func enumIDs(e *ir.Enum) []uint64 {
+func enumIDs(u *ir.Unit, e *ir.Enum) []uint64 {
 	out := make([]uint64, len(e.Variants))
-	for i := range e.Variants {
-		out[i] = ir.TableWireId(e.VariantWireName(i))
+	if ir.TableClosureVocabulary(u)[e.Name] {
+		for i := range e.Variants {
+			out[i] = ir.TableWireId(e.VariantWireName(i))
+		}
 	}
 	return out
 }
@@ -235,9 +246,6 @@ func constInt(c *ir.Const) string {
 	}
 	if c.Int == nil {
 		return "0"
-	}
-	if c.Int.IsInt64() {
-		return fmt.Sprint(c.Int.Int64())
 	}
 	return lobster.IntLit(c.Int)
 }
@@ -270,4 +278,33 @@ func join(parts []string) string {
 		out.WriteString(p)
 	}
 	return out.String()
+}
+
+func variantValue(kind string, i int) int {
+	if kind == "flags" {
+		return i
+	}
+	return i + 1
+}
+
+func vocabularyShape(u *ir.Unit, name, kind string) (int64, int) {
+	switch kind {
+	case "enum":
+		e := u.Enums[name]
+		return e.Max, e.StorageBits
+	case "flags":
+		f := u.Flags[name]
+		for _, bits := range []int{8, 16, 32, 64} {
+			if f.WireBits <= bits {
+				return int64(len(f.Variants) - 1), bits
+			}
+		}
+		return int64(len(f.Variants) - 1), 64
+	default:
+		un := u.Unions[name]
+		if un == nil {
+			un = u.TableUnions[name]
+		}
+		return un.Max, un.StorageBits
+	}
 }

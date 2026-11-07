@@ -1,17 +1,20 @@
 // descriptors.lobster — the table surface's REFLECTION side
 // (docs/SPEC-TABLES.md §8.2, §8.3; docs/PORT-LOBSTER.md, THE CARD MAP): the
 // unit registry and type view, the doc and tag columns, the deprecated enum
-// variant read, and the enum-keyed array's key variants. It joins the load
-// and save runtimes through the shape registry, so neither is edited here.
+// variant markers, and the enum-keyed array's key variants. Read hooks
+// live separately in descriptors_load.lobster so reflection imports no codec.
 // SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
-import .load
 import .schema_tables
 
 namespace schema_rt
 
 // A ViewVariant is one enum variant, flags bit or union arm (§8.3).
 class ViewVariant:
+    value:int = 0
+    payload_name:string = ""
+    record:TableDescriptor? = nil
+    field:FieldDescriptor? = nil
     name:string
     id:int
     deprecated:bool = false
@@ -20,6 +23,10 @@ class ViewVariant:
 
 // A ViewVocabulary is one enum, flags or union declaration (§8.3).
 class ViewVocabulary:
+    // Payload base in the shared region/cook projection.
+    payload_offset:int = 0
+    max:int = 0
+    storage_bits:int = 0
     name:string
     file:string
     variants:[ViewVariant]
@@ -76,8 +83,8 @@ def view_table(d:TableDescriptor, file:string, doc:string, tags:[string]):
 def view_type(d:TableDescriptor, file:string, doc:string, tags:[string]):
     push(view_types, ViewType { name: d.name, file: file, table: false, d: d, doc: doc, tags: tags })
 
-def view_vocabulary(name:string, file:string, doc:string, tags:[string], variants:[ViewVariant], kind:string):
-    let v = ViewVocabulary { name: name, file: file, variants: variants, doc: doc, tags: tags }
+def view_vocabulary(name:string, file:string, doc:string, tags:[string], variants:[ViewVariant], kind:string, max:int, storage_bits:int, payload_offset:int):
+    let v = ViewVocabulary { payload_offset: payload_offset, max: max, storage_bits: storage_bits, name: name, file: file, variants: variants, doc: doc, tags: tags }
     if kind == "enum":
         push(view_enums, v)
     elif kind == "flags":
@@ -88,8 +95,42 @@ def view_vocabulary(name:string, file:string, doc:string, tags:[string], variant
 def view_constant(name:string, file:string, type_name:string, is_float:bool, int_value:int, float_value:float, doc:string, tags:[string]):
     push(view_constants, ViewConstant { name: name, file: file, type_name: type_name, is_float: is_float, int_value: int_value, float_value: float_value, doc: doc, tags: tags })
 
+// UnitView sets are ordered by declaration name (SPEC-TABLES §8.3).
+def view_name_before(a:string, b:string) -> bool:
+    for(min(length(a), length(b))) i:
+        if a[i] != b[i]:
+            return a[i] < b[i]
+    return length(a) < length(b)
+
+def view_sorted_types(items:[ViewType]) -> [ViewType]:
+    let result:[ViewType] = []
+    for(items) item:
+        var at = length(result)
+        while at > 0 and view_name_before(item.name, result[at - 1].name):
+            at--
+        insert(result, at, item)
+    return result
+
+def view_sorted_vocabulary(items:[ViewVocabulary]) -> [ViewVocabulary]:
+    let result:[ViewVocabulary] = []
+    for(items) item:
+        var at = length(result)
+        while at > 0 and view_name_before(item.name, result[at - 1].name):
+            at--
+        insert(result, at, item)
+    return result
+
+def view_sorted_constants(items:[ViewConstant]) -> [ViewConstant]:
+    let result:[ViewConstant] = []
+    for(items) item:
+        var at = length(result)
+        while at > 0 and view_name_before(item.name, result[at - 1].name):
+            at--
+        insert(result, at, item)
+    return result
+
 def unit_view() -> UnitView:
-    return UnitView { package: view_package, protocol_id: view_protocol, types: view_types, tables: view_tables, enums: view_enums, flags: view_flags, unions: view_unions, constants: view_constants }
+    return UnitView { package: view_package, protocol_id: view_protocol, types: view_sorted_types(view_types), tables: view_sorted_types(view_tables), enums: view_sorted_vocabulary(view_enums), flags: view_sorted_vocabulary(view_flags), unions: view_sorted_vocabulary(view_unions), constants: view_sorted_constants(view_constants) }
 
 // THE ANNOTATION COLUMNS (§8.1): a field's doc and tags live beside its
 // descriptor, keyed by its owner and name, so no second descriptor class is
@@ -167,7 +208,7 @@ def keyed_slot(key:int, max:int, what:string) -> int:
 
 // THE DEPRECATED ENUM VARIANT (§2.15): the variant keeps its id, but a read
 // yields the field's declared default (an element's zero). The marker is
-// registered from the descriptors, and this file replaces the enum shape.
+// registered from the descriptors; descriptors_load applies it to reads.
 class DeprecatedName:
     enum_name:string
     variant:string
@@ -193,28 +234,14 @@ def enum_default(fd:FieldDescriptor) -> int:
         return fd.def_int.lo
     return 0
 
-class DeprecatedEnumShape : Shape
-    def field(r:Reader, sl:Slot) -> bool:
-        let ok = enum_cell(r, sl.cell, sl.fd)
-        if ok and sl.cell.i > 0:
-            if is_deprecated_variant(sl.fd.t, variant_name(sl.fd, sl.cell.i)):
-                sl.cell.i = enum_default(sl.fd)
-        return ok
-    def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
-        let e = elem_of(sl.fd)
-        let ok = enum_cell(r, sl.elems[i], e)
-        if ok and sl.elems[i].i > 0:
-            if is_deprecated_variant(e.t, variant_name(e, sl.elems[i].i)):
-                sl.elems[i].i = 0
-        return ok
-    def arm(r:Reader, fv:Slot, n:int) -> bool:
-        let ok = enum_cell(r, fv.cell, fv.fd)
-        if ok and fv.cell.i > 0:
-            if is_deprecated_variant(fv.fd.t, variant_name(fv.fd, fv.cell.i)):
-                fv.cell.i = enum_default(fv.fd)
-        if ok and r.off != r.lo + n:
-            r.st.report.malformed = true
-            return false
-        return ok
-
-let _descriptors_enum = register_shape(DeprecatedEnumShape { key: "enum" })
+// Union payload metadata shares the descriptor objects used by the runtime.
+def view_union_arm(union_name:string, tag:int, payload_name:string, record:TableDescriptor?, general:bool):
+    for(view_unions) vocabulary:
+        if vocabulary.name == union_name:
+            let variant = vocabulary.variants[tag]
+            variant.payload_name = payload_name
+            variant.record = record
+            if general:
+                let descriptor = lookup_union(union_name)
+                if descriptor:
+                    variant.field = descriptor.arms[tag - 1]

@@ -52,7 +52,7 @@ func cWriterRangeChecks(vec fixedvector.Vector, want fixedvector.Expect) (string
 		return "", err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "    if ( n != 1 || r.malformed || r.refused ) { printf( \"%[1]s: n=%%lld malformed=%%d refused=%%d, want one record\\n\", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }\n", vec.Name)
+	fmt.Fprintf(&b, "    if ( n != 1 || r.refused || r.refused ) { printf( \"%[1]s: n=%%lld malformed=%%d refused=%%d, want one record\\n\", (long long) n, (int) r.refused, (int) r.refused ); return 1; }\n", vec.Name)
 	for _, l := range leaves {
 		expr := "back[0]." + l.Field
 		if l.Index >= 0 {

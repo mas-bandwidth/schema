@@ -130,6 +130,10 @@ type fuzzAnswer struct {
 	// (docs/SPEC-TABLES.md §3.3): every read refuses it, so the whole of
 	// what the leg owes is its own refusal verdict
 	nonFinite bool
+	// refusedLoad is the engine's refusal of the whole load (THE ONE READ,
+	// docs/SPEC-TABLES.md §4, §6.5): the leg owes a refusal, by damage or by
+	// name, and nothing else is compared
+	refusedLoad bool
 }
 
 func (a fuzzAnswer) String() string {
@@ -148,6 +152,12 @@ func fuzzVerdict(leg, eng fuzzAnswer) string {
 	if eng.nonFinite {
 		if !leg.refused {
 			return "the engine refuses a non-finite float (non_finite_float); the leg did not refuse the wire"
+		}
+		return ""
+	}
+	if eng.refusedLoad {
+		if !leg.refused && !leg.malformed {
+			return "the engine refuses the load; the leg did not refuse the wire"
 		}
 		return ""
 	}
@@ -172,15 +182,10 @@ func fuzzVerdict(leg, eng fuzzAnswer) string {
 	return ""
 }
 
-// fuzzEngine is the Go engine's answer (docs/SPEC-TABLES.md §4.2), the
-// harness's oracle for the arm the root's class puts it in:
-//
-//   - a VARIABLE-class root is read as a BUILDER (tablewire.Decode): `loaded`
-//     is whether the read finished, a stopped builder saves nothing, and a
-//     count past the storage cap stops it without a malformed event;
-//   - a FIXED-class root always loads (tablewire.DecodeRegion: the value is
-//     filled in place and reports), and what it saves is whatever it holds,
-//     the declared defaults where nothing was decoded.
+// fuzzEngine is the Go engine's answer (docs/SPEC-TABLES.md §4, §4.2), the
+// harness's oracle: a VARIABLE-class root is read by tablewire.Decode and a
+// FIXED-class root by tablewire.DecodeRegion, and either returns the whole
+// value, which it saves, or refuses the whole load.
 func fuzzEngine(m *tabletext.Model, def *ir.Struct, variable bool, data []byte) (ans fuzzAnswer, err error) {
 	inst := m.New(def)
 	var rep tabletext.Report
@@ -188,9 +193,6 @@ func fuzzEngine(m *tabletext.Model, def *ir.Struct, variable bool, data []byte) 
 	var derr error
 	if variable {
 		ok, derr = tablewire.Decode(m, inst, data, &rep)
-		if _, capped := errors.AsType[*tablewire.CountRefusal](derr); capped {
-			derr = nil
-		}
 	} else {
 		ok, derr = tablewire.DecodeRegion(m, inst, data, &rep)
 	}
@@ -199,24 +201,16 @@ func fuzzEngine(m *tabletext.Model, def *ir.Struct, variable bool, data []byte) 
 		return ans, nil
 	}
 	switch {
-	case tablewire.Refused(derr):
-		ans.refused = true
-		if variable {
-			ans.saveFail = true
-			return ans, nil
-		}
-		ans.loaded = true
+	case tablewire.ReadRefusal(derr) || (derr == nil && !ok):
+		// the leg owes the discard, which callers read as malformed
+		ans.refusedLoad = true
+		ans.malformed = true
+		return ans, nil
 	case derr != nil:
-		return ans, fmt.Errorf("the engine refused the root itself: %w", derr)
+		return ans, fmt.Errorf("the engine failed: %w", derr)
 	default:
-		ans.loaded = ok || !variable
-		ans.unknown, ans.kindMismatch, ans.widened = rep.Unknown, rep.KindMismatch, rep.Widened
-		ans.clamped, ans.duplicate = rep.Clamped, rep.Duplicate
-		ans.malformed = rep.Malformed || (!ok && !variable)
-		if !ans.loaded {
-			ans.saveFail = true
-			return ans, nil
-		}
+		ans.loaded = true
+		ans.unknown, ans.widened = rep.Unknown, rep.Widened
 	}
 	enc, eerr := tablewire.Encode(m, inst)
 	if eerr != nil {

@@ -31,8 +31,8 @@ const maxHostInt = int(^uint(0) >> 1)
 // Upgrade rewrites wire through the generated retaining region path so that
 // every field the current declaration cannot name is preserved, byte for byte,
 // at the end of its own body (§6.6). It returns nil output and a named error
-// when any value would be lost — RetainLost, KindMismatch, Clamped or
-// Malformed — or when the wire is refused; the input wire is never mutated and
+// when any value would be lost — RetainLost — or when the wire is
+// refused; the input wire is never mutated and
 // no Record replacement occurs on error. The result is idempotent: upgrading an
 // already-upgraded wire is byte-for-byte the same (§6.6).
 //
@@ -61,7 +61,7 @@ func upgrade(wire []byte, retainBytes, retainIDs int) ([]byte, Report, error) {
 		if reason != nil {
 			report.Reason = reason.Error()
 		}
-		CardLoadTolerant(make([]byte, 64), wire, &report)
+		CardLoad(make([]byte, 64), wire, &report)
 		return nil, report, fmt.Errorf("cards: upgrade: wire is not a card: %v", reason)
 	}
 	if n > int64(maxHostInt)-64 {
@@ -94,27 +94,20 @@ func upgrade(wire []byte, retainBytes, retainIDs int) ([]byte, Report, error) {
 }
 
 // lossErr names the report events that make a rewrite unsafe (§6.6): any
-// retained field that could not be kept, any kind mismatch, any clamped value,
-// or framing damage. Unknown, Retained and Widened alone are not loss (§4).
+// retained field that could not be kept, or a refusal. Unknown, Retained and
+// Widened alone are not loss (§4).
 func lossErr(report *TableReport) error {
 	if report.RetainLost > 0 {
 		return fmt.Errorf("cards: upgrade: %d retained field(s) lost, refusing to replace", report.RetainLost)
 	}
-	if report.KindMismatch > 0 {
-		return fmt.Errorf("cards: upgrade: %d kind mismatch(es), refusing to replace", report.KindMismatch)
-	}
-	if report.Clamped > 0 {
-		return fmt.Errorf("cards: upgrade: %d clamped value(s), refusing to replace", report.Clamped)
-	}
-	if report.Malformed {
-		return errors.New("cards: upgrade: malformed wire, refusing to replace")
+	if report.Refused() {
+		return fmt.Errorf("cards: upgrade: %v, refusing to replace", report.Err())
 	}
 	return nil
 }
 
 // ReadStrict reads wire and refuses any data the current declaration cannot
-// support: Unknown, KindMismatch, Clamped, Malformed and every load failure
-// (docs/SPEC-TABLES.md §4). A safe Widened event need not refuse. It returns no
+// support: Unknown fields and every load refusal (docs/SPEC-TABLES.md §4). A safe Widened event need not refuse. It returns no
 // usable Record on rejection.
 func ReadStrict(wire []byte) (*Record, error) {
 	rec, report, err := Load(wire)
@@ -123,15 +116,6 @@ func ReadStrict(wire []byte) (*Record, error) {
 	}
 	if report.Unknown > 0 {
 		return nil, fmt.Errorf("cards: strict: %d unknown field(s), unsupported data", report.Unknown)
-	}
-	if report.KindMismatch > 0 {
-		return nil, fmt.Errorf("cards: strict: %d kind mismatch(es), unsupported data", report.KindMismatch)
-	}
-	if report.Clamped > 0 {
-		return nil, fmt.Errorf("cards: strict: %d clamped value(s), unsupported data", report.Clamped)
-	}
-	if report.Malformed {
-		return nil, errors.New("cards: strict: malformed wire, unsupported data")
 	}
 	return rec, nil
 }

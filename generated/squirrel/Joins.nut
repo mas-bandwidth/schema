@@ -583,9 +583,11 @@ _M.ReadUneven <- function(stream, value) {
   value.Type = _h.value;
   switch (value.Type) {
     case 1: // Narrow
+      value.Narrow = _M.Narrow();
       if (!_M.ReadNarrow(stream, value.Narrow)) return false;
       break;
     case 2: // Wide
+      value.Wide = _M.Wide();
       if (!_M.ReadWide(stream, value.Wide)) return false;
       break;
   }

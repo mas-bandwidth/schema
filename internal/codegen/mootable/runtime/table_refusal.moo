@@ -31,7 +31,7 @@ function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 	local d = S.lookup(root)
 	if bytes == nil or buffer.len(bytes) < 1 then
 		L.resetReport(rep)
-		rep.malformed = true
+		rep.damaged = true
 		rep.reason = "wire_damaged"
 		return nil
 	end
@@ -63,16 +63,16 @@ function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 		end
 		if #values ~= 1 then
 			L.resetReport(rep)
-			rep.malformed = true
+			rep.damaged = true
 			rep.reason = "wire_damaged"
 			return nil
 		end
 		-- the fixed load's counters refuse as the variable read's do (§6.5)
-		if rep.clamped > 0 then
-			rep.reason = "clamped"
+		if (rep.outOfRange or 0) > 0 then
+			rep.reason = "out_of_range"
 			return nil
 		end
-		if rep.kindMismatch > 0 then
+		if (rep.kindChanged or 0) > 0 then
 			rep.reason = "kind_mismatch"
 			return nil
 		end
@@ -84,7 +84,7 @@ end
 -- the names this file answers, beside table_load.moo's and table_fixed.moo's
 R.ReadStrictNames = table.freeze({
 	message_form_as_file = true, newer_form = true, previous_form = true, unknown_form = true,
-	wire_damaged = true, clamped = true, kind_mismatch = true,
+	wire_damaged = true, out_of_range = true, kind_mismatch = true,
 })
 
 return table.freeze(R)

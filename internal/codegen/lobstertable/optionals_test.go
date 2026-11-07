@@ -285,7 +285,7 @@ const requiredReportProgram = `def reqrun(root:string, file:string):
     let data = read_file(file)
     assert data
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load_tolerant(root, data, rep)
+    let rec = schema_rt.load(root, data, rep)
     print("{rep.missing_required}")
     print(rep.reason)
     print(if rec: "rec" else: "nil")
@@ -438,7 +438,7 @@ func TestLobsterOptionals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, paths)
+	g, err := generateVariableFixtureUnit(t, paths)
 	if err != nil {
 		t.Fatalf("optional-map probe: %v", err)
 	}
@@ -509,7 +509,7 @@ func TestLobsterOptionals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rg, err := generateLoadUnit(t, reqPaths)
+	rg, err := generateVariableFixtureUnit(t, reqPaths)
 	if err != nil {
 		t.Fatalf("required probe: %v", err)
 	}
@@ -578,14 +578,27 @@ func TestLobsterOptionalsNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, paths)
+	g, err := generateVariableFixtureUnit(t, paths)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := os.ReadFile(filepath.Join(root, row.wire))
+	// The manifest's fixed instance now uses form 3. This control targets
+	// variable enum-key registration, so construct the same complete value
+	// under the variable fixture declaration instead of loading fixed bytes.
+	text, err := os.ReadFile(filepath.Join(root, "testdata/conformance/tables/json", row.name+".json"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	model := tabletext.NewModel(g.u)
+	value := model.New(model.Lookup(row.root))
+	if !model.Read(value, text, &tabletext.Report{}) {
+		t.Fatal("the canonical keyed value refused")
+	}
+	wire, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row.data = wire
 	want, err := goSave(g, row.root, wire)
 	if err != nil {
 		t.Fatal(err)

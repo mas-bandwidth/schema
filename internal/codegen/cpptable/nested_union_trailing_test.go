@@ -110,7 +110,7 @@ func TestNestedUnionArmTrailingBytesReadOn(t *testing.T) {
 	// The arm reader is the `sub` bounded to the outer arm's `L`; the union
 	// that carries the arm is `value.pick`. A consumption guard there would
 	// count the oracle's clean read malformed.
-	guard := "if ( sub.offset != sub.size ) { value.pick.type = OuterType::None; r.report->malformed = true; }"
+	guard := "if ( sub.offset != sub.size ) { value.pick.type = OuterType::None; r.report->damaged = true; }"
 	if strings.Contains(text, guard) {
 		t.Fatalf("the nested-union arm still refuses bytes left inside its L, where the Go oracle reads on:\n    %s", guard)
 	}
@@ -167,9 +167,9 @@ const nestedTrailProbe = `
 
     TableReport report;
     memset( (void *) &report, 0, sizeof( report ) );
-    const Root * got = RootLoadTolerant( region, region_bytes, buffer, n, &report );
-    if ( got == NULL ) { printf( "load returned NULL, malformed=%d\n", (int) report.malformed ); return 1; }
-    if ( report.malformed || report.unknown || report.kind_mismatch ) { printf( "the read counted the bytes left inside the arm: malformed=%d unknown=%d kind_mismatch=%d\n", (int) report.malformed, (int) report.unknown, (int) report.kind_mismatch ); return 1; }
+    const Root * got = RootLoad( region, region_bytes, buffer, n, &report );
+    if ( got == NULL ) { printf( "load returned NULL, malformed=%d\n", (int) report.damaged ); return 1; }
+    if ( report.damaged || report.unknown || report.refused ) { printf( "the read counted the bytes left inside the arm: malformed=%d unknown=%d kind_mismatch=%d\n", (int) report.damaged, (int) report.unknown, (int) report.refused ); return 1; }
     if ( got->id != 7 ) { printf( "the parent did not read on: id=%u\n", (unsigned) got->id ); return 1; }
     if ( got->pick.type != OuterType::Inner || got->pick.inner.type != InnerType::A ) { printf( "the union did not keep its arm: %d %d\n", (int) got->pick.type, (int) got->pick.inner.type ); return 1; }
     if ( got->pick.inner.a.n != (int32_t) 0xA1B2C3D4 ) { printf( "the inner value moved\n" ); return 1; }

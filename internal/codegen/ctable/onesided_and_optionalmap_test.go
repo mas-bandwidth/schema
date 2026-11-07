@@ -47,19 +47,19 @@ func TestCOneSidedIntegerRange(t *testing.T) {
     CHECK(vinfo->fields[2].has_range == 1 && vinfo->fields[2].range_min == -3.0 && vinfo->fields[2].range_max == 127.0);
 
     memset(&report, 0, sizeof(report));
-    CHECK(fixed_one_sided_from_json_tolerant(&v, text, (int64_t)strlen(text), &report));
+    CHECK(fixed_one_sided_from_json(&v, text, (int64_t)strlen(text), &report));
     CHECK(v.a == 0);
     CHECK(v.b == 9);
     CHECK(v.c == -3);
     CHECK(report.clamped >= 3);
 
     memset(&r3, 0, sizeof(r3));
-    CHECK(fixed_one_sided_from_json_tolerant(&upper, high, (int64_t)strlen(high), &r3));
+    CHECK(fixed_one_sided_from_json(&upper, high, (int64_t)strlen(high), &r3));
     CHECK(upper.c == 127);
     CHECK(r3.clamped == 1);
 
     memset(&r4, 0, sizeof(r4));
-    CHECK(fixed_one_sided_from_json_tolerant(&lower, low, (int64_t)strlen(low), &r4));
+    CHECK(fixed_one_sided_from_json(&lower, low, (int64_t)strlen(low), &r4));
     CHECK(lower.b == 0);
     CHECK(r4.clamped == 1);
 
@@ -70,7 +70,7 @@ func TestCOneSidedIntegerRange(t *testing.T) {
     fn = fixed_one_sided_fixed_save(&w, 1, fixed_buf, (int64_t)sizeof(fixed_buf));
     CHECK(fn > 0);
     memset(&r2, 0, sizeof(r2));
-    CHECK(fixed_one_sided_fixed_load_tolerant(&loaded, 1, fixed_buf, fn, NULL, 0, NULL, &r2) == 1);
+    CHECK(fixed_one_sided_fixed_load(&loaded, 1, fixed_buf, fn, NULL, 0, NULL, &r2) == 1);
     CHECK(loaded.a == 0);
     CHECK(loaded.b == 9);
     CHECK(loaded.c == -3);
@@ -117,16 +117,16 @@ static int reset_case( const char * text, int repeated )
 
     CHECK(m_builder_init(&b));
     memset(&report, 0, sizeof(report));
-    if ( !m_from_json_tolerant(&b, text, (int64_t)strlen(text), &report) )
+    if ( !m_from_json(&b, text, (int64_t)strlen(text), &report) )
     {
         fprintf( stderr, "tags: from_json refused\n" );
         m_builder_shutdown(&b);
         return 1;
     }
-    if ( report.malformed || report.refused || report.kind_mismatch != 0 || report.unknown != 0 )
+    if ( report.refused || report.refused || report.kind_mismatch != 0 || report.unknown != 0 )
     {
         fprintf( stderr, "tags: from_json report malformed=%d refused=%d kind_mismatch=%d unknown=%d\n",
-                 (int)report.malformed, (int)report.refused, (int)report.kind_mismatch, (int)report.unknown );
+                 (int)report.refused, (int)report.refused, (int)report.kind_mismatch, (int)report.unknown );
         m_builder_shutdown(&b);
         return 1;
     }
@@ -159,7 +159,7 @@ static int reset_case( const char * text, int repeated )
 
     CHECK(m_builder_init(&fb));
     memset(&fresh_report, 0, sizeof(fresh_report));
-    CHECK( m_from_json_tolerant(&fb, fresh, (int64_t)strlen(fresh), &fresh_report) );
+    CHECK( m_from_json(&fb, fresh, (int64_t)strlen(fresh), &fresh_report) );
     f = m_builder_root(&fb);
     CHECK(f != NULL);
     if ( v->tags_present != f->tags_present || v->tail != f->tail )
@@ -297,7 +297,7 @@ func TestCMapOptionalValues(t *testing.T) {
     CHECK(root_builder_init(&b));
     memset(&report, 0, sizeof(report));
     { const char * s = "{\"lookup\":{\"a\":null,\"b\":7}}"; CHECK(root_from_json(&b, s, (int64_t)strlen(s), &report)); }
-    CHECK(!report.malformed && !report.refused && report.kind_mismatch == 0);
+    CHECK(!report.refused && report.kind_mismatch == 0);
     CHECK(root_builder_lock(&b));
     v = (const Root *)(const void *)b.region;
     e = root_lookup_find(&v->lookup, "a");
@@ -314,8 +314,8 @@ func TestCMapOptionalValues(t *testing.T) {
     /* 2. Non-null wrong-shape value sets value_present = 1 with default value 0 */
     CHECK(root_builder_init(&b));
     memset(&report, 0, sizeof(report));
-    { const char * s = "{\"lookup\":{\"a\":\"bad\"}}"; CHECK(root_from_json_tolerant(&b, s, (int64_t)strlen(s), &report)); }
-    CHECK(!report.malformed && report.kind_mismatch == 1);
+    { const char * s = "{\"lookup\":{\"a\":\"bad\"}}"; CHECK(root_from_json(&b, s, (int64_t)strlen(s), &report)); }
+    CHECK(report.kind_mismatch == 1);
     CHECK(root_builder_lock(&b));
     v = (const Root *)(const void *)b.region;
     e = root_lookup_find(&v->lookup, "a");
@@ -329,8 +329,8 @@ func TestCMapOptionalValues(t *testing.T) {
     /* 3. Duplicate key where second occurrence has wrong shape -> present default 0 */
     CHECK(root_builder_init(&b));
     memset(&report, 0, sizeof(report));
-    { const char * s = "{\"lookup\":{\"a\":5,\"a\":\"bad\"}}"; CHECK(root_from_json_tolerant(&b, s, (int64_t)strlen(s), &report)); }
-    CHECK(!report.malformed && report.duplicate == 1 && report.kind_mismatch == 1);
+    { const char * s = "{\"lookup\":{\"a\":5,\"a\":\"bad\"}}"; CHECK(root_from_json(&b, s, (int64_t)strlen(s), &report)); }
+    CHECK(report.duplicate == 1 && report.kind_mismatch == 1);
     CHECK(root_builder_lock(&b));
     v = (const Root *)(const void *)b.region;
     e = root_lookup_find(&v->lookup, "a");
@@ -340,8 +340,8 @@ func TestCMapOptionalValues(t *testing.T) {
     /* 4. Duplicate key where second occurrence is null -> absent default 0 */
     CHECK(root_builder_init(&b));
     memset(&report, 0, sizeof(report));
-    { const char * s = "{\"lookup\":{\"a\":5,\"a\":null}}"; CHECK(root_from_json_tolerant(&b, s, (int64_t)strlen(s), &report)); }
-    CHECK(!report.malformed && report.duplicate == 1 && report.kind_mismatch == 0);
+    { const char * s = "{\"lookup\":{\"a\":5,\"a\":null}}"; CHECK(root_from_json(&b, s, (int64_t)strlen(s), &report)); }
+    CHECK(report.duplicate == 1 && report.kind_mismatch == 0);
     CHECK(root_builder_lock(&b));
     v = (const Root *)(const void *)b.region;
     e = root_lookup_find(&v->lookup, "a");
@@ -361,7 +361,7 @@ func TestCMapOptionalValues(t *testing.T) {
     CHECK(wn > 0);
     memset(&report, 0, sizeof(report));
     loaded = root_load(load_region, (int64_t)sizeof(load_region), wire_buf, wn, &report);
-    CHECK(loaded != NULL && !report.malformed && !report.refused);
+    CHECK(loaded != NULL && !report.refused);
     ie = root_ints_find(&loaded->ints, 5u);
     CHECK(ie != NULL && ie->value_present == 0);
     ie = root_ints_find(&loaded->ints, 2u);

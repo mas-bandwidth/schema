@@ -61,7 +61,7 @@ func init() {
 		name:    "hook packet value default",
 		src:     "package probe\n\ntype L\n{\n    payload string(8) = \"hi\"\n}\n",
 		field:   hookRefusalField,
-		carried: false,
+		carried: true,
 	})
 }
 

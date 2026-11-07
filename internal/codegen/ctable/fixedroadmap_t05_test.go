@@ -103,10 +103,10 @@ func TestFixedRoadmapCT05Evolution(t *testing.T) {
 		binary.LittleEndian.PutUint32(vals[4:], 9)  // seq
 		file := cT05OldFile(t, older, vals)
 		out, err := cRunVersionProbe(t, newer, nil, 0, file, `
-    if ( n != 1 || r.refused || r.malformed ) { printf( "rename read: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( n != 1 || r.refused || r.refused ) { printf( "rename read: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.refused ); return 1; }
     if ( back[0].b != 42 ) { printf( "the renamed field must read a's value 42 by its declared identity, not %d\n", (int) back[0].b ); return 1; }
     if ( back[0].seq != 9 ) { printf( "the scalar after the rename must stand at 9, not %d\n", (int) back[0].seq ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 ) { printf( "a rename moves a counter: u=%d km=%d w=%d c=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 ) { printf( "a rename moves a counter\n" ); return 1; }
 `, "")
 		if err != nil {
 			t.Fatalf("c/E6: %v\n%s", err, out)
@@ -129,9 +129,9 @@ func TestFixedRoadmapCT05Evolution(t *testing.T) {
 		binary.LittleEndian.PutUint32(vals[8:], 3)
 		file := cT05OldFile(t, older, vals)
 		out, err := cRunVersionProbe(t, newer, []string{older}, 0, file, `
-    if ( n != 1 || r.refused || r.malformed ) { printf( "deprecate read: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( n != 1 || r.refused || r.refused ) { printf( "deprecate read: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.refused ); return 1; }
     if ( back[0].a != 1 || back[0].b != 2 || back[0].c != 3 ) { printf( "the deprecated field or a neighbour does not land exactly: a=%d b=%d c=%d\n", (int) back[0].a, (int) back[0].b, (int) back[0].c ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 ) { printf( "a deprecation moves a counter: u=%d km=%d w=%d c=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 ) { printf( "a deprecation moves a counter\n" ); return 1; }
 `, "")
 		if err != nil {
 			t.Fatalf("c/E8: %v\n%s", err, out)
@@ -153,10 +153,10 @@ func TestFixedRoadmapCT05Evolution(t *testing.T) {
 		binary.LittleEndian.PutUint32(vals[8:], 12)
 		file := cT05OldFile(t, older, vals)
 		out, err := cRunVersionProbe(t, newer, []string{older}, 0, file, `
-    if ( n != 1 || r.refused || r.malformed ) { printf( "clean append: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( n != 1 || r.refused || r.refused ) { printf( "clean append: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.refused ); return 1; }
     if ( back[0].x != 10 || back[0].y != 11 || back[0].z != 12 ) { printf( "the old fields do not land exactly: x=%d y=%d z=%d\n", (int) back[0].x, (int) back[0].y, (int) back[0].z ); return 1; }
     if ( back[0].w != 77 ) { printf( "the appended field must land its declared default 77, not %d\n", (int) back[0].w ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 ) { printf( "a clean append moves a counter: u=%d km=%d w=%d c=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 ) { printf( "a clean append moves a counter\n" ); return 1; }
 `, "")
 		if err != nil {
 			t.Fatalf("c/R19: %v\n%s", err, out)
@@ -171,9 +171,9 @@ func TestFixedRoadmapCT05Evolution(t *testing.T) {
 	t.Run("c/R18", func(t *testing.T) {
 		t.Parallel()
 		full := t05All(generate(t, "package probe\nfixed table Wide { a int32 | min = -2147483648, max = 2147483647 }\n"))
-		t05WantNot(t, full, "(*clamped) +=")
+		t05WantNot(t, full, "(*out_of_range) +=")
 		narrow := t05All(generate(t, "package probe\nfixed table Pipe { a int32 | min = 0, max = 100 }\n"))
-		t05Want(t, narrow, "(*clamped) +=")
+		t05Want(t, narrow, "(*out_of_range) +=")
 		t05Want(t, narrow, "value->a > 100")
 	})
 
@@ -216,12 +216,10 @@ int main(void)
     off = kTableFixedHeaderBytes + 4 + texty_fixed_layout_bytes + 8; /* header + layout length + layout + the record hash */
     table_fixed_put32(buf + off, 100u); /* the length word, forged past the bound 8 */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
-    CHECK(n == 1);
-    CHECK(!r.refused && !r.malformed);
-    CHECK(r.clamped == 1);
-    CHECK(out.s_length == 8);
-    CHECK(memcmp(out.s, "abcdefgh", 8) == 0);
+    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    CHECK(n == -1);
+    CHECK(r.refused && r.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+    CHECK(out.s_length == 0);
     return 0;
 }
 `)
@@ -248,11 +246,11 @@ int main(void)
 		t.Parallel()
 		// the runtime's own text carries each clause, so a planted edit to the
 		// guarded site turns this red naming the rule
-		if !strings.Contains(tableFixedRuntime, "else if ( raw != 0 ) { (*clamped)++; }") {
-			t.Fatal("§5.8 row 12: the ordinal op must count a forged ordinal past the writer's set as clamped")
+		if !strings.Contains(tableFixedRuntime, "else if ( raw != 0 ) { (*out_of_range)++; }") {
+			t.Fatal("§5.8 row 12: the ordinal op must refuse a forged ordinal past the writer's set")
 		}
-		if !strings.Contains(tableFixedRuntime, "if ( raw > (uint64_t) p->dstsize ) { (*clamped)++; }") {
-			t.Fatal("§5.8 row 12: the unguarded None const must count a forged ordinal past the arm count as clamped")
+		if !strings.Contains(tableFixedRuntime, "if ( raw > (uint64_t) p->dstsize ) { (*out_of_range)++; }") {
+			t.Fatal("§5.8 row 12: the unguarded None const must refuse a forged ordinal past the arm count")
 		}
 		if !strings.Contains(tableFixedRuntime, "(*widened)++") {
 			t.Fatal("§5.4: a widen must count one widened per entry")
@@ -268,10 +266,10 @@ int main(void)
 		binary.LittleEndian.PutUint32(vals[6:], 2)      // trail
 		file := cT05OldFile(t, older, vals)
 		out, err := cRunVersionProbe(t, newer, []string{older}, 0, file, `
-    if ( n != 1 || r.refused || r.malformed ) { printf( "int_widen: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( n != 1 || r.refused || r.refused ) { printf( "int_widen: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.refused ); return 1; }
     if ( back[0].v != -1 ) { printf( "int_widen: the widened field must sign-extend to -1, not %d\n", (int) back[0].v ); return 1; }
     if ( r.widened != 1 ) { printf( "int_widen: widened == %d, not exactly 1\n", r.widened ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 ) { printf( "int_widen: a counter moved: u=%d km=%d w=%d c=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate ); return 1; }
+    if ( r.unknown != 0 ) { printf( "int_widen: a counter moved\n" ); return 1; }
 `, "")
 		if err != nil {
 			t.Fatalf("c/R16 int_widen: %v\n%s", err, out)
@@ -289,10 +287,10 @@ int main(void)
 		binary.LittleEndian.PutUint32(cvals[36:], 2) // trail
 		cfile := cT05OldFile(t, cold, cvals)
 		cout, err := cRunVersionProbe(t, cnew, []string{cold}, 0, cfile, `
-    if ( n != 1 || r.refused || r.malformed ) { printf( "unknown_census: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( n != 1 || r.refused || r.refused ) { printf( "unknown_census: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.refused ); return 1; }
     if ( back[0].items[0].a != 10 || back[0].items[3].a != 13 ) { printf( "unknown_census: an a value did not land\n" ); return 1; }
     if ( r.unknown != 1 ) { printf( "unknown_census: unknown == %d, not exactly 1\n", r.unknown ); return 1; }
-    if ( r.widened != 0 || r.clamped != 0 || r.kind_mismatch != 0 ) { printf( "unknown_census: a counter moved: u=%d km=%d w=%d c=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped ); return 1; }
+    if ( r.widened != 0 ) { printf( "unknown_census: a counter moved\n" ); return 1; }
 `, "")
 		if err != nil {
 			t.Fatalf("c/R16 unknown_census: %v\n%s", cout, err)
@@ -329,21 +327,20 @@ int main(void)
     CHECK(n > 0);
     buf[off + 4 + 1] = 0xFF; /* "a\xFFc" cannot begin a UTF-8 sequence */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);
     CHECK(r.refused == 1);
     CHECK(r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED);
-    CHECK(!r.malformed);
-    CHECK(r.clamped == 0 && r.widened == 0 && r.unknown == 0);
+    CHECK(r.widened == 0 && r.unknown == 0);
     texty_reset(&value);
     value.s_length = 3;
     memcpy(value.s, "abc", 3);
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     buf[off + 4 + 1] = 0x00; /* "a\0c" — a zero among the used bytes is the same refusal */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);
-    CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED && !r.malformed);
+    CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED);
     return 0;
 }
 `)
@@ -377,28 +374,28 @@ int main(void)
     CHECK(n > 0);
     buf[off + 4 + 1] = 0xC3; /* "a\xC3" — the continuation byte never comes */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);
-    CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED && !r.malformed);
+    CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED);
     texty_reset(&value);
     value.s_length = 8;
     memcpy(value.s, "abcdefgh", 8);
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     table_fixed_put32(buf + off, 100u); /* the length word, past the 8-byte bound */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
-    CHECK(n == 1);
-    CHECK(!r.refused && !r.malformed && r.clamped == 1);
-    CHECK(out.s_length == 8 && memcmp(out.s, "abcdefgh", 8) == 0);
+    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    CHECK(n == -1);
+    CHECK(r.refused && r.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+    CHECK(out.s_length == 0);
     texty_reset(&value);
     value.s_length = 2;
     memcpy(value.s, "ab", 2);
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     memset(buf + off + 4 + 2, 0xFF, 6); /* garbage in the slack past the used 2 */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == 1);
-    CHECK(!r.refused && !r.malformed && r.clamped == 0);
+    CHECK(!r.refused);
     CHECK(out.s_length == 2 && memcmp(out.s, "ab", 2) == 0);
     /* clauses 1 AND 2 TOGETHER: the length forged past the bound AND the used
        bytes ill-formed — the clamp and the refusal on the SAME record. REFUSE
@@ -409,10 +406,10 @@ int main(void)
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     table_fixed_put32(buf + off, 100u); /* the length word, past the 8-byte bound */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);
-    CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED && !r.malformed);
-    CHECK(r.clamped == 0 && r.widened == 0 && r.unknown == 0);
+    CHECK(r.refused == 1);
+    CHECK(r.widened == 0 && r.unknown == 0);
     return 0;
 }
 `)
@@ -438,28 +435,28 @@ int main(void)
     n = wide_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     CHECK(n > 0);
     memset(&r, 0, sizeof(r));
-    n = wide_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = wide_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);
-    CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED && !r.malformed);
+    CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED);
     wide_reset(&value);
     value.w_length = 8;
     value.w[0]='h'; value.w[1]='e'; value.w[2]='l'; value.w[3]='l'; value.w[4]='o'; value.w[5]='w'; value.w[6]='o'; value.w[7]='r';
     n = wide_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     table_fixed_put32(buf + off, 100u); /* 100 units past the 8-unit bound */
     memset(&r, 0, sizeof(r));
-    n = wide_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
-    CHECK(n == 1);
-    CHECK(!r.refused && !r.malformed && r.clamped == 1);
-    CHECK(out.w_length == 8);
+    n = wide_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    CHECK(n == -1);
+    CHECK(r.refused && r.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+    CHECK(out.w_length == 0);
     wide_reset(&value);
     value.w_length = 1;
     value.w[0] = 0x0048; /* 'H' */
     n = wide_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     buf[off + 4 + 2] = 0x00; buf[off + 4 + 3] = 0xD8; /* a lone surrogate in the slack */
     memset(&r, 0, sizeof(r));
-    n = wide_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = wide_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == 1);
-    CHECK(!r.refused && !r.malformed && r.clamped == 0);
+    CHECK(!r.refused);
     CHECK(out.w_length == 1);
     return 0;
 }

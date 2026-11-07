@@ -746,7 +746,7 @@ inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary &
 // Over its body there are EXACTLY TWO STRICT CHECKS: the BUILD VERSION
 // present, exactly once, under kind 9, eight bytes wide, and the VOCABULARY
 // present, exactly once, under kind 14 over element kind 6. Everything else is
-// ordinary and tolerant, so an unknown field is skipped and counted and the
+// ordinary and strict, so an unknown field is skipped and counted and the
 // announcement can GAIN a field in a later minor without a lockstep redeploy.
 //
 // The FIRST announcement sets the vocabulary and it is the only one that can.
@@ -776,7 +776,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
 {
     if ( bytes < 1 )
     {
-        to->malformed = true;
+        to->damaged = true;
         return false;
     }
     if ( buffer[0] != kTableWireForm )
@@ -787,7 +787,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     }
     if ( bytes < 9 )
     {
-        to->malformed = true;
+        to->damaged = true;
         return false;
     }
     TableIdTable table;
@@ -795,7 +795,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->damaged = true; }
         else
         {
             to->refused = true;
@@ -805,7 +805,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     }
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
-        to->malformed = true;
+        to->damaged = true;
         return false;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -818,13 +818,13 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         uint64_t ref = 0;
         if ( !r.getleb( ref ) )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
         if ( ref == 0 ) { break; }
         if ( ref > (uint64_t) table.count || !r.has( 1 ) )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
         const uint64_t id = table.at( ref );
@@ -833,7 +833,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         {
             if ( kind != 9 || !r.has( 8 ) )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
             version = r.get64();
@@ -851,21 +851,21 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             uint64_t framed = 0;
             if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
             const int64_t begin = r.offset, end = r.offset + (int64_t) framed;
             r.offset = end;
             if ( begin >= end || r.buffer[begin] != 6 )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
             int64_t at = begin + 1;
             uint64_t length = 0;
             if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
             if ( (int64_t) length > vocabulary.max_bytes )
@@ -882,13 +882,13 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         to->unknown++;
         if ( !r.skip( kind ) )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
     }
     if ( seen_version != 1 || seen_vocabulary != 1 )
     {
-        to->malformed = true;
+        to->damaged = true;
         return false;
     }
 
@@ -909,7 +909,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         const int64_t began = at;
         if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
         // THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
@@ -918,14 +918,14 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         // id is malformed whole and sets nothing
         if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
         if ( parsed.id == kTableNodeTableFieldId )
         {
             if ( node_table_slots++ > 0 )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
         }
@@ -952,7 +952,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             const TableMessageEntry & other = vocabulary.entries[seen];
             if ( other.max - other.min == length && memcmp( words + other.min, words + began, (size_t) length ) == 0 )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
         }
@@ -966,7 +966,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     {
         if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[slot] ) )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
     }
@@ -1268,7 +1268,7 @@ inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableV
     br.vocabulary = &vocabulary;
     if ( bytes < 1 )
     {
-        br.report->malformed = true;
+        br.report->damaged = true;
         return -1;
     }
     if ( buffer[0] != kTableWireMessageForm )
@@ -1287,7 +1287,7 @@ inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableV
     uint64_t count = 0;
     if ( !br.r.get( count, 8 ) )
     {
-        br.report->malformed = true;
+        br.report->damaged = true;
         return -1;
     }
     br.remaining = (int64_t) count + 1;
@@ -1311,7 +1311,7 @@ inline bool TableMessageBatchClose( TableMessageBatchReader & br )
 {
     if ( br.remaining != 0 || !br.r.align() || br.r.offset != br.r.bits )
     {
-        br.report->malformed = true;
+        br.report->damaged = true;
         return false;
     }
     return true;

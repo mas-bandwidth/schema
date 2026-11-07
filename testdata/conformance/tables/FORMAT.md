@@ -1,7 +1,7 @@
 # The tables conformance data, exactly
 
-Every file under `testdata/conformance/tables` is DATA. Nothing here names a
-language, and nothing here is executable. A port of the tables layer implements
+Every file under `testdata/conformance/tables` is data. The expectations apply
+to every language; legacy port metadata grants no exemption. Nothing here is executable. A port of the tables layer implements
 the driver contract in `test/conformance/README.md` against this directory, and
 the harness is the gate.
 
@@ -14,8 +14,9 @@ section is cited rather than restated.
 
 ```
 MANIFEST.txt          the registry: every case, by kind
-reports.txt           the read report of every evolution case  (generated)
-report-values/<case>.json  the value an evolution read leaves  (generated)
+reports.txt           read/refused for every evolution case   (generated)
+report-values/<case>.json  the complete accepted evolution value (generated)
+retain-values/<case>.json  the complete accepted known retained value (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
 json-hostile/<case>.value.json  the value its read leaves      (generated)
@@ -37,15 +38,15 @@ the end of the line.
 
 ```
 unit         <key> <schema path>...
-instance     <name> <unit> <root> <wire file> [no-text]
+instance     <name> <unit> <root> <wire file> [no-text] [wire-refused]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
-retain       <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
+retain       <case> <unit> <root> <wire> <capacity> <ids> <save or ->
 report       <case> <unit> <root> <wire file>
 framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
-cook-write   <instance> <little-endian file> <big-endian file>
+cook-write   <instance> <little-endian file> <big-endian file> [input=<JSON path>] [share=<source>:<alias>]
 block        <name> <unit> <block file> <dump file>
 forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 refusal      <forgery> <reason>
@@ -55,7 +56,10 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
 - **`unit`** names a compilation unit by the key every other line uses.
 - **`instance`** is one table instance in TWO forms that must agree: the wire
   bytes at `<wire file>` and the text at `json/<name>.json`. The same instance,
-  both ways.
+  both ways. `wire-refused` instead requires semantic refusal from every port;
+  it does not name a reason. Legacy `go-refusal=<reason>` and
+  `refused-by=<ports>` markers remain parser compatibility metadata, with no
+  per-language or diagnostic comparison.
 
   **`no-text` says the corpus carries this one on the WIRE alone**, by the text
   form's own rules: a pointer chain nests in the text as deep as it is long
@@ -83,89 +87,59 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   form-`1` file whose trailer IS the table. The build version is a column
   rather than a fact read out of the file, so a build that moves is visible in
   the review of this file, exactly as a forgery's damaged word is.
-- **`message`** is one value in BOTH forms. The VARIABLE form is an ordinary
-  `instance` and rides every surface an instance rides; the MESSAGE form rides
-  the `wire` and `message` surfaces alone, because its text is the file-form
-  vector's byte for byte and a second `json/` file would be one golden with two
-  homes. What the pair pins is the RESOLVED FORM: the two bodies are equal once
-  every reference is replaced by the id it names and every length recomputed,
-  and their reference bytes are expected to differ, because a file's slots are
-  its own first-use order and a connection's are the unit's projection order.
+- **`message`** pairs a file-form instance with a message-form batch. File
+  input follows its declared root's form: form 3 for fixed tables, form 1 for
+  variable tables. The message form is form 2 over the connection vocabulary.
+  The pair must resolve to the same values; their byte layouts need not match.
+  No duplicate JSON instance is needed.
 
-  **A `<message-form wire>` of `-` is a NAMED REFUSAL row.** The message form
-  is fixed tables only (docs/SPEC-TABLES.md §3.3), so a row whose root is a
-  variable table carries no message bytes, and every leg answers it absent,
-  writing `<name>.absent` holding exactly
-  `variable table: the message form is fixed tables only (SPEC-TABLES §3.3)`.
-  The harness checks the reason; bytes, or any other reason, are a failure. A
-  row is a refusal row exactly when its root is a variable table, which the
-  harness's own tests hold.
-- **`retain`** is RETAIN-UNKNOWN's row
-  (docs/SPEC-TABLES.md §6.6): a wire loaded with retention on, the counters that
-  load owes, and the file the pair writes back. `<unit>` is the READER's, which
-  is the build that cannot name what the wire's writer wrote, and `<root>` is
-  the table it loads into.
-
-  **THE TWO CAPACITIES ARE STATED AS RULES AND NOT AS NUMBERS where a number
-  would not travel.** A retained record's byte cost is the PORT's own, the
-  page fixes what a record must carry and leaves the layout to the
-  implementation, so `<capacity>` is `full`, a buffer the whole load fits in,
-  or `short`, ONE BYTE SHORT OF THE LAST RECORD: a leg loads once at a roomy
-  capacity, reads what it used, and loads again one byte under that. Two
-  layouts then drop the same record rather than different ones. `<ids>` is the
-  other store, and it IS comparable, because the id list's capacity is a COUNT:
-  `full`, or the entries the caller's list holds.
-
-  `<counters>` is the LOAD's own three, `<retained>,<retain_lost>,<unknown>`,
-  and `<save lost>` is the `retain_lost` the SAVE adds, read after it: the
-  report accumulates across the pair and the sum is what the safety check
-  wants. `<save>` is the pinned save, or `-` where the row's whole expectation
-  is its counters. Every row is a FILE: retention is the variable form's, and
-  the message form is fixed tables only (§3.3), so no table has retention on a
-  message.
-- **`report`** is bytes read by a type that did not write them — the evolution
-  class. The counters and the verdict live in `reports.txt`, keyed by `<case>`,
-  and the §16 text of the value a read that reads leaves lives in
-  `report-values/<case>.json`; both are the oracle's.
-- **`framing`** is one hand-built wire per rule and bound of the FRAMING layer
-  (docs/LAYERS/1-framing.md): the record scan, the `L` bounds, the header read
-  against the parent, damage and where reading resumes, the node-table scan.
-  `<verdict>` is `refused`, `malformed`, or the §4 report of a clean read,
-  `<unknown>,<kind_mismatch>,<widened>,<clamped>,<duplicate>,<malformed>,<verdict>`,
-  and `<value file>` is the §16 text the read must leave, under
-  `framing/<value>.json`, or `-` for a row that owes the report alone.
-  **`malformed` is DAMAGED INPUT**: damage discards the whole load
-  (docs/SPEC-TABLES.md §4), so the row owes the refusal and no value, and the
-  harness scores only that the leg's report line says `malformed`. The same
-  holds for a `report` row whose verdict in `reports.txt` is malformed. Both
-  are HAND-AUTHORED from the rule text, never pinned from a leg or the engine,
-  which is what makes the row an expectation. The wire files under
-  `testdata/wire/tables/framing/` are the bytes of the scripts in
-  `test/conformance/harness/framing_vectors_test.go`, held equal by test.
-- **`json-hostile`** is one tree per rule the text form states (§16.2, §16.3,
-  §17.5), and the verdict is `refused` or the §4 report the read produces,
-  `<unknown>,<kind_mismatch>,<clamped>,<duplicate>,<malformed>`. `<tree>` is the
-  directory `schema pack` reads, so the text is `<tree>/<root>.json` (§17). The
-  verdict is HAND-AUTHORED, which is what makes it an expectation rather than a
-  restatement of what one engine happens to do. A row whose verdict reads also
-  owes the VALUE: `<tree>.value.json`, beside the tree, is the §16 text of
-  what the oracle's text read leaves (internal/tabletext, read then written),
-  and `make conformance-generate` refuses a row whose hand-authored verdict
-  the oracle does not give.
+  A `<message-form wire>` of `-` requires refusal for every port. The driver
+  emits `refused` or the historical `<name>.absent` file. Diagnostic text is
+  ignored; this is an answered PASS case, not a missing feature. Emitted value
+  bytes or a missing answer fail. Accepted message write-back covers every body.
+- **`retain`** reads through the retaining path under the row's two caller
+  capacities. `<capacity>` is `full`, or `short`: one byte below the storage this
+  implementation used in a roomy load. `<ids>` is `full` or an explicit entry
+  count. Byte costs are local to the port; these are not cross-language memory
+  measurements. The legacy `<counters>` and `<save lost>` columns remain readable
+  metadata in the accepted legacy ten-field syntax. New rows omit them and no
+  comparison uses them. Every accepted row owes the complete known
+  value at `retain-values/<case>.json`; `<save>` additionally pins retained
+  write-back bytes, or is `-` when no retained-byte pin is specified. Local
+  retention loss does not excuse loss of a known value.
+- **`report`** is bytes read by another schema version. `reports.txt` supplies
+  `read` or `refused`, keyed by case. An accepted row also owes its complete
+  value at `report-values/<case>.json` and its canonical write-back wire at
+  `save-wire/<case>.bin`; a refused row has neither.
+- **`framing`** is a hand-built wire and expectation from a framing rule.
+  `<verdict>` is `read` or `refused`; legacy `malformed` means refusal, not a
+  distinct outcome. `<value file>` holds the complete accepted value or is `-`
+  after refusal, and an accepted row also pins its canonical write-back wire at
+  `save-wire/<case>.bin`. The bytes remain pinned against the independent
+  scripts in `test/conformance/harness/framing_vectors_test.go`. Unknown
+  payloads and nested bounds are checked; damage never permits a partial value
+  or recovery.
+- **`json-hostile`** is `<tree>/<root>.json`, a hand-authored standard verdict,
+  and, on acceptance, the complete `<tree>.value.json` beside the input tree and
+  the canonical write-back wire at `save-wire/<case>.bin`. `make
+  conformance-generate` requires the oracle to agree with that verdict. Every
+  port owes the same answer. Legacy `carried-by` and `uncarried` columns do not
+  create an exemption; diagnostics and detection order are not compared.
 - **`cook`** names a cooked file's CASE, the root it is opened at, and the dump
   its Open must produce. Case and root are two columns because one root can have
   more than one fixture — `Scene` and `SceneValued` are the same table read two
   ways. The FILE is not committed: `test/cookgen` writes it, deterministically,
   and the harness runs it. What is pinned is the dump. It is also the fixture
   `cook-foreign` makes foreign, on the same terms as `block`'s.
-- **`cook-write`** names an INSTANCE the file already carries and the two files
-  `schema cook` produced from its wire, little-endian then big. The instance
-  line holds the unit, the root and the wire, so none of them is repeated here;
-  a line naming no instance is refused when the manifest is read. The two files
-  are GENERATED — `make conformance-generate` writes them through the same
-  public driver `schema cook` uses — because the TOOL IS THE REFERENCE (§7.6):
-  a runtime that writes a cook writes the tool's bytes or it has written a
-  second format.
+- **`cook-write`** names its instance and two output pins, with optional
+  `input=` and `share=` construction options. It names the unit
+  and root through the instance. The input is the explicit JSON path, otherwise
+  the instance's JSON; only `no-text` instances fall back to wire input. A
+  `share=<source>:<alias>` option requires `input=` and makes those two distinct,
+  populated blob fields point to the same in-memory blob after the input read.
+  The same constructed value is cooked in both byte orders. This is how a cook
+  can test sharing that the wire and JSON writers cannot represent. The two
+  expected files are generated by the tool and compared byte for byte.
 - **`block`** is a block image an Open must accept, and the ROW DUMP its reader
   must produce out of it. It is also the fixture the `block-foreign` surface
   makes foreign: that surface adds no line here, because a foreign image is not
@@ -181,14 +155,10 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   forgery may damage more than one word, and an `<offset>` of `-1` is a forgery
   that damages none. `<extent>` is the length the CALLER claims (`-1`: the
   file's own), and `<verdict>` is `refuse` or `open`.
-- **`refusal`** is the REASON one forgery's refusal names (docs/SPEC-TABLES.md
-  §7, §19.2): `refusal <forgery> <reason>`, where `<forgery>` is a `forgery`
-  line's name and `<reason>` the enum's own value name, `not_a_cook`,
-  `foreign_order`, `wrong_build_version`, `reserved_not_zero`, `bad_alignment`,
-  `truncated`, `unaligned_base` or, for a block, `bad_layout`. It takes its kind
-  from the forgery it names, and the `cook-reason` and `block-reason` surfaces
-  answer it with one word. A row per value, and a row per ORDER the check
-  states: a file that fails two clauses answers the first.
+- **`refusal`** is legacy local diagnostic metadata for a forgery. The forgery's
+  `open`/`refuse` outcome is the comparison contract. Reason-only surfaces are
+  retired: implementations may detect different invalid conditions first and
+  do not owe a shared reason name or detection order.
 
 A forgery is carried as a PATCH rather than as a whole file because a patch is
 what a person can review. The harness materialises the file and hands a driver a
@@ -202,32 +172,49 @@ caller holds, and an unaligned base is a pointer fact no file can hold. A driver
 allocates EXACTLY the claim, places the base as the pointer column says, copies
 what fits and zeroes the rest.
 
+## Derived driver manifest
+
+The harness removes expected verdicts and golden paths before calling a driver.
+Construction input remains data the driver needs. These derived lines are:
+
+```
+retain <case> <unit> <root> <wire> <capacity> <ids>
+framing <case> <unit> <root> <wire>
+cook-write <instance> <JSON input or -> <source field or -> <alias field or ->
+```
+
+`retain` has seven fields including its keyword. `framing` always has five,
+with no verdict or value-omission marker: every accepted read owes its complete
+value. `cook-write` has five: `-`
+input selects the `no-text` instance's wire; otherwise the input is JSON.
+Source and alias are both `-` unless the cook recipe requests shared blob
+identity. Expected cook output files never travel to the driver.
+
 ## reports.txt
 
 ```
-<case>  <unknown>,<kind_mismatch>,<widened>,<clamped>,<duplicate>,<malformed>,<verdict>
+<case>  read
+<case>  refused
 ```
 
-The six counters of docs/SPEC-TABLES.md §4, `<malformed>` spelled `true` or
-`false`, and the VERDICT beside them: `read` or `refused`.
+The verdict is the entire admission contract. Acceptance also requires the
+complete value file and canonical write-back wire; refusal provides neither.
+Generated by `make conformance-generate` using the compiler's wire engine.
 
-**The verdict is distinct from a clean read, and that is why it exists** (§3). A
-reader that meets a FORM BYTE it does not carry refuses the wire by name: it
-decodes nothing, moves none of the six counters and reports no damage — so a
-refusal and a clean read print the same six zeros and the same false flag, and
-only the verdict tells them apart. `form_zero`, `form_six` and `form_ff` are
-the three rows that say so, over three bytes no form defines (§3.4's registry
-reserves `4` and `5`, so `6` is the first byte that is neither), and
-`message_as_file` is the fourth: form `2` is a form this build DOES carry
-(docs/SPEC-TABLES.md §3.3), and a message handed to a reader that expected a
-file refuses because its id table is somewhere else.
+Legacy `unknown,kind_mismatch,widened,clamped,duplicate,malformed,verdict`
+lines remain readable transport. Only explicit refusal/malformed flags select
+refusal. Counters never convert an acceptance into a refusal and never relax a
+required value comparison. New generated files contain plain verdicts. Binary,
+message, retaining and text reads all obey this same rule.
 
-A driver prints the verdict on its `report` surface beside the counters. A TEXT
-read never refuses — only a form byte does — so the `json-hostile` rows carry
-`read` on every line.
+## save-wire/&lt;case&gt;.bin
 
-Generated by the compiler's own engine — a third implementation of the wire,
-written from neither backend — with `make conformance-generate`.
+The canonical write-back wire of every readable `report`, `framing` and
+`json-hostile` row: the bytes the value in `report-values/`, the framing value
+file or `<tree>.value.json` encodes to. Generated with `make
+conformance-generate` by reading the value with the engine and encoding it, so
+the row is one value in two forms. A leg writes it beside its answer as
+`<case>.wire`; a refused row has no file and a leg writes none.
 
 ## json/&lt;instance&gt;.json
 
@@ -300,12 +287,10 @@ reader READS out of a node as well as where the node is.
 
 ## cook-write/&lt;name&gt;.cook and cook-write/&lt;name&gt;-be.cook
 
-The cooked file `schema cook` produces from an instance's wire, one per byte
-order (docs/SPEC-TABLES.md §7.6). They are not dumps and not text: they are the
-FILE, and a runtime's writer is byte-compared against them. Nothing is
-hand-authored — `make conformance-generate` writes both from the wire golden the
-instance line already names — and a byte that MOVES under an unchanged schema is
-stop-the-line, exactly as a wire golden is.
+The tool's cooked file from the `cook-write` value-construction recipe, one per
+byte order (docs/SPEC-TABLES.md §7.6). A runtime constructs the same value and
+must write identical bytes. `make conformance-generate` writes both files; a
+changed construction or schema is reviewed alongside any changed expectations.
 
 The big-endian half needs no big-endian host on either side: the byte order is a
 PARAMETER of the write, settled at cook time for the target build, so the tool

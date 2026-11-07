@@ -84,6 +84,27 @@ print((r1.malformed and "1" or "0") .. (r2.malformed and "1" or "0"))
 `
 }
 
+// jsonInstanceProbeFixed is jsonInstanceProbe at a FIXED root
+// (docs/SPEC-TABLES.md §3.4): the wire direction rides the fixed form.
+func jsonInstanceProbeFixed(module, root string) string {
+	return `local T = require("` + module + `")
+local J = require("json")
+local inputs = require("inputs")
+local function hex(s)
+  if s == nil then return "nil" end
+  return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
+end
+local r1 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local v1 = J.FromJsonTolerant(T, "` + root + `", inputs.text, r1)
+local saved = T.FixedSave("` + root + `", { v1 })
+local v2 = T.ReadFixedTolerant("` + root + `", inputs.wire)
+local text = J.ToJson(T, "` + root + `", v2)
+print(hex(saved))
+print(hex(text))
+print((r1.malformed and "1" or "0") .. "0")
+`
+}
+
 // jsonHostileProbe reads one hostile text and prints its report line in the
 // manifest's shape (docs/SPEC-TABLES.md §16.2, §4).
 func jsonHostileProbe(module, root string) string {
@@ -192,7 +213,11 @@ func TestLuaJsonAgreesWithTheCorpus(t *testing.T) {
 			mismatches = append(mismatches, fmt.Sprintf("instance %s: read wire: %v", row.caseName, err))
 			continue
 		}
-		out := jsonRun(t, paths, ModuleName(u), row.root, jsonInstanceProbe(ModuleName(u), row.root),
+		probe := jsonInstanceProbe(ModuleName(u), row.root)
+		if st := u.Tables[row.root]; st != nil && st.FixedDeclared {
+			probe = jsonInstanceProbeFixed(ModuleName(u), row.root)
+		}
+		out := jsonRun(t, paths, ModuleName(u), row.root, probe,
 			map[string][]byte{"text": textData, "wire": wireData}, nil)
 		parts := strings.Split(out, "\n")
 		if len(parts) != 3 {

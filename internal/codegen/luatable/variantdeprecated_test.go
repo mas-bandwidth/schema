@@ -2,8 +2,8 @@ package luatable
 
 // A DEPRECATED ENUM VARIANT READS AS THE FIELD DEFAULT AND IS REFUSED ON WRITE
 // (docs/SPEC-TABLES.md §2.15) on the Lua leg, matching the Go reference
-// (internal/codegen/gotable/variantdeprecated_test.go): on the id-table wire,
-// form 3, the message form and JSON. The wire is written by the SAME schema
+// (internal/codegen/gotable/variantdeprecated_test.go): on form 3 (this fixed
+// root's wire), the message form and JSON. The wire is written by the SAME schema
 // with the variant LIVE, so the bytes are those of an older writer; the same
 // bytes read with the variant live yield it (the reversed witness), proving
 // the test sees the rule. The engine (internal/tablewire, internal/tabletext)
@@ -75,22 +75,18 @@ const luaVariantLiveProbe = luaVariantProbeHead + `
 local v = T.NewRoot()
 v.ship = "Bomber"
 v.fleet = { "Bomber" }
--- the id-table wire (form 1), form 3, the message form and JSON
-local wire = assert(save.Save(T, "Root", v), "live save refused")
+-- form 3, the message form and JSON (Root is a fixed table: form 3 is its
+-- wire, and a form-1 file at this root is previous_form to every reader)
 local fixed = T.WriteFixed("Root", v)
 local vocab = announced()
 local message = assert(T.SaveMessages("Root", vocab, { v }), "live message save refused")
 local text = assert(J.ToJson(T, "Root", v), "live json refused")
-hexline(wire); hexline(fixed); hexline(message); hexline(T.Announcement); hexline(text)
+hexline(fixed); hexline(message); hexline(T.Announcement); hexline(text)
 
 -- THE REVERSED WITNESS: the same bytes read with Bomber LIVE yield Bomber.
-local r = fresh_report()
-local w = load.LoadTolerant(T, "Root", wire, r)
-clean(r, "live wire")
-assert(w.ship == "Bomber" and #w.fleet == 1 and w.fleet[1] == "Bomber", "live wire witness")
 local fv = T.ReadFixed("Root", fixed)
 assert(fv.ship == "Bomber" and fv.fleet[1] == "Bomber", "live fixed witness")
-r = fresh_report()
+local r = fresh_report()
 local decoded = assert(T.LoadMessages("Root", announced(), message, r), "live message refused")
 clean(r, "live message")
 assert(decoded[1].ship == "Bomber" and decoded[1].fleet[1] == "Bomber", "live message witness")
@@ -103,15 +99,10 @@ assert(jv.ship == "Bomber" and jv.fleet[1] == "Bomber", "live json witness")
 const luaVariantDeprecatedProbe = luaVariantProbeHead + `
 local cookwrite = require("cookwrite")
 local Text = require("text")
--- THE ID-TABLE WIRE: the field reads its declared default (Scout), the array
--- element reads the ELEMENT default (None, false in a sequence), and nothing
--- is unknown.
+-- FORM 3, this fixed root's wire: the field reads its declared default
+-- (Scout), the array element reads the ELEMENT default (None, false in a
+-- sequence), and nothing is unknown.
 local r = fresh_report()
-local v = assert(load.LoadTolerant(T, "Root", inputs.wire, r), "deprecated wire refused")
-clean(r, "deprecated wire")
-assert(v.ship == "Scout", "deprecated wire field: " .. tostring(v.ship))
-assert(#v.fleet == 1 and v.fleet[1] == false, "deprecated wire element: " .. tostring(v.fleet[1]))
--- FORM 3
 local fv = T.ReadFixed("Root", inputs.fixed)
 assert(fv.ship == "Scout", "deprecated fixed field: " .. tostring(fv.ship))
 assert(not fv.fleet[1], "deprecated fixed element: " .. tostring(fv.fleet[1]))
@@ -191,14 +182,14 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 
 	live := luaVariantUnit(t, luaVariantDeprecatedLiveSchema)
 	lines := luarun.HexLines(t, luaVariantRun(t, live, luaVariantLiveProbe, map[string][]byte{}))
-	if len(lines) != 5 {
-		t.Fatalf("the live probe printed %d byte strings, want 5", len(lines))
+	if len(lines) != 4 {
+		t.Fatalf("the live probe printed %d byte strings, want 4", len(lines))
 	}
-	wire, fixed, message, announce, text := lines[0], lines[1], lines[2], lines[3], lines[4]
+	fixed, message, announce, text := lines[0], lines[1], lines[2], lines[3]
 
 	deprecated := luaVariantUnit(t, luaVariantDeprecatedSchema)
 	out := string(luaVariantRun(t, deprecated, luaVariantDeprecatedProbe, map[string][]byte{
-		"wire": wire, "fixed": fixed, "message": message, "announce": announce, "json": text,
+		"fixed": fixed, "message": message, "announce": announce, "json": text,
 	}))
 	for _, want := range []string{"reads-ok", "writes-refused-ok"} {
 		if !strings.Contains(out, want) {
@@ -207,16 +198,16 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 	}
 
 	// THE ORACLE AGREES: the engine reads the Lua leg's older-writer bytes as
-	// the field default, with no unknown counted, on the wire, JSON and the
-	// message form — the same answers the Lua reads gave above.
+	// the field default, with no unknown counted, on the fixed wire, JSON and
+	// the message form — the same answers the Lua reads gave above.
 	m := tabletext.NewModel(deprecated)
 	scout := uint64(tabletext.EnumValue(deprecated.Enums["Ship"], "Scout"))
 	inst := m.New(m.Lookup("Root"))
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, inst, wire, &report); !ok || err != nil {
+	if ok, err := tablewire.Decode(m, inst, fixed, &report); !ok || err != nil {
 		t.Fatalf("oracle wire: %v %+v", err, report)
 	}
-	if report.Unknown != 0 || report.Malformed || inst.Fields[0].Cell.U != scout || inst.Fields[1].Elems[0].U != 0 {
+	if report.Unknown != 0 || report.Refused || inst.Fields[0].Cell.U != scout || inst.Fields[1].Elems[0].U != 0 {
 		t.Fatalf("oracle wire: %+v %+v", report, inst.Fields)
 	}
 	inst = m.New(m.Lookup("Root"))

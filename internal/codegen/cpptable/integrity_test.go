@@ -98,7 +98,7 @@ int main()
         { printf( "MEASURE empty input was misnamed\n" ); return 1; }
     TableReport empty;
     if ( RootLoad( NULL, 0, other, 0, &empty ) != NULL ||
-         !empty.malformed || empty.refused || empty.damage_reason != ok )
+         !empty.damaged || empty.refused || empty.damage_reason != ok )
         { printf( "LOAD empty input was misnamed\n" ); return 1; }
     return 0;
 }
@@ -218,7 +218,7 @@ int main()
     const Ledger * back = LedgerLoad( region, (int64_t) sizeof( region ), lbuf, sl, &clean );
     if ( back == NULL || back->n != 1000 || back->label_length != 2 ||
          memcmp( back->label, "ok", 2 ) != 0 || back->count != 7 ||
-         clean.malformed || clean.refused || clean.damage_reason != ok )
+         clean.damaged || clean.refused || clean.damage_reason != ok )
         { printf( "LOAD clean round trip\n" ); return 1; }
     TableRefuseReason why = ok;
     if ( LedgerLoadMeasure( lbuf, sl, NULL, &why ) <= 0 || why != ok )
@@ -228,7 +228,7 @@ int main()
     if ( !LedgerLoadBuilder( bload, lbuf, sl, &brep ) ||
          bload.GetRoot() == NULL || bload.GetRoot()->n != 1000 )
         { printf( "LOADBUILDER clean file\n" ); return 1; }
-    if ( brep.malformed || brep.refused || brep.damage_reason != ok )
+    if ( brep.damaged || brep.refused || brep.damage_reason != ok )
         { printf( "LOADBUILDER clean report\n" ); return 1; }
 
     // every byte by every single bit and by 0xff (Go integrity_test.go flipAll)
@@ -242,10 +242,10 @@ int main()
             const Ledger * v = LedgerLoad( region, (int64_t) sizeof( region ), bad, sl, &r );
             if ( i == 0 )
             {
-                if ( v != NULL || !r.refused || r.malformed || r.damage_reason != ok || r.reason != newer_form )
+                if ( v != NULL || !r.refused || r.damaged || r.damage_reason != ok || r.reason != newer_form )
                     { printf( "LOAD form byte %lld ^ %u\n", (long long) i, (unsigned) flips[f] ); return 1; }
             }
-            else if ( v != NULL || !r.malformed || r.refused || r.damage_reason != integrity_mismatch )
+            else if ( v != NULL || !r.damaged || r.refused || r.damage_reason != integrity_mismatch )
                 { printf( "LOAD byte %lld ^ %u\n", (long long) i, (unsigned) flips[f] ); return 1; }
             TableRefuseReason rwhy = ok;
             const int64_t n = LedgerLoadMeasure( bad, sl, NULL, &rwhy );
@@ -256,10 +256,10 @@ int main()
             const bool got = LedgerLoadBuilder( bflip, bad, sl, &rb );
             if ( i == 0 )
             {
-                if ( got || !rb.refused || rb.malformed || rb.damage_reason != ok )
+                if ( got || !rb.refused || rb.damaged || rb.damage_reason != ok )
                     { printf( "LOADBUILDER form byte %lld ^ %u\n", (long long) i, (unsigned) flips[f] ); return 1; }
             }
-            else if ( got || !rb.malformed || rb.refused || rb.damage_reason != integrity_mismatch )
+            else if ( got || !rb.damaged || rb.refused || rb.damage_reason != integrity_mismatch )
                 { printf( "LOADBUILDER byte %lld ^ %u\n", (long long) i, (unsigned) flips[f] ); return 1; }
         }
     }
@@ -270,14 +270,14 @@ int main()
         const uint8_t tiny[4] = { 1, 0, 0, 0 };
         TableReport r;
         if ( LedgerLoad( region, (int64_t) sizeof( region ), tiny, 4, &r ) != NULL ||
-             !r.malformed || r.refused || r.damage_reason != integrity_mismatch )
+             !r.damaged || r.refused || r.damage_reason != integrity_mismatch )
             { printf( "LOAD short file\n" ); return 1; }
         TableRefuseReason rwhy = ok;
         if ( LedgerLoadMeasure( tiny, 4, NULL, &rwhy ) != -1 || rwhy != integrity_mismatch )
             { printf( "MEASURE short file\n" ); return 1; }
         LedgerBuilder bshort;
         TableReport rb;
-        if ( LedgerLoadBuilder( bshort, tiny, 4, &rb ) || !rb.malformed || rb.refused || rb.damage_reason != integrity_mismatch )
+        if ( LedgerLoadBuilder( bshort, tiny, 4, &rb ) || !rb.damaged || rb.refused || rb.damage_reason != integrity_mismatch )
             { printf( "LOADBUILDER short file\n" ); return 1; }
     }
 
@@ -303,14 +303,14 @@ int main()
     rback.ids = rids; rback.id_capacity = 16;
     TableReport rlreport;
     const Ledger * rl = LedgerLoadRetain( rregion, (int64_t) sizeof( rregion ), rbuf, sr, &rback, &rlreport );
-    if ( rl == NULL || rl->n != 1000 || rl->count != 7 || rlreport.malformed || rlreport.refused || rlreport.damage_reason != ok )
+    if ( rl == NULL || rl->n != 1000 || rl->count != 7 || rlreport.damaged || rlreport.refused || rlreport.damage_reason != ok )
         { printf( "LOADRETAIN round trip\n" ); return 1; }
 
     // a form-1 file too short for a trailer, and an empty file (damage with no
     // named cause), keep the form dispatch's answers (Go integrity_test.go).
     TableReport empty;
     if ( LedgerLoad( region, (int64_t) sizeof( region ), NULL, 0, &empty ) != NULL ||
-         !empty.malformed || empty.refused || empty.damage_reason != ok )
+         !empty.damaged || empty.refused || empty.damage_reason != ok )
         { printf( "LOAD empty input was misnamed\n" ); return 1; }
 
     // Whole is the by-value (non-variable) table: its save is sealed and its
@@ -324,7 +324,7 @@ int main()
     memcpy( wbad, wbuf, (size_t) ws ); wbad[ws - 1] ^= 1;
     Whole wback; TableReport wr;
     if ( WholeLoad( wback, wbad, ws, &wr ) ||
-         !wr.malformed || wr.refused || wr.damage_reason != integrity_mismatch )
+         !wr.damaged || wr.refused || wr.damage_reason != integrity_mismatch )
         { printf( "WHOLE LOAD corrupt trailer\n" ); return 1; }
     return 0;
 }
@@ -375,13 +375,13 @@ int main()
     uint8_t bad[1 << 18];
     memcpy( bad, kbuf, (size_t) sk ); bad[sk-1] ^= 0x01;
     if ( ReadingFixedLoad( back, 3, bad, sk, NULL, 0, NULL, &report ) >= 0 ||
-         !report.malformed || report.refused || report.damage_reason != integrity_mismatch )
+         !report.damaged || report.refused || report.damage_reason != integrity_mismatch )
         { printf( "READ flipped trailer was not named damage\n" ); return 1; }
     TableReport report2;
     uint8_t cut[1 << 18];
     memcpy( cut, kbuf, (size_t) ( sk - 1 ) );
     if ( ReadingFixedLoad( back, 3, cut, sk - 1, NULL, 0, NULL, &report2 ) >= 0 ||
-         !report2.malformed || report2.refused || report2.damage_reason != integrity_mismatch )
+         !report2.damaged || report2.refused || report2.damage_reason != integrity_mismatch )
         { printf( "READ cut trailer was not named damage\n" ); return 1; }
     return 0;
 }
@@ -593,12 +593,12 @@ int main()
             const bool ok = LedgerLoadMessages( out, &got, vocab, bad, ln, &r );
             if ( i == 0 )
             {
-                if ( ok || got != 0 || !r.refused || r.malformed || r.reason != TableMessageReason::newer_form )
+                if ( ok || got != 0 || !r.refused || r.damaged || r.reason != TableMessageReason::newer_form )
                     { printf( "flip form byte %lld ^ %u\n", (long long) i, (unsigned) flips[k] ); return 1; }
             }
             else
             {
-                if ( ok || got != 0 || !r.malformed || r.refused || r.damage_reason != integrity_mismatch || r.reason != integrity_mismatch )
+                if ( ok || got != 0 || !r.damaged || r.refused || r.damage_reason != integrity_mismatch || r.reason != integrity_mismatch )
                     { printf( "flip byte %lld ^ %u\n", (long long) i, (unsigned) flips[k] ); return 1; }
             }
         }
@@ -609,7 +609,7 @@ int main()
         Ledger out[1];
         int64_t got = 1;
         TableReport r;
-        if ( LedgerLoadMessages( out, &got, vocab, tiny, 5, &r ) || got != 0 || !r.malformed || r.refused || r.damage_reason != integrity_mismatch )
+        if ( LedgerLoadMessages( out, &got, vocab, tiny, 5, &r ) || got != 0 || !r.damaged || r.refused || r.damage_reason != integrity_mismatch )
             { printf( "short message batch\n" ); return 1; }
     }
 
@@ -630,12 +630,12 @@ int main()
         }
         Ledger out;
         TableReport r;
-        if ( LedgerLoadTolerant( out, NULL, 8, &r ) || !r.malformed )
-            { printf( "LedgerLoadTolerant NULL buffer with positive length\n" ); return 1; }
+        if ( LedgerLoad( out, NULL, 8, &r ) || !r.damaged )
+            { printf( "LedgerLoad NULL buffer with positive length\n" ); return 1; }
         Ledger out_batch[1];
         int64_t got = 1;
         r = TableReport();
-        if ( LedgerLoadMessages( out_batch, &got, vocab, NULL, 8, &r ) || got != 0 || !r.malformed )
+        if ( LedgerLoadMessages( out_batch, &got, vocab, NULL, 8, &r ) || got != 0 || !r.damaged )
             { printf( "LedgerLoadMessages NULL buffer with positive length\n" ); return 1; }
     }
 

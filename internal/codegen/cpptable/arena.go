@@ -1046,7 +1046,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     if ( index == kTableNodeIndexNull || !map.good ) { return; }
     if ( index - 1 >= (uint64_t) map.count )
     {
-        report->malformed = true; // an index above node_count + 1
+        report->damaged = true; // an index above node_count + 1
         return;
     }
     const TableNodeDirEntry & entry = map.entries[index - 1];
@@ -1066,10 +1066,10 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->kind_mismatch++;
+            report->refused = true; report->refuse_reason = kind_mismatch;;
             return;
         }
-        report->blob_shared++;
+        report->refused = true; report->refuse_reason = blob_shared;;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {
@@ -1303,7 +1303,7 @@ struct TableNodeScan
     uint64_t declared;
     int64_t records;
     bool present;              // the root body carries a node table at all
-    bool malformed;
+    bool damaged;
     const TableIdTable * ids;
 };
 
@@ -1335,13 +1335,13 @@ inline bool TableNodeScanOpen( TableNodeScan & s )
             s.present = true;
             if ( kind != 12 )
             {
-                s.malformed = true;
+                s.damaged = true;
                 return false;
             }
             uint64_t length = 0;
             if ( !s.fields.getleb( length ) || !s.fields.room( length ) )
             {
-                s.malformed = true;
+                s.damaged = true;
                 return false;
             }
             s.payload = s.fields.buffer + s.fields.offset;
@@ -1355,14 +1355,14 @@ inline bool TableNodeScanOpen( TableNodeScan & s )
     TableReader head( s.payload, s.payload_size, s.fields.report, s.ids );
     if ( !head.getleb( s.declared ) )
     {
-        s.malformed = true;
+        s.damaged = true;
         return false;
     }
     s.payload_offset = head.offset;
     return true;
 }
 
-// the next record, or false at the end of the table — s.malformed says whether
+// the next record, or false at the end of the table — s.damaged says whether
 // the end was the end or the framing giving out
 inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint8_t *& body, int64_t & length )
 {
@@ -1373,19 +1373,19 @@ inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint
     uint64_t ref = 0;
     if ( !rec.getleb( ref ) || ref == 0 || s.ids == NULL || ref > (uint64_t) s.ids->count )
     {
-        s.malformed = true; // a type id reference of 0, or one past the table
+        s.damaged = true; // a type id reference of 0, or one past the table
         return false;
     }
     type_id = s.ids->at( ref );
     uint64_t declared_length = 0;
     if ( !rec.getleb( declared_length ) )
     {
-        s.malformed = true; // a record whose length is damaged
+        s.damaged = true; // a record whose length is damaged
         return false;
     }
     if ( declared_length > (uint64_t) ( s.payload_size - rec.offset ) )
     {
-        s.malformed = true; // a record whose length runs past its field
+        s.damaged = true; // a record whose length runs past its field
         return false;
     }
     body = s.payload + rec.offset;
@@ -1400,7 +1400,7 @@ inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint
 // before the scan has confirmed it.
 inline bool TableNodeScanWhole( TableNodeScan & s )
 {
-    if ( s.malformed ) { return false; }
+    if ( s.damaged ) { return false; }
     if ( !s.present ) { return true; } // no node table at all is not a broken one
     return s.declared == (uint64_t) s.records;
 }

@@ -27,6 +27,12 @@ class EnumVariant:
 // alone. Every member has its zero as a default, so a descriptor names only
 // the facts its shape has.
 class FieldDescriptor:
+    // Arm offset in the shared region/cook projection, not a VM address.
+    arm_offset:int = 0
+    type_name:string = ""
+    type_ref:string = ""
+    doc:string = ""
+    tags:[string] = []
     id:int = 0
     name:string = ""
     slot:string = ""
@@ -76,10 +82,15 @@ class FieldDescriptor:
 // (§2.2), what a pointer walk from it may place (§3.1) and its fields in
 // declared order.
 class TableDescriptor:
+    doc:string = ""
+    tags:[string] = []
     name:string
     id:int
     table:bool
     fixed:bool
+    // Public root forms; nested values traverse under the enclosing root.
+    json_form:bool = true
+    cook_form:bool = true
     variable:bool
     integrity:bool = false
     place_tables:[string]

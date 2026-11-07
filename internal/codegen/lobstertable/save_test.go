@@ -24,7 +24,9 @@ const saveDump = `def saverun(root:string, file:string):
     let data = read_file(file)
     assert data
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load_tolerant(root, data, rep)
+    let rec = schema_rt.load(root, data, rep)
+    if not rec:
+        print("refused save input: " + root + " / " + file)
     assert rec
     let out = schema_rt.save(rec)
     let h = hexs(out)
@@ -35,7 +37,7 @@ const saveDump = `def saverun(root:string, file:string):
         print(substring(h, j * 40000, min(40000, length(h) - j * 40000)))
         j++
     let rep2 = schema_rt.LoadReport {}
-    let rec2 = schema_rt.load_tolerant(root, out, rep2)
+    let rec2 = schema_rt.load(root, out, rep2)
     labels = []
     var dump = "nil"
     if rec2:
@@ -73,8 +75,10 @@ func goSave(g *loadUnit, rootName string, wire []byte) ([]byte, error) {
 	m := tabletext.NewModel(g.u)
 	inst := m.New(m.Lookup(rootName))
 	var rep tabletext.Report
-	if _, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
+	if ok, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
 		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("reference refused input")
 	}
 	return tablewire.Encode(m, inst)
 }
@@ -162,13 +166,12 @@ func TestLobsterTableSaveRoundTripsEveryInstance(t *testing.T) {
 		}
 		g, err := generateLoadUnit(t, paths)
 		if err != nil {
-			t.Logf("refused unit %s (%d rows): %v", key, len(byUnit[key]), err)
-			skipped += len(byUnit[key])
-			continue
+			t.Fatalf("unit %s: %v", key, err)
 		}
+		all := compareReadOutcomes(t, g, byUnit[key])
 		var rows []loadRow
 		var want [][]byte
-		for _, row := range byUnit[key] {
+		for i, row := range byUnit[key] {
 			wire := row.data
 			if wire == nil {
 				if wire, err = os.ReadFile(filepath.Join(root, row.wire)); err != nil {
@@ -177,7 +180,9 @@ func TestLobsterTableSaveRoundTripsEveryInstance(t *testing.T) {
 			}
 			out, goErr := goSave(g, row.root, wire)
 			if goErr != nil {
-				t.Logf("instance %s is refused by the Go writer and not compared: %v", row.name, goErr)
+				if all.goLine[i] == "read" {
+					t.Fatalf("%s: accepted value cannot save: %v", row.name, goErr)
+				}
 				skipped++
 				continue
 			}
@@ -205,7 +210,7 @@ func TestLobsterTableSaveRoundTripsEveryInstance(t *testing.T) {
 	if compared == 0 {
 		t.Fatalf("compared %d instances: the comparison is vacuous", compared)
 	}
-	t.Logf("%d instances saved byte for byte and re-loaded equal to the reference's; %d skipped by name", compared, skipped)
+	t.Logf("%d instances saved byte for byte and re-loaded equal to the reference's; %d whole-load refusals checked", compared, skipped)
 }
 
 // TestLobsterTableSaveNegativeControl patches the emitted save runtime in
@@ -214,30 +219,9 @@ func TestLobsterTableSaveRoundTripsEveryInstance(t *testing.T) {
 // green.
 func TestLobsterTableSaveNegativeControl(t *testing.T) {
 	t.Parallel()
-	units, _ := readManifest(t)
-	var row loadRow
-	found := false
-	for _, r := range loadRows(t) {
-		if r.kind == "instance" && r.name == "root_full" {
-			row, found = r, true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("the manifest names no instance root_full")
-	}
-	paths, err := compiler.GatherPaths(prefix(units[row.unit]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	g, err := generateLoadUnit(t, paths)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wire, err := os.ReadFile(filepath.Join(root, row.wire))
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := probeUnit(t)
+	wire := probeWire(t, g)
+	row := loadRow{kind: "instance", name: "variable-probe", unit: "probe", root: "Root", data: wire}
 	want, err := goSave(g, row.root, wire)
 	if err != nil {
 		t.Fatal(err)

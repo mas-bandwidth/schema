@@ -598,7 +598,7 @@ class MessageRead:
 
 def message_count(r:MessageBits, s:MessageShape) -> int, bool:
     let raw, ok = mb_get(r, message_bits(s.max - s.min))
-    return raw + s.min, ok
+    return raw + s.min, ok and not ult(s.max - s.min, raw)
 
 // message_skip steps over one payload by its announced entry alone (Go's
 // tableMessageSkip): a variant and an arm reference are resolved even here.
@@ -632,12 +632,20 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
         let n, ok = message_count(r, s)
         if not ok:
             return false
-        var width = 16
         if k == 12:
-            width = 8
             if not mb_align(r):
                 return false
-        return mb_skip(r, n * width)
+            let at = r.lo + (r.off >> 3)
+            return mb_skip(r, n * 8) and text_valid(r.b, at, n)
+        if n * 16 > r.n - r.off:
+            return false
+        var high = false
+        for(n):
+            let unit, good = mb_get(r, 16)
+            if not good or unit == 0 or (unit >= 0xdc00 and unit <= 0xdfff and not high) or (high and (unit < 0xdc00 or unit > 0xdfff)):
+                return false
+            high = unit >= 0xd800 and unit <= 0xdbff
+        return not high
     if k == 31:
         if not mb_align(r):
             return false
@@ -645,44 +653,60 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
         return ok and mb_skip(r, n * 8)
     if k == 14 or k == 16:
         let n, ok = message_count(r, s)
-        if not ok:
+        if not ok or n > 0x7fffffff:
             return false
         if k == 14 and el.kind == 6 and not mb_align(r):
             return false
-        if el.bits >= 0 or el.kind == 0 or el.kind == 32:
-            var width = max(el.bits, 0)
-            if k == 16:
-                width += v.ref_bits
-            return mb_skip(r, n * width)
+        if k == 14 and el.bits == 0:
+            return true
+        let seen:[int] = []
         var i = 0
         while i < n:
-            if k == 16 and not mb_skip(r, v.ref_bits):
-                return false
+            if k == 16:
+                let ref, good = mb_get(r, v.ref_bits)
+                let id, named = message_name(v, ref)
+                if not good or not named:
+                    return false
+                for(seen) old:
+                    if old == id: return false
+                push(seen, id)
             let before = r.off
-            if not message_skip(m, el, MessageShape {}, depth + 1) or r.off == before:
+            if not message_skip(m, el, MessageShape {}, depth + 1):
+                return false
+            if r.off == before and el.bits != 0 and el.kind != 0 and el.kind != 32:
                 return false
             i++
         return true
+    if k == 10:
+        let raw, ok = mb_get(r, s.bits)
+        return ok and (if s.packing == 2: not ult(s.qcount, raw) else: finite_f32_bits(raw))
+    if k == 11:
+        let raw, ok = mb_get(r, 64)
+        return ok and finite_f64_bits(raw)
     return s.bits >= 0 and mb_skip(r, s.bits)
 
 def message_skip_body(m:MessageRead, depth:int) -> bool:
     if depth > message_skip_depth:
         return false
+    let seen:[int] = []
     while true:
         let ref, ok = mb_get(m.bits, m.v.ref_bits)
         if not ok or ref == 0:
             return ok
         let e = message_entry(m.v, ref)
-        if not e:
+        if not e or not ult(e.id, message_vocabulary_id):
             return false
+        for(seen) id:
+            if id == e.id: return false
+        push(seen, e.id)
         if not message_skip(m, e.shape, e.element, depth):
             return false
     return false
 
 // message_scalar reads ONE value at the SENDER's announced width and base,
 // reconstructs it at the announced kind's storage width (Go's
-// tableMessageReadScalar), and lands it through the file form's own clamps
-// (scalar_at). A quantized index above count is REJECTED, as the packet wire
+// tableMessageReadScalar), and validates it through the file form's scalar_at.
+// A quantized index above count is REJECTED, as the packet wire
 // rejects it (§3.3, SPEC.md §4.3).
 def message_scalar(m:MessageRead, cell:Value, fd:FieldDescriptor, declared:int, s:MessageShape) -> bool:
     let r = m.bits
@@ -727,8 +751,7 @@ def message_scalar(m:MessageRead, cell:Value, fd:FieldDescriptor, declared:int, 
     return scalar_at(pr, cell, fd, declared, kind)
 
 // message_text reads a string(N): the length at its width, the align that
-// buys a memcpy, the bytes; ill-formed text is terminal damage, and a clamp
-// cuts at a code point boundary.
+// buys a memcpy, the bytes; ill-formed text and exceeded bounds refuse.
 def message_text(m:MessageRead, sl:Slot, s:MessageShape) -> bool:
     let r = m.bits
     let rep = m.rep
@@ -743,17 +766,13 @@ def message_text(m:MessageRead, sl:Slot, s:MessageShape) -> bool:
     if not text_valid(r.b, start, n):
         rep.malformed = true
         return false
-    var kept = n
-    if sl.fd.s == "str" and kept > sl.fd.bound:
-        kept = text_boundary(r.b, start, n, sl.fd.bound)
-    if kept < n:
-        rep.clamped++
-    sl.cell.s = substring(r.b, start, kept)
-    sl.count = kept
+    if sl.fd.s == "str" and n > sl.fd.bound:
+        return message_refuse(rep, "length_over_bound")
+    sl.cell.s = substring(r.b, start, n)
+    sl.count = n
     return true
 
-// message_bytes reads a bytes(N): the count, the align, the bytes, clamped at
-// the bound.
+// message_bytes reads bytes(N), refusing a count beyond the declaration.
 def message_bytes(m:MessageRead, sl:Slot, s:MessageShape) -> bool:
     let r = m.bits
     let rep = m.rep
@@ -765,17 +784,14 @@ def message_bytes(m:MessageRead, sl:Slot, s:MessageShape) -> bool:
     if not mb_skip(r, n * 8):
         rep.malformed = true
         return false
-    var kept = n
-    if kept > sl.fd.bound:
-        kept = sl.fd.bound
-        rep.clamped++
-    sl.cell.s = substring(r.b, start, kept)
-    sl.count = kept
+    if n > sl.fd.bound:
+        return message_refuse(rep, "length_over_bound")
+    sl.cell.s = substring(r.b, start, n)
+    sl.count = n
     return true
 
 // message_wide reads a wstring(N): the length, NO align, sixteen bits a code
-// unit; a zero unit or an unpaired surrogate is damage, and a clamp never
-// splits a pair.
+// unit; a zero unit, an unpaired surrogate or an exceeded bound refuses.
 def message_wide(m:MessageRead, sl:Slot, s:MessageShape) -> bool:
     let r = m.bits
     let rep = m.rep
@@ -783,10 +799,8 @@ def message_wide(m:MessageRead, sl:Slot, s:MessageShape) -> bool:
     if not ok or n * 16 > r.n - r.off:
         rep.malformed = true
         return false
-    var kept = n
-    if kept > sl.fd.bound:
-        kept = sl.fd.bound
-        rep.clamped++
+    if n > sl.fd.bound:
+        return message_refuse(rep, "length_over_bound")
     let units:[int] = []
     var high = false
     var i = 0
@@ -796,17 +810,13 @@ def message_wide(m:MessageRead, sl:Slot, s:MessageShape) -> bool:
             rep.malformed = true
             return false
         high = u >= 0xd800 and u <= 0xdbff
-        if i < kept:
-            push(units, u)
+        push(units, u)
         i++
     if high:
         rep.malformed = true
         return false
-    if kept > 0 and units[kept - 1] >= 0xd800 and units[kept - 1] <= 0xdbff:
-        kept--
-        truncate(units, kept)
     sl.cell.units = units
-    sl.count = kept
+    sl.count = n
     return true
 
 // message_enum reads an enum value: the reference naming its VARIANT's name,
@@ -877,12 +887,7 @@ def message_union(m:MessageRead, cell:Value, fd:FieldDescriptor) -> bool:
         if a.s != "void" and message_compatible(a, mine, e):
             widened = true
         else:
-            cell.i = 0
-            rep.kind_mismatch++
-            if not message_skip(m, e.shape, e.element, 0):
-                rep.malformed = true
-                return false
-            return true
+            return message_refuse(rep, "kind_mismatch")
     cell.i = tag
     if a.s == "tab":
         let payload = new_record(table_of(a.t))
@@ -917,9 +922,8 @@ def message_cell(m:MessageRead, cell:Value, fd:FieldDescriptor, declared:int, s:
     m.rep.malformed = true
     return false
 
-// message_array reads a positional array: the count (none rides when min is
-// max), the align for an element kind of 6, the elements kept up to the
-// bound, and the surplus walked or stepped over by arithmetic (§3.3).
+// message_array reads every positional element after checking the count against
+// the declaration. A shorter writer leaves added fixed-array slots at default.
 def message_array(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
     let rep = m.rep
     let f = sl.fd
@@ -931,10 +935,9 @@ def message_array(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
         rep.malformed = true
         return false
     let ed = elem_of(f)
-    var keep = n
+    let keep = n
     if ult(f.bound, n):
-        keep = f.bound
-        rep.clamped++
+        return message_refuse(rep, "count_over_bound")
     var walk = n
     if e.element.bits >= 0:
         walk = keep
@@ -965,6 +968,7 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
         return false
     let keys = keyed_variants(f)
     let ed = elem_of(f)
+    let seen:[int] = []
     var i = 0
     while i < n:
         let ref, rok = mb_get(m.bits, m.v.ref_bits)
@@ -975,6 +979,10 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
         if not named:
             rep.malformed = true
             return false
+        for(seen) old:
+            if old == id:
+                return message_refuse(rep, "duplicate")
+        push(seen, id)
         let value = enum_value(keys, id)
         var cell = Value {}
         if value >= 1 and value <= length(sl.elems):
@@ -1029,17 +1037,29 @@ def message_body(m:MessageRead, rec:Record) -> bool:
     let rep = m.rep
     let v = m.v
     let slots = message_slots_of(message_facts.fields, rec.d.name)
+    let seen:[int] = []
     while true:
         let ref, ok = mb_get(m.bits, v.ref_bits)
         if not ok:
             rep.malformed = true
             return false
         if ref == 0:
+            for(rec.fields) sl:
+                if sl.fd.required:
+                    var present = false
+                    for(seen) id:
+                        if id == sl.fd.id: present = true
+                    if not present:
+                        return message_refuse(rep, "missing_required")
             return true
         let e = message_entry(v, ref)
         if not e or not ult(e.id, message_vocabulary_id):
             rep.malformed = true
             return false
+        for(seen) id:
+            if id == e.id:
+                return message_refuse(rep, "duplicate")
+        push(seen, e.id)
         var at = -1
         for(rec.fields) sl, i:
             if at < 0 and sl.fd.id == e.id:
@@ -1058,12 +1078,10 @@ def message_body(m:MessageRead, rec:Record) -> bool:
             if message_compatible(f, mine, e):
                 widened = true
             else:
-                rep.kind_mismatch++
-                if not message_skip(m, e.shape, e.element, 0):
-                    rep.malformed = true
-                    return false
-                continue
+                return message_refuse(rep, "kind_mismatch")
         if not message_value(m, sl, e):
+            return false
+        if strict_reason(rep) != "":
             return false
         if f.present != "":
             sl.present = true
@@ -1084,19 +1102,16 @@ def message_reset_report(rep:LoadReport):
     rep.retain_lost = 0
     rep.refused = false
     rep.reason = ""
-
-// load_messages_tolerant is THE TOLERANT batch read (§6.5, §3.3; Go's
-// <Name>LoadMessagesTolerant): the form byte first, then the vocabulary, then
-// the count against the caller's capacity, then the bodies, then the pad.
-// It answers the whole batch on success. Damage discards every body, including
-// bodies decoded before the damaged one; capacity refusal still answers wire M.
-def load_messages_tolerant(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int) -> [Record], int, bool:
-    let batch:[Record] = []
-    let count, ok = load_messages_into(root, v, data, rep, capacity, batch)
-    return batch, count, ok
+    rep.missing_required = 0
+    rep.non_finite_float = ""
+    rep.damaged = false
+    rep.stopped = false
 
 // The caller receives no usable bodies from a damaged read (§4).
 def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int, batch:[Record]) -> int, bool:
+    message_reset_report(rep)
+    for(batch) rec: release(rec)
+    truncate(batch, 0)
     if length(data) == 0:
         rep.malformed = true
         return 0, false
@@ -1147,10 +1162,12 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
 // alone refuses answers no bodies and a count of 0.
 def load_messages(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int) -> [Record], int, bool:
     message_reset_report(rep)
-    let out, count, ok = load_messages_tolerant(root, v, data, rep, capacity)
+    let out:[Record] = []
+    let count, ok = load_messages_into(root, v, data, rep, capacity, out)
     if not ok:
         return out, count, false
     if strict_reason(rep) != "":
+        for(out) rec: release(rec)
         return [], 0, false
     return out, count, true
 
@@ -1161,13 +1178,13 @@ def load_messages(root:string, v:MessageVocabulary, data:string, rep:LoadReport,
 // more than its terminator, everything else when it is not its default.
 def mw_cell_rides(w:MessageWriter, d:FieldDescriptor, kind:int, v:Value, element:bool) -> bool, bool:
     if d.s == "tab":
-        let probe = MessageWriter { measuring: true, ref_bits: w.ref_bits }
+        let nested_writer = MessageWriter { measuring: true, ref_bits: w.ref_bits }
         var t = v.tab
         if not t:
             t = new_record(table_of(d.t))
-        if not mw_body(probe, t):
+        if not mw_body(nested_writer, t):
             return false, false
-        return probe.bits > w.ref_bits, true
+        return nested_writer.bits > w.ref_bits, true
     if d.s == "union":
         return v.i != 0, true
     if element:
@@ -1254,6 +1271,10 @@ def mw_scalar(w:MessageWriter, d:FieldDescriptor, s:MessageShape, v:Value) -> bo
         let borrow = if ult(lo, s.base_lo): 1 else: 0
         lo = lo - s.base_lo
         hi = hi - s.base_hi - borrow
+        // A file keeps all flags bits, but a message carries only W bits.
+        // Refuse an unrepresentable unsigned mask before mw_put narrows it.
+        if kind == 9 and s.bits < 64 and shr(lo, s.bits) != 0:
+            return false
     if s.packing == 2:
         let value = fround(v.f)
         var ratio = fround(fround(value - s.qmin) / s.qdelta)

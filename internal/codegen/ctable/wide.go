@@ -131,7 +131,7 @@ func (g *tableGen) wireWideRead(f *ir.Field, source int, dst, rdr, ind, onBad st
 			if f.Type.Signed {
 				cmp = fmt.Sprintf("serialize_int128_compare( decoded_wide, bound ) %s 0", bound.op)
 			}
-			g.pf("%s    if ( %s ) { decoded_wide = bound; r->report->clamped++; }\n%s}\n", ind, cmp, ind)
+			g.pf("%s    if ( %s ) { decoded_wide = bound; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n%s}\n", ind, cmp, ind)
 		}
 	}
 	g.pf("%s%s = decoded_wide;\n", ind, dst)

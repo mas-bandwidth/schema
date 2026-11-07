@@ -108,7 +108,7 @@ int main(void)
 
     memset(&report, 0, sizeof(report));
     loaded = handover_load(region, sizeof(region), wire, n, &report);
-    CHECK(loaded != NULL && report.clamped == 0 && !report.malformed);
+    CHECK(loaded != NULL && report.clamped == 0 && !report.refused);
     s = handover_rules_text_at(loaded, 1, &len);
     CHECK(s != NULL && len == 4 && strcmp(s, "beta") == 0);
     s = handover_repos_text_at(NULL, loaded, 0, &len);
@@ -159,7 +159,7 @@ int main(void)
 
         CHECK(handover_builder_init(&b));
         memset(&report, 0, sizeof(report));
-        CHECK(handover_from_json_tolerant(&b, over_json, (int64_t)strlen(over_json), &report));
+        CHECK(handover_from_json(&b, over_json, (int64_t)strlen(over_json), &report));
         CHECK(report.clamped == 2); /* 1 per field, trailing oversized elements skipped without decoding */
         root = handover_builder_root(&b);
         memset(&ctx, 0, sizeof(ctx)); ctx.arena = &b.arena;
@@ -212,7 +212,7 @@ int main(void)
         CHECK(report.clamped == 2 && report.refuse_reason == SCHEMA_TABLE_REFUSE_CLAMPED);
 
         memset(&report, 0, sizeof(report));
-        loaded = handover_load_tolerant(region, sizeof(region), wire, n, &report);
+        loaded = handover_load(region, sizeof(region), wire, n, &report);
         CHECK(loaded != NULL && report.clamped == 2);
         CHECK(loaded->capped_rules_count == 2);
         CHECK(loaded->capped_repos.count == 3);

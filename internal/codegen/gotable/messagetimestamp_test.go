@@ -70,7 +70,7 @@ func TestMessageFormCarriesATimestampFieldRoundTrip(t *testing.T) {
 	vocab37 := new(TableVocabulary)
 	vocab37.Init(make([]TableMessageEntry, TableMessageEntriesHere))
 	var ar37 TableReport
-	if AnnounceRead(vocab37, k37, &ar37) || !ar37.Malformed {
+	if AnnounceRead(vocab37, k37, &ar37) || !(ar37.Refusal.Error() == "wire_damaged" || ar37.Refusal.Error() == "malformed") {
 		t.Fatalf("a kind 37 announcement is not malformed: %+v", ar37)
 	}
 }

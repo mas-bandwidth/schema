@@ -27,7 +27,7 @@
 #define SCHEMA_CONFORMANCE_QU( name ) SCHEMA_CONFORMANCE_CAT( SCHEMA_CONFORMANCE_PACKAGE_UPPER, name )
 
 /* THE READ NAME (docs/SPEC-TABLES.md §6.5). The conformance surfaces compare
-   REPORTS, so every read here is the TOLERANT one, <base>_load_tolerant and its
+   REPORTS, so every read here is the TOLERANT one, <base>_load and its
    twins, as the Go and C++ drivers call ...Tolerant. The collections
    differential (SCHEMA_C_COLLECTIONS_FUZZ, test/c-tables/collections_fuzz.cpp)
    compares the PLAIN names, C's strict read against C++'s, so there the verb is
@@ -35,16 +35,12 @@
 #if defined( SCHEMA_C_COLLECTIONS_FUZZ )
 #define SCHEMA_CONFORMANCE_READ( verb ) verb
 #else
-#define SCHEMA_CONFORMANCE_READ( verb ) verb##_tolerant
+#define SCHEMA_CONFORMANCE_READ( verb ) verb
 #endif
 
 #define SCHEMA_CONFORMANCE_COPY_REPORT( from, to ) \
     do { \
         ( to )->unknown = ( from ).unknown; \
-        ( to )->kind_mismatch = ( from ).kind_mismatch; \
-        ( to )->clamped = ( from ).clamped; \
-        ( to )->duplicate = ( from ).duplicate; \
-        ( to )->malformed = ( from ).malformed; \
         ( to )->refused = ( from ).refused; \
         ( to )->widened = ( from ).widened; \
         ( to )->blob_shared = ( from ).blob_shared; \
@@ -59,7 +55,7 @@
     static SCHEMA_CONFORMANCE_Q(FN##_t) values[256];int i; \
      for(i=0;i<256;i++)SCHEMA_CONFORMANCE_Q(FN##_reset)(values+i); \
      ok=SCHEMA_CONFORMANCE_Q(SCHEMA_CONFORMANCE_READ(FN##_load_messages))(values,&count,&vocabulary,wire,bytes,&inner);*extent=-1;*loaded=1; \
-     if(!ok&&!inner.refused)inner.malformed=1; \
+     if(!ok&&!inner.refused)inner.refused=1; \
      size=SCHEMA_CONFORMANCE_Q(FN##_measure_messages)(values,1,&ignored); \
      if(size>=0){*saved=(uint8_t *)malloc((size_t)size);if(!*saved)size=-1;else size=SCHEMA_CONFORMANCE_Q(FN##_save_messages)(values,1,*saved,size,&ignored);} \
     SCHEMA_CONFORMANCE_COPY_REPORT(inner,report);return size; \

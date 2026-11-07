@@ -67,7 +67,7 @@ int main( void )
     memset( &back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
 
-    n = cell_fixed_load_tolerant( &back, 1, wire, bytes, NULL, 0, NULL, &r );
+    n = cell_fixed_load( &back, 1, wire, bytes, NULL, 0, NULL, &r );
 
     if ( n != -1 )
     {
@@ -84,15 +84,10 @@ int main( void )
         printf( "F10 no_layout: reason=%d, not no_layout\n", r.reason );
         return 1;
     }
-    if ( r.malformed )
+    if ( r.unknown || r.widened )
     {
-        printf( "F10 no_layout: malformed set — a refusal by name is not a malformed file\n" );
-        return 1;
-    }
-    if ( r.clamped || r.unknown || r.kind_mismatch || r.widened || r.duplicate )
-    {
-        printf( "F10 no_layout: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n",
-                r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate );
+        printf( "F10 no_layout: a counter moved: unknown=%d widened=%d\n",
+                r.unknown, r.widened );
         return 1;
     }
     for ( i = 0; i < (int64_t) sizeof( back ); ++i )

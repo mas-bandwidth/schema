@@ -1161,13 +1161,13 @@ def load_messages(root:string, v:MessageVocabulary, data:string, rep:LoadReport,
 // more than its terminator, everything else when it is not its default.
 def mw_cell_rides(w:MessageWriter, d:FieldDescriptor, kind:int, v:Value, element:bool) -> bool, bool:
     if d.s == "tab":
-        let probe = MessageWriter { measuring: true, ref_bits: w.ref_bits }
+        let nested_writer = MessageWriter { measuring: true, ref_bits: w.ref_bits }
         var t = v.tab
         if not t:
             t = new_record(table_of(d.t))
-        if not mw_body(probe, t):
+        if not mw_body(nested_writer, t):
             return false, false
-        return probe.bits > w.ref_bits, true
+        return nested_writer.bits > w.ref_bits, true
     if d.s == "union":
         return v.i != 0, true
     if element:

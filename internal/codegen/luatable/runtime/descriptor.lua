@@ -83,6 +83,15 @@ check_value = function(T, where, d, v, elem)
   elseif s == "union" then
     if type(v) ~= "table" or v.tag ~= 0 then return fail(where, "a union is born empty") end
     if T.Unions[d.target] == nil then return fail(where, "union " .. d.target .. " has no descriptor") end
+  elseif s == "wide" then
+    if type(v) ~= "table" or math.type(v.lo) ~= "integer" or math.type(v.hi) ~= "integer" then
+      return fail(where, "wide integer at its default")
+    end
+    if elem then
+      if v.lo ~= 0 or v.hi ~= 0 then return fail(where, "wide element is born zero") end
+    elseif v.lo ~= d.default.lo or v.hi ~= d.default.hi then
+      return fail(where, "wide integer at its default")
+    end
   else
     return fail(where, "unknown shape " .. tostring(s))
   end
@@ -438,6 +447,25 @@ local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 
 local edge_value, edge_union, edges
 
+-- THE EDGE ENTRIES ARE POOLED (docs/PORTING.md M1): one entry per pointer or
+-- blob slot a walk meets, taken from a module-level pool whose index the two
+-- walk entries (D.cyclic, D.number_nodes) rewind at entry. Within one walk
+-- the index only grows, so every list a walk holds at once keeps its own
+-- entries; the next walk reuses them.
+local edge_pool, edge_pool_n = {}, 0
+local function edge_entry()
+  edge_pool_n = edge_pool_n + 1
+  local e = edge_pool[edge_pool_n]
+  if e == nil then
+    e = {}
+    edge_pool[edge_pool_n] = e
+  end
+  return e
+end
+local function edge_rewind()
+  edge_pool_n = 0
+end
+
 -- one value's pointer and blob edges, in the walk's order. holder/name name
 -- the slot the value occupies (a table's field or a union arm's payload);
 -- cache holds each map's entries (D.map_entries).
@@ -445,10 +473,16 @@ edge_value = function(T, fd, val, holder, name, out, cache, every)
   local s = fd.shape
   if s == "string_blob" or s == "bytes_blob" then
     if val ~= nil and val ~= false then
-      out[#out + 1] = { blob = true, shape = s, name = name, holder = holder, val = val }
+      local e = edge_entry()
+      e.blob, e.shape, e.name, e.holder, e.val, e.target = true, s, name, holder, val, nil
+      out[#out + 1] = e
     end
   elseif s == "pointer" then
-    if val ~= nil and val ~= false then out[#out + 1] = { blob = false, target = fd.target, val = val } end
+    if val ~= nil and val ~= false then
+      local e = edge_entry()
+      e.blob, e.shape, e.name, e.holder, e.val, e.target = false, nil, nil, nil, val, fd.target
+      out[#out + 1] = e
+    end
   elseif s == "table" then
     local d = T.Tables[fd.target]
     if d then edges(T, d, val, out, cache, every) end
@@ -513,6 +547,7 @@ end
 -- load gave its node, so two distinct nodes with equal bytes stay two and one
 -- box named from two slots is one node.
 function D.number_nodes(T, desc, root, refuse_shared)
+  edge_rewind()
   local nodes = { list = {}, index = {}, refs = {}, entries = {} }
   local list, index, refs = nodes.list, nodes.index, nodes.refs
   index[root] = 1
@@ -564,29 +599,64 @@ end
 -- included. Each vertex is entered once: a pointer to an OPEN vertex is a
 -- cycle, and a pointer to a CLOSED one is a legal share, so the walk is linear
 -- in vertices plus slots, and it holds its own stack.
+--
+-- THE WALK'S TABLES ARE ONE REUSED SCRATCH (docs/PORTING.md M1): the vertex
+-- list, the index, the marks, the map-entry cache, the stack frames and each
+-- vertex's edge list are module-level tables emptied at entry, so a load that
+-- runs the check allocates none of them. The walk never re-enters (no Lua
+-- callback runs inside it), so one scratch serves every call.
+local cyc_all, cyc_at, cyc_mark, cyc_cache, cyc_stack, cyc_edges = {}, {}, {}, {}, {}, {}
+local function cyc_clear(t)
+  for k in pairs(t) do
+    t[k] = nil
+  end
+end
 function D.cyclic(T, desc, root, verts)
-  local all = { { desc = desc, v = root } }
-  local at = { [root] = 1 }
+  edge_rewind()
+  local all, at, mark, cache, stack = cyc_all, cyc_at, cyc_mark, cyc_cache, cyc_stack
+  cyc_clear(all)
+  cyc_clear(at)
+  cyc_clear(mark)
+  cyc_clear(cache)
+  for i = #stack, 1, -1 do
+    stack[i] = nil
+  end
+  for _, list in pairs(cyc_edges) do
+    for i = #list, 1, -1 do
+      list[i] = nil
+    end
+  end
+  all[1] = { desc = desc, v = root }
+  at[root] = 1
   for _, x in ipairs(verts) do
     if at[x.v] == nil then
       all[#all + 1] = x
       at[x.v] = #all
     end
   end
-  local mark = {} -- nil unvisited, 1 open, 2 closed
-  local cache = {}
   local function out_of(k)
-    return edges(T, all[k].desc, all[k].v, {}, cache, true)
+    local list = cyc_edges[k]
+    if list == nil then
+      list = {}
+      cyc_edges[k] = list
+    end
+    return edges(T, all[k].desc, all[k].v, list, cache, true)
   end
   for start = 1, #all do
     if mark[start] == nil then
       mark[start] = 1
-      local stack = { { k = start, edges = out_of(start), i = 0 } }
-      while #stack > 0 do
-        local top = stack[#stack]
+      local frame = stack[1]
+      if frame == nil then
+        frame = {}
+        stack[1] = frame
+      end
+      frame.k, frame.edges, frame.i = start, out_of(start), 0
+      local depth = 1
+      while depth > 0 do
+        local top = stack[depth]
         if top.i >= #top.edges then
           mark[top.k] = 2
-          stack[#stack] = nil
+          depth = depth - 1
         else
           top.i = top.i + 1
           local e = top.edges[top.i]
@@ -595,7 +665,13 @@ function D.cyclic(T, desc, root, verts)
             if mark[t] == 1 then return true end
             if mark[t] == nil then
               mark[t] = 1
-              stack[#stack + 1] = { k = t, edges = out_of(t), i = 0 }
+              depth = depth + 1
+              local nf = stack[depth]
+              if nf == nil then
+                nf = {}
+                stack[depth] = nf
+              end
+              nf.k, nf.edges, nf.i = t, out_of(t), 0
             end
           end
         end
@@ -861,7 +937,51 @@ function D.prepare(T)
   if T.Fixed ~= nil then require("fixed").prepare(T) end
 end
 
+-- A unit with a table that has no fixed block form needs the block runtime to
+-- refuse that name. The runtime's own bytes carry that test only where the
+-- generating unit needs it, so a shared output directory or Lua's
+-- package.loaded cache can hand mixed descriptors a guard-free copy. Install
+-- the eligibility clause on the loaded block modules here, once, and only for
+-- such a unit; an eligible unit's block calls stay guard-free.
+local function install_block_eligibility(T)
+  if T.BlockForm ~= true or T.NeedsBlockEligibility ~= true then return end
+  local B = require("block")
+  if B.EligibilityGuard then return end
+  local W = require("blockbuild")
+  local open, layout = B.BlockOpen, B.Layout
+  local maximum, begin = W.BlockMaxBytes, W.Begin
+  B.BlockOpen = function(T2, name, bytes, build_version, base_offset)
+    local bd = T2.Tables[name]
+    if bd ~= nil and bd.forms ~= nil and bd.forms.block ~= true then
+      error("block: table " .. tostring(name) .. " does not carry block (docs/SPEC-TABLES.md §2.12)", 0)
+    end
+    if bd ~= nil and bd.block_eligible ~= true then return nil, "bad_layout" end
+    return open(T2, name, bytes, build_version, base_offset)
+  end
+  B.Open = B.BlockOpen
+  B.Layout = function(T2, name, projection, d)
+    d = d or T2.Tables[name]
+    if projection and d ~= nil and d.block_eligible ~= true then return nil, "bad_layout" end
+    return layout(T2, name, projection, d)
+  end
+  W.BlockMaxBytes = function(T2, root)
+    local desc = T2.Tables[root]
+    if desc == nil then return nil, "blockbuild: no table descriptor for " .. tostring(root) end
+    if desc.block_eligible ~= true then return nil, "bad_layout" end
+    return maximum(T2, root)
+  end
+  W.Begin = function(T2, root, counts)
+    local desc = T2.Tables[root]
+    if desc ~= nil and desc.forms ~= nil and desc.forms.block ~= true then
+      error("block: table " .. tostring(root) .. " does not carry block (docs/SPEC-TABLES.md §2.12)", 0)
+    end
+    if desc ~= nil and desc.block_eligible ~= true then return nil, "bad_layout" end
+    return begin(T2, root, counts)
+  end
+end
+
 function D.seal(T)
+  install_block_eligibility(T)
   D.prepare(T)
   local seen = {}
   for _, v in pairs(T) do

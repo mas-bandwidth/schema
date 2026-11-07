@@ -659,6 +659,11 @@ func TestToolchainPinsMatchTheConformanceRegistry(t *testing.T) {
 		if g.Moo != "" && g.Moo != "pin" {
 			t.Errorf("group %q sets moo to %q: the moo pin lives in make/moo.mk (MOO_PIN), and this field is \"pin\" or absent", g.Name, g.Moo)
 		}
+		// The Python pins are versions with their sha256, and they live in
+		// make/python-toolchain.mk; the field is the marker "pin" or nothing.
+		if g.Python != "" && g.Python != "pin" {
+			t.Errorf("group %q sets python to %q: the Python pins live in make/python-toolchain.mk, and this field is \"pin\" or absent", g.Name, g.Python)
+		}
 	}
 }
 

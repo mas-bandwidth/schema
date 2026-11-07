@@ -20,7 +20,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -195,9 +198,25 @@ func Generate(root, tmp, corpusDir string, meta []Case) ([]Case, error) {
 			return nil, fmt.Errorf("%s: %w", c.Name, err)
 		}
 		c.Verdict, c.Reason, c.Digest = verdict, reason, digest
+		if c.Verdict == Refuse {
+			c.Provenance = dropValueGolden(c.Provenance)
+		}
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+// dropValueGolden removes a refused row's citation of its old value golden:
+// a refused read owes no value, so the file is retired rather than re-cited.
+func dropValueGolden(provenance string) string {
+	f := strings.Fields(provenance)
+	for i := 0; i+2 < len(f); i++ {
+		if f[i] == "value" && f[i+1] == "golden" {
+			f = append(f[:i], f[i+3:]...)
+			break
+		}
+	}
+	return strings.Join(f, " ")
 }
 
 // Verify regenerates the manifest from the engine and fails on any difference
@@ -276,7 +295,7 @@ func EngineVerdict(m *tabletext.Model, c Case, payload []byte) (verdict, reason,
 	case "text":
 		inst := m.New(st)
 		var r tabletext.Report
-		if !m.Read(inst, payload, &r) {
+		if !m.Read(inst, payload, &r) || !strictReport(&r) || !strictJSON(payload) {
 			return fail(ReasonDamaged)
 		}
 		return accept(inst)
@@ -289,9 +308,6 @@ func EngineVerdict(m *tabletext.Model, c Case, payload []byte) (verdict, reason,
 				return "", "", "", rerr
 			}
 			return fail(rreason)
-		}
-		if r.Malformed {
-			return fail(ReasonDamaged)
 		}
 		return Accept, NoReason, NoReason, nil
 	case "announce_second":
@@ -361,6 +377,166 @@ func EngineVerdict(m *tabletext.Model, c Case, payload []byte) (verdict, reason,
 	}
 }
 
+// strictReport holds a text read to the one-read contract: any counter other
+// than evolution's unknown/widened/retained is a refusal.
+func strictReport(r *tabletext.Report) bool {
+	if r == nil {
+		return true
+	}
+	return !r.Refused
+}
+
+// strictJSON verifies that JSON text contains no lone/unpaired UTF-16
+// surrogate escapes and no duplicate object keys at any nesting level. The
+// shared corpus's text carrier is the plain (strict) read, so an input the
+// strict rule refuses is a refusal here too.
+func strictJSON(data []byte) bool {
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		data = data[3:]
+	}
+	i := 0
+	var stack []map[string]bool
+	var expectingKey []bool
+	for i < len(data) {
+		c := data[i]
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			i++
+			continue
+		}
+		if c == '/' && i+1 < len(data) {
+			if data[i+1] == '/' {
+				i += 2
+				for i < len(data) && data[i] != '\n' {
+					i++
+				}
+				continue
+			}
+			if data[i+1] == '*' {
+				i += 2
+				for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
+					i++
+				}
+				i += 2
+				continue
+			}
+		}
+		switch c {
+		case '{':
+			stack = append(stack, map[string]bool{})
+			expectingKey = append(expectingKey, true)
+			i++
+		case '}':
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+				expectingKey = expectingKey[:len(expectingKey)-1]
+			}
+			i++
+		case '[':
+			stack = append(stack, nil)
+			expectingKey = append(expectingKey, false)
+			i++
+		case ']':
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+				expectingKey = expectingKey[:len(expectingKey)-1]
+			}
+			i++
+		case ':':
+			if len(expectingKey) > 0 && stack[len(stack)-1] != nil {
+				expectingKey[len(expectingKey)-1] = false
+			}
+			i++
+		case ',':
+			if len(expectingKey) > 0 && stack[len(stack)-1] != nil {
+				expectingKey[len(expectingKey)-1] = true
+			}
+			i++
+		case '"':
+			s, next, ok := strictScanJSONString(data, i)
+			if !ok {
+				return false
+			}
+			if len(expectingKey) > 0 && expectingKey[len(expectingKey)-1] && stack[len(stack)-1] != nil {
+				m := stack[len(stack)-1]
+				if m[s] {
+					return false
+				}
+				m[s] = true
+			}
+			i = next
+		default:
+			i++
+		}
+	}
+	return true
+}
+
+func strictScanJSONString(data []byte, start int) (string, int, bool) {
+	var out []byte
+	i := start + 1
+	for i < len(data) {
+		c := data[i]
+		if c == '"' {
+			return string(out), i + 1, true
+		}
+		if c < 0x20 {
+			return "", i, false
+		}
+		if c != '\\' {
+			out = append(out, c)
+			i++
+			continue
+		}
+		i++
+		if i >= len(data) {
+			return "", i, false
+		}
+		esc := data[i]
+		i++
+		switch esc {
+		case '"', '\\', '/':
+			out = append(out, esc)
+		case 'b':
+			out = append(out, '\b')
+		case 'f':
+			out = append(out, '\f')
+		case 'n':
+			out = append(out, '\n')
+		case 'r':
+			out = append(out, '\r')
+		case 't':
+			out = append(out, '\t')
+		case 'u':
+			if i+4 > len(data) {
+				return "", i, false
+			}
+			u1, err := strconv.ParseUint(string(data[i:i+4]), 16, 16)
+			if err != nil {
+				return "", i, false
+			}
+			i += 4
+			r := rune(u1)
+			if utf16.IsSurrogate(r) {
+				if r < 0xD800 || r > 0xDBFF || i+6 > len(data) || data[i] != '\\' || data[i+1] != 'u' {
+					return "", i, false
+				}
+				u2, err := strconv.ParseUint(string(data[i+2:i+6]), 16, 16)
+				if err != nil || u2 < 0xDC00 || u2 > 0xDFFF {
+					return "", i, false
+				}
+				i += 6
+				r = utf16.DecodeRune(r, rune(u2))
+			}
+			var buf [4]byte
+			n := utf8.EncodeRune(buf[:], r)
+			out = append(out, buf[:n]...)
+		default:
+			return "", i, false
+		}
+	}
+	return "", i, false
+}
+
 // RefusalReason maps an engine error to its named reason. An error that is none
 // of the engine's refusal types is a failure, not a synthetic reason: collapsing
 // it into a made-up engine_error would hide an engine change behind a green gate.
@@ -376,6 +552,11 @@ func RefusalReason(err error) (string, error) {
 	}
 	if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](err); ok {
 		return ReasonNonFiniteFloat, nil
+	}
+	if tablewire.ReadRefusal(err) {
+		// every other refusal of the one read; the reason is per-language
+		// diagnostic detail (docs/SPEC-TABLES.md §6.5)
+		return ReasonDamaged, nil
 	}
 	return "", fmt.Errorf("engine returned an unnamed refusal: %w", err)
 }

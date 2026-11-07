@@ -55,8 +55,8 @@ local KIND_OPTIONAL = 35
 
 -- A refusal is raised as a table and caught at the entry points; nothing
 -- else is ever raised on a hostile file.
-local function refuse(name: string, malformed: boolean?, field: string?): any
-	error({ fixedRefusal = true, name = name, malformed = malformed == true, field = field }, 0)
+local function refuse(name: string, damaged: boolean?, field: string?): any
+	error({ fixedRefusal = true, name = name, damaged = damaged == true, field = field }, 0)
 end
 
 local function u32(b: buffer, at: number): number
@@ -340,12 +340,12 @@ compileValue = function(f: any, n: Node, census: any): boolean
 				if c.kind == KIND_NOPAYLOAD then
 					arms[wk] = { arm = a }
 				else
-					census.kindMismatch += 1
+					census.kindChanged += 1
 				end
 			elseif compileValue(a, c, census) then
 				arms[wk] = { arm = a, node = c }
 			else
-				census.kindMismatch += 1
+				census.kindChanged += 1
 			end
 		end
 		n.arms = arms
@@ -405,7 +405,7 @@ compileStruct = function(d: any, n: Node, census: any)
 			if ok and compileValue(f, node, census) then
 				table.insert(pairs, { f = f, n = c, v = node, always = always })
 			else
-				census.kindMismatch += 1
+				census.kindChanged += 1
 			end
 		end
 	end
@@ -415,7 +415,7 @@ end
 -- a plan: the writer's tree with its pairs, and the census it owes
 local function compilePlan(d: any, layout: string, recordBytes: number, ranges: any?): any
 	local root = parseLayout(layout, recordBytes)
-	local census = { unknown = 0, kindMismatch = 0 }
+	local census = { unknown = 0, kindChanged = 0 }
 	compileStruct(d, root, census)
 	-- the writer's ranges this entry carries land on the writer's nodes, so
 	-- the bounds pass holds the plan's own (§4.5): a scalar's own node, or a
@@ -490,7 +490,7 @@ local function rawAt(rec: buffer, off: number, size: number, signed: boolean): a
 end
 
 -- one scalar leaf: the raw value at the WRITER's kind, widened to this
--- reader's (counted), clamped to the declared range and bits(N)'s ceiling in
+-- reader's (counted), bounded by the declared range and bits(N)'s ceiling in
 -- the bounds pass (counted), then held as this field's storage
 local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, named: any): any
 	local k = n.kind
@@ -511,10 +511,10 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 		if f.flo ~= nil then
 			local lo, hi = V.f32to64(bits)
 			if V.cmp64(lo, hi, f.flo[1], f.flo[2]) < 0 then
-				rep.clamped += 1
+				rep.outOfRange += 1
 				return f.flo32
 			elseif V.cmp64(lo, hi, f.fhi[1], f.fhi[2]) > 0 then
-				rep.clamped += 1
+				rep.outOfRange += 1
 				return f.fhi32
 			end
 		end
@@ -541,26 +541,26 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 	if n.wlo ~= nil then
 		if V.rawCmp(x, n.wlo, kw, signed) < 0 then
 			x = n.wlo
-			rep.clamped += 1
+			rep.outOfRange += 1
 		elseif V.rawCmp(x, n.whi, kw, signed) > 0 then
 			x = n.whi
-			rep.clamped += 1
+			rep.outOfRange += 1
 		end
 	end
 	if f.lo ~= nil then
 		if V.rawCmp(x, f.lo, kw, signed) < 0 then
 			x = f.lo
-			rep.clamped += 1
+			rep.outOfRange += 1
 		elseif V.rawCmp(x, f.hi, kw, signed) > 0 then
 			x = f.hi
-			rep.clamped += 1
+			rep.outOfRange += 1
 		end
 	end
 	if f.bits ~= nil and f.bits < kw * 8 then
 		local cap = V.bitsCap(f.bits, kw)
 		if V.rawCmp(x, cap, kw, false) > 0 then
 			x = cap
-			rep.clamped += 1
+			rep.outOfRange += 1
 		end
 	end
 	return V.toStorage(f, x)
@@ -581,7 +581,8 @@ local function readText(f: any, n: Node, dx: number, rec: buffer): (any, number)
 			refuse("text_ill_formed")
 		end
 		local bound = f.bound or length
-		local units = if length > bound then V.clampWide(rec, at, bound) else length
+		if length > bound then refuse("length_over_bound") end
+		local units = length
 		local b = buffer.create(bound * 2)
 		buffer.copy(b, 0, rec, at, units * 2)
 		return b, units
@@ -591,7 +592,7 @@ local function readText(f: any, n: Node, dx: number, rec: buffer): (any, number)
 	end
 	local keep = length
 	if f.bound ~= nil and f.bound > 0 and keep > f.bound then
-		keep = V.clampUtf8(rec, at, f.bound)
+		refuse("length_over_bound")
 	end
 	return buffer.readstring(rec, at, keep), keep
 end
@@ -688,7 +689,7 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 		if v == nil or v == 0 then
 			-- an ordinal past the writer's variants, or one this reader has
 			-- no variant for, lands None, counted by the bounds pass (§4.6)
-			rep.clamped += 1
+			rep.outOfRange += 1
 			return 0, nil, nil
 		end
 		local pair = f.vs[v]
@@ -706,7 +707,7 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 		local hit = (n.arms :: { [number]: any })[tag]
 		if hit == nil then
 			if tag > #n.children then
-				rep.clamped += 1
+				rep.outOfRange += 1
 			end
 			return u, nil, nil
 		end
@@ -972,14 +973,22 @@ local function planFor(d: any, fixed: any, i: number): any
 	return p
 end
 
--- fixed freezes a root's static data (a constant, as a descriptor is).
+local registry: { [string]: Fixed } = {}
+
+-- fixed freezes a root's static data (a constant, as a descriptor is) and
+-- registers it by root name.
 function F.fixed(spec: Fixed): Fixed
 	for _, e in spec.lineage do
 		table.freeze(e :: any)
 	end
 	table.freeze(spec.lineage :: any)
 	table.freeze(spec :: any)
+	registry[spec.name] = spec
 	return spec
+end
+
+function F.lookup(name: string): Fixed?
+	return registry[name]
 end
 
 local function declaresIntegrity(d: any): boolean
@@ -1033,14 +1042,14 @@ function F.save(d: any, fixed: Fixed, values: { any }): (buffer?, any?)
 end
 
 local function resetReport(report: any)
-	report.malformed = false
+	report.damaged = false
 	report.refused = 0
 	report.unknown = 0
-	report.kindMismatch = 0
-	report.clamped = 0
+	report.kindChanged = 0
+	report.outOfRange = 0
 	report.widened = 0
-	report.duplicate = 0
-	report.reason = nil
+	report.repeatedKey = 0
+		report.reason = nil
 	report.field = nil
 	report.layoutHash = nil
 end
@@ -1129,7 +1138,7 @@ local function loadAll(d: any, fixed: Fixed, file: buffer, report: any, capacity
 			refuse("no_layout")
 		end
 	end
-	local rep = { clamped = 0, widened = 0 }
+	local rep = { outOfRange = 0, widened = 0 }
 	local out = table.create(count)
 	local rec = buffer.create(entry.recordBytes)
 	for i = 0, count - 1 do
@@ -1137,15 +1146,15 @@ local function loadAll(d: any, fixed: Fixed, file: buffer, report: any, capacity
 		out[i + 1] = readStruct(d, plan.root, 0, rec, rep)
 	end
 	report.unknown += plan.census.unknown
-	report.kindMismatch += plan.census.kindMismatch
-	report.clamped += rep.clamped
+	report.kindChanged += plan.census.kindChanged
+	report.outOfRange += rep.outOfRange
 	report.widened += rep.widened
 	return out
 end
 
 -- load reads every record of a form-3 file through the plan its header's
 -- hash selects (§5.3), into fresh values. It answers the values, or nil with
--- report.reason the refusal's name (and report.malformed for the framing
+-- report.reason the refusal's name (and report.damaged for the framing
 -- damage §5.3 names: truncated, reserved_not_zero), report.layoutHash the
 -- file's hash for layout_unknown and layout_unsupported, report.field the
 -- field a non_finite_float names. A refusal is TOTAL: no counter moves.
@@ -1155,7 +1164,7 @@ function F.load(d: any, fixed: Fixed, file: buffer?, report: any?, capacity: num
 	local rep: any = report or {}
 	resetReport(rep)
 	if file == nil then
-		rep.malformed = true
+		rep.damaged = true
 		rep.reason = "truncated"
 		return nil
 	end
@@ -1168,7 +1177,7 @@ function F.load(d: any, fixed: Fixed, file: buffer?, report: any?, capacity: num
 		local hash = rep.layoutHash
 		resetReport(rep)
 		rep.reason = r.name
-		rep.malformed = r.malformed
+		rep.damaged = r.damaged
 		rep.field = r.field
 		rep.layoutHash = hash
 		return nil
@@ -1196,7 +1205,7 @@ end
 -- docs/FIXED-FORM-ALGORITHM.md §5.3), for a caller that wants the spelling
 F.Names = table.freeze({
 	truncated = true, reserved_not_zero = true, previous_form = true, message_form_as_file = true,
-	newer_form = true, layout_malformed = true, layout_unknown = true, layout_unsupported = true,
+	newer_form = true, ["layout_malformed"] = true, layout_unknown = true, layout_unsupported = true,
 	layout_record_too_large = true, plan_too_large = true, no_layout = true, count_over_bound = true,
 	length_over_bound = true, text_ill_formed = true, integrity_mismatch = true, non_finite_float = true,
 	invalid_value = true, batch_too_large = true,

@@ -15,6 +15,7 @@ import (
 )
 
 func TestLobsterCookAuthoredOptionalMap(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "native authored optional-map storage")
 	corpus := "testdata/conformance/cook-authored-optional-map"
 	row := cookWriteRow{root: "Root", paths: []string{corpus + "/Probe.schema"}}

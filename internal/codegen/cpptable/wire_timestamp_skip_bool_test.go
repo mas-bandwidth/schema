@@ -54,7 +54,7 @@ table Probe
 	if strings.Contains(src, ".get8() != 0;") {
 		t.Errorf("a bool still reads as `get8() != 0` with no malformed check")
 	}
-	want := "if ( bool_byte > 1 ) { r.report->malformed = true; }"
+	want := "if ( bool_byte > 1 ) { r.report->damaged = true; }"
 	if !strings.Contains(cppSourceSpelling(src), cppSourceSpelling(want)) {
 		t.Errorf("the emitted bool read does not flag a byte above 1 as malformed: want %q", want)
 	}

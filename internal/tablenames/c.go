@@ -350,7 +350,7 @@ func init() {
 		Name{Name: "table_reader_get16", What: "the reader's little-endian u16"},
 		Name{Name: "table_reader_get32", What: "the reader's little-endian u32"},
 		Name{Name: "table_reader_get64", What: "the reader's little-endian u64"},
-		Name{Name: "table_reader_skip", What: "skip one payload by kind — the tolerant read's unknown-field path"},
+		Name{Name: "table_reader_skip", What: "skip one payload by kind — the strict read's unknown-field path"},
 		// the descriptors' VOCABULARY, as data. C++ spells an enum's names and wire
 		// ids as captureless lambdas in the field descriptor; C has none, and a
 		// named function per enum would claim a name per enum, so the same facts
@@ -489,7 +489,7 @@ func init() {
 		Name{Name: "table_graph_cook", What: "the C canonical cook writer"},
 		Name{Name: "TableRefuseReason", What: "the C cook and block refusal surface"},
 		Name{Name: "table_cook_refuse", What: "the C cook and block refusal surface"},
-		Name{Name: "table_report_strict_refuses", What: "the C strict rule every plain read name refuses through (docs/SPEC-TABLES.md §6.5)"},
+		Name{Name: "table_report_finish", What: "the C strict read's end: it names a refusal the walk answered without one (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "table_cook_open_ex", What: "the C cook and block refusal surface"},
 		Name{Name: "TableBlockConstRows", What: "the C cook and block refusal surface"},
 		Name{Name: "table_block_row_at_const", What: "the C cook and block refusal surface"},

@@ -52,6 +52,12 @@ const (
 	tableFixedTextBytes uint8 = 3
 )
 
+// tableFixedPresent marks a bool entry as an optional's PRESENT byte (its
+// Meta); its Aux is the source bytes of the payload behind it. A count entry's
+// Aux is the source bytes of one element. The pre-scan reads both to know
+// which bytes are slack (docs/SPEC-TABLES.md §3.4, THE SLACK RULE).
+const tableFixedPresent uint8 = 1
+
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
 const tableFixedEntryBytes int32 = 17
 
@@ -360,6 +366,7 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].Aux == 0 && raw[i].Aux == 0 &&
 			raw[out-1].Guard2 == raw[i].Guard2 && raw[out-1].Arg2 == raw[i].Arg2 &&
 			raw[out-1].ArgW2 == raw[i].ArgW2 &&
 			raw[out-1].GuardIndex == raw[i].GuardIndex && raw[out-1].GuardCount == raw[i].GuardCount &&
@@ -450,37 +457,11 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 		switch p.Op {
 		case tableFixedCopy:
 			tableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
-		case tableFixedTag:
-			// A UNION TAG NAMING NO ARM LANDS AS None AND COUNTS UNKNOWN,
-			// which is what form 1 does with an arm id it does not know
-			// (docs/SPEC-TABLES.md §4). Copied raw it would land as a
-			// discriminant no variant spells, and every arm's guard would
-			// then decline to fill it — a value that is neither None nor an
-			// arm. Aux is the reader's own arm count.
-			var tag uint64
-			for k := range p.Size {
-				tag |= uint64(src[p.Src+k]) << (8 * k)
-			}
-			if tag > uint64(p.Aux) {
-				tag = 0
-				report.Unknown++
-			}
-			for k := range p.Size {
-				dst[p.Dst+k] = byte(tag >> (8 * k))
-			}
-		case tableFixedBool:
-			// A GO bool IS NOT A BYTE. A Go true is the byte 1 (v == true,
-			// array equality). if v is TESTB (nonzero) on amd64 and TBZ bit
-			// 0 on arm64, so a hostile 2 reads true on one and false on the
-			// other. The wire says nonzero is true (docs/SPEC-TABLES.md §3);
-			// normalise here (byte != 0 -> 1) and never copy.
-			for k := range p.Size {
-				v := byte(0)
-				if src[p.Src+k] != 0 {
-					v = 1
-				}
-				dst[p.Dst+k] = v
-			}
+		case tableFixedTag, tableFixedBool:
+			// The check loop refused a tag past the reader's arm count and a
+			// bool or present byte other than 0 or 1 before this run, so the
+			// bytes land as they are (docs/FIXED-FORM-ALGORITHM.md §4.5).
+			tableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
@@ -505,12 +486,9 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 		case tableFixedOrdinal:
 			// SIXTY-FOUR BITS. An ordinal rides at 1, 2, 4 or 8 bytes (§1.2);
 			// read through a 32-bit temporary an eight-byte ordinal loses its
-			// top four bytes, so a forged 0x1_0000_0001 would land as 1.
-			// THE OP MOVES NOTHING (§5.4): a raw past the writer's set lands
-			// None here, and tableFixedForgedBounds counts it once in the
-			// BOUNDS pass, on the compiled plan as the storage clamp counts the
-			// identity plan's own forged tag (docs/FIXED-FORM-ALGORITHM.md §5.4,
-			// §5.8 row 12, fix 27).
+			// top four bytes, so a forged 0x1_0000_0001 would land as 1. The
+			// check loop refused a raw past the writer's set before this run
+			// (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6).
 			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
 			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
 			table := unsafe.Slice(p16, int(*p16)+1)
@@ -555,64 +533,14 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			for i := range p.Size {
 				dst[p.Dst+i] = byte(aux >> (8 * i))
 			}
-			// THE OP MOVES NOTHING (§5.4): the unguarded None const lands None,
-			// and a raw tag past the writer's arm count (this entry's DstSize) is
-			// counted once by tableFixedForgedBounds, the BOUNDS pass, on the
-			// compiled plan as the storage clamp counts the identity plan's own
-			// forged tag (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12, fix 27).
-			// tableFixedSrcEnd gives this one entry a source reach, so the
-			// record bound has already refused a plan that would read past it.
+			// The unguarded None const lands None; the check loop refused a raw
+			// tag past the writer's arm count (this entry's DstSize) before this
+			// run (docs/FIXED-FORM-ALGORITHM.md §4.6). tableFixedSrcEnd gives
+			// this one entry a source reach, so the record bound has already
+			// refused a plan that would read past it.
 		}
 	}
 	return ""
-}
-
-// tableFixedForgedBounds is the BOUNDS pass's count of a forged ordinal or union
-// tag (§5.4, fix 27): a raw ordinal past the writer's variant count, or a raw
-// union tag past the writer's arm count, is landed None by the ordinal/const
-// op — which moves nothing — and counted HERE, once per field, on the compiled
-// plan exactly as the identity plan's storage clamp counts its own forged tag.
-// The identity plan carries no ordinal or unguarded const entry (its union
-// tag and leaves are copy), so this pass is silent for it, and the writer's
-// count the storage clamp cannot see — the remap table's length word, or the
-// entry's DstSize — is why the count lives in the plan-aware pass here and not
-// in the op (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12).
-func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, report *TableReport) {
-	for i := range count {
-		p := plan[i]
-		// THE GUARD AT ITS FULL WIDTH, matching tableFixedRun (§5.2): an entry
-		// whose guard does not match never lands, so it never counts.
-		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
-			continue
-		}
-		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): an entry
-		// whose second lane does not hold never lands, so it never counts.
-		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
-			continue
-		}
-		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
-			continue
-		}
-		switch p.Op {
-		case tableFixedOrdinal:
-			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
-			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
-			table := unsafe.Slice(p16, int(*p16)+1)
-			if raw != 0 && raw > uint64(table[0]) {
-				report.Clamped++
-			}
-		case tableFixedConst:
-			if p.Aux == 0 && p.DstSize != 0 && p.Guard == tableFixedNoGuard {
-				var raw uint64
-				for k := range p.Size {
-					raw |= uint64(src[p.Src+k]) << (8 * k)
-				}
-				if raw > uint64(p.DstSize) {
-					report.Clamped++
-				}
-			}
-		}
-	}
 }
 
 // tableFixedTextIllFormed reports whether a text payload's USED units are the
@@ -714,15 +642,25 @@ func tableFixedUnitsIllFormed(units []uint16) bool {
 	return false
 }
 
-// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
-// text entries, run before the caller's storage is touched. A count or a text
-// length past the PLAN's bound refuses by name — count_over_bound /
-// length_over_bound — and an ill-formed payload refuses text_ill_formed
-// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11,
-// §5.8 row 8). REFUSE is total: no counter moves, nothing is decoded, and not
-// one destination byte is written. It walks each entry under its own guards,
-// writes nothing and moves no counter.
+// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count, text,
+// bool, tag and ordinal entries, run before the caller's storage is touched. A
+// count or a text length past the PLAN's bound refuses by name —
+// count_over_bound / length_over_bound — an ill-formed payload refuses
+// text_ill_formed, a bool or present byte other than 0 or 1 wire_damaged, and a
+// tag or ordinal past its set out_of_range (docs/SPEC-TABLES.md §3.4,
+// docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). REFUSE is total:
+// no counter moves, nothing is decoded, and not one destination byte is
+// written. It walks each entry under its own guards, writes nothing and moves
+// no counter.
+//
+// THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE (§3.4, THE
+// SLACK RULE): the bytes past a counted array's count and under an absent
+// optional's present byte are slack, unspecified on read and never a refusal.
+// Each count and present byte it reads adds the slack behind it to dead, and an
+// entry inside dead is not asked.
 func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
+	var deadBuf [64][2]uint32
+	dead := deadBuf[:0]
 	for i := range count {
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
@@ -738,28 +676,86 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
+		if p.Op != tableFixedBool && tableFixedDead(dead, p.Src) {
+			continue
+		}
 		switch p.Op {
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
 			if v < 0 || v > int32(p.Size) {
 				return TableRefuseCountOverBound.Error()
 			}
+			if p.Aux != 0 && uint32(v) < p.Size {
+				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
+			}
 		case tableFixedText:
-		unit := uint32(1)
-		if p.Meta == tableFixedTextWide {
-			unit = 2
-		}
-		capn := p.Size / unit
-		v := int32(tableFixedGet32(src[p.Src:]))
-		if v < 0 || uint32(v) > capn {
-			return TableRefuseLengthOverBound.Error()
-		}
-		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-			return TableRefuseTextIllFormed.Error()
-		}
+			unit := uint32(1)
+			if p.Meta == tableFixedTextWide {
+				unit = 2
+			}
+			capn := p.Size / unit
+			v := int32(tableFixedGet32(src[p.Src:]))
+			if v < 0 || uint32(v) > capn {
+				return TableRefuseLengthOverBound.Error()
+			}
+			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+				return TableRefuseTextIllFormed.Error()
+			}
+		case tableFixedBool:
+			// a bool or present byte other than 0 or 1 is damage (§4.5)
+			for k := range p.Size {
+				if tableFixedDead(dead, p.Src+k) {
+					continue
+				}
+				if src[p.Src+k] > 1 {
+					return TableRefuseWireDamaged.Error()
+				}
+				if p.Meta == tableFixedPresent && src[p.Src+k] == 0 && p.Aux != 0 {
+					dead = append(dead, [2]uint32{p.Src + k + 1, p.Src + k + 1 + p.Aux})
+				}
+			}
+		case tableFixedTag:
+			// a union tag past the reader's arm count names no arm (§4.6)
+			var tag uint64
+			for k := range p.Size {
+				tag |= uint64(src[p.Src+k]) << (8 * k)
+			}
+			if tag > uint64(p.Aux) {
+				return TableRefuseOutOfRange.Error()
+			}
+		case tableFixedOrdinal:
+			// an ordinal past the writer's variant count is forged (§4.6)
+			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
+			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
+			if raw > uint64(*p16) {
+				return TableRefuseOutOfRange.Error()
+			}
+		case tableFixedConst:
+			// an unguarded None const reads the writer's tag: one past the
+			// writer's arm count (DstSize) is forged (§4.6)
+			if p.Aux == 0 && p.DstSize != 0 && p.Guard == tableFixedNoGuard {
+				var raw uint64
+				for k := range p.Size {
+					raw |= uint64(src[p.Src+k]) << (8 * k)
+				}
+				if raw > uint64(p.DstSize) {
+					return TableRefuseOutOfRange.Error()
+				}
+			}
 		}
 	}
 	return ""
+}
+
+// tableFixedDead is whether src offset at lies in one of the slack spans the
+// pre-scan has found.
+func tableFixedDead(dead [][2]uint32, at uint32) bool {
+	for _, d := range dead {
+		if at >= d[0] && at < d[1] {
+			return true
+		}
+	}
+	return false
 }
 
 type tableFixedLayoutEntry struct {
@@ -1100,6 +1096,10 @@ type tableFixedCompiler struct {
 	chainAt   uint32
 	chainLaid bool
 	report *TableReport
+	// unlawful is a writer field whose kind moved off every ladder: no plan
+	// is laid, and a file under the entry's hash refuses layout_malformed
+	// (docs/FIXED-FORM-ALGORITHM.md §5.4).
+	unlawful bool
 }
 
 // layGuards lays one guard chain into the plan's pool, behind the entries and
@@ -1288,9 +1288,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			tableFixedPush(c, e)
 			return
 		}
-		if c.report != nil {
-			c.report.KindMismatch++
-		}
+		c.unlawful = true
 		return
 	}
 	// T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the writer
@@ -1304,7 +1302,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	}
 	switch me.Kind {
 	case 35:
-		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Guard: guard, Op: tableFixedBool, Arg: arg})
+		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Aux: te.Size - 1, Meta: tableFixedPresent, Guard: guard, Op: tableFixedBool, Arg: arg})
 		tableFixedCompileEntry(c, theirs, ti+1, theirAt+1, mine, mi+1, dst, myAt, guard, arg, census)
 	case 13:
 		tableFixedMatchChildren(c, theirs, ti, theirAt, mine, mi, dst, at, guard, arg, census)
@@ -1332,7 +1330,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
@@ -1458,8 +1456,8 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			e.DstSize = uint8(me.Size)
 			e.Op = tableFixedWiden
 			tableFixedPush(c, e)
-		} else if c.report != nil {
-			c.report.KindMismatch++
+		} else {
+			c.unlawful = true
 		}
 	}
 }
@@ -1484,6 +1482,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	// plan storage.
 	if c.tooLarge {
 		return -3
+	}
+	if c.unlawful {
+		return -2
 	}
 	if c.overflow {
 		return -1
@@ -1610,14 +1611,14 @@ type TableFixedKnownLayout struct {
 }
 
 // tableFixedLineagePlan is one older entry's plan, laid down once from the
-// LOCK'S bytes. Unknown and KindMismatch are the COMPILE census: a writer field
-// no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4).
+// LOCK'S bytes. Unknown is the COMPILE census: a writer field no reader field
+// names is counted ONCE PER ENDPOINT and never per record (§5.4), and on a
+// lawful lineage it is zero.
 type tableFixedLineagePlan struct {
-	Entries      []TableFixedEntry
-	Count        int32
-	Unknown      int32
-	KindMismatch int32
-	Why          string
+	Entries []TableFixedEntry
+	Count   int32
+	Unknown int32
+	Why     string
 }
 
 func tableFixedSelect(known []TableFixedKnownLayout, hash uint64) int32 {
@@ -1673,10 +1674,9 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 				continue
 			}
 			out[i] = tableFixedLineagePlan{
-				Entries:      plan[:made],
-				Count:        made,
-				Unknown:      census.Unknown,
-				KindMismatch: census.KindMismatch,
+				Entries: plan[:made],
+				Count:   made,
+				Unknown: census.Unknown,
 			}
 			break
 		}

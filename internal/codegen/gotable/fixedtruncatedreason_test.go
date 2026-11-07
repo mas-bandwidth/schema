@@ -38,9 +38,9 @@ func TestFixedTruncatedReason(t *testing.T) {
   dst[0] = Fix{N:9, M:9}
   r = TableReport{}
   n := FixFixedLoad(dst, c.file, plan, &r)
-  if n != -1 || !r.Malformed || r.Reason != TableRefuseTruncated.Error() ||
+  if n != -1 || !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Reason != TableRefuseTruncated.Error() ||
     r.Err() == nil || r.Err().Error() != "truncated" ||
-    !errors.Is(r.Err(), TableRefuseMalformed) || !errors.Is(r.Err(), TableRefuseTruncated) {
+    !errors.Is(r.Err(), TableRefuseWireDamaged) || !errors.Is(r.Err(), TableRefuseTruncated) {
    t.Errorf("%s: n=%d report=%+v err=%v", c.name, n, r, r.Err())
   }
  }
@@ -51,18 +51,18 @@ func TestFixedTruncatedReason(t *testing.T) {
  _ = FixFixedLoad(dst, wire[:len(wire)-1], plan, &r)
  held := r.Err()
  r = TableReport{}
- if held == nil || held.Error() != "truncated" || !errors.Is(held, TableRefuseMalformed) || !errors.Is(held, TableRefuseTruncated) { t.Errorf("held err after reset: %v", held) }
+ if held == nil || held.Error() != "truncated" || !errors.Is(held, TableRefuseWireDamaged) || !errors.Is(held, TableRefuseTruncated) { t.Errorf("held err after reset: %v", held) }
  // The writer's short output buffer is the caller's sizing, not a malformed
  // file: it is named truncated and must NOT answer the malformed class.
  if n, err := FixFixedSaveReason([]Fix{clean}, wire[:len(wire)-1]); n != -1 ||
-   !errors.Is(err, TableRefuseTruncated) || errors.Is(err, TableRefuseMalformed) {
+   !errors.Is(err, TableRefuseTruncated) || errors.Is(err, TableRefuseWireDamaged) {
   t.Errorf("short output: n=%d err=%v", n, err)
  }
  clamped := append([]byte(nil), wire...)
  body := clamped[len(clamped)-int(FixFixedRecordBytes)+8:]
  body[0], body[1], body[2], body[3] = 100, 0, 0, 0
  r = TableReport{}
- if n := FixFixedLoad(dst, clamped, plan, &r); n != -1 || !errors.Is(r.Err(), TableRefuseClamped) || errors.Is(r.Err(), TableRefuseMalformed) { t.Fatalf("clamped: n=%d report=%+v err=%v", n, r, r.Err()) }
+ if n := FixFixedLoad(dst, clamped, plan, &r); n != -1 || !errors.Is(r.Err(), TableRefuseOutOfRange) || errors.Is(r.Err(), TableRefuseWireDamaged) { t.Fatalf("clamped: n=%d report=%+v err=%v", n, r, r.Err()) }
 }
 `
 	if out, err := runGeneratedUnit(t, unitFrom(t, schema), source, nil, "-v", "-run", "^TestFixedTruncatedReason$"); err != nil {

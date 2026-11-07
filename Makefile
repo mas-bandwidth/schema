@@ -5567,33 +5567,33 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 	@grep -m1 "FAILED" $(ORACLE_NC)/log
 	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
 
-# DAMAGE DISCARDS THE WHOLE LOAD (Glenn, 2026-10-31; docs/SPEC-TABLES.md §4):
-# on a mutant the oracle reads as damaged, the wire fuzzer compares the
-# refusal and nothing after it. The control removes the discard from a COPY
-# of wirefuzz.go, reached through a Go build overlay, so the re-saved bytes
-# and the retention report are compared again on damaged input, and the gate
-# TestWireVerdictComparesOnlyTheRefusalOnDamage must go red on exactly that.
-# Nothing tracked is written to.
+# THE VERDICT IS THE WHOLE CONTRACT (docs/rulings.json refusal-verdict-only):
+# an answer that is not accepted is held to its verdict alone, never to a
+# value or a diagnostic after it. The control removes that guard from a COPY
+# of wirefuzz.go, reached through a Go build overlay, so a refused answer's
+# bytes are compared again, and the gate
+# TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues must go red on exactly
+# that. Nothing tracked is written to.
 DISCARD_NC := build/wire-fuzz-nc-discard
 .PHONY: tables-wire-fuzz-discard-negative-control
 tables-wire-fuzz-discard-negative-control:
 	@rm -rf $(DISCARD_NC) && mkdir -p $(DISCARD_NC)
-	@sed -e 's|discarded := ans.report.Malformed \|\| ans.report.Refused|discarded := false // NEGATIVE CONTROL: damaged loads are compared whole|' \
+	@sed -e 's|if !ans.accepted {|if false { // NEGATIVE CONTROL: a refused answer is compared whole|' \
 		test/conformance/harness/wirefuzz.go > $(DISCARD_NC)/wirefuzz.go.txt
 	@cmp -s test/conformance/harness/wirefuzz.go $(DISCARD_NC)/wirefuzz.go.txt && \
 		{ echo "NEGATIVE CONTROL: the discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/test/conformance/harness/wirefuzz.go":"%s/$(DISCARD_NC)/wirefuzz.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(DISCARD_NC)/overlay.json
-	@if go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyTheRefusalOnDamage$$' \
+	@if go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues$$' \
 			./test/conformance/harness > $(DISCARD_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: damaged loads are compared whole and the gate stayed green"; \
+		echo "NEGATIVE CONTROL FAILED: refused answers are compared whole and the gate stayed green"; \
 		cat $(DISCARD_NC)/log; exit 1; \
 	fi
-	@grep -q "a leg that refuses the damaged load is red" $(DISCARD_NC)/log || \
+	@grep -q "the decoded value differs" $(DISCARD_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(DISCARD_NC)/log; exit 1; }
-	@grep -m1 "refuses the damaged load is red" $(DISCARD_NC)/log
-	@echo "negative control: comparing a damaged load's saved bytes turns the discard gate RED"
+	@grep -m1 "the decoded value differs" $(DISCARD_NC)/log
+	@echo "negative control: comparing a refused answer's saved bytes turns the verdict gate RED"
 
 # DAMAGE DISCARDS THE WHOLE LOAD in the C++ reference (docs/SPEC-TABLES.md §4):
 # the control removes the discard from a COPY of the emitter's LoadVerdict,
@@ -6226,8 +6226,9 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
 	@grep -m1 "FAILED" $(MESSAGE_TEXT_LEG_NC)/log
 	@echo "negative control: an emitted reader that accepts ill-formed message text turns the pinned vector RED"
 
-# The GENERATED half of the data: the JSON text of every instance and the read
-# report of every evolution case, both from the compiler's own engine.
+# The GENERATED half of the data: the JSON text of every instance, the read
+# report of every evolution case, and the canonical write-back wire of every
+# readable report, framing and hostile row, all from the compiler's own engine.
 .PHONY: conformance-generate
 conformance-generate: build/conformance-harness
 	./build/conformance-harness generate
@@ -6899,6 +6900,10 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # is up to date, and a phony target with only that prerequisite would report
 # nothing to be done.
 SERIALIZE_GO_PIN     ?= v2.1.1
+SERIALIZE_C_PIN      ?= v2.1.1
+SERIALIZE_CS_PIN     ?= v2.1.1
+SERIALIZE_RS_PIN     ?= v5.0.0
+SERIALIZE_JS_PIN     ?= v2.1.2
 # Immutable commit resolved from refs/tags/v2.1.1 (annotated tag object: 36717230bfad4d890fe23882d14f87b9658205ab).
 SERIALIZE_GO_COMMIT  ?= 97c6825383cffe9f43af64526dea4e0ef10d1662
 SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
@@ -6931,8 +6936,33 @@ else \
 fi
 endef
 
-.PHONY: deps
-deps:
+# THE SIBLING RUNTIMES AT THE PINS ABOVE. The pins are the single source: this
+# stages the C/C++/CS/Rust/JS checkouts CI clones, at the same tags, for a local
+# bench. deps names it as a prerequisite below, after deps-go has staged the Go
+# runtime, because deps owns the Go checkout's staged placement and tag-commit
+# verification (internal/ci/serializefetch_test.go holds that): a direct clone
+# here would bypass them. A pin that only this file reads would bind no
+# checkout (internal/ci/mainreds_pins_test.go refuses that). ci-full.yml's tags
+# are held to what these resolve to. An existing sibling is left alone; remove
+# it to re-stage. When NOVA_MIRRORS names a mirror directory but not this
+# runtime, the sibling is left absent and named, never cloned from the network:
+# a bench that mirrors part of the fleet stays offline.
+define stage-sibling
+if test ! -e "$(4)"; then \
+	if test -n "$(NOVA_MIRRORS)" && ! test -d "$(NOVA_MIRRORS)/$(2)"; then \
+		echo "serialize-siblings: no mirror for $(2); $(4) stays absent"; \
+	else \
+		$(call fetch-runtime,$(1),$(2),$(3),$(4),$(5)); \
+	fi; \
+fi
+endef
+
+# DEPS-GO owns the Go sibling: it stages the checkout under a temporary name,
+# verifies the pinned tag's commit, and publishes it only after a placement
+# race check (internal/ci/serializefetch_test.go). Keeping it separate from
+# deps lets the sibling staging hang off deps without running first.
+.PHONY: deps-go
+deps-go:
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
 		actual=$$(git -C "$(SERIALIZE_GO)" describe --tags --exact-match 2>/dev/null || echo untagged); \
 		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \
@@ -6968,6 +6998,17 @@ deps:
 		rm -rf "$$stage"; \
 	fi
 	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "make deps: serialize.go at '$(SERIALIZE_GO)' has no go.mod; refusing" >&2; exit 1; }
+
+.PHONY: serialize-siblings
+serialize-siblings: deps-go
+	@$(call stage-sibling,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),../serialize,C++)
+	@$(call stage-sibling,$(SERIALIZE_C_PIN),mas-bandwidth/serialize.c.git,https://github.com/mas-bandwidth/serialize.c.git,../serialize.c,C)
+	@$(call stage-sibling,$(SERIALIZE_CS_PIN),mas-bandwidth/serialize.cs.git,https://github.com/mas-bandwidth/serialize.cs.git,../serialize.cs,CS)
+	@$(call stage-sibling,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust)
+	@$(call stage-sibling,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS)
+
+.PHONY: deps
+deps: serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:
@@ -7204,10 +7245,11 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
 # the same Makefile this test was read from, so its control can hand it a copy
-RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD
+RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
 .PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
 release-refuses-on-differential:
 	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
+	@printf '{"commit":"%s","cells":1,"red":[]}\n' "$$(git rev-parse HEAD)" > $(RELEASE_GATE_TEST)/green.json
 	go build -o $(RELEASE_GATE_TEST)/schema-clean ./cmd/schema
 	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_GATE_TEST)/encode.gotext internal/tablewire/encode.go
 	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
@@ -7231,7 +7273,7 @@ release-refuses-on-differential:
 RELEASE_GATE_CONTROL := build/release-gate-control
 release-refuses-on-differential-negative-control: release-refuses-on-differential
 	@rm -rf $(RELEASE_GATE_CONTROL) && mkdir -p $(RELEASE_GATE_CONTROL)
-	@sed 's/^release: release-differential$$/release: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
+	@sed 's/^\t$$(MAKE) --no-print-directory release-differential$$/\t@: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
 	@! cmp -s Makefile $(RELEASE_GATE_CONTROL)/Makefile || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage no longer matches release's prerequisite line"; exit 1; }
 	@if $(MAKE) --no-print-directory -f $(RELEASE_GATE_CONTROL)/Makefile release-refuses-on-differential RELEASE_GATE_TEST=$(RELEASE_GATE_CONTROL)/test > $(RELEASE_GATE_CONTROL)/red.out 2>&1; then \

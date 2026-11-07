@@ -29,6 +29,9 @@ func emitBlockForm(g *lobster.Gen) error {
 	}
 	emitted := false
 	for _, st := range g.File.Tables {
+		if !st.CarriesForm("block") {
+			continue
+		}
 		bl := blocks.Block(st.Name)
 		if bl == nil {
 			continue

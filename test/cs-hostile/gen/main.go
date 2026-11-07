@@ -88,11 +88,31 @@ func run(schemaBin, corpus, out string) error {
 		units[i] = &unit{schema: s, dir: fmt.Sprintf("u%02d_%s", i, sanitize(s))}
 	}
 
+	// A schema file beside a schema.lock cannot be generated alone when
+	// the lock names its directory's other tables. Like
+	// make/hostile-packet-units.sh, such a schema rides the unit that
+	// carries its directory when the manifest names that directory too.
+	inSet := map[string]bool{}
+	for _, s := range schemas {
+		inSet[s] = true
+	}
+	alias := map[string]string{} // schema -> the directory schema carrying it
+	for _, s := range schemas {
+		if strings.HasSuffix(s, ".schema") {
+			if dir := filepath.ToSlash(filepath.Dir(filepath.FromSlash(s))); inSet[dir] {
+				alias[s] = dir
+			}
+		}
+	}
+
 	// Each unit generates independently, so they generate concurrently.
 	var wg sync.WaitGroup
 	errs := make([]error, len(units))
 	limit := make(chan struct{}, 4)
 	for i, u := range units {
+		if _, rides := alias[u.schema]; rides {
+			continue
+		}
 		wg.Add(1)
 		go func(i int, u *unit) {
 			defer wg.Done()
@@ -107,9 +127,25 @@ func run(schemaBin, corpus, out string) error {
 			return e
 		}
 	}
+	{
+		byDir := map[string]*unit{}
+		for _, u := range units {
+			byDir[u.schema] = u
+		}
+		for _, u := range units {
+			if dir, rides := alias[u.schema]; rides {
+				carrier := byDir[dir]
+				u.namespace, u.source = carrier.namespace, carrier.source
+			}
+		}
+	}
 	byNamespace := map[string]string{}
 	bySchema := map[string]*unit{}
 	for _, u := range units {
+		if _, rides := alias[u.schema]; rides {
+			bySchema[u.schema] = u
+			continue
+		}
 		if prev, ok := byNamespace[u.namespace]; ok {
 			return fmt.Errorf("units %s and %s share the C# namespace %s; one assembly cannot hold both", prev, u.schema, u.namespace)
 		}
@@ -173,11 +209,17 @@ func generate(schemaBin, out string, u *unit) error {
 			return err
 		}
 	}
-	cmd := exec.Command(schemaBin, "generate", "--lang", "cs", "--out", dir, src)
-	var log bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &log, &log
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("generate %s: %v\n%s", u.schema, err, log.String())
+	if err := generateUnit(schemaBin, dir, src); err != nil {
+		// The single file may sit beside a schema.lock its directory's
+		// other tables own; generate its directory instead, the
+		// hostile-packet-units fallback.
+		st, serr := os.Stat(src)
+		if serr != nil || st.IsDir() {
+			return err
+		}
+		if err2 := generateUnit(schemaBin, dir, filepath.Dir(src)); err2 != nil {
+			return err
+		}
 	}
 	files, err := filepath.Glob(filepath.Join(dir, "*.cs"))
 	if err != nil {
@@ -476,3 +518,13 @@ const packetBody = `
         return H.Accept(H.Sha(ws.Data));
     }
 `
+
+func generateUnit(schemaBin, dir, src string) error {
+	cmd := exec.Command(schemaBin, "generate", "--lang", "cs", "--out", dir, src)
+	var log bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &log, &log
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("generate %s: %v\n%s", src, err, log.String())
+	}
+	return nil
+}

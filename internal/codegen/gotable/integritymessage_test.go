@@ -82,7 +82,7 @@ func TestIntegrityMessage(t *testing.T) {
 			if i == 0 { want = "newer_form" }
 			if ok || n != 0 || r.Reason != want { t.Fatalf("byte %d ^ 0x%02x: load %d %v report %+v, want 0 false %q", i, x, n, ok, r, want) }
 			if i > 0 && !errors.Is(r.Err(), TableRefuseIntegrityMismatch) { t.Fatalf("byte %d ^ 0x%02x: report.Err() = %v", i, x, r.Err()) }
-			if i > 0 && !r.Malformed { t.Fatalf("byte %d ^ 0x%02x: report is not malformed: %+v", i, x, r) }
+			if i > 0 && r.Err() != TableRefuseIntegrityMismatch { t.Fatalf("byte %d ^ 0x%02x: report is not integrity_mismatch: %+v", i, x, r) }
 		}
 	}
 }

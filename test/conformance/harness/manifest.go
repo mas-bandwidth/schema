@@ -33,228 +33,141 @@ type Instance struct {
 	// NoText marks an instance the corpus carries on the WIRE alone, by the
 	// text form's own rule (docs/SPEC-TABLES.md §16.7): a pointer chain nests
 	// in the text as deep as it is long, and past the depth cap the writer
-	// refuses it in every implementation. The marker is the corpus saying so
-	// on the instance's own line, rather than the harness quietly tolerating a
-	// missing file.
+	// refuses it in every implementation.
 	NoText bool
-	// GoWireRefusal names a Go wire writer refusal the corpus requires this
-	// instance's Go leg to report instead of emitting bytes.
-	GoWireRefusal string
-	// WireRefusedBy names the ports BESIDES Go whose wire writer has taken the
-	// same refusal (marker refused-by=<ports>, which needs go-refusal=): their
-	// wire answer is the named absence too. A port not listed is still held to
-	// the committed bytes, as the reference is (docs/SPEC-TABLES.md §2.5).
-	WireRefusedBy []string
+	// WireRefused marks an instance whose wire file is refused on the wire
+	// surface in every language (e.g. shared blob identity, §2.5).
+	WireRefused bool
 }
 
-// WireRefusal answers the named wire writer refusal lang owes for this
-// instance, or "" when it owes the committed bytes.
+// WireRefusal answers the wire refusal lang owes for this instance, or ""
+// when it owes the committed bytes.
 func (inst Instance) WireRefusal(lang string) string {
-	if inst.GoWireRefusal == "" {
-		return ""
-	}
-	if lang == "go" || slices.Contains(inst.WireRefusedBy, lang) {
-		return inst.GoWireRefusal
+	if inst.WireRefused {
+		return "blob_shared"
 	}
 	return ""
 }
 
-// Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole
-// expectation a report case carries — and the VERDICT beside it (§3).
-//
-// THE VERDICT IS DISTINCT FROM A CLEAN READ, because five zero counters and a
-// false flag are what a clean read prints too: a FORM BYTE this reader does not
-// carry is a refusal, it moves none of §4's counters, and it never reports
-// damage. Without the verdict a refusal and a clean read are the same row.
-type Counts struct {
-	Unknown      int
-	KindMismatch int
-	Widened      int
-	Clamped      int
-	Duplicate    int
-	Malformed    bool
-	Refused      bool
-}
-
-func (c Counts) String() string {
-	verdict := "read"
-	if c.Refused {
-		verdict = "refused"
-	}
-	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", c.Unknown, c.KindMismatch, c.Widened, c.Clamped, c.Duplicate, c.Malformed, verdict)
-}
-
-// ParseCounts reads the "u,k,w,c,d,m,verdict" spelling every leg of the
-// harness uses.
-func ParseCounts(text string) (Counts, error) {
-	var c Counts
-	parts := strings.Split(strings.TrimSpace(text), ",")
-	if len(parts) != 7 {
-		return c, fmt.Errorf("a report is six counters and a verdict, not %d fields: %q", len(parts), text)
-	}
-	nums := []*int{&c.Unknown, &c.KindMismatch, &c.Widened, &c.Clamped, &c.Duplicate}
-	for i, p := range nums {
-		v, err := strconv.Atoi(parts[i])
-		if err != nil {
-			return c, fmt.Errorf("%q is not a counter: %w", parts[i], err)
-		}
-		*p = v
-	}
-	switch parts[5] {
-	case "true":
-		c.Malformed = true
-	case "false":
-		c.Malformed = false
-	default:
-		return c, fmt.Errorf("%q is not true or false", parts[5])
-	}
-	switch parts[6] {
-	case "refused":
-		c.Refused = true
-	case "read":
-		c.Refused = false
-	default:
-		return c, fmt.Errorf("%q is not a verdict: a read is `read` or `refused` (docs/SPEC-TABLES.md §3)", parts[5])
-	}
-	return c, nil
-}
-
 // ReportCase is bytes read by a type that did not write them. Value is the
 // file holding the §16 text of the value the read leaves, which the row owes
-// after its report line whenever the read reads: the oracle writes it
-// (`harness generate`, from internal/tablewire and internal/tabletext), and a
-// refused or damaged read has none.
+// after its verdict line whenever the read accepts; a refused read has none.
 type ReportCase struct {
 	Name  string
 	Unit  string
 	Root  string
 	Wire  string
 	Value string
+	// Save is the canonical write-back wire of the value the read leaves.
+	// An accepted row owes it; a refused row has none.
+	Save string
 }
 
 // FramingCase is one hand-built framing vector (docs/LAYERS/1-framing.md): the
-// wire, the read report it owes, and the file holding the §16 text of the
-// value it owes, or "" where the row owes the report alone. The report and the
-// value are HAND-AUTHORED from the rule text, which is what makes the row an
-// expectation rather than a restatement of what one engine happens to do.
+// wire, the verdict it owes, and the file holding the §16 text of the value it
+// owes when read, or "" when refused.
 type FramingCase struct {
 	Name    string
 	Unit    string
 	Root    string
 	Wire    string
 	Refused bool
-	// Damaged is the verdict `malformed`: DAMAGE DISCARDS THE WHOLE LOAD
-	// (docs/SPEC-TABLES.md §4), so the row owes the refusal and nothing else.
-	// No counter and no value is compared.
-	Damaged bool
-	Counts  Counts
 	Value   string
+	// Save is the canonical write-back wire of the value an accepted row
+	// leaves. A refused row owes no value and no wire.
+	Save string
 }
 
-// Verdict is the report line the row owes, in the spelling every leg's
-// `report` surface prints: five zero counters, no damage and the refusal
-// verdict for a refused read.
-func (f FramingCase) Verdict() string {
-	if f.Refused {
-		return Counts{Refused: true}.String()
+func (fc FramingCase) Verdict() string {
+	if fc.Refused {
+		return "refused"
 	}
-	if f.Damaged {
-		return Counts{Malformed: true}.String()
-	}
-	return f.Counts.String()
+	return "read"
 }
 
-// Hostile is one tree of the hostile-value battery (docs/SPEC-TABLES.md §16.2,
-// §16.3, §17.5) and the verdict every implementation owes it: `refused`, or the
-// §4 report the read produces. Tree is the directory `schema pack` reads, so
-// the text is <Tree>/<Root>.json (§17).
+// Hostile is one directory of hostile JSON (docs/SPEC-TABLES.md §16.3) that
+// pack reads at Root, and the verdict that read owes: read with the value at
+// Value, or refused.
 type Hostile struct {
 	Name    string
 	Unit    string
 	Root    string
 	Tree    string
 	Refused bool
-	Counts  Counts
-	// CarriedBy names the ports that carry the standard's verdict for this
-	// row. Empty means every port carries it. Uncarried is the verdict a port
-	// not named there still gives, because the rule was held first in Go and
-	// every other backend keeps its behaviour until its port
-	// (docs/SPEC-TABLES.md §16.3).
-	CarriedBy []string
-	Uncarried string
-	// Value is the file holding the §16 text of the value the read leaves,
-	// <Tree>.value.json beside the tree, which the row owes after its report
-	// line whenever the read reads. The oracle writes it (`harness generate`,
-	// internal/tabletext's read then its writer); a refused row has none.
-	Value string
+	Value   string
+	// Save is the canonical write-back wire of the value an accepted row
+	// leaves. A refused row owes no value and no wire.
+	Save string
 }
 
-// HostileValue is where a hostile row's value golden lives: beside the tree,
-// never inside it, because the tree is what `schema pack` reads.
-func HostileValue(tree string) string { return tree + ".value.json" }
-
-// ReportValue is where a report row's value golden lives.
-func ReportValue(jsonDir, name string) string {
-	return filepath.Join(filepath.Dir(jsonDir), "report-values", name+".json")
-}
-
-// Verdict is the standard's answer for one hostile case.
+// Verdict is the standard's verdict line for h, without a trailing newline.
 func (h Hostile) Verdict() string {
 	if h.Refused {
 		return "refused"
 	}
-	return h.Counts.String()
+	return "read"
 }
 
-// Carries reports whether lang carries the row's rule. An unmarked row is
-// carried by every port.
+// Carries reports whether lang carries h's standard rule. Under the single
+// read contract every port carries every rule.
 func (h Hostile) Carries(lang string) bool {
-	if len(h.CarriedBy) == 0 {
-		return true
-	}
-	return slices.Contains(h.CarriedBy, lang)
+	return true
 }
 
-// VerdictFor is the answer lang owes for this row: the standard's verdict when
-// it carries the rule, and the row's uncarried verdict when it does not.
+// VerdictFor is the verdict line lang owes for h, without a trailing newline.
 func (h Hostile) VerdictFor(lang string) string {
-	if h.Carries(lang) || h.Uncarried == "" {
-		return h.Verdict()
-	}
-	return h.Uncarried
+	return h.Verdict()
 }
 
-// Cook is a cooked file (docs/SPEC-TABLES.md §7) and the canonical node dump its
-// Open must produce. The CASE and the ROOT are two columns because one root can
-// have more than one fixture: the valued chain and the value-initialised one
-// are the same table read two ways.
+// HostileValue is where a hostile row's value golden lives: beside the tree,
+// not inside it, so a directory walk of the tree never mistakes the answer for
+// a second input file.
+func HostileValue(tree string) string { return tree + ".value.json" }
+
+// ReportValue is where a report row's value golden lives: in report-values/
+// beside json/, which is the directory jsonDir names.
+func ReportValue(jsonDir, name string) string {
+	return filepath.Join(filepath.Dir(jsonDir), "report-values", name+".json")
+}
+
+// RetainValue is where a retain row's value golden lives: in retain-values/
+// beside json/, which is the directory jsonDir names.
+func RetainValue(jsonDir, name string) string {
+	return filepath.Join(filepath.Dir(jsonDir), "retain-values", name+".json")
+}
+
+// SaveWire is where a readable report, framing or json-hostile row's canonical
+// write-back wire lives: in save-wire/ beside json/. It is the bytes the value
+// golden encodes to, so the read is held to the whole value in both forms.
+func SaveWire(jsonDir, name string) string {
+	return filepath.Join(filepath.Dir(jsonDir), "save-wire", name+".bin")
+}
+
+// Cook is one cooked image (docs/SPEC-TABLES.md §7) and the canonical node
+// dump every reader must produce from it. File is filled in by `harness run`
+// when it materialises the fixture; Dump is committed.
 type Cook struct {
 	Case string
-	Root string
 	Unit string
+	Root string
 	Dump string
-	File string // filled in by the harness once test/cookgen has written it
+	File string
 }
 
-// CookWrite is one instance a runtime must WRITE as a cooked file
-// (docs/SPEC-TABLES.md §7.6), and the two files `schema cook` produces from the
-// same wire — one per byte order. The TOOL is the reference: a runtime's bytes
-// are byte-compared against these, and a cook is content-addressed by (asset
-// hash, build version), so two writers of one instance produce ONE artifact or
-// the pair means nothing.
-//
-// It names an INSTANCE rather than repeating its unit, root and wire: the
-// instance line already carries those, and a second copy of a path is a second
-// place for it to drift.
+// CookWrite is the WRITE side of the cook (docs/SPEC-TABLES.md §7.6): an
+// instance the manifest already names, and the two cooked files the tool
+// produces from its construction recipe — little-endian first, big-endian
+// second.
 type CookWrite struct {
 	Instance string
 	Little   string
 	Big      string
+	Input    string
+	Share    string
 }
 
-// Block is a block image (docs/SPEC-TABLES.md §19) an Open must accept, and the
-// canonical ROW DUMP its reader must produce out of it (§19.2). Open alone says
-// a reader checked the prologue; the dump is the value-for-value read.
+// Block is one block-allocated image (docs/SPEC-TABLES.md §19) and the row
+// dump every reader must produce from it. Both files are committed.
 type Block struct {
 	Name string
 	Unit string
@@ -262,84 +175,31 @@ type Block struct {
 	Dump string
 }
 
-// Patch is one word a forgery writes: little-endian, `width` bytes at `offset`.
+// Patch is one little-endian word written over a base fixture to forge a
+// hostile cook or block image.
 type Patch struct {
 	Offset int64
 	Width  int
 	Value  uint64
 }
 
-// Forgery is one damaged fixture and the verdict every implementation owes it.
-// A forgery is carried as a PATCH over a base fixture rather than as a whole
-// file: the patch is what a person can review, and the harness materialises the
-// file so a driver only ever meets a path.
+// Forgery is one hostile cook or block image (docs/SPEC-TABLES.md §7.5, §19.2).
 type Forgery struct {
 	Name    string
 	Kind    string // "cook" or "block"
-	Subject string // the cook's root, or the block's name
-	Base    string // the fixture key the patch is applied to
-	// Pointer is what the caller's BUFFER looks like, which is not a fact a
-	// file can hold: 0 is an aligned base, 1..63 is a base that many bytes past
-	// one, and -1 is a NULL buffer. The cook battery's unaligned-base arm is
-	// the whole reason the column exists.
-	Pointer int
-	// Patches are the words this forgery writes, in order. Most rows carry one
-	// and some carry none — a truncation damages nothing and claims less.
+	Subject string // root table for cook, block name for block
+	Base    string // fixture name to patch over
+	Pointer int    // -1 for null, >= 0 for byte offset into an aligned buffer
 	Patches []Patch
-	// Extent is the length the CALLER claims, which a forgery may set past the
-	// bytes the image carries or short of them — a fact a file alone cannot
-	// hold. -1 is "the file's own length".
 	Extent  int64
 	Verdict string // "refuse" or "open"
 	Label   string
-	File    string // filled in by the harness once materialised
+	File    string // materialised by `harness run`
 }
 
-// parsePatches reads the three PARALLEL columns a forgery's patch is spelled
-// as: comma-separated offsets, widths and values of equal length. One word is
-// the ordinary case and reads as one number in each column; an offset of -1 is
-// a forgery that damages nothing, which is what a truncation is.
-func parsePatches(offsets, widths, values string) ([]Patch, error) {
-	off := strings.Split(offsets, ",")
-	wid := strings.Split(widths, ",")
-	val := strings.Split(values, ",")
-	if len(off) != len(wid) || len(off) != len(val) {
-		return nil, fmt.Errorf("a patch's offset, width and value columns name %d, %d and %d words",
-			len(off), len(wid), len(val))
-	}
-	var out []Patch
-	for i := range off {
-		o, err := strconv.ParseInt(off[i], 0, 64)
-		if err != nil {
-			return nil, fmt.Errorf("%q is not an offset", off[i])
-		}
-		w, err := strconv.Atoi(wid[i])
-		if err != nil {
-			return nil, fmt.Errorf("%q is not a width", wid[i])
-		}
-		v, err := strconv.ParseUint(val[i], 0, 64)
-		if err != nil {
-			return nil, fmt.Errorf("%q is not a value", val[i])
-		}
-		if o < 0 {
-			continue // no patch: the forgery is the extent or the pointer alone
-		}
-		if w < 1 || w > 8 {
-			return nil, fmt.Errorf("%d is not a word width", w)
-		}
-		out = append(out, Patch{Offset: o, Width: w, Value: v})
-	}
-	return out, nil
-}
-
-// Connection is one CONNECTION's announced id table (docs/SPEC-TABLES.md
-// §3.3): the unit whose whole vocabulary it carries, the BUILD VERSION that
-// keys it, and the announcement itself — an ordinary form 1 file whose trailer
-// IS the table.
-//
-// The build version is a column rather than a fact read out of the file so
-// that a build that moves is visible in the review of this file, exactly as a
-// forgery's build-version word is.
+// Connection is the announced vocabulary of one endpoint (docs/SPEC-TABLES.md
+// §3.3): the unit that wrote the announcement, the build version it stamps on
+// the connection, and the announcement wire itself.
 type Connection struct {
 	Key          string
 	Unit         string
@@ -347,104 +207,60 @@ type Connection struct {
 	Wire         string
 }
 
-// Message is one value in BOTH forms (docs/SPEC-TABLES.md §3.3). The variable form
-// is an ordinary instance and rides every surface an instance rides; the
-// message form rides the WIRE surface alone, because its text is the file-form
-// vector's byte for byte.
-//
-// What the pair pins is the RESOLVED FORM: the two bodies are equal once every
-// reference is replaced by the id it names and every length recomputed, and
-// their reference bytes are expected to differ.
-//
-// A row whose message-form wire is `-` is a NAMED REFUSAL row: its root is a
-// variable table, the message form is fixed tables only (docs/SPEC-TABLES.md
-// §3.3), and every leg answers it absent with VariableMessageRefusal and
-// nothing else.
+// Message is one resolved-form pair (docs/SPEC-TABLES.md §3.3): the file-form
+// wire at FileWire and the message-form batch at MessageWire, under the
+// connection at Connection, which names the unit.
 type Message struct {
 	Name        string
 	Connection  string
+	Unit        string
 	Root        string
 	FileWire    string
 	MessageWire string
 }
 
-// VariableMessageRefusal is the one reason every leg gives for a message row
-// over a variable table (docs/SPEC-TABLES.md §3.3: "only fixed tables support
-// message form (bitpacked)").
+// VariableMessageRefusal is the diagnostic reason for a message row whose
+// root is a variable table (docs/SPEC-TABLES.md §3.3).
 const VariableMessageRefusal = "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"
 
-// Refused reports whether the row is a named refusal row: no message-form
-// wire, because its root is a variable table.
-func (msg Message) Refused() bool { return msg.MessageWire == "-" }
+// Refused reports whether this row expects the variable-table refusal rather
+// than a message-form golden.
+func (m Message) Refused() bool { return m.MessageWire == "-" }
 
-// RetainCase is one RETAIN-UNKNOWN row (docs/SPEC-TABLES.md §6.6): a wire
-// loaded with retention, the counters that load owes, and the file the pair
-// writes back.
-//
-// THE TWO CAPACITIES ARE STATED AS RULES AND NOT AS NUMBERS where a number
-// would not travel. A record's BYTE cost is the port's own, so `Short` says ONE
-// BYTE SHORT OF THE LAST RECORD, a leg loads once at a capacity the whole load
-// fits in, reads what it used, and loads again one byte under that, and two
-// layouts then drop the same record rather than different ones. The ID LIST's
-// capacity is a COUNT and travels as one, so `Ids` is either full or the
-// entries the caller's list holds.
-//
-// Retention is the variable form's alone: the message form is fixed tables
-// only (§3.3) and a fixed table has no retention (§6.6), so every row is a
-// file.
+// RetainCase is one retaining round trip (docs/SPEC-TABLES.md §6.6): a wire
+// carrying fields its reader's schema does not declare, read into a retain
+// store at the capacity Short and Ids name and written back out.
 type RetainCase struct {
-	Name     string
-	Unit     string
-	Root     string
-	Wire     string
-	Short    bool // the retention buffer is one byte short of the last record
-	Ids      int  // the caller's id-list entries; -1 is full
-	Load     RetainCounts
-	SaveLost int    // the `retain_lost` the SAVE adds
-	Saves    string // the pinned save; empty is a row that does not save
+	Name  string
+	Unit  string
+	Root  string
+	Wire  string
+	Short bool
+	// Ids is the id list's entry capacity: -1 for `full`, or >= 0 for a
+	// fixed entry cap that isolates the id-list bound from the byte buffer.
+	Ids   int
+	Saves string
+	Value string
 }
 
-// RetainCounts is a retaining load's own three: the two retention counters and
-// the `unknown` they ride beside, which retention never moves.
-type RetainCounts struct{ Retained, RetainLost, Unknown int }
+// RetainShortSlack is the byte margin the `short` capacity rule subtracts from
+// the wire's length: `len(wire) - RetainShortSlack` fits the first unknown and
+// refuses the second in every port's layout.
+const RetainShortSlack = 16
 
-func (c RetainCounts) String() string {
-	return fmt.Sprintf("%d,%d,%d", c.Retained, c.RetainLost, c.Unknown)
-}
-
-// ParseRetainCounts reads `<retained>,<retain_lost>,<unknown>`.
-func ParseRetainCounts(text string) (RetainCounts, error) {
-	parts := strings.Split(text, ",")
-	if len(parts) != 3 {
-		return RetainCounts{}, fmt.Errorf("%q is not retained,retain_lost,unknown", text)
-	}
-	var c RetainCounts
-	into := []*int{&c.Retained, &c.RetainLost, &c.Unknown}
-	for i, p := range parts {
-		v, err := strconv.Atoi(p)
-		if err != nil {
-			return RetainCounts{}, fmt.Errorf("%q is not a count in %q", p, text)
-		}
-		*into[i] = v
-	}
-	return c, nil
-}
-
-// Manifest is the whole registry.
 type Manifest struct {
 	Units       []Unit
+	Instances   []Instance
 	Connections []Connection
 	Messages    []Message
-	Retains     []RetainCase
-	Instances   []Instance
 	Reports     []ReportCase
 	Framings    []FramingCase
 	Hostiles    []Hostile
+	Retains     []RetainCase
 	Cooks       []Cook
 	CookWrites  []CookWrite
 	Blocks      []Block
 	Forgeries   []Forgery
-	Refusals    []Refusal
 	// JSONWriteRefusals are the json-write rows whose answer is the writer's
 	// refusal (docs/SPEC-TABLES.md §16.14, W0).
 	JSONWriteRefusals []JSONWriteRefusal
@@ -465,101 +281,144 @@ type JSONWriteRefusal struct {
 	Damage string
 }
 
-// LookupConnection returns the connection a key names.
-func (m *Manifest) LookupConnection(key string) (Connection, error) {
-	for _, c := range m.Connections {
-		if c.Key == key {
-			return c, nil
-		}
+// parseReadVerdict parses either a plain verdict ("read"/"ACCEPT" or
+// "refused"/"REFUSED") or a legacy 7-field report line ("u,k,w,c,d,m,verdict")
+// used as transport by unmigrated drivers. In legacy transport, only m==true or
+// verdict=="refused" is a refusal; nonzero repair counters (k, c, d) with
+// verdict=="read" remain "read" so a recovering reader fails against a strict
+// refusal expectation.
+func parseReadVerdict(text string) (string, error) {
+	switch strings.TrimSpace(text) {
+	case "read", "ACCEPT":
+		return "read", nil
+	case "refused", "REFUSED":
+		return "refused", nil
 	}
-	return Connection{}, fmt.Errorf("the manifest names no connection %q", key)
+	u, k, w, c, d, m, v, err := parseSevenFieldReport(text)
+	if err != nil {
+		return "", err
+	}
+	_, _, _, _, _ = u, k, w, c, d
+	if m || v == "refused" {
+		return "refused", nil
+	}
+	return "read", nil
 }
 
-// LookupInstance returns the instance a name calls out, which is how a
-// `cook-write` line reaches the unit, the root and the wire it is written from
-// without repeating any of them.
-func (m *Manifest) LookupInstance(name string) (Instance, error) {
-	for _, i := range m.Instances {
-		if i.Name == name {
-			return i, nil
-		}
+// parseManifestVerdict parses a verdict token in a manifest file, where any
+// legacy counter tuple with k!=0, c!=0, d!=0, m==true, or verdict=="refused"
+// is a strict refusal.
+func parseManifestVerdict(text string) (refused, malformed bool, err error) {
+	switch strings.TrimSpace(text) {
+	case "read":
+		return false, false, nil
+	case "refused":
+		return true, false, nil
+	case "malformed":
+		return true, true, nil
 	}
-	return Instance{}, fmt.Errorf("the manifest names no instance %q", name)
+	_, k, _, c, d, m, v, err := parseSevenFieldReport(text)
+	if err != nil {
+		return false, false, err
+	}
+	if m {
+		return true, true, nil
+	}
+	if v == "refused" || k != 0 || c != 0 || d != 0 {
+		return true, false, nil
+	}
+	return false, false, nil
 }
 
-// Unit returns the unit a key names.
-func (m *Manifest) UnitPaths(key string) ([]string, error) {
-	for _, u := range m.Units {
-		if u.Key == key {
-			return u.Paths, nil
-		}
+func parseSevenFieldReport(text string) (u, k, w, c, d int, m bool, verdict string, err error) {
+	parts := strings.Split(strings.TrimSpace(text), ",")
+	if len(parts) != 7 {
+		return 0, 0, 0, 0, 0, false, "", fmt.Errorf("a report verdict is `read` or `refused`, not %q", text)
 	}
-	return nil, fmt.Errorf("the manifest names no unit %q", key)
+	nums := []*int{&u, &k, &w, &c, &d}
+	for i, p := range nums {
+		val, convErr := strconv.Atoi(parts[i])
+		if convErr != nil {
+			return 0, 0, 0, 0, 0, false, "", fmt.Errorf("%q is not a counter: %w", parts[i], convErr)
+		}
+		*p = val
+	}
+	switch parts[5] {
+	case "true":
+		m = true
+	case "false":
+		m = false
+	default:
+		return 0, 0, 0, 0, 0, false, "", fmt.Errorf("%q is not true or false", parts[5])
+	}
+	switch parts[6] {
+	case "read", "refused":
+		verdict = parts[6]
+	default:
+		return 0, 0, 0, 0, 0, false, "", fmt.Errorf("%q is not a verdict: a read is `read` or `refused` (docs/SPEC-TABLES.md §3)", parts[6])
+	}
+	return u, k, w, c, d, m, verdict, nil
 }
 
-// ReadManifest parses one manifest file. jsonDir is where an instance's text
-// lives; it is a parameter rather than a constant because the harness writes a
-// DERIVED manifest into the build tree, and a derived manifest points at the
-// committed texts.
+// ReadManifest parses path and fills each Instance's JSON path under jsonDir.
 func ReadManifest(path, jsonDir string) (*Manifest, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = file.Close() }()
+	defer file.Close()
 
 	m := &Manifest{}
+	lineNo := 0
 	scan := bufio.NewScanner(file)
-	scan.Buffer(make([]byte, 1<<20), 1<<20)
-	line := 0
 	for scan.Scan() {
-		line++
-		text := strings.TrimSpace(scan.Text())
-		if text == "" || strings.HasPrefix(text, "#") {
+		lineNo++
+		line := strings.TrimSpace(scan.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		f := strings.Fields(text)
-		where := fmt.Sprintf("%s:%d", path, line)
+		f := strings.Fields(line)
+		where := fmt.Sprintf("%s:%d", path, lineNo)
 		switch f[0] {
 		case "unit":
 			if len(f) < 3 {
-				return nil, fmt.Errorf("%s: unit takes a key and at least one path", where)
+				return nil, fmt.Errorf("%s: unit takes a key and at least one schema path", where)
 			}
 			m.Units = append(m.Units, Unit{Key: f[1], Paths: f[2:]})
 		case "instance":
 			if len(f) < 5 {
-				return nil, fmt.Errorf("%s: instance takes name, unit, root, wire, and optional markers", where)
+				return nil, fmt.Errorf("%s: instance takes name, unit, root, wire path, and optional markers", where)
 			}
 			inst := Instance{
 				Name: f[1], Unit: f[2], Root: f[3], Wire: f[4],
-				JSON: jsonDir + "/" + f[1] + ".json",
+				JSON: filepath.Join(jsonDir, f[1]+".json"),
 			}
+			hasRefusedBy := false
 			for _, marker := range f[5:] {
 				switch {
-				case marker == "no-text":
-					if inst.NoText {
-						return nil, fmt.Errorf("%s: duplicate no-text marker", where)
-					}
+				case marker == "no-text" && !inst.NoText:
 					inst.NoText = true
-				case strings.HasPrefix(marker, "go-refusal=") && strings.TrimPrefix(marker, "go-refusal=") != "":
-					if inst.GoWireRefusal != "" {
-						return nil, fmt.Errorf("%s: duplicate Go wire refusal marker", where)
+					inst.JSON = ""
+				case marker == "wire-refused" && !inst.WireRefused:
+					inst.WireRefused = true
+				case strings.HasPrefix(marker, "go-refusal=") && !inst.WireRefused:
+					reason := strings.TrimPrefix(marker, "go-refusal=")
+					if reason != "blob_shared" {
+						return nil, fmt.Errorf("%s: unsupported Go wire refusal %q", where, reason)
 					}
-					inst.GoWireRefusal = strings.TrimPrefix(marker, "go-refusal=")
-				case strings.HasPrefix(marker, "refused-by="):
-					if inst.WireRefusedBy != nil {
-						return nil, fmt.Errorf("%s: duplicate refused-by marker", where)
-					}
-					inst.WireRefusedBy = strings.Split(strings.TrimPrefix(marker, "refused-by="), ",")
-					if slices.Contains(inst.WireRefusedBy, "") || slices.Contains(inst.WireRefusedBy, "go") {
+					inst.WireRefused = true
+				case strings.HasPrefix(marker, "refused-by=") && !hasRefusedBy:
+					ports := strings.Split(strings.TrimPrefix(marker, "refused-by="), ",")
+					if slices.Contains(ports, "") || slices.Contains(ports, "go") {
 						return nil, fmt.Errorf("%s: refused-by names an empty port or go (go-refusal= already holds go)", where)
 					}
+					hasRefusedBy = true
 				default:
-					return nil, fmt.Errorf("%s: %q is not a valid instance marker", where, marker)
+					return nil, fmt.Errorf("%s: invalid instance marker %q", where, marker)
 				}
 			}
-			if inst.WireRefusedBy != nil && inst.GoWireRefusal == "" {
-				return nil, fmt.Errorf("%s: refused-by= needs go-refusal= to name the refusal", where)
+			if hasRefusedBy && !inst.WireRefused {
+				return nil, fmt.Errorf("%s: refused-by requires wire-refused", where)
 			}
 			m.Instances = append(m.Instances, inst)
 		case "json-write-refusal":
@@ -573,85 +432,100 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			m.JSONWriteRefusals = append(m.JSONWriteRefusals, JSONWriteRefusal{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Damage: damage})
 		case "connection":
 			if len(f) != 5 {
-				return nil, fmt.Errorf("%s: connection takes key, unit, build version, announcement wire", where)
+				return nil, fmt.Errorf("%s: connection takes key, unit, build version, wire", where)
 			}
-			version, verr := strconv.ParseUint(f[3], 0, 64)
-			if verr != nil {
-				return nil, fmt.Errorf("%s: %q is not a build version", where, f[3])
+			bv, err := strconv.ParseUint(f[3], 0, 64)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %q is not a build version: %w", where, f[3], err)
 			}
-			m.Connections = append(m.Connections, Connection{Key: f[1], Unit: f[2], BuildVersion: version, Wire: f[4]})
+			m.Connections = append(m.Connections, Connection{
+				Key: f[1], Unit: f[2], BuildVersion: bv, Wire: f[4],
+			})
 		case "message":
 			if len(f) != 6 {
-				return nil, fmt.Errorf("%s: message takes name, connection, root, file-form wire, message-form wire", where)
+				return nil, fmt.Errorf("%s: message takes name, connection, root, file wire, message wire", where)
 			}
-			m.Messages = append(m.Messages, Message{Name: f[1], Connection: f[2], Root: f[3], FileWire: f[4], MessageWire: f[5]})
-		case "retain":
-			// retain <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
-			if len(f) != 10 {
-				return nil, fmt.Errorf("%s: retain takes 10 fields and this line has %d", where, len(f))
-			}
-			rc := RetainCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]}
-			switch f[5] {
-			case "full":
-			case "short":
-				rc.Short = true
-			default:
-				return nil, fmt.Errorf("%s: %q is not a retention capacity; it is full or short", where, f[5])
-			}
-			rc.Ids = -1
-			if f[6] != "full" {
-				n, err := strconv.Atoi(f[6])
-				if err != nil || n < 0 {
-					return nil, fmt.Errorf("%s: %q is not an id-list capacity", where, f[6])
-				}
-				rc.Ids = n
-			}
-			counts, err := ParseRetainCounts(f[7])
+			conn, err := m.LookupConnection(f[2])
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", where, err)
 			}
-			rc.Load = counts
-			lost, err := strconv.Atoi(f[8])
-			if err != nil || lost < 0 {
-				return nil, fmt.Errorf("%s: %q is not the save's own retain_lost", where, f[8])
+			m.Messages = append(m.Messages, Message{
+				Name: f[1], Connection: f[2], Unit: conn.Unit,
+				Root: f[3], FileWire: f[4], MessageWire: f[5],
+			})
+		case "retain":
+			// retain <case> <unit> <root> <wire> <capacity> <ids> <save|->
+			if len(f) != 8 && len(f) != 10 {
+				return nil, fmt.Errorf("%s: retain takes case, unit, root, wire, capacity, ids, save wire or -", where)
 			}
-			rc.SaveLost = lost
-			if f[9] != "-" {
-				rc.Saves = f[9]
+			var short bool
+			switch f[5] {
+			case "short":
+				short = true
+			case "full":
+				short = false
+			default:
+				return nil, fmt.Errorf("%s: %q is not `short` or `full`", where, f[5])
 			}
-			m.Retains = append(m.Retains, rc)
+			ids := -1
+			if f[6] != "full" {
+				n, err := strconv.Atoi(f[6])
+				if err != nil || n < 0 {
+					return nil, fmt.Errorf("%s: %q is not `full` or a non-negative id count", where, f[6])
+				}
+				ids = n
+			}
+			saveField := f[7]
+			if len(f) == 10 {
+				if parts := strings.Split(f[7], ","); len(parts) != 3 {
+					return nil, fmt.Errorf("%s: invalid legacy retain counts %q", where, f[7])
+				}
+				if n, err := strconv.Atoi(f[9]); err != nil || n < 0 {
+					return nil, fmt.Errorf("%s: %q is not a save-lost count", where, f[9])
+				}
+				saveField = f[8]
+			}
+			saves := ""
+			if saveField != "-" {
+				saves = saveField
+			}
+			m.Retains = append(m.Retains, RetainCase{
+				Name: f[1], Unit: f[2], Root: f[3], Wire: f[4],
+				Short: short, Ids: ids, Saves: saves,
+				Value: RetainValue(jsonDir, f[1]),
+			})
 		case "report":
 			if len(f) != 5 {
 				return nil, fmt.Errorf("%s: report takes case, unit, root, wire", where)
 			}
-			m.Reports = append(m.Reports, ReportCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Value: ReportValue(jsonDir, f[1])})
+			m.Reports = append(m.Reports, ReportCase{
+				Name: f[1], Unit: f[2], Root: f[3], Wire: f[4],
+				Value: ReportValue(jsonDir, f[1]),
+				Save:  SaveWire(jsonDir, f[1]),
+			})
 		case "framing":
-			// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the verdict is
-			// `refused` or the §4 report, and the value is a §16 text file or
-			// `-` for a row that owes the report alone.
+			// framing <case> <unit> <root> <wire> <read|refused> <value|->
 			if len(f) != 7 {
 				return nil, fmt.Errorf("%s: framing takes case, unit, root, wire, verdict, value file or -", where)
 			}
-			fc := FramingCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]}
+			fc := FramingCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Save: SaveWire(jsonDir, f[1])}
 			switch f[5] {
-			case "refused":
+			case "refused", "malformed":
 				fc.Refused = true
-			case "malformed":
-				fc.Damaged = true
+			case "read":
+				fc.Refused = false
 			default:
-				c, err := ParseCounts(f[5])
+				refused, malformed, err := parseManifestVerdict(f[5])
 				if err != nil {
 					return nil, fmt.Errorf("%s: %w", where, err)
 				}
-				if c.Malformed {
-					// a damaged load is discarded whole (docs/SPEC-TABLES.md
-					// §4): its counters are not defined, so no row may owe them
-					return nil, fmt.Errorf("%s: a damaged read owes the verdict `malformed`, not counters", where)
+				if malformed {
+					return nil, fmt.Errorf("%s: a damaged read owes the verdict `refused`, not counters", where)
 				}
-				fc.Counts = c
+				fc.Refused = refused
 			}
 			if f[6] != "-" {
-				if fc.Refused || fc.Damaged {
+				if fc.Refused {
 					return nil, fmt.Errorf("%s: a refused or damaged read has no value to owe", where)
 				}
 				fc.Value = f[6]
@@ -659,37 +533,29 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			m.Framings = append(m.Framings, fc)
 		case "json-hostile":
 			if len(f) != 6 && len(f) != 8 {
-				return nil, fmt.Errorf("%s: json-hostile takes case, unit, root, tree, verdict, and optionally carried-by=<ports> uncarried=<verdict>", where)
+				return nil, fmt.Errorf("%s: json-hostile takes case, unit, root, tree, verdict", where)
 			}
-			h := Hostile{Name: f[1], Unit: f[2], Root: f[3], Tree: f[4], Value: HostileValue(f[4])}
-			if f[5] == "refused" {
-				h.Refused = true
-			} else {
-				c, err := ParseCounts(f[5])
-				if err != nil {
-					return nil, fmt.Errorf("%s: %w", where, err)
-				}
-				h.Counts = c
+			h := Hostile{Name: f[1], Unit: f[2], Root: f[3], Tree: f[4], Save: SaveWire(jsonDir, f[1])}
+			refused, _, err := parseManifestVerdict(f[5])
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", where, err)
+			}
+			h.Refused = refused
+			if !h.Refused {
+				h.Value = HostileValue(f[4])
 			}
 			if len(f) == 8 {
 				carried, ok := strings.CutPrefix(f[6], "carried-by=")
-				if !ok || carried == "" {
+				if !ok || carried == "" || slices.Contains(strings.Split(carried, ","), "") {
 					return nil, fmt.Errorf("%s: %q is not carried-by=<ports>", where, f[6])
-				}
-				h.CarriedBy = strings.Split(carried, ",")
-				if slices.Contains(h.CarriedBy, "") {
-					return nil, fmt.Errorf("%s: carried-by names an empty port", where)
 				}
 				uncarried, ok := strings.CutPrefix(f[7], "uncarried=")
 				if !ok || uncarried == "" {
 					return nil, fmt.Errorf("%s: %q is not uncarried=<verdict>", where, f[7])
 				}
-				if uncarried != "refused" {
-					if _, err := ParseCounts(uncarried); err != nil {
-						return nil, fmt.Errorf("%s: uncarried: %w", where, err)
-					}
+				if _, _, err := parseManifestVerdict(uncarried); err != nil {
+					return nil, fmt.Errorf("%s: uncarried: %w", where, err)
 				}
-				h.Uncarried = uncarried
 			}
 			m.Hostiles = append(m.Hostiles, h)
 		case "cook":
@@ -698,23 +564,33 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			}
 			m.Cooks = append(m.Cooks, Cook{Case: f[1], Unit: f[2], Root: f[3], Dump: f[4]})
 		case "cook-write":
-			if len(f) != 4 {
+			if len(f) < 4 || len(f) > 6 {
 				return nil, fmt.Errorf("%s: cook-write takes an instance and its two cooked files, little then big", where)
 			}
-			m.CookWrites = append(m.CookWrites, CookWrite{Instance: f[1], Little: f[2], Big: f[3]})
+			cw := CookWrite{Instance: f[1], Little: f[2], Big: f[3]}
+			for _, option := range f[4:] {
+				switch {
+				case strings.HasPrefix(option, "input=") && cw.Input == "":
+					cw.Input = strings.TrimPrefix(option, "input=")
+				case strings.HasPrefix(option, "share=") && cw.Share == "":
+					cw.Share = strings.TrimPrefix(option, "share=")
+				default:
+					return nil, fmt.Errorf("%s: invalid cook construction option %q", where, option)
+				}
+			}
+			if cw.Share != "" {
+				source, alias, ok := strings.Cut(cw.Share, ":")
+				if !ok || source == "" || alias == "" || source == alias || strings.Contains(alias, ":") || cw.Input == "" {
+					return nil, fmt.Errorf("%s: share requires input= and two distinct blob fields", where)
+				}
+			}
+			m.CookWrites = append(m.CookWrites, cw)
 		case "block":
 			if len(f) != 5 {
 				return nil, fmt.Errorf("%s: block takes name, unit, file, dump", where)
 			}
 			m.Blocks = append(m.Blocks, Block{Name: f[1], Unit: f[2], File: f[3], Dump: f[4]})
-		case "refusal":
-			// refusal <forgery> <reason>
-			if len(f) != 3 {
-				return nil, fmt.Errorf("%s: refusal takes a forgery name and a reason", where)
-			}
-			m.Refusals = append(m.Refusals, Refusal{Forgery: f[1], Reason: f[2]})
 		case "forgery":
-			// forgery <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label...>
 			if len(f) < 12 {
 				return nil, fmt.Errorf("%s: forgery takes name, kind, subject, base, pointer, offset, width, value, extent, verdict, label", where)
 			}
@@ -751,22 +627,6 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 	if err := scan.Err(); err != nil {
 		return nil, err
 	}
-	// a refusal line REACHES a forgery, and takes its kind from it: a name that
-	// reaches nothing is a reason nobody would be asked for
-	for i := range m.Refusals {
-		found := false
-		for _, fg := range m.Forgeries {
-			if fg.Name == m.Refusals[i].Forgery {
-				m.Refusals[i].Kind = fg.Kind
-				found = true
-			}
-		}
-		if !found {
-			return nil, fmt.Errorf("%s: refusal %s names no forgery", path, m.Refusals[i].Forgery)
-		}
-	}
-	// a cook-write line REACHES an instance, and a name that reaches nothing is
-	// a case that would silently expect nothing
 	for _, cw := range m.CookWrites {
 		if _, err := m.LookupInstance(cw.Instance); err != nil {
 			return nil, fmt.Errorf("%s: cook-write %s: %w", path, cw.Instance, err)
@@ -775,11 +635,71 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 	return m, nil
 }
 
-// Refusal is the REASON one forgery's refusal names (docs/SPEC-TABLES.md §7,
-// §19.2): the enum's own value name, the first failing clause of the check.
-// Kind is the forgery's, filled in when the manifest is read.
-type Refusal struct {
-	Forgery string
-	Reason  string
-	Kind    string
+// parsePatches zips three comma-separated columns of equal length into a
+// slice of patches.
+func parsePatches(offsets, widths, values string) ([]Patch, error) {
+	os := strings.Split(offsets, ",")
+	ws := strings.Split(widths, ",")
+	vs := strings.Split(values, ",")
+	if len(os) != len(ws) || len(os) != len(vs) {
+		return nil, fmt.Errorf("patch columns have %d offsets, %d widths, %d values", len(os), len(ws), len(vs))
+	}
+	var out []Patch
+	for i := range os {
+		off, err := strconv.ParseInt(os[i], 0, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not an offset", os[i])
+		}
+		w, err := strconv.Atoi(ws[i])
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a patch width", ws[i])
+		}
+		v, err := strconv.ParseUint(vs[i], 0, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a patch value", vs[i])
+		}
+		if off < 0 {
+			continue
+		}
+		if w < 1 || w > 8 {
+			return nil, fmt.Errorf("%q is not a patch width", ws[i])
+		}
+		out = append(out, Patch{Offset: off, Width: w, Value: v})
+	}
+	return out, nil
+}
+
+func (m *Manifest) LookupUnit(key string) (Unit, error) {
+	for _, u := range m.Units {
+		if u.Key == key {
+			return u, nil
+		}
+	}
+	return Unit{}, fmt.Errorf("manifest names no unit %q", key)
+}
+
+func (m *Manifest) LookupInstance(name string) (Instance, error) {
+	for _, i := range m.Instances {
+		if i.Name == name {
+			return i, nil
+		}
+	}
+	return Instance{}, fmt.Errorf("manifest names no instance %q", name)
+}
+
+func (m *Manifest) LookupConnection(key string) (Connection, error) {
+	for _, c := range m.Connections {
+		if c.Key == key {
+			return c, nil
+		}
+	}
+	return Connection{}, fmt.Errorf("manifest names no connection %q", key)
+}
+
+func (m *Manifest) UnitPaths(key string) ([]string, error) {
+	u, err := m.LookupUnit(key)
+	if err != nil {
+		return nil, err
+	}
+	return u.Paths, nil
 }

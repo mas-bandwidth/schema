@@ -265,6 +265,11 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     if (n != 1) { report.malformed = true; report.reason = "wire_damaged"; return null; }
     return out[0];
   }
+  if (d.fixed && form == FORM_VARIABLE) {
+    report.refused = true;
+    report.reason = "previous_form";
+    return null;
+  }
   if (form != FORM_VARIABLE) {
     report.reason = form == FORM_MESSAGE ? "message_form_as_file" : "newer_form";
     return null;

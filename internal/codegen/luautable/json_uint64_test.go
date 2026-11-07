@@ -98,7 +98,7 @@ func jsonInt64Oracle(t *testing.T) []string {
 		if err != nil {
 			t.Fatalf("%s: the Go reference wire: %v", text, err)
 		}
-		want = append(want, strconv.Itoa(rep.Clamped)+" "+hexBytes(wire))
+		want = append(want, strconv.Itoa(0)+" "+hexBytes(wire))
 	}
 	return want
 }

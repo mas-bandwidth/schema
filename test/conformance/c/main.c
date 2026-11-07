@@ -308,7 +308,7 @@ static int surface_report( const char * out )
         memset( &report, 0, sizeof( report ) );
         ok = codec->load( value, wire, (int64_t) bytes, &report );
         free( wire );
-        malformed = report.malformed || ( !ok && !report.refused );
+        malformed = report.refused || ( !ok && !report.refused );
         n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%d,%s,%s\n",
                       report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
                       malformed ? "true" : "false", report.refused ? "refused" : "read" );
@@ -353,7 +353,7 @@ static int surface_framing( const char * out )
         memset( &report, 0, sizeof( report ) );
         ok = codec->load( value, wire, (int64_t) bytes, &report );
         free( wire );
-        malformed = report.malformed || ( !ok && !report.refused );
+        malformed = report.refused || ( !ok && !report.refused );
         n = snprintf( head, sizeof( head ), "%d,%d,%d,%d,%d,%s,%s\n",
                       report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
                       malformed ? "true" : "false", report.refused ? "refused" : "read" );
@@ -523,7 +523,7 @@ static int surface_json_hostile( const char * out )
         memset( &report, 0, sizeof( report ) );
         ok = codec->from_json( value, (const char *) text, (int64_t) bytes, &report );
         free( text );
-        if ( !ok || report.malformed )
+        if ( !ok || report.refused )
         {
             n = snprintf( verdict, sizeof( verdict ), "refused\n" );
             if ( !spill( out, f->field[1], verdict, (size_t) n ) ) { return 1; }
@@ -765,7 +765,7 @@ static int surface_message(const char * out)
   ok=codec->message(announcement,(int64_t)an,message,(int64_t)n,&answer,&size,&report);
   if(ok)ok=spill(out,f->field[1],answer,(size_t)size);
   free(answer);free(message);free(announcement);
-  if(!ok){fprintf(stderr,"message %s failed: malformed=%d refused=%d unknown=%d mismatch=%d\n",f->field[1],report.malformed,report.refused,report.unknown,report.kind_mismatch);return 1;}
+  if(!ok){fprintf(stderr,"message %s failed: malformed=%d refused=%d unknown=%d mismatch=%d\n",f->field[1],report.refused,report.refused,report.unknown,report.kind_mismatch);return 1;}
  }
  return 0;
 }

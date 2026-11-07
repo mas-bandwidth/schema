@@ -314,7 +314,7 @@ writeElement = function(ctx: any, owner: string, fd: any, e: any, at: number, w:
 	return writeScalar(ctx, owner, fd, e, at, w, x)
 end
 
--- the live length of a wstring(N) or bytes(N) value, clamped to its bound
+-- the live length of a wstring(N) or bytes(N) value, bounded by its capacity
 local function usedLength(v: any, slot: string, bound: number): number
 	local n = v[slot .. "Length"]
 	if type(n) ~= "number" or n < 0 then

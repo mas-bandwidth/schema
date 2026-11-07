@@ -18,8 +18,11 @@ import (
 // Packet construction starts a positive-minimum count at that minimum (SPEC
 // 4.2). Table readers instead restore an absent array as empty: the file writer
 // elides count zero (SPEC-TABLES 3, 4). A closure type's packet constructor must
-// not change what an empty table means, including through nested backing slots.
+// not change what an absent table field or reset means, including through nested
+// backing slots. Fixed files use legal positive counts and form 3; unused form-3
+// array slots are slack, so their declared marker default is checked after reset.
 func TestTableClosureCountDefaults(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
 enum Key { First, Second }
 type Leaf {
@@ -40,8 +43,15 @@ fixed table Root {
 	value := model.New(u.Tables["Root"])
 	empty := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0} // form, terminator, zero trailer entries
 	got, err := tablewire.Encode(model, value)
-	if err != nil || !bytes.Equal(got, empty) {
-		t.Fatalf("default table: %x, %v; want %x", got, err, empty)
+	if err == nil || len(got) != 0 || !strings.Contains(err.Error(), "count 0 under its minimum 1") {
+		t.Fatalf("default table with a count under its minimum wrote %x, %v", got, err)
+	}
+	if !model.Read(value, []byte(`{"payload":{"leaf":{"values":[0]},"rows":[{"values":[0]}]}}`), &tabletext.Report{}) {
+		t.Fatal("minimal legal value did not place")
+	}
+	minimal, err := tablewire.Encode(model, value)
+	if err != nil || len(minimal) == 0 || minimal[0] != 3 {
+		t.Fatalf("minimal fixed file: %x, %v", minimal, err)
 	}
 	var report tabletext.Report
 	if !model.Read(value, []byte(`{"payload":{"leaf":{"values":[9]},"rows":[{"values":[4,5]}]}}`), &report) {
@@ -50,6 +60,9 @@ fixed table Root {
 	full, err := tablewire.Encode(model, value)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if bytes.Equal(full, minimal) {
+		t.Fatal("distinct legal closure values wrote the same file")
 	}
 	for _, lang := range []string{"cpp", "c", "go", "cs"} {
 		t.Run(lang, func(t *testing.T) {
@@ -71,7 +84,7 @@ fixed table Root {
 			for name, source := range files {
 				write(name, string(source))
 			}
-			replace := strings.NewReplacer("@EMPTY@", cppWire(empty), "@FULL@", cppWire(full))
+			replace := strings.NewReplacer("@EMPTY@", cppWire(empty), "@FULL@", cppWire(full), "@MINIMAL@", cppWire(minimal))
 			switch lang {
 			case "cpp", "c":
 				cc, ext := "c++", ".cpp"
@@ -88,7 +101,7 @@ fixed table Root {
 				runtime := slowtest.SerializeGo(t, "..")
 				write("go.mod", fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", root, runtime))
 				write("defaults_test.go", replace.Replace(tableClosureDefaultsGo))
-				cmd := exec.Command("go", "test", "-count=1", ".")
+				cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", ".")
 				cmd.Dir = dir
 				if out, err := cmd.CombinedOutput(); err != nil {
 					t.Fatalf("generated Go: %v\n%s", err, out)
@@ -124,24 +137,25 @@ const tableClosureDefaultsC = `#include "ProbeTable.h"
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
 #ifdef __cplusplus
 using namespace probe;
-#define LOAD(v,b,n,r) RootLoad(v,b,n,r)
-#define SAVE(v,b,n) RootSave(v,b,n)
-#define MEASURE(v) RootMeasure(v)
+#define LOAD(v,b,n,r) (RootFixedLoad(&(v),1,b,n,plan,4096,NULL,r)==1)
+#define SAVE(v,b,n) RootFixedSave(&(v),1,b,n)
+#define MEASURE(v) RootFixedMeasure(1)
 #define RESET(v) RootReset(v)
 #define JSON(v,b,n,r) RootFromJson(v,b,n,r)
 #define LEAF_LOAD(v,b,n,r) LeafLoad(v,b,n,r)
 #define REPORT_RESET(v) ((v) = TableReport())
 #else
-#define LOAD(v,b,n,r) root_load_tolerant(&(v),b,n,r)
-#define SAVE(v,b,n) root_save(&(v),b,n)
-#define MEASURE(v) root_measure(&(v))
+#define LOAD(v,b,n,r) (root_fixed_load(&(v),1,b,n,plan,4096,NULL,r)==1)
+#define SAVE(v,b,n) root_fixed_save(&(v),1,b,n)
+#define MEASURE(v) root_fixed_measure(1)
 #define RESET(v) root_reset(&(v))
 #define JSON(v,b,n,r) root_from_json_tolerant(&(v),b,n,r)
 #define LEAF_LOAD(v,b,n,r) leaf_load_tolerant(&(v),b,n,r)
 #define REPORT_RESET(v) memset(&(v),0,sizeof(v))
 #endif
 int main(void) {
- const uint8_t empty[] = {@EMPTY@}, full[] = {@FULL@};
+ const uint8_t empty[] = {@EMPTY@}, full[] = {@FULL@}, minimal[] = {@MINIMAL@};
+ static TableFixedEntry plan[4096];
  uint8_t saved[sizeof(full)];
  Root value;
  Leaf leaf;
@@ -155,34 +169,37 @@ int main(void) {
  CHECK(leaf.values_count == 0 && leaf.marker == 7);
  for(int i=0;i<8;i++) {
   const int populated = !(i&1);
-  const uint8_t *wire = populated ? full : empty;
-  const int64_t size = populated ? sizeof(full) : sizeof(empty);
+  const uint8_t *wire = populated ? full : minimal;
+  const int64_t size = populated ? sizeof(full) : sizeof(minimal);
   REPORT_RESET(report);
   CHECK(LOAD(value,wire,size,&report));
   CHECK(!report.malformed && !report.refused && !report.unknown && !report.kind_mismatch && !report.clamped && !report.widened && !report.duplicate);
-  CHECK(value.payload.leaf.values_count == (populated ? 1 : 0));
-  CHECK(value.payload.rows_count == (populated ? 1 : 0));
-  CHECK(value.payload.rows[0].values_count == (populated ? 2 : 0));
-  CHECK(value.payload.rows[1].values_count == 0 && value.payload.rows[1].marker == 7);
+  CHECK(value.payload.leaf.values_count == 1);
+  CHECK(value.payload.rows_count == 1);
+  CHECK(value.payload.rows[0].values_count == (populated ? 2 : 1));
+  CHECK(value.payload.rows[1].values_count == 0);
   CHECK(value.payload.leaf.marker == 7 && value.payload.rows[0].marker == 7);
   CHECK(MEASURE(value)==size && SAVE(value,saved,sizeof(saved))==size && !memcmp(saved,wire,(size_t)size));
  }
  RESET(value);
- CHECK(MEASURE(value)==sizeof(empty) && SAVE(value,saved,sizeof(saved))==sizeof(empty) && !memcmp(saved,empty,sizeof(empty)));
+ CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0 && value.payload.rows[1].values_count==0 && value.payload.rows[1].marker==7);
  REPORT_RESET(report);
  CHECK(JSON(value,"{}",2,&report) && !report.malformed);
- CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0 && MEASURE(value)==sizeof(empty));
+ CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0 && value.payload.rows[1].values_count==0);
 #ifdef __cplusplus
  // The same reset serves message loads and public file-open failure paths.
  TableMessageEntry entries[kTableMessageEntriesHere];
  TableVocabulary vocabulary(entries,kTableMessageEntriesHere);
  CHECK(AnnounceRead(vocabulary,kTableAnnounce,kTableAnnounceBytes,NULL));
- const uint8_t message[]={2,0,0}; // form 2, one body, zero reference and padding
+ CHECK(LOAD(value,minimal,sizeof(minimal),&report));
+ uint8_t message[4096];
+ const int64_t message_bytes=RootSaveMessages(&value,1,message,sizeof(message),&report);
+ CHECK(message_bytes>0);
  int64_t count=1;
  value.payload=Payload();
- CHECK(RootLoadMessages(&value,&count,vocabulary,message,sizeof(message),&report) && count==1);
- CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0 && value.payload.rows[1].values_count==0);
- CHECK(RootSaveMessages(&value,1,saved,sizeof(saved),&report)==sizeof(message) && !memcmp(saved,message,sizeof(message)));
+ CHECK(RootLoadMessages(&value,&count,vocabulary,message,message_bytes,&report) && count==1);
+ CHECK(value.payload.leaf.values_count==1 && value.payload.rows_count==1 && value.payload.rows[0].values_count==1 && value.payload.rows[1].values_count==0);
+ CHECK(RootSaveMessages(&value,1,saved,sizeof(saved),&report)==message_bytes && !memcmp(saved,message,(size_t)message_bytes));
  value.payload=Payload();
  CHECK(!RootLoad(value,empty,0,&report) && report.malformed);
  CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0);
@@ -194,24 +211,28 @@ int main(void) {
 const tableClosureDefaultsGo = `package probe
 import("bytes";"testing")
 func TestDefaults(t *testing.T) {
- empty, full := []byte{@EMPTY@}, []byte{@FULL@}
+ t.Parallel()
+ empty, full, minimal := []byte{@EMPTY@}, []byte{@FULL@}, []byte{@MINIMAL@}
+ plan:=make([]TableFixedEntry,4096)
  var value Root
  var leaf Leaf
  var report TableReport
  if !LeafLoad(&leaf,empty,&report) || leaf.ValuesCount!=0 || leaf.Marker!=7 {t.Fatalf("leaf defaults: %+v",leaf)}
  for i:=0;i<8;i++ {
-  wire:=empty; a,b:=int32(0),int32(0)
+  wire:=minimal; a,b:=int32(1),int32(1)
   if i%2==0 {wire=full;a=1;b=2}
   report=TableReport{}
-  if !RootLoad(&value,wire,&report)||report!=(TableReport{}) {t.Fatalf("load: %+v",report)}
+  loaded:=make([]Root,1)
+  if RootFixedLoad(loaded,wire,plan,&report)!=1||report!=(TableReport{}) {t.Fatalf("load: %+v",report)}
+  value=loaded[0]
   p:=&value.Payload
-  if p.Leaf.ValuesCount!=a || p.RowsCount!=a || p.Rows[0].ValuesCount!=b || p.Rows[1].ValuesCount!=0 || p.Leaf.Marker!=7 || p.Rows[0].Marker!=7 || p.Rows[1].Marker!=7 {t.Fatalf("defaults: %+v",p)}
+  if p.Leaf.ValuesCount!=a || p.RowsCount!=a || p.Rows[0].ValuesCount!=b || p.Rows[1].ValuesCount!=0 || p.Leaf.Marker!=7 || p.Rows[0].Marker!=7 {t.Fatalf("defaults: %+v",p)}
   saved:=make([]byte,len(wire))
-  if RootMeasure(&value)!=int64(len(wire)) || RootSave(&value,saved)!=int64(len(wire)) || !bytes.Equal(saved,wire) {t.Fatal("wire mismatch")}
+  if RootFixedMeasure(1)!=int64(len(wire)) || RootFixedSave([]Root{value},saved)!=int64(len(wire)) || !bytes.Equal(saved,wire) {t.Fatal("wire mismatch")}
  }
  RootReset(&value)
- if RootMeasure(&value)!=10 {t.Fatal("reset")}
- if !RootFromJSON(&value,[]byte("{}"),&report)||RootMeasure(&value)!=10 {t.Fatal("json defaults")}
+ if value.Payload.Leaf.ValuesCount!=0 || value.Payload.RowsCount!=0 || value.Payload.Rows[1].ValuesCount!=0 || value.Payload.Rows[1].Marker!=7 {t.Fatal("reset")}
+ if !RootFromJSON(&value,[]byte("{}"),&report)||value.Payload.Leaf.ValuesCount!=0||value.Payload.RowsCount!=0||value.Payload.Rows[1].ValuesCount!=0 {t.Fatal("json defaults")}
 }
 `
 
@@ -220,20 +241,22 @@ using Probe;
 class Program {
  static void Check(bool ok) {if(!ok)throw new Exception("table closure defaults");}
  static void Main() {
-  byte[] empty={@EMPTY@},full={@FULL@};
+  byte[] empty={@EMPTY@},full={@FULL@},minimal={@MINIMAL@};
+  var plan=new TableFixedEntry[4096];
   var value=new Root();var leaf=new Leaf();var report=new TableReport();
   Check(Schema.LeafLoad(leaf,empty,report)&&leaf.ValuesCount==0&&leaf.Marker==7);
   for(int i=0;i<8;i++) {
-   bool populated=i%2==0;var wire=populated?full:empty;report=new TableReport();
-   Check(Schema.RootLoad(value,wire,report)&&!report.Malformed&&!report.Refused&&report.Unknown==0&&report.KindMismatch==0&&report.Clamped==0&&report.Widened==0&&report.Duplicate==0);
-   var p=value.Payload;
-   Check(p.Leaf.ValuesCount==(populated?1:0)&&p.RowsCount==(populated?1:0)&&p.Rows[0].ValuesCount==(populated?2:0)&&p.Rows[1].ValuesCount==0);
-   Check(p.Leaf.Marker==7&&p.Rows[0].Marker==7&&p.Rows[1].Marker==7);
+   bool populated=i%2==0;var wire=populated?full:minimal;report=new TableReport();
+   var loaded=new Root[]{new Root()};
+   Check(Schema.RootFixedLoad(loaded,wire,plan,report)==1&&!report.Malformed&&!report.Refused&&report.Unknown==0&&report.KindMismatch==0&&report.Clamped==0&&report.Widened==0&&report.Duplicate==0);
+   value=loaded[0];var p=value.Payload;
+   Check(p.Leaf.ValuesCount==1&&p.RowsCount==1&&p.Rows[0].ValuesCount==(populated?2:1)&&p.Rows[1].ValuesCount==0);
+   Check(p.Leaf.Marker==7&&p.Rows[0].Marker==7);
    var saved=new byte[wire.Length];
-   Check(Schema.RootMeasure(value)==wire.Length&&Schema.RootSave(value,saved)==wire.Length&&saved.AsSpan().SequenceEqual(wire));
+   Check(Schema.RootFixedMeasure(1)==wire.Length&&Schema.RootFixedSave(value,saved)==wire.Length&&saved.AsSpan().SequenceEqual(wire));
   }
-  Schema.TableReset(value);Check(Schema.RootMeasure(value)==10);
-  Check(Schema.RootFromJson(value,new byte[]{123,125},report)&&Schema.RootMeasure(value)==10);
+  Schema.TableReset(value);Check(value.Payload.Leaf.ValuesCount==0&&value.Payload.RowsCount==0&&value.Payload.Rows[1].ValuesCount==0&&value.Payload.Rows[1].Marker==7);
+  Check(Schema.RootFromJson(value,new byte[]{123,125},report)&&value.Payload.Leaf.ValuesCount==0&&value.Payload.RowsCount==0&&value.Payload.Rows[1].ValuesCount==0);
  }
 }
 `

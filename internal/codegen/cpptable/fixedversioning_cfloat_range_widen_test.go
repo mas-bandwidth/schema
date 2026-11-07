@@ -40,10 +40,10 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
         memcpy( &bits, &back[0].aim, sizeof( back[0].aim ) );
         if ( bits != @AIM@u ) { printf( "cfloat_range_widen(old): aim did not land BIT-EXACT: 0x%08X, the manifest says @AIM@\n", (unsigned) bits ); return 1; }
     }
-    if ( r.clamped != 0 ) { printf( "cfloat_range_widen(old): clamped is not exactly 0: %d\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "cfloat_range_widen(old): a counter moved on a clean backward read: unknown=%d km=%d w=%d dup=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "cfloat_range_widen(old): a clean read refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
+    if ( r.refused != 0 ) { printf( "cfloat_range_widen(old): out_of_range is not exactly 0: %d\n", r.refused ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "cfloat_range_widen(old): a counter moved on a clean backward read: unknown=%d km=%d w=%d dup=%d\n", r.unknown, r.refused, r.widened, r.refused ); return 1; }
+    if ( r.damaged || r.refused ) { printf( "cfloat_range_widen(old): a clean read refused: malformed=%d refused=%d\n", (int) r.damaged, (int) r.refused ); return 1; }
 `
 	out, err := cppRunVersionProbe(t, "cfloat_range_widen",
 		filepath.Join(corpus, "old_cfloat_range_widen.bin"), strings.ReplaceAll(oldBody, "@AIM@", oldAim), "")
@@ -60,10 +60,10 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
         memcpy( &bits, &back[0].aim, sizeof( back[0].aim ) );
         if ( bits != @AIM@u ) { printf( "cfloat_range_widen(hostile): the manifest's own forged value did not land WHOLE: 0x%08X, want @AIM@\n", (unsigned) bits ); return 1; }
     }
-    if ( r.clamped != 0 ) { printf( "cfloat_range_widen(hostile): clamped is not exactly 0: %d\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "cfloat_range_widen(hostile): a counter moved on a clean backward read: unknown=%d km=%d w=%d dup=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "cfloat_range_widen(hostile): a clean read refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
+    if ( r.refused != 0 ) { printf( "cfloat_range_widen(hostile): out_of_range is not exactly 0: %d\n", r.refused ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "cfloat_range_widen(hostile): a counter moved on a clean backward read: unknown=%d km=%d w=%d dup=%d\n", r.unknown, r.refused, r.widened, r.refused ); return 1; }
+    if ( r.damaged || r.refused ) { printf( "cfloat_range_widen(hostile): a clean read refused: malformed=%d refused=%d\n", (int) r.damaged, (int) r.refused ); return 1; }
 `
 	out, err = cppRunVersionProbe(t, "cfloat_range_widen",
 		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"), strings.ReplaceAll(hostileBody, "@AIM@", hostileAim), "")
@@ -80,10 +80,10 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
         memcpy( &bits, &back[0].aim, sizeof( back[0].aim ) );
         if ( bits != 0x40000000u ) { printf( "cfloat_range_widen(past): aim did not clamp to THIS READER'S OWN declared max 2.0 (0x40000000, not a manifest value): 0x%08X\n", (unsigned) bits ); return 1; }
     }
-    if ( r.clamped != 1 ) { printf( "cfloat_range_widen(past): clamped is not exactly 1: %d\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "cfloat_range_widen(past): a counter moved on a clean backward read: unknown=%d km=%d w=%d dup=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "cfloat_range_widen(past): a clean read refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
+    if ( r.refused != 1 ) { printf( "cfloat_range_widen(past): out_of_range is not exactly 1: %d\n", r.refused ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "cfloat_range_widen(past): a counter moved on a clean backward read: unknown=%d km=%d w=%d dup=%d\n", r.unknown, r.refused, r.widened, r.refused ); return 1; }
+    if ( r.damaged || r.refused ) { printf( "cfloat_range_widen(past): a clean read refused: malformed=%d refused=%d\n", (int) r.damaged, (int) r.refused ); return 1; }
 `
 	out, err = cppRunVersionProbe(t, "cfloat_range_widen",
 		filepath.Join(corpus, "past_cfloat_range_widen.bin"), pastBody, "")

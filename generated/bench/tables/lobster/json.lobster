@@ -565,7 +565,7 @@ def j_float_text(x:float, single:bool) -> string:
             return text
         let back, _ = string_to_float(text)
         if single:
-            if fround(back) == x:
+            if j_parse_f32(text) == x:
                 return text
         elif back == x:
             return text
@@ -1442,7 +1442,7 @@ def j_read_field(r:JsonReader, sl:Slot, depth:int) -> bool:
     if s == "ptr":
         return j_read_pointer_cell(r, sl.cell, f.t, depth)
     if s == "text" or (s == "str" and not f.wide):
-        let out, clamped, ok = j_scan_stored(r, f.bound)
+        let out, clamped, ok = j_scan_stored(r, if s == "text": -1 else: f.bound)
         if not ok:
             return false
         if clamped:
@@ -1643,7 +1643,7 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
                 return false
             placed++
         else:
-            let out, clamped, ok = j_scan_stored(r, vf.bound)
+            let out, clamped, ok = j_scan_stored(r, if vf.s == "text": -1 else: vf.bound)
             if not ok:
                 return false
             if clamped:
@@ -2226,7 +2226,10 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == 0:
             r.bad = true
             return false
-        let key, over, ok = j_scan_stored(r, json_max_key)
+        // Schema string keys carry their declared extent; field-name limits
+        // do not bound map data. Unbounded text uses the scanner's -1 mode.
+        let key_limit = if kf.s == "text": -1 else: if string_key: kf.bound else: json_max_key
+        let key, over, ok = j_scan_stored(r, key_limit)
         if not ok:
             return false
         if j_peek(r) != ':':
@@ -2242,7 +2245,7 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
             r.bad = true
             return false
         var fits = true
-        if string_key and placed == 0 and not over:
+        if string_key and kf.s != "text" and placed == 0 and not over:
             fits = length(entry.fields[0].cell.s) <= kf.bound
         if over and string_key:
             r.report.clamped++
@@ -2322,12 +2325,12 @@ def j_place_map_key(entry:Record, kf:FieldDescriptor, key:string) -> int:
         ks.cell.s = key
         ks.count = length(key)
         return 0
-    let probe = JsonReader { text: key, report: LoadReport {} }
-    j_space(probe)
-    if probe.pos != 0:
+    let key_reader = JsonReader { text: key, report: LoadReport {} }
+    j_space(key_reader)
+    if key_reader.pos != 0:
         return 2
-    let _, ok = j_walk_number(probe)
-    if not ok or probe.pos != length(key):
+    let _, ok = j_walk_number(key_reader)
+    if not ok or key_reader.pos != length(key):
         return 2
     let number = j_interpret_exact(key)
     if number.fractional or number.saturated:

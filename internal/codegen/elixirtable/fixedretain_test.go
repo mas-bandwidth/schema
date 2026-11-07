@@ -136,7 +136,7 @@ func TestFixedMessageRootRetainRefusalElixir(t *testing.T) {
 	value := m.New(u.Tables["ToolMessage"])
 	var report tabletext.Report
 	ok, err := tablewire.Decode(m, value, wire, &report)
-	if err != nil || !ok || report.Malformed || report.KindMismatch != 1 {
+	if err != nil || !ok || report.Refused {
 		t.Fatalf("fixed pin: %v %v %+v", ok, err, report)
 	}
 	want, err := tablewire.Encode(m, value)

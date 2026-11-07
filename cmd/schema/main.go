@@ -757,8 +757,11 @@ func reportLineStage(r compiler.TableReport, verbose, tolerate bool, stage strin
 		}
 		return
 	}
-	fmt.Printf("%s: unknown %d, kind_mismatch %d, widened %d, clamped %d, duplicate %d, blob_shared %d, malformed %v\n",
-		label, r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.BlobShared, r.Malformed)
+	if r.Refused {
+		fmt.Printf("%s: refused: %s\n", label, r.Reason)
+	} else {
+		fmt.Printf("%s: unknown %d, widened %d\n", label, r.Unknown, r.Widened)
+	}
 	if tolerate {
 		return
 	}

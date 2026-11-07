@@ -433,7 +433,22 @@ local function node_scan(bytes, o, report, variable, st)
     report.wireDamaged = true
     return nil
   end
-  local raw = {}
+  -- the record list and its entries are the loader state's own scratch
+  -- (docs/PORTING.md M1), emptied here and refilled: a scan builds no table
+  -- once the state has run a scan of its size.
+  local raw = st.rawlist
+  if raw == nil then
+    raw = {}
+    st.rawlist = raw
+  end
+  for i = #raw, 1, -1 do
+    raw[i] = nil
+  end
+  local rawpool = st.rawpool
+  if rawpool == nil then
+    rawpool = {}
+    st.rawpool = rawpool
+  end
   while rec.at < rec.lim do
     local tref = r_leb(rec)
     if rec.bad or tref == 0 or above(tref, #o.table) then
@@ -447,7 +462,13 @@ local function node_scan(bytes, o, report, variable, st)
       report.wireDamaged = true
       return nil
     end
-    raw[#raw + 1] = { tid = o.table[tref], at = rec.at, lim = rec.at + n }
+    local entry = rawpool[#raw + 1]
+    if entry == nil then
+      entry = {}
+      rawpool[#raw + 1] = entry
+    end
+    entry.tid, entry.at, entry.lim = o.table[tref], rec.at, rec.at + n
+    raw[#raw + 1] = entry
     rec.at = rec.at + n
   end
   if count ~= #raw then
@@ -1581,10 +1602,12 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
   local s = fd.shape
   if s == "bool" or s == "int" or s == "flags" or s == "float" or s == "wide" then
     if n ~= nil and kind == fd.kind then
-      -- an arm's L must BE the kind's width
+      -- an arm's L must BE the kind's width: the length does not frame its
+      -- kind, so this is framing damage (wire_damaged in §6.5's order)
       local w = width_of(kind)
       if w == 0 or n ~= w then
         report.malformed = true
+        report.wireDamaged = true
         return nil, DAMAGED
       end
     end
@@ -1968,12 +1991,52 @@ local function release(ctx)
   ctx.report, ctx.nodes = nil, NO_NODES
 end
 
--- placed lists the records a load placed as the cycle check's vertices
--- (D.cyclic): every table node, reached from the root or not.
-local function placed(nodes)
-  local out = {}
+-- placed_t reports whether the load placed any table node: a cycle is a
+-- pointer edge back to a placed vertex, so a load that placed none holds no
+-- cycle and the cycle walk (and its allocations) is skipped.
+local function placed_t(nodes)
   for _, node in ipairs(nodes) do
-    if node.kind == "t" then out[#out + 1] = { desc = node.codec, v = node.value } end
+    if node.kind == "t" then return true end
+  end
+  return false
+end
+
+-- node_entry answers the pooled node entry at the node list's next index:
+-- the entries are the loader state's own (docs/PORTING.md M1).
+local function node_entry(state, ctx)
+  local pool = state.nodespool
+  if pool == nil then
+    pool = {}
+    state.nodespool = pool
+  end
+  local e = pool[#ctx.nodes + 1]
+  if e == nil then
+    e = {}
+    pool[#ctx.nodes + 1] = e
+  end
+  return e
+end
+
+-- placed lists the records a load placed as the cycle check's vertices
+-- (D.cyclic): every table node, reached from the root or not. The list and
+-- its entries are one reused scratch (docs/PORTING.md M1), emptied at entry:
+-- the check consumes it before any other load runs.
+local placed_scratch, placed_pool = {}, {}
+local function placed(nodes)
+  local out = placed_scratch
+  for i = #out, 1, -1 do
+    out[i] = nil
+  end
+  for _, node in ipairs(nodes) do
+    if node.kind == "t" then
+      local e = placed_pool[#out + 1]
+      if e == nil then
+        e = {}
+        placed_pool[#out + 1] = e
+      end
+      e.desc, e.v = node.codec, node.value
+      out[#out + 1] = e
+    end
   end
   return out
 end
@@ -2041,7 +2104,20 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   ctx.capped = nil
   ctx.nodes = NO_NODES
   if raw ~= nil then
-    if #raw > 0 then ctx.nodes = {} end
+    if #raw > 0 then
+      -- the node list and its entries are the loader state's own scratch
+      -- (docs/PORTING.md M1), emptied here and refilled; a node's VALUE and
+      -- a blob's BOX are born per load, as they must be.
+      local nodes = state.nodeslist
+      if nodes == nil then
+        nodes = {}
+        state.nodeslist = nodes
+      end
+      for i = #nodes, 1, -1 do
+        nodes[i] = nil
+      end
+      ctx.nodes = nodes
+    end
     for _, rec in ipairs(raw) do
       -- A BLOB NODE KEEPS ITS IDENTITY (§3.1: every reachable node is written
       -- once and two references to one node are one node; §6.3: sharing and a
@@ -2052,28 +2128,38 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
       if rec.tid == STRING_BLOB_ID then
         local body = string.sub(bytes, rec.at + 1, rec.lim)
         if utf8_ok(body) then
-          ctx.nodes[#ctx.nodes + 1] = { kind = "s", blob = body, box = { value = body } }
+          local e = node_entry(state, ctx)
+          e.kind, e.blob, e.box, e.codec, e.value, e.at, e.lim = "s", body, { value = body }, nil, nil, nil, nil
+          ctx.nodes[#ctx.nodes + 1] = e
         else
           report.malformed = true
           report.wireDamaged = true
           -- §3.1: the record keeps its index even when its content is refused,
           -- so one unnameable node never shifts the rest; every pointer naming
           -- it reads null.
-          ctx.nodes[#ctx.nodes + 1] = { kind = "null" }
+          local e = node_entry(state, ctx)
+          e.kind, e.blob, e.box, e.codec, e.value, e.at, e.lim = "null", nil, nil, nil, nil, nil, nil
+          ctx.nodes[#ctx.nodes + 1] = e
         end
       elseif rec.tid == BYTES_BLOB_ID then
         local body = string.sub(bytes, rec.at + 1, rec.lim)
-        ctx.nodes[#ctx.nodes + 1] = { kind = "b", blob = body, box = { value = body } }
+        local e = node_entry(state, ctx)
+        e.kind, e.blob, e.box, e.codec, e.value, e.at, e.lim = "b", body, { value = body }, nil, nil, nil, nil
+        ctx.nodes[#ctx.nodes + 1] = e
       else
         local subdesc = T.TypeIds[rec.tid]
         if subdesc == nil then
           report.unknown = report.unknown + 1
           -- §3.1: numbering is positional in the table, so a node this reader
           -- cannot name KEEPS ITS INDEX; every pointer naming it reads null.
-          ctx.nodes[#ctx.nodes + 1] = { kind = "unknown" }
+          local e = node_entry(state, ctx)
+          e.kind, e.blob, e.box, e.codec, e.value, e.at, e.lim = "unknown", nil, nil, nil, nil, nil, nil
+          ctx.nodes[#ctx.nodes + 1] = e
         else
           local inst = fresh(T, subdesc)
-          ctx.nodes[#ctx.nodes + 1] = { kind = "t", codec = subdesc, value = inst, at = rec.at, lim = rec.lim }
+          local e = node_entry(state, ctx)
+          e.kind, e.blob, e.box, e.codec, e.value, e.at, e.lim = "t", nil, nil, subdesc, inst, rec.at, rec.lim
+          ctx.nodes[#ctx.nodes + 1] = e
         end
       end
     end
@@ -2126,7 +2212,9 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   -- stored is checked once every index has resolved, over the root and every
   -- record the load placed, a cycle among records the root never reaches
   -- included (D.cyclic).
-  if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.malformed = true end
+  if placed_t(ctx.nodes) then
+    if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.malformed = true end
+  end
   release(ctx)
   if report.malformed then return nil end
   return root
@@ -2250,6 +2338,14 @@ end
 
 local measure_record, measure_field, measure_union
 
+local function measure_unbounded_text(T, scan, n)
+  if n == 0 then return true end
+  if n < 0 or n > 0xffffffff then return false end
+  local align = T.RegionAlign or 8
+  scan.at = round_up(scan.at, 8) + round_region(9 + n, align)
+  return true
+end
+
 measure_record = function(T, ids, scan, desc, b, at, lim)
   local r = new_reader(b, at, lim)
   while true do
@@ -2269,7 +2365,13 @@ measure_record = function(T, ids, scan, desc, b, at, lim)
         if not skip(r, kind) then return true end
       end
     elseif kind ~= 13 and kind ~= 14 and kind ~= 16 then
-      if not skip(r, kind) then return true end
+      if kind == 12 and f.unbounded and f.shape == "string" then
+        local pat, plim = extent_body(r)
+        if pat == nil then return true end
+        if not measure_unbounded_text(T, scan, plim - pat) then return false end
+      elseif not skip(r, kind) then
+        return true
+      end
     else
       local pat, plim = extent_body(r)
       if pat == nil then return true end
@@ -2306,7 +2408,22 @@ measure_field = function(T, ids, scan, f, b, at, lim)
       if count > (r.lim - r.at) // floor then return false end
       scan.at = round_up(scan.at, align) + count * size
     end
-    if kind ~= 13 and kind ~= 15 then return true end
+    if kind ~= 13 and kind ~= 15 then
+      if kind == 12 and f.elem ~= nil and f.elem.shape == "table" then
+        local elem_st = T.Tables[f.elem.target]
+        local vf = elem_st and elem_st.fields and elem_st.fields[1]
+        if vf ~= nil and vf.unbounded and vf.shape == "string" then
+          local j = 0
+          while math.ult(j, count) and r.at < r.lim do
+            j = j + 1
+            local pat, plim = extent_body(r)
+            if pat == nil then return true end
+            if not measure_unbounded_text(T, scan, plim - pat) then return false end
+          end
+        end
+      end
+      return true
+    end
     local keyed = (f.shape == "array" and f.keyed ~= nil)
     local i = 0
     -- `count` is an UNSIGNED 64-bit number (docs/SPEC-TABLES.md §3): a huge
@@ -2333,6 +2450,7 @@ measure_field = function(T, ids, scan, f, b, at, lim)
     return true
   end
   if f.shape == "table" then return measure_record(T, ids, scan, T.Tables[f.target], b, at, lim) end
+  if f.shape == "string" and f.unbounded then return measure_unbounded_text(T, scan, lim - at) end
   return true
 end
 

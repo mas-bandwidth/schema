@@ -31,8 +31,9 @@ import (
 // a key a later card adds and forgets to list fails here whatever it is called.
 
 // squirrelRuntimeExport is a key a runtime file's module table gets at column
-// zero.
-var squirrelRuntimeExport = regexp.MustCompile(`(?m)^_M\.([A-Za-z_]\w*) <-`)
+// zero, named either canonically (_M.name) or by a bracket assignment
+// (_M["name"]): both are module slots, so neither may hide from the scan.
+var squirrelRuntimeExport = regexp.MustCompile(`(?m)^_M(?:\.|\[\s*")([A-Za-z_]\w*)(?:"\s*\])? <-`)
 
 // squirrelDeclaration is a class the unit's table module defines: a
 // declaration of the schema (a table, a type, a union, a map's entry).
@@ -184,11 +185,11 @@ func TestSquirrelRuntimeNameScanGoesRed(t *testing.T) {
 		t.Fatalf("the unit-key scan is not seeing what it must: got %v, want [TableRogueUnitName]", got)
 	}
 	emitted := map[string]bool{"TableRogueUnitName": true}
-	for _, m := range squirrelRuntimeExport.FindAllStringSubmatch("_M.tableRogueExport <- function() {};\n", -1) {
+	for _, m := range squirrelRuntimeExport.FindAllStringSubmatch("_M.tableRogueExport <- function() {};\n_M[\"tableRogueBracketExport\"] <- function() {};\n", -1) {
 		emitted[m[1]] = true
 	}
 	unregistered, _ := squirrelNameFindings(emitted)
-	if strings.Join(unregistered, ",") != "TableRogueUnitName,tableRogueExport" {
+	if strings.Join(unregistered, ",") != "TableRogueUnitName,tableRogueBracketExport,tableRogueExport" {
 		t.Fatalf("the planted keys were not reported unlisted: %v", unregistered)
 	}
 	some := tablenames.SquirrelModuleKeys()[0]
