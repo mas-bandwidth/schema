@@ -202,12 +202,7 @@ static int test_1_refuses_below_floor( void )
         fprintf( stderr, "test1: layout_hash mismatch\n" );
         return FAIL;
     }
-    if ( report.refused ) {
-        fprintf( stderr, "test1: malformed should be clear on a layout refusal\n" );
-        return FAIL;
-    }
-    if ( report.unknown || report.kind_mismatch || report.clamped
-      || report.duplicate || report.widened ) {
+    if ( report.unknown || report.widened ) {
         fprintf( stderr, "test1: counters moved on a refusal\n" );
         return FAIL;
     }

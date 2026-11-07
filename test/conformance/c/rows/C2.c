@@ -78,7 +78,7 @@ int main( void )
     check( cfg_fixed_load( &back, 1, file, n, NULL, 0, NULL, &r ) == 1, "c/C2 BOUNDARY: count == Max reads" );
     check( back.items_count == 8 && back.items[0] == 100 && back.items[7] == 107,
            "c/C2 BOUNDARY: count == Max lands whole" );
-    check( r.clamped == 0, "c/C2 BOUNDARY: count == Max counts nothing — the clamp is v > Max, never v >= Max" );
+    check( !r.refused, "c/C2 BOUNDARY: count == Max reads clean — the bound is v > Max, never v >= Max" );
 
     /* THE FORGE: one field — the count word — to 1000 > Max. */
     body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( cfg_fixed_layout ) + 8;
@@ -86,17 +86,14 @@ int main( void )
 
     memset( &back, 0, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    check( cfg_fixed_load( &back, 1, file, n, NULL, 0, NULL, &r ) == 1,
-           "c/C2: a count forged past Max still reads — clamped, never refused, never malformed" );
-    check( back.items_count == 8,
-           "c/C2 CLAMP: the count lands Max (8), never the forged 1000, never 0" );
-    check( back.items[0] == 100 && back.items[1] == 101 && back.items[2] == 102 && back.items[3] == 103 &&
-           back.items[4] == 104 && back.items[5] == 105 && back.items[6] == 106 && back.items[7] == 107,
-           "c/C2: every live element behind the clamped count lands exactly" );
-    check( r.clamped == 1, "c/C2 COUNTED: clamped == 1 exactly — once per entry per record (§5.4), never 0, never 2" );
+    check( cfg_fixed_load( &back, 1, file, n, NULL, 0, NULL, &r ) == -1,
+           "c/C2: a count forged past Max refuses the whole load" );
+    check( r.refused && r.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE,
+           "c/C2: the refusal is out_of_range" );
+    check( back.items_count == 0,
+           "c/C2: a refusal lands nothing — the count stays at its reset 0" );
     check( r.unknown == 0 && r.widened == 0,
            "c/C2: and no other counter moves" );
-    check( !r.refused, "c/C2: the read is a read — malformed and refused both stay false" );
 
     printf( "%s\n", failures ? "c/C2: RED" : "c/C2: GREEN" );
     return failures;

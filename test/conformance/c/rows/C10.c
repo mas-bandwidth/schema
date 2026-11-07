@@ -118,7 +118,7 @@ int main( void )
     check( n == 1, "the clean file reads one record", n );
     check( values[0].grade == GRADE_GOLD, "the clean read lands Gold", values[0].grade );
     check( values[0].raw == 7, "the clean read lands raw = 7", values[0].raw );
-    check( report.clamped == 0, "the clean read counts no clamp", report.clamped );
+    check( !report.refused, "the clean read is not refused", report.refused );
     check( report.unknown == 0 && report.widened == 0,
            "the clean read moves no other counter", report.unknown + report.widened );
 
@@ -129,13 +129,11 @@ int main( void )
     memset( &report, 0, sizeof( report ) );
     root_reset( &values[0] );
     n = root_fixed_load( values, 1, gold, gold_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
-    check( n == 1, "the forged file reads one record", n );
-    check( report.refused == 0 && report.reason == 0 && report.layout_hash == 0,
-           "a forged ordinal is not a refusal (same-hash read)", report.reason );
-    check( !report.refused, "a forged ordinal is not malformed", report.refused );
-    check( values[0].grade == GRADE_NONE, "the forged ordinal lands None", values[0].grade );
-    check( values[0].raw == 7, "the scalar beside the enum stands at 7", values[0].raw );
-    check( report.clamped == 1, "the forged ordinal counts clamped exactly once", report.clamped );
+    check( n == -1, "the forged file refuses the whole load", n );
+    check( report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE,
+           "a forged ordinal refuses out of range", report.refuse_reason );
+    check( values[0].grade == GRADE_NONE, "a refusal lands no arm: the enum stays None", values[0].grade );
+    check( values[0].raw == 0, "a refusal lands nothing beside the enum either", values[0].raw );
     check( report.unknown == 0 && report.widened == 0,
            "no other counter moved on the forged read", report.unknown + report.widened );
 
@@ -150,9 +148,9 @@ int main( void )
     (void) top;
     check( n == 1, "the top-variant file reads one record", n );
     check( values[0].grade == GRADE_GOLD, "the top variant reads back Gold", values[0].grade );
-    check( report.clamped == 0, "the top variant counts no clamp", report.clamped );
+    check( !report.refused, "the top variant is not refused", report.refused );
 
     if ( failed ) { printf( "C10: RED\n" ); return 1; }
-    printf( "C10: GREEN — an enum ordinal past the top variant lands None and counts clamped exactly once\n" );
+    printf( "C10: GREEN — an enum ordinal past the top variant refuses the whole load\n" );
     return 0;
 }
