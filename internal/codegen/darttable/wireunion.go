@@ -396,13 +396,13 @@ func (g *wireGen) emitUnionLoad(un *ir.Union) {
 	}
 	g.pf("bool %s(TableWireReader r, %s v) {\n", unionFn(un, "LoadArm"), un.Name)
 	g.pf("\tfinal ref = r.readLeb();\n")
-	g.pf("\tif (ref == null) { r.report.malformed = true; return false; }\n")
+	g.pf("\tif (ref == null) { r.report.refuse('wire_damaged'); return false; }\n")
 	g.pf("\tif (ref == 0) { r.retain?.forget(v); v.armTag = 0; return true; }\n")
 	g.pf("\tfinal armId = r.refToId[ref];\n")
-	g.pf("\tif (armId == null || !r.has(1)) { r.report.malformed = true; return false; }\n")
+	g.pf("\tif (armId == null || !r.has(1)) { r.report.refuse('wire_damaged'); return false; }\n")
 	g.pf("\tfinal kind = r.readByte();\n")
 	g.pf("\tfinal n = r.readLeb();\n")
-	g.pf("\tif (n == null || !r.has(n)) { r.report.malformed = true; return false; }\n")
+	g.pf("\tif (n == null || !r.has(n)) { r.report.refuse('wire_damaged'); return false; }\n")
 	// The value is RESET once the arm's framing has held (internal/tablewire
 	// unionCell): framing damage before that leaves an earlier occurrence's
 	// arm standing, and every outcome after it replaces it.
@@ -425,14 +425,14 @@ func (g *wireGen) emitUnionLoad(un *ir.Union) {
 			}
 			g.pf(") {\n")
 			g.pf("\t\t\t\tif (n != _kindWidth(kind)) {\n")
-			g.pf("\t\t\t\t\tr.report.malformed = true;\n")
+			g.pf("\t\t\t\t\tr.report.refuse('wire_damaged');\n")
 			g.pf("\t\t\t\t} else if (%s(p, v, kind)) {\n", unionFn(un, fmt.Sprintf("Arm%d", i+1)))
 			g.pf("\t\t\t\t\tv.armTag = %d;\n", i+1)
 			g.pf("\t\t\t\t\tr.report.widened++;\n")
 			g.pf("\t\t\t\t}\n")
 		}
 		g.pf("\t\t\t} else {\n")
-		g.pf("\t\t\t\tr.report.kindMismatch++;\n")
+		g.pf("\t\t\t\tr.report.refuse('kind_mismatch');\n")
 		g.pf("\t\t\t}\n")
 		g.pf("\t\t\tbreak;\n")
 	}
@@ -474,7 +474,7 @@ func (g *wireGen) emitArmDecode(un *ir.Union, i int, arm ir.UnionVariant) {
 	g.pf("bool %s(TableWireReader p, %s v, int kind) {\n", unionFn(un, fmt.Sprintf("Arm%d", i+1)), un.Name)
 	if arm.Void() {
 		// a payload-free arm carries nothing: an L that is not zero is damage
-		g.pf("\tif (p.pos != p.limit) { p.report.malformed = true; return false; }\n")
+		g.pf("\tif (p.pos != p.limit) { p.report.refuse('wire_damaged'); return false; }\n")
 		g.pf("\treturn true;\n}\n\n")
 		return
 	}
@@ -491,7 +491,7 @@ func (g *wireGen) emitArmDecode(un *ir.Union, i int, arm ir.UnionVariant) {
 // takes its declared range and bits mask; a fixed-width payload whose L is not
 // its width is damage.
 func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
-	bad := fmt.Sprintf("{ %s.report.malformed = true; return false; }", p)
+	bad := fmt.Sprintf("{ %s.report.refuse('wire_damaged'); return false; }", p)
 	switch {
 	case f.Type.Blob():
 		g.pf("%sfinal idx = %s.readLeb();\n", ind, p)
@@ -516,7 +516,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		ref := tableRef(f)
 		g.pf("%svar b = %s();\n", ind, ref.Name)
 		g.pf("%s%sWireLoadBody(%s, b, true);\n", ind, dartName(ref.Name), p)
-		g.pf("%sif (%s.pos != %s.limit) { %s.report.malformed = true; b = %s(); }\n", ind, p, p, p, ref.Name)
+		g.pf("%sif (%s.pos != %s.limit) { %s.report.refuse('wire_damaged'); b = %s(); }\n", ind, p, p, p, ref.Name)
 		g.pf("%s%s.retain?.forget(%s);\n", ind, p, dest)
 		g.pf("%s%s = b;\n", ind, dest)
 		g.pf("%sreturn true;\n", ind)
@@ -550,9 +550,9 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// this one, so the union reads None (§3)
 		wc := widenCond(ek)
 		if wc == "" || f.Type.Pointer {
-			g.pf("%sif (elemKind != %d) { %s.report.kindMismatch++; return false; }\n", ind, ek, p)
+			g.pf("%sif (elemKind != %d) { %s.report.refuse('kind_mismatch'); return false; }\n", ind, ek, p)
 		} else {
-			g.pf("%sif (elemKind != %d && !(%s)) { %s.report.kindMismatch++; return false; }\n", ind, ek, wc, p)
+			g.pf("%sif (elemKind != %d && !(%s)) { %s.report.refuse('kind_mismatch'); return false; }\n", ind, ek, wc, p)
 		}
 		et := g.listElemType(f)
 		g.pf("%sfinal out = <%s>[];\n", ind, et)
@@ -562,7 +562,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// internal/tablewire arrayBody, which an arm shares with a field)
 		g.pf("%svar keep = count;\n", ind)
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sif (keep > %d || keep < 0) { keep = %d; %s.report.clamped++; }\n", ind, f.ArrayBound, f.ArrayBound, p)
+			g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, f.ArrayBound, p)
 		} else {
 			g.pf("%sif (keep < 0 || keep > 0x7FFFFFFF) %s\n", ind, bad)
 		}
@@ -580,13 +580,13 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sif (count == null) %s\n", ind, bad)
 		wc := widenCond(ek)
 		if wc == "" || f.Type.Pointer {
-			g.pf("%sif (elemKind != %d) { %s.report.kindMismatch++; return false; }\n", ind, ek, p)
+			g.pf("%sif (elemKind != %d) { %s.report.refuse('kind_mismatch'); return false; }\n", ind, ek, p)
 		} else {
-			g.pf("%sif (elemKind != %d && !(%s)) { %s.report.kindMismatch++; return false; }\n", ind, ek, wc, p)
+			g.pf("%sif (elemKind != %d && !(%s)) { %s.report.refuse('kind_mismatch'); return false; }\n", ind, ek, wc, p)
 		}
 		g.pf("%sfinal out = <%s>[];\n", ind, et)
 		g.pf("%svar keep = count;\n", ind)
-		g.pf("%sif (keep > %d || keep < 0) { keep = %d; %s.report.clamped++; }\n", ind, f.ArrayBound, f.ArrayBound, p)
+		g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, f.ArrayBound, p)
 		g.emitArmElems(f, ek, wc, p, ind)
 		g.pf("%sfinal fresh = List<%s>.generate(%d, (_) => %s);\n", ind, et, f.ArrayBound, g.elemDefault(f))
 		g.pf("%sfor (var i = 0; i < out.length && i < %d; i++) { fresh[i] = out[i]; }\n", ind, f.ArrayBound)
@@ -605,7 +605,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfinal len = %s.limit - %s.pos;\n", ind, p, p)
 		g.pf("%sif (!_lebValid(%s.data, %s.pos, len)) %s\n", ind, p, p, bad)
 		g.pf("%sfinal keep = _textBoundary(%s.data, %s.pos, len, %d);\n", ind, p, p, textBound(f))
-		g.pf("%sif (keep != len) %s.report.clamped++;\n", ind, p)
+		g.pf("%sif (keep != len) { %s.report.refuse('length_over_bound'); return false; }\n", ind, p)
 		g.pf("%s%s = utf8.decode(%s.data.sublist(%s.pos, %s.pos + keep));\n", ind, dest, p, p, p)
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
 		g.pf("%sreturn true;\n", ind)
@@ -616,10 +616,10 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfinal elemKind = %s.readByte();\n", ind, p)
 		g.pf("%sfinal count = %s.readLeb();\n", ind, p)
 		g.pf("%sif (count == null) %s\n", ind, bad)
-		g.pf("%sif (elemKind != %d) { %s.report.kindMismatch++; return false; }\n", ind, wireKindU8, p)
+		g.pf("%sif (elemKind != %d) { %s.report.refuse('kind_mismatch'); return false; }\n", ind, wireKindU8, p)
 		g.pf("%svar keep = count;\n", ind)
-		g.pf("%sif (keep > %d || keep < 0) { keep = %d; %s.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size, p)
-		g.pf("%sif (keep > %s.limit - %s.pos) { keep = %s.limit - %s.pos; %s.report.malformed = true; }\n", ind, p, p, p, p, p)
+		g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.Type.Size, f.Type.Size, p)
+		g.pf("%sif (keep > %s.limit - %s.pos) { keep = %s.limit - %s.pos; %s.report.refuse('wire_damaged'); }\n", ind, p, p, p, p, p)
 		g.pf("%s%s = latin1.decode(%s.data.sublist(%s.pos, %s.pos + keep));\n", ind, dest, p, p, p)
 		g.pf("%sreturn true;\n", ind)
 	case enumRef(f) != nil:
@@ -650,8 +650,8 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%s}\n", ind)
 		if f.HasFloatRange {
 			// a -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
-			g.pf("%sif (%s < %s) { %s = %s; %s.report.clamped++; }\n", ind, dest, fmtFloat(f.FMin), dest, fmtFloat(f.FMin), p)
-			g.pf("%sif (%s > %s) { %s = %s; %s.report.clamped++; }\n", ind, dest, fmtFloat(f.FMax), dest, fmtFloat(f.FMax), p)
+			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, fmtFloat(f.FMin), dest, fmtFloat(f.FMin), p)
+			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, fmtFloat(f.FMax), dest, fmtFloat(f.FMax), p)
 			g.pf("%sif (%s == 0) %s = 0.0;\n", ind, dest, dest)
 		}
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
@@ -698,7 +698,7 @@ func (g *wireGen) tailCheck(p string) string {
 // element kind, or WIDENED from a narrower one (§4). Framing damage stops the
 // loop and keeps the prefix.
 func (g *wireGen) emitArmElems(f *ir.Field, ek int, wc, p, ind string) {
-	bad := fmt.Sprintf("{ %s.report.malformed = true; break; }", p)
+	bad := fmt.Sprintf("{ %s.report.refuse('wire_damaged'); break; }", p)
 	if wc != "" && !f.Type.Pointer {
 		g.pf("%sif (elemKind != %d) {\n", ind, ek)
 		g.emitWidenedElems(f, ek, "out", p, ind+"\t")
@@ -721,16 +721,16 @@ func (g *wireGen) emitIntClamp(f *ir.Field, value, p, ind string) {
 	if f.HasIntRange {
 		lo, hi := dartBoundLiteral(f.IntMin), dartBoundLiteral(f.IntMax)
 		if signed {
-			g.pf("%sif (%s < %s) { %s = %s; %s.report.clamped++; }\n", ind, value, lo, value, lo, p)
-			g.pf("%sif (%s > %s) { %s = %s; %s.report.clamped++; }\n", ind, value, hi, value, hi, p)
+			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, value, lo, value, lo, p)
+			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, value, hi, value, hi, p)
 		} else {
-			g.pf("%sif (_u64Below(%s, %s)) { %s = %s; %s.report.clamped++; }\n", ind, value, lo, value, lo, p)
-			g.pf("%sif (_u64Above(%s, %s)) { %s = %s; %s.report.clamped++; }\n", ind, value, hi, value, hi, p)
+			g.pf("%sif (_u64Below(%s, %s)) { %s.report.refuse('out_of_range'); }\n", ind, value, lo, value, lo, p)
+			g.pf("%sif (_u64Above(%s, %s)) { %s.report.refuse('out_of_range'); }\n", ind, value, hi, value, hi, p)
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		lit := dartU64Literal(uint64(1)<<f.Type.Width - 1)
-		g.pf("%sif (_u64Above(%s, %s)) { %s = %s; %s.report.clamped++; }\n", ind, value, lit, value, lit, p)
+		g.pf("%sif (_u64Above(%s, %s)) { %s.report.refuse('out_of_range'); }\n", ind, value, lit, value, lit, p)
 	}
 }
 
@@ -752,7 +752,7 @@ func (g *wireGen) emitGetElemBad(f *ir.Field, ek int, out, p, ind, bad string) {
 		g.pf("%svar e = %s();\n", ind, ref.Name)
 		g.pf("%sfinal sub = TableWireReader.sub(%s, %s.pos, %s.pos + elen);\n", ind, p, p, p)
 		g.pf("%s%sWireLoadBody(sub, e, true);\n", ind, dartName(ref.Name))
-		g.pf("%sif (sub.pos != sub.limit) { %s.report.malformed = true; e = %s(); }\n", ind, p, ref.Name)
+		g.pf("%sif (sub.pos != sub.limit) { %s.report.refuse('wire_damaged'); e = %s(); }\n", ind, p, ref.Name)
 		g.pf("%s%s.pos += elen;\n", ind, p)
 		g.pf("%s%s.add(e);\n", ind, out)
 	case wireKindUnion:
@@ -1099,10 +1099,10 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 			keyWidens += fmt.Sprint(k)
 		}
 	}
-	g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
+	g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindArray)
 	g.pf("%s\t{\n", ind)
 	g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
+	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 	g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 	g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 	// THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is
@@ -1111,9 +1111,9 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	// kind is judged, and the entries walk an empty body.
 	g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
 	g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
-	g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+	g.pf("%s\t\tif (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }\n", ind)
 	g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
-	g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindTable)
+	g.pf("%s\t\tif (elemKind != %d) { r.report.refuse('kind_mismatch'); r.pos = end; break; }\n", ind, wireKindTable)
 	// Commit a replacement only after its array header is readable and
 	// compatible (internal/tablewire/decode.go mapField): a skipped repeat
 	// preserves the earlier occurrence (§3, §4).
@@ -1125,7 +1125,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\tvar mapWidened = false;\n", ind)
 	g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
 	g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
-	g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)
+	g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.refuse('wire_damaged'); break; }\n", ind)
 	g.pf("%s\t\t\tvar e = %s();\n", ind, en)
 	g.pf("%s\t\t\tfinal sub = TableWireReader.sub(arr, arr.pos, arr.pos + elen);\n", ind)
 	g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
@@ -1136,14 +1136,14 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	// counts (§2.8, §4; internal/tablewire mapField `if entryWidened &&
 	// !widened`)
 	g.pf("%s\t\t\tif ((scan & 4) != 0 && !mapWidened) { mapWidened = true; r.report.widened++; }\n", ind)
-	g.pf("%s\t\t\tif ((scan & 3) == 2) { r.report.kindMismatch++; v.%s = <%s>[]; break; }\n", ind, name, en)
-	g.pf("%s\t\t\tif ((scan & 3) != 0) { r.report.malformed = true; break; }\n", ind)
+	g.pf("%s\t\t\tif ((scan & 3) == 2) { r.report.refuse('kind_mismatch'); break; }\n", ind, name, en)
+	g.pf("%s\t\t\tif ((scan & 3) != 0) { r.report.refuse('wire_damaged'); break; }\n", ind)
 	// KEYS NEVER CLAMP (§2.8): a key whose LAST occurrence rides a string the
 	// declaration bounds under its length drops the entry WHOLE, one `clamped`
 	// per entry, and nothing inside the body is decoded or counted, and the
 	// entry never becomes the last landed key (internal/tablewire mapField
 	// `if !tabletext.MapKeyFits(f, key) { r.report.Clamped++; continue }`).
-	g.pf("%s\t\t\tif ((scan & 8) != 0) { r.report.clamped++; continue; }\n", ind)
+	g.pf("%s\t\t\tif ((scan & 8) != 0) { r.report.refuse('length_over_bound'); break; }\n", ind)
 	// Order admits an entry before its body can add events or refuse a
 	// nested allocation (§2.8). The final key may follow the value on wire.
 	g.pf("%s\t\t\tvar order = -1;\n", ind)
@@ -1157,7 +1157,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\t\tfinal a = lastEntry;\n", ind)
 	g.pf("%s\t\t\t\tfinal b = key;\n", ind)
 	g.pf("%s\t\t\t\torder = %s;\n", ind, mapKeyCompare(f))
-	g.pf("%s\t\t\t\tif (order > 0) { r.report.malformed = true; break; }\n", ind)
+	g.pf("%s\t\t\t\tif (order > 0) { r.report.refuse('wire_damaged'); break; }\n", ind)
 	g.pf("%s\t\t\t}\n", ind)
 	// Index only entries that captured records: known-only maps must not grow
 	// retain metadata independently of the caller's bounded record store.
@@ -1165,7 +1165,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
 	g.pf("%s\t\t\tif ((r.retain?.records.length ?? 0) > retainedAt) r.retain!.rememberMap(v, %q, e);\n", ind, name)
 	g.pf("%s\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
-	g.pf("%s\t\t\tif (order == 0) { r.retain?.forget(v.%s.last); r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name, name)
+	g.pf("%s\t\t\tif (order == 0) { r.report.refuse('wire_damaged'); break; }\n", ind, name, name, name)
 	g.pf("%s\t\t\tlastEntry = e;\n", ind)
 	g.pf("%s\t\t\tlastLanded = true;\n", ind)
 	g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
